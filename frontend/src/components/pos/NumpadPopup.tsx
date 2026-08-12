@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -7,7 +7,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { formatCurrency } from '@/lib/utils';
-import { Delete } from 'lucide-react';
+import { Delete, Keyboard } from 'lucide-react';
 
 interface NumpadPopupProps {
   open: boolean;
@@ -19,6 +19,12 @@ interface NumpadPopupProps {
 
 export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบุจำนวนเงิน", initialValue = 0 }: NumpadPopupProps) {
   const [value, setValue] = useState(initialValue > 0 ? initialValue.toString() : '');
+
+  useEffect(() => {
+    if (open) {
+      setValue(initialValue > 0 ? initialValue.toString() : '');
+    }
+  }, [open, initialValue]);
 
   const handleKey = (key: string) => {
     if (key === 'C') {
@@ -45,26 +51,62 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
     }
   };
 
+  // Keyboard navigation for physical keyboard (0-9, Backspace, Enter, Esc)
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key >= '0' && e.key <= '9') {
+        handleKey(e.key);
+      } else if (e.key === '.') {
+        handleKey('.');
+      } else if (e.key === 'Backspace') {
+        handleKey('BACK');
+      } else if (e.key === 'Delete' || e.key === 'c' || e.key === 'C') {
+        setValue('');
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const num = parseFloat(value);
+        if (!isNaN(num) && num > 0) {
+          onConfirm(num);
+          onOpenChange(false);
+          setValue('');
+        }
+      } else if (e.key === 'Escape') {
+        onOpenChange(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, value, onConfirm, onOpenChange]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[320px] bg-white border-slate-200 text-slate-900">
+      <DialogContent className="w-[90vw] sm:max-w-md bg-white border-slate-200 text-slate-900 rounded-2xl p-6 shadow-2xl">
         <DialogHeader>
-          <DialogTitle className="text-center">{title}</DialogTitle>
+          <DialogTitle className="text-center text-xl font-bold flex items-center justify-center gap-2">
+            <Keyboard className="w-5 h-5 text-sky-500" />
+            {title}
+          </DialogTitle>
         </DialogHeader>
 
-        <div className="py-4">
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-right mb-6 h-16 flex flex-col justify-center overflow-hidden">
-            <span className="text-3xl font-bold text-primary">
+        <div className="py-2 space-y-4">
+          {/* Display */}
+          <div className="bg-slate-900 text-white border border-slate-800 rounded-xl p-4 text-right h-20 flex flex-col justify-center overflow-hidden shadow-inner">
+            <span className="text-xs text-slate-400 font-medium">จำนวนเงินที่ระบุ</span>
+            <span className="text-4xl font-extrabold text-sky-400 font-mono">
               {value ? formatCurrency(parseFloat(value)).replace('฿', '') : '0.00'}
             </span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          {/* Keypad */}
+          <div className="grid grid-cols-3 gap-2.5">
             {['7', '8', '9', '4', '5', '6', '1', '2', '3'].map((n) => (
               <Button
                 key={n}
                 variant="outline"
-                className="h-14 text-xl font-medium border-slate-300 bg-slate-50 hover:bg-primary hover:text-slate-900"
+                className="h-16 text-2xl font-bold border-slate-200 bg-slate-50 hover:bg-sky-500 hover:text-white hover:border-sky-500 transition-all rounded-xl shadow-sm"
                 onClick={() => handleKey(n)}
               >
                 {n}
@@ -72,44 +114,49 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
             ))}
             <Button
               variant="outline"
-              className="h-14 text-xl font-medium border-slate-300 bg-slate-50 hover:bg-primary hover:text-slate-900"
+              className="h-16 text-2xl font-bold border-slate-200 bg-slate-50 hover:bg-sky-500 hover:text-white hover:border-sky-500 transition-all rounded-xl shadow-sm"
               onClick={() => handleKey('.')}
             >
               .
             </Button>
             <Button
               variant="outline"
-              className="h-14 text-xl font-medium border-slate-300 bg-slate-50 hover:bg-primary hover:text-slate-900"
+              className="h-16 text-2xl font-bold border-slate-200 bg-slate-50 hover:bg-sky-500 hover:text-white hover:border-sky-500 transition-all rounded-xl shadow-sm"
               onClick={() => handleKey('0')}
             >
               0
             </Button>
             <Button
               variant="outline"
-              className="h-14 text-xl font-medium border-slate-300 bg-slate-50 hover:bg-rose-900/50 hover:text-rose-400 text-rose-500"
+              className="h-16 text-2xl font-bold border-slate-200 bg-red-50 text-red-600 hover:bg-red-500 hover:text-white transition-all rounded-xl shadow-sm"
               onClick={() => handleKey('BACK')}
             >
-              <Delete className="w-6 h-6" />
+              <Delete className="w-7 h-7" />
             </Button>
           </div>
 
-          <div className="flex gap-2 mt-4">
+          <div className="text-center text-xs text-slate-400">
+            💡 พิมพ์ปุ่มตัวเลขที่คีย์บอร์ด หรือกด <kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded text-[11px] font-mono">Enter ↵</kbd> ได้เลย
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 pt-2">
             <Button
               variant="outline"
-              className="flex-1 h-12 border-slate-300 text-slate-500"
+              className="flex-1 h-12 border-slate-300 text-slate-600 font-semibold"
               onClick={() => {
                 setValue('');
                 handleKey('C');
               }}
             >
-              ล้าง (C)
+              ล้างค่า (C)
             </Button>
             <Button
-              className="flex-1 h-12 bg-primary hover:bg-primary/90 text-white font-semibold"
+              className="flex-1 h-12 bg-sky-500 hover:bg-sky-600 text-white font-bold text-base shadow-md"
               onClick={handleConfirm}
               disabled={!value || parseFloat(value) <= 0}
             >
-              ตกลง
+              ตกลง (Enter ↵)
             </Button>
           </div>
         </div>

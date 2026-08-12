@@ -190,7 +190,7 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="w-[94vw] max-w-5xl max-h-[92vh] h-auto flex flex-col p-6 sm:p-8 overflow-y-auto bg-white border-slate-200 text-slate-900 shadow-2xl rounded-2xl">
+        <DialogContent className="w-[85vw] max-w-6xl h-[82vh] max-h-[850px] flex flex-col p-6 sm:p-8 overflow-y-auto bg-white border-slate-200 text-slate-900 shadow-2xl rounded-3xl">
           <DialogHeader className="shrink-0 pb-2 border-b border-slate-100 mb-4">
             <DialogTitle className="text-2xl font-bold flex items-center justify-between">
               <div className="flex items-center gap-2">
