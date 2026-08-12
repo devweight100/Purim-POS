@@ -554,14 +554,30 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                         บัญชีโอนเงิน: <b>{selectedBank.bankName}</b> ({selectedBank.accountNumber})
                       </div>
                     )}
-                    {splitRemaining > 0 && (
-                      <div className="p-4 bg-red-50 border-2 border-red-200 rounded-2xl text-red-600 text-base font-bold">
-                        ยังขาดอีก: {formatCurrency(splitRemaining)}
+                    {splitRemaining > 0 ? (
+                      <div className="p-6 bg-red-50 border-2 border-red-300 rounded-3xl text-center shadow-sm space-y-1">
+                        <span className="text-xs font-bold text-red-700 uppercase tracking-wider block">
+                          ⚠️ ยอดเงินสดที่ยังขาดอยู่ (ต้องเก็บเพิ่ม)
+                        </span>
+                        <span className="text-5xl font-extrabold text-red-600 font-mono block">
+                          {formatCurrency(splitRemaining)}
+                        </span>
+                        <span className="text-xs text-red-500 font-semibold block pt-1">
+                          ลูกค้าโอนแล้ว {formatCurrency(qrReceived)} · รับเงินสดแล้ว {formatCurrency(cashReceived)}
+                        </span>
                       </div>
-                    )}
-                    {splitChange > 0 && (
-                      <div className="p-4 bg-emerald-50 border-2 border-emerald-200 rounded-2xl text-emerald-800 text-base font-bold">
-                        เงินทอนลูกค้า (จากเงินสด): {formatCurrency(splitChange)}
+                    ) : splitChange > 0 ? (
+                      <div className="p-6 bg-emerald-50 border-2 border-emerald-300 rounded-3xl text-center shadow-sm space-y-1">
+                        <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider block">
+                          ✅ เงินทอนลูกค้า (จากเงินสด)
+                        </span>
+                        <span className="text-5xl font-extrabold text-emerald-600 font-mono block">
+                          {formatCurrency(splitChange)}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-center text-emerald-800 font-bold text-base">
+                        ✅ รับชำระเงินครบถ้วนเรียบร้อยแล้ว
                       </div>
                     )}
                   </div>

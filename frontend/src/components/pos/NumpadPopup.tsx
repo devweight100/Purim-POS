@@ -18,21 +18,21 @@ interface NumpadPopupProps {
 }
 
 export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบุจำนวนเงิน", initialValue = 0 }: NumpadPopupProps) {
-  const [value, setValue] = useState(initialValue > 0 ? initialValue.toString() : '');
+  const [value, setValue] = useState(initialValue >= 0 ? initialValue.toString() : '');
 
   useEffect(() => {
     if (open) {
-      setValue(initialValue > 0 ? initialValue.toString() : '');
+      setValue(initialValue >= 0 ? initialValue.toString() : '');
     }
   }, [open, initialValue]);
 
   const handleKey = (key: string) => {
     if (key === 'C') {
-      setValue('');
+      setValue('0');
     } else if (key === 'BACK') {
-      setValue(v => v.slice(0, -1));
+      setValue(v => (v.length <= 1 ? '0' : v.slice(0, -1)));
     } else if (key === '.') {
-      if (!value.includes('.')) setValue(v => v + '.');
+      if (!value.includes('.')) setValue(v => (v === '' ? '0.' : v + '.'));
     } else {
       if (value === '0' && key !== '.') {
         setValue(key);
@@ -44,7 +44,7 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
 
   const handleConfirm = () => {
     const num = parseFloat(value);
-    if (!isNaN(num) && num > 0) {
+    if (!isNaN(num) && num >= 0) {
       onConfirm(num);
       onOpenChange(false);
       setValue('');
@@ -63,11 +63,11 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
       } else if (e.key === 'Backspace') {
         handleKey('BACK');
       } else if (e.key === 'Delete' || e.key === 'c' || e.key === 'C') {
-        setValue('');
+        setValue('0');
       } else if (e.key === 'Enter') {
         e.preventDefault();
         const num = parseFloat(value);
-        if (!isNaN(num) && num > 0) {
+        if (!isNaN(num) && num >= 0) {
           onConfirm(num);
           onOpenChange(false);
           setValue('');
@@ -96,7 +96,7 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
           <div className="bg-slate-900 text-white border border-slate-800 rounded-xl p-4 text-right h-20 flex flex-col justify-center overflow-hidden shadow-inner">
             <span className="text-xs text-slate-400 font-medium">จำนวนเงินที่ระบุ</span>
             <span className="text-4xl font-extrabold text-sky-400 font-mono">
-              {value ? formatCurrency(parseFloat(value)).replace('฿', '') : '0.00'}
+              {value !== '' && !isNaN(parseFloat(value)) ? formatCurrency(parseFloat(value)).replace('฿', '') : '0.00'}
             </span>
           </div>
 
@@ -136,7 +136,7 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
           </div>
 
           <div className="text-center text-xs text-slate-400">
-            💡 พิมพ์ปุ่มตัวเลขที่คีย์บอร์ด หรือกด <kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded text-[11px] font-mono">Enter ↵</kbd> ได้เลย
+            💡 กดปุ่มตัวเลขบนคีย์บอร์ด (รองรับเลข 0) แล้วกด <kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded text-[11px] font-mono">Enter ↵</kbd>
           </div>
 
           {/* Action Buttons */}
@@ -144,17 +144,14 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
             <Button
               variant="outline"
               className="flex-1 h-12 border-slate-300 text-slate-600 font-semibold"
-              onClick={() => {
-                setValue('');
-                handleKey('C');
-              }}
+              onClick={() => setValue('0')}
             >
-              ล้างค่า (C)
+              ล้างเป็น 0 (C)
             </Button>
             <Button
               className="flex-1 h-12 bg-sky-500 hover:bg-sky-600 text-white font-bold text-base shadow-md"
               onClick={handleConfirm}
-              disabled={!value || parseFloat(value) <= 0}
+              disabled={value === '' || isNaN(parseFloat(value)) || parseFloat(value) < 0}
             >
               ตกลง (Enter ↵)
             </Button>
