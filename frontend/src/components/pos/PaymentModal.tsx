@@ -7,10 +7,13 @@ import { formatCurrency } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CreditCard, QrCode, Banknote, Edit3, CheckCircle2, SplitSquareHorizontal, UserCheck } from 'lucide-react';
+import { CreditCard, QrCode, Banknote, Edit3, CheckCircle2, SplitSquareHorizontal, UserCheck, Building2, Download, Share2 } from 'lucide-react';
 import { NumpadPopup } from './NumpadPopup';
 import { PaymentCard } from './PaymentCard';
+import { loadBankAccounts, BankAccount } from '@/lib/bank-account-storage';
+import { toast } from 'sonner';
 
 type Step = 'METHOD' | 'PROCESS' | 'SUCCESS';
 type Method = 'CASH' | 'QR' | 'CARD' | 'SPLIT' | 'CREDIT';
@@ -33,6 +36,10 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
   const [qrReceived, setQrReceived] = useState<number>(0);
   const [numpadTarget, setNumpadTarget] = useState<NumpadTarget>('NONE');
 
+  // Bank accounts for QR payment
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [selectedBank, setSelectedBank] = useState<BankAccount | null>(null);
+
   const total = cart.getTotal();
   
   // Cash method logic
@@ -53,6 +60,11 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
       setCashReceived(0);
       setQrReceived(0);
       setNumpadTarget('NONE');
+
+      const accs = loadBankAccounts();
+      setBankAccounts(accs);
+      const def = accs.find(a => a.isDefault) || accs[0] || null;
+      setSelectedBank(def);
     }
   }, [open]);
 
@@ -62,19 +74,11 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
 
   const handleSelectMethod = (m: Method) => {
     setMethod(m);
-    
-    // Credit is instant success (no process step) if we wanted, but let's show process for confirmation
-    if (m === 'CREDIT') {
-      setStep('PROCESS');
+    setStep('PROCESS');
+    if (m === 'CASH') setCashReceived(0);
+    if (m === 'SPLIT') {
       setCashReceived(0);
       setQrReceived(0);
-    } else {
-      setStep('PROCESS');
-      if (m === 'CASH') setCashReceived(0);
-      if (m === 'SPLIT') {
-        setCashReceived(0);
-        setQrReceived(0);
-      }
     }
   };
 
@@ -96,13 +100,11 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
       recordedCashReceived = cashReceived;
       recordedChangeAmount = change;
     } else if (method === 'QR') {
-      payments.push({ method: 'QR_PROMPTPAY' as const, amount: total });
+      payments.push({ method: 'QR_PROMPTPAY' as const, amount: total, referenceNo: selectedBank?.accountNumber });
       recordedCashReceived = total;
     } else if (method === 'SPLIT') {
-      const actualCashKept = Math.max(0, cashReceived - splitChange);
-      if (actualCashKept > 0) payments.push({ method: 'CASH' as const, amount: actualCashKept });
-      if (qrReceived > 0) payments.push({ method: 'QR_PROMPTPAY' as const, amount: Math.min(qrReceived, total) });
-      
+      if (qrReceived > 0) payments.push({ method: 'QR_PROMPTPAY' as const, amount: qrReceived });
+      if (cashReceived > 0) payments.push({ method: 'CASH' as const, amount: total - qrReceived });
       recordedCashReceived = cashReceived;
       recordedChangeAmount = splitChange;
     } else if (method === 'CREDIT') {
@@ -110,7 +112,6 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
     }
 
     try {
-      // 1. Call real backend checkout API
       await apiFetch('/orders/checkout', {
         method: 'POST',
         body: JSON.stringify({
@@ -126,9 +127,9 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
         })
       });
 
-      // 2. Mock shift recording for local state (can be moved to backend later)
       shiftStore.recordSale({
         id: Date.now().toString(),
+        shiftId: shiftStore.currentShift?.id || 'shift_default',
         orderNumber: `ORD-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(Math.random()*1000)}`,
         customerId: cart.customerId,
         customerName: cart.customerName,
@@ -158,13 +159,12 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
         status: 'COMPLETED',
         userId: shiftStore.currentShift?.userId || 'unknown',
         userName: shiftStore.currentShift?.userName || 'unknown',
-        shiftId: shiftStore.currentShift?.id || 'unknown',
         createdAt: new Date().toISOString()
       });
 
       setStep('SUCCESS');
-    } catch (err: any) {
-      alert(`Error during checkout: ${err.message}`);
+    } catch (error) {
+      toast.error('ไม่สามารถประมวลผลการชำระเงินได้');
     }
   };
 
@@ -175,8 +175,9 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
 
   const handleNumpadConfirm = (val: number) => {
     if (numpadTarget === 'CASH') setCashReceived(val);
-    else if (numpadTarget === 'SPLIT_CASH') setCashReceived(val);
-    else if (numpadTarget === 'SPLIT_QR') setQrReceived(val);
+    if (numpadTarget === 'SPLIT_CASH') setCashReceived(val);
+    if (numpadTarget === 'SPLIT_QR') setQrReceived(val);
+    setNumpadTarget('NONE');
   };
 
   const getNumpadInitialValue = () => {
@@ -189,69 +190,72 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="max-h-[92dvh] overflow-y-auto bg-white border-slate-200 text-slate-900 sm:max-w-[700px]">
+        <DialogContent className="max-w-4xl max-h-[92vh] flex flex-col p-6 overflow-y-auto bg-white border-slate-200 text-slate-900">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold text-primary">
-              {step === 'METHOD' && 'เลือกวิธีชำระเงิน'}
-              {step === 'PROCESS' && method === 'CASH' && 'รับเงินสด'}
-              {step === 'PROCESS' && method === 'QR' && 'QR PromptPay'}
-              {step === 'PROCESS' && method === 'SPLIT' && 'แบ่งชำระ (Split Payment)'}
-              {step === 'PROCESS' && method === 'CREDIT' && 'บันทึกเงินเชื่อ'}
-              {step === 'SUCCESS' && 'ทำรายการสำเร็จ'}
+            <DialogTitle className="text-2xl font-bold flex items-center gap-2">
+              <CreditCard className="w-6 h-6 text-sky-500" />
+              {step === 'METHOD' && 'เลือกช่องทางการชำระเงิน'}
+              {step === 'PROCESS' && method === 'CASH' && 'ชำระเงินสด'}
+              {step === 'PROCESS' && method === 'QR' && 'ชำระผ่าน QR PromptPay / โอนเงิน'}
+              {step === 'PROCESS' && method === 'SPLIT' && 'ชำระแบบหลายช่องทาง (Split)'}
+              {step === 'PROCESS' && method === 'CREDIT' && 'บันทึกเป็นเงินเชื่อ (ค้างชำระ)'}
+              {step === 'SUCCESS' && 'ทำรายการสำเร็จ!'}
             </DialogTitle>
           </DialogHeader>
 
           {/* STEP 1: METHOD SELECTION */}
           {step === 'METHOD' && (
             <div className="py-6">
-              <div className="text-center mb-8">
-                <p className="text-slate-500 mb-2">ยอดที่ต้องชำระ</p>
-                <div className="text-5xl font-bold text-slate-900">{formatCurrency(total)}</div>
+              <div className="text-center mb-8 bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                <p className="text-slate-500 text-sm font-semibold mb-1">ยอดรวมสุทธิที่ต้องชำระ</p>
+                <div className="text-5xl font-bold text-sky-600">{formatCurrency(total)}</div>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Button 
                   variant="outline" 
-                  className="h-20 flex flex-col gap-2 border-slate-300 bg-slate-50 hover:bg-primary hover:text-white hover:border-primary sm:h-24"
+                  className="h-24 flex flex-col gap-2 border-2 border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-400 hover:text-sky-700 transition-all rounded-2xl"
                   onClick={() => handleSelectMethod('CASH')}
                 >
-                  <Banknote className="w-8 h-8 text-emerald-600" />
-                  <span className="text-lg">เงินสด</span>
+                  <Banknote className="w-9 h-9 text-emerald-600" />
+                  <span className="text-xl font-bold">เงินสด (Cash)</span>
                 </Button>
+
                 <Button 
                   variant="outline" 
-                  className="h-20 flex flex-col gap-2 border-slate-300 bg-slate-50 hover:bg-primary hover:text-white hover:border-primary sm:h-24"
+                  className="h-24 flex flex-col gap-2 border-2 border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-400 hover:text-sky-700 transition-all rounded-2xl"
                   onClick={() => handleSelectMethod('QR')}
                 >
-                  <QrCode className="w-8 h-8 text-sky-600" />
-                  <span className="text-lg">QR PromptPay</span>
+                  <QrCode className="w-9 h-9 text-sky-600" />
+                  <span className="text-xl font-bold">QR PromptPay / โอนเงิน</span>
                 </Button>
+
                 <Button 
                   variant="outline" 
-                  className="h-20 flex flex-col gap-2 border-slate-300 bg-slate-50 hover:bg-primary hover:text-white hover:border-primary sm:h-24"
+                  className="h-24 flex flex-col gap-2 border-2 border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-400 hover:text-sky-700 transition-all rounded-2xl"
                   onClick={() => handleSelectMethod('SPLIT')}
                 >
-                  <SplitSquareHorizontal className="w-8 h-8 text-orange-400" />
-                  <span className="text-lg">แบ่งชำระ (Split)</span>
+                  <SplitSquareHorizontal className="w-9 h-9 text-amber-500" />
+                  <span className="text-xl font-bold">แบ่งชำระ (เงินสด + โอน)</span>
                 </Button>
 
                 {cart.customerId ? (
                   <Button 
                     variant="outline" 
-                    className="h-20 flex flex-col gap-2 border-slate-300 bg-slate-50 hover:bg-primary hover:text-white hover:border-primary sm:h-24"
+                    className="h-24 flex flex-col gap-2 border-2 border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-400 hover:text-sky-700 transition-all rounded-2xl"
                     onClick={() => handleSelectMethod('CREDIT')}
                   >
-                    <UserCheck className="w-8 h-8 text-indigo-400" />
-                    <span className="text-lg">เงินเชื่อ (ค้างชำระ)</span>
+                    <UserCheck className="w-9 h-9 text-indigo-500" />
+                    <span className="text-xl font-bold">เงินเชื่อ ({cart.customerName})</span>
                   </Button>
                 ) : (
                   <Button 
                     variant="outline" 
-                    className="h-20 flex flex-col gap-2 border-slate-300 bg-slate-50 hover:bg-primary hover:text-white opacity-50 cursor-not-allowed sm:h-24"
+                    className="h-24 flex flex-col gap-2 border-2 border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed rounded-2xl"
                     title="ต้องเลือกลูกค้าก่อนถึงจะใช้งานได้"
                   >
-                    <UserCheck className="w-8 h-8 text-slate-500" />
-                    <span className="text-lg text-slate-500">เงินเชื่อ (ต้องเลือกลูกค้า)</span>
+                    <UserCheck className="w-9 h-9 text-slate-400" />
+                    <span className="text-lg font-semibold text-slate-400">เงินเชื่อ (ต้องเลือกลูกค้า)</span>
                   </Button>
                 )}
               </div>
@@ -261,121 +265,159 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
           {/* STEP 2: PROCESS (CASH) */}
           {step === 'PROCESS' && method === 'CASH' && (
             <div className="py-4">
-              <div className="flex flex-col gap-6 sm:flex-row">
-                {/* Left side: Calculator */}
-                <div className="w-full shrink-0 border-b border-slate-200 pb-5 sm:w-[300px] sm:border-b-0 sm:border-r sm:pb-0 sm:pr-6">
-                  <div className="mb-4">
-                    <p className="text-sm text-slate-500 mb-1">ยอดที่ต้องชำระ</p>
-                    <div className="text-3xl font-bold">{formatCurrency(total)}</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Left side: Received Cash & Calculator */}
+                <div className="border-b border-slate-200 pb-5 md:border-b-0 md:border-r md:pb-0 md:pr-6 space-y-4">
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <p className="text-xs text-slate-500 font-semibold mb-1">ยอดที่ต้องชำระ</p>
+                    <div className="text-3xl font-bold text-slate-900">{formatCurrency(total)}</div>
                   </div>
                   
-                  <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-xl relative group">
-                    <p className="text-sm text-slate-500 mb-1">รับเงินมา</p>
-                    <div className="text-4xl font-bold text-primary">{formatCurrency(cashReceived)}</div>
-                    <Button 
-                      size="icon" 
-                      variant="ghost" 
-                      className="absolute top-4 right-4 h-8 w-8 text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                  <div className="p-4 bg-sky-50/60 border-2 border-sky-200 rounded-2xl relative group">
+                    <p className="text-xs text-sky-700 font-bold mb-1">รับเงินสดมา (กดที่นี่เพื่อใช้ Numpad)</p>
+                    <div 
+                      className="text-4xl font-bold text-sky-600 cursor-pointer py-1"
                       onClick={() => setNumpadTarget('CASH')}
                     >
-                      <Edit3 className="w-5 h-5" />
+                      {formatCurrency(cashReceived)}
+                    </div>
+                    <Button 
+                      size="icon" 
+                      variant="outline" 
+                      className="absolute top-3 right-3 h-9 w-9 border-sky-300 bg-white text-sky-600 hover:bg-sky-100"
+                      onClick={() => setNumpadTarget('CASH')}
+                      title="กดเพื่อเปิด Numpad"
+                    >
+                      <Edit3 className="w-4 h-4" />
                     </Button>
                   </div>
 
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">เงินทอน</span>
-                      <span className={`font-bold text-lg ${change > 0 ? 'text-emerald-600' : 'text-slate-600'}`}>
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-semibold text-slate-600">เงินทอน</span>
+                      <span className={`font-bold text-2xl ${change > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                         {formatCurrency(change)}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Right side: Banknotes */}
-                <div className="flex-1">
-                  <p className="text-sm text-slate-500 mb-3">กดเพื่อนับจำนวนเงินที่รับ (กดซ้ำเพื่อเพิ่ม)</p>
+                {/* Right side: Fast Banknotes */}
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 mb-3">กดธนบัตรเพื่อนับเงิน (กดซ้ำเพื่อสะสมยอด)</p>
                   <div className="grid grid-cols-2 gap-3 mb-4">
-                    <Button variant="outline" className="h-14 text-xl border-slate-300 bg-slate-50 hover:bg-primary hover:text-white sm:h-16" onClick={() => addCash(20)}>
+                    <Button variant="outline" className="h-14 text-xl font-bold border-slate-300 bg-slate-50 hover:bg-sky-500 hover:text-white" onClick={() => addCash(20)}>
                       ฿20
                     </Button>
-                    <Button variant="outline" className="h-14 text-xl border-slate-300 bg-slate-50 hover:bg-primary hover:text-white sm:h-16" onClick={() => addCash(50)}>
+                    <Button variant="outline" className="h-14 text-xl font-bold border-slate-300 bg-slate-50 hover:bg-sky-500 hover:text-white" onClick={() => addCash(50)}>
                       ฿50
                     </Button>
-                    <Button variant="outline" className="h-14 text-xl border-slate-300 bg-slate-50 hover:bg-primary hover:text-white sm:h-16" onClick={() => addCash(100)}>
+                    <Button variant="outline" className="h-14 text-xl font-bold border-slate-300 bg-slate-50 hover:bg-sky-500 hover:text-white" onClick={() => addCash(100)}>
                       ฿100
                     </Button>
-                    <Button variant="outline" className="h-14 text-xl border-slate-300 bg-slate-50 hover:bg-primary hover:text-white sm:h-16" onClick={() => addCash(500)}>
+                    <Button variant="outline" className="h-14 text-xl font-bold border-slate-300 bg-slate-50 hover:bg-sky-500 hover:text-white" onClick={() => addCash(500)}>
                       ฿500
                     </Button>
-                    <Button variant="outline" className="h-14 text-xl border-slate-300 bg-slate-50 hover:bg-primary hover:text-white sm:h-16" onClick={() => addCash(1000)}>
+                    <Button variant="outline" className="h-14 text-xl font-bold border-slate-300 bg-slate-50 hover:bg-sky-500 hover:text-white" onClick={() => addCash(1000)}>
                       ฿1,000
                     </Button>
-                    <Button variant="outline" className="h-16 text-xl border-primary/20 bg-primary/10 text-primary hover:bg-primary/20" onClick={exactCash}>
+                    <Button variant="outline" className="h-14 text-xl font-bold border-sky-400 bg-sky-50 text-sky-700 hover:bg-sky-500 hover:text-white" onClick={exactCash}>
                       พอดี (฿{total.toFixed(0)})
                     </Button>
                   </div>
                   <Button variant="ghost" className="w-full text-slate-500" onClick={() => setCashReceived(0)}>
-                    ล้างใหม่ทั้งหมด
+                    ล้างยอดเงินสด
                   </Button>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3 mt-8 pt-4 border-t border-slate-200 sm:flex-row sm:gap-4">
+              <div className="flex gap-4 mt-8 pt-4 border-t border-slate-200">
                 <Button variant="outline" className="flex-1 h-12 border-slate-300" onClick={() => setStep('METHOD')}>
                   ย้อนกลับ
                 </Button>
                 <Button 
-                  className="flex-1 h-12 bg-primary hover:bg-primary/90 text-white font-bold text-lg" 
+                  className="flex-1 h-12 bg-sky-500 hover:bg-sky-600 text-white font-bold text-lg shadow-md" 
                   disabled={!isCashSufficient}
                   onClick={handleConfirmPayment}
                 >
-                  ยืนยันรับเงิน
+                  ยืนยันรับเงินสด
                 </Button>
               </div>
             </div>
           )}
 
-          {/* STEP 2: PROCESS (QR) */}
+          {/* STEP 2: PROCESS (QR PromptPay / Bank Transfer) */}
           {step === 'PROCESS' && method === 'QR' && (
-            <div className="py-4">
-              <div className="flex flex-col gap-6 sm:h-[400px] sm:flex-row">
-                {/* Left: Preview Card */}
-                <div className="min-h-[280px] flex-1 overflow-hidden border-b border-slate-200 pb-5 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-6">
-                  <div className="h-full overflow-y-auto pr-2 no-scrollbar border border-slate-200 rounded-lg">
-                    {/* Render the payment card preview inside modal */}
-                    <div className="scale-[0.8] origin-top">
-                      <PaymentCard />
-                    </div>
-                  </div>
+            <div className="py-4 space-y-6">
+              {/* Account selection tabs if multiple exist */}
+              {bankAccounts.length > 1 && (
+                <div className="flex gap-2 overflow-x-auto pb-1 border-b border-slate-200 no-scrollbar">
+                  {bankAccounts.map((acc) => (
+                    <button
+                      key={acc.id}
+                      type="button"
+                      onClick={() => setSelectedBank(acc)}
+                      className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border flex items-center gap-2 ${
+                        selectedBank?.id === acc.id
+                          ? "bg-sky-500 text-white border-sky-500 shadow-sm"
+                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                      }`}
+                    >
+                      <Building2 className="w-4 h-4" />
+                      {acc.bankName}
+                    </button>
+                  ))}
                 </div>
-                {/* Right: Actions */}
-                <div className="w-full shrink-0 flex flex-col sm:w-[250px]">
-                  <div className="text-center mb-6">
-                    <p className="text-slate-500 mb-1">ยอดที่ต้องชำระ</p>
-                    <div className="text-3xl font-bold text-primary">{formatCurrency(total)}</div>
-                  </div>
-                  
-                  <div className="flex-1 flex flex-col justify-center gap-3">
-                    <Button variant="outline" className="h-12 border-slate-300 bg-slate-50 hover:text-slate-900" onClick={() => {
-                        const evt = new CustomEvent('download-payment-card');
-                        window.dispatchEvent(evt);
-                      }}>
-                      ดาวน์โหลดรูปภาพ
-                    </Button>
-                    <Button variant="outline" className="h-12 border-slate-300 bg-[#00B900]/10 text-[#00B900] hover:bg-[#00B900]/20 hover:text-[#00B900] border-[#00B900]/20">
-                      แชร์ทาง LINE
-                    </Button>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                {/* Left: QR Code & Account Details */}
+                <div className="flex flex-col items-center text-center p-6 bg-slate-50 border border-slate-200 rounded-2xl">
+                  <Badge className="mb-3 bg-sky-100 text-sky-800 border-sky-200 text-xs px-3 py-1 font-bold">
+                    {selectedBank?.bankName || 'QR PromptPay'}
+                  </Badge>
+
+                  {/* QR Image */}
+                  <div className="w-56 h-56 border-2 border-slate-200 rounded-2xl overflow-hidden bg-white p-2 shadow-md flex items-center justify-center mb-4">
+                    {selectedBank?.qrImageUrl ? (
+                      <img src={selectedBank.qrImageUrl} alt="QR PromptPay" className="w-full h-full object-contain" />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-slate-400 gap-2">
+                        <QrCode className="w-24 h-24 text-slate-300" />
+                        <span className="text-xs text-slate-500">สแกนชำระผ่าน PromptPay</span>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="mt-auto flex flex-col gap-3">
+                  <div className="space-y-1">
+                    <p className="text-xs text-slate-500">ชื่อบัญชี: <b className="text-slate-900 text-sm">{selectedBank?.accountName || 'ร้านปุริม'}</b></p>
+                    <p className="text-xs text-slate-500">เลขที่บัญชี / พร้อมเพย์: <b className="font-mono text-slate-900 text-base">{selectedBank?.accountNumber || '081-234-5678'}</b></p>
+                  </div>
+                </div>
+
+                {/* Right: Payment Card Preview & Total Amount */}
+                <div className="flex flex-col justify-between h-full p-6 bg-white border border-slate-200 rounded-2xl space-y-6">
+                  <div>
+                    <span className="text-slate-500 text-sm font-semibold block mb-1">ยอดสุทธิที่ต้องสแกนจ่าย</span>
+                    <div className="text-4xl font-bold text-sky-600">{formatCurrency(total)}</div>
+                  </div>
+
+                  <div className="p-4 bg-sky-50 border border-sky-100 rounded-xl text-xs text-sky-800 space-y-1">
+                    <p className="font-bold flex items-center gap-1">
+                      <CheckCircle2 className="w-4 h-4 text-sky-600" /> คำแนะนำสำหรับพนักงานขาย:
+                    </p>
+                    <p>1. ให้ลูกค้าสแกน QR Code และตรวจสอบชื่อบัญชีกับยอดเงิน</p>
+                    <p>2. เมื่อตรวจสอบสลิปการโอนแล้ว ให้กดปุ่ม "ลูกค้าชำระเงินเรียบร้อยแล้ว"</p>
+                  </div>
+
+                  <div className="flex flex-col gap-3 pt-2">
                     <Button 
-                      className="w-full h-12 bg-primary hover:bg-primary/90 text-white font-bold text-lg"
+                      className="h-14 bg-sky-500 hover:bg-sky-600 text-white font-bold text-lg shadow-lg"
                       onClick={handleConfirmPayment}
                     >
-                      ลูกค้าชำระเงินแล้ว
+                      <CheckCircle2 className="w-5 h-5 mr-2" /> ลูกค้าชำระเงินเรียบร้อยแล้ว
                     </Button>
-                    <Button variant="ghost" className="text-slate-500" onClick={() => setStep('METHOD')}>
+                    <Button variant="outline" className="h-10 border-slate-300 text-slate-600" onClick={() => setStep('METHOD')}>
                       ย้อนกลับ
                     </Button>
                   </div>
@@ -386,53 +428,50 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
 
           {/* STEP 2: PROCESS (SPLIT) */}
           {step === 'PROCESS' && method === 'SPLIT' && (
-            <div className="py-4">
-              <div className="flex flex-col gap-6 sm:flex-row">
-                <div className="w-full shrink-0 border-b border-slate-200 pb-5 sm:w-[300px] sm:border-b-0 sm:border-r sm:pb-0 sm:pr-6">
-                  <div className="mb-4">
-                    <p className="text-sm text-slate-500 mb-1">ยอดที่ต้องชำระ</p>
-                    <div className="text-3xl font-bold">{formatCurrency(total)}</div>
+            <div className="py-4 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <p className="text-xs text-slate-500 font-semibold mb-1">ยอดที่ต้องชำระทั้งหมด</p>
+                    <div className="text-3xl font-bold text-slate-900">{formatCurrency(total)}</div>
                   </div>
-                  
-                  <div className="space-y-4 mb-6">
+
+                  <div className="space-y-3">
                     <div>
-                      <label className="text-sm text-slate-500">1. ยอดโอนเงิน (QR PromptPay)</label>
-                      <div className="flex gap-2 mt-1">
+                      <label className="text-xs font-bold text-slate-700 block mb-1">1. ยอดโอนเงิน (QR PromptPay)</label>
+                      <div className="flex gap-2">
                         <Input 
                           type="number"
                           placeholder="0.00"
-                          className="bg-slate-50 border-slate-300 text-lg font-semibold"
+                          className="bg-white border-slate-300 h-11 text-lg font-bold text-sky-600"
                           value={qrReceived || ''}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
-                            setQrReceived(val);
-                          }}
+                          onChange={(e) => setQrReceived(parseFloat(e.target.value) || 0)}
+                          onClick={() => setNumpadTarget('SPLIT_QR')}
                         />
                         <Button 
                           variant="outline" 
-                          className="w-12 h-10 shrink-0 border-slate-300 bg-slate-50 hover:text-primary"
+                          className="h-11 px-3 border-slate-300 bg-slate-50 hover:bg-sky-50 hover:text-sky-600"
                           onClick={() => setNumpadTarget('SPLIT_QR')}
                         >
                           <Edit3 className="w-5 h-5" />
                         </Button>
                       </div>
                     </div>
+
                     <div>
-                      <label className="text-sm text-slate-500">2. ยอดเงินสดที่รับมา</label>
-                      <div className="flex gap-2 mt-1">
+                      <label className="text-xs font-bold text-slate-700 block mb-1">2. ยอดเงินสดที่รับมา</label>
+                      <div className="flex gap-2">
                         <Input 
                           type="number"
                           placeholder="0.00"
-                          className="bg-slate-50 border-slate-300 text-lg font-semibold"
+                          className="bg-white border-slate-300 h-11 text-lg font-bold text-emerald-600"
                           value={cashReceived || ''}
-                          onChange={(e) => {
-                            const val = parseFloat(e.target.value) || 0;
-                            setCashReceived(val);
-                          }}
+                          onChange={(e) => setCashReceived(parseFloat(e.target.value) || 0)}
+                          onClick={() => setNumpadTarget('SPLIT_CASH')}
                         />
                         <Button 
                           variant="outline" 
-                          className="w-12 h-10 shrink-0 border-slate-300 bg-slate-50 hover:text-primary"
+                          className="h-11 px-3 border-slate-300 bg-slate-50 hover:bg-sky-50 hover:text-sky-600"
                           onClick={() => setNumpadTarget('SPLIT_CASH')}
                         >
                           <Edit3 className="w-5 h-5" />
@@ -440,71 +479,62 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                       </div>
                     </div>
                   </div>
+                </div>
 
-                  <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 relative">
-                    <p className="text-sm text-slate-500 mb-1">ยอดรวมที่รับแล้ว</p>
-                    <p className="text-2xl font-bold text-primary">
-                      {formatCurrency(splitTotalReceived)}
-                    </p>
+                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <h4 className="font-bold text-slate-900 border-b border-slate-200 pb-2">สรุปการรับชำระแบบผสม</h4>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-500">ยอดรวมรับแล้ว:</span>
+                      <span className="font-bold text-slate-900 text-lg">{formatCurrency(splitTotalReceived)}</span>
+                    </div>
                     {splitRemaining > 0 && (
-                      <p className="text-red-600 text-sm mt-2">ยังขาดอีก: {formatCurrency(splitRemaining)}</p>
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm font-bold">
+                        ยังขาดอีก: {formatCurrency(splitRemaining)}
+                      </div>
                     )}
                     {splitChange > 0 && (
-                      <p className="text-emerald-600 text-sm mt-2 font-bold">ทอนเงินสด: {formatCurrency(splitChange)}</p>
-                    )}
-                    {splitRemaining === 0 && splitChange === 0 && splitTotalReceived > 0 && (
-                      <p className="text-emerald-600 text-sm mt-2 font-bold">รับพอดี</p>
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-sm font-bold">
+                        เงินทอน (จากเงินสด): {formatCurrency(splitChange)}
+                      </div>
                     )}
                   </div>
-                </div>
 
-                <div className="flex-1 flex flex-col items-center justify-center">
-                  <div className="text-center text-slate-500 space-y-4">
-                    <SplitSquareHorizontal className="w-16 h-16 mx-auto opacity-20" />
-                    <p>รับชำระแบบผสม (เงินสด + โอนเงิน)</p>
-                    <p className="text-sm max-w-xs mx-auto">
-                      กรอกยอดโอนเงินตามสลิป และกรอกเงินสดที่รับมาจากลูกค้า <br/><br/>
-                      ระบบจะคำนวณเงินทอนให้อัตโนมัติและบันทึกแยกประเภทรายได้ให้ถูกต้อง
-                    </p>
+                  <div className="flex gap-3 pt-4">
+                    <Button variant="outline" className="flex-1 h-12 border-slate-300" onClick={() => setStep('METHOD')}>
+                      ย้อนกลับ
+                    </Button>
+                    <Button 
+                      className="flex-1 h-12 bg-sky-500 hover:bg-sky-600 text-white font-bold text-base" 
+                      disabled={!isSplitSufficient}
+                      onClick={handleConfirmPayment}
+                    >
+                      ยืนยันรับเงิน
+                    </Button>
                   </div>
                 </div>
-              </div>
-
-              <div className="flex flex-col gap-3 mt-8 pt-4 border-t border-slate-200 sm:flex-row sm:gap-4">
-                <Button variant="outline" className="flex-1 h-12 border-slate-300" onClick={() => setStep('METHOD')}>
-                  ย้อนกลับ
-                </Button>
-                <Button 
-                  className="flex-1 h-12 bg-primary hover:bg-primary/90 text-white font-bold text-lg" 
-                  disabled={!isSplitSufficient}
-                  onClick={handleConfirmPayment}
-                >
-                  ยืนยันรับเงิน (แบ่งชำระ)
-                </Button>
               </div>
             </div>
           )}
 
           {/* STEP 2: PROCESS (CREDIT) */}
           {step === 'PROCESS' && method === 'CREDIT' && (
-            <div className="py-6 text-center">
-              <div className="w-20 h-20 bg-indigo-500/10 text-indigo-400 rounded-full flex items-center justify-center mx-auto mb-6">
+            <div className="py-8 text-center space-y-6">
+              <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
                 <UserCheck className="w-10 h-10" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">บันทึกเป็นเงินเชื่อ</h2>
-              <p className="text-slate-500 mb-6">
-                ลูกหนี้: <span className="font-bold text-primary">{cart.customerName}</span><br/>
-                ยอดหนี้: <span className="font-bold text-primary">{formatCurrency(total)}</span>
-              </p>
-              
-              <div className="flex flex-col gap-3 mt-8 pt-4 border-t border-slate-200 justify-center sm:flex-row sm:gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-slate-900">บันทึกเป็นเงินเชื่อ (ค้างชำระ)</h2>
+                <p className="text-slate-500 text-sm mt-1">
+                  ลูกหนี้: <b className="text-slate-900">{cart.customerName}</b> · ยอดหนี้: <b className="text-sky-600">{formatCurrency(total)}</b>
+                </p>
+              </div>
+
+              <div className="flex gap-4 justify-center pt-4">
                 <Button variant="outline" className="w-32 h-12 border-slate-300" onClick={() => setStep('METHOD')}>
                   ย้อนกลับ
                 </Button>
-                <Button 
-                  className="w-48 h-12 bg-primary hover:bg-primary/90 text-white font-bold text-lg" 
-                  onClick={handleConfirmPayment}
-                >
+                <Button className="w-48 h-12 bg-sky-500 hover:bg-sky-600 text-white font-bold text-base" onClick={handleConfirmPayment}>
                   ยืนยันบันทึกหนี้
                 </Button>
               </div>
@@ -513,36 +543,32 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
 
           {/* STEP 3: SUCCESS */}
           {step === 'SUCCESS' && (
-            <div className="py-12 text-center">
-              <div className="w-24 h-24 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
+            <div className="py-10 text-center space-y-6">
+              <div className="w-24 h-24 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
                 <CheckCircle2 className="w-12 h-12" />
               </div>
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">ทำรายการสำเร็จ!</h2>
-              
-              {method === 'CASH' && (
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 inline-block mx-auto mb-8">
-                  <span className="text-slate-500 mr-4">เงินทอน</span>
-                  <span className="text-2xl font-bold text-emerald-600">{formatCurrency(change)}</span>
+              <div>
+                <h2 className="text-3xl font-bold text-slate-900">ชำระเงินสำเร็จ!</h2>
+                <p className="text-slate-500 text-sm mt-1">รับชำระเงินและบันทึกออเดอร์เข้าในระบบเรียบร้อยแล้ว</p>
+              </div>
+
+              {method === 'CASH' && change > 0 && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 inline-block mx-auto min-w-64">
+                  <span className="text-emerald-700 text-sm block font-semibold">เงินทอนลูกค้า</span>
+                  <span className="text-4xl font-bold text-emerald-600">{formatCurrency(change)}</span>
                 </div>
               )}
 
               {method === 'SPLIT' && splitChange > 0 && (
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 inline-block mx-auto mb-8">
-                  <span className="text-slate-500 mr-4">เงินทอน (จากเงินสด)</span>
-                  <span className="text-2xl font-bold text-emerald-600">{formatCurrency(splitChange)}</span>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 inline-block mx-auto min-w-64">
+                  <span className="text-emerald-700 text-sm block font-semibold">เงินทอนลูกค้า (จากเงินสด)</span>
+                  <span className="text-4xl font-bold text-emerald-600">{formatCurrency(splitChange)}</span>
                 </div>
               )}
 
-              {method === 'CREDIT' && (
-                <p className="text-slate-500 mb-8 mt-2">ยอดนี้ถูกบันทึกเข้าประวัติหนี้ของลูกค้าเรียบร้อยแล้ว</p>
-              )}
-              
-              <div className="flex flex-col gap-3 justify-center mt-6 sm:flex-row sm:gap-4">
-                <Button variant="outline" className="h-12 px-8 border-slate-300">
-                  พิมพ์ใบเสร็จซ้ำ
-                </Button>
-                <Button className="h-12 px-8 bg-primary hover:bg-primary/90 text-white" onClick={handleFinish}>
-                  ปิดหน้าต่าง (New Sale)
+              <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
+                <Button variant="outline" className="h-12 px-8 border-slate-300 text-slate-700 font-semibold" onClick={handleFinish}>
+                  ปิดหน้าต่าง (ออเดอร์ใหม่)
                 </Button>
               </div>
             </div>
@@ -550,12 +576,12 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Numpad Popup for manual cash/qr entry */}
+      {/* Numpad Popup */}
       <NumpadPopup 
         open={numpadTarget !== 'NONE'}
         onOpenChange={(isOpen) => !isOpen && setNumpadTarget('NONE')}
         onConfirm={handleNumpadConfirm}
-        title={numpadTarget === 'SPLIT_QR' ? 'ระบุยอดโอนเงิน' : 'ระบุจำนวนเงินที่รับ'}
+        title={numpadTarget === 'SPLIT_QR' ? 'ระบุยอดโอนเงิน' : 'ระบุจำนวนเงินสดที่รับ'}
         initialValue={getNumpadInitialValue()}
       />
     </>
