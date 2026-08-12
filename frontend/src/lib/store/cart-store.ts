@@ -8,6 +8,7 @@ interface CartStore {
   customerName: string | null;
   billDiscountType: 'none' | 'baht' | 'percent';
   billDiscountValue: number;
+  isVatEnabled: boolean;
   heldBills: HeldBill[];
 
   // Actions
@@ -18,6 +19,7 @@ interface CartStore {
   setItemDiscount: (productId: string, type: 'none' | 'baht' | 'percent', value: number) => void;
   setItemUnit: (productId: string, unit: ProductUnit) => void;
   setBillDiscount: (type: 'none' | 'baht' | 'percent', value: number) => void;
+  setVatEnabled: (enabled: boolean) => void;
   setCustomer: (id: string | null, name: string | null) => void;
   clearCart: () => void;
   holdBill: (label?: string) => void;
@@ -41,6 +43,7 @@ export const useCartStore = create<CartStore>((set, get) => ({
   customerName: null,
   billDiscountType: 'none' as const,
   billDiscountValue: 0,
+  isVatEnabled: typeof window !== 'undefined' ? localStorage.getItem('pos_vat_enabled') !== 'false' : true,
   heldBills: [],
 
   addItem: (product: Product, unit?: ProductUnit) => {
@@ -147,6 +150,11 @@ export const useCartStore = create<CartStore>((set, get) => ({
     set({ billDiscountType: type, billDiscountValue: value });
   },
 
+  setVatEnabled: (enabled: boolean) => {
+    try { localStorage.setItem('pos_vat_enabled', enabled ? 'true' : 'false'); } catch {}
+    set({ isVatEnabled: enabled });
+  },
+
   setCustomer: (id: string | null, name: string | null) => {
     set({ customerId: id, customerName: name });
   },
@@ -246,6 +254,7 @@ export const useCartStore = create<CartStore>((set, get) => ({
   },
 
   getVatAmount: () => {
+    if (!get().isVatEnabled) return 0;
     const items = get().items;
     const subtotal = get().getSubtotal();
     if (subtotal === 0) return 0;

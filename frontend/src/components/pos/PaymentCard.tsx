@@ -99,10 +99,18 @@ export const PaymentCard = forwardRef<HTMLDivElement, {}>((props, ref) => {
             <span>-{formatCurrency(cart.getBillDiscountAmount())}</span>
           </div>
         )}
-        <div className="flex justify-between items-center text-sm text-slate-600">
-          <span>ราคารวมภาษีมูลค่าเพิ่ม (VAT 7%)</span>
-          <span>{formatCurrency(cart.getVatAmount())}</span>
-        </div>
+        {cart.isVatEnabled && cart.getVatAmount() > 0 && (
+          <div className="flex justify-between items-center text-xs text-slate-500">
+            <span>ภาษีมูลค่าเพิ่ม 7% (ถอด VAT)</span>
+            <span>{formatCurrency(cart.getVatAmount())}</span>
+          </div>
+        )}
+        {!cart.isVatEnabled && (
+          <div className="flex justify-between items-center text-xs text-slate-400">
+            <span>ภาษีมูลค่าเพิ่ม</span>
+            <span>ไม่มี VAT (0%)</span>
+          </div>
+        )}
         <div className="flex justify-between items-center font-bold text-lg pt-2 border-t border-slate-200 mt-2">
           <span>ยอดสุทธิ</span>
           <span>{formatCurrency(cart.getTotal())}</span>

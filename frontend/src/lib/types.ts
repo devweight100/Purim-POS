@@ -20,6 +20,7 @@ export interface Product {
   stock: number; // always in base units
   hasVat: boolean;
   image: string | null;
+  imageUrl?: string | null;
   units: ProductUnit[];
 }
 
