@@ -260,16 +260,21 @@ export default function POSPage() {
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex-1 pr-2">
                           <div className="line-clamp-1 font-medium text-slate-900">{item.name}</div>
-                          <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 mt-1">
                             <span 
-                              className="cursor-pointer border-b border-dashed border-slate-300 hover:text-primary"
+                              className="cursor-pointer border-b border-dashed border-slate-300 hover:text-primary font-medium"
                               title="คลิกเพื่อแก้ไขราคา"
                               onClick={() => setEditItem(item)}
                             >
                               ฿{effectivePrice.toFixed(2)} /{item.unitName}
                             </span>
+                            {item.isWholesaleApplied && (
+                              <Badge variant="outline" className="h-5 px-1.5 bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-normal">
+                                ⚡ ราคาส่ง
+                              </Badge>
+                            )}
                             {item.discountType !== 'none' && (
-                              <Badge variant="outline" className="h-5 px-1 bg-red-950/30 text-red-400 border-red-900/50">
+                              <Badge variant="outline" className="h-5 px-1 bg-red-50 text-red-600 border-red-200">
                                 ลด {item.discountValue}{item.discountType === 'percent' ? '%' : '฿'}
                               </Badge>
                             )}

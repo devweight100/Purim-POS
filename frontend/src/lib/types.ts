@@ -45,6 +45,8 @@ export interface CartItem {
   discountType: 'none' | 'baht' | 'percent';
   discountValue: number;
   hasVat: boolean;
+  isWholesaleApplied?: boolean;
+  pricingNote?: string;
 }
 
 export interface HeldBill {

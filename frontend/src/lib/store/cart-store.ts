@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { CartItem, HeldBill, Product, ProductUnit } from '../types';
+import { calculateSmartRollupAndPricing } from '../cart-pricing';
 
 interface CartStore {
   items: CartItem[];
@@ -47,45 +48,46 @@ export const useCartStore = create<CartStore>((set, get) => ({
     if (!selectedUnit) return;
 
     set((state) => {
-      const key = `${product.id}__${selectedUnit.id}`;
       const existing = state.items.find(
         (i) => i.productId === product.id && i.unitId === selectedUnit.id
       );
+      let rawUpdated: CartItem[];
       if (existing) {
-        return {
-          items: state.items.map((i) =>
-            i.productId === product.id && i.unitId === selectedUnit.id
-              ? { ...i, quantity: i.quantity + 1 }
-              : i
-          ),
+        rawUpdated = state.items.map((i) =>
+          i.productId === product.id && i.unitId === selectedUnit.id
+            ? { ...i, quantity: i.quantity + 1 }
+            : i
+        );
+      } else {
+        const newItem: CartItem = {
+          productId: product.id,
+          name: product.name,
+          sku: product.sku,
+          originalPrice: selectedUnit.price,
+          customPrice: null,
+          quantity: 1,
+          unitId: selectedUnit.id,
+          unitName: selectedUnit.unitName,
+          conversionFactor: selectedUnit.factor,
+          discountType: 'none',
+          discountValue: 0,
+          hasVat: product.hasVat,
         };
+        rawUpdated = [...state.items, newItem];
       }
-      const newItem: CartItem = {
-        productId: product.id,
-        name: product.name,
-        sku: product.sku,
-        originalPrice: selectedUnit.price,
-        customPrice: null,
-        quantity: 1,
-        unitId: selectedUnit.id,
-        unitName: selectedUnit.unitName,
-        conversionFactor: selectedUnit.factor,
-        discountType: 'none',
-        discountValue: 0,
-        hasVat: product.hasVat,
-      };
-      return { items: [...state.items, newItem] };
+      return { items: calculateSmartRollupAndPricing(rawUpdated) };
     });
   },
 
   removeItem: (productId: string, unitId?: string) => {
-    set((state) => ({
-      items: state.items.filter((i) =>
+    set((state) => {
+      const rawUpdated = state.items.filter((i) =>
         unitId
           ? !(i.productId === productId && i.unitId === unitId)
           : i.productId !== productId
-      ),
-    }));
+      );
+      return { items: calculateSmartRollupAndPricing(rawUpdated) };
+    });
   },
 
   updateQuantity: (productId: string, quantity: number, unitId?: string) => {
@@ -93,14 +95,15 @@ export const useCartStore = create<CartStore>((set, get) => ({
       get().removeItem(productId, unitId);
       return;
     }
-    set((state) => ({
-      items: state.items.map((i) => {
+    set((state) => {
+      const rawUpdated = state.items.map((i) => {
         const match = unitId
           ? i.productId === productId && i.unitId === unitId
           : i.productId === productId;
         return match ? { ...i, quantity } : i;
-      }),
-    }));
+      });
+      return { items: calculateSmartRollupAndPricing(rawUpdated) };
+    });
   },
 
   setCustomPrice: (productId: string, price: number | null) => {

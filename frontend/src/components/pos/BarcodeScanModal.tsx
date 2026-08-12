@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import { ScanLine } from 'lucide-react';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useProductStore } from '@/lib/store/product-store';
+import { getProductPackagingUnits } from '@/lib/cart-pricing';
 import { toast } from 'sonner';
 
 interface BarcodeScanModalProps {
@@ -30,17 +31,30 @@ export function BarcodeScanModal({ open, onOpenChange }: BarcodeScanModalProps) 
     e.preventDefault();
     if (!barcode.trim()) return;
 
-    // Find product with this barcode
-    const product = products.find(p => p.sku === barcode || p.units.some(u => u.barcode === barcode));
+    // Find product with this barcode (including packaging unit barcodes)
+    const product = products.find(p => {
+      if (p.sku === barcode || p.units.some(u => u.barcode === barcode)) return true;
+      const pkgUnits = getProductPackagingUnits(p.id);
+      return pkgUnits.some(u => u.barcode === barcode);
+    });
     
     if (product) {
-      // Find specific unit
-      const unit = product.units.find(u => u.barcode === barcode) || product.units[0];
+      const pkgUnits = getProductPackagingUnits(product.id);
+      const matchedPkg = pkgUnits.find(u => u.barcode === barcode);
+      
+      let unit = product.units.find(u => u.barcode === barcode) || product.units[0];
+      if (matchedPkg) {
+        unit = {
+          id: `pkg-${product.id}-${matchedPkg.name}`,
+          unitName: matchedPkg.name,
+          factor: matchedPkg.multiplier,
+          price: matchedPkg.priceLevel1 || (unit.price * matchedPkg.multiplier),
+          barcode: matchedPkg.barcode,
+        };
+      }
       cart.addItem(product, unit);
-      toast.success(`เพิ่ม ${product.name} ลงตะกร้าแล้ว`);
+      toast.success(`เพิ่ม ${product.name} (${unit.unitName}) ลงตะกร้าแล้ว`);
       setBarcode('');
-      // Keep modal open for continuous scanning, or close it
-      // onOpenChange(false); 
     } else {
       toast.error('ไม่พบสินค้าจากบาร์โค้ดนี้');
       setBarcode('');

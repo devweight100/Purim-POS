@@ -111,6 +111,14 @@ function loadPackaging(productId: string): PackagingUnit[] {
   try { const r = localStorage.getItem(`pkg_${productId}`); return r ? JSON.parse(r) : []; } catch { return []; }
 }
 
+function saveWholesale(productId: string, steps: any[]) {
+  try { localStorage.setItem(`ws_${productId}`, JSON.stringify(steps)); } catch {}
+}
+
+function loadWholesale(productId: string): any[] {
+  try { const r = localStorage.getItem(`ws_${productId}`); return r ? JSON.parse(r) : []; } catch { return []; }
+}
+
 // ─── Initial form ─────────────────────────────────────────────────────
 const makeInitialForm = () => ({
   name: "",
@@ -256,7 +264,7 @@ export default function ProductsPage() {
       supplierEntries: [],
       packagingUnits: allPackaging[p.id] || [],
       images: p.id ? loadImages(p.id) : [],
-      wholesaleSteps: Array.from({ length: 5 }, () => ({ minQuantity: "", unitPrice: "" })),
+      wholesaleSteps: p.id && loadWholesale(p.id).length ? loadWholesale(p.id) : Array.from({ length: 5 }, () => ({ minQuantity: "", unitPrice: "" })),
     });
     setDialogMode("edit");
   };
@@ -269,6 +277,7 @@ export default function ProductsPage() {
       if (form.packagingUnits.length > 0) setExpandedRows(prev => new Set([...prev, editingProduct.id]));
       saveImages(editingProduct.id, form.images);
       setAllImages(prev => ({ ...prev, [editingProduct.id]: form.images }));
+      saveWholesale(editingProduct.id, form.wholesaleSteps);
     }
     toast.success(`${dialogMode === "edit" ? "แก้ไข" : "เพิ่ม"}สินค้าสำเร็จ`);
     setDialogMode(null);
