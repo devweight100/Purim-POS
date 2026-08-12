@@ -120,35 +120,64 @@ export default function ProductsPage() {
         <Table>
           <TableHeader className="bg-slate-50">
             <TableRow className="border-slate-200 hover:bg-transparent">
-              <TableHead className="w-16"></TableHead>
-              <TableHead className="text-slate-500">SKU</TableHead>
+              <TableHead className="text-slate-500 text-center">บาร์โค้ด</TableHead>
+              <TableHead className="text-slate-500">รหัสสินค้า</TableHead>
               <TableHead className="text-slate-500">ชื่อสินค้า</TableHead>
               <TableHead className="text-slate-500">หมวดหมู่</TableHead>
-              <TableHead className="text-slate-500 text-right">ราคา</TableHead>
-              <TableHead className="text-slate-500 text-center">คงเหลือ</TableHead>
+              <TableHead className="text-slate-500 text-right">จำนวน</TableHead>
+              <TableHead className="text-slate-500 text-center">หน่วย</TableHead>
+              <TableHead className="text-slate-500 text-right">ราคาต้นทุน</TableHead>
+              <TableHead className="text-slate-500 text-right">ราคา 1</TableHead>
+              <TableHead className="text-slate-500 text-right">ราคา 2</TableHead>
+              <TableHead className="text-slate-500 text-right">ราคา 3</TableHead>
+              <TableHead className="text-slate-500 text-right">ราคา 4</TableHead>
+              <TableHead className="text-slate-500 text-right">ราคา 5</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center h-32 text-slate-500">กำลังโหลด...</TableCell>
+                <TableCell colSpan={12} className="text-center h-32 text-slate-500">กำลังโหลด...</TableCell>
+              </TableRow>
+            ) : filtered.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={12} className="text-center h-32 text-slate-400">ไม่พบสินค้า</TableCell>
               </TableRow>
             ) : filtered.map(p => (
-              <TableRow key={p.id} className="border-slate-100 hover:bg-slate-50">
-                <TableCell>
-                  <div className="w-10 h-10 rounded bg-slate-100 text-slate-600 flex items-center justify-center text-xl">
-                    {categories.find(c => c.id === p.categoryId)?.icon || '📦'}
-                  </div>
-                </TableCell>
-                <TableCell className="font-mono text-xs text-slate-500">{p.sku}</TableCell>
-                <TableCell className="font-bold text-slate-900">{p.name}</TableCell>
-                <TableCell className="text-slate-600">{getCategoryName(p.categoryId)}</TableCell>
-                <TableCell className="text-right font-bold text-emerald-600">{formatCurrency(p.price)}</TableCell>
+              <TableRow key={p.id} className="border-slate-100 hover:bg-slate-50 cursor-pointer">
                 <TableCell className="text-center">
-                  <Badge variant="outline" className={p.stock <= 20 ? "bg-rose-50 text-rose-600 border-rose-200" : "bg-slate-100 border-slate-200 text-slate-700"}>
-                    {p.stock}
+                  <span className="font-mono text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                    {p.barcodes?.[0]?.barcode || '-'}
+                  </span>
+                </TableCell>
+                <TableCell className="font-mono text-xs font-semibold text-slate-600">{p.sku}</TableCell>
+                <TableCell className="font-semibold text-slate-900 min-w-[180px]">{p.name}</TableCell>
+                <TableCell className="text-slate-500 text-sm">
+                  <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 font-normal">
+                    {getCategoryName(p.categoryId)}
                   </Badge>
                 </TableCell>
+                <TableCell className="text-right">
+                  <Badge
+                    variant="outline"
+                    className={(
+                      (p.stock ?? 0) <= 10
+                        ? 'bg-rose-50 text-rose-600 border-rose-200'
+                        : (p.stock ?? 0) <= 20
+                        ? 'bg-amber-50 text-amber-600 border-amber-200'
+                        : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    )}
+                  >
+                    {p.stock ?? 0}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-center text-slate-500 text-sm">{p.unit || '-'}</TableCell>
+                <TableCell className="text-right text-slate-600 text-sm">{p.basePrice != null ? formatCurrency(p.basePrice) : '-'}</TableCell>
+                <TableCell className="text-right font-semibold text-emerald-600">{p.priceLevel1 != null ? formatCurrency(p.priceLevel1) : p.basePrice != null ? formatCurrency(p.basePrice) : '-'}</TableCell>
+                <TableCell className="text-right text-slate-600">{p.priceLevel2 != null ? formatCurrency(p.priceLevel2) : '-'}</TableCell>
+                <TableCell className="text-right text-slate-600">{p.priceLevel3 != null ? formatCurrency(p.priceLevel3) : '-'}</TableCell>
+                <TableCell className="text-right text-slate-600">{p.priceLevel4 != null ? formatCurrency(p.priceLevel4) : '-'}</TableCell>
+                <TableCell className="text-right text-slate-600">{p.priceLevel5 != null ? formatCurrency(p.priceLevel5) : '-'}</TableCell>
               </TableRow>
             ))}
           </TableBody>
