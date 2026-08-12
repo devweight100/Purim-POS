@@ -834,8 +834,8 @@ export default function ProductsPage() {
                           </TableCell>
                           <TableCell className="text-center text-sky-700 text-sm py-2 font-medium">{unit.name}</TableCell>
                           <TableCell className="text-right text-slate-400 text-xs py-2">{unitCost != null ? formatCurrency(unitCost) : "-"}</TableCell>
-                          <TableCell className="text-right py-2">{unit.priceLevel1 ? <span className="font-semibold text-emerald-600">{formatCurrency(unit.priceLevel1)}</span> : <span className="text-slate-300 text-xs">—</span>}</TableCell>
-                          {[2,3,4,5].map(n => <TableCell key={n} className="text-right py-2">{(unit as any)[`priceLevel${n}`] ? <span className="text-slate-600 text-sm">{formatCurrency((unit as any)[`priceLevel${n}`])}</span> : <span className="text-slate-300 text-xs">—</span>}</TableCell>)}
+                          <TableCell className="text-right py-2">{unit.priceLevel1 ? <span className="font-semibold text-emerald-600">{formatCurrency(parseFloat(unit.priceLevel1))}</span> : <span className="text-slate-300 text-xs">—</span>}</TableCell>
+                          {[2,3,4,5].map(n => <TableCell key={n} className="text-right py-2">{(unit as any)[`priceLevel${n}`] ? <span className="text-slate-600 text-sm">{formatCurrency(parseFloat((unit as any)[`priceLevel${n}`]))}</span> : <span className="text-slate-300 text-xs">—</span>}</TableCell>)}
                           <TableCell className="py-2 text-center"><span className="text-slate-300 text-xs">—</span></TableCell>
                         </TableRow>
                       );
