@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { api, apiFetch } from "@/lib/api";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import {
   Search, Plus, PackagePlus, Barcode, Tags, Truck,
   Pencil, ChevronUp, ChevronDown, ChevronsUpDown, X,
-  Layers, RefreshCw, Trash2, ChevronRight, Building2, Info
+  Layers, RefreshCw, Trash2, ChevronRight, Building2, Info,
+  ImagePlus, Star, Crown, Upload
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
@@ -23,6 +24,54 @@ function generateEAN13(): string {
   let sum = 0;
   for (let i = 0; i < 12; i++) sum += parseInt(num[i]) * (i % 2 === 0 ? 1 : 3);
   return num + ((10 - (sum % 10)) % 10);
+}
+
+// ─── Image Types & Helpers ───────────────────────────────────────────
+interface ProductImage {
+  id: string;
+  dataUrl: string;   // base64 compressed JPEG
+  name: string;
+  isCover: boolean;
+}
+
+function generateId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+// Compress image to max 900px, JPEG quality 0.82
+function compressImage(file: File, maxPx = 900): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxPx || h > maxPx) {
+          if (w > h) { h = Math.round((h / w) * maxPx); w = maxPx; }
+          else { w = Math.round((w / h) * maxPx); h = maxPx; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d")?.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function saveImages(productId: string, images: ProductImage[]) {
+  try {
+    const slim = images.map(img => ({ ...img, dataUrl: img.dataUrl.slice(0, 5) === "data:" ? img.dataUrl : "" }));
+    localStorage.setItem(`img_${productId}`, JSON.stringify(images));
+  } catch { toast.warning("พื้นที่ localStorage เต็ม ไม่สามารถบันทึกรูปได้"); }
+}
+
+function loadImages(productId: string): ProductImage[] {
+  try { const r = localStorage.getItem(`img_${productId}`); return r ? JSON.parse(r) : []; } catch { return []; }
 }
 
 // ─── Types ────────────────────────────────────────────────────────────
@@ -75,6 +124,7 @@ const makeInitialForm = () => ({
   barcodes: [{ barcode: "", label: "" }] as ProductBarcode[],
   supplierEntries: [] as ProductSupplierEntry[],
   packagingUnits: [] as PackagingUnit[],
+  images: [] as ProductImage[],
   wholesaleSteps: Array.from({ length: 5 }, () => ({ minQuantity: "", unitPrice: "" })),
 });
 
@@ -96,6 +146,7 @@ export default function ProductsPage() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [allPackaging, setAllPackaging] = useState<Record<string, PackagingUnit[]>>({});
+  const [allImages, setAllImages] = useState<Record<string, ProductImage[]>>({});
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   const [search, setSearch] = useState("");
@@ -116,8 +167,13 @@ export default function ProductsPage() {
       setCategories(cats);
       setSuppliers(supps || []);
       const pkgMap: Record<string, PackagingUnit[]> = {};
-      (prods as any[]).forEach((p: any) => { pkgMap[p.id] = loadPackaging(p.id); });
+      const imgMap: Record<string, ProductImage[]> = {};
+      (prods as any[]).forEach((p: any) => {
+        pkgMap[p.id] = loadPackaging(p.id);
+        imgMap[p.id] = loadImages(p.id);
+      });
       setAllPackaging(pkgMap);
+      setAllImages(imgMap);
       setLoading(false);
     });
   }, []);
@@ -199,6 +255,7 @@ export default function ProductsPage() {
       barcodes: p.barcodes?.length ? p.barcodes.map((b: any) => ({ barcode: b.barcode || "", label: b.label || "" })) : [{ barcode: "", label: "" }],
       supplierEntries: [],
       packagingUnits: allPackaging[p.id] || [],
+      images: p.id ? loadImages(p.id) : [],
       wholesaleSteps: Array.from({ length: 5 }, () => ({ minQuantity: "", unitPrice: "" })),
     });
     setDialogMode("edit");
@@ -210,15 +267,122 @@ export default function ProductsPage() {
       savePackaging(editingProduct.id, form.packagingUnits);
       setAllPackaging(prev => ({ ...prev, [editingProduct.id]: form.packagingUnits }));
       if (form.packagingUnits.length > 0) setExpandedRows(prev => new Set([...prev, editingProduct.id]));
+      saveImages(editingProduct.id, form.images);
+      setAllImages(prev => ({ ...prev, [editingProduct.id]: form.images }));
     }
     toast.success(`${dialogMode === "edit" ? "แก้ไข" : "เพิ่ม"}สินค้าสำเร็จ`);
     setDialogMode(null);
   };
 
+  // ─── Image handlers ────────────────────────────────────────────────
+  const imgInputRef = useRef<HTMLInputElement>(null);
+  const [imgDragOver, setImgDragOver] = useState(false);
+
+  const handleImageFiles = useCallback(async (files: FileList | null) => {
+    if (!files) return;
+    const remaining = 3 - form.images.length;
+    if (remaining <= 0) { toast.warning("เพิ่มรูปได้สูงสุด 3 รูป"); return; }
+    const toProcess = Array.from(files).filter(f => f.type.startsWith("image/")).slice(0, remaining);
+    for (const file of toProcess) {
+      try {
+        const dataUrl = await compressImage(file);
+        const isFirst = form.images.length === 0;
+        setForm(prev => ({
+          ...prev,
+          images: [...prev.images, { id: generateId(), dataUrl, name: file.name, isCover: prev.images.length === 0 }],
+        }));
+      } catch { toast.error(`ไม่สามารถโหลดรูป ${file.name}`); }
+    }
+  }, [form.images.length]);
+
+  const setCoverImage = (id: string) =>
+    setForm(prev => ({ ...prev, images: prev.images.map(img => ({ ...img, isCover: img.id === id })) }));
+
+  const removeImage = (id: string) =>
+    setForm(prev => {
+      const remaining = prev.images.filter(img => img.id !== id);
+      if (remaining.length > 0 && !remaining.some(img => img.isCover)) remaining[0].isCover = true;
+      return { ...prev, images: remaining };
+    });
+
   // ─── Form ─────────────────────────────────────────────────────────
   const renderForm = () => (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
       <div className="space-y-5">
+
+        {/* 0. รูปภาพสินค้า */}
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <ImagePlus className="h-4 w-4 text-primary" />
+            <h3 className="font-semibold text-slate-900">รูปภาพสินค้า</h3>
+            <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">สูงสุด 3 รูป</span>
+          </div>
+
+          {/* Drop zone / image grid */}
+          <div
+            className={`grid grid-cols-3 gap-3 mb-3 transition-all rounded-xl ${
+              imgDragOver ? "ring-2 ring-primary ring-offset-2 bg-primary/5" : ""
+            }`}
+            onDragOver={e => { e.preventDefault(); setImgDragOver(true); }}
+            onDragLeave={() => setImgDragOver(false)}
+            onDrop={e => { e.preventDefault(); setImgDragOver(false); handleImageFiles(e.dataTransfer.files); }}
+          >
+            {/* Filled image slots */}
+            {form.images.map(img => (
+              <div key={img.id} className="relative group aspect-square rounded-xl overflow-hidden border-2 border-slate-200">
+                <img src={img.dataUrl} alt={img.name} className="w-full h-full object-cover" />
+                {/* Cover badge */}
+                {img.isCover && (
+                  <div className="absolute top-2 left-2 flex items-center gap-1 bg-amber-400 text-amber-900 text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow">
+                    <Crown className="w-2.5 h-2.5" /> หน้าปก
+                  </div>
+                )}
+                {/* Hover overlay */}
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  {!img.isCover && (
+                    <button onClick={() => setCoverImage(img.id)} className="w-8 h-8 rounded-full bg-amber-400 hover:bg-amber-500 flex items-center justify-center shadow" title="ตั้งเป็นหน้าปก">
+                      <Crown className="w-4 h-4 text-amber-900" />
+                    </button>
+                  )}
+                  <button onClick={() => removeImage(img.id)} className="w-8 h-8 rounded-full bg-rose-500 hover:bg-rose-600 flex items-center justify-center shadow" title="ลบรูป">
+                    <Trash2 className="w-4 h-4 text-white" />
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {/* Empty upload slot(s) */}
+            {form.images.length < 3 && (
+              <button
+                onClick={() => imgInputRef.current?.click()}
+                className="aspect-square rounded-xl border-2 border-dashed border-slate-300 hover:border-primary hover:bg-primary/5 flex flex-col items-center justify-center gap-2 text-slate-400 hover:text-primary transition-colors cursor-pointer"
+              >
+                <Upload className="w-7 h-7" />
+                <span className="text-xs font-medium">{form.images.length === 0 ? "เพิ่มรูปภาพ" : "เพิ่มรูปอีก"}</span>
+                <span className="text-[10px]">{3 - form.images.length} ช่องเหลือ</span>
+              </button>
+            )}
+
+            {/* Placeholder empty slots (visual) */}
+            {Array.from({ length: Math.max(0, 2 - form.images.length) }).map((_, i) => (
+              <div key={`empty-${i}`} className="aspect-square rounded-xl border-2 border-dashed border-slate-100 bg-slate-50/50" />
+            ))}
+          </div>
+
+          <input
+            ref={imgInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={e => { handleImageFiles(e.target.files); e.target.value = ""; }}
+          />
+
+          <div className="flex items-start gap-2 rounded-lg bg-sky-50 border border-sky-100 px-3 py-2 text-xs text-sky-700">
+            <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <p>ลากวางรูปที่นี่ได้เลย · รูปถูกบีบอัดและเก็บในเครื่องชั่วคราว · เมื่อเชื่อมต่อ backend จะอัปโหลดถาวร</p>
+          </div>
+        </section>
 
         {/* 1. รายละเอียดสินค้า */}
         <section className="rounded-xl border border-slate-200 bg-white p-5">
@@ -582,6 +746,9 @@ export default function ProductsPage() {
                 const pkgUnits = allPackaging[p.id] || [];
                 const pkgMults = computeMultipliers(pkgUnits);
                 const isExpanded = expandedRows.has(p.id);
+                const prodImages = allImages[p.id] || [];
+                const coverImg = prodImages.find(img => img.isCover)?.dataUrl || prodImages[0]?.dataUrl || p.imageUrl || null;
+
                 return (
                   <>
                     <TableRow key={p.id} className={`border-slate-100 hover:bg-slate-50 ${isExpanded ? "bg-sky-50/20" : ""}`}>
@@ -602,9 +769,27 @@ export default function ProductsPage() {
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-xs font-semibold text-slate-600 whitespace-nowrap">{p.sku}</TableCell>
-                      <TableCell className="font-semibold text-slate-900 min-w-[160px]">
-                        {p.name}
-                        {pkgUnits.length > 0 && <span className="ml-2 text-xs text-sky-500 font-normal">{pkgUnits.length} ขนาด</span>}
+                      <TableCell className="font-semibold text-slate-900 min-w-[200px]">
+                        <div className="flex items-center gap-2.5">
+                          {coverImg ? (
+                            <img src={coverImg} alt={p.name} className="w-9 h-9 rounded-lg object-cover border border-slate-200 shrink-0 shadow-sm" />
+                          ) : (
+                            <div className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0 text-base">
+                              {categories.find(c => c.id === p.categoryId)?.icon || "📦"}
+                            </div>
+                          )}
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span>{p.name}</span>
+                              {prodImages.length > 0 && (
+                                <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1 py-0.2 rounded font-medium">
+                                  📷 {prodImages.length}
+                                </span>
+                              )}
+                            </div>
+                            {pkgUnits.length > 0 && <span className="text-xs text-sky-500 font-normal">{pkgUnits.length} ขนาดบรรจุ</span>}
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell className="whitespace-nowrap"><Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 font-normal">{getCategoryName(p.categoryId)}</Badge></TableCell>
                       <TableCell className="text-right whitespace-nowrap"><Badge variant="outline" className={stockClass}>{stock}</Badge></TableCell>
