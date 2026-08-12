@@ -9,11 +9,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CreditCard, QrCode, Banknote, Edit3, CheckCircle2, SplitSquareHorizontal, UserCheck, Building2, Download, Share2 } from 'lucide-react';
+import { CreditCard, QrCode, Banknote, Edit3, CheckCircle2, SplitSquareHorizontal, UserCheck, Building2, ExternalLink, RefreshCw } from 'lucide-react';
 import { NumpadPopup } from './NumpadPopup';
-import { PaymentCard } from './PaymentCard';
 import { loadBankAccounts, BankAccount } from '@/lib/bank-account-storage';
 import { toast } from 'sonner';
+import useRouter from 'next/navigation';
 
 type Step = 'METHOD' | 'PROCESS' | 'SUCCESS';
 type Method = 'CASH' | 'QR' | 'CARD' | 'SPLIT' | 'CREDIT';
@@ -190,71 +190,89 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="max-w-4xl max-h-[92vh] flex flex-col p-6 overflow-y-auto bg-white border-slate-200 text-slate-900">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-              <CreditCard className="w-6 h-6 text-sky-500" />
-              {step === 'METHOD' && 'เลือกช่องทางการชำระเงิน'}
-              {step === 'PROCESS' && method === 'CASH' && 'ชำระเงินสด'}
-              {step === 'PROCESS' && method === 'QR' && 'ชำระผ่าน QR PromptPay / โอนเงิน'}
-              {step === 'PROCESS' && method === 'SPLIT' && 'ชำระแบบหลายช่องทาง (Split)'}
-              {step === 'PROCESS' && method === 'CREDIT' && 'บันทึกเป็นเงินเชื่อ (ค้างชำระ)'}
-              {step === 'SUCCESS' && 'ทำรายการสำเร็จ!'}
+        <DialogContent className="w-[94vw] max-w-5xl max-h-[92vh] h-auto flex flex-col p-6 sm:p-8 overflow-y-auto bg-white border-slate-200 text-slate-900 shadow-2xl rounded-2xl">
+          <DialogHeader className="shrink-0 pb-2 border-b border-slate-100 mb-4">
+            <DialogTitle className="text-2xl font-bold flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CreditCard className="w-7 h-7 text-sky-500" />
+                {step === 'METHOD' && 'เลือกช่องทางการชำระเงิน'}
+                {step === 'PROCESS' && method === 'CASH' && 'รับชำระด้วยเงินสด (Cash)'}
+                {step === 'PROCESS' && method === 'QR' && 'รับชำระผ่าน QR PromptPay / โอนเงิน'}
+                {step === 'PROCESS' && method === 'SPLIT' && 'รับชำระแบบแบ่งจ่าย (Split Payment)'}
+                {step === 'PROCESS' && method === 'CREDIT' && 'บันทึกเป็นเงินเชื่อ (ค้างชำระ)'}
+                {step === 'SUCCESS' && 'ทำรายการชำระเงินสำเร็จ!'}
+              </div>
+              <a 
+                href="/accounts" 
+                target="_blank"
+                className="text-xs text-sky-600 hover:text-sky-700 font-semibold flex items-center gap-1 bg-sky-50 px-3 py-1.5 rounded-lg border border-sky-200"
+                title="จัดการรูป QR Code และ บัญชีธนาคาร"
+              >
+                <Building2 className="w-3.5 h-3.5" /> ตั้งค่าบัญชีการเงิน / QR Code <ExternalLink className="w-3 h-3 ml-0.5" />
+              </a>
             </DialogTitle>
           </DialogHeader>
 
           {/* STEP 1: METHOD SELECTION */}
           {step === 'METHOD' && (
-            <div className="py-6">
-              <div className="text-center mb-8 bg-slate-50 p-6 rounded-2xl border border-slate-200">
-                <p className="text-slate-500 text-sm font-semibold mb-1">ยอดรวมสุทธิที่ต้องชำระ</p>
-                <div className="text-5xl font-bold text-sky-600">{formatCurrency(total)}</div>
+            <div className="py-4 space-y-6">
+              <div className="text-center bg-slate-50 p-6 rounded-2xl border border-slate-200 shadow-inner">
+                <p className="text-slate-500 text-sm font-bold uppercase tracking-wider mb-1">ยอดรวมสุทธิที่ต้องชำระ</p>
+                <div className="text-5xl font-extrabold text-sky-600">{formatCurrency(total)}</div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Button 
                   variant="outline" 
-                  className="h-24 flex flex-col gap-2 border-2 border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-400 hover:text-sky-700 transition-all rounded-2xl"
+                  className="h-28 flex flex-col gap-2 border-2 border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-500 hover:text-sky-700 transition-all rounded-2xl shadow-sm group"
                   onClick={() => handleSelectMethod('CASH')}
                 >
-                  <Banknote className="w-9 h-9 text-emerald-600" />
+                  <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Banknote className="w-7 h-7" />
+                  </div>
                   <span className="text-xl font-bold">เงินสด (Cash)</span>
                 </Button>
 
                 <Button 
                   variant="outline" 
-                  className="h-24 flex flex-col gap-2 border-2 border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-400 hover:text-sky-700 transition-all rounded-2xl"
+                  className="h-28 flex flex-col gap-2 border-2 border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-500 hover:text-sky-700 transition-all rounded-2xl shadow-sm group"
                   onClick={() => handleSelectMethod('QR')}
                 >
-                  <QrCode className="w-9 h-9 text-sky-600" />
+                  <div className="w-12 h-12 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <QrCode className="w-7 h-7" />
+                  </div>
                   <span className="text-xl font-bold">QR PromptPay / โอนเงิน</span>
                 </Button>
 
                 <Button 
                   variant="outline" 
-                  className="h-24 flex flex-col gap-2 border-2 border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-400 hover:text-sky-700 transition-all rounded-2xl"
+                  className="h-28 flex flex-col gap-2 border-2 border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-500 hover:text-sky-700 transition-all rounded-2xl shadow-sm group"
                   onClick={() => handleSelectMethod('SPLIT')}
                 >
-                  <SplitSquareHorizontal className="w-9 h-9 text-amber-500" />
+                  <div className="w-12 h-12 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <SplitSquareHorizontal className="w-7 h-7" />
+                  </div>
                   <span className="text-xl font-bold">แบ่งชำระ (เงินสด + โอน)</span>
                 </Button>
 
                 {cart.customerId ? (
                   <Button 
                     variant="outline" 
-                    className="h-24 flex flex-col gap-2 border-2 border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-400 hover:text-sky-700 transition-all rounded-2xl"
+                    className="h-28 flex flex-col gap-2 border-2 border-slate-200 bg-white hover:bg-sky-50 hover:border-sky-500 hover:text-sky-700 transition-all rounded-2xl shadow-sm group"
                     onClick={() => handleSelectMethod('CREDIT')}
                   >
-                    <UserCheck className="w-9 h-9 text-indigo-500" />
+                    <div className="w-12 h-12 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <UserCheck className="w-7 h-7" />
+                    </div>
                     <span className="text-xl font-bold">เงินเชื่อ ({cart.customerName})</span>
                   </Button>
                 ) : (
                   <Button 
                     variant="outline" 
-                    className="h-24 flex flex-col gap-2 border-2 border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed rounded-2xl"
+                    className="h-28 flex flex-col gap-2 border-2 border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed rounded-2xl"
                     title="ต้องเลือกลูกค้าก่อนถึงจะใช้งานได้"
                   >
-                    <UserCheck className="w-9 h-9 text-slate-400" />
+                    <UserCheck className="w-8 h-8 text-slate-400" />
                     <span className="text-lg font-semibold text-slate-400">เงินเชื่อ (ต้องเลือกลูกค้า)</span>
                   </Button>
                 )}
@@ -267,16 +285,16 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
             <div className="py-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Left side: Received Cash & Calculator */}
-                <div className="border-b border-slate-200 pb-5 md:border-b-0 md:border-r md:pb-0 md:pr-6 space-y-4">
+                <div className="border-b border-slate-200 pb-5 md:border-b-0 md:border-r md:pb-0 md:pr-6 space-y-5">
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                     <p className="text-xs text-slate-500 font-semibold mb-1">ยอดที่ต้องชำระ</p>
                     <div className="text-3xl font-bold text-slate-900">{formatCurrency(total)}</div>
                   </div>
                   
-                  <div className="p-4 bg-sky-50/60 border-2 border-sky-200 rounded-2xl relative group">
-                    <p className="text-xs text-sky-700 font-bold mb-1">รับเงินสดมา (กดที่นี่เพื่อใช้ Numpad)</p>
+                  <div className="p-4 bg-sky-50 border-2 border-sky-300 rounded-2xl relative group">
+                    <p className="text-xs text-sky-700 font-bold mb-1">รับเงินสดมา (กดช่องนี้เพื่อเปิด Numpad)</p>
                     <div 
-                      className="text-4xl font-bold text-sky-600 cursor-pointer py-1"
+                      className="text-4xl font-extrabold text-sky-600 cursor-pointer py-1"
                       onClick={() => setNumpadTarget('CASH')}
                     >
                       {formatCurrency(cashReceived)}
@@ -295,7 +313,7 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-semibold text-slate-600">เงินทอน</span>
-                      <span className={`font-bold text-2xl ${change > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      <span className={`font-bold text-3xl ${change > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
                         {formatCurrency(change)}
                       </span>
                     </div>
@@ -304,28 +322,28 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
 
                 {/* Right side: Fast Banknotes */}
                 <div>
-                  <p className="text-xs font-semibold text-slate-500 mb-3">กดธนบัตรเพื่อนับเงิน (กดซ้ำเพื่อสะสมยอด)</p>
+                  <p className="text-xs font-bold text-slate-600 mb-3">กดธนบัตรเพื่อนับเงิน (กดซ้ำเพื่อบวกยอดเพิ่ม)</p>
                   <div className="grid grid-cols-2 gap-3 mb-4">
-                    <Button variant="outline" className="h-14 text-xl font-bold border-slate-300 bg-slate-50 hover:bg-sky-500 hover:text-white" onClick={() => addCash(20)}>
+                    <Button variant="outline" className="h-16 text-xl font-bold border-slate-300 bg-slate-50 hover:bg-sky-500 hover:text-white transition-colors" onClick={() => addCash(20)}>
                       ฿20
                     </Button>
-                    <Button variant="outline" className="h-14 text-xl font-bold border-slate-300 bg-slate-50 hover:bg-sky-500 hover:text-white" onClick={() => addCash(50)}>
+                    <Button variant="outline" className="h-16 text-xl font-bold border-slate-300 bg-slate-50 hover:bg-sky-500 hover:text-white transition-colors" onClick={() => addCash(50)}>
                       ฿50
                     </Button>
-                    <Button variant="outline" className="h-14 text-xl font-bold border-slate-300 bg-slate-50 hover:bg-sky-500 hover:text-white" onClick={() => addCash(100)}>
+                    <Button variant="outline" className="h-16 text-xl font-bold border-slate-300 bg-slate-50 hover:bg-sky-500 hover:text-white transition-colors" onClick={() => addCash(100)}>
                       ฿100
                     </Button>
-                    <Button variant="outline" className="h-14 text-xl font-bold border-slate-300 bg-slate-50 hover:bg-sky-500 hover:text-white" onClick={() => addCash(500)}>
+                    <Button variant="outline" className="h-16 text-xl font-bold border-slate-300 bg-slate-50 hover:bg-sky-500 hover:text-white transition-colors" onClick={() => addCash(500)}>
                       ฿500
                     </Button>
-                    <Button variant="outline" className="h-14 text-xl font-bold border-slate-300 bg-slate-50 hover:bg-sky-500 hover:text-white" onClick={() => addCash(1000)}>
+                    <Button variant="outline" className="h-16 text-xl font-bold border-slate-300 bg-slate-50 hover:bg-sky-500 hover:text-white transition-colors" onClick={() => addCash(1000)}>
                       ฿1,000
                     </Button>
-                    <Button variant="outline" className="h-14 text-xl font-bold border-sky-400 bg-sky-50 text-sky-700 hover:bg-sky-500 hover:text-white" onClick={exactCash}>
+                    <Button variant="outline" className="h-16 text-xl font-bold border-sky-400 bg-sky-50 text-sky-700 hover:bg-sky-500 hover:text-white transition-colors" onClick={exactCash}>
                       พอดี (฿{total.toFixed(0)})
                     </Button>
                   </div>
-                  <Button variant="ghost" className="w-full text-slate-500" onClick={() => setCashReceived(0)}>
+                  <Button variant="ghost" className="w-full text-slate-500 hover:text-red-600" onClick={() => setCashReceived(0)}>
                     ล้างยอดเงินสด
                   </Button>
                 </div>
@@ -348,10 +366,10 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
 
           {/* STEP 2: PROCESS (QR PromptPay / Bank Transfer) */}
           {step === 'PROCESS' && method === 'QR' && (
-            <div className="py-4 space-y-6">
+            <div className="py-2 space-y-6">
               {/* Account selection tabs if multiple exist */}
-              {bankAccounts.length > 1 && (
-                <div className="flex gap-2 overflow-x-auto pb-1 border-b border-slate-200 no-scrollbar">
+              <div className="flex items-center justify-between gap-2 overflow-x-auto pb-2 border-b border-slate-200 no-scrollbar">
+                <div className="flex gap-2">
                   {bankAccounts.map((acc) => (
                     <button
                       key={acc.id}
@@ -359,7 +377,7 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                       onClick={() => setSelectedBank(acc)}
                       className={`px-4 py-2 rounded-xl text-sm font-bold transition-all border flex items-center gap-2 ${
                         selectedBank?.id === acc.id
-                          ? "bg-sky-500 text-white border-sky-500 shadow-sm"
+                          ? "bg-sky-500 text-white border-sky-500 shadow-md"
                           : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
                       }`}
                     >
@@ -368,46 +386,54 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                     </button>
                   ))}
                 </div>
-              )}
+                <a
+                  href="/accounts"
+                  target="_blank"
+                  className="text-xs text-sky-600 hover:underline shrink-0 font-semibold flex items-center gap-1"
+                >
+                  + เพิ่มบัญชี/QR <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
                 {/* Left: QR Code & Account Details */}
-                <div className="flex flex-col items-center text-center p-6 bg-slate-50 border border-slate-200 rounded-2xl">
+                <div className="flex flex-col items-center text-center p-6 bg-slate-50 border border-slate-200 rounded-2xl shadow-inner">
                   <Badge className="mb-3 bg-sky-100 text-sky-800 border-sky-200 text-xs px-3 py-1 font-bold">
                     {selectedBank?.bankName || 'QR PromptPay'}
                   </Badge>
 
-                  {/* QR Image */}
-                  <div className="w-56 h-56 border-2 border-slate-200 rounded-2xl overflow-hidden bg-white p-2 shadow-md flex items-center justify-center mb-4">
+                  {/* Large QR Image */}
+                  <div className="w-64 h-64 border-2 border-slate-200 rounded-2xl overflow-hidden bg-white p-3 shadow-md flex items-center justify-center mb-4">
                     {selectedBank?.qrImageUrl ? (
                       <img src={selectedBank.qrImageUrl} alt="QR PromptPay" className="w-full h-full object-contain" />
                     ) : (
                       <div className="flex flex-col items-center justify-center text-slate-400 gap-2">
-                        <QrCode className="w-24 h-24 text-slate-300" />
-                        <span className="text-xs text-slate-500">สแกนชำระผ่าน PromptPay</span>
+                        <QrCode className="w-28 h-28 text-slate-300" />
+                        <span className="text-xs text-slate-500 font-medium">ไม่มีรูปภาพ QR Code</span>
+                        <a href="/accounts" target="_blank" className="text-xs text-sky-600 underline">อัปโหลดรูป QR Code ได้ที่นี่</a>
                       </div>
                     )}
                   </div>
 
                   <div className="space-y-1">
                     <p className="text-xs text-slate-500">ชื่อบัญชี: <b className="text-slate-900 text-sm">{selectedBank?.accountName || 'ร้านปุริม'}</b></p>
-                    <p className="text-xs text-slate-500">เลขที่บัญชี / พร้อมเพย์: <b className="font-mono text-slate-900 text-base">{selectedBank?.accountNumber || '081-234-5678'}</b></p>
+                    <p className="text-xs text-slate-500">เลขที่บัญชี / พร้อมเพย์: <b className="font-mono text-slate-900 text-lg font-bold">{selectedBank?.accountNumber || '081-234-5678'}</b></p>
                   </div>
                 </div>
 
-                {/* Right: Payment Card Preview & Total Amount */}
+                {/* Right: Payment Details & Confirmation */}
                 <div className="flex flex-col justify-between h-full p-6 bg-white border border-slate-200 rounded-2xl space-y-6">
                   <div>
-                    <span className="text-slate-500 text-sm font-semibold block mb-1">ยอดสุทธิที่ต้องสแกนจ่าย</span>
-                    <div className="text-4xl font-bold text-sky-600">{formatCurrency(total)}</div>
+                    <span className="text-slate-500 text-xs font-bold uppercase tracking-wider block mb-1">ยอดรวมสุทธิที่ต้องสแกนโอน</span>
+                    <div className="text-5xl font-extrabold text-sky-600">{formatCurrency(total)}</div>
                   </div>
 
-                  <div className="p-4 bg-sky-50 border border-sky-100 rounded-xl text-xs text-sky-800 space-y-1">
-                    <p className="font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-4 h-4 text-sky-600" /> คำแนะนำสำหรับพนักงานขาย:
+                  <div className="p-4 bg-sky-50 border border-sky-200 rounded-xl text-xs text-sky-800 space-y-1.5">
+                    <p className="font-bold text-sm flex items-center gap-1.5 text-sky-900">
+                      <CheckCircle2 className="w-4 h-4 text-sky-600" /> คำแนะนำการรับชำระ:
                     </p>
-                    <p>1. ให้ลูกค้าสแกน QR Code และตรวจสอบชื่อบัญชีกับยอดเงิน</p>
-                    <p>2. เมื่อตรวจสอบสลิปการโอนแล้ว ให้กดปุ่ม "ลูกค้าชำระเงินเรียบร้อยแล้ว"</p>
+                    <p>• ให้ลูกค้าสแกน QR Code และตรวจสอบชื่อบัญชีผู้รับเงิน</p>
+                    <p>• ตรวจสอบสลิปการโอนเงินจากมือถือของลูกค้าก่อนกดปุ่มยืนยัน</p>
                   </div>
 
                   <div className="flex flex-col gap-3 pt-2">
@@ -415,7 +441,7 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                       className="h-14 bg-sky-500 hover:bg-sky-600 text-white font-bold text-lg shadow-lg"
                       onClick={handleConfirmPayment}
                     >
-                      <CheckCircle2 className="w-5 h-5 mr-2" /> ลูกค้าชำระเงินเรียบร้อยแล้ว
+                      <CheckCircle2 className="w-6 h-6 mr-2" /> ลูกค้าชำระเงินเรียบร้อยแล้ว
                     </Button>
                     <Button variant="outline" className="h-10 border-slate-300 text-slate-600" onClick={() => setStep('METHOD')}>
                       ย้อนกลับ

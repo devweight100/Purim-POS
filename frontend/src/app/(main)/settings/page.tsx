@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Save, Store, QrCode } from "lucide-react";
+import { Save, Store, QrCode, Building2, ArrowRight } from "lucide-react";
+import Link from "next/link";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<any>({
@@ -35,8 +36,28 @@ export default function SettingsPage() {
     <div className="mx-auto max-w-4xl space-y-6 p-4 pb-20 sm:p-6 lg:p-8">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">ตั้งค่าระบบ</h1>
-        <p className="text-slate-500 mt-2">จัดการข้อมูลร้านค้าและการชำระเงิน</p>
+        <p className="text-slate-500 mt-2">จัดการข้อมูลร้านค้า ช่องทางชำระเงิน และ บัญชีธนาคารรับโอนเงิน</p>
       </div>
+
+      {/* Direct Banner Link to Financial Accounts & QR Management */}
+      <Card className="bg-gradient-to-r from-sky-50 to-blue-50 border-2 border-sky-200 shadow-sm hover:shadow-md transition-shadow">
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center text-xl text-sky-900 font-bold">
+              <Building2 className="w-6 h-6 mr-3 text-sky-600" />
+              จัดการบัญชีการเงิน & รูป QR Code
+            </CardTitle>
+            <CardDescription className="text-sky-700 mt-1">
+              เพิ่ม/แก้ไข บัญชีธนาคาร (กสิกรไทย, ไทยพาณิชย์ ฯลฯ) และ อัปโหลดรูปภาพ QR Code สแกนจ่าย
+            </CardDescription>
+          </div>
+          <Link href="/accounts">
+            <Button className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-11 px-5 shadow-sm shrink-0">
+              เปิดหน้าจัดการบัญชี <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </Link>
+        </CardHeader>
+      </Card>
 
       <Card className="bg-white border-slate-200 shadow-sm">
         <CardHeader>
@@ -73,48 +94,14 @@ export default function SettingsPage() {
               className="bg-white border-slate-300 focus-visible:ring-primary h-24"
             />
           </div>
-        </CardContent>
-      </Card>
 
-      <Card className="bg-white border-slate-200 shadow-sm">
-        <CardHeader>
-          <CardTitle className="flex items-center text-xl text-slate-900">
-            <QrCode className="w-5 h-5 mr-3 text-primary" />
-            ตั้งค่าช่องทางชำระเงิน (QR Code)
-          </CardTitle>
-          <CardDescription className="text-slate-500">
-            สำหรับการชำระเงินผ่าน QR PromptPay
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">ข้อความแสดงใต้ QR Code</label>
-            <Input 
-              value={settings.qrLabel}
-              onChange={e => setSettings({...settings, qrLabel: e.target.value})}
-              className="bg-white border-slate-300 focus-visible:ring-primary"
-              placeholder="เช่น PromptPay: 081-234-5678"
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">รูปภาพ QR Code</label>
-            <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 sm:p-8 flex flex-col items-center justify-center bg-slate-50 hover:bg-sky-50 transition-colors cursor-pointer group">
-              <QrCode className="w-12 h-12 text-slate-400 group-hover:text-primary transition-colors mb-4" />
-              <p className="text-slate-500 group-hover:text-slate-700 text-sm text-center">คลิกเพื่ออัปโหลด หรือลากไฟล์มาวางที่นี่</p>
-              <p className="text-slate-500 text-xs mt-2">รองรับ JPG, PNG ขนาดไม่เกิน 2MB</p>
-            </div>
+          <div className="pt-2">
+            <Button onClick={handleSave} className="bg-sky-500 hover:bg-sky-600 text-white font-bold">
+              <Save className="w-4 h-4 mr-2" /> บันทึกข้อมูลร้านค้า
+            </Button>
           </div>
         </CardContent>
       </Card>
-
-      <div className="flex justify-end gap-4">
-        <Button variant="outline" className="h-12 px-6 border-slate-300">ยกเลิก</Button>
-        <Button className="h-12 px-8 font-bold bg-primary hover:bg-primary/90 text-white" onClick={handleSave}>
-          <Save className="w-5 h-5 mr-2" />
-          บันทึกการตั้งค่า
-        </Button>
-      </div>
     </div>
   );
 }
