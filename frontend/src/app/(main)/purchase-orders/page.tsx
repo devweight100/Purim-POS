@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
@@ -17,9 +17,26 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Plus, Eye, CheckCircle, PackageOpen,
-  Trash2, Search, ChevronLeft, Building2, Package
+  Trash2, Search, ChevronLeft, Building2, Package,
+  Image as ImageIcon, Keyboard, ArrowDown, ArrowUp, X, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+function loadProductImages(productId: string): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(`img_${productId}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const cover = parsed.find((i: any) => i.isCover)?.dataUrl;
+        const others = parsed.filter((i: any) => !i.isCover).map((i: any) => i.dataUrl);
+        return cover ? [cover, ...others] : parsed.map((i: any) => i.dataUrl);
+      }
+    }
+  } catch {}
+  return [];
+}
 
 export default function PurchaseOrdersPage() {
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
@@ -37,12 +54,20 @@ export default function PurchaseOrdersPage() {
   const [billDiscountType, setBillDiscountType] = useState<'baht' | 'percent'>('baht');
   const [billDiscountValue, setBillDiscountValue] = useState<number>(0);
   const [isSupplierCatalogOpen, setIsSupplierCatalogOpen] = useState(false);
+  const [catalogSearch, setCatalogSearch] = useState('');
 
-  // For Detail Dialog
+  // Keyboard navigation & Image preview state
+  const [highlightIndex, setHighlightIndex] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [previewProduct, setPreviewProduct] = useState<any | null>(null);
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const [selectedImageIdx, setSelectedImageIdx] = useState(0);
+
+  // Detail Dialog
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [currentPo, setCurrentPo] = useState<any>(null);
 
-  // For Receive Dialog
+  // Receive Dialog
   const [isReceiveOpen, setIsReceiveOpen] = useState(false);
   const [receiveItems, setReceiveItems] = useState<any[]>([]);
 
@@ -75,6 +100,7 @@ export default function PurchaseOrdersPage() {
       setIsSupplierCatalogOpen(false);
       setSearchSupplier('');
       setSearchProduct('');
+      setHighlightIndex(0);
       setViewMode('create');
     } catch (error) {
       toast.error("ไม่สามารถโหลดข้อมูลผู้จำหน่ายได้");
@@ -87,10 +113,21 @@ export default function PurchaseOrdersPage() {
       const products = await apiFetch(`/suppliers/${supplier.id}/products`);
       setSupplierProducts(products || []);
       setSearchProduct('');
+      setHighlightIndex(0);
       setCreateStep('items');
+      setTimeout(() => searchInputRef.current?.focus(), 150);
     } catch (error) {
       toast.error("ไม่สามารถโหลดข้อมูลสินค้าของผู้จำหน่ายได้");
     }
+  };
+
+  const openImagePreview = (product: any, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const imgs = loadProductImages(product.id || product.productId);
+    if (imgs.length === 0 && product.imageUrl) imgs.push(product.imageUrl);
+    setPreviewImages(imgs);
+    setSelectedImageIdx(0);
+    setPreviewProduct(product);
   };
 
   const createCartItemFromProduct = (product: any, quantity = 1) => ({
@@ -101,7 +138,8 @@ export default function PurchaseOrdersPage() {
     unitCost: product.unitCost || product.basePrice || 0,
     quantity,
     discountType: 'baht' as 'baht' | 'percent',
-    discountValue: 0
+    discountValue: 0,
+    imageUrl: product.imageUrl || null,
   });
 
   const getCartItem = (productId: string) => cartItems.find(item => item.productId === productId);
@@ -153,7 +191,7 @@ export default function PurchaseOrdersPage() {
 
   const handleCreatePO = async () => {
     if (!selectedSupplier || cartItems.length === 0) {
-      toast.error("กรุณาเลือกผู้จำหน่ายและเพิ่มสินค้า");
+      toast.error("กรุณาเลือกผู้จำหน่ายและเพิ่มสินค้าอย่างน้อย 1 รายการ");
       return;
     }
     try {
@@ -259,6 +297,51 @@ export default function PurchaseOrdersPage() {
     (p.barcodes && p.barcodes.some((b: any) => b.barcode.includes(searchProduct)))
   );
 
+  const filteredCatalogProducts = supplierProducts.filter(p =>
+    p.name.toLowerCase().includes(catalogSearch.toLowerCase()) ||
+    p.sku.toLowerCase().includes(catalogSearch.toLowerCase())
+  );
+
+  // Keyboard navigation inside search dropdown
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const list = filteredSupplierProducts.slice(0, 8);
+    if (list.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightIndex(prev => (prev + 1) % list.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightIndex(prev => (prev - 1 + list.length) % list.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const selectedProd = list[highlightIndex] || list[0];
+      if (selectedProd) {
+        const item = getCartItem(selectedProd.id);
+        updateProductQuantity(selectedProd, (item?.quantity || 0) + 1);
+        setSearchProduct('');
+        setHighlightIndex(0);
+        toast.success(`เพิ่ม "${selectedProd.name}" ลงรายการแล้ว`);
+      }
+    } else if (e.key === 'Escape') {
+      setSearchProduct('');
+    }
+  };
+
+  // Global keyboard shortcuts (Ctrl+Enter to save)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (viewMode === 'create' && createStep === 'items') {
+        if (e.ctrlKey && e.key === 'Enter') {
+          e.preventDefault();
+          handleCreatePO();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [viewMode, createStep, cartItems, selectedSupplier]);
+
   const getItemGross = (item: any) => item.quantity * item.unitCost;
 
   const getItemDiscountAmount = (item: any) => {
@@ -285,16 +368,16 @@ export default function PurchaseOrdersPage() {
     return (
       <div className="flex h-[calc(100dvh-3.5rem)] w-full max-w-full flex-col overflow-hidden bg-slate-50 lg:h-dvh">
         {createStep === 'supplier' ? (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="flex shrink-0 flex-col gap-3 border-b border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex shrink-0 flex-col gap-3 border-b border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
               <div>
                 <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                  เปิดใบสั่งซื้อ (PO) ใหม่
+                  <Building2 className="w-6 h-6 text-primary" /> เปิดใบสั่งซื้อ (PO) ใหม่
                 </h1>
-                <p className="text-slate-500 text-sm mt-1">ขั้นตอนที่ 1: กรุณาเลือกผู้จำหน่ายที่ต้องการสั่งซื้อสินค้า</p>
+                <p className="text-slate-500 text-sm mt-1">ขั้นตอนที่ 1: เลือกผู้จำหน่ายที่ต้องการสั่งซื้อสินค้า</p>
               </div>
               <Button variant="ghost" onClick={() => setViewMode('list')} className="text-slate-500 hover:bg-slate-100">
-                ยกเลิก
+                ยกเลิก (Esc)
               </Button>
             </div>
             <div className="bg-white px-4 py-4 border-b border-slate-200 shrink-0 sm:px-6">
@@ -309,21 +392,21 @@ export default function PurchaseOrdersPage() {
               </div>
             </div>
             <div className="flex-1 overflow-y-auto bg-slate-50 p-4 sm:p-6">
-              <div className="mx-auto grid max-w-7xl grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-4 sm:gap-6">
+              <div className="mx-auto grid max-w-7xl grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4 sm:gap-6">
                 {filteredSuppliers.map((supplier) => (
                   <div 
                     key={supplier.id}
-                    className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-sky-300 cursor-pointer transition-all flex flex-col items-center text-center group"
+                    className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-sky-400 cursor-pointer transition-all flex flex-col items-center text-center group"
                     onClick={() => handleSelectSupplier(supplier)}
                   >
-                    <div className="w-12 h-12 bg-sky-100 text-sky-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                      <Building2 className="w-6 h-6" />
+                    <div className="w-14 h-14 bg-sky-100 text-sky-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-inner">
+                      <Building2 className="w-7 h-7" />
                     </div>
                     <h3 className="font-semibold text-slate-900 text-lg mb-1">{supplier.name}</h3>
                     <p className="text-slate-500 text-sm">{supplier.phone || 'ไม่มีเบอร์ติดต่อ'}</p>
                     {supplier.creditTerms && (
-                      <Badge variant="outline" className="mt-3 text-xs text-slate-600 border-slate-200 bg-slate-50">
-                        เครดิต {supplier.creditTerms}
+                      <Badge variant="outline" className="mt-3 text-xs text-sky-700 border-sky-200 bg-sky-50">
+                        เครดิต {supplier.creditTerms} วัน
                       </Badge>
                     )}
                   </div>
@@ -344,8 +427,8 @@ export default function PurchaseOrdersPage() {
                   <ChevronLeft className="w-4 h-4 mr-1" /> เปลี่ยนผู้จำหน่าย
                 </Button>
                 <div className="hidden h-4 w-px bg-slate-200 mx-1 sm:block"></div>
-                <h2 className="flex min-w-0 items-center gap-2 font-semibold text-slate-900">
-                  <Building2 className="w-4 h-4 text-sky-500" />
+                <h2 className="flex min-w-0 items-center gap-2 font-semibold text-slate-900 text-lg">
+                  <Building2 className="w-5 h-5 text-sky-500" />
                   <span className="truncate">{selectedSupplier?.name}</span>
                 </h2>
               </div>
@@ -358,42 +441,70 @@ export default function PurchaseOrdersPage() {
               <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3 sm:p-4">
                 <div className="mb-4 flex shrink-0 flex-col gap-3 px-1 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-500">ตารางสั่งของ</h3>
-                    <p className="mt-1 text-xs text-slate-500">ค้นหาสินค้าเพื่อเพิ่มเข้าตาราง หรือเปิดดูสินค้าจากผู้จำหน่ายทั้งหมด</p>
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-500" /> ตารางสั่งของ
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-500">พิมพ์ชื่อสินค้าแล้วใช้ลูกศร [↑/↓] เลื่อน แล้วกด [Enter] เพื่อเลือกสินค้าได้อย่างสะดวกรวดเร็ว</p>
                   </div>
                   <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
-                    <div className="relative w-full sm:w-80">
-                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 w-3.5 h-3.5" />
+                    <div className="relative w-full sm:w-96">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                       <Input
-                        placeholder="ค้นหาชื่อ, SKU, บาร์โค้ด..."
-                        className="h-9 bg-white pl-8 text-sm border-slate-300 focus-visible:ring-sky-500"
+                        ref={searchInputRef}
+                        placeholder="พิมพ์เพื่อค้นหา (↑/↓ เลื่อน, Enter เลือก)..."
+                        className="h-10 bg-white pl-9 pr-8 text-sm border-slate-300 focus-visible:ring-sky-500 shadow-sm"
                         value={searchProduct}
-                        onChange={(e) => setSearchProduct(e.target.value)}
+                        onChange={(e) => {
+                          setSearchProduct(e.target.value);
+                          setHighlightIndex(0);
+                        }}
+                        onKeyDown={handleSearchKeyDown}
                       />
                       {searchProduct.trim() && (
-                        <div className="absolute left-0 right-0 top-11 z-30 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
+                        <div className="absolute left-0 right-0 top-11 z-30 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
                           {filteredSupplierProducts.slice(0, 8).length === 0 ? (
-                            <div className="p-3 text-sm text-slate-500">ไม่พบสินค้าที่ค้นหา</div>
+                            <div className="p-4 text-sm text-slate-500 text-center">ไม่พบสินค้าที่ค้นหา</div>
                           ) : (
-                            filteredSupplierProducts.slice(0, 8).map((product) => {
+                            filteredSupplierProducts.slice(0, 8).map((product, idx) => {
                               const item = getCartItem(product.id);
+                              const isHighlighted = idx === highlightIndex;
                               return (
                                 <button
                                   key={product.id}
                                   type="button"
-                                  className="flex w-full items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-sky-50"
+                                  className={`flex w-full items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 text-left last:border-b-0 transition-colors ${
+                                    isHighlighted ? "bg-sky-100/70 border-sky-200" : "hover:bg-slate-50"
+                                  }`}
                                   onClick={() => {
                                     updateProductQuantity(product, (item?.quantity || 0) + 1);
                                     setSearchProduct('');
+                                    setHighlightIndex(0);
                                   }}
                                 >
-                                  <div className="min-w-0">
-                                    <div className="truncate text-sm font-medium text-slate-900">{product.name}</div>
-                                    <div className="truncate text-xs text-slate-500">{product.sku} · คงเหลือ {product.stock ?? '-'}</div>
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => openImagePreview(product, e)}
+                                      className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 hover:text-sky-600 hover:border-sky-300 transition-colors"
+                                      title="กดเพื่อดูรูปสินค้า"
+                                    >
+                                      <ImageIcon className="w-4 h-4" />
+                                    </button>
+                                    <div className="min-w-0">
+                                      <div className="truncate text-sm font-semibold text-slate-900">{product.name}</div>
+                                      <div className="truncate text-xs text-slate-500">{product.sku} · คงเหลือ {product.stock ?? '-'}</div>
+                                    </div>
                                   </div>
-                                  <Badge className={item ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-slate-100 text-slate-600'}>
-                                    {item ? `สั่งแล้ว ${item.quantity}` : 'เพิ่ม'}
-                                  </Badge>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {isHighlighted && (
+                                      <span className="text-[10px] bg-sky-500 text-white font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                                        Enter ↵
+                                      </span>
+                                    )}
+                                    <Badge className={item ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-slate-100 text-slate-600'}>
+                                      {item ? `สั่งแล้ว ${item.quantity}` : 'เลือก'}
+                                    </Badge>
+                                  </div>
                                 </button>
                               );
                             })
@@ -403,35 +514,37 @@ export default function PurchaseOrdersPage() {
                     </div>
                     <Button
                       variant="outline"
-                      className="h-9 border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      className="h-10 border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 shadow-sm"
                       onClick={() => setIsSupplierCatalogOpen(true)}
                     >
-                      <Package className="mr-2 h-4 w-4" />
-                      ดูสินค้าจากผู้จำหน่าย
+                      <Package className="mr-2 h-4 w-4 text-sky-500" />
+                      ดูสินค้าจากผู้จำหน่ายทั้งหมด
                     </Button>
                   </div>
                 </div>
-                
+
+                {/* Table */}
                 <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <div className="hidden grid-cols-[minmax(0,1.6fr)_90px_96px_88px_150px_112px_44px] items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:grid">
+                  <div className="hidden grid-cols-[48px_minmax(0,1.6fr)_90px_96px_88px_150px_112px_44px] items-center gap-3 border-b border-slate-200 bg-slate-100 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600 lg:grid">
+                    <div className="text-center">ลำดับ</div>
                     <div>สินค้า</div>
                     <div className="text-right">คงเหลือ</div>
-                    <div className="text-right">ต้นทุน</div>
+                    <div className="text-right">ต้นทุน/หน่วย</div>
                     <div className="text-right">จำนวน</div>
                     <div>ส่วนลดรายการ</div>
-                    <div className="text-right">รวม</div>
-                    <div />
+                    <div className="text-right">รวมสุทธิ</div>
+                    <div className="text-center">ลบ</div>
                   </div>
 
                   {cartItems.length === 0 ? (
-                    <div className="flex min-h-80 flex-col items-center justify-center text-center text-slate-500">
-                      <PackageOpen className="mb-3 h-12 w-12 text-slate-300" />
-                      <p>ยังไม่มีสินค้าในตารางสั่งของ</p>
-                      <p className="mt-1 text-sm">ค้นหาสินค้าด้านบน หรือกดดูสินค้าจากผู้จำหน่ายเพื่อเพิ่มรายการ</p>
+                    <div className="flex min-h-72 flex-col items-center justify-center text-center text-slate-500 space-y-3">
+                      <PackageOpen className="h-14 w-14 text-slate-300" />
+                      <p className="font-semibold text-base text-slate-700">ยังไม่มีสินค้าในตารางสั่งของ</p>
+                      <p className="text-sm text-slate-400">พิมพ์ค้นหาสินค้าด้านบนแล้วกด Enter หรือคลิก "ดูสินค้าจากผู้จำหน่ายทั้งหมด"</p>
                     </div>
                   ) : (
                     <div className="divide-y divide-slate-100">
-                      {cartItems.map((item) => {
+                      {cartItems.map((item, index) => {
                         const product = supplierProducts.find(p => p.id === item.productId) || { ...item, id: item.productId };
                         const unitCost = item.unitCost;
                         const quantity = item.quantity;
@@ -442,23 +555,41 @@ export default function PurchaseOrdersPage() {
                         return (
                           <div
                             key={item.productId}
-                            className="grid grid-cols-1 gap-3 px-4 py-3 transition-colors hover:bg-slate-50 lg:grid-cols-[minmax(0,1.6fr)_90px_96px_88px_150px_112px_44px] lg:items-center"
+                            className="grid grid-cols-1 gap-3 px-4 py-3 transition-colors hover:bg-sky-50/30 lg:grid-cols-[48px_minmax(0,1.6fr)_90px_96px_88px_150px_112px_44px] lg:items-center"
                           >
+                            {/* Col 1: ลำดับ */}
+                            <div className="hidden lg:block text-center font-semibold text-slate-400 text-sm">
+                              {index + 1}
+                            </div>
+
+                            {/* Col 2: สินค้า + รูป */}
                             <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <Package className="h-5 w-5 shrink-0 text-slate-300" />
+                              <div className="flex items-center gap-2.5">
+                                <span className="lg:hidden text-xs font-bold text-slate-400">#{index + 1}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => openImagePreview(product, e)}
+                                  className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 hover:text-sky-600 hover:border-sky-300 transition-colors shadow-sm"
+                                  title="กดเพื่อดูรูปภาพสินค้า"
+                                >
+                                  <ImageIcon className="w-4 h-4" />
+                                </button>
                                 <div className="min-w-0">
-                                  <div className="truncate text-sm font-medium text-slate-900">{product.name}</div>
-                                  <div className="truncate text-xs text-slate-500">{product.sku}</div>
+                                  <div className="truncate text-sm font-bold text-slate-900">{product.name}</div>
+                                  <div className="truncate text-xs text-slate-500 font-mono">{product.sku}</div>
                                 </div>
                               </div>
                             </div>
 
+                            {/* Col 3: คงเหลือ */}
                             <div className="flex items-center justify-between text-sm text-slate-600 lg:block lg:text-right">
                               <span className="text-xs font-medium text-slate-500 lg:hidden">คงเหลือ</span>
-                              {item.stock ?? product.stock ?? '-'}
+                              <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200">
+                                {item.stock ?? product.stock ?? '-'}
+                              </Badge>
                             </div>
 
+                            {/* Col 4: ต้นทุน */}
                             <label className="grid grid-cols-[84px_1fr] items-center gap-2 text-xs font-medium text-slate-500 lg:block">
                               <span className="lg:hidden">ต้นทุน</span>
                               <Input
@@ -467,58 +598,64 @@ export default function PurchaseOrdersPage() {
                                 step="0.01"
                                 value={unitCost}
                                 onChange={(e) => updateProductUnitCost(product, Number(e.target.value))}
-                                className="h-9 bg-white text-right text-sm border-slate-300"
+                                className="h-9 bg-white text-right text-sm border-slate-300 focus-visible:ring-sky-500 font-semibold text-slate-900"
                               />
                             </label>
 
+                            {/* Col 5: จำนวน */}
                             <label className="grid grid-cols-[84px_1fr] items-center gap-2 text-xs font-medium text-slate-500 lg:block">
                               <span className="lg:hidden">จำนวน</span>
                               <Input
                                 type="number"
-                                min="0"
+                                min="1"
                                 step="1"
                                 value={quantity}
                                 onChange={(e) => updateProductQuantity(product, Number(e.target.value))}
-                                className="h-9 bg-white text-right text-sm border-slate-300"
+                                className="h-9 bg-white text-right text-sm border-slate-300 focus-visible:ring-sky-500 font-bold text-sky-600"
                               />
                             </label>
 
+                            {/* Col 6: ส่วนลด */}
                             <div className="grid grid-cols-[84px_1fr] items-center gap-2 lg:block">
                               <span className="text-xs font-medium text-slate-500 lg:hidden">ส่วนลด</span>
-                              <div className="grid grid-cols-[1fr_54px] gap-2">
-                              <Input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={discountValue}
-                                onChange={(e) => updateProductDiscount(product, 'discountValue', Number(e.target.value))}
-                                className="h-9 bg-white text-right text-sm border-slate-300"
-                              />
-                              <select
-                                value={discountType}
-                                onChange={(e) => updateProductDiscount(product, 'discountType', e.target.value as 'baht' | 'percent')}
-                                className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-sky-500"
-                              >
-                                <option value="baht">บาท</option>
-                                <option value="percent">%</option>
-                              </select>
+                              <div className="grid grid-cols-[1fr_54px] gap-1.5">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={discountValue}
+                                  onChange={(e) => updateProductDiscount(product, 'discountValue', Number(e.target.value))}
+                                  className="h-9 bg-white text-right text-sm border-slate-300"
+                                />
+                                <select
+                                  value={discountType}
+                                  onChange={(e) => updateProductDiscount(product, 'discountType', e.target.value as 'baht' | 'percent')}
+                                  className="h-9 rounded-lg border border-slate-300 bg-white px-1.5 text-xs font-medium text-slate-700 outline-none focus:border-sky-500"
+                                >
+                                  <option value="baht">บาท</option>
+                                  <option value="percent">%</option>
+                                </select>
                               </div>
                             </div>
 
-                            <div className="flex items-center justify-between text-sm font-semibold text-slate-900 lg:block lg:text-right">
+                            {/* Col 7: รวมสุทธิ */}
+                            <div className="flex items-center justify-between text-base font-bold text-slate-900 lg:block lg:text-right">
                               <span className="text-xs font-medium text-slate-500 lg:hidden">รวม</span>
                               {formatCurrency(rowTotal)}
                             </div>
 
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-red-400 hover:bg-red-50 hover:text-red-600"
-                              onClick={() => removeCartItem(item.productId)}
-                              title="ลบออกจากรายการ"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            {/* Col 8: ปุ่มลบ */}
+                            <div className="text-center">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-red-400 hover:bg-red-50 hover:text-red-600"
+                                onClick={() => removeCartItem(item.productId)}
+                                title="ลบรายการนี้"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                         );
                       })}
@@ -527,25 +664,28 @@ export default function PurchaseOrdersPage() {
                 </div>
               </div>
 
-              <div className="shrink-0 border-t border-slate-200 bg-white p-4 shadow-[0_-4px_10px_-6px_rgba(15,23,42,0.25)]">
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-                  <div className="flex min-w-0 items-center gap-3 text-sm text-slate-500">
-                    <Badge variant="outline" className="border-sky-200 bg-sky-50 text-sky-700">
-                      เลือกแล้ว {cartItems.length} รายการ
+              {/* Bottom Summary Bar */}
+              <div className="shrink-0 border-t border-slate-200 bg-white p-4 shadow-lg">
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+                    <Badge className="bg-sky-500 text-white font-bold px-3 py-1 text-sm">
+                      เลือกสั่งรวม {cartItems.length} รายการ
                     </Badge>
-                    <span className="truncate">ใส่จำนวนมากกว่า 0 เพื่อเพิ่มสินค้าเข้าใบ PO</span>
+                    <span>จำนวนชิ้นรวม: <b>{cartItems.reduce((s, i) => s + (i.quantity || 0), 0)}</b> ชิ้น</span>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-slate-500">ยอดรวมก่อนส่วนลด</span>
-                      <span className="font-medium text-slate-900">{formatCurrency(subtotalBeforeDiscount)}</span>
+                      <span className="font-semibold text-slate-900">{formatCurrency(subtotalBeforeDiscount)}</span>
                     </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500">ส่วนลดรายการ</span>
-                      <span className="font-medium text-red-600">-{formatCurrency(itemDiscountTotal)}</span>
-                    </div>
-                    <div className="grid grid-cols-[1fr_96px_68px] items-center gap-2 text-sm">
+                    {itemDiscountTotal > 0 && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-500">ส่วนลดรายการ</span>
+                        <span className="font-semibold text-red-600">-{formatCurrency(itemDiscountTotal)}</span>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-[1fr_100px_68px] items-center gap-2 text-sm">
                       <span className="text-slate-500">ส่วนลดท้ายบิล</span>
                       <Input
                         type="number"
@@ -553,81 +693,127 @@ export default function PurchaseOrdersPage() {
                         step="0.01"
                         value={billDiscountValue}
                         onChange={(e) => setBillDiscountValue(Math.max(0, Number(e.target.value) || 0))}
-                        className="h-9 bg-white text-right text-sm border-slate-300"
+                        className="h-9 bg-white text-right text-sm border-slate-300 font-semibold"
                       />
                       <select
                         value={billDiscountType}
                         onChange={(e) => setBillDiscountType(e.target.value as 'baht' | 'percent')}
-                        className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700 outline-none focus:border-sky-500"
+                        className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs font-medium text-slate-700 outline-none focus:border-sky-500"
                       >
                         <option value="baht">บาท</option>
                         <option value="percent">%</option>
                       </select>
                     </div>
                     <div className="flex items-end justify-between border-t border-slate-200 pt-2">
-                      <span className="text-sm font-medium text-slate-700">ยอดรวมสุทธิ</span>
+                      <span className="text-base font-bold text-slate-800">ยอดรวมสุทธิ</span>
                       <span className="text-2xl font-bold text-sky-600">{formatCurrency(cartTotal)}</span>
                     </div>
                     <Button
-                      className="h-12 w-full bg-sky-500 text-base font-semibold text-white hover:bg-sky-600"
+                      className="h-12 w-full bg-sky-500 text-base font-bold text-white hover:bg-sky-600 shadow-md"
                       disabled={cartItems.length === 0}
                       onClick={handleCreatePO}
                     >
-                      สร้างใบสั่งซื้อ
+                      สร้างใบสั่งซื้อ (Ctrl + Enter)
                     </Button>
                   </div>
                 </div>
               </div>
 
+              {/* Keyboard Shortcut Hints Bar */}
+              <div className="bg-slate-900 text-slate-200 px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 shrink-0">
+                <div className="flex items-center gap-4">
+                  <span className="flex items-center gap-1 font-semibold text-amber-400">
+                    <Keyboard className="w-4 h-4" /> ทางลัดคีย์บอร์ด:
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">↑ / ↓</kbd> เลื่อนเลือกสินค้า
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">Enter</kbd> เพิ่มสินค้าลงตาราง
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">Ctrl + Enter</kbd> บันทึกใบ PO
+                  </span>
+                </div>
+                <div className="text-slate-400">
+                  กด <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">Esc</kbd> เพื่อยกเลิก
+                </div>
+              </div>
+
+              {/* Larger Supplier Catalog Dialog */}
               <Dialog open={isSupplierCatalogOpen} onOpenChange={setIsSupplierCatalogOpen}>
-                <DialogContent className="max-h-[90dvh] max-w-5xl overflow-hidden bg-white p-0 text-slate-900">
-                  <DialogHeader className="border-b border-slate-200 px-5 py-4">
-                    <DialogTitle className="flex items-center gap-2 text-lg font-bold text-slate-900">
-                      <Package className="h-5 w-5 text-sky-500" />
-                      สินค้าจากผู้จำหน่าย: {selectedSupplier?.name}
+                <DialogContent className="max-h-[92dvh] max-w-[95vw] lg:max-w-6xl xl:max-w-7xl overflow-hidden bg-white p-0 text-slate-900 flex flex-col border-slate-200">
+                  <DialogHeader className="border-b border-slate-200 px-6 py-4 flex flex-row items-center justify-between shrink-0">
+                    <DialogTitle className="flex items-center gap-2 text-xl font-bold text-slate-900">
+                      <Package className="h-6 w-6 text-sky-500" />
+                      รายการสินค้าจากผู้จำหน่าย: <span className="text-sky-600">{selectedSupplier?.name}</span>
                     </DialogTitle>
                   </DialogHeader>
 
-                  <div className="min-h-0 overflow-y-auto p-4">
-                    <div className="hidden grid-cols-[minmax(0,1.5fr)_110px_110px_120px_120px] items-center gap-3 rounded-t-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:grid">
+                  <div className="p-4 border-b border-slate-200 bg-slate-50 shrink-0">
+                    <div className="relative max-w-md">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                      <Input
+                        placeholder="ค้นหาชื่อ หรือ SKU สินค้า..."
+                        className="pl-9 bg-white border-slate-300 h-10 text-sm"
+                        value={catalogSearch}
+                        onChange={(e) => setCatalogSearch(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="min-h-0 flex-1 overflow-y-auto p-6">
+                    <div className="hidden grid-cols-[48px_minmax(0,1.8fr)_110px_120px_130px_140px] items-center gap-4 rounded-t-xl border border-slate-200 bg-slate-100 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-600 lg:grid">
+                      <div className="text-center">ลำดับ</div>
                       <div>สินค้า</div>
                       <div className="text-right">คงเหลือ</div>
-                      <div className="text-right">ต้นทุน</div>
-                      <div className="text-center">สถานะ</div>
+                      <div className="text-right">ต้นทุน/หน่วย</div>
+                      <div className="text-center">สถานะสั่งซื้อ</div>
                       <div className="text-right">จัดการ</div>
                     </div>
 
-                    <div className="overflow-hidden rounded-lg border border-slate-200 lg:rounded-t-none lg:border-t-0">
-                      {supplierProducts.length === 0 ? (
-                        <div className="flex min-h-56 flex-col items-center justify-center text-center text-slate-500">
-                          <PackageOpen className="mb-3 h-10 w-10 text-slate-300" />
-                          <p>ไม่พบสินค้าในผู้จำหน่ายนี้</p>
+                    <div className="overflow-hidden rounded-xl border border-slate-200 lg:rounded-t-none lg:border-t-0 bg-white">
+                      {filteredCatalogProducts.length === 0 ? (
+                        <div className="flex min-h-64 flex-col items-center justify-center text-center text-slate-500 space-y-2">
+                          <PackageOpen className="h-12 w-12 text-slate-300" />
+                          <p className="font-semibold text-slate-700">ไม่พบสินค้าจากผู้จำหน่ายนี้</p>
                         </div>
                       ) : (
                         <div className="divide-y divide-slate-100">
-                          {supplierProducts.map((product) => {
+                          {filteredCatalogProducts.map((product, idx) => {
                             const item = getCartItem(product.id);
                             return (
                               <div
                                 key={product.id}
-                                className="grid grid-cols-1 gap-3 px-4 py-3 lg:grid-cols-[minmax(0,1.5fr)_110px_110px_120px_120px] lg:items-center"
+                                className="grid grid-cols-1 gap-3 px-4 py-3.5 hover:bg-sky-50/40 transition-colors lg:grid-cols-[48px_minmax(0,1.8fr)_110px_120px_130px_140px] lg:items-center"
                               >
+                                <div className="hidden lg:block text-center font-semibold text-slate-400 text-sm">
+                                  {idx + 1}
+                                </div>
+
                                 <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <Package className="h-5 w-5 shrink-0 text-slate-300" />
+                                  <div className="flex items-center gap-3">
+                                    <button
+                                      type="button"
+                                      onClick={(e) => openImagePreview(product, e)}
+                                      className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 hover:text-sky-600 hover:border-sky-300 transition-colors shadow-sm"
+                                      title="กดเพื่อดูรูปสินค้า"
+                                    >
+                                      <ImageIcon className="w-5 h-5" />
+                                    </button>
                                     <div className="min-w-0">
-                                      <div className="truncate text-sm font-medium text-slate-900">{product.name}</div>
-                                      <div className="truncate text-xs text-slate-500">{product.sku}</div>
+                                      <div className="truncate text-base font-semibold text-slate-900">{product.name}</div>
+                                      <div className="truncate text-xs text-slate-500 font-mono">{product.sku}</div>
                                     </div>
                                   </div>
                                 </div>
 
-                                <div className="flex items-center justify-between text-sm text-slate-600 lg:block lg:text-right">
+                                <div className="flex items-center justify-between text-sm font-semibold text-slate-700 lg:block lg:text-right">
                                   <span className="text-xs font-medium text-slate-500 lg:hidden">คงเหลือ</span>
                                   {product.stock ?? '-'}
                                 </div>
 
-                                <div className="flex items-center justify-between text-sm font-medium text-slate-900 lg:block lg:text-right">
+                                <div className="flex items-center justify-between text-sm font-bold text-slate-900 lg:block lg:text-right">
                                   <span className="text-xs font-medium text-slate-500 lg:hidden">ต้นทุน</span>
                                   {formatCurrency(product.unitCost || product.basePrice || 0)}
                                 </div>
@@ -635,19 +821,19 @@ export default function PurchaseOrdersPage() {
                                 <div className="flex items-center justify-between lg:justify-center">
                                   <span className="text-xs font-medium text-slate-500 lg:hidden">สถานะ</span>
                                   {item ? (
-                                    <Badge className="bg-sky-50 text-sky-700 border-sky-200">สั่งแล้ว {item.quantity}</Badge>
+                                    <Badge className="bg-sky-50 text-sky-700 border-sky-200 px-3 py-1 font-semibold">สั่งแล้ว {item.quantity}</Badge>
                                   ) : (
-                                    <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">ยังไม่สั่ง</Badge>
+                                    <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-500 font-normal">ยังไม่สั่ง</Badge>
                                   )}
                                 </div>
 
                                 <div className="flex justify-end gap-2">
                                   <Button
                                     size="sm"
-                                    className="bg-sky-500 text-white hover:bg-sky-600"
+                                    className="bg-sky-500 text-white hover:bg-sky-600 font-semibold px-4"
                                     onClick={() => updateProductQuantity(product, (item?.quantity || 0) + 1)}
                                   >
-                                    {item ? 'เพิ่มจำนวน' : 'สั่งสินค้า'}
+                                    {item ? '+1 เพิ่มจำนวน' : '+ เพิ่มในบิล'}
                                   </Button>
                                 </div>
                               </div>
@@ -657,11 +843,69 @@ export default function PurchaseOrdersPage() {
                       )}
                     </div>
                   </div>
+
+                  <DialogFooter className="border-t border-slate-200 px-6 py-4 bg-slate-50 shrink-0">
+                    <Button onClick={() => setIsSupplierCatalogOpen(false)} className="bg-slate-900 text-white hover:bg-slate-800">
+                      ปิดหน้าต่าง (Esc)
+                    </Button>
+                  </DialogFooter>
                 </DialogContent>
               </Dialog>
             </div>
           </div>
         )}
+
+        {/* Product Image Preview Modal */}
+        <Dialog open={previewProduct !== null} onOpenChange={(open) => { if (!open) setPreviewProduct(null); }}>
+          <DialogContent className="bg-white border-slate-200 text-slate-900 max-w-md p-6">
+            <DialogHeader className="mb-2">
+              <DialogTitle className="flex items-center gap-2 text-lg font-bold text-slate-900">
+                <ImageIcon className="w-5 h-5 text-primary" />
+                รูปภาพสินค้า: <span className="text-sky-600">{previewProduct?.name}</span>
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 pt-2">
+              {previewImages.length > 0 ? (
+                <div className="space-y-3">
+                  <div className="aspect-square rounded-xl overflow-hidden border-2 border-slate-200 bg-slate-50 flex items-center justify-center shadow-inner">
+                    <img src={previewImages[selectedImageIdx] || previewImages[0]} alt={previewProduct?.name} className="w-full h-full object-cover" />
+                  </div>
+                  {previewImages.length > 1 && (
+                    <div className="flex gap-2 justify-center">
+                      {previewImages.map((img, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setSelectedImageIdx(idx)}
+                          className={`w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${selectedImageIdx === idx ? "border-primary ring-2 ring-primary/20" : "border-slate-200 opacity-60 hover:opacity-100"}`}
+                        >
+                          <img src={img} alt="" className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="h-56 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-400 gap-2">
+                  <Package className="w-12 h-12 text-slate-300" />
+                  <p className="text-sm font-semibold text-slate-600">ไม่มีรูปภาพสินค้าสำหรับรายการนี้</p>
+                  <p className="text-xs text-slate-400">สามารถเพิ่มรูปได้ในหน้าแก้ไขสินค้า</p>
+                </div>
+              )}
+
+              <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-center justify-between">
+                <span>รหัส SKU: <b className="font-mono text-slate-700">{previewProduct?.sku}</b></span>
+                <span>คงเหลือ: <b className="text-slate-900">{previewProduct?.stock ?? '-'}</b></span>
+              </div>
+            </div>
+
+            <DialogFooter className="mt-4">
+              <Button variant="outline" onClick={() => setPreviewProduct(null)} className="w-full border-slate-300">
+                ปิดหน้าต่าง (Esc)
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
@@ -670,15 +914,17 @@ export default function PurchaseOrdersPage() {
     <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">ใบสั่งซื้อ (PO)</h1>
-          <p className="text-slate-500 mt-2">จัดการการสั่งซื้อสินค้าจากผู้จำหน่าย</p>
+          <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl flex items-center gap-2">
+            <PackageOpen className="w-8 h-8 text-sky-500" /> ใบสั่งซื้อ (PO)
+          </h1>
+          <p className="text-slate-500 mt-1">จัดการเอกสารใบสั่งซื้อสินค้าและเปิดใบ PO ถึงผู้จำหน่าย</p>
         </div>
         <Button 
-          className="bg-sky-500 hover:bg-sky-600 text-white font-medium"
+          className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-11 px-6 shadow-sm"
           onClick={openCreateDialog}
         >
-          <Plus className="w-4 h-4 mr-2" />
-          เปิดใบสั่งซื้อ
+          <Plus className="w-5 h-5 mr-2" />
+          เปิดใบสั่งซื้อใหม่
         </Button>
       </div>
 
@@ -695,16 +941,15 @@ export default function PurchaseOrdersPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <div className="overflow-x-auto">
           <Table>
             <TableHeader className="bg-slate-50">
               <TableRow className="border-slate-200 hover:bg-transparent">
-                <TableHead className="text-slate-500 font-medium">เลข PO</TableHead>
-                <TableHead className="text-slate-500 font-medium">ผู้จำหน่าย</TableHead>
-                <TableHead className="text-slate-500 font-medium">วันที่</TableHead>
-                <TableHead className="text-slate-500 font-medium text-right">ยอดรวม</TableHead>
-                <TableHead className="text-slate-500 font-medium text-center">สถานะ</TableHead>
-                <TableHead className="text-slate-500 font-medium text-center">จัดการ</TableHead>
+                <TableHead className="text-slate-500 font-bold">เลข PO</TableHead>
+                <TableHead className="text-slate-500 font-bold">ผู้จำหน่าย</TableHead>
+                <TableHead className="text-slate-500 font-bold">วันที่สร้าง</TableHead>
+                <TableHead className="text-slate-500 font-bold text-right">ยอดรวมสุทธิ</TableHead>
+                <TableHead className="text-slate-500 font-bold text-center">สถานะ</TableHead>
+                <TableHead className="text-slate-500 font-bold text-center">จัดการ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -717,16 +962,16 @@ export default function PurchaseOrdersPage() {
               ) : filteredPOs.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center h-32 text-slate-500">
-                    ไม่พบข้อมูล
+                    ไม่พบข้อมูลใบสั่งซื้อ
                   </TableCell>
                 </TableRow>
               ) : (
                 filteredPOs.map((po) => (
                   <TableRow key={po.id} className="border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors" onClick={() => handleViewDetail(po.id)}>
-                    <TableCell className="font-medium text-slate-900">{po.poNumber}</TableCell>
-                    <TableCell className="text-slate-600">{po.supplier?.name || po.supplierName || "-"}</TableCell>
+                    <TableCell className="font-bold text-slate-900">{po.poNumber}</TableCell>
+                    <TableCell className="text-slate-700 font-medium">{po.supplier?.name || po.supplierName || "-"}</TableCell>
                     <TableCell className="text-slate-600">{formatDate(po.createdAt)}</TableCell>
-                    <TableCell className="text-right text-slate-900 font-medium">{formatCurrency(po.totalAmount)}</TableCell>
+                    <TableCell className="text-right text-slate-900 font-bold">{formatCurrency(po.totalAmount)}</TableCell>
                     <TableCell className="text-center">{getStatusBadge(po.status)}</TableCell>
                     <TableCell className="text-center">
                       <div className="flex gap-2 justify-center">
@@ -750,32 +995,44 @@ export default function PurchaseOrdersPage() {
               )}
             </TableBody>
           </Table>
-          </div>
         </div>
       </div>
 
-
-
       {/* Receive Dialog (GRN) */}
       <Dialog open={isReceiveOpen} onOpenChange={setIsReceiveOpen}>
-        <DialogContent className="bg-white border-slate-200 text-slate-900 max-w-2xl">
+        <DialogContent className="bg-white border-slate-200 text-slate-900 max-w-3xl">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold">รับสินค้า (PO: {currentPo?.poNumber})</DialogTitle>
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              <PackageOpen className="w-5 h-5 text-amber-500" />
+              รับสินค้าตามใบสั่งซื้อ (PO: {currentPo?.poNumber})
+            </DialogTitle>
           </DialogHeader>
           <div className="py-4">
             <Table>
               <TableHeader className="bg-slate-50">
                 <TableRow className="border-slate-200">
-                  <TableHead className="text-slate-500 font-medium">สินค้า</TableHead>
-                  <TableHead className="text-center text-slate-500 font-medium">สั่ง</TableHead>
-                  <TableHead className="text-center text-slate-500 font-medium">รับแล้ว</TableHead>
-                  <TableHead className="text-right text-slate-500 font-medium w-32">รับเพิ่ม</TableHead>
+                  <TableHead className="w-12 text-center text-slate-500 font-bold">ลำดับ</TableHead>
+                  <TableHead className="text-slate-500 font-bold">สินค้า</TableHead>
+                  <TableHead className="text-center text-slate-500 font-bold">สั่งซื้อ</TableHead>
+                  <TableHead className="text-center text-slate-500 font-bold">รับแล้ว</TableHead>
+                  <TableHead className="text-right text-slate-500 font-bold w-32">รับเพิ่มครั้งนี้</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {receiveItems.map((item, idx) => (
                   <TableRow key={idx} className="border-slate-100 hover:bg-slate-50">
-                    <TableCell className="text-slate-900 font-medium">{item.name}</TableCell>
+                    <TableCell className="text-center text-slate-400 font-semibold">{idx + 1}</TableCell>
+                    <TableCell className="text-slate-900 font-bold flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => openImagePreview(item, e)}
+                        className="w-7 h-7 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-sky-600 shrink-0"
+                        title="ดูรูปภาพสินค้า"
+                      >
+                        <ImageIcon className="w-3.5 h-3.5" />
+                      </button>
+                      <span>{item.name}</span>
+                    </TableCell>
                     <TableCell className="text-center text-slate-600">{item.orderedQty}</TableCell>
                     <TableCell className="text-center text-emerald-600 font-semibold">{item.receivedQty}</TableCell>
                     <TableCell className="text-right">
@@ -787,7 +1044,7 @@ export default function PurchaseOrdersPage() {
                           newItems[idx].toReceive = Number(e.target.value);
                           setReceiveItems(newItems);
                         }}
-                        className="bg-white border-slate-300 h-9 text-right focus-visible:ring-sky-500"
+                        className="bg-white border-slate-300 h-9 text-right font-bold text-sky-600 focus-visible:ring-sky-500"
                       />
                     </TableCell>
                   </TableRow>
@@ -799,7 +1056,7 @@ export default function PurchaseOrdersPage() {
             <Button variant="outline" onClick={() => setIsReceiveOpen(false)} className="border-slate-300 text-slate-600 hover:bg-slate-50">
               ยกเลิก
             </Button>
-            <Button onClick={handleReceivePO} className="bg-sky-500 hover:bg-sky-600 text-white">
+            <Button onClick={handleReceivePO} className="bg-sky-500 hover:bg-sky-600 text-white font-bold">
               ยืนยันการรับสินค้า
             </Button>
           </DialogFooter>
@@ -808,7 +1065,7 @@ export default function PurchaseOrdersPage() {
 
       {/* PO Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="bg-white border-slate-200 text-slate-900 max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-white border-slate-200 text-slate-900 max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-4 text-xl font-bold text-slate-900">
               <span>รายละเอียดใบสั่งซื้อ {currentPo?.poNumber}</span>
@@ -817,44 +1074,56 @@ export default function PurchaseOrdersPage() {
           </DialogHeader>
           {currentPo && (
             <div className="space-y-6 py-4">
-              <div className="grid grid-cols-2 gap-4 text-sm bg-slate-50 p-4 rounded-lg border border-slate-100">
+              <div className="grid grid-cols-2 gap-4 text-sm bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <div>
                   <span className="text-slate-500 block mb-1">ผู้จำหน่าย</span>
-                  <span className="font-semibold text-slate-900">{currentPo.supplier?.name || currentPo.supplierName}</span>
+                  <span className="font-bold text-slate-900 text-base">{currentPo.supplier?.name || currentPo.supplierName}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block mb-1">วันที่สร้าง</span>
-                  <span className="font-semibold text-slate-900">{formatDate(currentPo.createdAt)}</span>
+                  <span className="font-bold text-slate-900 text-base">{formatDate(currentPo.createdAt)}</span>
                 </div>
               </div>
               
               <div>
-                <h4 className="font-semibold text-slate-900 mb-3 border-b border-slate-200 pb-2">รายการสินค้า</h4>
+                <h4 className="font-bold text-slate-900 mb-3 border-b border-slate-200 pb-2">รายการสินค้าสั่งซื้อ</h4>
                 <Table>
                   <TableHeader className="bg-slate-50">
                     <TableRow className="border-slate-200">
-                      <TableHead className="text-slate-500 font-medium">สินค้า</TableHead>
-                      <TableHead className="text-right text-slate-500 font-medium">สั่ง (ชิ้น)</TableHead>
-                      <TableHead className="text-right text-slate-500 font-medium">รับแล้ว (ชิ้น)</TableHead>
-                      <TableHead className="text-right text-slate-500 font-medium">ต้นทุน</TableHead>
-                      <TableHead className="text-right text-slate-500 font-medium">รวม</TableHead>
+                      <TableHead className="w-12 text-center text-slate-500 font-bold">ลำดับ</TableHead>
+                      <TableHead className="text-slate-500 font-bold">สินค้า</TableHead>
+                      <TableHead className="text-right text-slate-500 font-bold">สั่ง (ชิ้น)</TableHead>
+                      <TableHead className="text-right text-slate-500 font-bold">รับแล้ว (ชิ้น)</TableHead>
+                      <TableHead className="text-right text-slate-500 font-bold">ต้นทุน/หน่วย</TableHead>
+                      <TableHead className="text-right text-slate-500 font-bold">รวมสุทธิ</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {currentPo.items?.map((item: any, idx: number) => (
                       <TableRow key={idx} className="border-slate-100 hover:bg-slate-50">
-                        <TableCell className="text-slate-900 font-medium">{item.name || item.product?.name}</TableCell>
-                        <TableCell className="text-right text-slate-600">{item.quantity}</TableCell>
-                        <TableCell className="text-right text-emerald-600 font-medium">{item.receivedQuantity || 0}</TableCell>
+                        <TableCell className="text-center text-slate-400 font-semibold">{idx + 1}</TableCell>
+                        <TableCell className="text-slate-900 font-bold flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => openImagePreview(item, e)}
+                            className="w-7 h-7 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-sky-600 shrink-0"
+                            title="ดูรูปภาพสินค้า"
+                          >
+                            <ImageIcon className="w-3.5 h-3.5" />
+                          </button>
+                          <span>{item.name || item.product?.name}</span>
+                        </TableCell>
+                        <TableCell className="text-right text-slate-700 font-semibold">{item.quantity}</TableCell>
+                        <TableCell className="text-right text-emerald-600 font-bold">{item.receivedQuantity || 0}</TableCell>
                         <TableCell className="text-right text-slate-600">{formatCurrency(item.unitCost)}</TableCell>
-                        <TableCell className="text-right text-slate-900 font-semibold">{formatCurrency(item.quantity * item.unitCost)}</TableCell>
+                        <TableCell className="text-right text-slate-900 font-bold">{formatCurrency(item.quantity * item.unitCost)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
                 <div className="text-right mt-4 pt-4 border-t border-slate-200 flex justify-end">
-                  <div className="w-56 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                    <div className="flex justify-between font-bold text-lg text-slate-900">
+                  <div className="w-64 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <div className="flex justify-between font-bold text-xl text-slate-900">
                       <span>ยอดสุทธิ</span>
                       <span className="text-sky-600">{formatCurrency(currentPo.totalAmount)}</span>
                     </div>
@@ -866,12 +1135,12 @@ export default function PurchaseOrdersPage() {
           <DialogFooter className="flex justify-between items-center w-full sm:justify-between border-t border-slate-100 pt-4">
              <div className="flex gap-2">
                 {currentPo?.status === 'DRAFT' && (
-                  <Button variant="outline" className="border-sky-500 text-sky-600 hover:bg-sky-50" onClick={(e) => handleIssuePO(currentPo.id, e)}>
+                  <Button variant="outline" className="border-sky-500 text-sky-600 hover:bg-sky-50 font-bold" onClick={(e) => handleIssuePO(currentPo.id, e)}>
                     <CheckCircle className="w-4 h-4 mr-2" /> ออกใบสั่งซื้อ
                   </Button>
                 )}
                 {(currentPo?.status === 'ISSUED' || currentPo?.status === 'PARTIALLY_RECEIVED') && (
-                  <Button variant="outline" className="border-amber-500 text-amber-600 hover:bg-amber-50" onClick={(e) => { setIsDetailOpen(false); openReceiveDialog(currentPo, e); }}>
+                  <Button variant="outline" className="border-amber-500 text-amber-600 hover:bg-amber-50 font-bold" onClick={(e) => { setIsDetailOpen(false); openReceiveDialog(currentPo, e); }}>
                     <PackageOpen className="w-4 h-4 mr-2" /> รับสินค้า
                   </Button>
                 )}
