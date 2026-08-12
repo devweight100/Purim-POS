@@ -79,7 +79,8 @@ function loadImages(productId: string): ProductImage[] {
 // ─── Types ────────────────────────────────────────────────────────────
 interface ProductBarcode {
   barcode: string;
-  label: string; // เช่น "บาร์โค้ดจาก บ.นิวยอร์ค", "บาร์โค้ดผู้ผลิตจีน"
+  supplierId?: string;
+  label?: string; // เช่น "บาร์โค้ดจาก บ.นิวยอร์ค", "บาร์โค้ดผู้ผลิตจีน"
 }
 
 interface ProductSupplierEntry {
@@ -121,6 +122,17 @@ function loadWholesale(productId: string): any[] {
   try { const r = localStorage.getItem(`ws_${productId}`); return r ? JSON.parse(r) : []; } catch { return []; }
 }
 
+function saveSavedProducts(prods: any[]) {
+  try { localStorage.setItem("custom_products", JSON.stringify(prods)); } catch {}
+}
+
+function loadSavedProducts(): any[] | null {
+  try {
+    const raw = localStorage.getItem("custom_products");
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
 // ─── Initial form ─────────────────────────────────────────────────────
 const makeInitialForm = () => ({
   name: "",
@@ -131,7 +143,7 @@ const makeInitialForm = () => ({
   categoryId: "",
   basePrice: "",           // ต้นทุนอ้างอิง (ถัวเฉลี่ยหรือค่าล่าสุด)
   priceLevel1: "", priceLevel2: "", priceLevel3: "", priceLevel4: "", priceLevel5: "",
-  barcodes: [{ barcode: "", label: "" }] as ProductBarcode[],
+  barcodes: [{ barcode: "", supplierId: "", label: "" }] as ProductBarcode[],
   supplierEntries: [] as ProductSupplierEntry[],
   packagingUnits: [] as PackagingUnit[],
   images: [] as ProductImage[],
@@ -173,12 +185,14 @@ export default function ProductsPage() {
 
   useEffect(() => {
     Promise.all([api.getProducts(), apiFetch("/suppliers").catch(() => [])]).then(([prods, supps]) => {
-      setProducts(prods);
+      const savedProds = loadSavedProducts();
+      const finalProds = savedProds && savedProds.length > 0 ? savedProds : prods;
+      setProducts(finalProds);
       setCategories(loadCategories());
       setSuppliers(supps || []);
       const pkgMap: Record<string, PackagingUnit[]> = {};
       const imgMap: Record<string, ProductImage[]> = {};
-      (prods as any[]).forEach((p: any) => {
+      (finalProds as any[]).forEach((p: any) => {
         pkgMap[p.id] = loadPackaging(p.id);
         imgMap[p.id] = loadImages(p.id);
       });
@@ -223,7 +237,7 @@ export default function ProductsPage() {
     setForm(prev => ({ ...prev, [key]: value }));
 
   // Barcodes
-  const addBarcode = () => setForm(prev => ({ ...prev, barcodes: [...prev.barcodes, { barcode: "", label: "" }] }));
+  const addBarcode = () => setForm(prev => ({ ...prev, barcodes: [...prev.barcodes, { barcode: "", supplierId: "", label: "" }] }));
   const updateBarcode = (i: number, key: keyof ProductBarcode, val: string) =>
     setForm(prev => ({ ...prev, barcodes: prev.barcodes.map((b, j) => j === i ? { ...b, [key]: val } : b) }));
   const removeBarcode = (i: number) => setForm(prev => ({ ...prev, barcodes: prev.barcodes.filter((_, j) => j !== i) }));
@@ -262,7 +276,7 @@ export default function ProductsPage() {
       priceLevel1: p.priceLevel1?.toString() || "", priceLevel2: p.priceLevel2?.toString() || "",
       priceLevel3: p.priceLevel3?.toString() || "", priceLevel4: p.priceLevel4?.toString() || "",
       priceLevel5: p.priceLevel5?.toString() || "",
-      barcodes: p.barcodes?.length ? p.barcodes.map((b: any) => ({ barcode: b.barcode || "", label: b.label || "" })) : [{ barcode: "", label: "" }],
+      barcodes: p.barcodes?.length ? p.barcodes.map((b: any) => ({ barcode: b.barcode || "", supplierId: b.supplierId || "", label: b.label || "" })) : [{ barcode: "", supplierId: "", label: "" }],
       supplierEntries: [],
       packagingUnits: allPackaging[p.id] || [],
       images: p.id ? loadImages(p.id) : [],
@@ -273,14 +287,51 @@ export default function ProductsPage() {
 
   const handleSave = () => {
     if (!form.name.trim()) { toast.error("กรุณาระบุชื่อสินค้า"); return; }
-    if (editingProduct?.id) {
-      savePackaging(editingProduct.id, form.packagingUnits);
-      setAllPackaging(prev => ({ ...prev, [editingProduct.id]: form.packagingUnits }));
-      if (form.packagingUnits.length > 0) setExpandedRows(prev => new Set([...prev, editingProduct.id]));
-      saveImages(editingProduct.id, form.images);
-      setAllImages(prev => ({ ...prev, [editingProduct.id]: form.images }));
-      saveWholesale(editingProduct.id, form.wholesaleSteps);
+    
+    let targetId = editingProduct?.id;
+    if (!targetId) {
+      targetId = "prod_" + Date.now();
     }
+
+    const updatedProductObj = {
+      id: targetId,
+      name: form.name.trim(),
+      sku: form.sku.trim() || generateEAN13(),
+      unit: form.unit.trim(),
+      size: form.size.trim(),
+      color: form.color.trim(),
+      categoryId: form.categoryId,
+      basePrice: form.basePrice ? parseFloat(form.basePrice) : null,
+      priceLevel1: form.priceLevel1 ? parseFloat(form.priceLevel1) : null,
+      priceLevel2: form.priceLevel2 ? parseFloat(form.priceLevel2) : null,
+      priceLevel3: form.priceLevel3 ? parseFloat(form.priceLevel3) : null,
+      priceLevel4: form.priceLevel4 ? parseFloat(form.priceLevel4) : null,
+      priceLevel5: form.priceLevel5 ? parseFloat(form.priceLevel5) : null,
+      stock: editingProduct?.stock ?? 0,
+      barcodes: form.barcodes.filter(b => b.barcode.trim()).map(b => ({
+        barcode: b.barcode.trim(),
+        supplierId: b.supplierId || "",
+        label: b.label || "",
+      })),
+    };
+
+    let newProductsList: any[];
+    if (editingProduct?.id) {
+      newProductsList = products.map(p => p.id === editingProduct.id ? { ...p, ...updatedProductObj } : p);
+    } else {
+      newProductsList = [updatedProductObj, ...products];
+    }
+
+    setProducts(newProductsList);
+    saveSavedProducts(newProductsList);
+
+    savePackaging(targetId, form.packagingUnits);
+    setAllPackaging(prev => ({ ...prev, [targetId]: form.packagingUnits }));
+    if (form.packagingUnits.length > 0) setExpandedRows(prev => new Set([...prev, targetId]));
+    saveImages(targetId, form.images);
+    setAllImages(prev => ({ ...prev, [targetId]: form.images }));
+    saveWholesale(targetId, form.wholesaleSteps);
+
     toast.success(`${dialogMode === "edit" ? "แก้ไข" : "เพิ่ม"}สินค้าสำเร็จ`);
     setDialogMode(null);
   };
@@ -453,9 +504,19 @@ export default function ProductsPage() {
           <div className="space-y-2">
             {form.barcodes.map((b, i) => (
               <div key={i} className="flex gap-2 items-center">
-                <div className="flex-1 grid grid-cols-2 gap-2">
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <Input value={b.barcode} onChange={e => updateBarcode(i, "barcode", e.target.value)} placeholder="สแกนหรือกรอกบาร์โค้ด" className="h-9 border-slate-300 font-mono text-sm" />
-                  <Input value={b.label} onChange={e => updateBarcode(i, "label", e.target.value)} placeholder="หมายเหตุ เช่น บาร์โค้ดจาก บ.A" className="h-9 border-slate-300 text-sm" />
+                  <select
+                    value={b.supplierId || ""}
+                    onChange={e => updateBarcode(i, "supplierId", e.target.value)}
+                    className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary"
+                  >
+                    <option value="">เลือกผู้จำหน่าย (ถ้ามี)</option>
+                    {suppliers.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                  <Input value={b.label || ""} onChange={e => updateBarcode(i, "label", e.target.value)} placeholder="หมายเหตุ เช่น บาร์โค้ดจาก บ.A" className="h-9 border-slate-300 text-sm" />
                 </div>
                 {form.barcodes.length > 1 && (
                   <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50" onClick={() => removeBarcode(i)}>
@@ -465,7 +526,7 @@ export default function ProductsPage() {
               </div>
             ))}
           </div>
-          <p className="mt-2 text-xs text-slate-400">เพิ่มบาร์โค้ดได้หลายอัน เช่น บาร์โค้ดจากหลายผู้จำหน่าย ทุกอันชี้ไปสินค้าเดียวกัน</p>
+          <p className="mt-2 text-xs text-slate-400">เพิ่มบาร์โค้ดได้หลายอัน และสามารถเลือกผู้จำหน่ายที่ผูกกับแต่ละบาร์โค้ดได้</p>
         </section>
 
         {/* 3. ผู้จำหน่ายและต้นทุน */}
@@ -778,11 +839,21 @@ export default function ProductsPage() {
                         ) : <div className="w-7 h-7" />}
                       </TableCell>
                       <TableCell className="text-center">
-                        <div className="flex flex-col gap-0.5 items-center">
-                          {(p.barcodes?.slice(0, 2) || []).map((b: any, bi: number) => (
-                            <span key={bi} className="font-mono text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">{b.barcode}</span>
-                          ))}
-                          {(p.barcodes?.length || 0) > 2 && <span className="text-xs text-slate-400">+{p.barcodes.length - 2} อื่นๆ</span>}
+                        <div className="flex flex-col gap-1 items-center">
+                          {(p.barcodes?.slice(0, 3) || []).map((b: any, bi: number) => {
+                            const sName = getSupplierName(b.supplierId);
+                            return (
+                              <div key={bi} className="inline-flex items-center gap-1 font-mono text-xs text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                                <span>{b.barcode}</span>
+                                {sName !== "-" && (
+                                  <span className="text-[10px] text-sky-700 bg-sky-100 font-sans px-1 rounded font-medium">
+                                    {sName}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {(p.barcodes?.length || 0) > 3 && <span className="text-xs text-slate-400">+{p.barcodes.length - 3} อื่นๆ</span>}
                           {!p.barcodes?.length && <span className="text-slate-300 text-xs">—</span>}
                         </div>
                       </TableCell>
