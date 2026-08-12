@@ -15,6 +15,7 @@ import { toast } from "sonner";
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<any[]>([]);
+  const [productsMap, setProductsMap] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -30,6 +31,37 @@ export default function OrdersPage() {
   // Void Dialog
   const [isVoidOpen, setIsVoidOpen] = useState(false);
   const [voidReason, setVoidReason] = useState("");
+
+  // Load product catalog for reliable name & unit lookups
+  useEffect(() => {
+    const loadCatalog = async () => {
+      let prods: any[] = [];
+      try {
+        prods = await apiFetch('/products');
+      } catch {
+        prods = await api.getProducts();
+      }
+
+      if (typeof window !== 'undefined') {
+        try {
+          const savedCustom = localStorage.getItem('custom_products');
+          if (savedCustom) {
+            const parsed = JSON.parse(savedCustom);
+            if (Array.isArray(parsed) && parsed.length > 0) prods = parsed;
+          }
+        } catch {}
+      }
+
+      const map: Record<string, any> = {};
+      prods.forEach((p) => {
+        if (p.id) map[p.id] = p;
+        if (p.sku) map[p.sku] = p;
+      });
+      setProductsMap(map);
+    };
+
+    loadCatalog();
+  }, []);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -313,19 +345,20 @@ export default function OrdersPage() {
                     </TableHeader>
                     <TableBody>
                       {currentOrder.items?.map((item: any, idx: number) => {
-                        const itemName = item.name || item.productName || item.product?.name || "สินค้า";
+                        const matchedProduct = item.productId ? productsMap[item.productId] : (item.sku ? productsMap[item.sku] : null);
+                        const itemName = item.name || item.productName || item.product?.name || item.title || matchedProduct?.name || (item.sku ? `สินค้า (${item.sku})` : "สินค้าทั่วไป");
                         const itemPrice = item.unitPrice ?? item.price ?? 0;
                         const qty = item.quantity ?? 1;
-                        const unit = item.unitName || "ชิ้น";
+                        const unit = item.unitName || item.unit || matchedProduct?.units?.[0]?.unitName || "ชิ้น";
                         const lineTotal = item.lineTotal ?? item.total ?? (itemPrice * qty);
 
                         return (
                           <TableRow key={idx} className="border-slate-200">
                             <TableCell className="font-semibold text-slate-900">
                               {itemName}
-                              {item.unitName && (
+                              {unit && (
                                 <span className="ml-1.5 text-xs text-sky-600 bg-sky-50 px-2 py-0.5 rounded border border-sky-200 font-normal">
-                                  {item.unitName}
+                                  {unit}
                                 </span>
                               )}
                             </TableCell>

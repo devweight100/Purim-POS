@@ -19,25 +19,43 @@ interface NumpadPopupProps {
 
 export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบุจำนวนเงิน", initialValue = 0 }: NumpadPopupProps) {
   const [value, setValue] = useState(initialValue >= 0 ? initialValue.toString() : '');
+  const [isFirstKey, setIsFirstKey] = useState(true);
 
   useEffect(() => {
     if (open) {
       setValue(initialValue >= 0 ? initialValue.toString() : '');
+      setIsFirstKey(true); // First keypress after opening will REPLACE value instead of appending
     }
   }, [open, initialValue]);
 
   const handleKey = (key: string) => {
     if (key === 'C') {
       setValue('0');
+      setIsFirstKey(false);
     } else if (key === 'BACK') {
-      setValue(v => (v.length <= 1 ? '0' : v.slice(0, -1)));
-    } else if (key === '.') {
-      if (!value.includes('.')) setValue(v => (v === '' ? '0.' : v + '.'));
-    } else {
-      if (value === '0' && key !== '.') {
-        setValue(key);
+      if (isFirstKey) {
+        setValue('0');
+        setIsFirstKey(false);
       } else {
-        setValue(v => v + key);
+        setValue(v => (v.length <= 1 ? '0' : v.slice(0, -1)));
+      }
+    } else if (key === '.') {
+      if (isFirstKey) {
+        setValue('0.');
+        setIsFirstKey(false);
+      } else if (!value.includes('.')) {
+        setValue(v => (v === '' ? '0.' : v + '.'));
+      }
+    } else {
+      if (isFirstKey) {
+        setValue(key);
+        setIsFirstKey(false);
+      } else {
+        if (value === '0' && key !== '.') {
+          setValue(key);
+        } else {
+          setValue(v => v + key);
+        }
       }
     }
   };
@@ -64,6 +82,7 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
         handleKey('BACK');
       } else if (e.key === 'Delete' || e.key === 'c' || e.key === 'C') {
         setValue('0');
+        setIsFirstKey(false);
       } else if (e.key === 'Enter') {
         e.preventDefault();
         const num = parseFloat(value);
@@ -79,7 +98,7 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, value, onConfirm, onOpenChange]);
+  }, [open, value, isFirstKey, onConfirm, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -136,7 +155,7 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
           </div>
 
           <div className="text-center text-xs text-slate-400">
-            💡 กดปุ่มตัวเลขบนคีย์บอร์ด (รองรับเลข 0) แล้วกด <kbd className="bg-slate-100 border border-slate-300 px-1.5 py-0.5 rounded text-[11px] font-mono">Enter ↵</kbd>
+            💡 เมื่อเปิด Numpad พิมพ์เลขใหม่จะเปลี่ยนแทนที่เลขเดิมทันที
           </div>
 
           {/* Action Buttons */}
@@ -144,7 +163,10 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
             <Button
               variant="outline"
               className="flex-1 h-12 border-slate-300 text-slate-600 font-semibold"
-              onClick={() => setValue('0')}
+              onClick={() => {
+                setValue('0');
+                setIsFirstKey(false);
+              }}
             >
               ล้างเป็น 0 (C)
             </Button>
