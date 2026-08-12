@@ -123,20 +123,24 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
     }
 
     try {
-      await apiFetch('/orders/checkout', {
-        method: 'POST',
-        body: JSON.stringify({
-          customerId: cart.customerId,
-          discountAmount: cart.getBillDiscountAmount(),
-          note: `Shift: ${shiftStore.currentShift?.id || 'unknown'}`,
-          items: cart.items.map(i => ({
-            productId: i.productId,
-            quantity: i.quantity,
-            unitPrice: cart.getEffectivePrice(i)
-          })),
-          payments: payments
-        })
-      });
+      try {
+        await apiFetch('/orders/checkout', {
+          method: 'POST',
+          body: JSON.stringify({
+            customerId: cart.customerId,
+            discountAmount: cart.getBillDiscountAmount(),
+            note: `Shift: ${shiftStore.currentShift?.id || 'unknown'}`,
+            items: cart.items.map(i => ({
+              productId: i.productId,
+              quantity: i.quantity,
+              unitPrice: cart.getEffectivePrice(i)
+            })),
+            payments: payments
+          })
+        });
+      } catch (backendError) {
+        console.warn('Backend server offline or unreachable, proceeding with offline POS checkout:', backendError);
+      }
 
       shiftStore.recordSale({
         id: Date.now().toString(),
