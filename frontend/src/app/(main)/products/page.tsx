@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { api, apiFetch } from "@/lib/api";
+import Link from "next/link";
+import { loadCategories } from "@/lib/category-storage";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,7 +13,7 @@ import {
   Search, Plus, PackagePlus, Barcode, Tags, Truck,
   Pencil, ChevronUp, ChevronDown, ChevronsUpDown, X,
   Layers, RefreshCw, Trash2, ChevronRight, Building2, Info,
-  ImagePlus, Star, Crown, Upload
+  ImagePlus, Star, Crown, Upload, FolderTree
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
@@ -170,9 +172,9 @@ export default function ProductsPage() {
   const [form, setForm] = useState<ProductForm>(makeInitialForm());
 
   useEffect(() => {
-    Promise.all([api.getProducts(), api.getCategories(), apiFetch("/suppliers").catch(() => [])]).then(([prods, cats, supps]) => {
+    Promise.all([api.getProducts(), apiFetch("/suppliers").catch(() => [])]).then(([prods, supps]) => {
       setProducts(prods);
-      setCategories(cats);
+      setCategories(loadCategories());
       setSuppliers(supps || []);
       const pkgMap: Record<string, PackagingUnit[]> = {};
       const imgMap: Record<string, ProductImage[]> = {};
@@ -679,9 +681,16 @@ export default function ProductsPage() {
           <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">สินค้า</h1>
           <p className="text-slate-500 mt-1">จัดการรายการสินค้า ราคา และสต็อก</p>
         </div>
-        <Button className="h-11 w-full bg-primary px-6 font-bold text-white hover:bg-primary/90 sm:w-auto" onClick={handleOpenAdd}>
-          <Plus className="w-5 h-5 mr-2" /> เพิ่มสินค้าใหม่
-        </Button>
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <Link href="/categories" className="w-full sm:w-auto">
+            <Button variant="outline" className="h-11 w-full border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto">
+              <FolderTree className="w-5 h-5 mr-2 text-primary" /> จัดการหมวดหมู่
+            </Button>
+          </Link>
+          <Button className="h-11 w-full bg-primary px-6 font-bold text-white hover:bg-primary/90 sm:w-auto" onClick={handleOpenAdd}>
+            <Plus className="w-5 h-5 mr-2" /> เพิ่มสินค้าใหม่
+          </Button>
+        </div>
       </div>
 
       {/* Filter Toolbar */}

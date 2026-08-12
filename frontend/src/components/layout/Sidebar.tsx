@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { 
   ShoppingCart, ClipboardList, Users, LayoutDashboard, Package, 
-  Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3
+  Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, FolderTree
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/store/auth-store';
@@ -18,6 +18,7 @@ const menuItems = [
   { type: 'separator' as const },
   { href: '/dashboard', label: 'แดชบอร์ด', icon: LayoutDashboard },
   { href: '/products', label: 'สินค้า', icon: Package },
+  { href: '/categories', label: 'หมวดหมู่สินค้า', icon: FolderTree },
   { href: '/inventory', label: 'คลังสินค้า', icon: Warehouse },
   { href: '/suppliers', label: 'ผู้จำหน่าย', icon: Truck },
   { href: '/purchase-orders', label: 'ใบสั่งซื้อ (PO)', icon: FileText },
