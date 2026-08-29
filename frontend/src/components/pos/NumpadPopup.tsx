@@ -14,19 +14,32 @@ interface NumpadPopupProps {
   onOpenChange: (open: boolean) => void;
   onConfirm: (amount: number) => void;
   title?: string;
+  subtitle?: string;
   initialValue?: number;
+  allowDecimals?: boolean;
 }
 
-export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบุจำนวนเงิน", initialValue = 0 }: NumpadPopupProps) {
-  const [value, setValue] = useState(initialValue >= 0 ? initialValue.toString() : '');
+export function NumpadPopup({
+  open,
+  onOpenChange,
+  onConfirm,
+  title = "ระบุจำนวนเงิน",
+  subtitle,
+  initialValue = 0,
+  allowDecimals = true
+}: NumpadPopupProps) {
+  const [value, setValue] = useState(initialValue >= 0 ? Math.floor(initialValue).toString() : '');
   const [isFirstKey, setIsFirstKey] = useState(true);
 
   useEffect(() => {
     if (open) {
-      setValue(initialValue >= 0 ? initialValue.toString() : '');
+      const initStr = allowDecimals
+        ? (initialValue >= 0 ? initialValue.toString() : '')
+        : (initialValue >= 0 ? Math.floor(initialValue).toString() : '');
+      setValue(initStr);
       setIsFirstKey(true); // First keypress after opening will REPLACE value instead of appending
     }
-  }, [open, initialValue]);
+  }, [open, initialValue, allowDecimals]);
 
   const handleKey = (key: string) => {
     if (key === 'C') {
@@ -40,18 +53,26 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
         setValue(v => (v.length <= 1 ? '0' : v.slice(0, -1)));
       }
     } else if (key === '.') {
+      if (!allowDecimals) return;
       if (isFirstKey) {
         setValue('0.');
         setIsFirstKey(false);
       } else if (!value.includes('.')) {
         setValue(v => (v === '' ? '0.' : v + '.'));
       }
+    } else if (key === '00') {
+      if (isFirstKey) {
+        setValue('0');
+        setIsFirstKey(false);
+      } else if (value !== '0' && value !== '') {
+        setValue(v => v + '00');
+      }
     } else {
       if (isFirstKey) {
         setValue(key);
         setIsFirstKey(false);
       } else {
-        if (value === '0' && key !== '.') {
+        if (value === '0') {
           setValue(key);
         } else {
           setValue(v => v + key);
@@ -61,7 +82,7 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
   };
 
   const handleConfirm = () => {
-    const num = parseFloat(value);
+    const num = allowDecimals ? parseFloat(value) : parseInt(value, 10);
     if (!isNaN(num) && num >= 0) {
       onConfirm(num);
       onOpenChange(false);
@@ -74,31 +95,41 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
     if (!open) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key >= '0' && e.key <= '9') {
-        handleKey(e.key);
-      } else if (e.key === '.') {
+      const code = e.code;
+      const key = e.key;
+
+      const digitMatch = code.match(/^(Digit|Numpad)([0-9])$/);
+      if (digitMatch) {
+        handleKey(digitMatch[2]);
+      } else if ((key >= '0' && key <= '9')) {
+        handleKey(key);
+      } else if ((key === '.' || code === 'Period' || code === 'NumpadDecimal') && allowDecimals) {
         handleKey('.');
-      } else if (e.key === 'Backspace') {
+      } else if (key === 'Backspace' || code === 'Backspace') {
         handleKey('BACK');
-      } else if (e.key === 'Delete' || e.key === 'c' || e.key === 'C') {
+      } else if (key === 'Delete' || code === 'Delete' || key?.toLowerCase() === 'c' || code === 'KeyC') {
         setValue('0');
         setIsFirstKey(false);
-      } else if (e.key === 'Enter') {
+      } else if (key === 'Enter' || code === 'Enter' || code === 'NumpadEnter') {
         e.preventDefault();
-        const num = parseFloat(value);
+        const num = allowDecimals ? parseFloat(value) : parseInt(value, 10);
         if (!isNaN(num) && num >= 0) {
           onConfirm(num);
           onOpenChange(false);
           setValue('');
         }
-      } else if (e.key === 'Escape') {
+      } else if (key === 'Escape' || code === 'Escape') {
         onOpenChange(false);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, value, isFirstKey, onConfirm, onOpenChange]);
+  }, [open, value, isFirstKey, onConfirm, onOpenChange, allowDecimals]);
+
+  const displayFormatted = allowDecimals
+    ? (value !== '' && !isNaN(parseFloat(value)) ? formatCurrency(parseFloat(value)).replace('฿', '') : '0.00')
+    : (value !== '' && !isNaN(parseInt(value, 10)) ? parseInt(value, 10).toLocaleString('th-TH') : '0');
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -113,9 +144,11 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
         <div className="py-2 space-y-4">
           {/* Display */}
           <div className="bg-slate-900 text-white border border-slate-800 rounded-xl p-4 text-right h-20 flex flex-col justify-center overflow-hidden shadow-inner">
-            <span className="text-xs text-slate-400 font-medium">จำนวนเงินที่ระบุ</span>
+            <span className="text-xs text-slate-400 font-medium">
+              {subtitle || (allowDecimals ? 'จำนวนเงินที่ระบุ' : 'จำนวนที่ระบุ')}
+            </span>
             <span className="text-4xl font-extrabold text-sky-400 font-mono">
-              {value !== '' && !isNaN(parseFloat(value)) ? formatCurrency(parseFloat(value)).replace('฿', '') : '0.00'}
+              {displayFormatted}
             </span>
           </div>
 
@@ -131,13 +164,23 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
                 {n}
               </Button>
             ))}
-            <Button
-              variant="outline"
-              className="h-16 text-2xl font-bold border-slate-200 bg-slate-50 hover:bg-sky-500 hover:text-white hover:border-sky-500 transition-all rounded-xl shadow-sm"
-              onClick={() => handleKey('.')}
-            >
-              .
-            </Button>
+            {allowDecimals ? (
+              <Button
+                variant="outline"
+                className="h-16 text-2xl font-bold border-slate-200 bg-slate-50 hover:bg-sky-500 hover:text-white hover:border-sky-500 transition-all rounded-xl shadow-sm"
+                onClick={() => handleKey('.')}
+              >
+                .
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                className="h-16 text-xl font-extrabold border-slate-200 bg-slate-50 hover:bg-sky-500 hover:text-white hover:border-sky-500 transition-all rounded-xl shadow-sm"
+                onClick={() => handleKey('00')}
+              >
+                00
+              </Button>
+            )}
             <Button
               variant="outline"
               className="h-16 text-2xl font-bold border-slate-200 bg-slate-50 hover:bg-sky-500 hover:text-white hover:border-sky-500 transition-all rounded-xl shadow-sm"
@@ -155,7 +198,7 @@ export function NumpadPopup({ open, onOpenChange, onConfirm, title = "ระบ�
           </div>
 
           <div className="text-center text-xs text-slate-400">
-            💡 เมื่อเปิด Numpad พิมพ์เลขใหม่จะเปลี่ยนแทนที่เลขเดิมทันที
+            💡 พิมพ์เลขใหม่จะเปลี่ยนแทนที่เลขเดิมทันที กด Enter หรือ ตกลง เพื่อยืนยัน
           </div>
 
           {/* Action Buttons */}

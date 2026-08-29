@@ -1,89 +1,87 @@
-import { Category, Product, Customer, StoreSettings, DashboardData, Order } from './types';
+import { Product, Category, Customer, StoreSettings, Order, DashboardData } from './types';
 
 export const categories: Category[] = [
-  { id: 'c1', name: 'อาหารสด', color: '#f87171', icon: 'Beef' },
-  { id: 'c2', name: 'เครื่องดื่ม', color: '#60a5fa', icon: 'CupSoda' },
-  { id: 'c3', name: 'ขนมขบเคี้ยว', color: '#fbbf24', icon: 'Cookie' },
-  { id: 'c4', name: 'ของใช้ส่วนตัว', color: '#34d399', icon: 'Bath' },
-  { id: 'c5', name: 'เครื่องปรุง', color: '#a78bfa', icon: 'UtensilsCrossed' },
-  { id: 'c6', name: 'อื่นๆ', color: '#94a3b8', icon: 'Package' },
+  { id: 'cat1', name: 'เครื่องดื่ม', color: '#0ea5e9', icon: 'Coffee' },
+  { id: 'cat2', name: 'ขนมขบเคี้ยว', color: '#f59e0b', icon: 'Cookie' },
+  { id: 'cat3', name: 'ของใช้ทั่วไป', color: '#10b981', icon: 'Home' },
+  { id: 'cat4', name: 'อาหารกึ่งสำเร็จรูป', color: '#ef4444', icon: 'Soup' },
+  { id: 'cat5', name: 'เบเกอรี่', color: '#8b5cf6', icon: 'Croissant' },
 ];
 
 export const products: Product[] = [
   {
-    id: 'p1',
-    name: 'น้ำแร่ธรรมชาติ 600ml',
-    sku: 'BEV-001',
-    categoryId: 'c2',
-    stock: 240, // Base unit stock
+    id: 'PD68000054',
+    name: 'แว่นตาว่ายน้ำตาโต-ใหญ่ GV',
+    sku: 'PD68000054',
+    categoryId: 'c6',
+    stock: 43,
     hasVat: true,
     image: null,
     units: [
-      { id: 'u1-1', unitName: 'ขวด', factor: 1, price: 12, barcode: '885000000001' },
-      { id: 'u1-2', unitName: 'แพ็ค (12 ขวด)', factor: 12, price: 135, barcode: '885000000002' }
+      { id: 'u-PD68000054-base', unitName: 'ชิ้น', factor: 1, price: 85, barcode: '8858599027821' },
+      { id: 'u-PD68000054-box', unitName: 'ลัง', factor: 10, price: 800, barcode: '8858599027822' }
     ]
   },
   {
-    id: 'p2',
-    name: 'โค้ก กระป๋อง 325ml',
-    sku: 'BEV-002',
-    categoryId: 'c2',
-    stock: 48,
+    id: 'PD69001417',
+    name: 'ห่วงกล่องโพนี่เขียว 90 cm.36" SY-A0782',
+    sku: 'PD69001417',
+    categoryId: 'c6',
+    stock: 39,
     hasVat: true,
     image: null,
     units: [
-      { id: 'u2-1', unitName: 'กระป๋อง', factor: 1, price: 15, barcode: '885000000011' }
+      { id: 'u-PD69001417-base', unitName: 'ชิ้น', factor: 1, price: 135, barcode: '8859316312497' }
     ]
   },
   {
-    id: 'p3',
-    name: 'เลย์ มันฝรั่งทอด 50g',
-    sku: 'SNK-001',
-    categoryId: 'c3',
-    stock: 50,
+    id: 'PD68000077',
+    name: 'จระเข้งับ Kim',
+    sku: 'PD68000077',
+    categoryId: 'c6',
+    stock: 59,
     hasVat: true,
     image: null,
     units: [
-      { id: 'u3-1', unitName: 'ซอง', factor: 1, price: 20, barcode: '885000000021' }
+      { id: 'u-PD68000077-base', unitName: 'ชิ้น', factor: 1, price: 50, barcode: '220519016' }
     ]
   },
   {
-    id: 'p4',
-    name: 'ข้าวหอมมะลิ 5kg',
-    sku: 'FOD-001',
-    categoryId: 'c5',
-    stock: 20,
-    hasVat: false, // ข้าวสารยกเว้น VAT
-    image: null,
-    units: [
-      { id: 'u4-1', unitName: 'ถุง', factor: 1, price: 189, barcode: '885000000031' }
-    ]
-  },
-  {
-    id: 'p5',
-    name: 'สบู่ก้อน 100g',
-    sku: 'PER-001',
-    categoryId: 'c4',
-    stock: 120,
+    id: 'PD68000157',
+    name: 'แท่งโฟม',
+    sku: 'PD68000157',
+    categoryId: 'c6',
+    stock: 16,
     hasVat: true,
     image: null,
     units: [
-      { id: 'u5-1', unitName: 'ก้อน', factor: 1, price: 15, barcode: '885000000041' },
-      { id: 'u5-2', unitName: 'แพ็ค (4 ก้อน)', factor: 4, price: 55, barcode: '885000000042' }
+      { id: 'u-PD68000157-base', unitName: 'ชิ้น', factor: 1, price: 50, barcode: '8859316332884' }
     ]
   },
   {
-    id: 'p6',
-    name: 'น้ำปลาแท้ 700ml',
-    sku: 'FOD-002',
-    categoryId: 'c5',
-    stock: 5,
+    id: 'PD68000158',
+    name: 'แท่งโฟม + ข้อต่อ',
+    sku: 'PD68000158',
+    categoryId: 'c6',
+    stock: 93,
     hasVat: true,
     image: null,
     units: [
-      { id: 'u6-1', unitName: 'ขวด', factor: 1, price: 35, barcode: '885000000051' }
+      { id: 'u-PD68000158-base', unitName: 'ชิ้น', factor: 1, price: 60, barcode: '520191954123' }
     ]
   },
+  {
+    id: 'PD69001328',
+    name: '*ถังทรายปูบน 9211/P (ลัง)',
+    sku: 'PD69001328',
+    categoryId: 'c6',
+    stock: 83,
+    hasVat: true,
+    image: null,
+    units: [
+      { id: 'u-PD69001328-base', unitName: 'ชิ้น', factor: 1, price: 1512, barcode: 'PD69001328' }
+    ]
+  }
 ];
 
 export const customers: Customer[] = [
@@ -96,7 +94,7 @@ export const customers: Customer[] = [
   },
   {
     id: 'cust2',
-    name: 'คุณสมหญิง รักสวย',
+    name: 'คุณวิภาวรรณ สุขสันต์',
     phone: '0898765432',
     memberTier: 'silver',
     points: 450,
@@ -108,6 +106,15 @@ export const customers: Customer[] = [
     memberTier: 'normal',
     points: 10,
   },
+  {
+    id: 'cust4',
+    name: 'บริษัท ปุริมคอนสตรัคชั่น จำกัด',
+    phone: '029998888',
+    memberTier: 'vip',
+    points: 3500,
+    companyName: 'บริษัท ปุริมคอนสตรัคชั่น จำกัด',
+    taxId: '0105566012345',
+  }
 ];
 
 export const storeSettings: StoreSettings = {
@@ -122,14 +129,236 @@ export const storeSettings: StoreSettings = {
   vatRate: 7,
 };
 
-export const orders: Order[] = []; // Initial empty
+export const orders: Order[] = [
+  {
+    id: 'ORD-OFFLINE-1724822800003',
+    orderNumber: 'ORD-OFFLINE-1724822800003',
+    createdAt: new Date(Date.now() - 35 * 60 * 1000).toISOString(),
+    customerId: 'cust1',
+    customerName: 'คุณสมชาย ใจดี',
+    shiftId: 'shift_default',
+    userId: 'admin',
+    userName: 'ผู้ดูแลระบบ (Admin)',
+    status: 'COMPLETED',
+    subtotal: 2275,
+    billDiscountType: 'none',
+    billDiscountValue: 0,
+    billDiscountAmount: 0,
+    pointsDiscountAmount: 0,
+    pointsUsed: 0,
+    vatAmount: 148.83,
+    totalAmount: 2275,
+    payments: [{ method: 'CREDIT_CARD' as any, amount: 2275 }],
+    cashReceived: 2275,
+    changeAmount: 0,
+    items: [
+      {
+        productId: 'PD68000054',
+        name: 'แว่นตาว่ายน้ำตาโต-ใหญ่ GV (แพ็ค)',
+        sku: '8858599027822',
+        quantity: 2,
+        unitName: 'แพ็ค',
+        conversionFactor: 10,
+        unitPrice: 800,
+        originalPrice: 800,
+        discountType: 'none',
+        discountValue: 0,
+        discountAmount: 0,
+        lineTotal: 1600,
+        hasVat: true,
+      },
+      {
+        productId: 'PD69001417',
+        name: 'ห่วงกล่องโพนี่เขียว 90 cm.36" SY-A0782',
+        sku: '8859316312497',
+        quantity: 5,
+        unitName: 'ชิ้น',
+        conversionFactor: 1,
+        unitPrice: 135,
+        originalPrice: 135,
+        discountType: 'none',
+        discountValue: 0,
+        discountAmount: 0,
+        lineTotal: 675,
+        hasVat: true,
+      },
+    ],
+  },
+  {
+    id: 'ORD-OFFLINE-1724821000002',
+    orderNumber: 'ORD-OFFLINE-1724821000002',
+    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    customerId: 'cust2',
+    customerName: 'คุณวิภาวรรณ สุขสันต์',
+    shiftId: 'shift_default',
+    userId: 'cashier1',
+    userName: 'พนักงานขาย POS',
+    status: 'COMPLETED',
+    subtotal: 350,
+    billDiscountType: 'none',
+    billDiscountValue: 0,
+    billDiscountAmount: 0,
+    pointsDiscountAmount: 0,
+    pointsUsed: 0,
+    vatAmount: 22.90,
+    totalAmount: 350,
+    payments: [{ method: 'QR_PROMPTPAY', amount: 350 }],
+    cashReceived: 350,
+    changeAmount: 0,
+    items: [
+      {
+        productId: 'PD68000077',
+        name: 'จระเข้งับ Kim',
+        sku: 'PD68000077',
+        quantity: 3,
+        unitName: 'ชิ้น',
+        unitPrice: 50,
+        originalPrice: 50,
+        discountType: 'none',
+        discountValue: 0,
+        discountAmount: 0,
+        lineTotal: 150,
+        hasVat: true,
+      },
+      {
+        productId: 'PD68000157',
+        name: 'แท่งโฟม',
+        sku: 'PD68000157',
+        quantity: 4,
+        unitName: 'ชิ้น',
+        unitPrice: 50,
+        originalPrice: 50,
+        discountType: 'none',
+        discountValue: 0,
+        discountAmount: 0,
+        lineTotal: 200,
+        hasVat: true,
+      },
+    ],
+  },
+  {
+    id: 'ORD-OFFLINE-1724818000001',
+    orderNumber: 'ORD-OFFLINE-1724818000001',
+    createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+    customerId: 'cust3',
+    customerName: 'คุณมานะ อดทน',
+    shiftId: 'shift_default',
+    userId: 'cashier1',
+    userName: 'พนักงานขาย POS',
+    status: 'COMPLETED',
+    subtotal: 300,
+    billDiscountType: 'none',
+    billDiscountValue: 0,
+    billDiscountAmount: 0,
+    pointsDiscountAmount: 0,
+    pointsUsed: 0,
+    vatAmount: 19.63,
+    totalAmount: 300,
+    payments: [{ method: 'CASH', amount: 500 }],
+    cashReceived: 500,
+    changeAmount: 200,
+    items: [
+      {
+        productId: 'PD68000158',
+        name: 'แท่งโฟม + ข้อต่อ',
+        sku: 'PD68000158',
+        quantity: 5,
+        unitName: 'ชิ้น',
+        unitPrice: 60,
+        originalPrice: 60,
+        discountType: 'none',
+        discountValue: 0,
+        discountAmount: 0,
+        lineTotal: 300,
+        hasVat: true,
+      },
+    ],
+  },
+  {
+    id: 'ORD-OFFLINE-1724732000012',
+    orderNumber: 'ORD-OFFLINE-1724732000012',
+    createdAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+    customerId: 'cust4',
+    customerName: 'บริษัท ปุริมคอนสตรัคชั่น จำกัด',
+    shiftId: 'shift_default',
+    userId: 'admin',
+    userName: 'ผู้ดูแลระบบ (Admin)',
+    status: 'COMPLETED',
+    subtotal: 3024,
+    billDiscountType: 'baht',
+    billDiscountValue: 24,
+    billDiscountAmount: 24,
+    pointsDiscountAmount: 0,
+    pointsUsed: 0,
+    vatAmount: 196.26,
+    totalAmount: 3000,
+    payments: [{ method: 'TRANSFER', amount: 3000 }],
+    cashReceived: 3000,
+    changeAmount: 0,
+    items: [
+      {
+        productId: 'PD69001328',
+        name: '*ถังทรายปูบน 9211/P (ลัง)',
+        sku: 'PD69001328',
+        quantity: 2,
+        unitName: 'ชิ้น',
+        unitPrice: 1512,
+        originalPrice: 1512,
+        discountType: 'none',
+        discountValue: 0,
+        discountAmount: 0,
+        lineTotal: 3024,
+        hasVat: true,
+      },
+    ],
+  },
+  {
+    id: 'ORD-OFFLINE-1724710000005',
+    orderNumber: 'ORD-OFFLINE-1724710000005',
+    createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+    customerId: null,
+    customerName: 'ลูกค้าทั่วไป',
+    shiftId: 'shift_default',
+    userId: 'cashier1',
+    userName: 'พนักงานขาย POS',
+    status: 'COMPLETED',
+    subtotal: 170,
+    billDiscountType: 'none',
+    billDiscountValue: 0,
+    billDiscountAmount: 0,
+    pointsDiscountAmount: 0,
+    pointsUsed: 0,
+    vatAmount: 11.12,
+    totalAmount: 170,
+    payments: [{ method: 'CASH', amount: 200 }],
+    cashReceived: 200,
+    changeAmount: 30,
+    items: [
+      {
+        productId: 'PD68000054',
+        name: 'แว่นตาว่ายน้ำตาโต-ใหญ่ GV',
+        sku: 'PD68000054',
+        quantity: 2,
+        unitName: 'ชิ้น',
+        unitPrice: 85,
+        originalPrice: 85,
+        discountType: 'none',
+        discountValue: 0,
+        discountAmount: 0,
+        lineTotal: 170,
+        hasVat: true,
+      },
+    ],
+  },
+];
+
 export const dashboardData: DashboardData = {
-  todaySales: 0,
-  monthSales: 0,
-  todayOrders: 0,
+  todaySales: 2175,
+  monthSales: 51200,
+  todayOrders: 3,
   totalProducts: products.length,
   totalCustomers: customers.length,
-  recentOrders: [],
+  recentOrders: orders,
   salesChart: [],
   topProducts: []
 };

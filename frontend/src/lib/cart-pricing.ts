@@ -1,4 +1,5 @@
 import { CartItem } from './types';
+import { useProductStore } from './store/product-store';
 
 export interface PackagingUnitConfig {
   name: string;
@@ -21,7 +22,7 @@ export function getProductPackagingUnits(productId: string, fallbackUnits?: any[
     if (raw) {
       const units = JSON.parse(raw);
       let cum = 1;
-      return units.map((u: any) => {
+      const parsed = units.map((u: any) => {
         cum *= parseInt(u.qtyPerPrev) || 1;
         return {
           name: u.name || 'หน่วย',
@@ -31,6 +32,7 @@ export function getProductPackagingUnits(productId: string, fallbackUnits?: any[
           barcode: u.barcode,
         };
       });
+      if (parsed.length > 0) return parsed;
     }
   } catch {}
 
@@ -46,6 +48,23 @@ export function getProductPackagingUnits(productId: string, fallbackUnits?: any[
         barcode: u.barcode,
       }));
   }
+
+  // Fallback to product store catalog
+  try {
+    const prods = useProductStore.getState().products;
+    const found = prods.find(p => p.id === productId || p.sku === productId);
+    if (found && found.units && found.units.length > 0) {
+      return found.units
+        .filter(u => u.factor > 0)
+        .map(u => ({
+          name: u.unitName,
+          qtyPerPrev: u.factor,
+          multiplier: u.factor,
+          priceLevel1: u.price,
+          barcode: u.barcode,
+        }));
+    }
+  } catch {}
 
   return [];
 }
@@ -67,12 +86,12 @@ export function getProductWholesaleSteps(productId: string): WholesaleStepConfig
   return [];
 }
 
-// ─── Smart Rollup & Cheapest Price Optimizer ───────────────────────────
+// ─── Smart Rollup & Pricing Optimizer ───────────────────────────────────
 
 export function calculateSmartRollupAndPricing(items: CartItem[]): CartItem[] {
   if (!items || items.length === 0) return [];
 
-  // Group cart items by productId
+  // Group items by productId
   const productGroups: Record<string, CartItem[]> = {};
   const customOverrideItems: CartItem[] = [];
 
@@ -104,20 +123,20 @@ export function calculateSmartRollupAndPricing(items: CartItem[]): CartItem[] {
 
     if (totalBaseQty <= 0) continue;
 
-    // Load configurations
-    const packagingUnits = getProductPackagingUnits(productId);
+    // Load available packaging units
+    const rawPkg = getProductPackagingUnits(productId);
     const wholesaleSteps = getProductWholesaleSteps(productId);
 
     // Identify base unit details (factor = 1)
-    const baseUnitName = firstItem.unitName && firstItem.conversionFactor === 1 ? firstItem.unitName : 'ชิ้น';
-    const baseUnitPrice = firstItem.conversionFactor === 1 ? firstItem.originalPrice : (firstItem.originalPrice / (firstItem.conversionFactor || 1));
+    const baseItem = group.find(i => (i.conversionFactor || 1) === 1) || firstItem;
+    const baseUnitName = baseItem.unitName && (baseItem.conversionFactor || 1) === 1 ? baseItem.unitName : 'ชิ้น';
+    const baseUnitPrice = (baseItem.conversionFactor || 1) === 1 ? baseItem.originalPrice : (baseItem.originalPrice / (baseItem.conversionFactor || 1));
 
-    // Check if wholesale step is applicable
-    const applicableWholesale = wholesaleSteps.find(s => totalBaseQty >= s.minQuantity);
+    // Combine all available packaging units (multiplier > 1) + base unit (multiplier = 1)
+    const extraPackagingUnits = rawPkg.filter(u => u.multiplier > 1 && u.name.toLowerCase() !== baseUnitName.toLowerCase());
 
-    // Build all available units sorted descending by multiplier
     const allUnitsSorted = [
-      ...packagingUnits.filter(u => u.multiplier > 1),
+      ...extraPackagingUnits,
       { name: baseUnitName, qtyPerPrev: 1, multiplier: 1, priceLevel1: baseUnitPrice }
     ].sort((a, b) => b.multiplier - a.multiplier);
 
@@ -128,60 +147,71 @@ export function calculateSmartRollupAndPricing(items: CartItem[]): CartItem[] {
       factor: number;
       qty: number;
       unitPrice: number;
-      isWholesaleApplied: boolean;
-      pricingNote?: string;
+      unitId: string;
     }[] = [];
 
     for (const unit of allUnitsSorted) {
-      if (remQty <= 0) break;
-      const count = Math.floor(remQty / unit.multiplier);
-      if (count > 0) {
-        let chosenPrice = unit.priceLevel1 > 0 ? unit.priceLevel1 : (baseUnitPrice * unit.multiplier);
-        let isWholesaleApplied = false;
-        let pricingNote: string | undefined = undefined;
-
-        // Smart price comparison: Wholesale Step vs Larger Unit Price
-        if (applicableWholesale) {
-          const wholesaleEquivalentPrice = unit.multiplier * applicableWholesale.unitPrice;
-          if (chosenPrice === 0 || wholesaleEquivalentPrice < chosenPrice) {
-            chosenPrice = wholesaleEquivalentPrice;
-            isWholesaleApplied = true;
-            pricingNote = `ราคาส่ง (฿${applicableWholesale.unitPrice}/ชิ้น)`;
-          } else {
-            pricingNote = `ราคา ${unit.name} (ถูกกว่าราคาส่ง ฿${(wholesaleEquivalentPrice / unit.multiplier).toFixed(2)}/ชิ้น)`;
-          }
+      if (unit.multiplier > 1) {
+        const count = Math.floor(remQty / unit.multiplier);
+        if (count > 0) {
+          rolledUpList.push({
+            unitName: unit.name,
+            factor: unit.multiplier,
+            qty: count,
+            unitPrice: unit.priceLevel1 > 0 ? unit.priceLevel1 : (baseUnitPrice * unit.multiplier),
+            unitId: `u-${productId}-${unit.name}`,
+          });
+          remQty = remQty % unit.multiplier;
         }
-
-        rolledUpList.push({
-          unitName: unit.name,
-          factor: unit.multiplier,
-          qty: count,
-          unitPrice: chosenPrice,
-          isWholesaleApplied,
-          pricingNote,
-        });
-
-        remQty %= unit.multiplier;
+      } else {
+        // Base unit (multiplier = 1)
+        if (remQty > 0) {
+          rolledUpList.push({
+            unitName: unit.name,
+            factor: 1,
+            qty: remQty,
+            unitPrice: baseUnitPrice,
+            unitId: `u-${productId}-base`,
+          });
+          remQty = 0;
+        }
       }
     }
 
-    // Convert rolled up units to CartItems
-    for (const rolled of rolledUpList) {
+    // Convert rolledUpList into CartItems
+    for (const r of rolledUpList) {
+      const lineBaseQty = r.qty * r.factor;
+      const applicableWholesale = wholesaleSteps.find(s => lineBaseQty >= s.minQuantity);
+      
+      let finalUnitPrice = r.unitPrice;
+      let isWholesaleApplied = false;
+      let pricingNote: string | undefined = undefined;
+
+      if (applicableWholesale) {
+        const wholesaleUnitPrice = r.factor * applicableWholesale.unitPrice;
+        if (wholesaleUnitPrice < r.unitPrice) {
+          finalUnitPrice = wholesaleUnitPrice;
+          isWholesaleApplied = true;
+          pricingNote = `ราคาส่ง (฿${applicableWholesale.unitPrice}/หน่วยฐาน)`;
+        }
+      }
+
       resultItems.push({
         productId: firstItem.productId,
         name: firstItem.name,
         sku: firstItem.sku,
-        originalPrice: rolled.unitPrice,
+        originalPrice: finalUnitPrice,
         customPrice: null,
-        quantity: rolled.qty,
-        unitId: `auto-${firstItem.productId}-${rolled.unitName}`,
-        unitName: rolled.unitName,
-        conversionFactor: rolled.factor,
+        quantity: r.qty,
+        unitId: r.unitId,
+        unitName: r.unitName,
+        conversionFactor: r.factor,
         discountType: 'none',
         discountValue: 0,
         hasVat: firstItem.hasVat,
-        isWholesaleApplied: rolled.isWholesaleApplied,
-        pricingNote: rolled.pricingNote,
+        isWholesaleApplied,
+        pricingNote,
+        itemNote: firstItem.itemNote,
       });
     }
   }

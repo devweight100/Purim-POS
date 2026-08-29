@@ -1,44 +1,63 @@
 import { useEffect, useRef } from 'react';
 
 /**
- * Global Barcode Scanner Listener Hook
- * Automatically captures rapid keystrokes from USB/Bluetooth Barcode Scanners 
- * regardless of current cursor focus on the page.
+ * Passive Global Barcode Scanner Listener Hook
+ * Listens for barcode scanning without blocking native input navigation or key events.
  */
-export function useGlobalBarcodeScanner(onScan: (barcode: string) => void, enabled = true) {
+export function useGlobalBarcodeScanner(
+  onScan: (barcode: string) => void,
+  enabled = true
+) {
   const bufferRef = useRef<string>('');
   const lastKeyTimeRef = useRef<number>(0);
+  const onScanRef = useRef(onScan);
+
+  useEffect(() => {
+    onScanRef.current = onScan;
+  }, [onScan]);
 
   useEffect(() => {
     if (!enabled) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if modifier keys are pressed (Ctrl, Alt, Cmd)
+      // Ignore if user is currently typing in an input/textarea element
+      const activeEl = document.activeElement as HTMLElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
+        return;
+      }
+
       if (e.ctrlKey || e.altKey || e.metaKey) return;
+      if (e.key.startsWith('F') && e.key.length > 1) return;
 
       const currentTime = Date.now();
       const timeDiff = currentTime - lastKeyTimeRef.current;
       lastKeyTimeRef.current = currentTime;
 
-      // If time diff > 75ms and we have a partial buffer, it's manual human typing -> reset buffer
-      if (timeDiff > 75 && bufferRef.current.length > 0) {
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        const scannedCode = bufferRef.current.trim();
+        bufferRef.current = '';
+        if (scannedCode.length >= 2) {
+          e.preventDefault();
+          onScanRef.current(scannedCode);
+        }
+        return;
+      }
+
+      // Reset buffer if delay > 200ms (human typing)
+      if (timeDiff > 200 && bufferRef.current.length > 0) {
         bufferRef.current = '';
       }
 
-      if (e.key === 'Enter') {
-        // Scanners terminate input with Enter
-        if (bufferRef.current.length >= 3) {
-          const scannedCode = bufferRef.current.trim();
-          bufferRef.current = '';
-          onScan(scannedCode);
-        }
-      } else if (e.key.length === 1) {
-        // Collect single character keys
+      if (e.key.length === 1) {
         bufferRef.current += e.key;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onScan, enabled]);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [enabled]);
+
+  return '';
 }

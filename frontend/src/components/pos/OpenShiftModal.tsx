@@ -114,7 +114,8 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
       localStorage.setItem('pos_shift_skipped_date', todayStr);
     } catch (e) {}
 
-    toast.info('⏩ ข้ามการเปิดกะเรียบร้อย สามารถเปิดกะได้จากเมนูด้านบนในภายหลัง');
+    openShift(user?.name || 'พนักงานขาย', 0);
+    toast.info('⏩ ข้ามการระบุเงินตั้งต้น (เงินในลิ้นชักเริ่มต้น ฿0.00)');
     onOpenChange(false);
     handleReset();
   };

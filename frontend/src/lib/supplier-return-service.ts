@@ -1,9 +1,11 @@
-﻿import { ClaimRecord, SupplierReturnNote, SupplierReturnItem } from './types';
+import { ClaimRecord, SupplierReturnNote, SupplierReturnItem, SupplierReturnItemType } from './types';
 import { loadAllClaimRecords, saveClaimRecords } from './claim-service';
 import { useProductStore } from './store/product-store';
 
 const STORAGE_KEY_RETURNS = 'pos_supplier_returns';
 const STORAGE_KEY_SUPPLIERS = 'custom_suppliers';
+const STORAGE_KEY_POS = 'custom_purchase_orders';
+const STORAGE_KEY_PRODUCTS = 'custom_products';
 
 // ─── Default Suppliers Fallback ───
 export const DEFAULT_SUPPLIERS = [
@@ -24,8 +26,40 @@ export function loadSuppliers(): any[] {
   return DEFAULT_SUPPLIERS;
 }
 
-// ─── Local Storage for Supplier Return Notes ───
+// ─── Purchase Orders Storage Helpers ───
+export function loadPurchaseOrders(): any[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_POS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const supps = loadSuppliers();
+        return parsed.map((po: any) => {
+          if (!po.supplier || !po.supplier.name) {
+            const supp = supps.find((s: any) => s.id === (po.supplierId || po.supplier?.id));
+            if (supp) {
+              return { ...po, supplier: supp, supplierName: supp.name };
+            }
+          }
+          return po;
+        });
+      }
+    }
+  } catch {}
+  return [];
+}
 
+export function savePurchaseOrders(pos: any[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEY_POS, JSON.stringify(pos));
+  } catch (err) {
+    console.error('Failed to save POs to storage:', err);
+  }
+}
+
+// ─── Local Storage for Supplier Return Notes ───
 export function loadSupplierReturnNotes(): SupplierReturnNote[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -57,7 +91,6 @@ export function generateReturnDocNumber(): string {
 }
 
 // ─── Helper to resolve Product's Supplier & Cost ───
-
 export function resolveProductSupplierAndCost(productId: string, sku?: string): {
   supplierId: string;
   supplierName: string;
@@ -66,7 +99,7 @@ export function resolveProductSupplierAndCost(productId: string, sku?: string): 
   let storeProducts: any[] = useProductStore.getState().products || [];
   if (typeof window !== 'undefined') {
     try {
-      const raw = localStorage.getItem('custom_products');
+      const raw = localStorage.getItem(STORAGE_KEY_PRODUCTS);
       const parsed = raw ? JSON.parse(raw) : [];
       if (Array.isArray(parsed) && parsed.length > 0) {
         storeProducts = parsed;
@@ -107,9 +140,102 @@ export function resolveProductSupplierAndCost(productId: string, sku?: string): 
   };
 }
 
-// ─── Get Claims Eligible to be Returned to Supplier ───
+// ─── Query Products that Belong to a Specific Supplier ───
+export function getProductsBySupplier(supplierId: string): any[] {
+  let storeProducts: any[] = useProductStore.getState().products || [];
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_PRODUCTS);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        storeProducts = parsed;
+      }
+    } catch {}
+  }
 
-export function getEligibleClaimsForReturn(): ClaimRecord[] {
+  const pos = loadPurchaseOrders();
+  const supplierPos = pos.filter(
+    (p) => p.supplierId === supplierId || p.supplier?.id === supplierId
+  );
+  const orderedProductIds = new Set<string>();
+  supplierPos.forEach((po) => {
+    (po.items || []).forEach((item: any) => {
+      if (item.productId) orderedProductIds.add(item.productId);
+    });
+  });
+
+  return storeProducts.filter((p) => {
+    const directSupplier = p.supplierId === supplierId;
+    const inSupplierEntries = Array.isArray(p.supplierEntries) && p.supplierEntries.some((e: any) => e.supplierId === supplierId);
+    const inBarcodes = Array.isArray(p.barcodes) && p.barcodes.some((b: any) => b.supplierId === supplierId);
+    const inOrderedPos = orderedProductIds.has(p.id) || orderedProductIds.has(p.sku);
+    return directSupplier || inSupplierEntries || inBarcodes || inOrderedPos;
+  });
+}
+
+// ─── Query Payable POs for a Supplier (Debt Reduction Candidates) ───
+export interface PayablePO {
+  id: string;
+  poNumber: string;
+  poDate: string;
+  status: string;
+  totalAmount: number;
+  alreadyDeducted: number;
+  remainingPayable: number;
+  items: Array<{
+    id?: string;
+    productId: string;
+    productName: string;
+    sku: string;
+    quantity: number;
+    receivedQuantity?: number;
+    unitPrice: number;
+    unitName?: string;
+  }>;
+}
+
+export function getPayablePOsBySupplier(supplierId: string): PayablePO[] {
+  const allPos = loadPurchaseOrders();
+
+  return allPos
+    .filter((po) => {
+      const isMatchSupp = po.supplierId === supplierId || po.supplier?.id === supplierId;
+      const isNotCancelled = po.status !== 'CANCELLED' && po.status !== 'DRAFT';
+      return isMatchSupp && isNotCancelled;
+    })
+    .map((po) => {
+      const totalAmount = Number(po.totalAmount || 0);
+      const alreadyDeducted = (po.deductedReturns || []).reduce(
+        (sum: number, r: any) => sum + Number(r.amount || 0),
+        0
+      );
+      const remainingPayable = Math.max(0, totalAmount - alreadyDeducted);
+
+      return {
+        id: po.id,
+        poNumber: po.poNumber,
+        poDate: po.createdAt || po.issueDate || po.issuedAt || new Date().toISOString(),
+        status: po.status,
+        totalAmount,
+        alreadyDeducted,
+        remainingPayable,
+        items: (po.items || []).map((i: any) => ({
+          id: i.id,
+          productId: i.productId,
+          productName: i.productName,
+          sku: i.sku,
+          quantity: Number(i.quantity || 0),
+          receivedQuantity: Number(i.receivedQuantity || i.quantity || 0),
+          unitPrice: Number(i.unitPrice || i.costPrice || 0),
+          unitName: i.unitName || 'ชิ้น',
+        })),
+      };
+    })
+    .filter((po) => po.remainingPayable > 0);
+}
+
+// ─── Get Claims Eligible to be Returned to Supplier ───
+export function getEligibleClaimsForReturn(supplierId?: string): ClaimRecord[] {
   const allClaims = loadAllClaimRecords();
 
   return allClaims
@@ -117,10 +243,10 @@ export function getEligibleClaimsForReturn(): ClaimRecord[] {
       !c.returnDocId &&
       c.status !== 'SCRAPPED' &&
       c.resolutionType === 'SUPPLIER_RMA' &&
-      c.status === 'PENDING_SUPPLIER'
+      c.status === 'PENDING_SUPPLIER' &&
+      (!supplierId || c.supplierId === supplierId)
     )
     .map((c) => {
-      // Auto-populate supplier and cost if not present
       if (!c.supplierId || !c.costPrice) {
         const resolved = resolveProductSupplierAndCost(c.productId, c.sku);
         const unitCost = c.costPrice || resolved.costPrice;
@@ -139,7 +265,6 @@ export function getEligibleClaimsForReturn(): ClaimRecord[] {
 }
 
 // ─── Group Pending Claims by Supplier ───
-
 export interface PendingSupplierGroup {
   supplierId: string;
   supplierName: string;
@@ -185,6 +310,37 @@ export function getPendingReturnsGroupedBySupplier(): PendingSupplierGroup[] {
 }
 
 // ─── Create Supplier Return Note (RTN) ───
+export interface CreateSupplierReturnItemInput {
+  productId: string;
+  productName: string;
+  sku: string;
+  unitName?: string;
+  quantity: number;
+  unitCost: number;
+  itemType: SupplierReturnItemType;
+  defectReason?: string;
+  returnReason?: string;
+  claimId?: string;
+  poId?: string;
+  poNumber?: string;
+  poItemId?: string;
+  originalOrderNumber?: string;
+}
+
+export interface CreateSupplierReturnParams {
+  supplierId: string;
+  supplierName: string;
+  supplierContact?: string;
+  supplierPhone?: string;
+  supplierAddress?: string;
+  linkedPoId?: string;
+  linkedPoNumber?: string;
+  items: CreateSupplierReturnItemInput[];
+  customCreditAmount?: number;
+  notes?: string;
+  createdBy?: string;
+  autoDeductFromPo?: boolean;
+}
 
 export interface CreateReturnNoteParams {
   supplierId: string;
@@ -192,12 +348,17 @@ export interface CreateReturnNoteParams {
   supplierContact?: string;
   supplierPhone?: string;
   supplierAddress?: string;
-  claimItems: Array<{
+  claimItems?: Array<{
     claimId: string;
     unitCost?: number;
   }>;
+  items?: CreateSupplierReturnItemInput[];
+  linkedPoId?: string;
+  linkedPoNumber?: string;
+  customCreditAmount?: number;
   notes?: string;
   createdBy?: string;
+  autoDeductFromPo?: boolean;
 }
 
 export function createSupplierReturnNote(params: CreateReturnNoteParams): SupplierReturnNote {
@@ -207,43 +368,116 @@ export function createSupplierReturnNote(params: CreateReturnNoteParams): Suppli
 
   const returnItems: SupplierReturnItem[] = [];
   let totalQty = 0;
-  let totalCost = 0;
+  let defectiveTotalCost = 0;
+  let overstockTotalCost = 0;
 
-  const claimIdsToUpdate = new Set(params.claimItems.map((i) => i.claimId));
+  // Case 1: Advanced items array provided (combines Defective and Overstock)
+  if (Array.isArray(params.items) && params.items.length > 0) {
+    const claimIdsToUpdate = new Set<string>();
 
-  allClaims.forEach((c) => {
-    if (claimIdsToUpdate.has(c.id)) {
-      const matchParam = params.claimItems.find((p) => p.claimId === c.id);
-      const unitCost = matchParam?.unitCost ?? (c.costPrice || 50);
-      const itemTotalCost = Math.round(unitCost * c.quantity * 100) / 100;
-
-      returnItems.push({
-        claimId: c.id,
-        productId: c.productId,
-        productName: c.productName,
-        sku: c.sku,
-        unitName: c.unitName,
-        quantity: c.quantity,
-        unitCost: unitCost,
+    params.items.forEach((item) => {
+      const itemTotalCost = Math.round(Number(item.unitCost) * Number(item.quantity) * 100) / 100;
+      const rItem: SupplierReturnItem = {
+        claimId: item.claimId,
+        poId: item.poId || params.linkedPoId,
+        poNumber: item.poNumber || params.linkedPoNumber,
+        poItemId: item.poItemId,
+        productId: item.productId,
+        productName: item.productName,
+        sku: item.sku,
+        unitName: item.unitName || 'ชิ้น',
+        quantity: Number(item.quantity),
+        unitCost: Number(item.unitCost),
         totalCost: itemTotalCost,
-        defectReason: c.defectReason,
-        originalOrderNumber: c.orderNumber,
+        itemType: item.itemType || 'DEFECTIVE',
+        defectReason: item.defectReason,
+        returnReason: item.returnReason,
+        originalOrderNumber: item.originalOrderNumber,
+      };
+
+      returnItems.push(rItem);
+      totalQty += Number(item.quantity);
+
+      if (rItem.itemType === 'DEFECTIVE') {
+        defectiveTotalCost += itemTotalCost;
+        if (item.claimId) claimIdsToUpdate.add(item.claimId);
+      } else {
+        overstockTotalCost += itemTotalCost;
+        // Deduct active store stock for unsold/overstock return
+        if (typeof window !== 'undefined') {
+          try {
+            const rawProds = localStorage.getItem(STORAGE_KEY_PRODUCTS);
+            if (rawProds) {
+              const prods: any[] = JSON.parse(rawProds);
+              const target = prods.find((p) => p.id === item.productId || p.sku === item.sku);
+              if (target) {
+                target.stock = Math.max(0, Number(target.stock || 0) - Number(item.quantity));
+                localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(prods));
+                useProductStore.getState().fetchProducts();
+              }
+            }
+          } catch (e) {
+            console.error('Failed to deduct inventory for overstock return:', e);
+          }
+        }
+      }
+    });
+
+    // Update claim records if any
+    if (claimIdsToUpdate.size > 0) {
+      allClaims.forEach((c) => {
+        if (claimIdsToUpdate.has(c.id)) {
+          c.returnDocId = returnId;
+          c.status = 'SENT_TO_SUPPLIER';
+          c.supplierId = params.supplierId;
+          c.supplierName = params.supplierName;
+        }
       });
-
-      totalQty += c.quantity;
-      totalCost += itemTotalCost;
-
-      // Update claim record status
-      c.returnDocId = returnId;
-      c.status = 'SENT_TO_SUPPLIER';
-      c.supplierId = params.supplierId;
-      c.supplierName = params.supplierName;
-      c.costPrice = unitCost;
-      c.totalCostValue = itemTotalCost;
+      saveClaimRecords(allClaims);
     }
-  });
+  } else if (Array.isArray(params.claimItems) && params.claimItems.length > 0) {
+    // Case 2: Legacy claimItems fallback
+    const claimIdsToUpdate = new Set(params.claimItems.map((i) => i.claimId));
 
-  saveClaimRecords(allClaims);
+    allClaims.forEach((c) => {
+      if (claimIdsToUpdate.has(c.id)) {
+        const matchParam = params.claimItems!.find((p) => p.claimId === c.id);
+        const unitCost = matchParam?.unitCost ?? (c.costPrice || 50);
+        const itemTotalCost = Math.round(unitCost * c.quantity * 100) / 100;
+
+        returnItems.push({
+          claimId: c.id,
+          productId: c.productId,
+          productName: c.productName,
+          sku: c.sku,
+          unitName: c.unitName,
+          quantity: c.quantity,
+          unitCost: unitCost,
+          totalCost: itemTotalCost,
+          itemType: 'DEFECTIVE',
+          defectReason: c.defectReason,
+          originalOrderNumber: c.orderNumber,
+        });
+
+        totalQty += c.quantity;
+        defectiveTotalCost += itemTotalCost;
+
+        c.returnDocId = returnId;
+        c.status = 'SENT_TO_SUPPLIER';
+        c.supplierId = params.supplierId;
+        c.supplierName = params.supplierName;
+        c.costPrice = unitCost;
+        c.totalCostValue = itemTotalCost;
+      }
+    });
+
+    saveClaimRecords(allClaims);
+  }
+
+  const itemsTotalCost = Math.round((defectiveTotalCost + overstockTotalCost) * 100) / 100;
+  const totalCredit = params.customCreditAmount !== undefined && params.customCreditAmount >= 0
+    ? Math.round(params.customCreditAmount * 100) / 100
+    : itemsTotalCost;
 
   const newReturnNote: SupplierReturnNote = {
     id: returnId,
@@ -253,14 +487,65 @@ export function createSupplierReturnNote(params: CreateReturnNoteParams): Suppli
     supplierContact: params.supplierContact,
     supplierPhone: params.supplierPhone,
     supplierAddress: params.supplierAddress,
+    linkedPoId: params.linkedPoId,
+    linkedPoNumber: params.linkedPoNumber,
     items: returnItems,
     totalQuantity: totalQty,
-    totalCreditAmount: Math.round(totalCost * 100) / 100,
-    remainingCreditAmount: Math.round(totalCost * 100) / 100,
+    defectiveTotalCost: Math.round(defectiveTotalCost * 100) / 100,
+    overstockTotalCost: Math.round(overstockTotalCost * 100) / 100,
+    totalCreditAmount: totalCredit,
+    remainingCreditAmount: totalCredit,
     status: 'PENDING_DEDUCTION',
     notes: params.notes,
-    createdBy: params.createdBy || 'เจ้าหน้าที่ฝ่ายเคลม',
+    createdBy: params.createdBy || 'เจ้าหน้าที่ฝ่ายส่งคืน/เคลม',
   };
+
+  // If auto-deduct is requested against linked PO
+  if (params.autoDeductFromPo && params.linkedPoId && totalCredit > 0) {
+    try {
+      const allPos = loadPurchaseOrders();
+      const targetPo = allPos.find(
+        (p) => p.id === params.linkedPoId || p.poNumber === params.linkedPoNumber
+      );
+      if (targetPo) {
+        const poTotal = Number(targetPo.totalAmount || 0);
+        const alreadyDeducted = (targetPo.deductedReturns || []).reduce(
+          (sum: number, r: any) => sum + Number(r.amount || 0),
+          0
+        );
+        const curPayable = Math.max(0, poTotal - alreadyDeducted);
+        const actualDeduct = Math.min(totalCredit, curPayable);
+
+        if (actualDeduct > 0) {
+          const deductionEntry = {
+            returnNoteId: returnId,
+            returnNumber: returnId,
+            amount: actualDeduct,
+            deductedAt: nowIso,
+            note: `หักลดยอดอัตโนมัติจากใบส่งคืน ${returnId}`,
+          };
+
+          targetPo.deductedReturns = [...(targetPo.deductedReturns || []), deductionEntry];
+          targetPo.netAmountPayable = Math.max(0, curPayable - actualDeduct);
+          savePurchaseOrders(allPos);
+
+          newReturnNote.remainingCreditAmount = Math.max(0, Math.round((totalCredit - actualDeduct) * 100) / 100);
+          newReturnNote.status = newReturnNote.remainingCreditAmount <= 0 ? 'DEDUCTED' : 'PARTIALLY_DEDUCTED';
+          newReturnNote.deductions = [
+            {
+              billNumber: targetPo.poNumber || params.linkedPoNumber || 'PO',
+              deductedAmount: actualDeduct,
+              deductedAt: nowIso,
+              netPaid: targetPo.netAmountPayable,
+              note: `หักลดยอดในใบสั่งซื้อ ${targetPo.poNumber}`,
+            },
+          ];
+        }
+      }
+    } catch (e) {
+      console.error('Failed to auto-deduct PO balance:', e);
+    }
+  }
 
   const existingNotes = loadSupplierReturnNotes();
   existingNotes.unshift(newReturnNote);
@@ -269,8 +554,75 @@ export function createSupplierReturnNote(params: CreateReturnNoteParams): Suppli
   return newReturnNote;
 }
 
-// ─── Deduct Return Note from Supplier PO Bill ───
+// ─── Cancel Supplier Return Note & Rollback ───
+export function cancelSupplierReturnNote(noteId: string): { success: boolean; message: string } {
+  const notes = loadSupplierReturnNotes();
+  const note = notes.find((n) => n.id === noteId);
+  if (!note) {
+    return { success: false, message: 'ไม่พบเอกสารส่งคืนที่ต้องการยกเลิก' };
+  }
 
+  if (note.status === 'CANCELLED') {
+    return { success: false, message: 'เอกสารนี้ถูกยกเลิกไปแล้ว' };
+  }
+
+  // 1. Rollback customer claims back to PENDING_SUPPLIER
+  const allClaims = loadAllClaimRecords();
+  allClaims.forEach((c) => {
+    if (c.returnDocId === noteId) {
+      c.returnDocId = undefined;
+      c.status = 'PENDING_SUPPLIER';
+    }
+  });
+  saveClaimRecords(allClaims);
+
+  // 2. Rollback inventory stock for overstock items
+  const overstockItems = note.items.filter((i) => i.itemType === 'OVERSTOCK');
+  if (overstockItems.length > 0 && typeof window !== 'undefined') {
+    try {
+      const rawProds = localStorage.getItem(STORAGE_KEY_PRODUCTS);
+      if (rawProds) {
+        const prods: any[] = JSON.parse(rawProds);
+        overstockItems.forEach((item) => {
+          const p = prods.find((prod) => prod.id === item.productId || prod.sku === item.sku);
+          if (p) {
+            p.stock = Number(p.stock || 0) + Number(item.quantity);
+          }
+        });
+        localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(prods));
+        useProductStore.getState().fetchProducts();
+      }
+    } catch (e) {
+      console.error('Failed to rollback overstock products:', e);
+    }
+  }
+
+  // 3. Rollback PO deductions if applied
+  if (note.deductions && note.deductions.length > 0) {
+    try {
+      const allPos = loadPurchaseOrders();
+      note.deductions.forEach((d) => {
+        const po = allPos.find((p) => p.poNumber === d.billNumber);
+        if (po && Array.isArray(po.deductedReturns)) {
+          po.deductedReturns = po.deductedReturns.filter((r: any) => r.returnNoteId !== noteId);
+          const totalAmount = Number(po.totalAmount || 0);
+          const totalDeducted = po.deductedReturns.reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+          po.netAmountPayable = Math.max(0, totalAmount - totalDeducted);
+        }
+      });
+      savePurchaseOrders(allPos);
+    } catch (e) {
+      console.error('Failed to rollback PO deductions:', e);
+    }
+  }
+
+  note.status = 'CANCELLED';
+  saveSupplierReturnNotes(notes);
+
+  return { success: true, message: `ยกเลิกเอกสารส่งคืน ${noteId} และคืนยอดสต็อก/สถานะเรียบร้อยแล้ว` };
+}
+
+// ─── Deduct Return Note from Supplier PO Bill ───
 export function getAvailableReturnNotesForSupplier(supplierId: string): SupplierReturnNote[] {
   const notes = loadSupplierReturnNotes();
   return notes.filter(
@@ -336,3 +688,235 @@ export function deductReturnNoteFromBill(
     message: `หักลดยอดสินค้าเคลมคืนสำเร็จ ฿${actualDeduct.toLocaleString()} (ยอดชำระสุทธิคงเหลือ ฿${netPayable.toLocaleString()})`,
   };
 }
+
+// ─── Update Supplier Return Note (When not yet fully deducted) ───
+export function updateSupplierReturnNote(
+  noteId: string,
+  params: CreateReturnNoteParams
+): SupplierReturnNote {
+  const notes = loadSupplierReturnNotes();
+  const existingIndex = notes.findIndex((n) => n.id === noteId);
+  if (existingIndex < 0) {
+    throw new Error('ไม่พบเอกสารส่งคืนที่ต้องการแก้ไข');
+  }
+
+  const existingNote = notes[existingIndex];
+  if (existingNote.status === 'DEDUCTED') {
+    throw new Error('เอกสารนี้ถูกหักลดหนี้ในบิลแล้ว ไม่สามารถแก้ไขได้โดยตรง (กรุณาย้อนสถานะก่อน)');
+  }
+
+  // 1. Rollback old overstock items from current store stock first
+  const oldOverstockItems = existingNote.items.filter((i) => i.itemType === 'OVERSTOCK');
+  if (oldOverstockItems.length > 0 && typeof window !== 'undefined') {
+    try {
+      const rawProds = localStorage.getItem(STORAGE_KEY_PRODUCTS);
+      if (rawProds) {
+        const prods: any[] = JSON.parse(rawProds);
+        oldOverstockItems.forEach((item) => {
+          const p = prods.find((prod) => prod.id === item.productId || prod.sku === item.sku);
+          if (p) {
+            p.stock = Number(p.stock || 0) + Number(item.quantity);
+          }
+        });
+        localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(prods));
+      }
+    } catch (e) {}
+  }
+
+  // 2. Rollback old claims
+  const allClaims = loadAllClaimRecords();
+  allClaims.forEach((c) => {
+    if (c.returnDocId === noteId) {
+      c.returnDocId = undefined;
+      c.status = 'PENDING_SUPPLIER';
+    }
+  });
+
+  // 3. Process new items
+  const newReturnItems: SupplierReturnItem[] = [];
+  let totalQty = 0;
+  let defectiveTotalCost = 0;
+  let overstockTotalCost = 0;
+  const claimIdsToUpdate = new Set<string>();
+
+  (params.items || []).forEach((item) => {
+    const itemTotalCost = Math.round(Number(item.unitCost) * Number(item.quantity) * 100) / 100;
+    const rItem: SupplierReturnItem = {
+      claimId: item.claimId,
+      poId: item.poId || params.linkedPoId,
+      poNumber: item.poNumber || params.linkedPoNumber,
+      poItemId: item.poItemId,
+      productId: item.productId,
+      productName: item.productName,
+      sku: item.sku,
+      unitName: item.unitName || 'ชิ้น',
+      quantity: Number(item.quantity),
+      unitCost: Number(item.unitCost),
+      totalCost: itemTotalCost,
+      itemType: item.itemType || 'DEFECTIVE',
+      defectReason: item.defectReason,
+      returnReason: item.returnReason,
+      originalOrderNumber: item.originalOrderNumber,
+    };
+
+    newReturnItems.push(rItem);
+    totalQty += Number(item.quantity);
+
+    if (rItem.itemType === 'DEFECTIVE') {
+      defectiveTotalCost += itemTotalCost;
+      if (item.claimId) claimIdsToUpdate.add(item.claimId);
+    } else {
+      overstockTotalCost += itemTotalCost;
+      // Deduct new overstock quantity from store
+      if (typeof window !== 'undefined') {
+        try {
+          const rawProds = localStorage.getItem(STORAGE_KEY_PRODUCTS);
+          if (rawProds) {
+            const prods: any[] = JSON.parse(rawProds);
+            const target = prods.find((p) => p.id === item.productId || p.sku === item.sku);
+            if (target) {
+              target.stock = Math.max(0, Number(target.stock || 0) - Number(item.quantity));
+              localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(prods));
+            }
+          }
+        } catch (e) {}
+      }
+    }
+  });
+
+  if (typeof window !== 'undefined') {
+    useProductStore.getState().fetchProducts();
+  }
+
+  // Update claim records
+  allClaims.forEach((c) => {
+    if (claimIdsToUpdate.has(c.id)) {
+      c.returnDocId = noteId;
+      c.status = 'SENT_TO_SUPPLIER';
+      c.supplierId = params.supplierId;
+      c.supplierName = params.supplierName;
+    }
+  });
+  saveClaimRecords(allClaims);
+
+  const itemsTotalCost = Math.round((defectiveTotalCost + overstockTotalCost) * 100) / 100;
+  const totalCredit = params.customCreditAmount !== undefined && params.customCreditAmount >= 0
+    ? Math.round(params.customCreditAmount * 100) / 100
+    : itemsTotalCost;
+
+  const updatedNote: SupplierReturnNote = {
+    ...existingNote,
+    supplierId: params.supplierId,
+    supplierName: params.supplierName,
+    supplierContact: params.supplierContact,
+    supplierPhone: params.supplierPhone,
+    supplierAddress: params.supplierAddress,
+    linkedPoId: params.linkedPoId,
+    linkedPoNumber: params.linkedPoNumber,
+    items: newReturnItems,
+    totalQuantity: totalQty,
+    defectiveTotalCost: Math.round(defectiveTotalCost * 100) / 100,
+    overstockTotalCost: Math.round(overstockTotalCost * 100) / 100,
+    totalCreditAmount: totalCredit,
+    remainingCreditAmount: totalCredit,
+    notes: params.notes,
+  };
+
+  notes[existingIndex] = updatedNote;
+  saveSupplierReturnNotes(notes);
+
+  return updatedNote;
+}
+
+// ─── Change / Revert Supplier Return Note Status ───
+export function changeSupplierReturnStatus(
+  noteId: string,
+  newStatus: SupplierReturnNote['status'],
+  options?: { rollbackPo?: boolean }
+): { success: boolean; message: string; updatedNote?: SupplierReturnNote } {
+  const notes = loadSupplierReturnNotes();
+  const note = notes.find((n) => n.id === noteId);
+  if (!note) {
+    return { success: false, message: 'ไม่พบเอกสารส่งคืนที่ต้องการเปลี่ยนสถานะ' };
+  }
+
+  const oldStatus = note.status;
+  if (oldStatus === newStatus) {
+    return { success: true, message: 'สถานะเป็นสถานะเดิมอยู่แล้ว', updatedNote: note };
+  }
+
+  // 1. If reverting from DEDUCTED / PARTIALLY_DEDUCTED back to PENDING_DEDUCTION
+  if ((oldStatus === 'DEDUCTED' || oldStatus === 'PARTIALLY_DEDUCTED') && newStatus === 'PENDING_DEDUCTION') {
+    // Rollback deductions in PO
+    try {
+      const allPos = loadPurchaseOrders();
+      if (note.deductions && note.deductions.length > 0) {
+        note.deductions.forEach((d) => {
+          const po = allPos.find((p) => p.poNumber === d.billNumber);
+          if (po && Array.isArray(po.deductedReturns)) {
+            po.deductedReturns = po.deductedReturns.filter((r: any) => r.returnNoteId !== noteId);
+            const totalAmount = Number(po.totalAmount || 0);
+            const totalDeducted = po.deductedReturns.reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+            po.netAmountPayable = Math.max(0, totalAmount - totalDeducted);
+          }
+        });
+        savePurchaseOrders(allPos);
+      }
+    } catch (e) {
+      console.error('Failed to rollback PO deduction on status change:', e);
+    }
+
+    note.remainingCreditAmount = note.totalCreditAmount;
+    note.deductions = [];
+    note.status = 'PENDING_DEDUCTION';
+  } else if (newStatus === 'CANCELLED') {
+    // 2. If cancelling
+    return cancelSupplierReturnNote(noteId);
+  } else if (oldStatus === 'CANCELLED' && newStatus === 'PENDING_DEDUCTION') {
+    // 3. If reviving from CANCELLED
+    // Re-deduct overstock items from store stock
+    const overstockItems = note.items.filter((i) => i.itemType === 'OVERSTOCK');
+    if (overstockItems.length > 0 && typeof window !== 'undefined') {
+      try {
+        const rawProds = localStorage.getItem(STORAGE_KEY_PRODUCTS);
+        if (rawProds) {
+          const prods: any[] = JSON.parse(rawProds);
+          overstockItems.forEach((item) => {
+            const p = prods.find((prod) => prod.id === item.productId || prod.sku === item.sku);
+            if (p) {
+              p.stock = Math.max(0, Number(p.stock || 0) - Number(item.quantity));
+            }
+          });
+          localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(prods));
+          useProductStore.getState().fetchProducts();
+        }
+      } catch (e) {}
+    }
+
+    // Re-link defective claims
+    const claimIds = new Set(note.items.filter((i) => i.itemType === 'DEFECTIVE' && i.claimId).map((i) => i.claimId));
+    if (claimIds.size > 0) {
+      const allClaims = loadAllClaimRecords();
+      allClaims.forEach((c) => {
+        if (claimIds.has(c.id)) {
+          c.returnDocId = noteId;
+          c.status = 'SENT_TO_SUPPLIER';
+        }
+      });
+      saveClaimRecords(allClaims);
+    }
+
+    note.remainingCreditAmount = note.totalCreditAmount;
+    note.status = 'PENDING_DEDUCTION';
+  } else if (newStatus === 'DEDUCTED' && oldStatus === 'PENDING_DEDUCTION') {
+    // 4. Manually mark as deducted
+    note.remainingCreditAmount = 0;
+    note.status = 'DEDUCTED';
+  } else {
+    note.status = newStatus;
+  }
+
+  saveSupplierReturnNotes(notes);
+  return { success: true, message: `เปลี่ยนสถานะเอกสาร ${noteId} เป็น "${newStatus}" เรียบร้อยแล้ว`, updatedNote: note };
+}
+

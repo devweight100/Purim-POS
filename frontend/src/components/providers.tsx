@@ -12,7 +12,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         {children}
-        <Toaster theme="light" position="top-right" />
+        <Toaster theme="light" position="bottom-right" duration={2000} />
       </TooltipProvider>
     </QueryClientProvider>
   );

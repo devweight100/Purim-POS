@@ -95,8 +95,14 @@ export const PaymentCard = forwardRef<HTMLDivElement, {}>((props, ref) => {
         </div>
         {cart.getBillDiscountAmount() > 0 && (
           <div className="flex justify-between items-center text-sm text-red-600">
-            <span>ส่วนลด</span>
+            <span>ส่วนลดท้ายบิล</span>
             <span>-{formatCurrency(cart.getBillDiscountAmount())}</span>
+          </div>
+        )}
+        {cart.getPointsDiscountAmount() > 0 && (
+          <div className="flex justify-between items-center text-sm text-amber-700 font-bold">
+            <span>ส่วนลดใช้แต้ม ({cart.pointsUsed.toLocaleString()} แต้ม)</span>
+            <span>-{formatCurrency(cart.getPointsDiscountAmount())}</span>
           </div>
         )}
         {cart.isVatEnabled && cart.getVatAmount() > 0 && (

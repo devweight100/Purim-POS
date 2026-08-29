@@ -74,21 +74,21 @@ export function BillDiscountPopup({ open, onOpenChange }: BillDiscountPopupProps
               <Button
                 variant={discountType === 'none' ? 'default' : 'outline'}
                 onClick={() => setDiscountType('none')}
-                className={`flex-1 ${discountType === 'none' ? 'bg-primary text-white' : 'border-slate-300 text-slate-500'}`}
+                className={`flex-1 h-12 ${discountType === 'none' ? 'bg-primary text-white' : 'border-slate-300 text-slate-500'}`}
               >
                 ไม่มี
               </Button>
               <Button
                 variant={discountType === 'baht' ? 'default' : 'outline'}
                 onClick={() => setDiscountType('baht')}
-                className={`flex-1 ${discountType === 'baht' ? 'bg-primary text-white' : 'border-slate-300 text-slate-500 hover:text-primary hover:border-primary/50'}`}
+                className={`flex-1 h-12 ${discountType === 'baht' ? 'bg-primary text-white' : 'border-slate-300 text-slate-500 hover:text-primary hover:border-primary/50'}`}
               >
                 ฿ บาท
               </Button>
               <Button
                 variant={discountType === 'percent' ? 'default' : 'outline'}
                 onClick={() => setDiscountType('percent')}
-                className={`flex-1 ${discountType === 'percent' ? 'bg-primary text-white' : 'border-slate-300 text-slate-500 hover:text-primary hover:border-primary/50'}`}
+                className={`flex-1 h-12 ${discountType === 'percent' ? 'bg-primary text-white' : 'border-slate-300 text-slate-500 hover:text-primary hover:border-primary/50'}`}
               >
                 <Percent className="w-4 h-4 mr-1" /> เปอร์เซ็นต์
               </Button>
@@ -108,10 +108,10 @@ export function BillDiscountPopup({ open, onOpenChange }: BillDiscountPopupProps
         </div>
 
         <div className="flex gap-3 pt-2">
-          <Button variant="outline" className="flex-1 border-slate-300 text-slate-700" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" className="flex-1 h-12 border-slate-300 text-slate-700" onClick={() => onOpenChange(false)}>
             ยกเลิก
           </Button>
-          <Button className="flex-1 bg-primary hover:bg-primary/90 text-white" onClick={handleConfirm}>
+          <Button className="flex-1 h-12 bg-primary hover:bg-primary/90 text-white" onClick={handleConfirm}>
             บันทึกส่วนลด
           </Button>
         </div>

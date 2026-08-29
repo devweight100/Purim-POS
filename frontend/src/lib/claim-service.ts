@@ -544,6 +544,20 @@ export function processClaim(params: ProcessClaimParams): ClaimRecord {
     );
   }
 
+  // 4. If resolution is 'REFUND_CASH', deduct cash from active POS shift drawer!
+  if (params.resolutionType === 'REFUND_CASH') {
+    try {
+      const { useShiftStore } = require('./store/shift-store');
+      const shiftStore = useShiftStore.getState();
+      if (shiftStore && shiftStore.isShiftOpen()) {
+        const cashRefundAmt = params.refundAmount ?? totalClaimVal;
+        shiftStore.recordClaimRefund(cashRefundAmt, claimId, params.defectReason);
+      }
+    } catch (e) {
+      console.warn('Could not deduct cash from shift for claim refund:', e);
+    }
+  }
+
   return claimRecord;
 }
 

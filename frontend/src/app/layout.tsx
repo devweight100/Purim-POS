@@ -27,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="th">
       <body
-        className={`${inter.variable} ${sarabun.variable} font-sans antialiased min-h-screen bg-background text-foreground flex flex-col`}
+        className={`${inter.variable} ${sarabun.variable} font-sans antialiased min-h-dvh bg-background text-foreground flex flex-col`}
       >
         <Providers>{children}</Providers>
       </body>

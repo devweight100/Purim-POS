@@ -121,17 +121,17 @@ export default function CategoriesPage() {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
+    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
       {/* Header */}
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl flex items-center gap-2">
-            <FolderTree className="w-8 h-8 text-primary" /> จัดการหมวดหมู่สินค้า
+          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+            <FolderTree className="w-6 h-6 text-sky-500" /> จัดการหมวดหมู่สินค้า (Categories)
           </h1>
-          <p className="text-slate-500 mt-1">เพิ่ม แก้ไข หรือลบหมวดหมู่สำหรับจัดกลุ่มสินค้าในร้าน</p>
+          <p className="text-xs text-slate-500 mt-0.5">เพิ่ม แก้ไข หรือลบหมวดหมู่สำหรับจัดกลุ่มสินค้าในร้าน</p>
         </div>
-        <Button className="h-11 w-full bg-primary px-6 font-bold text-white hover:bg-primary/90 sm:w-auto" onClick={handleOpenAdd}>
-          <Plus className="w-5 h-5 mr-2" /> เพิ่มหมวดหมู่ใหม่
+        <Button className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-10 px-5 text-xs shadow-sm rounded-xl" onClick={handleOpenAdd}>
+          <Plus className="w-4 h-4 mr-1.5" /> เพิ่มหมวดหมู่ใหม่
         </Button>
       </div>
 

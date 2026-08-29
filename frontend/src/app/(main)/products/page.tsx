@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback, Fragment } from "react";
 import { api, apiFetch } from "@/lib/api";
 import Link from "next/link";
 import { loadCategories } from "@/lib/category-storage";
@@ -10,13 +10,15 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import {
-  Search, Plus, PackagePlus, Barcode, Tags, Truck,
+  Search, Plus, PackagePlus, Barcode, Tags, Truck, Package,
   Pencil, ChevronUp, ChevronDown, ChevronsUpDown, X,
   Layers, RefreshCw, Trash2, ChevronRight, Building2, Info,
-  ImagePlus, Star, Crown, Upload, FolderTree
+  ImagePlus, Star, Crown, Upload, FolderTree, FileSpreadsheet, AlertTriangle
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
+import { parseProductCSV, csvRowsToProducts } from "@/lib/csv-parser";
+import { useProductStore } from "@/lib/store/product-store";
 
 // ─── EAN-13 Generator ─────────────────────────────────────────────────
 function generateEAN13(): string {
@@ -133,6 +135,22 @@ function loadSavedProducts(): any[] | null {
   } catch { return null; }
 }
 
+function loadSuppliersFromStorage(): any[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem('custom_suppliers');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return [
+    { id: "supp_1", name: "บริษัท ปุริม ซัพพลาย จำกัด", contactName: "คุณสมชาย", phone: "081-234-5678", email: "contact@purimsupply.com", address: "123 ถ.สุขุมวิท กรุงเทพฯ", creditTerms: 30 },
+    { id: "supp_2", name: "บจก. สยามเทรดดิ้ง แอนด์ ดีสทริบิวชั่น", contactName: "คุณวิภา", phone: "089-876-5432", email: "sales@siamtrading.co.th", address: "456 ถ.รัชดาภิเษก กรุงเทพฯ", creditTerms: 15 },
+    { id: "supp_3", name: "หจก. รวมสินค้าค้าส่ง", contactName: "คุณกิตติ", phone: "02-999-8888", email: "wholesale@ruamkhong.com", address: "789 ถ.พหลโยธิน กรุงเทพฯ", creditTerms: 45 },
+  ];
+}
+
 // ─── Initial form ─────────────────────────────────────────────────────
 const makeInitialForm = () => ({
   name: "",
@@ -141,13 +159,16 @@ const makeInitialForm = () => ({
   size: "",
   color: "",
   categoryId: "",
+  stock: "0",              // จำนวนสต๊อกคงเหลือปัจจุบัน
   basePrice: "",           // ต้นทุนอ้างอิง (ถัวเฉลี่ยหรือค่าล่าสุด)
+  minStockAlert: "10",     // จำนวนสต๊อกเตือนใกล้หมด
   priceLevel1: "", priceLevel2: "", priceLevel3: "", priceLevel4: "", priceLevel5: "",
   barcodes: [{ barcode: "", supplierId: "", label: "" }] as ProductBarcode[],
   supplierEntries: [] as ProductSupplierEntry[],
   packagingUnits: [] as PackagingUnit[],
   images: [] as ProductImage[],
   wholesaleSteps: Array.from({ length: 5 }, () => ({ minQuantity: "", unitPrice: "" })),
+  defaultSellingUnitId: "",
 });
 
 type ProductForm = ReturnType<typeof makeInitialForm>;
@@ -169,10 +190,74 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [allPackaging, setAllPackaging] = useState<Record<string, PackagingUnit[]>>({});
   const [allImages, setAllImages] = useState<Record<string, ProductImage[]>>({});
+  const csvInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCSVImport = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        if (!text) return;
+        const rows = parseProductCSV(text);
+        if (rows.length === 0) {
+          toast.error("ไม่พบข้อมูลสินค้าในไฟล์ CSV");
+          return;
+        }
+        const newProducts = csvRowsToProducts(rows);
+        
+        const savedCustom = localStorage.getItem('custom_products');
+        let existing: any[] = [];
+        if (savedCustom) {
+          try { existing = JSON.parse(savedCustom); } catch {}
+        }
+
+        const map = new Map<string, any>();
+        existing.forEach(p => map.set(p.id || p.sku, p));
+        newProducts.forEach(p => map.set(p.id || p.sku, p));
+        const combined = Array.from(map.values());
+
+        localStorage.setItem('custom_products', JSON.stringify(combined));
+        
+        // Reload products state & store
+        useProductStore.getState().fetchProducts().then(() => {
+          const storeProducts = useProductStore.getState().products;
+          setProducts(storeProducts);
+        });
+
+        toast.success(`นำเข้าสินค้าสำเร็จ ${newProducts.length} รายการ (หากไม่มีบาร์โค้ด จะใช้รหัสสินค้าแทนในการขาย)`);
+      } catch (err: any) {
+        toast.error("เกิดข้อผิดพลาดในการอ่านไฟล์ CSV: " + err.message);
+      }
+    };
+    reader.readAsText(file, "UTF-8");
+  };
+
+  const loadData = useCallback(() => {
+    setLoading(true);
+    useProductStore.getState().fetchProducts().then(() => {
+      const storeProducts = useProductStore.getState().products;
+      const storeCategories = useProductStore.getState().categories;
+      setProducts(storeProducts);
+      setCategories(storeCategories);
+
+      // Load suppliers fallback
+      try {
+        const savedSuppliers = localStorage.getItem('custom_suppliers');
+        if (savedSuppliers) setSuppliers(JSON.parse(savedSuppliers));
+      } catch {}
+
+      setLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [supplierFilter, setSupplierFilter] = useState("all");
   const [sizeFilter, setSizeFilter] = useState("all");
   const [colorFilter, setColorFilter] = useState("all");
   const [stockFilter, setStockFilter] = useState<"all" | "low" | "out">("all");
@@ -189,7 +274,11 @@ export default function ProductsPage() {
       const finalProds = savedProds && savedProds.length > 0 ? savedProds : prods;
       setProducts(finalProds);
       setCategories(loadCategories());
-      setSuppliers(supps || []);
+
+      const localSupps = loadSuppliersFromStorage();
+      const finalSupps = Array.isArray(supps) && supps.length > 0 ? supps : localSupps;
+      setSuppliers(finalSupps);
+
       const pkgMap: Record<string, PackagingUnit[]> = {};
       const imgMap: Record<string, ProductImage[]> = {};
       (finalProds as any[]).forEach((p: any) => {
@@ -214,11 +303,16 @@ export default function ProductsPage() {
       const allBarcodes = [...(p.barcodes || []).map((b: any) => b.barcode), ...(allPackaging[p.id] || []).map(u => u.barcode)];
       const matchSearch = (p.name || "").toLowerCase().includes(q) || (p.sku || "").toLowerCase().includes(q) || allBarcodes.some(b => b?.includes(search));
       const matchCat = categoryFilter === "all" || p.categoryId === categoryFilter;
+      const matchSupplier = supplierFilter === "all" || 
+        (p.supplierId === supplierFilter) || 
+        (Array.isArray(p.barcodes) && p.barcodes.some((b: any) => b.supplierId === supplierFilter)) ||
+        (Array.isArray(p.supplierEntries) && p.supplierEntries.some((s: any) => s.supplierId === supplierFilter));
       const matchSize = sizeFilter === "all" || p.size === sizeFilter;
       const matchColor = colorFilter === "all" || p.color === colorFilter;
       const stock = p.stock ?? 0;
-      const matchStock = stockFilter === "all" ? true : stockFilter === "out" ? stock === 0 : stock > 0 && stock <= 10;
-      return matchSearch && matchCat && matchSize && matchColor && matchStock;
+      const lowThreshold = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : 10;
+      const matchStock = stockFilter === "all" ? true : stockFilter === "out" ? stock === 0 : stock > 0 && stock <= lowThreshold;
+      return matchSearch && matchCat && matchSupplier && matchSize && matchColor && matchStock;
     });
     if (sortKey) {
       list = [...list].sort((a: any, b: any) => {
@@ -228,7 +322,20 @@ export default function ProductsPage() {
       });
     }
     return list;
-  }, [products, search, categoryFilter, sizeFilter, colorFilter, stockFilter, sortKey, sortDir, allPackaging]);
+  }, [products, search, categoryFilter, supplierFilter, sizeFilter, colorFilter, stockFilter, sortKey, sortDir, allPackaging]);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 50;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, categoryFilter, supplierFilter, sizeFilter, colorFilter, stockFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const paginatedList = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filtered.slice(start, start + ITEMS_PER_PAGE);
+  }, [filtered, currentPage]);
 
   const handleSort = (key: SortKey) => { if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc"); else { setSortKey(key); setSortDir("asc"); } };
   const toggleExpand = (id: string) => setExpandedRows(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -265,14 +372,22 @@ export default function ProductsPage() {
     return (valid.reduce((sum, s) => sum + parseFloat(s.lastCost), 0) / valid.length).toFixed(2);
   }, [form.supplierEntries]);
 
-  const handleOpenAdd = () => { setForm(makeInitialForm()); setEditingProduct(null); setDialogMode("add"); };
+  const handleOpenAdd = () => {
+    setSuppliers(loadSuppliersFromStorage());
+    setForm(makeInitialForm());
+    setEditingProduct(null);
+    setDialogMode("add");
+  };
 
   const handleOpenEdit = (p: any) => {
+    setSuppliers(loadSuppliersFromStorage());
     setEditingProduct(p);
     setForm({
       name: p.name || "", sku: p.sku || generateEAN13(), unit: p.unit || "",
       size: p.size || "", color: p.color || "", categoryId: p.categoryId || "",
+      stock: (p.stock !== undefined && p.stock !== null ? p.stock : 0).toString(),
       basePrice: p.basePrice?.toString() || "",
+      minStockAlert: p.minStockAlert !== undefined && p.minStockAlert !== null ? p.minStockAlert.toString() : "10",
       priceLevel1: p.priceLevel1?.toString() || "", priceLevel2: p.priceLevel2?.toString() || "",
       priceLevel3: p.priceLevel3?.toString() || "", priceLevel4: p.priceLevel4?.toString() || "",
       priceLevel5: p.priceLevel5?.toString() || "",
@@ -281,6 +396,7 @@ export default function ProductsPage() {
       packagingUnits: allPackaging[p.id] || [],
       images: p.id ? loadImages(p.id) : [],
       wholesaleSteps: p.id && loadWholesale(p.id).length ? loadWholesale(p.id) : Array.from({ length: 5 }, () => ({ minQuantity: "", unitPrice: "" })),
+      defaultSellingUnitId: p.defaultSellingUnitId || "",
     });
     setDialogMode("edit");
   };
@@ -293,6 +409,9 @@ export default function ProductsPage() {
       targetId = "prod_" + Date.now();
     }
 
+    // Stock cannot be edited from product details dialog - must be adjusted via Inventory page for stock card tracking
+    const finalStock = editingProduct?.id ? (editingProduct.stock ?? 0) : 0;
+
     const updatedProductObj = {
       id: targetId,
       name: form.name.trim(),
@@ -302,12 +421,14 @@ export default function ProductsPage() {
       color: form.color.trim(),
       categoryId: form.categoryId,
       basePrice: form.basePrice ? parseFloat(form.basePrice) : null,
+      minStockAlert: form.minStockAlert ? parseInt(form.minStockAlert) : 10,
       priceLevel1: form.priceLevel1 ? parseFloat(form.priceLevel1) : null,
       priceLevel2: form.priceLevel2 ? parseFloat(form.priceLevel2) : null,
       priceLevel3: form.priceLevel3 ? parseFloat(form.priceLevel3) : null,
       priceLevel4: form.priceLevel4 ? parseFloat(form.priceLevel4) : null,
       priceLevel5: form.priceLevel5 ? parseFloat(form.priceLevel5) : null,
-      stock: editingProduct?.stock ?? 0,
+      stock: finalStock,
+      defaultSellingUnitId: form.defaultSellingUnitId || null,
       barcodes: form.barcodes.filter(b => b.barcode.trim()).map(b => ({
         barcode: b.barcode.trim(),
         supplierId: b.supplierId || "",
@@ -324,6 +445,7 @@ export default function ProductsPage() {
 
     setProducts(newProductsList);
     saveSavedProducts(newProductsList);
+    useProductStore.getState().fetchProducts();
 
     savePackaging(targetId, form.packagingUnits);
     setAllPackaging(prev => ({ ...prev, [targetId]: form.packagingUnits }));
@@ -455,11 +577,11 @@ export default function ProductsPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
               <label className="text-sm font-medium text-slate-700">ชื่อสินค้า *</label>
-              <Input value={form.name} onChange={e => updateForm("name", e.target.value)} placeholder="เช่น มาม่า รสหมูสับ" className="h-10 border-slate-300" />
+              <Input value={form.name} onChange={e => updateForm("name", e.target.value)} className="h-10 border-slate-300" />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-slate-700">หน่วยย่อยสุด</label>
-              <Input value={form.unit} onChange={e => updateForm("unit", e.target.value)} placeholder="เช่น ซอง, ชิ้น, ขวด" className="h-10 border-slate-300" />
+              <Input value={form.unit} onChange={e => updateForm("unit", e.target.value)} className="h-10 border-slate-300" />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-slate-700">หมวดหมู่</label>
@@ -470,11 +592,42 @@ export default function ProductsPage() {
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-slate-700">ขนาด</label>
-              <Input value={form.size} onChange={e => updateForm("size", e.target.value)} placeholder="60g, 1L, 30x40" className="h-10 border-slate-300" />
+              <Input value={form.size} onChange={e => updateForm("size", e.target.value)} className="h-10 border-slate-300" />
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-slate-700">สี</label>
-              <Input value={form.color} onChange={e => updateForm("color", e.target.value)} placeholder="ขาว, ดำ, น้ำเงิน" className="h-10 border-slate-300" />
+              <Input value={form.color} onChange={e => updateForm("color", e.target.value)} className="h-10 border-slate-300" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+                <Package className="w-4 h-4 text-sky-600" />
+                จำนวนสต๊อกคงเหลือปัจจุบัน ({form.unit || 'ชิ้น'})
+              </label>
+              <div className="h-10 px-3.5 bg-slate-100 border border-slate-300 rounded-xl flex items-center justify-between">
+                <span className="font-black text-slate-900 text-base">
+                  {(editingProduct ? (editingProduct.stock ?? 0) : 0).toLocaleString()} {form.unit || 'ชิ้น'}
+                </span>
+                <span className="text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                  🔒 ปรับยอดที่หน้าคลังสินค้าเท่านั้น
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                ระบบล็อคไม่ให้แก้ไขจำนวนสต็อกตรงนี้ เพื่อป้องกันข้อมูลสต็อกการ์ดคลาดเคลื่อน กรุณาปรับยอดที่เมนู <Link href="/inventory" className="text-indigo-600 font-bold underline hover:text-indigo-800">คลังสินค้า (Inventory)</Link>
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-amber-900 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-500" />
+                จำนวนสต๊อกเตือนใกล้หมด ({form.unit || 'ชิ้น'})
+              </label>
+              <Input
+                type="number"
+                min="0"
+                value={form.minStockAlert}
+                onChange={e => updateForm("minStockAlert", e.target.value)}
+                className="h-10 border-slate-300 font-bold text-slate-800"
+              />
+              <p className="text-xs text-slate-400">เมื่อสต๊อกเหลือน้อยกว่าหรือเท่ากับจำนวนนี้ ระบบจะแสดงสถานะใกล้หมด</p>
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <label className="text-sm font-medium text-slate-700">รหัสสินค้า EAN-13 (Identity หลัก)</label>
@@ -505,7 +658,7 @@ export default function ProductsPage() {
             {form.barcodes.map((b, i) => (
               <div key={i} className="flex gap-2 items-center">
                 <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <Input value={b.barcode} onChange={e => updateBarcode(i, "barcode", e.target.value)} placeholder="สแกนหรือกรอกบาร์โค้ด" className="h-9 border-slate-300 font-mono text-sm" />
+                  <Input value={b.barcode} onChange={e => updateBarcode(i, "barcode", e.target.value)} className="h-9 border-slate-300 font-mono text-sm" />
                   <select
                     value={b.supplierId || ""}
                     onChange={e => updateBarcode(i, "supplierId", e.target.value)}
@@ -516,7 +669,7 @@ export default function ProductsPage() {
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                   </select>
-                  <Input value={b.label || ""} onChange={e => updateBarcode(i, "label", e.target.value)} placeholder="หมายเหตุ เช่น บาร์โค้ดจาก บ.A" className="h-9 border-slate-300 text-sm" />
+                  <Input value={b.label || ""} onChange={e => updateBarcode(i, "label", e.target.value)} className="h-9 border-slate-300 text-sm" />
                 </div>
                 {form.barcodes.length > 1 && (
                   <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50" onClick={() => removeBarcode(i)}>
@@ -570,11 +723,11 @@ export default function ProductsPage() {
                   </div>
                   <div className="space-y-1">
                     {i === 0 && <label className="text-xs font-medium text-slate-500">ต้นทุน/ชิ้น</label>}
-                    <Input type="number" min="0" step="0.01" value={entry.lastCost} onChange={e => updateSupplierEntry(i, "lastCost", e.target.value)} placeholder="0.00" className="h-9 border-slate-300 text-sm text-right" />
+                    <Input type="number" min="0" step="0.01" value={entry.lastCost} onChange={e => updateSupplierEntry(i, "lastCost", e.target.value)} className="h-9 border-slate-300 text-sm text-right" />
                   </div>
                   <div className="space-y-1">
                     {i === 0 && <label className="text-xs font-medium text-slate-500">หมายเหตุ</label>}
-                    <Input value={entry.notes} onChange={e => updateSupplierEntry(i, "notes", e.target.value)} placeholder="เช่น นำเข้าจากจีน, ส่งตรง" className="h-9 border-slate-300 text-sm" />
+                    <Input value={entry.notes} onChange={e => updateSupplierEntry(i, "notes", e.target.value)} className="h-9 border-slate-300 text-sm" />
                   </div>
                   <Button type="button" variant="ghost" size="icon" className={`h-9 w-9 shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50 ${i === 0 ? "mt-5" : ""}`} onClick={() => removeSupplierEntry(i)}>
                     <Trash2 className="w-3.5 h-3.5" />
@@ -599,7 +752,7 @@ export default function ProductsPage() {
           <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-3">
             <div className="flex-1 space-y-1.5">
               <label className="text-sm font-medium text-slate-700">ต้นทุนอ้างอิง (สำหรับแสดงผล/ประมาณการ)</label>
-              <Input type="number" min="0" step="0.01" value={form.basePrice} onChange={e => updateForm("basePrice", e.target.value)} placeholder="0.00" className="h-10 border-slate-300 text-right max-w-[160px]" />
+              <Input type="number" min="0" step="0.01" value={form.basePrice} onChange={e => updateForm("basePrice", e.target.value)} className="h-10 border-slate-300 text-right max-w-[160px]" />
             </div>
             <p className="text-xs text-slate-400 flex-1">ต้นทุนจริงคำนวณจาก FIFO เมื่อมีการขาย ตัวเลขนี้ใช้แสดงในรายงานประมาณการเท่านั้น</p>
           </div>
@@ -615,7 +768,7 @@ export default function ProductsPage() {
             {([1, 2, 3, 4, 5] as const).map(n => (
               <div key={n} className="space-y-1.5">
                 <label className="text-xs font-medium text-slate-600">ราคา {n}</label>
-                <Input type="number" min="0" step="0.01" value={(form as any)[`priceLevel${n}`]} onChange={e => updateForm(`priceLevel${n}` as any, e.target.value)} placeholder="0.00" className="h-9 border-slate-300 text-right text-sm" />
+                <Input type="number" min="0" step="0.01" value={(form as any)[`priceLevel${n}`]} onChange={e => updateForm(`priceLevel${n}` as any, e.target.value)} className="h-9 border-slate-300 text-right text-sm" />
               </div>
             ))}
           </div>
@@ -636,7 +789,7 @@ export default function ProductsPage() {
           {form.packagingUnits.length === 0 ? (
             <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 py-6 text-center text-sm text-slate-400">
               <Layers className="w-7 h-7 mx-auto text-slate-200 mb-1" />
-              <p>เช่น มาม่า → กล่อง (30 ซอง) → ลัง (6 กล่อง = 180 ซอง)</p>
+              <p>ยังไม่มีหน่วยบรรจุ — คลิก "เพิ่มหน่วยบรรจุ" เพื่อเพิ่ม</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -666,16 +819,16 @@ export default function ProductsPage() {
                       <div className="grid gap-3 sm:grid-cols-3">
                         <div className="space-y-1.5">
                           <label className="text-xs font-medium text-slate-600">ชื่อหน่วย</label>
-                          <Input value={unit.name} onChange={e => updatePackagingUnit(idx, "name", e.target.value)} placeholder="กล่อง, ลัง" className="h-9 border-slate-300 bg-white text-sm" />
+                          <Input value={unit.name} onChange={e => updatePackagingUnit(idx, "name", e.target.value)} className="h-9 border-slate-300 bg-white text-sm" />
                         </div>
                         <div className="space-y-1.5">
                           <label className="text-xs font-medium text-slate-600">จำนวน {prevName} ต่อ 1 {unit.name || "หน่วยนี้"}</label>
-                          <Input type="number" min="1" value={unit.qtyPerPrev} onChange={e => updatePackagingUnit(idx, "qtyPerPrev", e.target.value)} placeholder="30" className="h-9 border-slate-300 bg-white text-sm text-right" />
+                          <Input type="number" min="1" value={unit.qtyPerPrev} onChange={e => updatePackagingUnit(idx, "qtyPerPrev", e.target.value)} className="h-9 border-slate-300 bg-white text-sm text-right" />
                         </div>
                         <div className="space-y-1.5">
                           <label className="text-xs font-medium text-slate-600">บาร์โค้ดหน่วยนี้</label>
                           <div className="flex gap-1">
-                            <Input value={unit.barcode} onChange={e => updatePackagingUnit(idx, "barcode", e.target.value)} placeholder="บาร์โค้ด" className="h-9 border-slate-300 bg-white text-sm font-mono flex-1" />
+                            <Input value={unit.barcode} onChange={e => updatePackagingUnit(idx, "barcode", e.target.value)} className="h-9 border-slate-300 bg-white text-sm font-mono flex-1" />
                             <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-slate-400 hover:text-primary" onClick={() => updatePackagingUnit(idx, "barcode", generateEAN13())}><RefreshCw className="w-3.5 h-3.5" /></Button>
                           </div>
                         </div>
@@ -690,7 +843,7 @@ export default function ProductsPage() {
                           {([1, 2, 3, 4, 5] as const).map(n => (
                             <div key={n} className="space-y-1">
                               <label className="text-[10px] text-slate-500">ราคา {n}</label>
-                              <Input type="number" min="0" step="0.01" value={(unit as any)[`priceLevel${n}`]} onChange={e => updatePackagingUnit(idx, `priceLevel${n}` as any, e.target.value)} placeholder="0.00" className="h-8 border-slate-300 bg-white text-xs text-right" />
+                              <Input type="number" min="0" step="0.01" value={(unit as any)[`priceLevel${n}`]} onChange={e => updatePackagingUnit(idx, `priceLevel${n}` as any, e.target.value)} className="h-8 border-slate-300 bg-white text-xs text-right" />
                             </div>
                           ))}
                         </div>
@@ -701,6 +854,28 @@ export default function ProductsPage() {
               })}
             </div>
           )}
+
+          {/* Default Selling Unit Picker */}
+          <div className="mt-4 pt-4 border-t border-slate-200">
+            <label className="text-sm font-bold text-slate-900 block mb-1">
+              🎯 หน่วยเริ่มต้นในการขาย (Default Selling Unit)
+            </label>
+            <p className="text-xs text-slate-500 mb-2">
+              เลือกหน่วยที่จะถูกเลือกเป็นค่าเริ่มต้นเมื่อพิมพ์ค้นหาในหน้าขาย POS (หากไม่ระบุ ระบบจะใช้หน่วยย่อยสุดเป็นค่าเริ่มต้น)
+            </p>
+            <select
+              value={form.defaultSellingUnitId || ""}
+              onChange={e => updateForm("defaultSellingUnitId", e.target.value)}
+              className="h-10 w-full sm:w-80 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-primary"
+            >
+              <option value="">หน่วยย่อยสุด ({form.unit || "ชิ้น"}) — ค่าเริ่มต้นระบบ</option>
+              {form.packagingUnits.map((u, i) => (
+                <option key={i} value={u.name}>
+                  {u.name} (1 {u.name} = {packagingMultipliers[i]} {form.unit || "หน่วยย่อย"})
+                </option>
+              ))}
+            </select>
+          </div>
         </section>
       </div>
 
@@ -718,17 +893,16 @@ export default function ProductsPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
                     <label className="text-xs text-slate-500">จำนวนตั้งแต่</label>
-                    <Input type="number" min="0" value={step.minQuantity} onChange={e => updateWholesale(idx, "minQuantity", e.target.value)} placeholder="6" className="h-8 border-slate-300 text-right text-sm" />
+                    <Input type="number" min="0" value={step.minQuantity} onChange={e => updateWholesale(idx, "minQuantity", e.target.value)} className="h-8 border-slate-300 text-right text-sm" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-slate-500">ราคา/ชิ้น</label>
-                    <Input type="number" min="0" step="0.01" value={step.unitPrice} onChange={e => updateWholesale(idx, "unitPrice", e.target.value)} placeholder="0.00" className="h-8 border-slate-300 text-right text-sm" />
+                    <Input type="number" min="0" step="0.01" value={step.unitPrice} onChange={e => updateWholesale(idx, "unitPrice", e.target.value)} className="h-8 border-slate-300 text-right text-sm" />
                   </div>
                 </div>
               </div>
             ))}
           </div>
-          <p className="mt-3 text-xs text-slate-400">เช่น ≥ 6 ชิ้น ราคา 10 บ.</p>
         </section>
       </div>
     </div>
@@ -736,13 +910,33 @@ export default function ProductsPage() {
 
   // ─── Main render ───────────────────────────────────────────────────
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">สินค้า</h1>
-          <p className="text-slate-500 mt-1">จัดการรายการสินค้า ราคา และสต็อก</p>
+          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+            <Package className="w-6 h-6 text-sky-500" /> จัดการสินค้า (Products)
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">จัดการรายการสินค้า ราคาขาย ขนาดบรรจุ บาร์โค้ด และนำเข้าข้อมูลสินค้า</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <input
+            type="file"
+            ref={csvInputRef}
+            accept=".csv"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleCSVImport(file);
+              e.target.value = "";
+            }}
+          />
+          <Button
+            variant="outline"
+            className="h-11 w-full border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto"
+            onClick={() => csvInputRef.current?.click()}
+          >
+            <FileSpreadsheet className="w-5 h-5 mr-2 text-emerald-600" /> นำเข้า CSV
+          </Button>
           <Link href="/categories" className="w-full sm:w-auto">
             <Button variant="outline" className="h-11 w-full border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto">
               <FolderTree className="w-5 h-5 mr-2 text-primary" /> จัดการหมวดหมู่
@@ -764,6 +958,10 @@ export default function ProductsPage() {
         <select value={categoryFilter} onChange={e => { setCategoryFilter(e.target.value); setSizeFilter("all"); setColorFilter("all"); }} className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary">
           <option value="all">📁 ทุกหมวดหมู่</option>
           {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+        </select>
+        <select value={supplierFilter} onChange={e => setSupplierFilter(e.target.value)} className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary">
+          <option value="all">🏢 ทุกผู้จำหน่าย</option>
+          {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         {sizeOptions.length > 0 && (
           <select value={sizeFilter} onChange={e => setSizeFilter(e.target.value)} className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary">
@@ -819,9 +1017,18 @@ export default function ProductsPage() {
                 <TableRow><TableCell colSpan={14} className="text-center h-32 text-slate-500">กำลังโหลด...</TableCell></TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow><TableCell colSpan={14} className="text-center h-40 text-slate-400">ไม่พบสินค้าที่ตรงกับเงื่อนไข</TableCell></TableRow>
-              ) : filtered.map((p: any) => {
+              ) : paginatedList.map((p: any) => {
                 const stock = p.stock ?? 0;
-                const stockClass = stock === 0 ? "bg-rose-50 text-rose-600 border-rose-200" : stock <= 10 ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200";
+                const lowThreshold = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : 10;
+                const isNegativeStock = stock < 0;
+                const isLowStock = stock > 0 && stock <= lowThreshold;
+                const stockClass = isNegativeStock
+                  ? "bg-rose-600 text-white border-rose-700 font-extrabold shadow-2xs"
+                  : stock === 0
+                  ? "bg-rose-50 text-rose-600 border-rose-200 font-bold"
+                  : isLowStock
+                  ? "bg-amber-100 text-amber-800 border-amber-300 font-bold"
+                  : "bg-emerald-50 text-emerald-700 border-emerald-200";
                 const pkgUnits = allPackaging[p.id] || [];
                 const pkgMults = computeMultipliers(pkgUnits);
                 const isExpanded = expandedRows.has(p.id);
@@ -829,8 +1036,8 @@ export default function ProductsPage() {
                 const coverImg = prodImages.find(img => img.isCover)?.dataUrl || prodImages[0]?.dataUrl || p.imageUrl || null;
 
                 return (
-                  <>
-                    <TableRow key={p.id} className={`border-slate-100 hover:bg-slate-50 ${isExpanded ? "bg-sky-50/20" : ""}`}>
+                  <Fragment key={p.id}>
+                    <TableRow className={`border-slate-100 hover:bg-slate-50 ${isExpanded ? "bg-sky-50/20" : ""}`}>
                       <TableCell className="text-center p-0 pl-2">
                         {pkgUnits.length > 0 ? (
                           <button onClick={() => toggleExpand(p.id)} className="w-7 h-7 rounded flex items-center justify-center text-sky-500 hover:bg-sky-100 transition-colors">
@@ -840,19 +1047,11 @@ export default function ProductsPage() {
                       </TableCell>
                       <TableCell className="text-center">
                         <div className="flex flex-col gap-1 items-center">
-                          {(p.barcodes?.slice(0, 3) || []).map((b: any, bi: number) => {
-                            const sName = getSupplierName(b.supplierId);
-                            return (
-                              <div key={bi} className="inline-flex items-center gap-1 font-mono text-xs text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
-                                <span>{b.barcode}</span>
-                                {sName !== "-" && (
-                                  <span className="text-[10px] text-sky-700 bg-sky-100 font-sans px-1 rounded font-medium">
-                                    {sName}
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })}
+                          {(p.barcodes?.slice(0, 3) || []).map((b: any, bi: number) => (
+                            <div key={bi} className="inline-flex items-center font-mono text-xs text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                              <span>{b.barcode}</span>
+                            </div>
+                          ))}
                           {(p.barcodes?.length || 0) > 3 && <span className="text-xs text-slate-400">+{p.barcodes.length - 3} อื่นๆ</span>}
                           {!p.barcodes?.length && <span className="text-slate-300 text-xs">—</span>}
                         </div>
@@ -881,7 +1080,13 @@ export default function ProductsPage() {
                         </div>
                       </TableCell>
                       <TableCell className="whitespace-nowrap"><Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 font-normal">{getCategoryName(p.categoryId)}</Badge></TableCell>
-                      <TableCell className="text-right whitespace-nowrap"><Badge variant="outline" className={stockClass}>{stock}</Badge></TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        <Badge variant="outline" className={stockClass}>
+                          {isNegativeStock && <span className="mr-1 text-xs">🔻</span>}
+                          {isLowStock && <span className="mr-1 text-xs">⚠️</span>}
+                          {isNegativeStock ? stock : stock === 0 ? "หมด" : stock}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="text-center text-slate-500 text-sm whitespace-nowrap">{p.unit || "-"}</TableCell>
                       <TableCell className="text-right text-slate-600 text-sm whitespace-nowrap">{p.basePrice != null ? formatCurrency(p.basePrice) : "-"}</TableCell>
                       <TableCell className="text-right font-semibold text-emerald-600 whitespace-nowrap">{p.priceLevel1 != null ? formatCurrency(p.priceLevel1) : p.basePrice != null ? formatCurrency(p.basePrice) : "-"}</TableCell>
@@ -920,12 +1125,45 @@ export default function ProductsPage() {
                         </TableRow>
                       );
                     })}
-                  </>
+                  </Fragment>
                 );
               })}
             </TableBody>
           </Table>
         </div>
+
+        {/* Pagination Navigation */}
+        {filtered.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/80 px-4 py-3 sm:px-6">
+            <div className="text-xs text-slate-500 font-medium">
+              แสดง <b className="text-slate-800">{Math.min((currentPage - 1) * ITEMS_PER_PAGE + 1, filtered.length)}</b> - <b className="text-slate-800">{Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)}</b> จากทั้งหมด <b className="text-slate-800">{filtered.length}</b> รายการ
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                className="h-8 px-3 text-xs font-semibold border-slate-300"
+              >
+                ‹ ก่อนหน้า
+              </Button>
+              <div className="flex items-center gap-1 px-2">
+                <span className="text-xs font-bold text-slate-700">หน้า {currentPage}</span>
+                <span className="text-xs text-slate-400">/ {totalPages}</span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                className="h-8 px-3 text-xs font-semibold border-slate-300"
+              >
+                ถัดไป ›
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Dialog */}
@@ -940,10 +1178,10 @@ export default function ProductsPage() {
           <div className="flex-1 overflow-y-auto px-6 py-5 pb-6">
             {renderForm()}
           </div>
-          {/* ✅ Footer มี padding ชัดเจน ปุ่มไม่ล้น */}
-          <DialogFooter className="border-t border-slate-200 bg-slate-50 px-6 py-4 shrink-0 flex-row gap-3 justify-end">
-            <Button variant="outline" className="border-slate-300 text-slate-600 px-6" onClick={() => setDialogMode(null)}>ยกเลิก</Button>
-            <Button className={`px-8 ${dialogMode === "edit" ? "bg-sky-500 text-white hover:bg-sky-600" : "bg-primary text-white hover:bg-primary/90"}`} onClick={handleSave}>
+          {/* ✅ Footer มี padding ด้านล่าง pb-7 เพื่อเว้นระยะห่างขอบล่างกับปุ่มไม่ให้ชิดกัน */}
+          <DialogFooter className="border-t border-slate-200 bg-slate-50 px-6 pt-5 pb-7 shrink-0 flex-row gap-3 justify-end">
+            <Button variant="outline" className="border-slate-300 text-slate-600 px-6 h-10 font-medium" onClick={() => setDialogMode(null)}>ยกเลิก</Button>
+            <Button className={`px-8 h-10 font-bold ${dialogMode === "edit" ? "bg-sky-500 text-white hover:bg-sky-600" : "bg-primary text-white hover:bg-primary/90"}`} onClick={handleSave}>
               {dialogMode === "edit" ? "บันทึกการแก้ไข" : "บันทึกสินค้า"}
             </Button>
           </DialogFooter>

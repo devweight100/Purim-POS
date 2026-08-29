@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
-import { Save, Store, QrCode, Building2, ArrowRight } from "lucide-react";
+import { Save, Store, QrCode, Building2, ArrowRight, Settings } from "lucide-react";
 import Link from "next/link";
 
 export default function SettingsPage() {
@@ -33,10 +33,12 @@ export default function SettingsPage() {
   if (loading) return <div className="p-4 text-slate-500 sm:p-6 lg:p-8">Loading...</div>;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-4 pb-20 sm:p-6 lg:p-8">
+    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">ตั้งค่าระบบ</h1>
-        <p className="text-slate-500 mt-2">จัดการข้อมูลร้านค้า ช่องทางชำระเงิน และ บัญชีธนาคารรับโอนเงิน</p>
+        <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+          <Settings className="w-6 h-6 text-sky-500" /> ตั้งค่าระบบร้านค้า (Settings)
+        </h1>
+        <p className="text-xs text-slate-500 mt-0.5">จัดการข้อมูลร้านค้า ช่องทางชำระเงิน และบัญชีธนาคารรับโอนเงิน</p>
       </div>
 
       {/* Direct Banner Link to Financial Accounts & QR Management */}

@@ -12,7 +12,7 @@ import { getProductPackagingUnits } from '@/lib/cart-pricing';
 import { 
   Search, ScanLine, ShoppingCart, Trash2, 
   Minus, Plus, Tag, PauseCircle, PlayCircle, 
-  CreditCard, Clock, LogOut, Percent, Check, Receipt
+  CreditCard, Clock, LogOut, Percent, Check, Receipt, Coins
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +23,7 @@ import { ItemEditPopup } from '@/components/pos/ItemEditPopup';
 import { BillDiscountPopup } from '@/components/pos/BillDiscountPopup';
 import { OpenShiftModal } from '@/components/pos/OpenShiftModal';
 import { CloseShiftModal } from '@/components/pos/CloseShiftModal';
+import { CashDrawerModal } from '@/components/pos/CashDrawerModal';
 import { HeldBillsSheet } from '@/components/pos/HeldBillsSheet';
 import { CustomerSelectModal } from '@/components/pos/CustomerSelectModal';
 import { BarcodeScanModal } from '@/components/pos/BarcodeScanModal';
@@ -158,6 +159,7 @@ export default function POSPage() {
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [completedClaimForPdf, setCompletedClaimForPdf] = useState<ClaimRecord | null>(null);
   const [showClaimPdfModal, setShowClaimPdfModal] = useState(false);
+  const [showCashDrawerModal, setShowCashDrawerModal] = useState(false);
 
   const cart = useCartStore();
   const shiftStore = useShiftStore();
@@ -177,7 +179,7 @@ export default function POSPage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const handleEmptySpaceClick = (e: React.MouseEvent) => {
-    const isModalOpen = showPayment || showOpenShift || showCloseShift || editItem || showCustomerSelect || showHeldBills || qtyEditItem || showDebtCollectModal;
+    const isModalOpen = showPayment || showOpenShift || showCloseShift || editItem || showCustomerSelect || showHeldBills || qtyEditItem || showDebtCollectModal || showCashDrawerModal || showClaimModal;
     if (isModalOpen) return;
     const target = e.target as HTMLElement;
     const isInteractive = target.closest('button, input, select, textarea, a, [role="button"], dialog, label');
@@ -302,8 +304,13 @@ export default function POSPage() {
       const code = e.code;
       const keyLower = e.key ? e.key.toLowerCase() : '';
 
+      // F9 -> Toggle Cash Drawer Modal (Cash In / Out)
+      if (code === 'F9' || keyLower === 'f9') {
+        e.preventDefault();
+        setShowCashDrawerModal(prev => !prev);
+      }
       // F10 (or Ctrl+Shift+P) -> Toggle Held Bills Sheet
-      if (code === 'F10' || keyLower === 'f10' || (e.ctrlKey && e.shiftKey && (code === 'KeyP' || keyLower === 'p'))) {
+      else if (code === 'F10' || keyLower === 'f10' || (e.ctrlKey && e.shiftKey && (code === 'KeyP' || keyLower === 'p'))) {
         e.preventDefault();
         setShowHeldBills(prev => !prev);
       }
@@ -407,11 +414,24 @@ export default function POSPage() {
           <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
             กะ: {shiftStore.isShiftOpen() ? shiftStore.currentShift?.userName : 'ยังไม่เปิดกะ'}
           </Badge>
-          {shiftStore.isShiftOpen() && (
-            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
-              เงินลิ้นชัก: {formatCurrency(shiftStore.getExpectedCash())}
+          <button
+            type="button"
+            onClick={() => setShowCashDrawerModal(true)}
+            className="cursor-pointer hover:scale-105 transition-transform"
+            title="คลิกเพื่อเปิดลิ้นชัก หรือนำเงินเข้า-ออก (F9)"
+          >
+            <Badge 
+              variant="outline" 
+              className={`flex items-center gap-1.5 font-bold shadow-xs cursor-pointer ${
+                shiftStore.getExpectedCash() > 0 
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100' 
+                  : 'border-slate-300 bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              <Coins className={`w-3.5 h-3.5 ${shiftStore.getExpectedCash() > 0 ? 'text-emerald-600' : 'text-slate-400'}`} />
+              <span>เงินลิ้นชัก: {formatCurrency(shiftStore.getExpectedCash())}</span>
             </Badge>
-          )}
+          </button>
 
           {/* VAT 7% Toggle in Top Header */}
           <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs ml-auto sm:ml-2">
@@ -522,6 +542,7 @@ export default function POSPage() {
             setShowDebtCollectModal(true);
           }}
           onOpenNumpadQty={(item) => setQtyEditItem(item)}
+          onOpenCashDrawer={() => setShowCashDrawerModal(true)}
         />
       ) : (
       <div className="flex flex-1 flex-col overflow-visible lg:flex-row lg:overflow-hidden">
@@ -916,23 +937,33 @@ export default function POSPage() {
           </div>
 
           {/* Actions */}
-          <div className="grid shrink-0 grid-cols-2 gap-3 bg-slate-50 p-4">
+          <div className="grid shrink-0 grid-cols-3 gap-2 bg-slate-50 p-3 sm:p-4">
+            <Button 
+              type="button"
+              variant="outline" 
+              className="h-14 border-amber-300 bg-amber-50/80 hover:bg-amber-100 text-amber-900 font-extrabold text-xs sm:text-sm flex flex-col items-center justify-center gap-1 shadow-xs transition-all"
+              onClick={() => setShowCashDrawerModal(true)}
+              title="เปิดลิ้นชัก หรือนำเงินเข้า-ออก (F9)"
+            >
+              <Coins className="w-5 h-5 text-amber-600" />
+              <span>เปิดลิ้นชัก</span>
+            </Button>
             <Button 
               variant="outline" 
-              className="h-14 border-slate-300 bg-white text-slate-700 hover:bg-slate-100 font-bold"
+              className="h-14 border-slate-300 bg-white text-slate-700 hover:bg-slate-100 font-bold text-xs sm:text-sm flex flex-col items-center justify-center gap-1 shadow-xs"
               onClick={() => cart.holdBill()}
               disabled={cart.items.length === 0}
             >
-              <PauseCircle className="w-5 h-5 mr-2" />
-              พักบิล
+              <PauseCircle className="w-5 h-5 text-slate-600" />
+              <span>พักบิล</span>
             </Button>
             <Button 
-              className="h-14 bg-primary text-lg text-white font-bold shadow-lg shadow-primary/20 hover:bg-primary/90"
+              className="h-14 bg-primary text-white font-extrabold text-base sm:text-lg shadow-lg shadow-primary/20 hover:bg-primary/90 flex items-center justify-center gap-2"
               disabled={cart.items.length === 0}
               onClick={handleOpenNormalPayment}
             >
-              <CreditCard className="w-5 h-5 mr-2" />
-              ชำระเงิน
+              <CreditCard className="w-5 h-5" />
+              <span>ชำระเงิน</span>
             </Button>
           </div>
 
@@ -945,6 +976,11 @@ export default function POSPage() {
       <BillDiscountPopup open={showBillDiscount} onOpenChange={setShowBillDiscount} />
       <OpenShiftModal open={showOpenShift} onOpenChange={setShowOpenShift} />
       <CloseShiftModal open={showCloseShift} onOpenChange={setShowCloseShift} />
+      <CashDrawerModal 
+        open={showCashDrawerModal} 
+        onOpenChange={setShowCashDrawerModal} 
+        onOpenShiftRequired={() => setShowOpenShift(true)} 
+      />
       <HeldBillsSheet open={showHeldBills} onOpenChange={setShowHeldBills} />
       <CustomerSelectModal open={showCustomerSelect} onOpenChange={setShowCustomerSelect} />
       <BarcodeScanModal open={showBarcodeScan} onOpenChange={setShowBarcodeScan} />

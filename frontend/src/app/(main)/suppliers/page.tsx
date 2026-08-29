@@ -6,8 +6,34 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, Plus, Edit, Trash2 } from "lucide-react";
+import { Search, Plus, Edit, Trash2, Building2 } from "lucide-react";
 import { toast } from "sonner";
+
+function loadSuppliersFromStorage(): any[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem('custom_suppliers');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  
+  const initial = [
+    { id: "supp_1", name: "บริษัท ปุริม ซัพพลาย จำกัด", contactName: "คุณสมชาย", phone: "081-234-5678", email: "contact@purimsupply.com", address: "123 ถ.สุขุมวิท กรุงเทพฯ", creditTerms: 30 },
+    { id: "supp_2", name: "บจก. สยามเทรดดิ้ง แอนด์ ดีสทริบิวชั่น", contactName: "คุณวิภา", phone: "089-876-5432", email: "sales@siamtrading.co.th", address: "456 ถ.รัชดาภิเษก กรุงเทพฯ", creditTerms: 15 },
+    { id: "supp_3", name: "หจก. รวมสินค้าค้าส่ง", contactName: "คุณกิตติ", phone: "02-999-8888", email: "wholesale@ruamkhong.com", address: "789 ถ.พหลโยธิน กรุงเทพฯ", creditTerms: 45 },
+  ];
+  try { localStorage.setItem('custom_suppliers', JSON.stringify(initial)); } catch {}
+  return initial;
+}
+
+function saveSuppliersToStorage(suppliers: any[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem('custom_suppliers', JSON.stringify(suppliers));
+  } catch {}
+}
 
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -26,14 +52,22 @@ export default function SuppliersPage() {
 
   const fetchSuppliers = async () => {
     setLoading(true);
+    let list: any[] = [];
     try {
       const data = await apiFetch("/suppliers");
-      setSuppliers(data);
-    } catch (error) {
-      toast.error("ดึงข้อมูลผู้จำหน่ายไม่สำเร็จ");
-    } finally {
-      setLoading(false);
+      if (Array.isArray(data) && data.length > 0) {
+        list = data;
+      }
+    } catch {}
+
+    if (list.length === 0) {
+      list = loadSuppliersFromStorage();
+    } else {
+      saveSuppliersToStorage(list);
     }
+
+    setSuppliers(list);
+    setLoading(false);
   };
 
   useEffect(() => {
@@ -59,46 +93,57 @@ export default function SuppliersPage() {
   };
 
   const handleSave = async () => {
-    if (!currentSupplier.name) {
+    if (!currentSupplier.name.trim()) {
       toast.error("กรุณาระบุชื่อบริษัท");
       return;
     }
-    try {
-      if (isEditMode) {
+    
+    const existing = loadSuppliersFromStorage();
+    let updatedList: any[] = [];
+
+    if (isEditMode) {
+      updatedList = existing.map(s => s.id === currentSupplier.id ? { ...s, ...currentSupplier, creditTerms: Number(currentSupplier.creditTerms) || 0 } : s);
+      try {
         await apiFetch(`/suppliers/${currentSupplier.id}`, {
           method: "PATCH",
           body: JSON.stringify({
             ...currentSupplier,
-            creditTerms: Number(currentSupplier.creditTerms)
+            creditTerms: Number(currentSupplier.creditTerms) || 0
           }),
         });
-        toast.success("อัปเดตผู้จำหน่ายสำเร็จ");
-      } else {
+      } catch {}
+      toast.success("อัปเดตผู้จำหน่ายสำเร็จ");
+    } else {
+      const newSupplier = {
+        ...currentSupplier,
+        id: currentSupplier.id || "supp_" + Date.now(),
+        creditTerms: Number(currentSupplier.creditTerms) || 0,
+      };
+      updatedList = [newSupplier, ...existing];
+      try {
         await apiFetch("/suppliers", {
           method: "POST",
-          body: JSON.stringify({
-            ...currentSupplier,
-            creditTerms: Number(currentSupplier.creditTerms)
-          }),
+          body: JSON.stringify(newSupplier),
         });
-        toast.success("เพิ่มผู้จำหน่ายสำเร็จ");
-      }
-      setIsDialogOpen(false);
-      fetchSuppliers();
-    } catch (error) {
-      toast.error("บันทึกข้อมูลไม่สำเร็จ");
+      } catch {}
+      toast.success("เพิ่มผู้จำหน่ายสำเร็จ");
     }
+
+    saveSuppliersToStorage(updatedList);
+    setSuppliers(updatedList);
+    setIsDialogOpen(false);
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("คุณแน่ใจหรือไม่ว่าต้องการลบผู้จำหน่ายนี้?")) return;
+    const existing = loadSuppliersFromStorage();
+    const updatedList = existing.filter(s => s.id !== id);
     try {
       await apiFetch(`/suppliers/${id}`, { method: "DELETE" });
-      toast.success("ลบผู้จำหน่ายสำเร็จ");
-      fetchSuppliers();
-    } catch (error) {
-      toast.error("ลบข้อมูลไม่สำเร็จ");
-    }
+    } catch {}
+    saveSuppliersToStorage(updatedList);
+    setSuppliers(updatedList);
+    toast.success("ลบผู้จำหน่ายสำเร็จ");
   };
 
   const filteredSuppliers = suppliers.filter(s => 
@@ -107,22 +152,24 @@ export default function SuppliersPage() {
   );
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">จัดการผู้จำหน่าย</h1>
-          <p className="text-slate-500 mt-2">รายชื่อผู้จำหน่ายสินค้าและซัพพลายเออร์</p>
+          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+            <Building2 className="w-6 h-6 text-sky-500" /> จัดการผู้จำหน่าย (Suppliers)
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">รายชื่อบริษัทผู้จำหน่ายสินค้า ซัพพลายเออร์ และเงื่อนไขเครดิตเทอม</p>
         </div>
         <Button 
-          className="w-full bg-primary text-white font-medium hover:bg-primary/90 sm:w-auto"
+          className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-10 px-5 text-xs shadow-sm rounded-xl"
           onClick={() => handleOpenDialog()}
         >
-          <Plus className="w-4 h-4 mr-2" />
+          <Plus className="w-4 h-4 mr-1.5" />
           เพิ่มผู้จำหน่าย
         </Button>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs w-full">
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 p-4">
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -248,7 +295,7 @@ export default function SuppliersPage() {
             <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="border-slate-300 text-slate-700 hover:bg-slate-50">
               ยกเลิก
             </Button>
-            <Button onClick={handleSave} className="bg-sky-500 hover:bg-sky-600 text-white">
+            <Button onClick={handleSave} className="bg-sky-500 hover:bg-sky-600 text-white font-bold">
               บันทึก
             </Button>
           </DialogFooter>

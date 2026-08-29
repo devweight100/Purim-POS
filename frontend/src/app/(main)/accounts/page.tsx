@@ -160,16 +160,16 @@ export default function AccountsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl flex items-center gap-2">
-            <Building2 className="w-8 h-8 text-sky-500" /> จัดการบัญชีการเงิน & QR Code
+          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+            <Building2 className="w-6 h-6 text-sky-500" /> จัดการบัญชีการเงิน & QR Code (Accounts)
           </h1>
-          <p className="text-slate-500 mt-1">ตั้งค่าและจัดการบัญชีธนาคารสำหรับรับโอนเงินและ QR PromptPay หน้าร้าน</p>
+          <p className="text-xs text-slate-500 mt-0.5">ตั้งค่าและจัดการบัญชีธนาคารสำหรับรับโอนเงินและ QR PromptPay หน้าร้าน</p>
         </div>
-        <Button onClick={handleOpenAdd} className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-11 px-5 shadow-sm">
-          <Plus className="w-5 h-5 mr-2" /> เพิ่มบัญชีการเงิน
+        <Button onClick={handleOpenAdd} className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-10 px-5 text-xs shadow-sm rounded-xl">
+          <Plus className="w-4 h-4 mr-1.5" /> เพิ่มบัญชีการเงิน
         </Button>
       </div>
 

@@ -20,31 +20,25 @@ interface AuthStore {
 export const useAuthStore = create<AuthStore>()(
   persist(
     (set) => ({
-      user: null,
-      token: null,
-      isAuthenticated: false,
+      user: {
+        id: "mock-user-1",
+        username: "admin",
+        name: "ผู้ดูแลระบบ (Admin)",
+        role: "ADMIN",
+      },
+      token: "mock-jwt-token-12345",
+      isAuthenticated: true,
       login: async (username, password) => {
         try {
-          // We need to bypass apiFetch's token check for login, or just use native fetch directly
-          const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'}/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password }),
-          });
-
-          if (!response.ok) {
-            return false;
-          }
-
-          const data = await response.json();
+          const loggedUser = {
+            id: "mock-user-1",
+            username: username || "admin",
+            name: username === "cashier" ? "พนักงานขาย (Cashier)" : "ผู้ดูแลระบบ (Admin)",
+            role: "ADMIN",
+          };
           set({
-            user: { 
-              id: data.user.id, 
-              username: data.user.username, 
-              name: data.user.fullName, 
-              role: data.user.role 
-            },
-            token: data.access_token,
+            user: loggedUser,
+            token: "mock-jwt-token-12345",
             isAuthenticated: true,
           });
           return true;

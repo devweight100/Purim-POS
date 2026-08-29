@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CartItem, HeldBill, Product, ProductUnit } from '../types';
+import { CartItem, HeldBill, Product, ProductUnit, ClaimRecord } from '../types';
 import { calculateSmartRollupAndPricing } from '../cart-pricing';
 
 interface CartStore {
@@ -8,19 +8,31 @@ interface CartStore {
   customerName: string | null;
   billDiscountType: 'none' | 'baht' | 'percent';
   billDiscountValue: number;
+  pointsDiscountValue: number;
+  pointsUsed: number;
+  attachedClaim: ClaimRecord | null;
+  note: string;
   isVatEnabled: boolean;
   heldBills: HeldBill[];
+  editingOrderId: string | null;
 
   // Actions
   addItem: (product: Product, unit?: ProductUnit) => void;
   removeItem: (productId: string, unitId?: string) => void;
   updateQuantity: (productId: string, quantity: number, unitId?: string) => void;
-  setCustomPrice: (productId: string, price: number | null) => void;
-  setItemDiscount: (productId: string, type: 'none' | 'baht' | 'percent', value: number) => void;
+  setCustomPrice: (productId: string, price: number | null, unitId?: string) => void;
+  setItemDiscount: (productId: string, type: 'none' | 'baht' | 'percent', value: number, unitId?: string) => void;
+  setItemNote: (productId: string, note: string, unitId?: string) => void;
   setItemUnit: (productId: string, unit: ProductUnit) => void;
   setBillDiscount: (type: 'none' | 'baht' | 'percent', value: number) => void;
+  setPointsDiscount: (discountBaht: number, pointsUsed: number) => void;
+  clearPointsDiscount: () => void;
+  setAttachedClaim: (claim: ClaimRecord | null) => void;
+  clearAttachedClaim: () => void;
+  setNote: (note: string) => void;
   setVatEnabled: (enabled: boolean) => void;
   setCustomer: (id: string | null, name: string | null) => void;
+  setEditingOrderId: (id: string | null) => void;
   clearCart: () => void;
   holdBill: (label?: string) => void;
   recallBill: (id: string) => void;
@@ -32,6 +44,8 @@ interface CartStore {
   getItemLineTotal: (item: CartItem) => number;
   getSubtotal: () => number;
   getBillDiscountAmount: () => number;
+  getPointsDiscountAmount: () => number;
+  getClaimDiscountAmount: () => number;
   getVatAmount: () => number;
   getTotal: () => number;
   getItemCount: () => number;
@@ -43,8 +57,17 @@ export const useCartStore = create<CartStore>((set, get) => ({
   customerName: null,
   billDiscountType: 'none' as const,
   billDiscountValue: 0,
+  pointsDiscountValue: 0,
+  pointsUsed: 0,
+  attachedClaim: null,
+  note: '',
   isVatEnabled: typeof window !== 'undefined' ? localStorage.getItem('pos_vat_enabled') !== 'false' : true,
   heldBills: [],
+  editingOrderId: null,
+
+  setEditingOrderId: (id: string | null) => {
+    set({ editingOrderId: id });
+  },
 
   addItem: (product: Product, unit?: ProductUnit) => {
     const selectedUnit = unit || product.units[0];
@@ -109,27 +132,40 @@ export const useCartStore = create<CartStore>((set, get) => ({
     });
   },
 
-  setCustomPrice: (productId: string, price: number | null) => {
+  setCustomPrice: (productId: string, price: number | null, unitId?: string) => {
     set((state) => ({
-      items: state.items.map((i) =>
-        i.productId === productId ? { ...i, customPrice: price } : i
-      ),
+      items: state.items.map((i) => {
+        const match = unitId
+          ? i.productId === productId && i.unitId === unitId
+          : i.productId === productId;
+        return match ? { ...i, customPrice: price } : i;
+      }),
     }));
   },
 
-  setItemDiscount: (productId: string, type: 'none' | 'baht' | 'percent', value: number) => {
+  setItemDiscount: (productId: string, type: 'none' | 'baht' | 'percent', value: number, unitId?: string) => {
     set((state) => ({
-      items: state.items.map((i) =>
-        i.productId === productId
-          ? { ...i, discountType: type, discountValue: value }
-          : i
-      ),
+      items: state.items.map((i) => {
+        const match = unitId
+          ? i.productId === productId && i.unitId === unitId
+          : i.productId === productId;
+        return match ? { ...i, discountType: type, discountValue: value } : i;
+      }),
+    }));
+  },
+
+  setItemNote: (productId: string, note: string, unitId?: string) => {
+    set((state) => ({
+      items: state.items.map((i) => {
+        const match = unitId ? i.productId === productId && i.unitId === unitId : i.productId === productId;
+        return match ? { ...i, itemNote: note } : i;
+      }),
     }));
   },
 
   setItemUnit: (productId: string, unit: ProductUnit) => {
-    set((state) => ({
-      items: state.items.map((i) =>
+    set((state) => {
+      const rawUpdated = state.items.map((i) =>
         i.productId === productId
           ? {
               ...i,
@@ -142,12 +178,33 @@ export const useCartStore = create<CartStore>((set, get) => ({
               discountValue: 0,
             }
           : i
-      ),
-    }));
+      );
+      return { items: calculateSmartRollupAndPricing(rawUpdated) };
+    });
   },
 
   setBillDiscount: (type: 'none' | 'baht' | 'percent', value: number) => {
     set({ billDiscountType: type, billDiscountValue: value });
+  },
+
+  setPointsDiscount: (discountBaht: number, pointsUsed: number) => {
+    set({ pointsDiscountValue: discountBaht, pointsUsed });
+  },
+
+  clearPointsDiscount: () => {
+    set({ pointsDiscountValue: 0, pointsUsed: 0 });
+  },
+
+  setAttachedClaim: (claim: ClaimRecord | null) => {
+    set({ attachedClaim: claim });
+  },
+
+  clearAttachedClaim: () => {
+    set({ attachedClaim: null });
+  },
+
+  setNote: (note: string) => {
+    set({ note });
   },
 
   setVatEnabled: (enabled: boolean) => {
@@ -156,7 +213,11 @@ export const useCartStore = create<CartStore>((set, get) => ({
   },
 
   setCustomer: (id: string | null, name: string | null) => {
-    set({ customerId: id, customerName: name });
+    if (!id) {
+      set({ customerId: null, customerName: null, pointsDiscountValue: 0, pointsUsed: 0 });
+    } else {
+      set({ customerId: id, customerName: name });
+    }
   },
 
   clearCart: () => {
@@ -166,6 +227,11 @@ export const useCartStore = create<CartStore>((set, get) => ({
       customerName: null,
       billDiscountType: 'none' as const,
       billDiscountValue: 0,
+      pointsDiscountValue: 0,
+      pointsUsed: 0,
+      attachedClaim: null,
+      note: '',
+      editingOrderId: null,
     });
   },
 
@@ -181,6 +247,9 @@ export const useCartStore = create<CartStore>((set, get) => ({
       customerName: state.customerName,
       billDiscountType: state.billDiscountType,
       billDiscountValue: state.billDiscountValue,
+      pointsDiscountValue: state.pointsDiscountValue,
+      pointsUsed: state.pointsUsed,
+      note: state.note,
       heldAt: new Date().toISOString(),
     };
 
@@ -191,6 +260,10 @@ export const useCartStore = create<CartStore>((set, get) => ({
       customerName: null,
       billDiscountType: 'none' as const,
       billDiscountValue: 0,
+      pointsDiscountValue: 0,
+      pointsUsed: 0,
+      note: '',
+      editingOrderId: null,
     }));
   },
 
@@ -210,6 +283,9 @@ export const useCartStore = create<CartStore>((set, get) => ({
       customerName: bill.customerName,
       billDiscountType: bill.billDiscountType,
       billDiscountValue: bill.billDiscountValue,
+      pointsDiscountValue: bill.pointsDiscountValue || 0,
+      pointsUsed: bill.pointsUsed || 0,
+      note: bill.note || '',
       heldBills: s.heldBills.filter((b) => b.id !== id),
     }));
   },
@@ -253,28 +329,47 @@ export const useCartStore = create<CartStore>((set, get) => ({
     return 0;
   },
 
+  getPointsDiscountAmount: () => {
+    const subtotal = get().getSubtotal();
+    const billDiscount = get().getBillDiscountAmount();
+    const remaining = Math.max(0, subtotal - billDiscount);
+    return Math.min(get().pointsDiscountValue || 0, remaining);
+  },
+
+  getClaimDiscountAmount: () => {
+    const claim = get().attachedClaim;
+    if (!claim) return 0;
+    const subtotal = get().getSubtotal();
+    const priorDiscounts = get().getBillDiscountAmount() + get().getPointsDiscountAmount();
+    const remaining = Math.max(0, subtotal - priorDiscounts);
+    const claimVal = claim.discountAmount ?? (claim.quantity * claim.unitPrice);
+    return Math.min(claimVal, remaining);
+  },
+
   getVatAmount: () => {
     if (!get().isVatEnabled) return 0;
     const items = get().items;
     const subtotal = get().getSubtotal();
     if (subtotal === 0) return 0;
 
-    const billDiscountRate = get().getBillDiscountAmount() / subtotal;
+    const totalDiscounts = get().getBillDiscountAmount() + get().getPointsDiscountAmount() + get().getClaimDiscountAmount();
+    const discountRate = totalDiscounts / subtotal;
 
     let vatTotal = 0;
     for (const item of items) {
       if (item.hasVat) {
         const lineTotal = get().getItemLineTotal(item);
-        const afterBillDiscount = lineTotal * (1 - billDiscountRate);
+        const afterDiscount = lineTotal * (1 - discountRate);
         // VAT included: vat = amount × 7/107
-        vatTotal += afterBillDiscount * (7 / 107);
+        vatTotal += afterDiscount * (7 / 107);
       }
     }
     return vatTotal;
   },
 
   getTotal: () => {
-    return get().getSubtotal() - get().getBillDiscountAmount();
+    const total = get().getSubtotal() - get().getBillDiscountAmount() - get().getPointsDiscountAmount() - get().getClaimDiscountAmount();
+    return Math.max(0, total);
   },
 
   getItemCount: () => {

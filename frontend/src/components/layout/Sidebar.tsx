@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { 
   ShoppingCart, ClipboardList, Users, LayoutDashboard, Package, 
-  Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, FolderTree, Building2
+  Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, FolderTree, Building2, Receipt, ShieldAlert, ArrowLeftRight, HandCoins
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/store/auth-store';
@@ -14,14 +14,18 @@ import { useRouter } from 'next/navigation';
 const menuItems = [
   { href: '/pos', label: 'หน้าขาย (POS)', icon: ShoppingCart },
   { href: '/orders', label: 'รายการออเดอร์', icon: ClipboardList },
+  { href: '/debts', label: 'ลูกหนี้ / บิลค้างชำระ', icon: Receipt },
   { href: '/customers', label: 'ลูกค้า', icon: Users },
   { type: 'separator' as const },
   { href: '/dashboard', label: 'แดชบอร์ด', icon: LayoutDashboard },
   { href: '/products', label: 'สินค้า', icon: Package },
   { href: '/categories', label: 'หมวดหมู่สินค้า', icon: FolderTree },
   { href: '/inventory', label: 'คลังสินค้า', icon: Warehouse },
+  { href: '/claims', label: 'เคลมสินค้า (ลูกค้า)', icon: ShieldAlert },
   { href: '/suppliers', label: 'ผู้จำหน่าย', icon: Truck },
   { href: '/purchase-orders', label: 'ใบสั่งซื้อ (PO)', icon: FileText },
+  { href: '/payables', label: 'เจ้าหนี้ / ค้างจ่ายบริษัท', icon: HandCoins },
+  { href: '/supplier-returns', label: 'ส่งเคลม / คืนสินค้าบริษัท', icon: ArrowLeftRight },
   { href: '/accounts', label: 'บัญชีการเงิน / QR Code', icon: Building2 },
   { href: '/reports', label: 'รายงาน', icon: BarChart3 },
   { href: '/settings', label: 'ตั้งค่า', icon: Settings },
@@ -92,7 +96,7 @@ export function Sidebar() {
         </div>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center px-3 py-2 rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors text-sm"
+          className="w-full flex items-center px-3 py-2.5 rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors text-sm"
         >
           <LogOut className="w-4 h-4 shrink-0" />
           <span className="ml-3">ออกจากระบบ</span>
@@ -105,7 +109,7 @@ export function Sidebar() {
     <>
       {/* Mobile hamburger button */}
       <button
-        className="lg:hidden fixed top-3 left-3 z-50 p-2 rounded-lg bg-white text-slate-900 shadow-lg border border-slate-200"
+        className="lg:hidden fixed top-3 left-3 z-50 p-2.5 rounded-lg bg-white text-slate-900 shadow-lg border border-slate-200"
         onClick={() => setMobileOpen(!mobileOpen)}
       >
         {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}

@@ -133,6 +133,8 @@ export interface Shift {
   creditSales?: number;
   cashIn: number;
   cashOut: number;
+  cashRefunds?: number;
+  claimRefundCount?: number;
   orderCount: number;
   voidCount: number;
   isOpen: boolean;
@@ -336,8 +338,13 @@ export interface ClaimRecord {
   completedDate?: string;
 }
 
+export type SupplierReturnItemType = 'DEFECTIVE' | 'OVERSTOCK';
+
 export interface SupplierReturnItem {
-  claimId: string;             // รหัสใบเคลมเดิม CLM-xxx
+  claimId?: string;             // รหัสใบเคลมเดิม CLM-xxx (ถ้ามาจากเคลม)
+  poId?: string;                // รหัสใบ PO (ถ้าอ้างอิง PO)
+  poNumber?: string;
+  poItemId?: string;
   productId: string;
   productName: string;
   sku: string;
@@ -345,8 +352,10 @@ export interface SupplierReturnItem {
   quantity: number;
   unitCost: number;            // ราคาทุนต่อหน่วย
   totalCost: number;           // มูลค่ารวม = quantity * unitCost
-  defectReason: string;        // อาการเสียที่ส่งคืน
-  originalOrderNumber: string; // บิลขายเดิมที่ลูกค้าซื้อไป
+  itemType: SupplierReturnItemType; // 'DEFECTIVE' = สินค้าชำรุด/มีปัญหา, 'OVERSTOCK' = สินค้าปกติขายไม่ออก
+  defectReason?: string;        // อาการเสียที่ส่งคืน (กรณีชำรุด)
+  returnReason?: string;        // เหตุผลการส่งคืน (กรณีขายไม่ออก/คืนทั่วไป)
+  originalOrderNumber?: string; // บิลขายเดิมที่ลูกค้าซื้อไป (ถ้ามี)
 }
 
 export interface SupplierReturnDeduction {
@@ -365,8 +374,12 @@ export interface SupplierReturnNote {
   supplierContact?: string;
   supplierPhone?: string;
   supplierAddress?: string;
+  linkedPoId?: string;         // ใบ PO ที่เชื่อมโยงนำไปลดหนี้
+  linkedPoNumber?: string;
   items: SupplierReturnItem[];
   totalQuantity: number;
+  defectiveTotalCost?: number; // ยอดรวมสินค้าชำรุด
+  overstockTotalCost?: number; // ยอดรวมสินค้าขายไม่ออก
   totalCreditAmount: number;   // ยอดเงินที่ต้องหักลดหนี้ตามราคาทุนรวม (เช่น 50 บาท)
   remainingCreditAmount: number; // ยอดคงเหลือที่ยังไม่ได้หัก (รองรับหักหลายรอบ)
   status: 'PENDING_DEDUCTION' | 'PARTIALLY_DEDUCTED' | 'DEDUCTED' | 'CANCELLED';

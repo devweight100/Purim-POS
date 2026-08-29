@@ -5,6 +5,11 @@ export function formatStockDisplay(product: Product): string {
     return `${product.stock} (ไม่มีหน่วย)`;
   }
 
+  if (product.stock < 0) {
+    const baseUnit = product.unit || product.units[0]?.unitName || 'ชิ้น';
+    return `ติดลบ ${Math.abs(product.stock).toLocaleString()} ${baseUnit}`;
+  }
+
   // Sort units descending by factor
   const sortedUnits = [...product.units].sort((a, b) => b.factor - a.factor);
   

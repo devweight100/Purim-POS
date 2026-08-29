@@ -319,6 +319,8 @@ export function ProductClaimModal({
         return;
       } else if (resolutionType === 'REPLACE_ITEM') {
         toast.success(`🔄 บันทึกเปลี่ยนสินค้าตัวใหม่ (${replName}) และตัดสต็อกเรียบร้อยแล้ว`);
+      } else if (resolutionType === 'REFUND_CASH') {
+        toast.success(`💵 บันทึกรับเคลม #${claimRecord.id} และตัดเงินสดออกจากลิ้นชัก ${formatCurrency(refundAmt)} คืนลูกค้าเรียบร้อยแล้ว`);
       } else {
         toast.success(`✅ บันทึกการรับเคลมสินค้า #${claimRecord.id} เรียบร้อยแล้ว`);
       }
