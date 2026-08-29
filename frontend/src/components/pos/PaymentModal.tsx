@@ -9,9 +9,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CreditCard, QrCode, Banknote, Edit3, CheckCircle2, SplitSquareHorizontal, UserCheck, Building2, ArrowRight } from 'lucide-react';
+import { CreditCard, QrCode, Banknote, Edit3, CheckCircle2, SplitSquareHorizontal, UserCheck, Building2, ArrowRight, FileText } from 'lucide-react';
 import { NumpadPopup } from './NumpadPopup';
+import { ReceiptPdfModal, ReceiptData } from './ReceiptPdfModal';
 import { loadBankAccounts, BankAccount } from '@/lib/bank-account-storage';
+import { deductPosSaleStock } from '@/lib/stock-service';
+import { recordCustomerSale } from '@/lib/customer-service';
+import { updateClaimStatus } from '@/lib/claim-service';
 import { toast } from 'sonner';
 
 type Step = 'METHOD' | 'PROCESS' | 'SUCCESS';
@@ -21,9 +25,18 @@ type NumpadTarget = 'NONE' | 'CASH' | 'SPLIT_CASH' | 'SPLIT_QR';
 interface PaymentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialMethod?: Method | null;
+  orderToEditPayment?: any | null;
+  onPaymentEditSuccess?: () => void;
 }
 
-export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
+export function PaymentModal({ 
+  open, 
+  onOpenChange, 
+  initialMethod = null,
+  orderToEditPayment = null,
+  onPaymentEditSuccess
+}: PaymentModalProps) {
   const cart = useCartStore();
   const shiftStore = useShiftStore();
 
@@ -39,7 +52,11 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [selectedBank, setSelectedBank] = useState<BankAccount | null>(null);
 
-  const total = cart.getTotal();
+  // PDF Receipt state
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const [showReceiptPdf, setShowReceiptPdf] = useState(false);
+
+  const total = orderToEditPayment ? (orderToEditPayment.totalAmount || 0) : cart.getTotal();
   
   // Cash method logic
   const isCashSufficient = cashReceived >= total;
@@ -51,23 +68,58 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
   const splitChange = Math.max(0, splitTotalReceived - total);
   const isSplitSufficient = splitTotalReceived >= total;
 
-  // Force reset when opened
+  // Auto-close countdown timer state for SUCCESS step
+  const [countdown, setCountdown] = useState<number>(5);
+
+  // Force reset when opened & Auto-close timer on SUCCESS
   useEffect(() => {
     if (open) {
-      setStep('METHOD');
-      setMethod(null);
-      setCashReceived(0);
-      setQrReceived(0);
-      setNumpadTarget('NONE');
-
       const accs = loadBankAccounts();
       setBankAccounts(accs);
       const def = accs.find(a => a.isDefault) || accs[0] || null;
       setSelectedBank(def);
+
+      if (initialMethod) {
+        setMethod(initialMethod);
+        setStep('PROCESS');
+      } else {
+        setStep('METHOD');
+        setMethod(null);
+      }
+      setCashReceived(0);
+      setQrReceived(0);
+      setNumpadTarget('NONE');
     }
-  }, [open]);
+  }, [open, initialMethod]);
+
+  useEffect(() => {
+    let timer: any = null;
+    let interval: any = null;
+
+    if (open && step === 'SUCCESS') {
+      setCountdown(5);
+      interval = setInterval(() => {
+        setCountdown((prev) => Math.max(0, prev - 1));
+      }, 1000);
+
+      timer = setTimeout(() => {
+        cart.clearCart();
+        onOpenChange(false);
+      }, 5000);
+    }
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (interval) clearInterval(interval);
+    };
+  }, [open, step]);
 
   const handleOpenChange = (isOpen: boolean) => {
+    if (!isOpen) {
+      if (step === 'SUCCESS' || orderToEditPayment) {
+        cart.clearCart();
+      }
+    }
     onOpenChange(isOpen);
   };
 
@@ -93,6 +145,18 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
     let payments = [];
     let recordedCashReceived = 0;
     let recordedChangeAmount = 0;
+    const attachedClaim = cart.attachedClaim;
+    const claimDiscountAmt = cart.getClaimDiscountAmount();
+    const claimFaceValue = attachedClaim
+      ? Number(attachedClaim.discountAmount ?? attachedClaim.totalClaimValue ?? (attachedClaim.quantity || 1) * (attachedClaim.unitPrice || 0))
+      : 0;
+
+    if (attachedClaim && claimFaceValue > claimDiscountAmt) {
+      toast.error(
+        `ยอดบิลยังไม่พอใช้ส่วนลดเคลม ${formatCurrency(claimFaceValue)} ได้ครบ กรุณาเพิ่มสินค้าอีก ${formatCurrency(claimFaceValue - claimDiscountAmt)} หรือยกเลิกส่วนลดเคลมก่อนชำระ`
+      );
+      return;
+    }
     
     if (method === 'CASH') {
       payments.push({ method: 'CASH' as const, amount: total });
@@ -122,9 +186,59 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
       payments.push({ method: 'CREDIT_NOTE' as const, amount: total });
     }
 
+    // Direct Payment Method Edit for existing order (without touching cart!)
+    if (orderToEditPayment) {
+      const orderId = orderToEditPayment.orderNumber || orderToEditPayment.id;
+      const oldPayments = orderToEditPayment.payments || [orderToEditPayment.paymentMethod || 'CASH'];
+      const primaryNewMethod = payments.length > 1 ? 'SPLIT' : (payments[0]?.method || 'CASH');
+
+      // Update shift store sales accounting for new payments
+      shiftStore.updateOrderPaymentMethod(orderId, oldPayments, payments, total);
+
+      // Try API update
+      try {
+        await apiFetch(`/orders/${orderToEditPayment.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ paymentMethod: primaryNewMethod, payments: payments })
+        });
+      } catch (e) {}
+
+      const completedReceipt: ReceiptData = {
+        orderNumber: orderId,
+        createdAt: orderToEditPayment.createdAt || new Date().toISOString(),
+        customerName: orderToEditPayment.customerName || 'ลูกค้าทั่วไป',
+        userName: orderToEditPayment.userName || shiftStore.currentShift?.userName || 'พนักงาน POS',
+        items: (orderToEditPayment.items || []).map((i: any) => ({
+          name: i.name || i.productName || 'สินค้า',
+          quantity: i.quantity || 1,
+          unitName: i.unitName || 'ชิ้น',
+          unitPrice: i.unitPrice || i.price || 0,
+          lineTotal: i.lineTotal || (i.quantity * (i.unitPrice || i.price || 0)),
+          itemNote: i.itemNote || i.note
+        })),
+        subtotal: orderToEditPayment.subtotal || total,
+        billDiscountAmount: orderToEditPayment.billDiscountAmount || 0,
+        vatAmount: orderToEditPayment.vatAmount || 0,
+        totalAmount: total,
+        paymentMethod: payments.length > 1 ? 'แบ่งชำระ (Split Payment)' : (method === 'CASH' ? 'เงินสด (Cash)' : method === 'QR' ? 'QR PromptPay' : method === 'CARD' ? 'บัตรเครดิต' : 'โอนเงิน'),
+        payments: payments,
+        cashReceived: recordedCashReceived,
+        changeAmount: recordedChangeAmount
+      };
+
+      setReceiptData(completedReceipt);
+      setStep('SUCCESS');
+      setShowReceiptPdf(true);
+      onPaymentEditSuccess?.();
+      toast.success(`✅ อัปเดตวิธีชำระเงินบิล #${orderId} เรียบร้อยแล้ว!`);
+      return;
+    }
+
+    let isSynced = false;
+    let backendOrder: any = null;
     try {
       try {
-        await apiFetch('/orders/checkout', {
+        backendOrder = await apiFetch('/orders/checkout', {
           method: 'POST',
           body: JSON.stringify({
             customerId: cart.customerId,
@@ -138,14 +252,36 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
             payments: payments
           })
         });
+        isSynced = true;
       } catch (backendError) {
+        isSynced = false;
         console.warn('Backend server offline or unreachable, proceeding with offline POS checkout:', backendError);
+        toast.warning('⚠️ บันทึกออเดอร์ในเครื่องเรียบร้อย (รอ Sync ขึ้น Backend เมื่อออนไลน์)', { duration: 5000 });
       }
 
+      const finalOrderNumber = backendOrder?.orderNumber || `ORD-OFFLINE-${Date.now()}`;
+      const finalOrderId = backendOrder?.id || Date.now().toString();
+
+      const previousEditingId = cart.editingOrderId;
+      if (previousEditingId) {
+        shiftStore.voidOrder(previousEditingId, "แก้ไขรายการสินค้าและชำระเงินใหม่แทนบิลเดิม");
+        cart.setEditingOrderId(null);
+      }
+
+      const claimInfoObj = attachedClaim ? {
+        claimId: attachedClaim.id,
+        originalOrderNumber: attachedClaim.orderNumber,
+        productName: attachedClaim.productName,
+        quantity: attachedClaim.quantity,
+        unitName: attachedClaim.unitName,
+        defectReason: attachedClaim.defectReason,
+        discountAmount: claimDiscountAmt,
+      } : undefined;
+
       shiftStore.recordSale({
-        id: Date.now().toString(),
+        id: finalOrderId,
         shiftId: shiftStore.currentShift?.id || 'shift_default',
-        orderNumber: `ORD-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(Math.random()*1000)}`,
+        orderNumber: finalOrderNumber,
         customerId: cart.customerId,
         customerName: cart.customerName,
         items: cart.items.map(i => ({
@@ -154,6 +290,8 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
           sku: i.sku,
           quantity: i.quantity,
           unitName: i.unitName,
+          unitId: i.unitId,
+          conversionFactor: i.conversionFactor || 1,
           unitPrice: cart.getEffectivePrice(i),
           originalPrice: i.originalPrice,
           discountType: i.discountType,
@@ -166,18 +304,95 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
         billDiscountType: cart.billDiscountType,
         billDiscountValue: cart.billDiscountValue,
         billDiscountAmount: cart.getBillDiscountAmount(),
+        pointsDiscountAmount: cart.getPointsDiscountAmount(),
+        pointsUsed: cart.pointsUsed,
+        claimDiscountAmount: claimDiscountAmt,
+        claimInfo: claimInfoObj,
         vatAmount: cart.getVatAmount(),
         totalAmount: total,
         payments: payments as any,
         cashReceived: recordedCashReceived,
         changeAmount: recordedChangeAmount,
         status: 'COMPLETED',
+        note: cart.note?.trim() || undefined,
         userId: shiftStore.currentShift?.userId || 'unknown',
         userName: shiftStore.currentShift?.userName || 'unknown',
-        createdAt: new Date().toISOString()
+        createdAt: backendOrder?.createdAt ? new Date(backendOrder.createdAt).toISOString() : new Date().toISOString(),
+        isSynced: isSynced
       });
 
+      // If an attached warranty claim was used as a store discount, complete it now!
+      if (attachedClaim) {
+        updateClaimStatus(attachedClaim.id, 'COMPLETED', {
+          note: `นำมาใช้เป็นส่วนลดในบิล #${finalOrderNumber}`,
+          claimedInOrderNumber: finalOrderNumber,
+        });
+      }
+
+      // Deduct stock from inventory and log stock movement
+      deductPosSaleStock(
+        cart.items.map(i => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          conversionFactor: i.conversionFactor || 1,
+          name: i.name,
+          sku: i.sku,
+          unitName: i.unitName,
+        })),
+        finalOrderNumber,
+        shiftStore.currentShift?.userName || 'พนักงาน POS'
+      );
+
+      // Award points, deduct redeemed points, and accumulate credit debt for member customer
+      const isCreditSale = method === 'CREDIT' || payments.some(p => p.method === 'CREDIT_NOTE');
+      const custSaleRes = recordCustomerSale(
+        cart.customerId,
+        total,
+        isCreditSale,
+        finalOrderNumber,
+        cart.pointsUsed
+      );
+
+      if (custSaleRes.earnedPoints > 0 || custSaleRes.pointsUsed > 0) {
+        toast.success(
+          `🎉 สมาชิก ${custSaleRes.customerName} : ${custSaleRes.pointsUsed > 0 ? `ใช้ ${custSaleRes.pointsUsed.toLocaleString()} แต้ม ` : ''}${custSaleRes.earnedPoints > 0 ? `ได้รับ +${custSaleRes.earnedPoints} แต้ม ` : ''}(คงเหลือ ${custSaleRes.newTotalPoints.toLocaleString()} แต้ม)`
+        );
+      }
+
+      const completedReceipt: ReceiptData = {
+        orderNumber: finalOrderNumber,
+        createdAt: backendOrder?.createdAt ? new Date(backendOrder.createdAt).toISOString() : new Date().toISOString(),
+        customerName: cart.customerName,
+        userName: shiftStore.currentShift?.userName || 'พนักงาน POS',
+        note: cart.note?.trim() || undefined,
+        items: cart.items.map(i => ({
+          name: i.name,
+          quantity: i.quantity,
+          unitName: i.unitName,
+          unitPrice: cart.getEffectivePrice(i),
+          lineTotal: cart.getItemLineTotal(i),
+          discountAmount: cart.getItemDiscountAmount(i),
+          itemNote: i.itemNote
+        })),
+        subtotal: cart.getSubtotal(),
+        billDiscountAmount: cart.getBillDiscountAmount(),
+        pointsDiscountAmount: cart.getPointsDiscountAmount(),
+        pointsUsed: cart.pointsUsed,
+        claimDiscountAmount: claimDiscountAmt,
+        claimInfo: claimInfoObj,
+        customerPointsEarned: custSaleRes.earnedPoints,
+        customerPointsBalance: custSaleRes.newTotalPoints,
+        vatAmount: cart.getVatAmount(),
+        totalAmount: total,
+        paymentMethod: method === 'CASH' ? 'เงินสด (Cash)' : method === 'QR' ? 'QR PromptPay' : method === 'SPLIT' ? 'แบ่งชำระ (Split)' : 'เงินเชื่อ (Credit)',
+        payments: payments,
+        cashReceived: recordedCashReceived,
+        changeAmount: recordedChangeAmount
+      };
+
+      setReceiptData(completedReceipt);
       setStep('SUCCESS');
+      setShowReceiptPdf(true); // Automatically pop up the PDF receipt preview!
     } catch (error) {
       toast.error('ไม่สามารถประมวลผลการชำระเงินได้');
     }
@@ -635,7 +850,14 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
               </div>
               <div>
                 <h2 className="text-4xl font-extrabold text-slate-900">ชำระเงินสำเร็จ!</h2>
-                <p className="text-slate-500 text-base mt-1">รับชำระเงินและบันทึกออเดอร์เข้าในระบบเรียบร้อยแล้ว</p>
+                <p className="text-slate-500 text-base mt-1">
+                  รับชำระเงินและบันทึกออเดอร์เข้าในระบบเรียบร้อยแล้ว
+                </p>
+                <div className="pt-2">
+                  <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-300 font-extrabold text-xs px-3 py-1.5 rounded-full shadow-xs">
+                    ⏳ หน้าต่างจะปิดอัตโนมัติและล้างตะกร้าใน {countdown} วินาที...
+                  </span>
+                </div>
               </div>
 
               {method === 'CASH' && change > 0 && (
@@ -652,9 +874,18 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
                 </div>
               )}
 
-              <div className="flex justify-center pt-6">
-                <Button className="h-14 px-10 bg-sky-500 hover:bg-sky-600 text-white font-bold text-lg rounded-2xl shadow-lg" onClick={handleFinish}>
-                  ปิดหน้าต่าง (ออเดอร์ใหม่)
+              <div className="flex flex-wrap items-center justify-center gap-4 pt-6">
+                <Button 
+                  variant="outline"
+                  className="h-14 px-8 border-sky-400 bg-sky-50 text-sky-700 hover:bg-sky-500 hover:text-white font-bold text-lg rounded-2xl shadow-md transition-all flex items-center gap-2" 
+                  onClick={() => setShowReceiptPdf(true)}
+                >
+                  <FileText className="w-5 h-5" />
+                  ดู / พิมพ์ใบเสร็จ PDF
+                </Button>
+
+                <Button className="h-14 px-8 bg-sky-600 hover:bg-sky-700 text-white font-bold text-lg rounded-2xl shadow-lg" onClick={handleFinish}>
+                  ปิดหน้าต่าง (เริ่มออเดอร์ใหม่)
                 </Button>
               </div>
             </div>
@@ -662,12 +893,20 @@ export function PaymentModal({ open, onOpenChange }: PaymentModalProps) {
         </DialogContent>
       </Dialog>
 
+      {/* PDF Receipt Preview Modal */}
+      <ReceiptPdfModal
+        open={showReceiptPdf}
+        onOpenChange={setShowReceiptPdf}
+        data={receiptData}
+      />
+
       {/* Numpad Popup */}
       <NumpadPopup 
         open={numpadTarget !== 'NONE'}
         onOpenChange={(isOpen) => !isOpen && setNumpadTarget('NONE')}
         onConfirm={handleNumpadConfirm}
         title={numpadTarget === 'SPLIT_QR' ? 'ระบุยอดโอนเงิน' : 'ระบุจำนวนเงินสดที่รับ'}
+        subtitle={numpadTarget === 'SPLIT_QR' ? 'จำนวนเงินที่โอน' : 'จำนวนเงินสดที่รับมา'}
         initialValue={getNumpadInitialValue()}
       />
     </>
