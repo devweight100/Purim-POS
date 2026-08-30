@@ -14,6 +14,7 @@ import { CountCashModal } from './CountCashModal';
 import { ShiftSummaryPdfModal, ShiftSummaryData, BankAccountBreakdownItem } from './ShiftSummaryPdfModal';
 import { loadBankAccounts } from '@/lib/bank-account-storage';
 import { getShiftDebtCollections } from '@/lib/debt-service';
+import { saveShiftSummary } from '@/lib/shift-service';
 import { toast } from 'sonner';
 
 interface CloseShiftModalProps {
@@ -167,9 +168,8 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
     closeShift(finalActualCash);
     onOpenChange(false);
 
-    try {
-      localStorage.setItem('pos_last_shift_summary', JSON.stringify(dataForReport));
-    } catch {}
+    // Save rich shift summary to history
+    saveShiftSummary(dataForReport);
 
     setSummaryData(dataForReport);
     setShowSummaryPdf(true);

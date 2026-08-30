@@ -7,7 +7,7 @@ import {
   ShoppingCart, ClipboardList, Users, LayoutDashboard, Package, 
   Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, 
   FolderTree, Building2, Receipt, ShieldAlert, ArrowLeftRight, HandCoins,
-  ChevronDown
+  ChevronDown, History
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/store/auth-store';
@@ -42,6 +42,7 @@ const navGroups: NavGroup[] = [
     icon: ShoppingCart,
     items: [
       { href: '/orders', label: 'ประวัติการขาย (Orders)', icon: ClipboardList },
+      { href: '/shifts', label: 'ประวัติการปิดกะ', icon: History },
       { href: '/debts', label: 'ลูกหนี้ & ค้างชำระ', icon: Receipt },
       { href: '/customers', label: 'ข้อมูลลูกค้าสมาชิก', icon: Users },
       { href: '/claims', label: 'เคลมสินค้า (ลูกค้า)', icon: ShieldAlert },
