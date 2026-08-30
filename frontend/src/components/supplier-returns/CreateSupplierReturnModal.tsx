@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   Building2, CheckCircle2, FileText, Plus, Trash2, 
   ShieldAlert, Package, Search, Receipt, CheckSquare, Square, DollarSign, RotateCcw, ChevronDown
@@ -29,6 +29,65 @@ import {
   CreateSupplierReturnItemInput
 } from '@/lib/supplier-return-service';
 import { ClaimRecord, SupplierReturnNote } from '@/lib/types';
+
+export interface GroupedClaimProduct {
+  groupKey: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  unitName: string;
+  totalQuantity: number;
+  costPrice: number;
+  claims: ClaimRecord[];
+  claimIds: string[];
+  defectReasons: string[];
+  orderNumbers: string[];
+  supplierId?: string;
+  supplierName?: string;
+}
+
+export function groupClaimsByProduct(claims: ClaimRecord[]): GroupedClaimProduct[] {
+  const map = new Map<string, GroupedClaimProduct>();
+
+  claims.forEach((c) => {
+    const key = c.productId ? `PID_${c.productId}` : (c.sku ? `SKU_${c.sku}` : `NAME_${c.productName}`);
+    if (!map.has(key)) {
+      map.set(key, {
+        groupKey: key,
+        productId: c.productId,
+        productName: c.productName,
+        sku: c.sku,
+        unitName: c.unitName || 'ชิ้น',
+        totalQuantity: 0,
+        costPrice: Number(c.costPrice || 0),
+        claims: [],
+        claimIds: [],
+        defectReasons: [],
+        orderNumbers: [],
+        supplierId: c.supplierId,
+        supplierName: c.supplierName,
+      });
+    }
+
+    const group = map.get(key)!;
+    group.totalQuantity += Number(c.quantity || 1);
+    group.claims.push(c);
+    if (c.id && !group.claimIds.includes(c.id)) {
+      group.claimIds.push(c.id);
+    }
+    if (c.defectReason && !group.defectReasons.includes(c.defectReason)) {
+      group.defectReasons.push(c.defectReason);
+    }
+    if (c.orderNumber && !group.orderNumbers.includes(c.orderNumber)) {
+      group.orderNumbers.push(c.orderNumber);
+    }
+    if (group.costPrice <= 0 && Number(c.costPrice) > 0) {
+      group.costPrice = Number(c.costPrice);
+    }
+  });
+
+  return Array.from(map.values());
+}
 
 interface CreateSupplierReturnModalProps {
   open: boolean;
@@ -134,7 +193,14 @@ export function CreateSupplierReturnModal({
 
   const currentSupplier = suppliers.find((s) => s.id === selectedSupplierId);
   const selectedPO = payablePOs.find((p) => p.id === selectedPoId);
-  const otherClaims = allStoreClaims.filter((c) => !availableClaims.some((ac) => ac.id === c.id));
+
+  // Group defective claims by product so identical products are shown as a single row
+  const groupedSupplierClaims = useMemo(() => groupClaimsByProduct(availableClaims), [availableClaims]);
+  const otherClaims = useMemo(
+    () => allStoreClaims.filter((c) => !availableClaims.some((ac) => ac.id === c.id)),
+    [allStoreClaims, availableClaims]
+  );
+  const groupedOtherClaims = useMemo(() => groupClaimsByProduct(otherClaims), [otherClaims]);
 
   // Totals
   const defectiveTotal = returnItems
@@ -159,29 +225,99 @@ export function CreateSupplierReturnModal({
     ? parsedCustomAmount
     : grandTotalCost;
 
-  // Toggle defective claim item into returnItems
-  const toggleClaimItem = (claim: ClaimRecord) => {
-    const existingIdx = returnItems.findIndex((i) => i.claimId === claim.id);
+  // Toggle or add grouped defective claim product into returnItems
+  const toggleGroupedClaimItem = (group: GroupedClaimProduct) => {
+    const existingIdx = returnItems.findIndex(
+      (i) => (i.productId && i.productId === group.productId) || (i.sku && i.sku === group.sku)
+    );
+
     if (existingIdx >= 0) {
       setReturnItems((prev) => prev.filter((_, idx) => idx !== existingIdx));
     } else {
-      const unitCost = Number(claim.costPrice || 50);
+      const unitCost = Number(group.costPrice > 0 ? group.costPrice : 50);
       const newItem: CreateSupplierReturnItemInput = {
-        productId: claim.productId,
-        productName: claim.productName,
-        sku: claim.sku,
-        unitName: claim.unitName || 'ชิ้น',
-        quantity: Number(claim.quantity || 1),
+        productId: group.productId,
+        productName: group.productName,
+        sku: group.sku,
+        unitName: group.unitName || 'ชิ้น',
+        quantity: group.totalQuantity,
         unitCost: unitCost,
         itemType: 'DEFECTIVE',
-        defectReason: claim.defectReason || 'สินค้าชำรุด/มีปัญหา',
-        claimId: claim.id,
-        originalOrderNumber: claim.orderNumber,
+        defectReason: group.defectReasons.join(', ') || 'สินค้าชำรุด/มีปัญหา',
+        claimId: group.claimIds.join(', '),
+        originalOrderNumber: group.orderNumbers.join(', ') || undefined,
         poId: selectedPoId || undefined,
         poNumber: selectedPO?.poNumber || undefined,
       };
       setReturnItems((prev) => [...prev, newItem]);
     }
+  };
+
+  // Update return quantity for a grouped defective claim product
+  const updateGroupReturnQty = (group: GroupedClaimProduct, newQty: number) => {
+    const clampedQty = Math.max(1, Math.min(newQty, group.totalQuantity));
+    setReturnItems((prev) => {
+      const existingIdx = prev.findIndex(
+        (i) => (i.productId && i.productId === group.productId) || (i.sku && i.sku === group.sku)
+      );
+      if (existingIdx >= 0) {
+        return prev.map((item, idx) =>
+          idx === existingIdx ? { ...item, quantity: clampedQty } : item
+        );
+      } else {
+        const unitCost = Number(group.costPrice > 0 ? group.costPrice : 50);
+        return [
+          ...prev,
+          {
+            productId: group.productId,
+            productName: group.productName,
+            sku: group.sku,
+            unitName: group.unitName || 'ชิ้น',
+            quantity: clampedQty,
+            unitCost: unitCost,
+            itemType: 'DEFECTIVE',
+            defectReason: group.defectReasons.join(', ') || 'สินค้าชำรุด/มีปัญหา',
+            claimId: group.claimIds.join(', '),
+            originalOrderNumber: group.orderNumbers.join(', ') || undefined,
+            poId: selectedPoId || undefined,
+            poNumber: selectedPO?.poNumber || undefined,
+          },
+        ];
+      }
+    });
+  };
+
+  // Update deduction cost for a grouped defective claim product
+  const updateGroupReturnCost = (group: GroupedClaimProduct, newCost: number) => {
+    const clampedCost = Math.max(0, newCost);
+    setReturnItems((prev) => {
+      const existingIdx = prev.findIndex(
+        (i) => (i.productId && i.productId === group.productId) || (i.sku && i.sku === group.sku)
+      );
+      if (existingIdx >= 0) {
+        return prev.map((item, idx) =>
+          idx === existingIdx ? { ...item, unitCost: clampedCost } : item
+        );
+      } else {
+        return [
+          ...prev,
+          {
+            productId: group.productId,
+            productName: group.productName,
+            sku: group.sku,
+            unitName: group.unitName || 'ชิ้น',
+            quantity: group.totalQuantity,
+            unitCost: clampedCost,
+            itemType: 'DEFECTIVE',
+            defectReason: group.defectReasons.join(', ') || 'สินค้าชำรุด/มีปัญหา',
+            claimId: group.claimIds.join(', '),
+            originalOrderNumber: group.orderNumbers.join(', ') || undefined,
+            poId: selectedPoId || undefined,
+            poNumber: selectedPO?.poNumber || undefined,
+          },
+        ];
+      }
+    });
   };
 
   // Add overstock product item
@@ -435,7 +571,7 @@ export function CreateSupplierReturnModal({
                   className="rounded-xl font-bold text-xs data-[state=active]:bg-white data-[state=active]:text-rose-700 data-[state=active]:shadow-xs gap-1.5"
                 >
                   <ShieldAlert className="w-4 h-4 text-rose-600" />
-                  <span>สต็อกของเคลม (สินค้าชำรุด {availableClaims.length} ชิ้น)</span>
+                  <span>สต็อกของเคลม ({groupedSupplierClaims.length} รายการ / {availableClaims.reduce((s, c) => s + (c.quantity || 1), 0)} ชิ้น)</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="overstock"
@@ -446,62 +582,176 @@ export function CreateSupplierReturnModal({
                 </TabsTrigger>
               </TabsList>
 
-              {/* TAB 1: DEFECTIVE CLAIM STOCK */}
+              {/* TAB 1: DEFECTIVE CLAIM STOCK (GROUPED BY PRODUCT) */}
               <TabsContent value="defective" className="pt-2 space-y-2">
-                {availableClaims.length === 0 && otherClaims.length === 0 ? (
+                {groupedSupplierClaims.length === 0 && groupedOtherClaims.length === 0 ? (
                   <div className="p-6 text-center bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-400">
                     ไม่มีสินค้าชำรุดในสต็อกของเคลมที่รอส่งคืนบริษัทในระบบ
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {availableClaims.length > 0 ? (
-                      <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 border border-slate-200 rounded-2xl p-2 bg-slate-50/50">
-                        {availableClaims.map((claim) => {
-                          const isSelected = returnItems.some((i) => i.claimId === claim.id);
-                          return (
+                    {groupedSupplierClaims.length > 0 ? (
+                      <div className="max-h-64 overflow-y-auto space-y-2 pr-1 border border-slate-200 rounded-2xl p-2.5 bg-slate-50/50">
+                        {groupedSupplierClaims.map((group) => {
+                          const currentItem = returnItems.find(
+                            (i) => (i.productId && i.productId === group.productId) || (i.sku && i.sku === group.sku)
+                          );
+                          const isSelected = !!currentItem;
+
+                          return isSelected && currentItem ? (
                             <div
-                              key={claim.id}
-                              onClick={() => toggleClaimItem(claim)}
-                              className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                                isSelected
-                                  ? 'border-rose-400 bg-rose-50/70 text-rose-950 shadow-2xs font-semibold'
-                                  : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
-                              }`}
+                              key={group.groupKey}
+                              className="p-3.5 rounded-2xl border-2 border-rose-400 bg-rose-50/50 shadow-xs ring-1 ring-rose-300 transition-all space-y-3"
                             >
-                              <div className="flex items-center gap-2.5">
-                                {isSelected ? (
-                                  <CheckSquare className="w-4 h-4 text-rose-600 shrink-0" />
-                                ) : (
-                                  <Square className="w-4 h-4 text-slate-400 shrink-0" />
-                                )}
-                                <div>
-                                  <div className="flex items-center gap-1.5">
-                                    <p className="text-xs font-bold text-slate-900">{claim.productName}</p>
-                                    <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-[9px] py-0 font-semibold">
-                                      สินค้าชำรุด
-                                    </Badge>
+                              <div className="flex items-start justify-between gap-2">
+                                <div
+                                  className="flex items-start gap-2.5 cursor-pointer flex-1"
+                                  onClick={() => toggleGroupedClaimItem(group)}
+                                >
+                                  <CheckSquare className="w-4 h-4 text-rose-600 mt-0.5 shrink-0" />
+                                  <div>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <p className="text-xs font-bold text-slate-900">{group.productName}</p>
+                                      <Badge className="bg-rose-600 text-white text-[9px] py-0 font-bold">
+                                        เลือกส่งคืนแล้ว
+                                      </Badge>
+                                      <span className="text-[11px] text-slate-500 font-medium">
+                                        (มีในสต็อกทั้งหมด {group.totalQuantity} {group.unitName})
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                                      <span>SKU: {group.sku}</span>
+                                      <span>•</span>
+                                      <span className="text-rose-600 font-medium truncate max-w-xs">
+                                        อาการ: {group.defectReasons.join(', ') || 'ชำรุด'}
+                                      </span>
+                                      {group.claims.length > 1 && (
+                                        <>
+                                          <span>•</span>
+                                          <span className="text-slate-400">จาก {group.claims.length} บิลเคลม</span>
+                                        </>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                                    <span>SKU: {claim.sku}</span>
-                                    <span>•</span>
-                                    <span className="text-rose-600 font-medium">อาการ: {claim.defectReason}</span>
-                                    {claim.orderNumber && (
-                                      <>
-                                        <span>•</span>
-                                        <span>บิลขาย: #{claim.orderNumber}</span>
-                                      </>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => toggleGroupedClaimItem(group)}
+                                  className="text-xs text-slate-400 hover:text-rose-600 font-bold"
+                                >
+                                  นำออก
+                                </button>
+                              </div>
+
+                              {/* Editable Quantity & Unit Cost */}
+                              <div className="bg-white p-3 rounded-xl border border-rose-200 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end text-xs">
+                                <div>
+                                  <div className="flex justify-between items-center mb-1">
+                                    <label className="text-[11px] font-bold text-slate-700">
+                                      จำนวนที่จะส่งคืน / ลดหนี้:
+                                    </label>
+                                    {currentItem.quantity !== group.totalQuantity && (
+                                      <button
+                                        type="button"
+                                        onClick={() => updateGroupReturnQty(group, group.totalQuantity)}
+                                        className="text-[10px] font-bold text-rose-600 hover:underline"
+                                      >
+                                        คืนทั้งหมด ({group.totalQuantity})
+                                      </button>
                                     )}
+                                  </div>
+                                  <div className="relative">
+                                    <Input
+                                      type="number"
+                                      min="1"
+                                      max={group.totalQuantity}
+                                      value={currentItem.quantity}
+                                      onChange={(e) => updateGroupReturnQty(group, parseFloat(e.target.value) || 1)}
+                                      className="h-9 text-xs font-mono font-black text-center bg-slate-50 border-slate-300"
+                                    />
+                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
+                                      {group.unitName}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                                    ราคาทุนต่อหน่วยที่จะขอลดหนี้ (฿):
+                                  </label>
+                                  <div className="relative">
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="any"
+                                      value={currentItem.unitCost}
+                                      onChange={(e) => updateGroupReturnCost(group, parseFloat(e.target.value) || 0)}
+                                      className="h-9 text-xs font-mono font-black text-right bg-slate-50 border-slate-300 pr-8"
+                                    />
+                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
+                                      ฿
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="bg-rose-50/70 p-2 px-3 rounded-lg border border-rose-200 text-right">
+                                  <span className="text-[10px] text-rose-800 font-bold block">
+                                    รวมยอดลดหนี้รายการนี้:
+                                  </span>
+                                  <span className="text-base font-mono font-black text-rose-900">
+                                    {formatCurrency(currentItem.quantity * currentItem.unitCost)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div
+                              key={group.groupKey}
+                              className="p-3 rounded-2xl border border-slate-200 bg-white hover:border-rose-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 cursor-pointer"
+                              onClick={() => toggleGroupedClaimItem(group)}
+                            >
+                              <div className="flex items-start gap-2.5">
+                                <Square className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                                <div>
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <p className="text-xs font-bold text-slate-900">{group.productName}</p>
+                                    <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-[9px] py-0 font-semibold">
+                                      มีของชำรุด {group.totalQuantity} {group.unitName}
+                                    </Badge>
+                                    {group.claims.length > 1 && (
+                                      <Badge variant="outline" className="text-[9px] py-0 text-slate-500 bg-slate-50">
+                                        รวมจาก {group.claims.length} ใบเคลม
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                                    <span>SKU: {group.sku}</span>
+                                    <span>•</span>
+                                    <span className="text-rose-600 font-medium truncate max-w-xs">
+                                      อาการ: {group.defectReasons.join(', ') || 'ชำรุด'}
+                                    </span>
                                   </div>
                                 </div>
                               </div>
 
-                              <div className="text-right">
-                                <span className="text-xs font-mono font-bold block text-slate-900">
-                                  {claim.quantity} ชิ้น
-                                </span>
-                                <span className="text-[11px] text-slate-500 font-mono">
-                                  ราคาทุน @{formatCurrency(claim.costPrice || 50)} = {formatCurrency((claim.costPrice || 50) * claim.quantity)}
-                                </span>
+                              <div className="flex items-center justify-between sm:justify-end gap-3 pl-6 sm:pl-0">
+                                <div className="text-right">
+                                  <span className="text-xs font-mono font-bold block text-slate-900">
+                                    ในสต็อก: {group.totalQuantity} {group.unitName}
+                                  </span>
+                                  <span className="text-[11px] text-slate-500 font-mono">
+                                    ทุนเดิม @{formatCurrency(group.costPrice || 50)}
+                                  </span>
+                                </div>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs font-bold rounded-lg border-rose-200 text-rose-700 hover:bg-rose-50"
+                                >
+                                  + เลือกลดหนี้
+                                </Button>
                               </div>
                             </div>
                           );
@@ -514,7 +764,7 @@ export function CreateSupplierReturnModal({
                     )}
 
                     {/* Expandable section for other unreturned defective claims */}
-                    {otherClaims.length > 0 && (
+                    {groupedOtherClaims.length > 0 && (
                       <div className="pt-2 border-t border-slate-200 space-y-1.5">
                         <button
                           type="button"
@@ -525,63 +775,170 @@ export function CreateSupplierReturnModal({
                           <span>
                             {showOtherClaims
                               ? 'ซ่อนสินค้าชำรุดรายการอื่นในสต็อก'
-                              : `แสดงสินค้าชำรุดรายการอื่นในสต็อกของเคลม (${otherClaims.length} รายการ)`}
+                              : `แสดงสินค้าชำรุดรายการอื่นในสต็อกของเคลม (${groupedOtherClaims.length} รายการสินค้า)`}
                           </span>
                         </button>
 
                         {showOtherClaims && (
-                          <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1 border border-indigo-100 rounded-2xl p-2 bg-indigo-50/30">
+                          <div className="max-h-60 overflow-y-auto space-y-2 pr-1 border border-indigo-100 rounded-2xl p-2.5 bg-indigo-50/30">
                             <p className="text-[11px] text-indigo-800 font-medium pb-1 px-1">
                               💡 สามารถคลิกเลือกรายการด้านล่างเพื่อดึงมาส่งคืนและลดหนี้กับบริษัทนี้ได้:
                             </p>
-                            {otherClaims.map((claim) => {
-                              const isSelected = returnItems.some((i) => i.claimId === claim.id);
-                              return (
+                            {groupedOtherClaims.map((group) => {
+                              const currentItem = returnItems.find(
+                                (i) => (i.productId && i.productId === group.productId) || (i.sku && i.sku === group.sku)
+                              );
+                              const isSelected = !!currentItem;
+
+                              return isSelected && currentItem ? (
                                 <div
-                                  key={claim.id}
-                                  onClick={() => toggleClaimItem(claim)}
-                                  className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                                    isSelected
-                                      ? 'border-indigo-400 bg-indigo-50 text-indigo-950 shadow-2xs font-semibold'
-                                      : 'border-slate-200 bg-white hover:border-indigo-200 text-slate-700'
-                                  }`}
+                                  key={group.groupKey}
+                                  className="p-3.5 rounded-2xl border-2 border-indigo-400 bg-indigo-50/60 shadow-xs ring-1 ring-indigo-300 transition-all space-y-3"
                                 >
-                                  <div className="flex items-center gap-2.5">
-                                    {isSelected ? (
-                                      <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" />
-                                    ) : (
-                                      <Square className="w-4 h-4 text-slate-400 shrink-0" />
-                                    )}
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div
+                                      className="flex items-start gap-2.5 cursor-pointer flex-1"
+                                      onClick={() => toggleGroupedClaimItem(group)}
+                                    >
+                                      <CheckSquare className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0" />
+                                      <div>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <p className="text-xs font-bold text-slate-900">{group.productName}</p>
+                                          <Badge className="bg-indigo-600 text-white text-[9px] py-0 font-bold">
+                                            เลือกส่งคืนแล้ว
+                                          </Badge>
+                                          {group.supplierName && (
+                                            <Badge variant="outline" className="text-[9px] py-0 text-slate-500 bg-white">
+                                              {group.supplierName}
+                                            </Badge>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                                          <span>SKU: {group.sku}</span>
+                                          <span>•</span>
+                                          <span className="text-rose-600 font-medium truncate max-w-xs">
+                                            อาการ: {group.defectReasons.join(', ') || 'ชำรุด'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleGroupedClaimItem(group)}
+                                      className="text-xs text-slate-400 hover:text-indigo-600 font-bold"
+                                    >
+                                      นำออก
+                                    </button>
+                                  </div>
+
+                                  <div className="bg-white p-3 rounded-xl border border-indigo-200 grid grid-cols-1 sm:grid-cols-3 gap-3 items-end text-xs">
                                     <div>
-                                      <div className="flex items-center gap-1.5">
-                                        <p className="text-xs font-bold text-slate-900">{claim.productName}</p>
-                                        {claim.supplierName && (
+                                      <div className="flex justify-between items-center mb-1">
+                                        <label className="text-[11px] font-bold text-slate-700">
+                                          จำนวนที่จะส่งคืน:
+                                        </label>
+                                        {currentItem.quantity !== group.totalQuantity && (
+                                          <button
+                                            type="button"
+                                            onClick={() => updateGroupReturnQty(group, group.totalQuantity)}
+                                            className="text-[10px] font-bold text-indigo-600 hover:underline"
+                                          >
+                                            คืนทั้งหมด ({group.totalQuantity})
+                                          </button>
+                                        )}
+                                      </div>
+                                      <div className="relative">
+                                        <Input
+                                          type="number"
+                                          min="1"
+                                          max={group.totalQuantity}
+                                          value={currentItem.quantity}
+                                          onChange={(e) => updateGroupReturnQty(group, parseFloat(e.target.value) || 1)}
+                                          className="h-9 text-xs font-mono font-black text-center bg-slate-50 border-slate-300"
+                                        />
+                                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
+                                          {group.unitName}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <div>
+                                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                                        ราคาทุนต่อหน่วย (฿):
+                                      </label>
+                                      <div className="relative">
+                                        <Input
+                                          type="number"
+                                          min="0"
+                                          step="any"
+                                          value={currentItem.unitCost}
+                                          onChange={(e) => updateGroupReturnCost(group, parseFloat(e.target.value) || 0)}
+                                          className="h-9 text-xs font-mono font-black text-right bg-slate-50 border-slate-300 pr-8"
+                                        />
+                                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
+                                          ฿
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <div className="bg-indigo-50/70 p-2 px-3 rounded-lg border border-indigo-200 text-right">
+                                      <span className="text-[10px] text-indigo-800 font-bold block">
+                                        รวมยอดลดหนี้:
+                                      </span>
+                                      <span className="text-base font-mono font-black text-indigo-900">
+                                        {formatCurrency(currentItem.quantity * currentItem.unitCost)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div
+                                  key={group.groupKey}
+                                  className="p-3 rounded-2xl border border-slate-200 bg-white hover:border-indigo-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 cursor-pointer"
+                                  onClick={() => toggleGroupedClaimItem(group)}
+                                >
+                                  <div className="flex items-start gap-2.5">
+                                    <Square className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
+                                    <div>
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <p className="text-xs font-bold text-slate-900">{group.productName}</p>
+                                        <Badge className="bg-slate-100 text-slate-800 border-slate-200 text-[9px] py-0 font-semibold">
+                                          ชำรุด {group.totalQuantity} {group.unitName}
+                                        </Badge>
+                                        {group.supplierName && (
                                           <Badge variant="outline" className="text-[9px] py-0 text-slate-500 bg-white">
-                                            {claim.supplierName}
+                                            {group.supplierName}
                                           </Badge>
                                         )}
                                       </div>
-                                      <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                                        <span>SKU: {claim.sku}</span>
+                                      <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                                        <span>SKU: {group.sku}</span>
                                         <span>•</span>
-                                        <span className="text-rose-600 font-medium">อาการ: {claim.defectReason}</span>
-                                        {claim.orderNumber && (
-                                          <>
-                                            <span>•</span>
-                                            <span>บิลขาย: #{claim.orderNumber}</span>
-                                          </>
-                                        )}
+                                        <span className="text-rose-600 font-medium truncate max-w-xs">
+                                          อาการ: {group.defectReasons.join(', ') || 'ชำรุด'}
+                                        </span>
                                       </div>
                                     </div>
                                   </div>
 
-                                  <div className="text-right">
-                                    <span className="text-xs font-mono font-bold block text-slate-900">
-                                      {claim.quantity} ชิ้น
-                                    </span>
-                                    <span className="text-[11px] text-slate-500 font-mono">
-                                      ราคาทุน @{formatCurrency(claim.costPrice || 50)} = {formatCurrency((claim.costPrice || 50) * claim.quantity)}
-                                    </span>
+                                  <div className="flex items-center justify-between sm:justify-end gap-3 pl-6 sm:pl-0">
+                                    <div className="text-right">
+                                      <span className="text-xs font-mono font-bold block text-slate-900">
+                                        ในสต็อก: {group.totalQuantity} {group.unitName}
+                                      </span>
+                                      <span className="text-[11px] text-slate-500 font-mono">
+                                        ทุน @{formatCurrency(group.costPrice || 50)}
+                                      </span>
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-xs font-bold rounded-lg border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                                    >
+                                      + เลือกลดหนี้
+                                    </Button>
                                   </div>
                                 </div>
                               );

@@ -513,7 +513,12 @@ export function createSupplierReturnNote(params: CreateReturnNoteParams): Suppli
 
       if (rItem.itemType === 'DEFECTIVE') {
         defectiveTotalCost += itemTotalCost;
-        if (item.claimId) claimIdsToUpdate.add(item.claimId);
+        if (item.claimId) {
+          item.claimId.split(',').forEach((id) => {
+            const trimmed = id.trim();
+            if (trimmed) claimIdsToUpdate.add(trimmed);
+          });
+        }
       } else {
         overstockTotalCost += itemTotalCost;
         // Deduct active store stock for unsold/overstock return
@@ -877,7 +882,12 @@ export function updateSupplierReturnNote(
 
     if (rItem.itemType === 'DEFECTIVE') {
       defectiveTotalCost += itemTotalCost;
-      if (item.claimId) claimIdsToUpdate.add(item.claimId);
+      if (item.claimId) {
+        item.claimId.split(',').forEach((id) => {
+          const trimmed = id.trim();
+          if (trimmed) claimIdsToUpdate.add(trimmed);
+        });
+      }
     } else {
       overstockTotalCost += itemTotalCost;
       // Deduct new overstock quantity from store
