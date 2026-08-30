@@ -426,19 +426,19 @@ export function SettlePayableModal({
             {billDiscount > 0 && (
               <div className="flex justify-between text-amber-700 font-bold">
                 <span>ส่วนลดท้ายบิลจากผู้จำหน่าย:</span>
-                <span className="font-mono">-{formatCurrency(billDiscount)}</span>
+                <span className="font-mono">{formatCurrency(billDiscount)}</span>
               </div>
             )}
             {totalDebitDeducted > 0 && (
               <div className="flex justify-between text-indigo-700 font-bold">
                 <span>ประกบหักใบลดหนี้ ({Object.keys(selectedNotesMap).length} ฉบับ):</span>
-                <span className="font-mono">-{formatCurrency(totalDebitDeducted)}</span>
+                <span className="font-mono">{formatCurrency(totalDebitDeducted)}</span>
               </div>
             )}
             <div className="flex justify-between text-slate-600">
               <span>ชำระด้วยเงินสด / เงินโอน:</span>
               <span className="font-mono font-bold text-slate-900">
-                -{formatCurrency(finalCashOrTransferAmount)}
+                {formatCurrency(finalCashOrTransferAmount)}
               </span>
             </div>
             <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-black text-slate-900">

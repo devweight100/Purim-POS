@@ -36,6 +36,7 @@ export interface SupplierPayableBill {
   alreadyDiscountAmount: number;
   remainingPayable: number;
   itemsCount: number;
+  items?: any[];
   deductedReturns: Array<{
     returnNoteId: string;
     returnNumber: string;
@@ -101,6 +102,7 @@ export function loadPayableBills(): SupplierPayableBill[] {
         alreadyDiscountAmount: alreadyDiscount,
         remainingPayable,
         itemsCount: (po.items || []).length,
+        items: po.items || [],
         deductedReturns,
         payments,
       };
@@ -228,4 +230,114 @@ export function settlePayableBill(params: SettlePayableParams): {
     message: `บันทึกการชำระเงินบิล ${targetPo.poNumber} สำเร็จ`,
     paymentEntry,
   };
+}
+
+// ─── Rollback / Cancel Payments for a Payable Bill ───
+export function rollbackPayableBillPayment(
+  poId: string,
+  paymentId?: string
+): { success: boolean; message: string } {
+  const allPos = loadPurchaseOrders();
+  const targetPo = allPos.find((p) => p.id === poId);
+
+  if (!targetPo) {
+    return { success: false, message: 'ไม่พบใบสั่งซื้อ / บิลเจ้าหนี้นี้' };
+  }
+
+  const allReturnNotes = loadSupplierReturnNotes();
+  const payments: PayablePaymentEntry[] = Array.isArray(targetPo.payments) ? targetPo.payments : [];
+
+  const paymentsToRollback = paymentId
+    ? payments.filter((p) => p.id === paymentId)
+    : [...payments];
+
+  if (paymentsToRollback.length === 0 && (!targetPo.deductedReturns || targetPo.deductedReturns.length === 0)) {
+    return { success: false, message: 'บิลนี้ยังไม่มีประวัติการชำระเงินหรือการประกบใบลดหนี้' };
+  }
+
+  // 1. Rollback matched debit notes
+  for (const pay of paymentsToRollback) {
+    if (Array.isArray(pay.deductedNotes)) {
+      for (const dn of pay.deductedNotes) {
+        const note = allReturnNotes.find((n) => n.id === dn.returnNoteId);
+        if (note) {
+          note.remainingCreditAmount = Math.round((Number(note.remainingCreditAmount || 0) + Number(dn.amount)) * 100) / 100;
+          note.status = note.remainingCreditAmount >= note.totalCreditAmount ? 'PENDING_DEDUCTION' : 'PARTIALLY_DEDUCTED';
+          if (Array.isArray(note.deductions)) {
+            note.deductions = note.deductions.filter((d) => d.billNumber !== targetPo.poNumber);
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Rollback po.deductedReturns
+  if (!paymentId) {
+    // Entire bill rollback
+    for (const r of (targetPo.deductedReturns || [])) {
+      const note = allReturnNotes.find((n) => n.id === r.returnNoteId);
+      if (note) {
+        note.remainingCreditAmount = Math.round((Number(note.remainingCreditAmount || 0) + Number(r.amount)) * 100) / 100;
+        note.status = note.remainingCreditAmount >= note.totalCreditAmount ? 'PENDING_DEDUCTION' : 'PARTIALLY_DEDUCTED';
+        if (Array.isArray(note.deductions)) {
+          note.deductions = note.deductions.filter((d) => d.billNumber !== targetPo.poNumber);
+        }
+      }
+    }
+    targetPo.deductedReturns = [];
+    targetPo.payments = [];
+  } else {
+    targetPo.payments = payments.filter((p) => p.id !== paymentId);
+    const rolledBackNoteIds = new Set(
+      paymentsToRollback.flatMap((p) => (p.deductedNotes || []).map((dn) => dn.returnNoteId))
+    );
+    if (Array.isArray(targetPo.deductedReturns)) {
+      targetPo.deductedReturns = targetPo.deductedReturns.filter(
+        (r: any) => !rolledBackNoteIds.has(r.returnNoteId)
+      );
+    }
+  }
+
+  saveSupplierReturnNotes(allReturnNotes);
+
+  // 3. Recalculate PO debt and paymentStatus
+  const totalAmount = Number(targetPo.totalAmount || 0);
+  const totalDeducted = (targetPo.deductedReturns || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+  const totalPaid = (targetPo.payments || []).reduce((s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0), 0);
+  const totalDiscount = (targetPo.payments || []).reduce((s: number, p: any) => s + Number(p.discountAmount || 0), 0);
+
+  targetPo.netAmountPayable = Math.max(0, Math.round((totalAmount - totalDeducted - totalPaid - totalDiscount) * 100) / 100);
+
+  if (targetPo.netAmountPayable <= 0 && totalAmount > 0) {
+    targetPo.paymentStatus = 'PAID';
+  } else if (totalDeducted > 0 || totalPaid > 0 || totalDiscount > 0) {
+    targetPo.paymentStatus = 'PARTIALLY_PAID';
+  } else {
+    targetPo.paymentStatus = 'UNPAID';
+  }
+
+  savePurchaseOrders(allPos);
+
+  return {
+    success: true,
+    message: `ย้อนสถานะการชำระเงินของบิล ${targetPo.poNumber} สำเร็จ เครดิตใบลดหนี้และยอดหนี้ได้รับการปรับปรุงเรียบร้อย`,
+  };
+}
+
+// ─── Cancel / Void Payable Bill ───
+export function cancelPayableBill(poId: string, reason?: string): { success: boolean; message: string } {
+  // First rollback any payments if present
+  rollbackPayableBillPayment(poId);
+
+  const allPos = loadPurchaseOrders();
+  const targetPo = allPos.find((p) => p.id === poId);
+  if (!targetPo) {
+    return { success: false, message: 'ไม่พบใบสั่งซื้อ / บิลเจ้าหนี้' };
+  }
+
+  targetPo.status = 'CANCELLED';
+  targetPo.notes = (targetPo.notes ? targetPo.notes + ' | ' : '') + `ยกเลิกบิลเจ้าหนี้: ${reason || 'ยกเลิกโดยผู้ใช้งาน'}`;
+  savePurchaseOrders(allPos);
+
+  return { success: true, message: `ยกเลิกบิล ${targetPo.poNumber} เรียบร้อยแล้ว` };
 }

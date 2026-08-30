@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { 
   Building2, Receipt, DollarSign, Plus, Search, Filter, 
   CreditCard, Banknote, ShieldAlert, CheckCircle2, Clock, 
-  ArrowLeftRight, FileText, Printer, Eye, ChevronRight, RefreshCw, AlertCircle
+  ArrowLeftRight, FileText, Printer, Eye, ChevronRight, RefreshCw, AlertCircle, RotateCcw, XCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,9 @@ import { toast } from 'sonner';
 import { 
   loadPayableBills, 
   SupplierPayableBill, 
-  PayablePaymentEntry 
+  PayablePaymentEntry,
+  rollbackPayableBillPayment,
+  cancelPayableBill
 } from '@/lib/payable-service';
 import { 
   loadSuppliers, 
@@ -25,6 +27,7 @@ import {
 import { SupplierReturnNote } from '@/lib/types';
 import { SettlePayableModal } from '@/components/payables/SettlePayableModal';
 import { PaymentVoucherModal } from '@/components/payables/PaymentVoucherModal';
+import { PayableBillDetailsModal } from '@/components/payables/PayableBillDetailsModal';
 
 export default function PayablesPage() {
   const [bills, setBills] = useState<SupplierPayableBill[]>([]);
@@ -44,6 +47,9 @@ export default function PayablesPage() {
   const [selectedPaymentForVoucher, setSelectedPaymentForVoucher] = useState<PayablePaymentEntry | null>(null);
   const [selectedBillForVoucher, setSelectedBillForVoucher] = useState<SupplierPayableBill | null>(null);
   const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
+
+  const [selectedBillForDetails, setSelectedBillForDetails] = useState<SupplierPayableBill | null>(null);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
 
   const refreshData = () => {
     setLoading(true);
@@ -76,6 +82,49 @@ export default function PayablesPage() {
     setSelectedBillForVoucher(bill);
     setSelectedPaymentForVoucher(payment);
     setIsVoucherModalOpen(true);
+  };
+
+  const handleOpenDetails = (bill: SupplierPayableBill) => {
+    setSelectedBillForDetails(bill);
+    setIsDetailsModalOpen(true);
+  };
+
+  const handleRollbackBill = (bill: SupplierPayableBill) => {
+    if (!confirm(`ต้องการย้อนสถานะการชำระเงินของบิล ${bill.poNumber} หรือไม่?\n(ยอดเงินที่จ่ายและเครดิตใบลดหนี้จะถูกคืนกลับสถานะเดิม ยอดหนี้จะกลับมาค้างชำระ)`)) {
+      return;
+    }
+    const res = rollbackPayableBillPayment(bill.poId);
+    if (res.success) {
+      toast.success(res.message);
+      refreshData();
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  const handleRollbackSinglePayment = (poId: string, paymentId: string) => {
+    if (!confirm(`ต้องการยกเลิก/ย้อนสถานะการชำระเงินรอบนี้หรือไม่?\n(ยอดเงินและเครดิตใบลดหนี้ในรอบนี้จะถูกคืนกลับสถานะเดิม)`)) {
+      return;
+    }
+    const res = rollbackPayableBillPayment(poId, paymentId);
+    if (res.success) {
+      toast.success(res.message);
+      refreshData();
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  const handleCancelBillAction = (bill: SupplierPayableBill) => {
+    const reason = prompt(`กรุณาระบุเหตุผลการยกเลิกบิล ${bill.poNumber}:`);
+    if (reason === null) return;
+    const res = cancelPayableBill(bill.poId, reason);
+    if (res.success) {
+      toast.success(res.message);
+      refreshData();
+    } else {
+      toast.error(res.message);
+    }
   };
 
   // KPIs
@@ -344,7 +393,7 @@ export default function PayablesPage() {
                         <td className="p-3.5 text-right font-mono">
                           {bill.alreadyDiscountAmount > 0 ? (
                             <span className="text-amber-700 font-bold">
-                              -{formatCurrency(bill.alreadyDiscountAmount)}
+                              {formatCurrency(bill.alreadyDiscountAmount)}
                             </span>
                           ) : (
                             <span className="text-slate-400">-</span>
@@ -354,7 +403,7 @@ export default function PayablesPage() {
                         <td className="p-3.5 text-right font-mono">
                           {bill.alreadyDeductedReturns > 0 ? (
                             <span className="text-indigo-600 font-bold">
-                              -{formatCurrency(bill.alreadyDeductedReturns)}
+                              {formatCurrency(bill.alreadyDeductedReturns)}
                             </span>
                           ) : (
                             <span className="text-slate-400">-</span>
@@ -364,7 +413,7 @@ export default function PayablesPage() {
                         <td className="p-3.5 text-right font-mono">
                           {bill.alreadyPaidAmount > 0 ? (
                             <span className="text-emerald-700 font-bold">
-                              -{formatCurrency(bill.alreadyPaidAmount)}
+                              {formatCurrency(bill.alreadyPaidAmount)}
                             </span>
                           ) : (
                             <span className="text-slate-400">-</span>
@@ -396,20 +445,56 @@ export default function PayablesPage() {
                         </td>
 
                         <td className="p-3.5 text-center">
-                          {bill.remainingPayable > 0 ? (
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
                             <Button
                               size="sm"
-                              onClick={() => handleOpenSettle(bill)}
-                              className="h-8 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs gap-1 shadow-xs"
+                              variant="outline"
+                              onClick={() => handleOpenDetails(bill)}
+                              title="ดูรายละเอียดบิลและประวัติการชำระ"
+                              className="h-8 px-2.5 rounded-xl border-slate-200 hover:border-slate-300 font-bold text-xs gap-1"
                             >
-                              <Receipt className="w-3.5 h-3.5" />
-                              <span>ประกบลดหนี้ / จ่าย</span>
+                              <Eye className="w-3.5 h-3.5 text-slate-600" />
+                              <span>ดูเอกสาร</span>
                             </Button>
-                          ) : (
-                            <Badge variant="outline" className="text-slate-400 border-slate-200">
-                              ปิดยอดแล้ว
-                            </Badge>
-                          )}
+
+                            {bill.remainingPayable > 0 && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleOpenSettle(bill)}
+                                title="ประกบใบลดหนี้หรือบันทึกจ่ายเงิน"
+                                className="h-8 px-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs gap-1 shadow-xs"
+                              >
+                                <Receipt className="w-3.5 h-3.5" />
+                                <span>ชำระหนี้</span>
+                              </Button>
+                            )}
+
+                            {(bill.alreadyPaidAmount > 0 || bill.alreadyDeductedReturns > 0 || bill.alreadyDiscountAmount > 0 || bill.paymentStatus === 'PAID') && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleRollbackBill(bill)}
+                                title="ย้อนสถานะการชำระเงินกลับเป็นรอชำระ"
+                                className="h-8 px-2 rounded-xl border-amber-200 text-amber-700 hover:bg-amber-50 font-bold text-xs gap-1"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                <span>ย้อนสถานะ</span>
+                              </Button>
+                            )}
+
+                            {bill.paymentStatus === 'UNPAID' && bill.status !== 'CANCELLED' && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleCancelBillAction(bill)}
+                                title="ยกเลิกบิลเจ้าหนี้นี้"
+                                className="h-8 px-2 rounded-xl text-slate-400 hover:text-rose-600 font-bold text-xs gap-1"
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                                <span>ยกเลิก</span>
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -533,11 +618,11 @@ export default function PayablesPage() {
                         </td>
 
                         <td className="p-3.5 text-right font-mono text-amber-700 font-bold">
-                          {item.discountAmount && item.discountAmount > 0 ? `-${formatCurrency(item.discountAmount)}` : '-'}
+                          {item.discountAmount && item.discountAmount > 0 ? formatCurrency(item.discountAmount) : '-'}
                         </td>
 
                         <td className="p-3.5 text-right font-mono text-indigo-700 font-bold">
-                          {item.deductedCreditAmount > 0 ? `-${formatCurrency(item.deductedCreditAmount)}` : '-'}
+                          {item.deductedCreditAmount > 0 ? formatCurrency(item.deductedCreditAmount) : '-'}
                         </td>
 
                         <td className="p-3.5 text-right font-mono text-emerald-700 font-bold text-sm">
@@ -555,15 +640,28 @@ export default function PayablesPage() {
                         </td>
 
                         <td className="p-3.5 text-center">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleOpenVoucher(item.bill, item)}
-                            className="h-8 px-2.5 rounded-xl border-slate-200 hover:border-indigo-300 hover:text-indigo-600 font-bold text-xs gap-1"
-                          >
-                            <Printer className="w-3.5 h-3.5" />
-                            <span>พิมพ์</span>
-                          </Button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleOpenVoucher(item.bill, item)}
+                              className="h-8 px-2.5 rounded-xl border-slate-200 hover:border-indigo-300 hover:text-indigo-600 font-bold text-xs gap-1"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                              <span>พิมพ์</span>
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleRollbackSinglePayment(item.bill.poId, item.id)}
+                              title="ยกเลิก/ย้อนสถานะการชำระเงินรอบนี้"
+                              className="h-8 px-2 rounded-xl border-amber-200 text-amber-700 hover:bg-amber-50 font-bold text-xs gap-1"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>ย้อนสถานะ</span>
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -574,6 +672,16 @@ export default function PayablesPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Payable Bill Details Modal */}
+      <PayableBillDetailsModal
+        open={isDetailsModalOpen}
+        onOpenChange={setIsDetailsModalOpen}
+        bill={selectedBillForDetails}
+        onSettleClick={(bill) => handleOpenSettle(bill)}
+        onViewVoucher={(bill, payment) => handleOpenVoucher(bill, payment)}
+        onReload={refreshData}
+      />
 
       {/* Settle Payable & Match Debit Note Modal */}
       <SettlePayableModal

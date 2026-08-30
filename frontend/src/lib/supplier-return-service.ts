@@ -234,7 +234,8 @@ export function getPayablePOsBySupplier(supplierId: string): PayablePO[] {
     .filter((po) => {
       const isMatchSupp = po.supplierId === supplierId || po.supplier?.id === supplierId;
       const isNotCancelled = po.status !== 'CANCELLED' && po.status !== 'DRAFT';
-      return isMatchSupp && isNotCancelled;
+      const isNotPaid = po.paymentStatus !== 'PAID';
+      return isMatchSupp && isNotCancelled && isNotPaid;
     })
     .map((po) => {
       const totalAmount = Number(po.totalAmount || 0);
@@ -242,7 +243,19 @@ export function getPayablePOsBySupplier(supplierId: string): PayablePO[] {
         (sum: number, r: any) => sum + Number(r.amount || 0),
         0
       );
-      const remainingPayable = Math.max(0, totalAmount - alreadyDeducted);
+      const payments = Array.isArray(po.payments) ? po.payments : [];
+      const alreadyPaid = payments.reduce(
+        (sum: number, p: any) => sum + Number(p.netCashOrTransferPaid || 0),
+        0
+      );
+      const alreadyDiscount = payments.reduce(
+        (sum: number, p: any) => sum + Number(p.discountAmount || 0),
+        0
+      );
+      const remainingPayable = Math.max(
+        0,
+        Math.round((totalAmount - alreadyDeducted - alreadyPaid - alreadyDiscount) * 100) / 100
+      );
 
       return {
         id: po.id,

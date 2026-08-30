@@ -229,7 +229,7 @@ export function PaymentVoucherModal({
                       <p className="text-[10px] text-indigo-700">ใบลดหนี้สินค้าส่งคืน/สินค้าชำรุด</p>
                     </td>
                     <td className="p-2 text-right font-mono font-bold text-indigo-700">
-                      -{formatCurrency(dn.amount)}
+                      {formatCurrency(dn.amount)}
                     </td>
                   </tr>
                 ))}
@@ -243,7 +243,7 @@ export function PaymentVoucherModal({
                       <p className="text-[10px] text-amber-700">ส่วนลดท้ายบิลตามข้อตกลงในการเรียกเก็บเงิน</p>
                     </td>
                     <td className="p-2 text-right font-mono font-bold text-amber-700">
-                      -{formatCurrency(paymentEntry.discountAmount)}
+                      {formatCurrency(paymentEntry.discountAmount)}
                     </td>
                   </tr>
                 )}
