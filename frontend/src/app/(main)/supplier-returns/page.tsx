@@ -150,14 +150,6 @@ export default function SupplierReturnsPage() {
     0
   );
 
-  const totalUnpaidPoDebt = pos
-    .filter((p) => p.status !== 'CANCELLED' && p.status !== 'DRAFT')
-    .reduce((sum, p) => {
-      const total = Number(p.totalAmount || 0);
-      const deducted = (p.deductedReturns || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
-      return sum + Math.max(0, total - deducted);
-    }, 0);
-
   // Filtered Active Notes
   const filteredNotes = activeNotes.filter((note) => {
     const matchesSearch =
@@ -291,21 +283,22 @@ export default function SupplierReturnsPage() {
           </p>
         </div>
 
-        {/* Metric 4: Unpaid PO Debt */}
+        {/* Metric 4: Cancelled Notes in Trash */}
         <div className="bg-white p-4 sm:p-5 rounded-3xl border border-slate-200 shadow-2xs space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">หนี้ใบสั่งซื้อ PO ค้างชำระ</span>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Building2 className="w-4 h-4" />
+            <span className="text-xs font-bold text-slate-500">เอกสารในถังขยะ</span>
+            <div className="w-8 h-8 rounded-xl bg-slate-50 text-slate-500 flex items-center justify-center">
+              <Trash2 className="w-4 h-4" />
             </div>
           </div>
           <div>
-            <span className="text-2xl font-black text-amber-700 font-mono">
-              {formatCurrency(totalUnpaidPoDebt)}
+            <span className="text-2xl font-black text-slate-700 font-mono">
+              {cancelledNotes.length}
             </span>
+            <span className="text-xs text-slate-400 font-bold ml-1.5">ฉบับ</span>
           </div>
-          <p className="text-[11px] text-slate-500">
-            ยอดรวมใบ PO ที่ยังไม่ได้ชำระเต็มจำนวน
+          <p className="text-[11px] text-slate-400">
+            เอกสารส่งคืนที่ถูกยกเลิกแล้ว
           </p>
         </div>
       </div>
@@ -326,13 +319,6 @@ export default function SupplierReturnsPage() {
             >
               <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
               <span>รอส่งเคลมบริษัท ({pendingClaims.length})</span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="payable_pos"
-              className="rounded-xl font-bold text-xs data-[state=active]:bg-white data-[state=active]:shadow-xs px-4 gap-1.5"
-            >
-              <Receipt className="w-3.5 h-3.5 text-amber-600" />
-              <span>ใบสั่งซื้อที่มียอดค้างชำระ</span>
             </TabsTrigger>
             <TabsTrigger
               value="trash"
@@ -630,70 +616,7 @@ export default function SupplierReturnsPage() {
           </div>
         </TabsContent>
 
-        {/* TAB 3: PAYABLE POS */}
-        <TabsContent value="payable_pos" className="space-y-4 m-0">
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-2xs space-y-4">
-            <div>
-              <h3 className="text-base font-bold text-slate-900">
-                ใบสั่งซื้อ (PO) ที่มียอดค้างชำระ / รอหักลดหนี้
-              </h3>
-              <p className="text-xs text-slate-500">
-                คลิก &quot;ทำใบลดหนี้ให้ใบสั่งซื้อนี้&quot; เพื่อเลือกสินค้าส่งคืนและหักลดยอดหนี้ของใบ PO นั้นๆ
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {pos
-                .filter((p) => p.status !== 'CANCELLED' && p.status !== 'DRAFT')
-                .map((po) => {
-                  const total = Number(po.totalAmount || 0);
-                  const deducted = (po.deductedReturns || []).reduce(
-                    (s: number, r: any) => s + Number(r.amount || 0),
-                    0
-                  );
-                  const remaining = Math.max(0, total - deducted);
-                  if (remaining <= 0) return null;
-
-                  return (
-                    <div
-                      key={po.id}
-                      className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col justify-between space-y-3"
-                    >
-                      <div className="space-y-1.5">
-                        <div className="flex justify-between items-center">
-                          <span className="font-mono font-bold text-slate-900 text-sm">
-                            {po.poNumber}
-                          </span>
-                          <Badge className="bg-amber-100 text-amber-800 text-[10px] font-bold border-amber-300">
-                            ค้างชำระ {formatCurrency(remaining)}
-                          </Badge>
-                        </div>
-                        <p className="text-xs font-bold text-slate-700">{po.supplierName || po.supplier?.name}</p>
-                        <div className="text-[11px] text-slate-500 flex justify-between">
-                          <span>ยอดบิลรวม: {formatCurrency(total)}</span>
-                          <span>หักลดหนี้แล้ว: -{formatCurrency(deducted)}</span>
-                        </div>
-                        <p className="text-[11px] text-slate-400">
-                          รวมสินค้า {po.items?.length || 0} รายการ
-                        </p>
-                      </div>
-
-                      <Button
-                        type="button"
-                        onClick={() => handleOpenCreate(po.supplierId || po.supplier?.id, po.id)}
-                        className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold h-9 text-xs rounded-xl shadow-xs gap-1.5"
-                      >
-                        <Receipt className="w-3.5 h-3.5" />
-                        <span>ส่งคืนสินค้าเพื่อลดหนี้ใบ PO นี้</span>
-                      </Button>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-        </TabsContent>
-
-        {/* TAB 4: TRASH / CANCELLED NOTES */}
+        {/* TAB 3: TRASH / CANCELLED NOTES */}
         <TabsContent value="trash" className="space-y-4 m-0">
           <div className="bg-rose-50/60 p-4 rounded-3xl border border-rose-200 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
             <div className="flex items-center gap-2.5">

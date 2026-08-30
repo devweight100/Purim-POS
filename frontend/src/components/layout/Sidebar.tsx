@@ -5,30 +5,78 @@ import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { 
   ShoppingCart, ClipboardList, Users, LayoutDashboard, Package, 
-  Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, FolderTree, Building2, Receipt, ShieldAlert, ArrowLeftRight, HandCoins
+  Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, 
+  FolderTree, Building2, Receipt, ShieldAlert, ArrowLeftRight, HandCoins,
+  ChevronDown
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useRouter } from 'next/navigation';
 
-const menuItems = [
-  { href: '/pos', label: 'หน้าขาย (POS)', icon: ShoppingCart },
-  { href: '/orders', label: 'รายการออเดอร์', icon: ClipboardList },
-  { href: '/debts', label: 'ลูกหนี้ / บิลค้างชำระ', icon: Receipt },
-  { href: '/customers', label: 'ลูกค้า', icon: Users },
-  { type: 'separator' as const },
-  { href: '/dashboard', label: 'แดชบอร์ด', icon: LayoutDashboard },
-  { href: '/products', label: 'สินค้า', icon: Package },
-  { href: '/categories', label: 'หมวดหมู่สินค้า', icon: FolderTree },
-  { href: '/inventory', label: 'คลังสินค้า', icon: Warehouse },
-  { href: '/claims', label: 'เคลมสินค้า (ลูกค้า)', icon: ShieldAlert },
-  { href: '/suppliers', label: 'ผู้จำหน่าย', icon: Truck },
-  { href: '/purchase-orders', label: 'ใบสั่งซื้อ (PO)', icon: FileText },
-  { href: '/payables', label: 'เจ้าหนี้ / ค้างจ่ายบริษัท', icon: HandCoins },
-  { href: '/supplier-returns', label: 'ส่งเคลม / คืนสินค้าบริษัท', icon: ArrowLeftRight },
-  { href: '/accounts', label: 'บัญชีการเงิน / QR Code', icon: Building2 },
-  { href: '/reports', label: 'รายงาน', icon: BarChart3 },
-  { href: '/settings', label: 'ตั้งค่า', icon: Settings },
+interface SubMenuItem {
+  href: string;
+  label: string;
+  icon: any;
+}
+
+interface NavGroup {
+  id: string;
+  title: string;
+  icon: any;
+  items: SubMenuItem[];
+}
+
+const navGroups: NavGroup[] = [
+  {
+    id: 'overview',
+    title: 'ภาพรวม & รายงาน',
+    icon: LayoutDashboard,
+    items: [
+      { href: '/dashboard', label: 'แดชบอร์ดสรุป', icon: LayoutDashboard },
+      { href: '/reports', label: 'รายงานยอดขาย & สถิติ', icon: BarChart3 },
+    ],
+  },
+  {
+    id: 'sales',
+    title: 'งานขาย & ลูกค้า',
+    icon: ShoppingCart,
+    items: [
+      { href: '/orders', label: 'ประวัติการขาย (Orders)', icon: ClipboardList },
+      { href: '/debts', label: 'ลูกหนี้ & ค้างชำระ', icon: Receipt },
+      { href: '/customers', label: 'ข้อมูลลูกค้าสมาชิก', icon: Users },
+      { href: '/claims', label: 'เคลมสินค้า (ลูกค้า)', icon: ShieldAlert },
+    ],
+  },
+  {
+    id: 'inventory',
+    title: 'สินค้า & คลังสินค้า',
+    icon: Package,
+    items: [
+      { href: '/products', label: 'รายการสินค้า & ราคา', icon: Package },
+      { href: '/categories', label: 'หมวดหมู่สินค้า', icon: FolderTree },
+      { href: '/inventory', label: 'คลังสินค้า & สต็อก', icon: Warehouse },
+    ],
+  },
+  {
+    id: 'purchasing',
+    title: 'จัดซื้อ & คู่ค้าบริษัท',
+    icon: Truck,
+    items: [
+      { href: '/suppliers', label: 'บริษัทผู้จำหน่าย', icon: Truck },
+      { href: '/purchase-orders', label: 'ใบสั่งซื้อสินค้า (PO)', icon: FileText },
+      { href: '/payables', label: 'เจ้าหนี้การค้า & จ่ายเงิน', icon: HandCoins },
+      { href: '/supplier-returns', label: 'ส่งเคลม & ใบลดหนี้บริษัท', icon: ArrowLeftRight },
+    ],
+  },
+  {
+    id: 'system',
+    title: 'การเงิน & การตั้งค่า',
+    icon: Settings,
+    items: [
+      { href: '/accounts', label: 'บัญชีธนาคาร & QR Code', icon: Building2 },
+      { href: '/settings', label: 'ตั้งค่าร้านค้า & ระบบ', icon: Settings },
+    ],
+  },
 ];
 
 export function Sidebar() {
@@ -37,10 +85,35 @@ export function Sidebar() {
   const { user, logout } = useAuthStore();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Group accordion state (open all by default)
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+    overview: true,
+    sales: true,
+    inventory: true,
+    purchasing: true,
+    system: true,
+  });
+
+  // Ensure current pathname's group is open
+  useEffect(() => {
+    navGroups.forEach((group) => {
+      if (group.items.some((item) => item.href === pathname)) {
+        setOpenGroups((prev) => ({ ...prev, [group.id]: true }));
+      }
+    });
+  }, [pathname]);
+
   // Close mobile menu on route change
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  const toggleGroup = (groupId: string) => {
+    setOpenGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId],
+    }));
+  };
 
   const handleLogout = () => {
     logout();
@@ -49,57 +122,126 @@ export function Sidebar() {
 
   const NavContent = () => (
     <>
+      {/* Brand Header */}
       <div className="p-4 flex items-center h-16 shrink-0 border-b border-sidebar-border bg-sidebar">
-        <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0 shadow-sm">
-          <span className="font-bold text-white text-sm leading-none">P</span>
+        <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0 shadow-sm">
+          <span className="font-black text-white text-base leading-none">P</span>
         </div>
-        <span className="ml-3 font-bold text-base text-sidebar-foreground whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300 lg:hidden xl:hidden">ร้านปุริม</span>
-        <span className="ml-3 font-bold text-base text-sidebar-foreground whitespace-nowrap">ร้านปุริม POS</span>
+        <div className="ml-3 overflow-hidden">
+          <span className="font-bold text-sm text-slate-900 block leading-tight">ร้านปุริม POS</span>
+          <span className="text-[10px] text-slate-400 font-medium">ระบบบริหารการขาย & สต็อก</span>
+        </div>
       </div>
 
-      <div className="flex-1 py-3 overflow-y-auto overflow-x-hidden flex flex-col gap-0.5 px-2">
-        {menuItems.map((item, index) => {
-          if (item.type === 'separator') {
-            return <div key={`sep-${index}`} className="h-px bg-sidebar-border my-2" />;
-          }
+      {/* Navigation Groups */}
+      <div className="flex-1 py-3 overflow-y-auto overflow-x-hidden flex flex-col gap-3 px-2">
+        {/* Quick POS Action Button */}
+        <div className="px-1">
+          <Link
+            href="/pos"
+            className={cn(
+              'flex items-center justify-between px-3 py-2 rounded-xl font-bold transition-all shadow-xs group',
+              pathname === '/pos'
+                ? 'bg-indigo-600 text-white shadow-indigo-200 ring-2 ring-indigo-400/40'
+                : 'bg-indigo-50/90 text-indigo-900 border border-indigo-200/80 hover:bg-indigo-100'
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <div className={cn(
+                'w-7 h-7 rounded-lg flex items-center justify-center transition-colors shrink-0',
+                pathname === '/pos' ? 'bg-white/20 text-white' : 'bg-indigo-600 text-white'
+              )}>
+                <ShoppingCart className="w-3.5 h-3.5" />
+              </div>
+              <span className="text-xs font-bold">จุดขายหน้าร้าน (POS)</span>
+            </div>
+            <span className={cn(
+              'text-[9px] px-1.5 py-0.5 rounded font-black uppercase',
+              pathname === '/pos' ? 'bg-white/20 text-white' : 'bg-indigo-200/60 text-indigo-800'
+            )}>
+              ขายสด
+            </span>
+          </Link>
+        </div>
 
-          const isActive = pathname === item.href;
-          const Icon = item.icon as any;
+        {/* Grouped Accordion Menu */}
+        {navGroups.map((group) => {
+          const isOpen = openGroups[group.id] ?? true;
+          const isGroupActive = group.items.some((i) => pathname === i.href);
+          const GroupIcon = group.icon;
 
           return (
-            <Link
-              key={item.href}
-              href={item.href!}
-              className={cn(
-                'flex items-center px-3 py-2.5 rounded-lg transition-all duration-150 whitespace-nowrap group/item',
-                isActive
-                  ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
-                  : 'text-sidebar-foreground hover:bg-slate-100 hover:text-slate-950'
+            <div key={group.id} className="space-y-1">
+              {/* Group Header (Clickable Accordion Trigger) */}
+              <button
+                type="button"
+                onClick={() => toggleGroup(group.id)}
+                className={cn(
+                  'w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors group',
+                  isGroupActive
+                    ? 'text-indigo-900 bg-indigo-50/40'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <GroupIcon className={cn('w-3.5 h-3.5 shrink-0', isGroupActive ? 'text-indigo-600' : 'text-slate-400')} />
+                  <span className="tracking-tight uppercase text-[11px]">{group.title}</span>
+                </div>
+                <ChevronDown
+                  className={cn(
+                    'w-3.5 h-3.5 text-slate-400 transition-transform duration-200 group-hover:text-slate-600',
+                    isOpen ? 'rotate-0' : '-rotate-90'
+                  )}
+                />
+              </button>
+
+              {/* Submenu Items */}
+              {isOpen && (
+                <div className="ml-2.5 pl-2.5 border-l border-slate-200 space-y-0.5">
+                  {group.items.map((item) => {
+                    const isActive = pathname === item.href;
+                    const ItemIcon = item.icon;
+
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={cn(
+                          'flex items-center px-2.5 py-1.5 rounded-lg text-xs transition-all duration-150 whitespace-nowrap',
+                          isActive
+                            ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium'
+                        )}
+                      >
+                        <ItemIcon className={cn('w-3.5 h-3.5 shrink-0 mr-2', isActive ? 'text-white' : 'text-slate-400')} />
+                        <span className="truncate">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
               )}
-            >
-              <Icon className={cn('w-5 h-5 shrink-0', isActive && 'text-primary')} />
-              <span className="ml-3 text-sm font-medium">{item.label}</span>
-            </Link>
+            </div>
           );
         })}
       </div>
 
+      {/* User Footer Profile */}
       <div className="p-3 border-t border-sidebar-border shrink-0 bg-sidebar">
         <div className="flex items-center px-2 mb-2">
-          <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-            <span className="text-primary text-sm font-bold">{user?.name?.charAt(0)?.toUpperCase() || 'U'}</span>
+          <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center shrink-0">
+            <span className="text-indigo-700 text-xs font-bold">{user?.name?.charAt(0)?.toUpperCase() || 'P'}</span>
           </div>
-          <div className="ml-3 overflow-hidden">
-            <p className="text-sm font-medium text-slate-900 truncate">{user?.name || 'Admin'}</p>
-            <p className="text-xs text-slate-500 truncate">{user?.role || 'ADMIN'}</p>
+          <div className="ml-2.5 overflow-hidden">
+            <p className="text-xs font-bold text-slate-900 truncate">{user?.name || 'Admin'}</p>
+            <p className="text-[10px] text-slate-400 truncate">{user?.role || 'เจ้าของร้าน'}</p>
           </div>
         </div>
         <button
           onClick={handleLogout}
-          className="w-full flex items-center px-3 py-2.5 rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600 transition-colors text-sm"
+          className="w-full flex items-center px-2.5 py-1.5 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors text-xs font-medium"
         >
-          <LogOut className="w-4 h-4 shrink-0" />
-          <span className="ml-3">ออกจากระบบ</span>
+          <LogOut className="w-3.5 h-3.5 shrink-0 mr-2" />
+          <span>ออกจากระบบ</span>
         </button>
       </div>
     </>
@@ -109,8 +251,9 @@ export function Sidebar() {
     <>
       {/* Mobile hamburger button */}
       <button
-        className="lg:hidden fixed top-3 left-3 z-50 p-2.5 rounded-lg bg-white text-slate-900 shadow-lg border border-slate-200"
+        className="lg:hidden fixed top-3 left-3 z-50 p-2.5 rounded-xl bg-white text-slate-900 shadow-md border border-slate-200"
         onClick={() => setMobileOpen(!mobileOpen)}
+        aria-label="Toggle Menu"
       >
         {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
       </button>
@@ -118,14 +261,14 @@ export function Sidebar() {
       {/* Mobile overlay */}
       {mobileOpen && (
         <div
-          className="lg:hidden fixed inset-0 bg-black/50 z-40"
+          className="lg:hidden fixed inset-0 bg-black/40 z-40 backdrop-blur-xs transition-opacity"
           onClick={() => setMobileOpen(false)}
         />
       )}
 
       {/* Mobile drawer */}
       <div className={cn(
-        'lg:hidden fixed top-0 left-0 h-full w-64 bg-sidebar z-50 flex flex-col transition-transform duration-300 shadow-xl',
+        'lg:hidden fixed top-0 left-0 h-full w-64 bg-sidebar z-50 flex flex-col transition-transform duration-300 shadow-2xl border-r border-sidebar-border',
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       )}>
         <NavContent />
