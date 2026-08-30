@@ -51,15 +51,20 @@ export function groupClaimsByProduct(claims: ClaimRecord[]): GroupedClaimProduct
 
   claims.forEach((c) => {
     const key = c.productId ? `PID_${c.productId}` : (c.sku ? `SKU_${c.sku}` : `NAME_${c.productName}`);
+    const factor = Number(c.conversionFactor || 1);
+    const baseQty = Number(c.baseQuantity !== undefined ? c.baseQuantity : (Number(c.quantity || 1) * factor));
+    const baseUnit = factor > 1 ? (c.replacementUnitName || 'ชิ้น') : (c.unitName || 'ชิ้น');
+    const baseCostPrice = factor > 1 && Number(c.costPrice || 0) > 0 ? Number(c.costPrice) / factor : Number(c.costPrice || 0);
+
     if (!map.has(key)) {
       map.set(key, {
         groupKey: key,
         productId: c.productId,
         productName: c.productName,
         sku: c.sku,
-        unitName: c.unitName || 'ชิ้น',
+        unitName: baseUnit,
         totalQuantity: 0,
-        costPrice: Number(c.costPrice || 0),
+        costPrice: baseCostPrice,
         claims: [],
         claimIds: [],
         defectReasons: [],
@@ -70,7 +75,7 @@ export function groupClaimsByProduct(claims: ClaimRecord[]): GroupedClaimProduct
     }
 
     const group = map.get(key)!;
-    group.totalQuantity += Number(c.quantity || 1);
+    group.totalQuantity += baseQty;
     group.claims.push(c);
     if (c.id && !group.claimIds.includes(c.id)) {
       group.claimIds.push(c.id);
@@ -81,8 +86,8 @@ export function groupClaimsByProduct(claims: ClaimRecord[]): GroupedClaimProduct
     if (c.orderNumber && !group.orderNumbers.includes(c.orderNumber)) {
       group.orderNumbers.push(c.orderNumber);
     }
-    if (group.costPrice <= 0 && Number(c.costPrice) > 0) {
-      group.costPrice = Number(c.costPrice);
+    if (group.costPrice <= 0 && baseCostPrice > 0) {
+      group.costPrice = baseCostPrice;
     }
   });
 

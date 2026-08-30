@@ -371,14 +371,22 @@ export function getEligibleClaimsForReturn(supplierId?: string): ClaimRecord[] {
         }
       }
 
-      const totalCost = Math.round(cost * (c.quantity || 1) * 100) / 100;
+      // Normalize to smallest base unit
+      const factor = Number(c.conversionFactor || 1);
+      const baseQty = Number(c.baseQuantity !== undefined ? c.baseQuantity : (Number(c.quantity || 1) * factor));
+      const baseUnit = factor > 1 ? (c.replacementUnitName || 'ชิ้น') : (c.unitName || 'ชิ้น');
+      const baseCost = factor > 1 && cost > 0 ? (cost / factor) : cost;
+      const totalCost = Math.round(baseCost * baseQty * 100) / 100;
 
       return {
         ...c,
+        quantity: baseQty,
+        unitName: baseUnit,
+        baseQuantity: baseQty,
         supplierId: suppId,
         supplierName: suppName,
-        costPrice: cost,
-        totalCostValue: c.totalCostValue || totalCost,
+        costPrice: baseCost,
+        totalCostValue: totalCost,
       };
     });
 

@@ -155,15 +155,17 @@ export function ProductClaimModal({
     setSelectedItem(item);
     const itemFactor = Number(item.conversionFactor || 1);
     const allowedUnits = (item.availableUnits || []).filter((u) => Number(u.factor || 1) <= itemFactor);
-    const defUnit = allowedUnits[0] || {
-      id: `u-${item.unitName}`,
-      unitName: item.unitName,
-      factor: itemFactor,
-      price: item.unitPrice,
-    };
-    setSelectedClaimUnit(defUnit);
+    // Find smallest base unit (factor === 1 or smallest factor)
+    const baseUnit = allowedUnits.find((u) => Number(u.factor || 1) === 1) ||
+      [...allowedUnits].sort((a, b) => Number(a.factor || 1) - Number(b.factor || 1))[0] || {
+        id: `u-${item.unitName}`,
+        unitName: itemFactor > 1 ? 'ชิ้น' : item.unitName,
+        factor: 1,
+        price: item.baseUnitPrice || (item.unitPrice / itemFactor),
+      };
+    setSelectedClaimUnit(baseUnit);
     setClaimQty(1);
-    setCustomRefundAmount(defUnit.price.toString());
+    setCustomRefundAmount(baseUnit.price.toString());
     setReplacementMode('SAME_MODEL');
     setSelectedReplacementItem(null);
     setReplacementSearch('');
@@ -473,23 +475,28 @@ export function ProductClaimModal({
                             <div className="text-[10px] text-slate-400 font-mono">{item.sku}</div>
                           </td>
                           <td className="py-2.5 px-2 text-center font-mono font-bold text-slate-700">
-                            {item.boughtQuantity}
+                            {item.baseBoughtQuantity !== undefined ? item.baseBoughtQuantity : (item.boughtQuantity * (item.conversionFactor || 1))} ชิ้น
+                            {(item.conversionFactor || 1) > 1 && (
+                              <span className="text-[10px] text-slate-400 font-normal block">({item.boughtQuantity} {item.unitName})</span>
+                            )}
                           </td>
                           <td className="py-2.5 px-2 text-center font-mono text-slate-500">
-                            {item.alreadyClaimedQuantity > 0 ? (
-                              <span className="text-amber-700 font-bold">{item.alreadyClaimedQuantity}</span>
+                            {(item.alreadyClaimedBaseQuantity !== undefined ? item.alreadyClaimedBaseQuantity : item.alreadyClaimedQuantity) > 0 ? (
+                              <span className="text-amber-700 font-bold">
+                                {item.alreadyClaimedBaseQuantity !== undefined ? item.alreadyClaimedBaseQuantity : item.alreadyClaimedQuantity} ชิ้น
+                              </span>
                             ) : (
-                              '0'
+                              '0 ชิ้น'
                             )}
                           </td>
                           <td className="py-2.5 px-3 text-center">
                             {isQuotaExhausted ? (
                               <Badge className="bg-slate-200 text-slate-600 text-[10px] font-bold">
-                                หมดโควต้า (0)
+                                หมดโควต้า (0 ชิ้น)
                               </Badge>
                             ) : (
                               <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10.5px] font-extrabold px-2">
-                                เคลมได้ {item.availableClaimQuantity} {item.unitName}
+                                เคลมได้ {item.availableBaseClaimQuantity !== undefined ? item.availableBaseClaimQuantity : item.availableClaimQuantity} ชิ้น
                               </Badge>
                             )}
                           </td>
@@ -541,13 +548,13 @@ export function ProductClaimModal({
                 </div>
 
                 <div className="text-right">
-                  <span className="text-[11px] text-slate-500 block">โควต้าที่ยังเคลมได้</span>
+                  <span className="text-[11px] text-slate-500 block">โควต้าที่ยังเคลมได้ (หน่วยเล็กสุด)</span>
                   <span className="font-mono text-base font-black text-emerald-700">
-                    {selectedItem.availableClaimQuantity} {selectedItem.unitName}
+                    {remainingBaseQuota} ชิ้น
                   </span>
                   {(selectedItem.conversionFactor || 1) > 1 && (
                     <span className="text-[10.5px] text-slate-500 font-mono block">
-                      (คงเหลือรวม {remainingBaseQuota} ชิ้น)
+                      (จากบิลซื้อ {selectedItem.boughtQuantity} {selectedItem.unitName})
                     </span>
                   )}
                 </div>
@@ -574,6 +581,7 @@ export function ProductClaimModal({
                   <div className="flex flex-wrap gap-2 pt-1">
                     {selectedItem.availableUnits
                       .filter((u) => Number(u.factor || 1) <= Number(selectedItem.conversionFactor || 1))
+                      .sort((a, b) => Number(a.factor || 1) - Number(b.factor || 1))
                       .map((u) => {
                       const isSelected = currentClaimUnit.unitName === u.unitName;
                       const maxInUnit = Math.floor(remainingBaseQuota / u.factor);

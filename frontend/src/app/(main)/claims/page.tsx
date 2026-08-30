@@ -435,7 +435,14 @@ export default function ClaimsPage() {
 
                     {/* 4. Quantity */}
                     <TableCell className="py-3 text-center font-bold text-xs text-slate-900 font-mono">
-                      {claim.quantity} {claim.unitName}
+                      <div>
+                        {claim.baseQuantity !== undefined ? claim.baseQuantity : (claim.quantity * (claim.conversionFactor || 1))} {claim.conversionFactor && claim.conversionFactor > 1 ? (claim.replacementUnitName || 'ชิ้น') : claim.unitName}
+                      </div>
+                      {claim.conversionFactor && claim.conversionFactor > 1 && (
+                        <div className="text-[10px] text-slate-400 font-normal">
+                          ({claim.quantity} {claim.unitName})
+                        </div>
+                      )}
                     </TableCell>
 
                     {/* 5. Claim Value */}
