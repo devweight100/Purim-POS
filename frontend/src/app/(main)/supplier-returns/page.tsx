@@ -17,7 +17,8 @@ import {
   loadSupplierReturnNotes,
   getEligibleClaimsForReturn,
   loadPurchaseOrders,
-  cancelSupplierReturnNote
+  cancelSupplierReturnNote,
+  restoreSupplierReturnNote
 } from '@/lib/supplier-return-service';
 import { SupplierReturnNote } from '@/lib/types';
 import { CreateSupplierReturnModal } from '@/components/supplier-returns/CreateSupplierReturnModal';
@@ -120,15 +121,34 @@ export default function SupplierReturnsPage() {
     }
   };
 
+  // Restore return note from trash
+  const handleRestoreNote = (note: SupplierReturnNote) => {
+    if (!confirm(`คุณต้องการกู้คืนเอกสารส่งคืน ${note.id} ออกจากถังขยะหรือไม่?`)) {
+      return;
+    }
+
+    const res = restoreSupplierReturnNote(note.id);
+    if (res.success) {
+      toast.success(res.message);
+      refreshData();
+    } else {
+      toast.error(res.message);
+    }
+  };
+
   // Calculations for Metrics
   const totalPendingClaimsCost = pendingClaims.reduce(
     (sum, c) => sum + Number(c.totalCostValue || (c.costPrice || 50) * (c.quantity || 1)),
     0
   );
 
-  const totalAvailableCredit = returnNotes
-    .filter((n) => n.status !== 'CANCELLED')
-    .reduce((sum, n) => sum + Number(n.remainingCreditAmount || 0), 0);
+  const activeNotes = returnNotes.filter((n) => n.status !== 'CANCELLED');
+  const cancelledNotes = returnNotes.filter((n) => n.status === 'CANCELLED');
+
+  const totalAvailableCredit = activeNotes.reduce(
+    (sum, n) => sum + Number(n.remainingCreditAmount || 0),
+    0
+  );
 
   const totalUnpaidPoDebt = pos
     .filter((p) => p.status !== 'CANCELLED' && p.status !== 'DRAFT')
@@ -138,8 +158,8 @@ export default function SupplierReturnsPage() {
       return sum + Math.max(0, total - deducted);
     }, 0);
 
-  // Filtered Notes
-  const filteredNotes = returnNotes.filter((note) => {
+  // Filtered Active Notes
+  const filteredNotes = activeNotes.filter((note) => {
     const matchesSearch =
       note.id.toLowerCase().includes(search.toLowerCase()) ||
       (note.supplierName || '').toLowerCase().includes(search.toLowerCase()) ||
@@ -152,10 +172,23 @@ export default function SupplierReturnsPage() {
     const matchesStatus =
       statusFilter === 'ALL' ||
       (statusFilter === 'PENDING' && (note.status === 'PENDING_DEDUCTION' || note.status === 'PARTIALLY_DEDUCTED')) ||
-      (statusFilter === 'DEDUCTED' && note.status === 'DEDUCTED') ||
-      (statusFilter === 'CANCELLED' && note.status === 'CANCELLED');
+      (statusFilter === 'DEDUCTED' && note.status === 'DEDUCTED');
 
     return matchesSearch && matchesSupplier && matchesStatus;
+  });
+
+  // Filtered Cancelled Notes (Trash)
+  const filteredCancelledNotes = cancelledNotes.filter((note) => {
+    const matchesSearch =
+      note.id.toLowerCase().includes(search.toLowerCase()) ||
+      (note.supplierName || '').toLowerCase().includes(search.toLowerCase()) ||
+      (note.linkedPoNumber || '').toLowerCase().includes(search.toLowerCase()) ||
+      note.items.some((i) => (i.productName || '').toLowerCase().includes(search.toLowerCase()));
+
+    const matchesSupplier =
+      selectedSupplierFilter === 'ALL' || note.supplierId === selectedSupplierFilter;
+
+    return matchesSearch && matchesSupplier;
   });
 
   return (
@@ -285,7 +318,7 @@ export default function SupplierReturnsPage() {
               value="return_notes"
               className="rounded-xl font-bold text-xs data-[state=active]:bg-white data-[state=active]:shadow-xs px-4"
             >
-              เอกสารส่งคืน & ใบลดหนี้ ({returnNotes.length})
+              เอกสารส่งคืน & ใบลดหนี้ ({activeNotes.length})
             </TabsTrigger>
             <TabsTrigger
               value="pending_claims"
@@ -300,6 +333,13 @@ export default function SupplierReturnsPage() {
             >
               <Receipt className="w-3.5 h-3.5 text-amber-600" />
               <span>ใบสั่งซื้อที่มียอดค้างชำระ</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="trash"
+              className="rounded-xl font-bold text-xs data-[state=active]:bg-white data-[state=active]:text-rose-700 data-[state=active]:shadow-xs px-4 gap-1.5 text-slate-500 hover:text-rose-600"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+              <span>ถังขยะ / ยกเลิกแล้ว ({cancelledNotes.length})</span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -336,10 +376,9 @@ export default function SupplierReturnsPage() {
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="h-11 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 w-full md:w-40"
               >
-                <option value="ALL">ทุกสถานะ</option>
+                <option value="ALL">ทุกสถานะที่ใช้งาน</option>
                 <option value="PENDING">รอหักลดหนี้</option>
                 <option value="DEDUCTED">หักลดหนี้แล้ว</option>
-                <option value="CANCELLED">ยกเลิกแล้ว</option>
               </select>
             </div>
           </div>
@@ -363,7 +402,7 @@ export default function SupplierReturnsPage() {
                       <th className="p-3.5 text-left">บริษัทผู้จำหน่าย</th>
                       <th className="p-3.5 text-left">หมวดหมู่ & รายการสินค้า</th>
                       <th className="p-3.5 text-left">อ้างอิงใบสั่งซื้อ (PO)</th>
-                      <th className="p-3.5 text-right">มูลค่าลดหนี้สุทธิ</th>
+                      <th className="p-3.5 text-right">มูลค่าส่งคืน / ขอลดหนี้</th>
                       <th className="p-3.5 text-center">สถานะ</th>
                       <th className="p-3.5 text-center w-28">การจัดการ</th>
                     </tr>
@@ -427,9 +466,17 @@ export default function SupplierReturnsPage() {
                             <span className="font-bold text-slate-900 text-sm block">
                               {formatCurrency(note.totalCreditAmount)}
                             </span>
-                            {note.remainingCreditAmount > 0 && (
+                            {note.status === 'DEDUCTED' ? (
                               <span className="text-[10px] text-emerald-600 font-semibold">
+                                ✓ หักลดหนี้ครบแล้ว
+                              </span>
+                            ) : note.remainingCreditAmount < note.totalCreditAmount && note.remainingCreditAmount > 0 ? (
+                              <span className="text-[10px] text-sky-600 font-semibold">
                                 คงเหลือ {formatCurrency(note.remainingCreditAmount)}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-amber-700 font-semibold">
+                                รอประกบหัก
                               </span>
                             )}
                           </td>
@@ -439,10 +486,6 @@ export default function SupplierReturnsPage() {
                               <Badge className="bg-emerald-600 text-white font-bold">หักลดหนี้แล้ว</Badge>
                             ) : note.status === 'PARTIALLY_DEDUCTED' ? (
                               <Badge className="bg-sky-600 text-white font-bold">หักหนี้บางส่วน</Badge>
-                            ) : note.status === 'CANCELLED' ? (
-                              <Badge variant="outline" className="text-slate-400 border-slate-300">
-                                ยกเลิกแล้ว
-                              </Badge>
                             ) : (
                               <Badge variant="outline" className="border-amber-400 text-amber-800 bg-amber-50 font-bold">
                                 รอหักลดหนี้
@@ -647,6 +690,126 @@ export default function SupplierReturnsPage() {
                   );
                 })}
             </div>
+          </div>
+        </TabsContent>
+
+        {/* TAB 4: TRASH / CANCELLED NOTES */}
+        <TabsContent value="trash" className="space-y-4 m-0">
+          <div className="bg-rose-50/60 p-4 rounded-3xl border border-rose-200 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-bold text-sm text-rose-950">ถังขยะเอกสารส่งคืน & ขอลดหนี้ที่ยกเลิกแล้ว</p>
+                <p className="text-xs text-rose-800">
+                  เอกสารในหน้านี้ถูกยกเลิกแล้ว ระบบได้คืนสต็อกสินค้าปกติและคืนสถานะของสินค้าเคลมกลับสู่ระบบเรียบร้อยแล้ว
+                </p>
+              </div>
+            </div>
+            <Badge variant="outline" className="bg-white border-rose-300 text-rose-800 font-bold self-start sm:self-auto">
+              ทั้งหมด {cancelledNotes.length} ฉบับ
+            </Badge>
+          </div>
+
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xs overflow-hidden">
+            {filteredCancelledNotes.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 space-y-2">
+                <Trash2 className="w-10 h-10 text-slate-300 mx-auto" />
+                <p className="font-bold text-slate-600">ไม่มีเอกสารในถังขยะ</p>
+                <p className="text-xs text-slate-400">เมื่อมีการยกเลิกใบส่งคืน เอกสารจะถูกย้ายมาเก็บไว้ที่นี่</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="p-3.5 text-left">เลขที่เอกสาร / วันที่</th>
+                      <th className="p-3.5 text-left">บริษัทผู้จำหน่าย</th>
+                      <th className="p-3.5 text-left">รายการสินค้าที่เคยส่งคืน</th>
+                      <th className="p-3.5 text-left">อ้างอิงใบ PO</th>
+                      <th className="p-3.5 text-right">มูลค่าที่เคยขอลดหนี้</th>
+                      <th className="p-3.5 text-center">สถานะเอกสาร</th>
+                      <th className="p-3.5 text-center w-36">การจัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredCancelledNotes.map((note) => (
+                      <tr key={note.id} className="bg-slate-50/40 hover:bg-slate-100/50 transition-colors opacity-80 hover:opacity-100">
+                        <td className="p-3.5">
+                          <span className="font-mono font-bold text-slate-600 line-through block">
+                            {note.id}
+                          </span>
+                          <span className="text-[11px] text-slate-400">
+                            {new Date(note.returnDate).toLocaleDateString('th-TH')}
+                          </span>
+                        </td>
+
+                        <td className="p-3.5 font-bold text-slate-700">
+                          {note.supplierName}
+                        </td>
+
+                        <td className="p-3.5 text-slate-500">
+                          <p className="truncate max-w-xs">{note.items.map((i) => i.productName).join(', ')}</p>
+                          <span className="text-[10px] text-slate-400">รวม {note.items.length} รายการ</span>
+                        </td>
+
+                        <td className="p-3.5">
+                          {note.linkedPoNumber ? (
+                            <span className="font-mono text-slate-500 line-through">
+                              {note.linkedPoNumber}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </td>
+
+                        <td className="p-3.5 text-right font-mono">
+                          <span className="line-through text-slate-400 font-bold block text-xs">
+                            {formatCurrency(note.totalCreditAmount)}
+                          </span>
+                          <span className="text-[10px] text-rose-600 font-bold">
+                            ยกเลิกแล้ว (ไม่มีเครดิต)
+                          </span>
+                        </td>
+
+                        <td className="p-3.5 text-center">
+                          <Badge className="bg-rose-100 text-rose-800 border-rose-200 font-bold text-[11px]">
+                            ❌ ยกเลิกเอกสารแล้ว
+                          </Badge>
+                        </td>
+
+                        <td className="p-3.5 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleViewPdf(note)}
+                              className="h-8 px-2 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs gap-1"
+                              title="ดูเอกสารฉบับนี้"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>ดูเอกสาร</span>
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleRestoreNote(note)}
+                              className="h-8 px-2 rounded-xl border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-bold text-xs gap-1"
+                              title="กู้คืนเอกสารนี้กลับมาใช้งาน"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>กู้คืน</span>
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </TabsContent>
       </Tabs>

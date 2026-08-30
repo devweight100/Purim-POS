@@ -748,9 +748,47 @@ export function cancelSupplierReturnNote(noteId: string): { success: boolean; me
   }
 
   note.status = 'CANCELLED';
+  note.remainingCreditAmount = 0;
+  (note as any).cancelledAt = new Date().toISOString();
   saveSupplierReturnNotes(notes);
 
-  return { success: true, message: `ยกเลิกเอกสารส่งคืน ${noteId} และคืนยอดสต็อก/สถานะเรียบร้อยแล้ว` };
+  return { success: true, message: `ย้ายเอกสารส่งคืน ${noteId} ไปที่ถังขยะ และคืนยอดสต็อก/สถานะเรียบร้อยแล้ว` };
+}
+
+// ─── Restore Cancelled Return Note from Trash ───
+export function restoreSupplierReturnNote(noteId: string): { success: boolean; message: string } {
+  const notes = loadSupplierReturnNotes();
+  const note = notes.find((n) => n.id === noteId);
+  if (!note) return { success: false, message: 'ไม่พบเอกสารส่งคืน' };
+  if (note.status !== 'CANCELLED') return { success: false, message: 'เอกสารนี้ไม่ได้อยู่ในสถานะยกเลิก' };
+
+  note.status = 'PENDING_DEDUCTION';
+  note.remainingCreditAmount = note.totalCreditAmount;
+  delete (note as any).cancelledAt;
+
+  // Re-link claims if applicable
+  try {
+    const allClaims = loadAllClaimRecords();
+    for (const item of note.items) {
+      if (item.claimId) {
+        const claimIds = item.claimId.split(',').map((s) => s.trim()).filter(Boolean);
+        for (const cid of claimIds) {
+          const claim = allClaims.find((c) => c.id === cid);
+          if (claim) {
+            claim.returnDocId = noteId;
+            claim.status = 'SENT_TO_SUPPLIER';
+          }
+        }
+      }
+    }
+    saveClaimRecords(allClaims);
+  } catch (e) {
+    console.error('Failed to re-link claims on restore:', e);
+  }
+
+  saveSupplierReturnNotes(notes);
+
+  return { success: true, message: `กู้คืนเอกสารส่งคืน ${noteId} กลับมาใช้งานเรียบร้อยแล้ว` };
 }
 
 // ─── Deduct Return Note from Supplier PO Bill ───
