@@ -135,29 +135,29 @@ export function Sidebar() {
 
       {/* Navigation Groups */}
       <div className="flex-1 py-3 overflow-y-auto overflow-x-hidden flex flex-col gap-3 px-2">
-        {/* Quick POS Action Button */}
+        {/* Quick POS Action Button (Purim POS สีฟ้า) */}
         <div className="px-1">
           <Link
             href="/pos"
             className={cn(
               'flex items-center justify-between px-3.5 py-2.5 rounded-xl font-bold transition-all shadow-xs group',
               pathname === '/pos'
-                ? 'bg-indigo-600 text-white shadow-indigo-200 ring-2 ring-indigo-400/40'
-                : 'bg-indigo-50/90 text-indigo-900 border border-indigo-200/80 hover:bg-indigo-100'
+                ? 'bg-sky-500 text-white shadow-sky-200 ring-2 ring-sky-300'
+                : 'bg-sky-50 text-sky-950 border border-sky-200/90 hover:bg-sky-100/90'
             )}
           >
             <div className="flex items-center gap-2.5">
               <div className={cn(
                 'w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0',
-                pathname === '/pos' ? 'bg-white/20 text-white' : 'bg-indigo-600 text-white'
+                pathname === '/pos' ? 'bg-white/20 text-white' : 'bg-sky-500 text-white shadow-2xs'
               )}>
                 <ShoppingCart className="w-4 h-4" />
               </div>
-              <span className="text-sm font-bold">จุดขายหน้าร้าน (POS)</span>
+              <span className="text-sm font-black tracking-wide">Purim POS</span>
             </div>
             <span className={cn(
               'text-[10px] px-2 py-0.5 rounded font-black uppercase',
-              pathname === '/pos' ? 'bg-white/20 text-white' : 'bg-indigo-200/60 text-indigo-800'
+              pathname === '/pos' ? 'bg-white/20 text-white' : 'bg-sky-200/80 text-sky-800'
             )}>
               ขายสด
             </span>
@@ -172,20 +172,20 @@ export function Sidebar() {
 
           return (
             <div key={group.id} className="space-y-1">
-              {/* Group Header (Clickable Accordion Trigger) */}
+              {/* Group Header (หัวข้อใหญ่ ขนาดใหญ่และหนากว่าหัวข้อย่อย) */}
               <button
                 type="button"
                 onClick={() => toggleGroup(group.id)}
                 className={cn(
-                  'w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-bold transition-colors group',
+                  'w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-sm font-bold transition-colors group',
                   isGroupActive
-                    ? 'text-indigo-900 bg-indigo-50/40'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                    ? 'text-indigo-950 bg-indigo-50/70'
+                    : 'text-slate-800 hover:text-slate-950 hover:bg-slate-100/70'
                 )}
               >
-                <div className="flex items-center gap-2">
-                  <GroupIcon className={cn('w-4 h-4 shrink-0', isGroupActive ? 'text-indigo-600' : 'text-slate-400')} />
-                  <span className="tracking-tight uppercase text-xs font-bold">{group.title}</span>
+                <div className="flex items-center gap-2.5">
+                  <GroupIcon className={cn('w-4.5 h-4.5 shrink-0', isGroupActive ? 'text-indigo-600' : 'text-slate-500')} />
+                  <span className="tracking-tight text-sm font-bold">{group.title}</span>
                 </div>
                 <ChevronDown
                   className={cn(
@@ -195,9 +195,9 @@ export function Sidebar() {
                 />
               </button>
 
-              {/* Submenu Items */}
+              {/* Submenu Items (หัวข้อย่อย) */}
               {isOpen && (
-                <div className="ml-2.5 pl-2 border-l-2 border-slate-200/80 space-y-0.5">
+                <div className="ml-3 pl-2.5 border-l-2 border-slate-200/80 space-y-0.5 py-0.5">
                   {group.items.map((item) => {
                     const isActive = pathname === item.href;
                     const ItemIcon = item.icon;
@@ -207,13 +207,13 @@ export function Sidebar() {
                         key={item.href}
                         href={item.href}
                         className={cn(
-                          'flex items-center px-3 py-2 rounded-lg text-sm transition-all duration-150 whitespace-nowrap',
+                          'flex items-center px-2.5 py-1.5 rounded-lg text-[13px] transition-all duration-150 whitespace-nowrap',
                           isActive
                             ? 'bg-indigo-600 text-white font-bold shadow-xs'
-                            : 'text-slate-700 hover:text-slate-950 hover:bg-slate-100 font-medium'
+                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium'
                         )}
                       >
-                        <ItemIcon className={cn('w-5 h-5 shrink-0 mr-2.5', isActive ? 'text-white' : 'text-slate-500')} />
+                        <ItemIcon className={cn('w-4 h-4 shrink-0 mr-2.5', isActive ? 'text-white' : 'text-slate-400')} />
                         <span className="truncate">{item.label}</span>
                       </Link>
                     );
