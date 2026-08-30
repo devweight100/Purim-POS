@@ -234,6 +234,20 @@ export function PaymentVoucherModal({
                   </tr>
                 ))}
 
+                {/* Bill Discount */}
+                {paymentEntry.discountAmount && paymentEntry.discountAmount > 0 && (
+                  <tr className="bg-amber-50/40">
+                    <td className="p-2 text-center text-amber-700 font-bold">%</td>
+                    <td className="p-2 text-amber-950">
+                      <p className="font-bold">ส่วนลดท้ายบิลจากผู้จำหน่าย</p>
+                      <p className="text-[10px] text-amber-700">ส่วนลดท้ายบิลตามข้อตกลงในการเรียกเก็บเงิน</p>
+                    </td>
+                    <td className="p-2 text-right font-mono font-bold text-amber-700">
+                      -{formatCurrency(paymentEntry.discountAmount)}
+                    </td>
+                  </tr>
+                )}
+
                 <tr className="bg-slate-50 font-bold text-slate-900 border-t border-slate-300">
                   <td colSpan={2} className="p-2 text-right">
                     ยอดเงินสุทธิที่จ่ายจริง (Net Payment Paid):

@@ -1,5 +1,4 @@
 import { loadPurchaseOrders, savePurchaseOrders, loadSuppliers, loadSupplierReturnNotes, saveSupplierReturnNotes } from './supplier-return-service';
-import { useShiftStore } from './store/shift-store';
 import { SupplierReturnNote } from './types';
 
 export interface PayablePaymentEntry {
@@ -8,6 +7,7 @@ export interface PayablePaymentEntry {
   paymentMethod: 'CASH' | 'TRANSFER' | 'CHEQUE' | 'OTHER';
   totalBillAmount: number;
   deductedCreditAmount: number;
+  discountAmount?: number;
   netCashOrTransferPaid: number;
   deductedNotes: Array<{
     returnNoteId: string;
@@ -33,6 +33,7 @@ export interface SupplierPayableBill {
   totalAmount: number;
   alreadyDeductedReturns: number;
   alreadyPaidAmount: number;
+  alreadyDiscountAmount: number;
   remainingPayable: number;
   itemsCount: number;
   deductedReturns: Array<{
@@ -65,13 +66,20 @@ export function loadPayableBills(): SupplierPayableBill[] {
         (sum: number, p: any) => sum + Number(p.netCashOrTransferPaid || 0),
         0
       );
+      const alreadyDiscount = payments.reduce(
+        (sum: number, p: any) => sum + Number(p.discountAmount || 0),
+        0
+      );
 
-      const remainingPayable = Math.max(0, Math.round((totalAmount - alreadyDeducted - alreadyPaid) * 100) / 100);
+      const remainingPayable = Math.max(
+        0,
+        Math.round((totalAmount - alreadyDeducted - alreadyPaid - alreadyDiscount) * 100) / 100
+      );
 
       let paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' = 'UNPAID';
       if (remainingPayable <= 0 && totalAmount > 0) {
         paymentStatus = 'PAID';
-      } else if (alreadyDeducted > 0 || alreadyPaid > 0) {
+      } else if (alreadyDeducted > 0 || alreadyPaid > 0 || alreadyDiscount > 0) {
         paymentStatus = 'PARTIALLY_PAID';
       }
 
@@ -90,6 +98,7 @@ export function loadPayableBills(): SupplierPayableBill[] {
         totalAmount,
         alreadyDeductedReturns: alreadyDeducted,
         alreadyPaidAmount: alreadyPaid,
+        alreadyDiscountAmount: alreadyDiscount,
         remainingPayable,
         itemsCount: (po.items || []).length,
         deductedReturns,
@@ -104,6 +113,7 @@ export interface SettlePayableParams {
     returnNoteId: string;
     amountToDeduct: number;
   }>;
+  discountAmount?: number;
   cashOrTransferAmount: number;
   paymentMethod: 'CASH' | 'TRANSFER' | 'CHEQUE' | 'OTHER';
   bankAccountId?: string;
@@ -111,7 +121,6 @@ export interface SettlePayableParams {
   referenceNo?: string;
   note?: string;
   cashierName?: string;
-  deductFromCashDrawer?: boolean;
 }
 
 export function settlePayableBill(params: SettlePayableParams): {
@@ -172,22 +181,9 @@ export function settlePayableBill(params: SettlePayableParams): {
 
   saveSupplierReturnNotes(allReturnNotes);
 
-  // 2. Process Cash / Transfer Payment
+  // 2. Process Cash / Transfer Payment & Bill Discount
   const netPaidCashOrTransfer = Math.max(0, Number(params.cashOrTransferAmount || 0));
-
-  // If paid via cash and drawer deduction requested, record in shift store
-  if (params.paymentMethod === 'CASH' && params.deductFromCashDrawer && netPaidCashOrTransfer > 0) {
-    try {
-      const shiftState = useShiftStore.getState();
-      shiftState.addCashTransaction(
-        'out',
-        netPaidCashOrTransfer,
-        `ชำระหนี้เจ้าหนี้ บิล ${targetPo.poNumber} (${targetPo.supplierName || 'บริษัท'}) [${paymentId}]`
-      );
-    } catch (e) {
-      console.error('Failed to deduct from cash drawer:', e);
-    }
-  }
+  const billDiscount = Math.max(0, Number(params.discountAmount || 0));
 
   const paymentEntry: PayablePaymentEntry = {
     id: paymentId,
@@ -195,6 +191,7 @@ export function settlePayableBill(params: SettlePayableParams): {
     paymentMethod: params.paymentMethod,
     totalBillAmount: Number(targetPo.totalAmount || 0),
     deductedCreditAmount: totalDebitDeducted,
+    discountAmount: billDiscount > 0 ? billDiscount : undefined,
     netCashOrTransferPaid: netPaidCashOrTransfer,
     deductedNotes: deductedNotesRecord,
     bankAccountId: params.bankAccountId,
@@ -211,7 +208,12 @@ export function settlePayableBill(params: SettlePayableParams): {
   const totalAmount = Number(targetPo.totalAmount || 0);
   const totalDeducted = targetPo.deductedReturns.reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
   const totalPaid = targetPo.payments.reduce((s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0), 0);
-  targetPo.netAmountPayable = Math.max(0, Math.round((totalAmount - totalDeducted - totalPaid) * 100) / 100);
+  const totalDiscount = targetPo.payments.reduce((s: number, p: any) => s + Number(p.discountAmount || 0), 0);
+  
+  targetPo.netAmountPayable = Math.max(
+    0,
+    Math.round((totalAmount - totalDeducted - totalPaid - totalDiscount) * 100) / 100
+  );
 
   if (targetPo.netAmountPayable <= 0) {
     targetPo.paymentStatus = 'PAID';
@@ -223,7 +225,7 @@ export function settlePayableBill(params: SettlePayableParams): {
 
   return {
     success: true,
-    message: `บันทึกการชำระเงินและประกบใบลดหนี้บิล ${targetPo.poNumber} สำเร็จ`,
+    message: `บันทึกการชำระเงินบิล ${targetPo.poNumber} สำเร็จ`,
     paymentEntry,
   };
 }

@@ -312,6 +312,7 @@ export default function PayablesPage() {
                       <th className="p-3.5 text-left">เลขที่ PO / วันที่</th>
                       <th className="p-3.5 text-left">บริษัทผู้จำหน่าย</th>
                       <th className="p-3.5 text-right">ยอดหนี้ตามบิล</th>
+                      <th className="p-3.5 text-right">ส่วนลดท้ายบิล</th>
                       <th className="p-3.5 text-right">ประกบใบลดหนี้</th>
                       <th className="p-3.5 text-right">จ่ายเงินแล้ว</th>
                       <th className="p-3.5 text-right">หนี้คงเหลือสุทธิ</th>
@@ -338,6 +339,16 @@ export default function PayablesPage() {
 
                         <td className="p-3.5 text-right font-mono font-bold text-slate-800">
                           {formatCurrency(bill.totalAmount)}
+                        </td>
+
+                        <td className="p-3.5 text-right font-mono">
+                          {bill.alreadyDiscountAmount > 0 ? (
+                            <span className="text-amber-700 font-bold">
+                              -{formatCurrency(bill.alreadyDiscountAmount)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
                         </td>
 
                         <td className="p-3.5 text-right font-mono">
@@ -492,6 +503,7 @@ export default function PayablesPage() {
                       <th className="p-3.5 text-left">บิล PO ที่ชำระ</th>
                       <th className="p-3.5 text-left">บริษัทผู้จำหน่าย</th>
                       <th className="p-3.5 text-right">ยอดหนี้ตามบิล</th>
+                      <th className="p-3.5 text-right">ส่วนลดท้ายบิล</th>
                       <th className="p-3.5 text-right">ประกบหักใบลดหนี้</th>
                       <th className="p-3.5 text-right">เงินสด/โอนที่จ่ายจริง</th>
                       <th className="p-3.5 text-center">วิธีชำระ</th>
@@ -518,6 +530,10 @@ export default function PayablesPage() {
 
                         <td className="p-3.5 text-right font-mono">
                           {formatCurrency(item.totalBillAmount)}
+                        </td>
+
+                        <td className="p-3.5 text-right font-mono text-amber-700 font-bold">
+                          {item.discountAmount && item.discountAmount > 0 ? `-${formatCurrency(item.discountAmount)}` : '-'}
                         </td>
 
                         <td className="p-3.5 text-right font-mono text-indigo-700 font-bold">

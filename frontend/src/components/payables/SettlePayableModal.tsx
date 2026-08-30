@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Building2, CheckCircle2, DollarSign, Receipt, CreditCard, 
-  Wallet, Banknote, ShieldAlert, ArrowDownCircle, CheckSquare, Square, X
+  Wallet, Banknote, ShieldAlert, ArrowDownCircle, CheckSquare, Square, X, Tag, Percent
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,7 +27,6 @@ import {
 } from '@/lib/supplier-return-service';
 import { SupplierReturnNote } from '@/lib/types';
 import { loadBankAccounts, BankAccount } from '@/lib/bank-account-storage';
-import { useShiftStore } from '@/lib/store/shift-store';
 
 interface SettlePayableModalProps {
   open: boolean;
@@ -45,6 +44,9 @@ export function SettlePayableModal({
   const [availableDebitNotes, setAvailableDebitNotes] = useState<SupplierReturnNote[]>([]);
   const [selectedNotesMap, setSelectedNotesMap] = useState<Record<string, number>>({});
   
+  // Bill Discount (ส่วนลดท้ายบิล)
+  const [billDiscountStr, setBillDiscountStr] = useState<string>('');
+
   // Payment fields
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'TRANSFER' | 'CHEQUE' | 'OTHER'>('CASH');
   const [cashOrTransferAmountStr, setCashOrTransferAmountStr] = useState<string>('');
@@ -52,16 +54,14 @@ export function SettlePayableModal({
   const [selectedBankId, setSelectedBankId] = useState<string>('');
   const [referenceNo, setReferenceNo] = useState('');
   const [note, setNote] = useState('');
-  const [deductFromDrawer, setDeductFromDrawer] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const drawerBalance = useShiftStore((state) => state.getExpectedCash());
 
   useEffect(() => {
     if (open && bill) {
       const notes = getAvailableReturnNotesForSupplier(bill.supplierId);
       setAvailableDebitNotes(notes);
       setSelectedNotesMap({});
+      setBillDiscountStr('');
 
       const accounts = loadBankAccounts();
       setBankAccounts(accounts);
@@ -70,9 +70,9 @@ export function SettlePayableModal({
       }
 
       setPaymentMethod('CASH');
+      setCashOrTransferAmountStr('');
       setReferenceNo('');
       setNote('');
-      setDeductFromDrawer(true);
     }
   }, [open, bill]);
 
@@ -86,9 +86,9 @@ export function SettlePayableModal({
       delete newMap[returnNote.id];
       setSelectedNotesMap(newMap);
     } else {
-      // Calculate max credit we can apply without exceeding remaining bill debt
       const currentDebitTotal = Object.values(selectedNotesMap).reduce((s, v) => s + v, 0);
-      const remainingDebtBeforeThis = Math.max(0, bill.remainingPayable - currentDebitTotal);
+      const billDiscount = Math.max(0, parseFloat(billDiscountStr) || 0);
+      const remainingDebtBeforeThis = Math.max(0, bill.remainingPayable - billDiscount - currentDebitTotal);
       const canApply = Math.min(returnNote.remainingCreditAmount, remainingDebtBeforeThis);
       setSelectedNotesMap((prev) => ({
         ...prev,
@@ -106,8 +106,12 @@ export function SettlePayableModal({
   };
 
   // Calculations
+  const billDiscount = Math.max(0, parseFloat(billDiscountStr) || 0);
   const totalDebitDeducted = Object.values(selectedNotesMap).reduce((s, v) => s + v, 0);
-  const netDebtToPay = Math.max(0, Math.round((bill.remainingPayable - totalDebitDeducted) * 100) / 100);
+  const netDebtToPay = Math.max(
+    0,
+    Math.round((bill.remainingPayable - billDiscount - totalDebitDeducted) * 100) / 100
+  );
 
   // Auto-sync cash amount if user hasn't typed
   const finalCashOrTransferAmount = cashOrTransferAmountStr !== '' 
@@ -115,15 +119,9 @@ export function SettlePayableModal({
     : netDebtToPay;
 
   const handleSubmit = () => {
-    if (totalDebitDeducted <= 0 && finalCashOrTransferAmount <= 0) {
-      toast.error('กรุณาเลือกประกบใบลดหนี้ หรือระบุจำนวนเงินที่ต้องการจ่าย');
+    if (totalDebitDeducted <= 0 && billDiscount <= 0 && finalCashOrTransferAmount <= 0) {
+      toast.error('กรุณาเลือกประกบใบลดหนี้, ระบุส่วนลดท้ายบิล หรือระบุจำนวนเงินที่ต้องการจ่าย');
       return;
-    }
-
-    if (paymentMethod === 'CASH' && deductFromDrawer && finalCashOrTransferAmount > drawerBalance) {
-      if (!confirm(`เงินสดในลิ้นชักมี ฿${drawerBalance.toLocaleString()} ซึ่งน้อยกว่ายอดที่ต้องจ่าย ฿${finalCashOrTransferAmount.toLocaleString()}\nต้องการดำเนินการต่อหรือไม่?`)) {
-        return;
-      }
     }
 
     setIsSubmitting(true);
@@ -138,13 +136,13 @@ export function SettlePayableModal({
       const res = settlePayableBill({
         poId: bill.poId,
         matchedDebitNotes,
+        discountAmount: billDiscount,
         cashOrTransferAmount: finalCashOrTransferAmount,
         paymentMethod,
         bankAccountId: selectedBank?.id,
         bankAccountLabel: selectedBank ? `${selectedBank.bankName} (${selectedBank.accountNumber})` : undefined,
         referenceNo: referenceNo.trim() || undefined,
         note: note.trim() || undefined,
-        deductFromCashDrawer: deductFromDrawer,
       });
 
       if (res.success && res.paymentEntry) {
@@ -174,7 +172,7 @@ export function SettlePayableModal({
             </DialogTitle>
           </div>
           <p className="text-xs text-slate-500 font-medium pt-1">
-            นำเอกสารส่งคืน (Debit Note) มาประกบเพื่อหักลดยอดเวลาจ่ายเงิน และบันทึกจ่ายเงินเจ้าหนี้
+            ใส่ส่วนลดท้ายบิล, ประกบเอกสารลดหนี้ (Debit Note) เพื่อหักยอด และบันทึกจ่ายเงินเจ้าหนี้
           </p>
         </DialogHeader>
 
@@ -196,12 +194,49 @@ export function SettlePayableModal({
             </div>
           </div>
 
-          {/* SECTION 1: MATCH DEBIT NOTES */}
+          {/* SECTION 1: BILL DISCOUNT (ส่วนลดท้ายบิล) */}
+          <div className="bg-amber-50/60 p-3.5 rounded-2xl border border-amber-200/80 space-y-2">
+            <div className="flex justify-between items-center">
+              <label className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                <Tag className="w-4 h-4 text-amber-600" />
+                <span>ส่วนลดท้ายบิลจากผู้จำหน่าย (ถ้ามี):</span>
+              </label>
+              {billDiscount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setBillDiscountStr('')}
+                  className="text-[11px] text-rose-600 hover:underline font-bold"
+                >
+                  ล้างส่วนลด
+                </button>
+              )}
+            </div>
+            <div className="relative">
+              <Input
+                type="number"
+                min="0"
+                max={bill.remainingPayable}
+                step="any"
+                placeholder="0.00"
+                value={billDiscountStr}
+                onChange={(e) => setBillDiscountStr(e.target.value)}
+                className="h-10 text-base font-mono font-bold text-amber-950 bg-white border-amber-300 pr-12 text-right rounded-xl"
+              />
+              <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                บาท
+              </span>
+            </div>
+            <p className="text-[11px] text-amber-800">
+              * หากบริษัทมีส่วนลดท้ายบิลในการเรียกเก็บเงิน สามารถระบุเพื่อหักลดยอดหนี้ในใบ PO ได้ทันที
+            </p>
+          </div>
+
+          {/* SECTION 2: MATCH DEBIT NOTES */}
           <div className="space-y-2.5">
             <div className="flex justify-between items-center">
               <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <ShieldAlert className="w-4 h-4 text-indigo-600" />
-                <span>1. ประกบเอกสารลดหนี้ (Debit Note) ของบริษัทนี้:</span>
+                <span>ประกบเอกสารลดหนี้ (Debit Note) ของบริษัทนี้:</span>
               </label>
               <span className="text-[11px] text-slate-500 font-semibold">
                 มี {availableDebitNotes.length} ฉบับพร้อมหัก
@@ -210,7 +245,7 @@ export function SettlePayableModal({
 
             {availableDebitNotes.length === 0 ? (
               <div className="p-4 text-center bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-400">
-                ไม่มีเอกสารลดหนี้ที่มียอดคงเหลือสำหรับบริษัทนี้ (สามารถชำระด้วยเงินสด/โอนเงินได้ตามปกติ)
+                ไม่มีเอกสารลดหนี้ที่มียอดคงเหลือสำหรับบริษัทนี้
               </div>
             ) : (
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
@@ -275,10 +310,10 @@ export function SettlePayableModal({
             )}
           </div>
 
-          {/* SECTION 2: PAYMENT OF REMAINING BALANCE */}
+          {/* SECTION 3: PAYMENT OF REMAINING BALANCE */}
           <div className="space-y-3 pt-2 border-t border-slate-200">
             <label className="text-xs font-bold text-slate-800 block">
-              2. บันทึกจ่ายเงินเจ้าหนี้ส่วนที่เหลือ:
+              บันทึกจ่ายเงินเจ้าหนี้ส่วนที่เหลือ:
             </label>
 
             {/* Payment Method Selector */}
@@ -339,24 +374,6 @@ export function SettlePayableModal({
               </div>
             </div>
 
-            {/* Drawer Cash Option for CASH */}
-            {paymentMethod === 'CASH' && (
-              <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 flex items-center justify-between text-xs">
-                <label className="flex items-center gap-2 font-bold text-amber-950 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={deductFromDrawer}
-                    onChange={(e) => setDeductFromDrawer(e.target.checked)}
-                    className="rounded accent-indigo-600 h-4 w-4"
-                  />
-                  <span>หักเงินสดออกจากลิ้นชัก POS ทันที (Cash Drawer)</span>
-                </label>
-                <span className="text-amber-800 font-mono font-bold">
-                  (เงินในลิ้นชัก: {formatCurrency(drawerBalance)})
-                </span>
-              </div>
-            )}
-
             {/* Bank Account Selection for TRANSFER */}
             {paymentMethod === 'TRANSFER' && bankAccounts.length > 0 && (
               <div className="space-y-1">
@@ -406,6 +423,12 @@ export function SettlePayableModal({
               <span>หนี้เดิมตามบิล:</span>
               <span className="font-mono">{formatCurrency(bill.remainingPayable)}</span>
             </div>
+            {billDiscount > 0 && (
+              <div className="flex justify-between text-amber-700 font-bold">
+                <span>ส่วนลดท้ายบิลจากผู้จำหน่าย:</span>
+                <span className="font-mono">-{formatCurrency(billDiscount)}</span>
+              </div>
+            )}
             {totalDebitDeducted > 0 && (
               <div className="flex justify-between text-indigo-700 font-bold">
                 <span>ประกบหักใบลดหนี้ ({Object.keys(selectedNotesMap).length} ฉบับ):</span>
@@ -421,7 +444,7 @@ export function SettlePayableModal({
             <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-black text-slate-900">
               <span>หนี้คงเหลือสุทธิหลังชำระ:</span>
               <span className="font-mono text-emerald-700 text-base">
-                {formatCurrency(Math.max(0, bill.remainingPayable - totalDebitDeducted - finalCashOrTransferAmount))}
+                {formatCurrency(Math.max(0, bill.remainingPayable - billDiscount - totalDebitDeducted - finalCashOrTransferAmount))}
               </span>
             </div>
           </div>
