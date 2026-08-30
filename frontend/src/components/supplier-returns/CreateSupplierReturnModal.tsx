@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { 
   Building2, CheckCircle2, FileText, Plus, Trash2, 
-  ShieldAlert, Package, Search, Receipt, CheckSquare, Square, DollarSign, RotateCcw
+  ShieldAlert, Package, Search, Receipt, CheckSquare, Square, DollarSign, RotateCcw, ChevronDown
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,6 +55,8 @@ export function CreateSupplierReturnModal({
   const [selectedPoId, setSelectedPoId] = useState<string>('');
   
   const [availableClaims, setAvailableClaims] = useState<ClaimRecord[]>([]);
+  const [allStoreClaims, setAllStoreClaims] = useState<ClaimRecord[]>([]);
+  const [showOtherClaims, setShowOtherClaims] = useState(false);
   const [supplierProducts, setSupplierProducts] = useState<any[]>([]);
   
   // Items chosen for return
@@ -114,19 +116,25 @@ export function CreateSupplierReturnModal({
       const claims = getEligibleClaimsForReturn(selectedSupplierId);
       setAvailableClaims(claims);
 
+      const allClaims = getEligibleClaimsForReturn();
+      setAllStoreClaims(allClaims);
+
       const prods = getProductsBySupplier(selectedSupplierId);
       setSupplierProducts(prods);
 
-      setReturnItems([]);
-      setSelectedProduct(null);
-      setProductSearch('');
-      setCustomDeductAmountStr('');
-      setIsCustomEdited(false);
+      if (!editingNote) {
+        setReturnItems([]);
+        setSelectedProduct(null);
+        setProductSearch('');
+        setCustomDeductAmountStr('');
+        setIsCustomEdited(false);
+      }
     }
-  }, [selectedSupplierId]);
+  }, [selectedSupplierId, editingNote]);
 
   const currentSupplier = suppliers.find((s) => s.id === selectedSupplierId);
   const selectedPO = payablePOs.find((p) => p.id === selectedPoId);
+  const otherClaims = allStoreClaims.filter((c) => !availableClaims.some((ac) => ac.id === c.id));
 
   // Totals
   const defectiveTotal = returnItems
@@ -440,57 +448,148 @@ export function CreateSupplierReturnModal({
 
               {/* TAB 1: DEFECTIVE CLAIM STOCK */}
               <TabsContent value="defective" className="pt-2 space-y-2">
-                {availableClaims.length === 0 ? (
+                {availableClaims.length === 0 && otherClaims.length === 0 ? (
                   <div className="p-6 text-center bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-400">
-                    ไม่มีสินค้าชำรุดในสต็อกของเคลมสำหรับผู้จำหน่ายรายนี้
+                    ไม่มีสินค้าชำรุดในสต็อกของเคลมที่รอส่งคืนบริษัทในระบบ
                   </div>
                 ) : (
-                  <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 border border-slate-200 rounded-2xl p-2 bg-slate-50/50">
-                    {availableClaims.map((claim) => {
-                      const isSelected = returnItems.some((i) => i.claimId === claim.id);
-                      return (
-                        <div
-                          key={claim.id}
-                          onClick={() => toggleClaimItem(claim)}
-                          className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
-                            isSelected
-                              ? 'border-rose-400 bg-rose-50/70 text-rose-950 shadow-2xs font-semibold'
-                              : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5">
-                            {isSelected ? (
-                              <CheckSquare className="w-4 h-4 text-rose-600 shrink-0" />
-                            ) : (
-                              <Square className="w-4 h-4 text-slate-400 shrink-0" />
-                            )}
-                            <div>
-                              <p className="text-xs font-bold text-slate-900">{claim.productName}</p>
-                              <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                                <span>SKU: {claim.sku}</span>
-                                <span>•</span>
-                                <span className="text-rose-600 font-medium">อาการ: {claim.defectReason}</span>
-                                {claim.orderNumber && (
-                                  <>
-                                    <span>•</span>
-                                    <span>บิลขาย: #{claim.orderNumber}</span>
-                                  </>
+                  <div className="space-y-2">
+                    {availableClaims.length > 0 ? (
+                      <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1 border border-slate-200 rounded-2xl p-2 bg-slate-50/50">
+                        {availableClaims.map((claim) => {
+                          const isSelected = returnItems.some((i) => i.claimId === claim.id);
+                          return (
+                            <div
+                              key={claim.id}
+                              onClick={() => toggleClaimItem(claim)}
+                              className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                                isSelected
+                                  ? 'border-rose-400 bg-rose-50/70 text-rose-950 shadow-2xs font-semibold'
+                                  : 'border-slate-200 bg-white hover:border-slate-300 text-slate-700'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                {isSelected ? (
+                                  <CheckSquare className="w-4 h-4 text-rose-600 shrink-0" />
+                                ) : (
+                                  <Square className="w-4 h-4 text-slate-400 shrink-0" />
                                 )}
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="text-xs font-bold text-slate-900">{claim.productName}</p>
+                                    <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-[9px] py-0 font-semibold">
+                                      สินค้าชำรุด
+                                    </Badge>
+                                  </div>
+                                  <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                                    <span>SKU: {claim.sku}</span>
+                                    <span>•</span>
+                                    <span className="text-rose-600 font-medium">อาการ: {claim.defectReason}</span>
+                                    {claim.orderNumber && (
+                                      <>
+                                        <span>•</span>
+                                        <span>บิลขาย: #{claim.orderNumber}</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="text-right">
+                                <span className="text-xs font-mono font-bold block text-slate-900">
+                                  {claim.quantity} ชิ้น
+                                </span>
+                                <span className="text-[11px] text-slate-500 font-mono">
+                                  ราคาทุน @{formatCurrency(claim.costPrice || 50)} = {formatCurrency((claim.costPrice || 50) * claim.quantity)}
+                                </span>
                               </div>
                             </div>
-                          </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="p-4 text-center bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-500">
+                        ไม่พบสินค้าชำรุดที่ระบุผู้จำหน่ายรายนี้โดยตรง
+                      </div>
+                    )}
 
-                          <div className="text-right">
-                            <span className="text-xs font-mono font-bold block text-slate-900">
-                              {claim.quantity} ชิ้น
-                            </span>
-                            <span className="text-[11px] text-slate-500 font-mono">
-                              ราคาทุน @{formatCurrency(claim.costPrice || 50)} = {formatCurrency((claim.costPrice || 50) * claim.quantity)}
-                            </span>
+                    {/* Expandable section for other unreturned defective claims */}
+                    {otherClaims.length > 0 && (
+                      <div className="pt-2 border-t border-slate-200 space-y-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setShowOtherClaims(!showOtherClaims)}
+                          className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 transition-colors p-1"
+                        >
+                          <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showOtherClaims ? 'rotate-180' : ''}`} />
+                          <span>
+                            {showOtherClaims
+                              ? 'ซ่อนสินค้าชำรุดรายการอื่นในสต็อก'
+                              : `แสดงสินค้าชำรุดรายการอื่นในสต็อกของเคลม (${otherClaims.length} รายการ)`}
+                          </span>
+                        </button>
+
+                        {showOtherClaims && (
+                          <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1 border border-indigo-100 rounded-2xl p-2 bg-indigo-50/30">
+                            <p className="text-[11px] text-indigo-800 font-medium pb-1 px-1">
+                              💡 สามารถคลิกเลือกรายการด้านล่างเพื่อดึงมาส่งคืนและลดหนี้กับบริษัทนี้ได้:
+                            </p>
+                            {otherClaims.map((claim) => {
+                              const isSelected = returnItems.some((i) => i.claimId === claim.id);
+                              return (
+                                <div
+                                  key={claim.id}
+                                  onClick={() => toggleClaimItem(claim)}
+                                  className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                                    isSelected
+                                      ? 'border-indigo-400 bg-indigo-50 text-indigo-950 shadow-2xs font-semibold'
+                                      : 'border-slate-200 bg-white hover:border-indigo-200 text-slate-700'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2.5">
+                                    {isSelected ? (
+                                      <CheckSquare className="w-4 h-4 text-indigo-600 shrink-0" />
+                                    ) : (
+                                      <Square className="w-4 h-4 text-slate-400 shrink-0" />
+                                    )}
+                                    <div>
+                                      <div className="flex items-center gap-1.5">
+                                        <p className="text-xs font-bold text-slate-900">{claim.productName}</p>
+                                        {claim.supplierName && (
+                                          <Badge variant="outline" className="text-[9px] py-0 text-slate-500 bg-white">
+                                            {claim.supplierName}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                                        <span>SKU: {claim.sku}</span>
+                                        <span>•</span>
+                                        <span className="text-rose-600 font-medium">อาการ: {claim.defectReason}</span>
+                                        {claim.orderNumber && (
+                                          <>
+                                            <span>•</span>
+                                            <span>บิลขาย: #{claim.orderNumber}</span>
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="text-right">
+                                    <span className="text-xs font-mono font-bold block text-slate-900">
+                                      {claim.quantity} ชิ้น
+                                    </span>
+                                    <span className="text-[11px] text-slate-500 font-mono">
+                                      ราคาทุน @{formatCurrency(claim.costPrice || 50)} = {formatCurrency((claim.costPrice || 50) * claim.quantity)}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                        </div>
-                      );
-                    })}
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </TabsContent>

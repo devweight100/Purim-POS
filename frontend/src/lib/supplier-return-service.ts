@@ -120,9 +120,42 @@ export function resolveProductSupplierAndCost(productId: string, sku?: string): 
   let supplierId = prod?.supplierId || barcodeSupplier?.supplierId || supplierEntry?.supplierId;
   let supplier = suppliers.find((s) => s.id === supplierId);
 
+  // Check product.supplier if object or string
+  if (!supplier && prod?.supplier) {
+    if (typeof prod.supplier === 'object' && prod.supplier?.id) {
+      supplier = suppliers.find((s) => s.id === prod.supplier.id);
+    } else if (typeof prod.supplier === 'string') {
+      supplier = suppliers.find((s) => s.name.trim().toLowerCase() === prod.supplier.trim().toLowerCase());
+    }
+  }
+
+  // Check product.supplierName
+  if (!supplier && prod?.supplierName) {
+    supplier = suppliers.find((s) => s.name.trim().toLowerCase() === prod.supplierName.trim().toLowerCase());
+  }
+
+  // Check purchase orders
+  if (!supplier) {
+    try {
+      const pos = loadPurchaseOrders();
+      const poWithItem = pos.find((po) =>
+        (po.items || []).some((i: any) => i.productId === productId || i.sku === sku || (prod?.name && i.productName === prod.name))
+      );
+      if (poWithItem) {
+        const poSuppId = poWithItem.supplierId || poWithItem.supplier?.id;
+        supplier = suppliers.find((s) => s.id === poSuppId);
+        if (!supplier && poWithItem.supplierName) {
+          supplier = suppliers.find((s) => s.name.trim().toLowerCase() === poWithItem.supplierName.trim().toLowerCase());
+        }
+      }
+    } catch {}
+  }
+
   // If no supplier matched, assign default supplier #1
   if (!supplier) {
     supplier = suppliers[0] || DEFAULT_SUPPLIERS[0];
+    supplierId = supplier.id;
+  } else {
     supplierId = supplier.id;
   }
 
@@ -237,31 +270,111 @@ export function getPayablePOsBySupplier(supplierId: string): PayablePO[] {
 // ─── Get Claims Eligible to be Returned to Supplier ───
 export function getEligibleClaimsForReturn(supplierId?: string): ClaimRecord[] {
   const allClaims = loadAllClaimRecords();
+  const suppliers = loadSuppliers();
+  const pos = loadPurchaseOrders();
 
-  return allClaims
-    .filter((c) =>
-      !c.returnDocId &&
-      c.status !== 'SCRAPPED' &&
-      c.resolutionType === 'SUPPLIER_RMA' &&
-      c.status === 'PENDING_SUPPLIER' &&
-      (!supplierId || c.supplierId === supplierId)
-    )
-    .map((c) => {
-      if (!c.supplierId || !c.costPrice) {
-        const resolved = resolveProductSupplierAndCost(c.productId, c.sku);
-        const unitCost = c.costPrice || resolved.costPrice;
-        const totalCost = Math.round((unitCost * (c.quantity || 1)) * 100) / 100;
-
-        return {
-          ...c,
-          supplierId: c.supplierId || resolved.supplierId,
-          supplierName: c.supplierName || resolved.supplierName,
-          costPrice: unitCost,
-          totalCostValue: c.totalCostValue || totalCost,
-        };
+  let storeProducts: any[] = useProductStore.getState().products || [];
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_PRODUCTS);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        storeProducts = parsed;
       }
-      return c;
+    } catch {}
+  }
+
+  const targetSupplier = supplierId ? suppliers.find((s) => s.id === supplierId) : undefined;
+
+  // Helper to check if a claim belongs to targetSupplierId
+  const isClaimBelongingToSupplier = (claim: ClaimRecord, targetId: string): boolean => {
+    // 1. Direct ID match
+    if (claim.supplierId && claim.supplierId === targetId) return true;
+
+    // 2. Direct supplierName match
+    if (targetSupplier && claim.supplierName) {
+      if (claim.supplierName.trim().toLowerCase() === targetSupplier.name.trim().toLowerCase()) {
+        return true;
+      }
+    }
+
+    // 3. Product catalog matching
+    const prod = storeProducts.find(
+      (p) => p.id === claim.productId || p.sku === claim.sku || p.sku === claim.productId || p.id === claim.sku
+    );
+
+    if (prod) {
+      if (prod.supplierId === targetId) return true;
+      if (typeof prod.supplier === 'string' && targetSupplier && prod.supplier.trim().toLowerCase() === targetSupplier.name.trim().toLowerCase()) {
+        return true;
+      }
+      if (typeof prod.supplier === 'object' && prod.supplier) {
+        if (prod.supplier.id === targetId || (targetSupplier && prod.supplier.name === targetSupplier.name)) {
+          return true;
+        }
+      }
+      if (targetSupplier && prod.supplierName && prod.supplierName.trim().toLowerCase() === targetSupplier.name.trim().toLowerCase()) {
+        return true;
+      }
+      if (Array.isArray(prod.barcodes) && prod.barcodes.some((b: any) => b.supplierId === targetId)) {
+        return true;
+      }
+      if (Array.isArray(prod.supplierEntries) && prod.supplierEntries.some((s: any) => s.supplierId === targetId)) {
+        return true;
+      }
+    }
+
+    // 4. Purchase orders from this supplier containing this product
+    const supplierPos = pos.filter(
+      (p) => p.supplierId === targetId || p.supplier?.id === targetId || (targetSupplier && p.supplierName === targetSupplier.name)
+    );
+    const inPo = supplierPos.some((po) =>
+      (po.items || []).some(
+        (i: any) => i.productId === claim.productId || i.sku === claim.sku || (claim.productName && i.productName === claim.productName)
+      )
+    );
+    if (inPo) return true;
+
+    return false;
+  };
+
+  // Step 1: Enrich all unreturned, unscrapped claims with resolved supplier & cost
+  const eligibleClaims = allClaims
+    .filter((c) => !c.returnDocId && c.status !== 'SCRAPPED')
+    .map((c) => {
+      let suppId = c.supplierId;
+      let suppName = c.supplierName;
+      let cost = Number(c.costPrice || 0);
+
+      // If supplier info or cost is missing, dynamically resolve from catalog/POs
+      if (!suppId || cost <= 0) {
+        const resolved = resolveProductSupplierAndCost(c.productId, c.sku);
+        if (!suppId) {
+          suppId = resolved.supplierId;
+          suppName = resolved.supplierName;
+        }
+        if (cost <= 0) {
+          cost = resolved.costPrice > 0 ? resolved.costPrice : Number(c.unitPrice || 50);
+        }
+      }
+
+      const totalCost = Math.round(cost * (c.quantity || 1) * 100) / 100;
+
+      return {
+        ...c,
+        supplierId: suppId,
+        supplierName: suppName,
+        costPrice: cost,
+        totalCostValue: c.totalCostValue || totalCost,
+      };
     });
+
+  // Step 2: Filter by supplierId if provided
+  if (!supplierId) {
+    return eligibleClaims;
+  }
+
+  return eligibleClaims.filter((c) => isClaimBelongingToSupplier(c, supplierId));
 }
 
 // ─── Group Pending Claims by Supplier ───
