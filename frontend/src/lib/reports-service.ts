@@ -187,15 +187,30 @@ export interface ProductPerformance {
 export function calculateBestSellingProducts(orders: any[], productsCatalog: any[]) {
   const productCostMap = new Map<string, number>();
   const productCategoryMap = new Map<string, string>();
+  const productNameMap = new Map<string, string>();
+  const productSkuMap = new Map<string, string>();
+  const productUnitMap = new Map<string, string>();
+
   productsCatalog.forEach((p) => {
     const cost = Number(p.costPrice || p.basePrice || 0);
+    const cat = p.category || 'ทั่วไป';
+    const name = p.name || '';
+    const sku = p.sku || '-';
+    const unit = p.unitName || p.units?.[0]?.name || 'ชิ้น';
+
     if (p.id) {
       productCostMap.set(p.id, cost);
-      productCategoryMap.set(p.id, p.category || 'ทั่วไป');
+      productCategoryMap.set(p.id, cat);
+      if (name) productNameMap.set(p.id, name);
+      if (sku !== '-') productSkuMap.set(p.id, sku);
+      productUnitMap.set(p.id, unit);
     }
     if (p.sku) {
       productCostMap.set(p.sku, cost);
-      productCategoryMap.set(p.sku, p.category || 'ทั่วไป');
+      productCategoryMap.set(p.sku, cat);
+      if (name) productNameMap.set(p.sku, name);
+      productSkuMap.set(p.sku, p.sku);
+      productUnitMap.set(p.sku, unit);
     }
   });
 
@@ -205,29 +220,60 @@ export function calculateBestSellingProducts(orders: any[], productsCatalog: any
     if (order.status === 'VOIDED' || order.status === 'CANCELLED') return;
 
     (order.items || []).forEach((item: any) => {
-      const key = item.productId || item.sku || item.productName;
+      // Prioritize item.name (used in POS and mock data), item.productName, or lookup from productsCatalog
+      const resolvedName =
+        item.name ||
+        item.productName ||
+        item.product?.name ||
+        (item.productId ? productNameMap.get(item.productId) : undefined) ||
+        (item.sku ? productNameMap.get(item.sku) : undefined) ||
+        'สินค้าทั่วไป';
+
+      const resolvedSku =
+        item.sku ||
+        item.barcode ||
+        item.product?.sku ||
+        (item.productId ? productSkuMap.get(item.productId) : undefined) ||
+        '-';
+
+      const key = item.productId || (resolvedSku !== '-' ? resolvedSku : resolvedName);
+
       const qty = Number(item.quantity || 1);
       const price = Number(item.unitPrice || item.price || 0);
       const revenue = Number(item.subtotal || price * qty);
 
       let cost = Number(item.costPrice || 0);
       if (cost <= 0) {
-        cost = productCostMap.get(item.productId) || productCostMap.get(item.sku) || 0;
+        cost =
+          productCostMap.get(item.productId) ||
+          productCostMap.get(resolvedSku) ||
+          productCostMap.get(resolvedName) ||
+          0;
       }
       if (cost <= 0) cost = price * 0.7;
 
       const totalItemCost = cost * qty;
       const profit = revenue - totalItemCost;
-      const category = item.category || productCategoryMap.get(item.productId) || productCategoryMap.get(item.sku) || 'ทั่วไป';
+      const category =
+        item.category ||
+        productCategoryMap.get(item.productId) ||
+        productCategoryMap.get(resolvedSku) ||
+        'ทั่วไป';
+
+      const unitName =
+        item.unitName ||
+        item.unit ||
+        (item.productId ? productUnitMap.get(item.productId) : undefined) ||
+        'ชิ้น';
 
       const existing = map.get(key);
       if (!existing) {
         map.set(key, {
           id: item.productId || key,
-          name: item.productName || 'สินค้า',
-          sku: item.sku || '-',
+          name: resolvedName,
+          sku: resolvedSku,
           category,
-          unitName: item.unitName || 'ชิ้น',
+          unitName,
           quantitySold: qty,
           totalRevenue: revenue,
           totalCost: totalItemCost,
@@ -235,11 +281,20 @@ export function calculateBestSellingProducts(orders: any[], productsCatalog: any
           profitMarginPercent: revenue > 0 ? Math.round((profit / revenue) * 1000) / 10 : 0,
         });
       } else {
+        if (existing.name === 'สินค้า' || existing.name === 'สินค้าทั่วไป') {
+          if (resolvedName !== 'สินค้า' && resolvedName !== 'สินค้าทั่วไป') {
+            existing.name = resolvedName;
+          }
+        }
+        if (existing.sku === '-' && resolvedSku !== '-') {
+          existing.sku = resolvedSku;
+        }
         existing.quantitySold += qty;
         existing.totalRevenue += revenue;
         existing.totalCost += totalItemCost;
         existing.totalProfit = existing.totalRevenue - existing.totalCost;
-        existing.profitMarginPercent = existing.totalRevenue > 0 ? Math.round((existing.totalProfit / existing.totalRevenue) * 1000) / 10 : 0;
+        existing.profitMarginPercent =
+          existing.totalRevenue > 0 ? Math.round((existing.totalProfit / existing.totalRevenue) * 1000) / 10 : 0;
       }
     });
   });
