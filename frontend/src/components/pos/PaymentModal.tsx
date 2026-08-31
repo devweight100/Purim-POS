@@ -20,7 +20,7 @@ import { toast } from 'sonner';
 
 type Step = 'METHOD' | 'PROCESS' | 'SUCCESS';
 type Method = 'CASH' | 'QR' | 'CARD' | 'SPLIT' | 'CREDIT';
-type NumpadTarget = 'NONE' | 'CASH' | 'SPLIT_CASH' | 'SPLIT_QR';
+type NumpadTarget = 'NONE' | 'CASH' | 'QR' | 'SPLIT_CASH' | 'SPLIT_QR';
 
 interface PaymentModalProps {
   open: boolean;
@@ -405,16 +405,33 @@ export function PaymentModal({
 
   const handleNumpadConfirm = (val: number) => {
     if (numpadTarget === 'CASH') setCashReceived(val);
+    if (numpadTarget === 'QR') setQrReceived(val);
     if (numpadTarget === 'SPLIT_CASH') setCashReceived(val);
     if (numpadTarget === 'SPLIT_QR') setQrReceived(val);
     setNumpadTarget('NONE');
   };
 
   const getNumpadInitialValue = () => {
-    if (numpadTarget === 'CASH') return cashReceived;
+    if (numpadTarget === 'CASH') return cashReceived > 0 ? cashReceived : 0;
+    if (numpadTarget === 'QR') return qrReceived > 0 ? qrReceived : total;
     if (numpadTarget === 'SPLIT_CASH') return cashReceived;
     if (numpadTarget === 'SPLIT_QR') return qrReceived;
     return 0;
+  };
+
+  const getNumpadFullAmount = () => {
+    if (numpadTarget === 'CASH' || numpadTarget === 'QR') {
+      return total;
+    }
+    if (numpadTarget === 'SPLIT_CASH') {
+      // Remaining needed after subtracting QR portion
+      return Math.max(0, Math.round((total - qrReceived) * 100) / 100);
+    }
+    if (numpadTarget === 'SPLIT_QR') {
+      // Remaining needed after subtracting Cash portion
+      return Math.max(0, Math.round((total - cashReceived) * 100) / 100);
+    }
+    return total;
   };
 
   return (
@@ -654,9 +671,29 @@ export function PaymentModal({
 
                 {/* Right: Net Amount & Confirm */}
                 <div className="flex flex-col justify-between h-full p-8 bg-white border-2 border-slate-200 rounded-3xl space-y-6">
-                  <div>
-                    <span className="text-slate-500 text-sm font-bold uppercase tracking-wider block mb-2">ยอดรวมสุทธิที่ต้องสแกนโอน</span>
-                    <div className="text-6xl font-extrabold text-sky-600">{formatCurrency(total)}</div>
+                  <div 
+                    className="p-5 bg-sky-50 border-2 border-sky-300 rounded-3xl relative group cursor-pointer shadow-sm hover:bg-sky-100/60 transition-all"
+                    onClick={() => setNumpadTarget('QR')}
+                    title="กดเพื่อเปิด Numpad ตรวจสอบหรือใส่ยอดเงิน"
+                  >
+                    <span className="text-sky-800 text-sm font-bold block mb-1">
+                      ยอดรวมสุทธิที่ต้องสแกนโอน (กดช่องนี้เพื่อเปิด Numpad)
+                    </span>
+                    <div className="text-5xl font-extrabold text-sky-600 font-mono py-1">
+                      {formatCurrency(qrReceived > 0 ? qrReceived : total)}
+                    </div>
+                    <Button 
+                      size="icon" 
+                      variant="outline" 
+                      className="absolute top-4 right-4 h-10 w-10 border-sky-300 bg-white text-sky-600 hover:bg-sky-100 shadow-sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setNumpadTarget('QR');
+                      }}
+                      title="กดเพื่อเปิด Numpad"
+                    >
+                      <Edit3 className="w-5 h-5" />
+                    </Button>
                   </div>
 
                   <div className="p-5 bg-sky-50 border-2 border-sky-200 rounded-2xl text-sm text-sky-900 space-y-2">
@@ -900,14 +937,23 @@ export function PaymentModal({
         data={receiptData}
       />
 
-      {/* Numpad Popup */}
+      {/* Numpad Popup with Full Amount ("เต็ม") Support */}
       <NumpadPopup 
         open={numpadTarget !== 'NONE'}
         onOpenChange={(isOpen) => !isOpen && setNumpadTarget('NONE')}
         onConfirm={handleNumpadConfirm}
-        title={numpadTarget === 'SPLIT_QR' ? 'ระบุยอดโอนเงิน' : 'ระบุจำนวนเงินสดที่รับ'}
-        subtitle={numpadTarget === 'SPLIT_QR' ? 'จำนวนเงินที่โอน' : 'จำนวนเงินสดที่รับมา'}
+        title={
+          numpadTarget === 'SPLIT_QR' || numpadTarget === 'QR'
+            ? 'ระบุยอดโอนเงิน' 
+            : 'ระบุจำนวนเงินสดที่รับ'
+        }
+        subtitle={
+          numpadTarget === 'SPLIT_QR' || numpadTarget === 'QR'
+            ? 'จำนวนเงินที่โอน' 
+            : 'จำนวนเงินสดที่รับมา'
+        }
         initialValue={getNumpadInitialValue()}
+        fullAmount={getNumpadFullAmount()}
       />
     </>
   );

@@ -17,6 +17,7 @@ interface NumpadPopupProps {
   subtitle?: string;
   initialValue?: number;
   allowDecimals?: boolean;
+  fullAmount?: number;
 }
 
 export function NumpadPopup({
@@ -26,7 +27,8 @@ export function NumpadPopup({
   title = "ระบุจำนวนเงิน",
   subtitle,
   initialValue = 0,
-  allowDecimals = true
+  allowDecimals = true,
+  fullAmount
 }: NumpadPopupProps) {
   const [value, setValue] = useState(initialValue >= 0 ? Math.floor(initialValue).toString() : '');
   const [isFirstKey, setIsFirstKey] = useState(true);
@@ -81,6 +83,16 @@ export function NumpadPopup({
     }
   };
 
+  const handleFullAmount = () => {
+    if (fullAmount !== undefined && !isNaN(fullAmount) && fullAmount >= 0) {
+      const valStr = allowDecimals
+        ? Number(fullAmount.toFixed(2)).toString()
+        : Math.floor(fullAmount).toString();
+      setValue(valStr);
+      setIsFirstKey(false);
+    }
+  };
+
   const handleConfirm = () => {
     const num = allowDecimals ? parseFloat(value) : parseInt(value, 10);
     if (!isNaN(num) && num >= 0) {
@@ -90,7 +102,7 @@ export function NumpadPopup({
     }
   };
 
-  // Keyboard navigation for physical keyboard (0-9, Backspace, Enter, Esc)
+  // Keyboard navigation for physical keyboard (0-9, Backspace, Enter, Esc, F for เต็ม)
   useEffect(() => {
     if (!open) return;
 
@@ -110,6 +122,9 @@ export function NumpadPopup({
       } else if (key === 'Delete' || code === 'Delete' || key?.toLowerCase() === 'c' || code === 'KeyC') {
         setValue('0');
         setIsFirstKey(false);
+      } else if ((key?.toLowerCase() === 'f' || code === 'KeyF') && fullAmount !== undefined) {
+        e.preventDefault();
+        handleFullAmount();
       } else if (key === 'Enter' || code === 'Enter' || code === 'NumpadEnter') {
         e.preventDefault();
         const num = allowDecimals ? parseFloat(value) : parseInt(value, 10);
@@ -125,7 +140,7 @@ export function NumpadPopup({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, value, isFirstKey, onConfirm, onOpenChange, allowDecimals]);
+  }, [open, value, isFirstKey, onConfirm, onOpenChange, allowDecimals, fullAmount]);
 
   const displayFormatted = allowDecimals
     ? (value !== '' && !isNaN(parseFloat(value)) ? formatCurrency(parseFloat(value)).replace('฿', '') : '0.00')
@@ -151,6 +166,22 @@ export function NumpadPopup({
               {displayFormatted}
             </span>
           </div>
+
+          {/* Quick full amount indicator if fullAmount is provided */}
+          {fullAmount !== undefined && (
+            <div className="flex items-center justify-between px-3.5 py-2 bg-amber-50 border border-amber-200 rounded-xl text-xs">
+              <span className="text-amber-900 font-bold">
+                ยอดคงเหลือที่ต้องชำระ: <span className="font-mono text-sm font-black text-amber-700">{formatCurrency(fullAmount)}</span>
+              </span>
+              <button
+                type="button"
+                onClick={handleFullAmount}
+                className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs rounded-lg shadow-xs transition-transform active:scale-95 cursor-pointer"
+              >
+                กดใส่ยอดเต็ม
+              </button>
+            </div>
+          )}
 
           {/* Keypad */}
           <div className="grid grid-cols-3 gap-2.5">
@@ -198,14 +229,15 @@ export function NumpadPopup({
           </div>
 
           <div className="text-center text-xs text-slate-400">
-            💡 พิมพ์เลขใหม่จะเปลี่ยนแทนที่เลขเดิมทันที กด Enter หรือ ตกลง เพื่อยืนยัน
+            💡 {fullAmount !== undefined ? 'กดปุ่ม "เต็ม" (หรือกด F) เพื่อใส่ยอดที่เหลือ · ' : ''}กด Enter หรือ ตกลง เพื่อยืนยัน
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-3 pt-2">
+          <div className="flex gap-2.5 pt-2">
             <Button
+              type="button"
               variant="outline"
-              className="flex-1 h-12 border-slate-300 text-slate-600 font-semibold"
+              className="flex-1 h-13 border-slate-300 text-slate-700 font-bold text-sm"
               onClick={() => {
                 setValue('0');
                 setIsFirstKey(false);
@@ -213,8 +245,24 @@ export function NumpadPopup({
             >
               ล้างเป็น 0 (C)
             </Button>
+
+            {fullAmount !== undefined && (
+              <Button
+                type="button"
+                className="flex-1 h-13 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-black text-xl rounded-xl shadow-md transition-all active:scale-95 cursor-pointer flex flex-col items-center justify-center leading-none"
+                onClick={handleFullAmount}
+                title="ใส่ยอดเงินคงเหลือเต็มจำนวน"
+              >
+                <span>เต็ม</span>
+                <span className="text-[11px] font-mono font-bold opacity-90 mt-0.5">
+                  ({formatCurrency(fullAmount).replace('฿', '')})
+                </span>
+              </Button>
+            )}
+
             <Button
-              className="flex-1 h-12 bg-sky-500 hover:bg-sky-600 text-white font-bold text-base shadow-md"
+              type="button"
+              className="flex-1 h-13 bg-sky-500 hover:bg-sky-600 active:bg-sky-700 text-white font-bold text-base shadow-md cursor-pointer"
               onClick={handleConfirm}
               disabled={value === '' || isNaN(parseFloat(value)) || parseFloat(value) < 0}
             >
