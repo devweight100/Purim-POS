@@ -366,7 +366,7 @@ export default function PayablesPage() {
                       <th className="p-3.5 text-right">จ่ายเงินแล้ว</th>
                       <th className="p-3.5 text-right">หนี้คงเหลือสุทธิ</th>
                       <th className="p-3.5 text-center">สถานะ</th>
-                      <th className="p-3.5 text-center w-36">การจัดการ</th>
+                      <th className="p-3.5 text-center whitespace-nowrap">การจัดการ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -444,14 +444,14 @@ export default function PayablesPage() {
                           )}
                         </td>
 
-                        <td className="p-3.5 text-center">
-                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        <td className="p-2.5 text-center">
+                          <div className="flex items-center justify-center gap-1 flex-nowrap whitespace-nowrap">
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => handleOpenDetails(bill)}
                               title="ดูรายละเอียดบิลและประวัติการชำระ"
-                              className="h-8 px-2.5 rounded-xl border-slate-200 hover:border-slate-300 font-bold text-xs gap-1"
+                              className="h-8 px-2.5 rounded-xl border-slate-200 hover:border-slate-300 font-bold text-xs gap-1 shrink-0"
                             >
                               <Eye className="w-3.5 h-3.5 text-slate-600" />
                               <span>ดูเอกสาร</span>
@@ -462,7 +462,7 @@ export default function PayablesPage() {
                                 size="sm"
                                 onClick={() => handleOpenSettle(bill)}
                                 title="ประกบใบลดหนี้หรือบันทึกจ่ายเงิน"
-                                className="h-8 px-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs gap-1 shadow-xs"
+                                className="h-8 px-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs gap-1 shadow-xs shrink-0"
                               >
                                 <Receipt className="w-3.5 h-3.5" />
                                 <span>ชำระหนี้</span>
@@ -475,10 +475,9 @@ export default function PayablesPage() {
                                 variant="outline"
                                 onClick={() => handleRollbackBill(bill)}
                                 title="ย้อนสถานะการชำระเงินกลับเป็นรอชำระ"
-                                className="h-8 px-2 rounded-xl border-amber-200 text-amber-700 hover:bg-amber-50 font-bold text-xs gap-1"
+                                className="h-8 w-8 p-0 rounded-xl border-amber-200 text-amber-700 hover:bg-amber-50 font-bold text-xs shrink-0"
                               >
                                 <RotateCcw className="w-3.5 h-3.5" />
-                                <span>ย้อนสถานะ</span>
                               </Button>
                             )}
 
@@ -488,10 +487,9 @@ export default function PayablesPage() {
                                 variant="ghost"
                                 onClick={() => handleCancelBillAction(bill)}
                                 title="ยกเลิกบิลเจ้าหนี้นี้"
-                                className="h-8 px-2 rounded-xl text-slate-400 hover:text-rose-600 font-bold text-xs gap-1"
+                                className="h-8 w-8 p-0 rounded-xl text-slate-400 hover:text-rose-600 font-bold text-xs shrink-0"
                               >
                                 <XCircle className="w-3.5 h-3.5" />
-                                <span>ยกเลิก</span>
                               </Button>
                             )}
                           </div>
@@ -592,7 +590,7 @@ export default function PayablesPage() {
                       <th className="p-3.5 text-right">ประกบหักใบลดหนี้</th>
                       <th className="p-3.5 text-right">เงินสด/โอนที่จ่ายจริง</th>
                       <th className="p-3.5 text-center">วิธีชำระ</th>
-                      <th className="p-3.5 text-center w-28">ใบสำคัญจ่าย</th>
+                      <th className="p-3.5 text-center whitespace-nowrap">การจัดการ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -639,13 +637,14 @@ export default function PayablesPage() {
                           </Badge>
                         </td>
 
-                        <td className="p-3.5 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
+                        <td className="p-2.5 text-center">
+                          <div className="flex items-center justify-center gap-1 flex-nowrap whitespace-nowrap">
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => handleOpenVoucher(item.bill, item)}
-                              className="h-8 px-2.5 rounded-xl border-slate-200 hover:border-indigo-300 hover:text-indigo-600 font-bold text-xs gap-1"
+                              className="h-8 px-2.5 rounded-xl border-slate-200 hover:border-indigo-300 hover:text-indigo-600 font-bold text-xs gap-1 shrink-0"
+                              title="ดูและพิมพ์ใบสำคัญจ่าย"
                             >
                               <Printer className="w-3.5 h-3.5" />
                               <span>พิมพ์</span>
@@ -656,10 +655,9 @@ export default function PayablesPage() {
                               variant="outline"
                               onClick={() => handleRollbackSinglePayment(item.bill.poId, item.id)}
                               title="ยกเลิก/ย้อนสถานะการชำระเงินรอบนี้"
-                              className="h-8 px-2 rounded-xl border-amber-200 text-amber-700 hover:bg-amber-50 font-bold text-xs gap-1"
+                              className="h-8 w-8 p-0 rounded-xl border-amber-200 text-amber-700 hover:bg-amber-50 font-bold text-xs shrink-0"
                             >
                               <RotateCcw className="w-3.5 h-3.5" />
-                              <span>ย้อนสถานะ</span>
                             </Button>
                           </div>
                         </td>
