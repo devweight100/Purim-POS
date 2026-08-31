@@ -878,13 +878,15 @@ export default function OrdersPage() {
           <Table>
             <TableHeader className="bg-slate-50/90 border-b border-slate-200">
               <TableRow className="hover:bg-transparent">
-                <TableHead className="font-bold text-slate-800 text-xs py-3.5 pl-4 w-[160px]">เลขออเดอร์ / วันที่</TableHead>
-                <TableHead className="font-bold text-slate-800 text-xs py-3.5">ลูกค้า / ผู้ซื้อ</TableHead>
-                <TableHead className="font-bold text-slate-800 text-xs py-3.5 text-right w-[100px]">รายการ</TableHead>
-                <TableHead className="font-bold text-slate-800 text-xs py-3.5 text-right w-[120px]">ยอดรวมสุทธิ</TableHead>
-                <TableHead className="font-bold text-slate-800 text-xs py-3.5 text-center w-[140px]">ช่องทางชำระ</TableHead>
-                <TableHead className="font-bold text-slate-800 text-xs py-3.5 text-center w-[120px]">สถานะ</TableHead>
-                <TableHead className="font-bold text-slate-800 text-xs py-3.5 text-center w-[250px] pr-4">
+                <TableHead className="font-bold text-slate-800 text-sm py-3.5 pl-4 text-center w-16">ลำดับ</TableHead>
+                <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-left w-[130px]">เลขออเดอร์</TableHead>
+                <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-center w-[150px]">วันที่ทำรายการ</TableHead>
+                <TableHead className="font-bold text-slate-800 text-sm py-3.5">ลูกค้า / ผู้ซื้อ</TableHead>
+                <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-right w-[100px]">รายการ</TableHead>
+                <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-right w-[120px]">ยอดรวมสุทธิ</TableHead>
+                <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-center w-[140px]">ช่องทางชำระ</TableHead>
+                <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-center w-[120px]">สถานะ</TableHead>
+                <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-center w-[250px] pr-4">
                   🖨️ พิมพ์ใบเสร็จ & การจัดการ
                 </TableHead>
               </TableRow>
@@ -893,14 +895,14 @@ export default function OrdersPage() {
             <TableBody className="divide-y divide-slate-100">
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-slate-400 text-xs">
+                  <TableCell colSpan={9} className="text-center py-12 text-slate-400 text-sm">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
                     กำลังโหลดข้อมูลออเดอร์...
                   </TableCell>
                 </TableRow>
               ) : paginatedOrders.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-14 text-slate-400 text-xs">
+                  <TableCell colSpan={9} className="text-center py-14 text-slate-400 text-sm">
                     <div className="flex flex-col items-center gap-2">
                       <FileText className="w-8 h-8 text-slate-300" />
                       <span className="font-bold text-slate-600 text-sm">ไม่พบข้อมูลออเดอร์ตามเงื่อนไข</span>
@@ -908,7 +910,7 @@ export default function OrdersPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedOrders.map((order) => {
+                paginatedOrders.map((order, idx) => {
                   const isVoid = order.status === "VOIDED" || order.status === "CANCELLED";
                   const isCredit = isOrderCredit(order);
                   const isCreditFullySettled = isCreditOrderFullyPaid(order);
@@ -921,29 +923,36 @@ export default function OrdersPage() {
                       className="hover:bg-slate-50/70 transition-colors cursor-pointer"
                       onClick={() => handleRowClick(order)}
                     >
-                      {/* 1. Order Number & Date */}
-                      <TableCell className="py-3 pl-4 font-mono">
-                        <div className="font-bold text-indigo-600 text-xs">{order.orderNumber}</div>
-                        <div className="text-[10.5px] text-slate-500 mt-0.5">
-                          {new Date(order.createdAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}
-                        </div>
+                      {/* 1. Index (ลำดับ) */}
+                      <TableCell className="py-3.5 pl-4 text-center font-mono font-bold text-slate-500 text-sm">
+                        {(currentPage - 1) * pageSize + idx + 1}
                       </TableCell>
 
-                      {/* 2. Customer Name */}
-                      <TableCell className="py-3">
-                        <div className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
+                      {/* 2. Order Number */}
+                      <TableCell className="py-3.5 font-mono">
+                        <span className="font-bold text-indigo-600 text-[15px]">{order.orderNumber}</span>
+                      </TableCell>
+
+                      {/* 3. Date (แยก col. วันที่) */}
+                      <TableCell className="py-3.5 text-center font-mono text-xs text-slate-600">
+                        {new Date(order.createdAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}
+                      </TableCell>
+
+                      {/* 4. Customer Name */}
+                      <TableCell className="py-3.5">
+                        <div className="font-bold text-slate-900 text-[15px] flex items-center gap-1.5">
                           <User className="w-3.5 h-3.5 text-slate-400" />
                           <span>{order.customerName || order.customer || "ลูกค้าทั่วไป"}</span>
                         </div>
                       </TableCell>
 
-                      {/* 3. Items Count */}
-                      <TableCell className="py-3 text-right font-bold text-xs text-slate-700 font-mono">
+                      {/* 5. Items Count */}
+                      <TableCell className="py-3.5 text-right font-bold text-[15px] text-slate-700 font-mono">
                         {itemsCount} รายการ
                       </TableCell>
 
-                      {/* 4. Total Amount */}
-                      <TableCell className="py-3 text-right font-black text-sm text-slate-900 font-mono">
+                      {/* 6. Total Amount */}
+                      <TableCell className="py-3.5 text-right font-black text-[15px] sm:text-base text-slate-900 font-mono">
                         {formatCurrency(total)}
                       </TableCell>
 

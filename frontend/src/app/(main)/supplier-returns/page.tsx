@@ -224,76 +224,67 @@ export default function SupplierReturnsPage() {
       </div>
 
       {/* Metrics Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
         {/* Metric 1: Pending Claims */}
-        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-600">สินค้าชำรุดรอส่งเคลม</span>
-            <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center">
-              <ShieldAlert className="w-3.5 h-3.5" />
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-rose-50 text-rose-600 rounded-md border border-rose-100 shrink-0">
+              <ShieldAlert className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-rose-950">รอส่งเคลมบริษัท:</span>
           </div>
-          <div className="flex items-baseline justify-between gap-2 mt-2">
-            <span className="text-2xl sm:text-[26px] font-black text-slate-900 font-mono tracking-tight">
-              {pendingClaims.length} <span className="text-xs sm:text-sm text-slate-400 font-bold">รายการ</span>
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className="text-lg sm:text-xl font-black text-rose-600 tracking-tight">
+              {pendingClaims.length}
             </span>
-            <span className="text-xs sm:text-[13px] text-rose-600 font-semibold text-right truncate">
-              ทุนรวม {formatCurrency(totalPendingClaimsCost)}
-            </span>
+            <span className="text-xs text-rose-700 font-sans font-bold">รายการ</span>
           </div>
         </div>
 
         {/* Metric 2: Available Credit */}
-        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-600">เครดิตลดหนี้คงเหลือ</span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center">
-              <Receipt className="w-3.5 h-3.5" />
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+              <Receipt className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-indigo-950">เครดิตลดหนี้คงเหลือ:</span>
           </div>
-          <div className="flex items-baseline justify-between gap-2 mt-2">
-            <span className="text-2xl sm:text-[26px] font-black text-indigo-700 font-mono tracking-tight">
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className="text-lg sm:text-xl font-black text-indigo-700 tracking-tight">
               {formatCurrency(totalAvailableCredit)}
-            </span>
-            <span className="text-xs sm:text-[13px] text-slate-500 font-medium text-right truncate">
-              พร้อมนำไปหักลดหนี้ PO
             </span>
           </div>
         </div>
 
         {/* Metric 3: Total Return Notes */}
-        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-600">เอกสารส่งคืนทั้งหมด</span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center">
-              <FileText className="w-3.5 h-3.5" />
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
+              <FileText className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-emerald-950">เอกสารส่งคืนทั้งหมด:</span>
           </div>
-          <div className="flex items-baseline justify-between gap-2 mt-2">
-            <span className="text-2xl sm:text-[26px] font-black text-slate-900 font-mono tracking-tight">
-              {returnNotes.filter((n) => n.status !== 'CANCELLED').length} <span className="text-xs sm:text-sm text-slate-400 font-bold">ฉบับ</span>
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className="text-lg sm:text-xl font-black text-emerald-700 tracking-tight">
+              {returnNotes.filter((n) => n.status !== 'CANCELLED').length}
             </span>
-            <span className="text-xs sm:text-[13px] text-emerald-600 font-semibold text-right truncate">
-              หักหนี้แล้ว {returnNotes.filter((n) => n.status === 'DEDUCTED').length} ฉบับ
-            </span>
+            <span className="text-xs text-slate-600 font-sans font-bold">ฉบับ</span>
           </div>
         </div>
 
         {/* Metric 4: Cancelled Notes in Trash */}
-        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-600">เอกสารในถังขยะ</span>
-            <div className="w-7 h-7 rounded-lg bg-slate-50 text-slate-500 border border-slate-200 flex items-center justify-center">
-              <Trash2 className="w-3.5 h-3.5" />
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-slate-200/80 shadow-2xs flex items-center justify-between bg-slate-50/50">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-slate-100 text-slate-600 rounded-md border border-slate-200 shrink-0">
+              <Trash2 className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-slate-700">เอกสารในถังขยะ:</span>
           </div>
-          <div className="flex items-baseline justify-between gap-2 mt-2">
-            <span className="text-2xl sm:text-[26px] font-black text-slate-700 font-mono tracking-tight">
-              {cancelledNotes.length} <span className="text-xs sm:text-sm text-slate-400 font-bold">ฉบับ</span>
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className="text-lg sm:text-xl font-black text-slate-700 tracking-tight">
+              {cancelledNotes.length}
             </span>
-            <span className="text-xs sm:text-[13px] text-slate-400 font-medium text-right truncate">
-              ยกเลิกแล้ว
-            </span>
+            <span className="text-xs text-slate-500 font-sans font-bold">ฉบับ</span>
           </div>
         </div>
       </div>
@@ -379,32 +370,39 @@ export default function SupplierReturnsPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-sm">
                     <tr>
-                      <th className="py-3.5 px-3.5 text-left">เลขที่เอกสาร / วันที่</th>
+                      <th className="py-3.5 px-3.5 text-center w-16">ลำดับ</th>
+                      <th className="py-3.5 px-3.5 text-left w-36">เลขที่เอกสาร</th>
+                      <th className="py-3.5 px-3.5 text-center w-36">วันที่ส่งคืน</th>
                       <th className="py-3.5 px-3.5 text-left">บริษัทผู้จำหน่าย</th>
-                      <th className="py-3.5 px-3.5 text-left">อ้างอิงใบสั่งซื้อ (PO)</th>
-                      <th className="py-3.5 px-3.5 text-right font-bold text-sm">มูลค่าส่งคืน / ขอลดหนี้</th>
-                      <th className="py-3.5 px-3.5 text-center font-bold text-sm">สถานะ</th>
-                      <th className="py-3.5 px-3.5 text-center font-bold text-sm whitespace-nowrap">การจัดการ</th>
+                      <th className="py-3.5 px-3.5 text-center w-36">อ้างอิงใบสั่งซื้อ (PO)</th>
+                      <th className="py-3.5 px-3.5 text-right font-bold text-sm w-40">มูลค่าส่งคืน / ขอลดหนี้</th>
+                      <th className="py-3.5 px-3.5 text-center font-bold text-sm w-32">สถานะ</th>
+                      <th className="py-3.5 px-3.5 text-center font-bold text-sm whitespace-nowrap w-36">การจัดการ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredNotes.map((note) => {
+                    {filteredNotes.map((note, idx) => {
                       return (
                         <tr key={note.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3 px-3.5 font-mono">
+                        <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                          {idx + 1}
+                        </td>
+
+                        <td className="py-3.5 px-3.5 font-mono">
                           <span className="font-bold text-indigo-700 text-[15px] block">
                             {note.id}
                           </span>
-                          <span className="text-xs text-slate-500 block mt-0.5">
-                            {new Date(note.returnDate).toLocaleDateString('th-TH', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </span>
                         </td>
 
-                        <td className="py-3 px-3.5">
+                        <td className="py-3.5 px-3.5 text-center font-mono text-xs text-slate-600">
+                          {new Date(note.returnDate).toLocaleDateString('th-TH', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </td>
+
+                        <td className="py-3.5 px-3.5">
                           <p className="font-bold text-slate-900 text-[15px]">{note.supplierName}</p>
                           <div className="flex items-center gap-2 mt-0.5">
                             {note.supplierPhone && (
@@ -624,34 +622,41 @@ export default function SupplierReturnsPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-sm">
                     <tr>
-                      <th className="py-3.5 px-3.5 text-left">เลขที่เอกสาร / วันที่</th>
+                      <th className="py-3.5 px-3.5 text-center w-16">ลำดับ</th>
+                      <th className="py-3.5 px-3.5 text-left w-36">เลขที่เอกสาร</th>
+                      <th className="py-3.5 px-3.5 text-center w-36">วันที่ส่งคืน</th>
                       <th className="py-3.5 px-3.5 text-left">บริษัทผู้จำหน่าย</th>
-                      <th className="py-3.5 px-3.5 text-left">อ้างอิงใบ PO</th>
-                      <th className="py-3.5 px-3.5 text-right font-bold text-sm">มูลค่าที่เคยขอลดหนี้</th>
-                      <th className="py-3.5 px-3.5 text-center font-bold text-sm">สถานะเอกสาร</th>
-                      <th className="py-3.5 px-3.5 text-center font-bold text-sm whitespace-nowrap">การจัดการ</th>
+                      <th className="py-3.5 px-3.5 text-center w-36">อ้างอิงใบ PO</th>
+                      <th className="py-3.5 px-3.5 text-right font-bold text-sm w-40">มูลค่าที่เคยขอลดหนี้</th>
+                      <th className="py-3.5 px-3.5 text-center font-bold text-sm w-32">สถานะเอกสาร</th>
+                      <th className="py-3.5 px-3.5 text-center font-bold text-sm whitespace-nowrap w-36">การจัดการ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredCancelledNotes.map((note) => (
+                    {filteredCancelledNotes.map((note, idx) => (
                       <tr key={note.id} className="bg-slate-50/40 hover:bg-slate-100/50 transition-colors opacity-80 hover:opacity-100">
-                        <td className="py-3 px-3.5 font-mono">
+                        <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                          {idx + 1}
+                        </td>
+
+                        <td className="py-3.5 px-3.5 font-mono">
                           <span className="font-bold text-slate-600 line-through text-[15px] block">
                             {note.id}
                           </span>
-                          <span className="text-xs text-slate-400 block mt-0.5">
-                            {new Date(note.returnDate).toLocaleDateString('th-TH')}
-                          </span>
                         </td>
 
-                        <td className="py-3 px-3.5">
+                        <td className="py-3.5 px-3.5 text-center font-mono text-xs text-slate-500">
+                          {new Date(note.returnDate).toLocaleDateString('th-TH')}
+                        </td>
+
+                        <td className="py-3.5 px-3.5">
                           <p className="font-bold text-slate-700 text-[15px]">{note.supplierName}</p>
                           <span className="text-xs font-semibold text-slate-500 bg-slate-200/60 px-2 py-0.5 rounded-md mt-0.5 inline-block">
                             รวม {note.items.length} รายการ
                           </span>
                         </td>
 
-                        <td className="py-3 px-3.5">
+                        <td className="py-3.5 px-3.5 text-center">
                           {note.linkedPoNumber ? (
                             <span className="font-mono text-slate-500 line-through text-sm">
                               {note.linkedPoNumber}

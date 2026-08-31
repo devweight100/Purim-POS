@@ -226,76 +226,67 @@ export default function ClaimsPage() {
       </div>
 
       {/* ─── TOP KPI STATS CARDS ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
         {/* 1. Total Claims */}
-        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-600">รายการรับเคลมทั้งหมด</span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center">
-              <ShieldAlert className="w-3.5 h-3.5" />
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+              <ShieldAlert className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-indigo-950">รายการเคลมทั้งหมด:</span>
           </div>
-          <div className="flex items-baseline justify-between gap-2 mt-2">
-            <span className="text-2xl sm:text-[26px] font-black text-slate-900 font-mono tracking-tight">
-              {claims.length} <span className="text-xs sm:text-sm text-slate-400 font-bold">รายการ</span>
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className="text-lg sm:text-xl font-black text-indigo-700 tracking-tight">
+              {claims.length}
             </span>
-            <span className="text-xs sm:text-[13px] text-slate-500 font-medium text-right truncate">
-              บันทึกสำเร็จทั้งหมด
-            </span>
+            <span className="text-xs text-slate-600 font-sans font-bold">รายการ</span>
           </div>
         </div>
 
         {/* 2. Total Claim Value */}
-        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-600">มูลค่าสินค้าเคลมรวม</span>
-            <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center">
-              <Banknote className="w-3.5 h-3.5" />
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-rose-50 text-rose-600 rounded-md border border-rose-100 shrink-0">
+              <Banknote className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-rose-950">มูลค่าเคลมรวม:</span>
           </div>
-          <div className="flex items-baseline justify-between gap-2 mt-2">
-            <span className="text-2xl sm:text-[26px] font-black text-rose-600 font-mono tracking-tight">
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className="text-lg sm:text-xl font-black text-rose-600 tracking-tight">
               {formatCurrency(summary.totalClaimValue)}
-            </span>
-            <span className="text-xs sm:text-[13px] text-rose-600 font-semibold text-right truncate">
-              ต้นทุนรับเคลมสะสม
             </span>
           </div>
         </div>
 
         {/* 3. Replacement Count */}
-        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-600">เปลี่ยนสินค้าชิ้นใหม่</span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center">
-              <RotateCcw className="w-3.5 h-3.5" />
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+              <RotateCcw className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-indigo-950">เปลี่ยนชิ้นใหม่:</span>
           </div>
-          <div className="flex items-baseline justify-between gap-2 mt-2">
-            <span className="text-2xl sm:text-[26px] font-black text-indigo-600 font-mono tracking-tight">
-              {summary.replacedItemCount} <span className="text-xs sm:text-sm text-slate-400 font-bold">รายการ</span>
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className="text-lg sm:text-xl font-black text-indigo-600 tracking-tight">
+              {summary.replacedItemCount}
             </span>
-            <span className="text-xs sm:text-[13px] text-indigo-600 font-semibold text-right truncate">
-              ตัดสต็อกสินค้าใหม่ทันที
-            </span>
+            <span className="text-xs text-slate-600 font-sans font-bold">รายการ</span>
           </div>
         </div>
 
         {/* 4. Cash / Transfer Refunds */}
-        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-600">คืนเงินสด / โอนเงิน</span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center">
-              <Banknote className="w-3.5 h-3.5" />
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
+              <Banknote className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-emerald-950">คืนเงินสด/โอน:</span>
           </div>
-          <div className="flex items-baseline justify-between gap-2 mt-2">
-            <span className="text-2xl sm:text-[26px] font-black text-emerald-700 font-mono tracking-tight">
-              {summary.refundedCount} <span className="text-xs sm:text-sm text-slate-400 font-bold">รายการ</span>
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className="text-lg sm:text-xl font-black text-emerald-700 tracking-tight">
+              {summary.refundedCount}
             </span>
-            <span className="text-xs sm:text-[13px] text-emerald-600 font-semibold text-right truncate">
-              เงินสด/โอนเงินคืน
-            </span>
+            <span className="text-xs text-slate-600 font-sans font-bold">รายการ</span>
           </div>
         </div>
       </div>
@@ -354,25 +345,27 @@ export default function ClaimsPage() {
           <Table>
             <TableHeader className="bg-slate-50">
               <TableRow className="border-b border-slate-200 text-slate-700 font-bold text-sm">
-                <TableHead className="pl-4 text-left w-48 font-bold text-sm">เลขที่เคลม / วันที่</TableHead>
-                <TableHead className="text-left font-bold text-sm">ลูกค้า</TableHead>
+                <TableHead className="pl-4 text-center w-16 font-bold text-sm">ลำดับ</TableHead>
+                <TableHead className="text-left w-36 font-bold text-sm">เลขที่เคลม</TableHead>
+                <TableHead className="text-center w-40 font-bold text-sm">วันที่ทำรายการ</TableHead>
+                <TableHead className="text-center font-bold text-sm">ลูกค้า</TableHead>
                 <TableHead className="text-center w-36 font-bold text-sm">จำนวนที่เคลม</TableHead>
-                <TableHead className="text-right w-40 font-bold text-sm">มูลค่าเคลม (฿)</TableHead>
-                <TableHead className="text-center w-40 font-bold text-sm">วิธีดำเนินการ</TableHead>
-                <TableHead className="text-center w-36 pr-4 font-bold text-sm whitespace-nowrap">การจัดการ</TableHead>
+                <TableHead className="text-right w-36 font-bold text-sm">มูลค่าเคลม (฿)</TableHead>
+                <TableHead className="text-center w-36 font-bold text-sm">วิธีดำเนินการ</TableHead>
+                <TableHead className="text-center w-32 pr-4 font-bold text-sm whitespace-nowrap">การจัดการ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody className="divide-y divide-slate-100">
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-12 text-slate-400 text-sm">
+                  <TableCell colSpan={8} className="text-center py-12 text-slate-400 text-sm">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
                     กำลังโหลดข้อมูลรายการเคลม...
                   </TableCell>
                 </TableRow>
               ) : paginatedClaims.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-14 text-slate-400 text-sm">
+                  <TableCell colSpan={8} className="text-center py-14 text-slate-400 text-sm">
                     <div className="flex flex-col items-center gap-2">
                       <ShieldAlert className="w-8 h-8 text-slate-300" />
                       <span className="font-bold text-slate-600 text-base">ไม่พบประวัติการรับเคลมสินค้า</span>
@@ -387,17 +380,19 @@ export default function ClaimsPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedClaims.map((claim) => (
+                paginatedClaims.map((claim, idx) => (
                   <TableRow
                     key={claim.id}
                     className="hover:bg-slate-50/70 transition-colors"
                   >
-                    {/* 1. Claim ID & Date */}
-                    <TableCell className="py-3.5 pl-4 font-mono">
+                    {/* 1. Index (ลำดับ) */}
+                    <TableCell className="py-3.5 pl-4 text-center font-mono font-bold text-slate-500 text-sm">
+                      {(currentPage - 1) * pageSize + idx + 1}
+                    </TableCell>
+
+                    {/* 2. Claim ID */}
+                    <TableCell className="py-3.5 font-mono">
                       <div className="font-bold text-indigo-600 text-[15px]">{claim.id}</div>
-                      <div className="text-xs text-slate-500 mt-0.5">
-                        {new Date(claim.claimDate).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
-                      </div>
                       {claim.returnDocId && (
                         <div className="mt-1">
                           <Link
@@ -412,9 +407,14 @@ export default function ClaimsPage() {
                       )}
                     </TableCell>
 
-                    {/* 2. Customer Column */}
-                    <TableCell className="py-3.5">
-                      <div className="font-bold text-slate-900 text-[15px] flex items-center gap-1.5">
+                    {/* 3. Date (แยก col. วันที่) */}
+                    <TableCell className="py-3.5 text-center font-mono text-xs text-slate-600">
+                      {new Date(claim.claimDate).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
+                    </TableCell>
+
+                    {/* 4. Customer Column (Center Align) */}
+                    <TableCell className="py-3.5 text-center">
+                      <div className="font-bold text-slate-900 text-[15px] flex items-center justify-center gap-1.5">
                         <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span>{claim.customerName || 'ลูกค้าทั่วไป'}</span>
                       </div>
@@ -425,7 +425,7 @@ export default function ClaimsPage() {
                       )}
                     </TableCell>
 
-                    {/* 3. Total Claim Quantity */}
+                    {/* 5. Total Claim Quantity */}
                     <TableCell className="py-3.5 text-center font-mono">
                       <div className="font-bold text-[15px] text-slate-900">
                         {claim.baseQuantity !== undefined ? claim.baseQuantity : (claim.quantity * (claim.conversionFactor || 1))} {claim.conversionFactor && claim.conversionFactor > 1 ? (claim.replacementUnitName || 'ชิ้น') : (claim.unitName || 'ชิ้น')}
@@ -437,19 +437,19 @@ export default function ClaimsPage() {
                       )}
                     </TableCell>
 
-                    {/* 4. Total Claim Value */}
+                    {/* 6. Total Claim Value */}
                     <TableCell className="py-3.5 text-right font-mono">
                       <span className="font-black text-[15px] sm:text-base text-slate-900 block">
                         {formatCurrency(claim.totalClaimValue)}
                       </span>
                     </TableCell>
 
-                    {/* 5. Resolution */}
+                    {/* 7. Resolution */}
                     <TableCell className="py-3.5 text-center">
                       {getResolutionBadge(claim.resolutionType)}
                     </TableCell>
 
-                    {/* 6. Action: Print */}
+                    {/* 8. Action: Print */}
                     <TableCell className="py-3.5 pr-4 text-center">
                       <Button
                         size="sm"

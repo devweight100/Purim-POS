@@ -203,75 +203,64 @@ export default function PayablesPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
         {/* Card 1: Total Outstanding AP Debt */}
-        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-600">ยอดหนี้ค้างจ่ายรวม</span>
-            <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center">
-              <DollarSign className="w-3.5 h-3.5" />
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-amber-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-amber-50 text-amber-600 rounded-md border border-amber-100 shrink-0">
+              <DollarSign className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-amber-950">หนี้ค้างจ่ายรวม:</span>
           </div>
-          <div className="flex items-baseline justify-between gap-2 mt-2">
-            <span className="text-2xl sm:text-[26px] font-black text-amber-700 font-mono tracking-tight">
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className="text-lg sm:text-xl font-black text-amber-700 tracking-tight">
               {formatCurrency(totalOutstandingDebt)}
-            </span>
-            <span className="text-xs sm:text-[13px] text-slate-500 font-medium text-right truncate">
-              ยอดต้องชำระให้คู่ค้า
             </span>
           </div>
         </div>
 
         {/* Card 2: Unpaid Bills Count */}
-        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-600">บิลที่ยังค้างชำระ</span>
-            <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center">
-              <Receipt className="w-3.5 h-3.5" />
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-rose-50 text-rose-600 rounded-md border border-rose-100 shrink-0">
+              <Receipt className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-rose-950">บิลค้างชำระ:</span>
           </div>
-          <div className="flex items-baseline justify-between gap-2 mt-2">
-            <span className="text-2xl sm:text-[26px] font-black text-slate-900 font-mono tracking-tight">
-              {unpaidBillsCount} <span className="text-xs sm:text-sm text-slate-400 font-bold">บิล</span>
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className="text-lg sm:text-xl font-black text-rose-600 tracking-tight">
+              {unpaidBillsCount}
             </span>
-            <span className="text-xs sm:text-[13px] text-rose-600 font-semibold text-right truncate">
-              รอชำระ/ชำระบางส่วน
-            </span>
+            <span className="text-xs text-rose-700 font-sans font-bold">บิล</span>
           </div>
         </div>
 
         {/* Card 3: Available Debit Notes */}
-        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-600">ใบลดหนี้พร้อมประกบหัก</span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center">
-              <ShieldAlert className="w-3.5 h-3.5" />
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+              <ShieldAlert className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-indigo-950">ใบลดหนี้พร้อมหัก:</span>
           </div>
-          <div className="flex items-baseline justify-between gap-2 mt-2">
-            <span className="text-2xl sm:text-[26px] font-black text-indigo-700 font-mono tracking-tight">
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className="text-lg sm:text-xl font-black text-indigo-700 tracking-tight">
               {formatCurrency(totalAvailableDebitCredit)}
-            </span>
-            <span className="text-xs sm:text-[13px] text-indigo-600 font-semibold text-right truncate">
-              พร้อมหัก {availableDebitNotes.length} ฉบับ
             </span>
           </div>
         </div>
 
         {/* Card 4: Total Paid to Date */}
-        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-bold text-slate-600">ชำระแล้วทั้งหมด</span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center">
-              <CheckCircle2 className="w-3.5 h-3.5" />
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
+              <CheckCircle2 className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-emerald-950">ชำระแล้วทั้งหมด:</span>
           </div>
-          <div className="flex items-baseline justify-between gap-2 mt-2">
-            <span className="text-2xl sm:text-[26px] font-black text-emerald-700 font-mono tracking-tight">
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className="text-lg sm:text-xl font-black text-emerald-700 tracking-tight">
               {formatCurrency(totalPaidAmount)}
-            </span>
-            <span className="text-xs sm:text-[13px] text-emerald-600 font-semibold text-right truncate">
-              เงินสด/โอน/ใบลดหนี้
             </span>
           </div>
         </div>
@@ -353,9 +342,11 @@ export default function PayablesPage() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-xs sm:text-[13px]">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-sm">
                     <tr>
-                      <th className="py-3.5 px-3.5 text-left">เลขที่ PO / วันที่</th>
+                      <th className="py-3.5 px-3.5 text-center w-16">ลำดับ</th>
+                      <th className="py-3.5 px-3.5 text-left w-36">เลขที่ PO</th>
+                      <th className="py-3.5 px-3.5 text-center w-36">วันที่บิล</th>
                       <th className="py-3.5 px-3.5 text-left">บริษัทผู้จำหน่าย</th>
                       <th className="py-3.5 px-3.5 text-right font-bold text-sm">ยอดหนี้ตามบิล</th>
                       <th className="py-3.5 px-3.5 text-right font-bold text-sm">ส่วนลดท้ายบิล</th>
@@ -367,13 +358,18 @@ export default function PayablesPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredBills.map((bill) => (
+                    {filteredBills.map((bill, idx) => (
                       <tr key={bill.poId} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3 px-3.5 font-mono">
+                        <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                          {idx + 1}
+                        </td>
+
+                        <td className="py-3.5 px-3.5 font-mono">
                           <span className="font-bold text-slate-900 text-[15px] block">{bill.poNumber}</span>
-                          <span className="text-xs text-slate-500 block mt-0.5">
-                            {new Date(bill.billDate).toLocaleDateString('th-TH')}
-                          </span>
+                        </td>
+
+                        <td className="py-3.5 px-3.5 text-center font-mono text-xs text-slate-600">
+                          {new Date(bill.billDate).toLocaleDateString('th-TH')}
                         </td>
 
                         <td className="py-3 px-3.5">

@@ -429,7 +429,9 @@ function DebtsContent() {
           <Table>
             <TableHeader className="bg-slate-50/90 border-b border-slate-200">
               <TableRow className="hover:bg-transparent">
-                <TableHead className="font-bold text-slate-700 text-sm py-2 pl-3 w-[160px]">เลขที่บิล / วันที่</TableHead>
+                <TableHead className="font-bold text-slate-700 text-sm py-2 pl-3 text-center w-16">ลำดับ</TableHead>
+                <TableHead className="font-bold text-slate-700 text-sm py-2 w-[130px]">เลขที่บิล</TableHead>
+                <TableHead className="font-bold text-slate-700 text-sm py-2 text-center w-[140px]">วันที่บิล</TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 min-w-[190px]">ลูกค้า / ผู้ซื้อ</TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 text-right w-[110px]">ยอดเต็มบิล</TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 text-right w-[110px]">ชำระแล้ว</TableHead>
@@ -445,14 +447,14 @@ function DebtsContent() {
             <TableBody className="divide-y divide-slate-100">
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-slate-400 text-sm">
+                  <TableCell colSpan={10} className="text-center py-8 text-slate-400 text-sm">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-1.5 text-indigo-500" />
                     กำลังโหลดข้อมูลลูกหนี้และบิลค้างชำระ...
                   </TableCell>
                 </TableRow>
               ) : paginatedDebts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-slate-400 text-sm">
+                  <TableCell colSpan={10} className="text-center py-8 text-slate-400 text-sm">
                     <div className="flex flex-col items-center gap-1">
                       <Receipt className="w-6 h-6 text-slate-300" />
                       <span className="font-bold text-slate-600 text-sm">ไม่พบบิลค้างชำระตามเงื่อนไข</span>
@@ -461,7 +463,7 @@ function DebtsContent() {
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedDebts.map((debt) => {
+                paginatedDebts.map((debt, idx) => {
                   const isPaid = debt.status === 'PAID' || debt.remainingDebt <= 0;
                   const isPartial = debt.status === 'PARTIAL' || (debt.paidAmount > 0 && debt.remainingDebt > 0);
                   const isOverdue = !!(debt.dueDate && new Date(debt.dueDate).getTime() < Date.now() && debt.remainingDebt > 0);
@@ -469,23 +471,32 @@ function DebtsContent() {
 
                   return (
                     <TableRow key={debt.orderId} className="hover:bg-slate-50/70 transition-colors">
-                      {/* 1. Order Number & Date */}
-                      <TableCell className="py-1.5 sm:py-2 pl-3 font-mono">
-                        <div className="font-bold text-slate-900 text-sm leading-snug">{debt.orderNumber}</div>
-                        <div className="text-[11px] text-slate-500">
-                          {new Date(debt.orderDate).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
+                      {/* 1. Index (ลำดับ) */}
+                      <TableCell className="py-2 pl-3 text-center font-mono font-bold text-slate-500 text-sm">
+                        {(currentPage - 1) * pageSize + idx + 1}
+                      </TableCell>
+
+                      {/* 2. Order Number */}
+                      <TableCell className="py-2 font-mono">
+                        <span className="font-bold text-slate-900 text-[15px] block">{debt.orderNumber}</span>
+                      </TableCell>
+
+                      {/* 3. Date (แยก col. วันที่) */}
+                      <TableCell className="py-2 text-center font-mono">
+                        <div className="text-xs text-slate-600 font-bold">
+                          {new Date(debt.orderDate).toLocaleDateString('th-TH')}
                         </div>
                         {debt.dueDate && (
-                          <div className={`text-[11px] font-sans font-medium flex items-center gap-1 ${isOverdue ? 'text-rose-600 font-bold' : 'text-amber-700'}`}>
+                          <div className={`text-[11px] font-sans font-medium flex items-center justify-center gap-1 mt-0.5 ${isOverdue ? 'text-rose-600 font-bold' : 'text-amber-700'}`}>
                             <span>ครบกำหนด: {new Date(debt.dueDate).toLocaleDateString('th-TH')}</span>
                             {isOverdue && <span className="text-[9.5px] bg-rose-100 text-rose-700 px-1 py-0.2 rounded font-bold">เกินกำหนด</span>}
                           </div>
                         )}
                       </TableCell>
 
-                      {/* 2. Customer Name, Phone & Type */}
-                      <TableCell className="py-1.5 sm:py-2">
-                        <div className="flex items-center gap-1.5 font-bold text-slate-900 text-sm leading-snug">
+                      {/* 4. Customer Name, Phone & Type */}
+                      <TableCell className="py-2">
+                        <div className="flex items-center gap-1.5 font-bold text-slate-900 text-[15px] leading-snug">
                           {debt.customerType === 'COMPANY' ? (
                             <span className="inline-flex items-center gap-1 text-[11px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0 font-medium">
                               <Building2 className="w-3 h-3" /> นิติบุคคล

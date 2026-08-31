@@ -232,85 +232,75 @@ export default function ShiftsHistoryPage() {
       </div>
 
       {/* ─── TOP KPI STATS ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
         {/* Card 1: Total Closed Shifts */}
-        <Card className="bg-white border-slate-200 shadow-2xs rounded-3xl p-5 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">จำนวนรอบการปิดกะ</span>
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
               <History className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-indigo-950">รอบการปิดกะ:</span>
           </div>
-          <div>
-            <span className="text-2xl font-black text-slate-900 font-mono">
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className="text-lg sm:text-xl font-black text-indigo-700 tracking-tight">
               {totalRoundsCount}
             </span>
-            <span className="text-xs text-slate-400 font-bold ml-1.5">รอบ</span>
+            <span className="text-xs text-slate-600 font-sans font-bold">รอบ</span>
           </div>
-          <p className="text-[11px] text-slate-500">
-            {groupedByDay.length} วันที่มีการปิดกะ
-          </p>
-        </Card>
+        </div>
 
         {/* Card 2: Total Sales Across Shifts */}
-        <Card className="bg-white border-slate-200 shadow-2xs rounded-3xl p-5 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">ยอดขายรวมทุกกะ</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
               <Coins className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-emerald-950">ยอดขายรวม:</span>
           </div>
-          <div>
-            <span className="text-2xl font-black text-emerald-700 font-mono">
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className="text-lg sm:text-xl font-black text-emerald-700 tracking-tight">
               {formatCurrency(totalSalesOverall)}
             </span>
           </div>
-          <p className="text-[11px] text-slate-500">
-            รวมทุกช่องทางชำระเงิน (สด, QR, บัตร, โอน)
-          </p>
-        </Card>
+        </div>
 
         {/* Card 3: Accuracy Breakdown */}
-        <Card className="bg-white border-slate-200 shadow-2xs rounded-3xl p-5 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">ความถูกต้องของเงินสด</span>
-            <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-sky-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1 bg-sky-50 text-sky-600 rounded-md border border-sky-100 shrink-0">
               <CheckCircle2 className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-sky-950">ความถูกต้อง:</span>
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-emerald-600 font-mono">
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className="text-lg sm:text-xl font-black text-emerald-600 tracking-tight">
               {balancedCount}
             </span>
-            <span className="text-xs text-slate-400 font-bold">รอบที่ตรง</span>
+            <span className="text-xs text-slate-600 font-sans font-bold">รอบตรง</span>
             {(shortCount > 0 || overCount > 0) && (
-              <span className="text-xs font-bold text-rose-600 font-mono ml-auto">
-                {shortCount > 0 && `ขาด ${shortCount} `}
-                {overCount > 0 && `เกิน ${overCount}`}
+              <span className="text-xs font-bold text-rose-600 font-sans ml-1">
+                ({shortCount > 0 && `ขาด ${shortCount}`}{overCount > 0 && ` เกิน ${overCount}`})
               </span>
             )}
           </div>
-          <p className="text-[11px] text-slate-500">
-            เปรียบเทียบเงินในลิ้นชักจริง vs ยอดที่ควรมี
-          </p>
-        </Card>
+        </div>
 
         {/* Card 4: Net Cash Discrepancy */}
-        <Card className="bg-white border-slate-200 shadow-2xs rounded-3xl p-5 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">ยอดเงินขาด / เกินสุทธิ</span>
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+        <div className="bg-white px-3.5 py-2 rounded-xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className={`p-1 rounded-md shrink-0 border ${
               totalDiffOverall === 0 
-                ? 'bg-slate-100 text-slate-600' 
+                ? 'bg-slate-100 text-slate-600 border-slate-200' 
                 : totalDiffOverall > 0 
-                ? 'bg-sky-100 text-sky-700' 
-                : 'bg-rose-100 text-rose-700'
+                ? 'bg-sky-50 text-sky-700 border-sky-200' 
+                : 'bg-rose-50 text-rose-700 border-rose-200'
             }`}>
               <AlertTriangle className="w-4 h-4" />
             </div>
+            <span className="text-sm font-bold text-slate-900">เงินขาด/เกินสุทธิ:</span>
           </div>
-          <div>
-            <span className={`text-2xl font-black font-mono ${
+          <div className="flex items-baseline gap-1.5 font-mono">
+            <span className={`text-lg sm:text-xl font-black tracking-tight ${
               totalDiffOverall === 0 
                 ? 'text-slate-800' 
                 : totalDiffOverall > 0 
@@ -320,14 +310,7 @@ export default function ShiftsHistoryPage() {
               {totalDiffOverall > 0 ? `+${formatCurrency(totalDiffOverall)}` : formatCurrency(totalDiffOverall)}
             </span>
           </div>
-          <p className="text-[11px] text-slate-500">
-            {totalDiffOverall === 0 
-              ? '✓ ยอดเงินตรงครบทุกกะ' 
-              : totalDiffOverall > 0 
-              ? 'ℹ️ มีเงินสดเกินสุทธิ' 
-              : '⚠️ มีเงินสดขาดสุทธิ'}
-          </p>
-        </Card>
+        </div>
       </div>
 
       {/* ─── FILTERS BAR ─── */}
@@ -447,8 +430,8 @@ export default function ShiftsHistoryPage() {
 
               {/* Table of Shifts in this Day */}
               <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-100/50 text-slate-600 font-bold border-b border-slate-100">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-100/70 text-slate-700 font-bold border-b border-slate-200 text-sm">
                     <tr>
                       <th className="p-3.5 text-center w-20">รอบที่</th>
                       <th className="p-3.5 text-left">รหัสกะ / แคชเชียร์</th>
@@ -472,50 +455,50 @@ export default function ShiftsHistoryPage() {
                         <tr key={shift.shiftId} className="hover:bg-slate-50/70 transition-colors">
                           {/* Round Number */}
                           <td className="p-3.5 text-center">
-                            <span className="inline-flex items-center justify-center w-7 h-7 rounded-xl bg-indigo-50 text-indigo-700 font-black text-xs">
+                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-indigo-50 text-indigo-700 font-black text-sm">
                               {roundNumber}
                             </span>
                           </td>
 
                           {/* Shift ID & Cashier */}
                           <td className="p-3.5">
-                            <span className="font-mono font-bold text-slate-900 text-xs block">
+                            <span className="font-mono font-bold text-slate-900 text-[15px] block">
                               {shift.shiftId}
                             </span>
-                            <span className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                              <User className="w-3 h-3 text-slate-400" />
+                            <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                              <User className="w-3.5 h-3.5 text-slate-400" />
                               <span>{shift.userName}</span>
                             </span>
                           </td>
 
                           {/* Time & Duration */}
                           <td className="p-3.5">
-                            <div className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                            <div className="font-bold text-slate-800 text-[15px] flex items-center gap-1.5">
                               <Clock className="w-3.5 h-3.5 text-slate-400" />
                               <span>{openTime} - {closeTime} น.</span>
                             </div>
-                            <span className="text-[10.5px] text-slate-400 font-mono block mt-0.5">
+                            <span className="text-xs text-slate-500 font-mono block mt-0.5">
                               ระยะเวลา: {duration} (ขาย {shift.orderCount || 0} บิล)
                             </span>
                           </td>
 
                           {/* Opening Cash */}
-                          <td className="p-3.5 text-right font-mono text-slate-700">
+                          <td className="p-3.5 text-right font-mono font-bold text-slate-700 text-sm">
                             {formatCurrency(shift.openingCash)}
                           </td>
 
                           {/* Total Sales */}
                           <td className="p-3.5 text-right font-mono">
-                            <span className="font-bold text-slate-900 block text-xs">
+                            <span className="font-bold text-slate-900 block text-[15px]">
                               {formatCurrency(shift.totalSales)}
                             </span>
-                            <span className="text-[10px] text-slate-400 block">
+                            <span className="text-[11px] text-slate-500 block">
                               สด {formatCurrency(shift.cashSales)} | อื่นๆ {formatCurrency(shift.totalSales - shift.cashSales)}
                             </span>
                           </td>
 
                           {/* Cash In / Out */}
-                          <td className="p-3.5 text-right font-mono text-[11px]">
+                          <td className="p-3.5 text-right font-mono text-xs">
                             {shift.cashIn > 0 && (
                               <span className="text-emerald-700 block font-semibold">
                                 +{formatCurrency(shift.cashIn)}
@@ -532,12 +515,12 @@ export default function ShiftsHistoryPage() {
                           </td>
 
                           {/* Expected Cash */}
-                          <td className="p-3.5 text-right font-mono font-bold text-slate-800">
+                          <td className="p-3.5 text-right font-mono font-bold text-slate-800 text-[15px]">
                             {formatCurrency(shift.expectedCash)}
                           </td>
 
                           {/* Actual Cash */}
-                          <td className="p-3.5 text-right font-mono font-black text-slate-900">
+                          <td className="p-3.5 text-right font-mono font-black text-slate-900 text-[15px] sm:text-base">
                             {formatCurrency(shift.actualCash)}
                           </td>
 

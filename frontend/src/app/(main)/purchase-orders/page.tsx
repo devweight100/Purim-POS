@@ -1966,36 +1966,40 @@ export default function PurchaseOrdersPage() {
 
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader className="bg-slate-50">
+            <TableHeader className="bg-slate-50 border-b border-slate-200">
               <TableRow className="border-slate-200 hover:bg-transparent">
-                <TableHead className="text-slate-500 font-bold">เลข PO</TableHead>
-                <TableHead className="text-slate-500 font-bold">ผู้จำหน่าย</TableHead>
-                <TableHead className="text-slate-500 font-bold">วันที่สร้าง</TableHead>
-                <TableHead className="text-slate-500 font-bold text-right">ยอดรวมสุทธิ</TableHead>
-                <TableHead className="text-slate-500 font-bold text-center">สถานะ</TableHead>
-                <TableHead className="text-slate-500 font-bold text-center">จัดการ</TableHead>
+                <TableHead className="text-slate-700 font-bold text-sm text-center w-16">ลำดับ</TableHead>
+                <TableHead className="text-slate-700 font-bold text-sm w-36">เลข PO</TableHead>
+                <TableHead className="text-slate-700 font-bold text-sm">ผู้จำหน่าย</TableHead>
+                <TableHead className="text-slate-700 font-bold text-sm text-center w-36">วันที่สร้าง</TableHead>
+                <TableHead className="text-slate-700 font-bold text-sm text-right">ยอดรวมสุทธิ</TableHead>
+                <TableHead className="text-slate-700 font-bold text-sm text-center">สถานะ</TableHead>
+                <TableHead className="text-slate-700 font-bold text-sm text-center">จัดการ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center h-32 text-slate-500">
+                  <TableCell colSpan={7} className="text-center h-32 text-slate-500 text-sm">
                     กำลังโหลดข้อมูล...
                   </TableCell>
                 </TableRow>
               ) : filteredPOs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center h-32 text-slate-500">
+                  <TableCell colSpan={7} className="text-center h-32 text-slate-500 text-sm">
                     ไม่พบข้อมูลใบสั่งซื้อ
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredPOs.map((po) => (
+                filteredPOs.map((po, idx) => (
                   <TableRow key={po.id} className="border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors" onClick={() => handleViewDetail(po.id)}>
-                    <TableCell className="font-bold text-slate-900">{po.poNumber}</TableCell>
-                    <TableCell className="text-slate-700 font-medium">{po.supplier?.name || po.supplierName || "-"}</TableCell>
-                    <TableCell className="text-slate-600">{formatDate(po.createdAt)}</TableCell>
-                    <TableCell className="text-right text-slate-900 font-bold">
+                    <TableCell className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                      {idx + 1}
+                    </TableCell>
+                    <TableCell className="font-bold text-slate-900 text-[15px] font-mono">{po.poNumber}</TableCell>
+                    <TableCell className="text-slate-900 font-bold text-[15px]">{po.supplier?.name || po.supplierName || "-"}</TableCell>
+                    <TableCell className="text-slate-600 text-center font-mono text-xs">{formatDate(po.createdAt)}</TableCell>
+                    <TableCell className="text-right text-slate-900 font-black text-[15px] sm:text-base font-mono">
                       <div>{formatCurrency(po.totalAmount)}</div>
                       {po.deductedReturns && po.deductedReturns.length > 0 && (
                         <div className="text-[10.5px] text-emerald-700 font-normal mt-0.5">
