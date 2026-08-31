@@ -163,35 +163,53 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     return filterOrdersByDateRange(rawOrders, timeRange, customStartDate, customEndDate);
   }, [rawOrders, timeRange, customStartDate, customEndDate]);
 
-  // 1. Sales & Profit
+  // 1. Sales & Profit (Lazy)
   const salesProfitReport = useMemo(() => {
+    if (activeTab !== 'sales') {
+      return { totalOrders: 0, totalGrossSales: 0, totalDiscounts: 0, totalNetSales: 0, totalCogs: 0, totalGrossProfit: 0, overallMargin: 0, dailyBreakdown: [] };
+    }
     return calculateSalesAndProfitReport(filteredOrders, products);
-  }, [filteredOrders, products]);
+  }, [activeTab, filteredOrders, products]);
 
-  // 2. Best Sellers
+  // 2. Best Sellers (Lazy)
   const bestSellersReport = useMemo(() => {
+    if (activeTab !== 'bestsellers') {
+      return { allProducts: [], topByQuantity: [], topByProfit: [], topByRevenue: [] };
+    }
     return calculateBestSellingProducts(filteredOrders, products);
-  }, [filteredOrders, products]);
+  }, [activeTab, filteredOrders, products]);
 
-  // 3. Inventory Valuation & Deadstock
+  // 3. Inventory Valuation & Deadstock (Lazy)
   const inventoryReport = useMemo(() => {
+    if (activeTab !== 'inventory') {
+      return { totalProducts: 0, totalStockPieces: 0, totalCostVal: 0, totalRetailVal: 0, totalPotentialProfit: 0, deadstockPieces: 0, deadstockCostVal: 0, lowStockCount: 0, items: [], deadstockList: [], lowStockList: [] };
+    }
     return calculateInventoryValuationReport(products, rawOrders);
-  }, [products, rawOrders]);
+  }, [activeTab, products, rawOrders]);
 
-  // 4. Payments & Shifts
+  // 4. Payments & Shifts (Lazy)
   const paymentsShiftsReport = useMemo(() => {
+    if (activeTab !== 'payments') {
+      return { totalCollected: 0, channels: [], shifts: { totalShiftsCount: 0, totalExpectedCash: 0, totalActualCash: 0, totalCashDiscrepancy: 0, balancedShifts: 0, shortShifts: 0, overShifts: 0, list: [] } };
+    }
     return calculatePaymentsAndShiftsReport(filteredOrders, shifts);
-  }, [filteredOrders, shifts]);
+  }, [activeTab, filteredOrders, shifts]);
 
-  // 5. Customers & Debts Aging
+  // 5. Customers & Debts Aging (Lazy)
   const customerDebtsReport = useMemo(() => {
+    if (activeTab !== 'customers') {
+      return { totalOutstandingDebt: 0, unpaidBillsCount: 0, agingBuckets: [{ bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }, { bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }, { bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }, { bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }], topCustomers: [], unpaidDebtsList: [] };
+    }
     return calculateCustomerAndDebtsReport(filteredOrders, debts, customers);
-  }, [filteredOrders, debts, customers]);
+  }, [activeTab, filteredOrders, debts, customers]);
 
-  // 6. Purchases & Claims
+  // 6. Purchases & Claims (Lazy)
   const purchasesClaimsReport = useMemo(() => {
+    if (activeTab !== 'purchases') {
+      return { totalPurchasesOverall: 0, totalClaimsCostOverall: 0, supplierBreakdown: [] };
+    }
     return calculatePurchasesAndClaimsReport(purchaseOrders, claims, suppliers);
-  }, [purchaseOrders, claims, suppliers]);
+  }, [activeTab, purchaseOrders, claims, suppliers]);
 
   // Print Handler
   const handlePrint = () => {
@@ -454,9 +472,9 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                     <YAxis tick={{ fontSize: 11 }} tickLine={false} tickFormatter={(v) => `฿${v >= 1000 ? (v/1000).toFixed(0) + 'k' : v}`} />
                     <Tooltip formatter={(value: any) => formatCurrency(Number(value))} />
                     <Legend wrapperStyle={{ fontSize: 12, paddingTop: 6 }} />
-                    <Bar dataKey="netSales" name="ยอดขายสุทธิ" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="cogs" name="ต้นทุนสินค้า" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="grossProfit" name="กำไรขั้นต้น" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="netSales" name="ยอดขายสุทธิ" fill="#0ea5e9" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                    <Bar dataKey="cogs" name="ต้นทุนสินค้า" fill="#f59e0b" radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                    <Bar dataKey="grossProfit" name="กำไรขั้นต้น" fill="#10b981" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

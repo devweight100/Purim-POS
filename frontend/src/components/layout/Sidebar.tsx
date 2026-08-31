@@ -17,6 +17,7 @@ interface SubMenuItem {
   href: string;
   label: string;
   icon: any;
+  children?: SubMenuItem[];
 }
 
 interface NavGroup {
@@ -29,16 +30,23 @@ interface NavGroup {
 const navGroups: NavGroup[] = [
   {
     id: 'overview',
-    title: 'ภาพรวม & รายงานธุรกิจ',
+    title: 'ภาพรวม & รายงาน',
     icon: BarChart3,
     items: [
-      { href: '/dashboard', label: 'แดชบอร์ดภาพรวม', icon: LayoutDashboard },
-      { href: '/reports/sales', label: 'ยอดขาย & กำไรขั้นต้น', icon: TrendingUp },
-      { href: '/reports/bestsellers', label: 'สินค้าขายดี & ทำกำไร', icon: Sparkles },
-      { href: '/reports/inventory', label: 'มูลค่าคลัง & สต็อกช้า', icon: Boxes },
-      { href: '/reports/payments', label: 'ช่องทางชำระ & ปิดกะ', icon: Coins },
-      { href: '/reports/customers', label: 'วิเคราะห์ลูกค้า & อายุหนี้', icon: Users },
-      { href: '/reports/purchases', label: 'ยอดจัดซื้อ & สถิติของเคลม', icon: Truck },
+      { href: '/dashboard', label: 'แดชบอร์ดสรุปภาพรวม', icon: LayoutDashboard },
+      { 
+        href: '/reports', 
+        label: 'รายงาน & สถิติธุรกิจ', 
+        icon: BarChart3,
+        children: [
+          { href: '/reports/sales', label: 'ยอดขาย & กำไรขั้นต้น', icon: TrendingUp },
+          { href: '/reports/bestsellers', label: 'สินค้าขายดี & ทำกำไร', icon: Sparkles },
+          { href: '/reports/inventory', label: 'มูลค่าคลัง & สต็อกช้า', icon: Boxes },
+          { href: '/reports/payments', label: 'ช่องทางชำระ & ปิดกะ', icon: Coins },
+          { href: '/reports/customers', label: 'วิเคราะห์ลูกค้า & อายุหนี้', icon: Users },
+          { href: '/reports/purchases', label: 'ยอดจัดซื้อ & สถิติของเคลม', icon: Truck },
+        ],
+      },
     ],
   },
   {
@@ -101,13 +109,25 @@ export function Sidebar() {
     system: true,
   });
 
-  // Ensure current pathname's group is open
+  // Submenu accordion state (for nested submenus like /reports)
+  const [openSubMenus, setOpenSubMenus] = useState<Record<string, boolean>>({
+    '/reports': true,
+  });
+
+  // Ensure current pathname's group and submenus are open
   useEffect(() => {
     navGroups.forEach((group) => {
-      if (group.items.some((item) => item.href === pathname)) {
+      const isMatch = group.items.some(
+        (item) => item.href === pathname || item.children?.some((c) => c.href === pathname)
+      );
+      if (isMatch) {
         setOpenGroups((prev) => ({ ...prev, [group.id]: true }));
       }
     });
+
+    if (pathname.startsWith('/reports')) {
+      setOpenSubMenus((prev) => ({ ...prev, '/reports': true }));
+    }
   }, [pathname]);
 
   // Close mobile menu on route change
@@ -206,8 +226,80 @@ export function Sidebar() {
               {isOpen && (
                 <div className="ml-3 pl-2.5 border-l-2 border-slate-200/80 space-y-0.5 py-0.5">
                   {group.items.map((item) => {
-                    const isActive = pathname === item.href;
+                    const hasChildren = Boolean(item.children && item.children.length > 0);
+                    const isChildActive = hasChildren && Boolean(item.children?.some((c) => pathname === c.href));
+                    const isSelfActive = pathname === item.href;
+                    const isSubOpen = openSubMenus[item.href] ?? (isChildActive || isSelfActive);
                     const ItemIcon = item.icon;
+
+                    if (hasChildren) {
+                      return (
+                        <div key={item.href} className="space-y-0.5">
+                          <div
+                            onClick={() => {
+                              setOpenSubMenus((prev) => ({ ...prev, [item.href]: !isSubOpen }));
+                            }}
+                            className={cn(
+                              'flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[13px] transition-all duration-150 group cursor-pointer',
+                              isSelfActive || isChildActive
+                                ? 'bg-indigo-50/80 text-indigo-950 font-bold'
+                                : 'text-slate-700 hover:text-slate-950 hover:bg-slate-100 font-bold'
+                            )}
+                          >
+                            <Link
+                              href={item.href}
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex items-center flex-1 min-w-0"
+                            >
+                              <ItemIcon className={cn('w-4 h-4 shrink-0 mr-2.5', (isSelfActive || isChildActive) ? 'text-indigo-600' : 'text-slate-500')} />
+                              <span className="truncate">{item.label}</span>
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setOpenSubMenus((prev) => ({ ...prev, [item.href]: !isSubOpen }));
+                              }}
+                              className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors ml-1"
+                              title="ย่อ/ขยายเมนูย่อยรายงาน"
+                            >
+                              <ChevronDown
+                                className={cn(
+                                  'w-3.5 h-3.5 transition-transform duration-200',
+                                  isSubOpen ? 'rotate-0' : '-rotate-90'
+                                )}
+                              />
+                            </button>
+                          </div>
+
+                          {/* 6 Sub-items strictly INSIDE รายงาน */}
+                          {isSubOpen && (
+                            <div className="ml-3 pl-2 border-l-2 border-indigo-200/90 space-y-0.5 py-0.5">
+                              {item.children?.map((sub) => {
+                                const isSubActive = pathname === sub.href;
+                                const SubIcon = sub.icon;
+                                return (
+                                  <Link
+                                    key={sub.href}
+                                    href={sub.href}
+                                    className={cn(
+                                      'flex items-center px-2 py-1.5 rounded-lg text-xs transition-all duration-150 whitespace-nowrap',
+                                      isSubActive
+                                        ? 'bg-indigo-600 text-white font-bold shadow-2xs'
+                                        : 'text-slate-600 hover:text-slate-950 hover:bg-slate-100 font-medium'
+                                    )}
+                                  >
+                                    <SubIcon className={cn('w-3.5 h-3.5 shrink-0 mr-2', isSubActive ? 'text-white' : 'text-slate-400')} />
+                                    <span className="truncate">{sub.label}</span>
+                                  </Link>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
 
                     return (
                       <Link
@@ -215,12 +307,12 @@ export function Sidebar() {
                         href={item.href}
                         className={cn(
                           'flex items-center px-2.5 py-1.5 rounded-lg text-[13px] transition-all duration-150 whitespace-nowrap',
-                          isActive
+                          isSelfActive
                             ? 'bg-indigo-600 text-white font-bold shadow-xs'
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium'
                         )}
                       >
-                        <ItemIcon className={cn('w-4 h-4 shrink-0 mr-2.5', isActive ? 'text-white' : 'text-slate-400')} />
+                        <ItemIcon className={cn('w-4 h-4 shrink-0 mr-2.5', isSelfActive ? 'text-white' : 'text-slate-400')} />
                         <span className="truncate">{item.label}</span>
                       </Link>
                     );
