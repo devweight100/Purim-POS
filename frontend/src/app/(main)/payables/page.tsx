@@ -203,78 +203,78 @@ export default function PayablesPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-3.5">
         {/* Card 1: Total Outstanding AP Debt */}
-        <Card className="bg-white border-slate-200 shadow-xs rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs sm:text-sm font-bold text-slate-500">ยอดหนี้ค้างจ่ายรวม</CardTitle>
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center">
-              <DollarSign className="w-4 h-4" />
+        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold text-slate-600">ยอดหนี้ค้างจ่ายรวม</span>
+            <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 border border-amber-100 flex items-center justify-center">
+              <DollarSign className="w-3.5 h-3.5" />
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-black text-amber-700 font-mono">
+          </div>
+          <div className="flex items-baseline justify-between gap-2 mt-2">
+            <span className="text-2xl sm:text-[26px] font-black text-amber-700 font-mono tracking-tight">
               {formatCurrency(totalOutstandingDebt)}
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              ยอดเงินที่ต้องชำระให้แก่คู่ค้าบริษัท
-            </p>
-          </CardContent>
-        </Card>
+            </span>
+            <span className="text-xs sm:text-[13px] text-slate-500 font-medium text-right truncate">
+              ยอดต้องชำระให้คู่ค้า
+            </span>
+          </div>
+        </div>
 
         {/* Card 2: Unpaid Bills Count */}
-        <Card className="bg-white border-slate-200 shadow-xs rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs sm:text-sm font-bold text-slate-500">บิลที่ยังค้างชำระ</CardTitle>
-            <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center">
-              <Receipt className="w-4 h-4" />
+        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold text-slate-600">บิลที่ยังค้างชำระ</span>
+            <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center">
+              <Receipt className="w-3.5 h-3.5" />
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-black text-slate-900 font-mono">
-              {unpaidBillsCount} <span className="text-xs text-slate-500 font-normal">บิล</span>
-            </div>
-            <p className="text-xs text-rose-600 font-bold mt-1">
-              รอชำระหรือชำระบางส่วน
-            </p>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="flex items-baseline justify-between gap-2 mt-2">
+            <span className="text-2xl sm:text-[26px] font-black text-slate-900 font-mono tracking-tight">
+              {unpaidBillsCount} <span className="text-xs sm:text-sm text-slate-400 font-bold">บิล</span>
+            </span>
+            <span className="text-xs sm:text-[13px] text-rose-600 font-semibold text-right truncate">
+              รอชำระ/ชำระบางส่วน
+            </span>
+          </div>
+        </div>
 
         {/* Card 3: Available Debit Notes */}
-        <Card className="bg-white border-slate-200 shadow-xs rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs sm:text-sm font-bold text-slate-500">ใบลดหนี้พร้อมประกบหัก</CardTitle>
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center">
-              <ShieldAlert className="w-4 h-4" />
+        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold text-slate-600">ใบลดหนี้พร้อมประกบหัก</span>
+            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center">
+              <ShieldAlert className="w-3.5 h-3.5" />
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-black text-indigo-700 font-mono">
+          </div>
+          <div className="flex items-baseline justify-between gap-2 mt-2">
+            <span className="text-2xl sm:text-[26px] font-black text-indigo-700 font-mono tracking-tight">
               {formatCurrency(totalAvailableDebitCredit)}
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              รวม {availableDebitNotes.length} ฉบับพร้อมนำมาหักลดหนี้
-            </p>
-          </CardContent>
-        </Card>
+            </span>
+            <span className="text-xs sm:text-[13px] text-indigo-600 font-semibold text-right truncate">
+              พร้อมหัก {availableDebitNotes.length} ฉบับ
+            </span>
+          </div>
+        </div>
 
         {/* Card 4: Total Paid to Date */}
-        <Card className="bg-white border-slate-200 shadow-xs rounded-2xl">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs sm:text-sm font-bold text-slate-500">ชำระแล้วทั้งหมด</CardTitle>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center">
-              <CheckCircle2 className="w-4 h-4" />
+        <div className="bg-white px-4 py-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between hover:border-slate-300 transition-colors">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold text-slate-600">ชำระแล้วทั้งหมด</span>
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center">
+              <CheckCircle2 className="w-3.5 h-3.5" />
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl sm:text-3xl font-black text-emerald-700 font-mono">
+          </div>
+          <div className="flex items-baseline justify-between gap-2 mt-2">
+            <span className="text-2xl sm:text-[26px] font-black text-emerald-700 font-mono tracking-tight">
               {formatCurrency(totalPaidAmount)}
-            </div>
-            <p className="text-xs text-emerald-600 font-bold mt-1">
-              ชำระเงินสด/โอน และหักใบลดหนี้สะสม
-            </p>
-          </CardContent>
-        </Card>
+            </span>
+            <span className="text-xs sm:text-[13px] text-emerald-600 font-semibold text-right truncate">
+              เงินสด/โอน/ใบลดหนี้
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Main Tabs */}
@@ -357,37 +357,37 @@ export default function PayablesPage() {
                     <tr>
                       <th className="py-3.5 px-3.5 text-left">เลขที่ PO / วันที่</th>
                       <th className="py-3.5 px-3.5 text-left">บริษัทผู้จำหน่าย</th>
-                      <th className="py-3.5 px-3.5 text-right">ยอดหนี้ตามบิล</th>
-                      <th className="py-3.5 px-3.5 text-right">ส่วนลดท้ายบิล</th>
-                      <th className="py-3.5 px-3.5 text-right">ประกบใบลดหนี้</th>
-                      <th className="py-3.5 px-3.5 text-right">จ่ายเงินแล้ว</th>
-                      <th className="py-3.5 px-3.5 text-right">หนี้คงเหลือสุทธิ</th>
-                      <th className="py-3.5 px-3.5 text-center">สถานะ</th>
-                      <th className="py-3.5 px-3.5 text-center whitespace-nowrap">การจัดการ</th>
+                      <th className="py-3.5 px-3.5 text-right font-bold text-sm">ยอดหนี้ตามบิล</th>
+                      <th className="py-3.5 px-3.5 text-right font-bold text-sm">ส่วนลดท้ายบิล</th>
+                      <th className="py-3.5 px-3.5 text-right font-bold text-sm">ประกบใบลดหนี้</th>
+                      <th className="py-3.5 px-3.5 text-right font-bold text-sm">จ่ายเงินแล้ว</th>
+                      <th className="py-3.5 px-3.5 text-right font-bold text-sm">หนี้คงเหลือสุทธิ</th>
+                      <th className="py-3.5 px-3.5 text-center font-bold text-sm">สถานะ</th>
+                      <th className="py-3.5 px-3.5 text-center font-bold text-sm whitespace-nowrap">การจัดการ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredBills.map((bill) => (
                       <tr key={bill.poId} className="hover:bg-slate-50/70 transition-colors">
                         <td className="py-3 px-3.5 font-mono">
-                          <span className="font-bold text-slate-900 text-sm block">{bill.poNumber}</span>
+                          <span className="font-bold text-slate-900 text-[15px] block">{bill.poNumber}</span>
                           <span className="text-xs text-slate-500 block mt-0.5">
                             {new Date(bill.billDate).toLocaleDateString('th-TH')}
                           </span>
                         </td>
 
                         <td className="py-3 px-3.5">
-                          <p className="font-bold text-slate-900 text-sm">{bill.supplierName}</p>
+                          <p className="font-bold text-slate-900 text-[15px]">{bill.supplierName}</p>
                           {bill.supplierPhone && (
                             <p className="text-xs text-slate-400 font-mono mt-0.5">{bill.supplierPhone}</p>
                           )}
                         </td>
 
-                        <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-800">
+                        <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-800 text-sm sm:text-[15px]">
                           {formatCurrency(bill.totalAmount)}
                         </td>
 
-                        <td className="py-3 px-3.5 text-right font-mono">
+                        <td className="py-3 px-3.5 text-right font-mono text-sm sm:text-[15px]">
                           {bill.alreadyDiscountAmount > 0 ? (
                             <span className="text-amber-700 font-bold">
                               {formatCurrency(bill.alreadyDiscountAmount)}
@@ -397,7 +397,7 @@ export default function PayablesPage() {
                           )}
                         </td>
 
-                        <td className="py-3 px-3.5 text-right font-mono">
+                        <td className="py-3 px-3.5 text-right font-mono text-sm sm:text-[15px]">
                           {bill.alreadyDeductedReturns > 0 ? (
                             <span className="text-indigo-600 font-bold">
                               {formatCurrency(bill.alreadyDeductedReturns)}
@@ -407,7 +407,7 @@ export default function PayablesPage() {
                           )}
                         </td>
 
-                        <td className="py-3 px-3.5 text-right font-mono">
+                        <td className="py-3 px-3.5 text-right font-mono text-sm sm:text-[15px]">
                           {bill.alreadyPaidAmount > 0 ? (
                             <span className="text-emerald-700 font-bold">
                               {formatCurrency(bill.alreadyPaidAmount)}
@@ -417,7 +417,7 @@ export default function PayablesPage() {
                           )}
                         </td>
 
-                        <td className="py-3 px-3.5 text-right font-mono font-black text-sm sm:text-base">
+                        <td className="py-3 px-3.5 text-right font-mono font-black text-[15px] sm:text-base">
                           {bill.remainingPayable > 0 ? (
                             <span className="text-amber-700">
                               {formatCurrency(bill.remainingPayable)}
@@ -431,11 +431,11 @@ export default function PayablesPage() {
 
                         <td className="py-3 px-3.5 text-center">
                           {bill.paymentStatus === 'PAID' ? (
-                            <Badge className="bg-emerald-600 text-white font-semibold text-xs px-2.5 py-0.5">ชำระครบแล้ว</Badge>
+                            <Badge className="bg-emerald-600 text-white font-bold text-xs px-2.5 py-1">ชำระครบแล้ว</Badge>
                           ) : bill.paymentStatus === 'PARTIALLY_PAID' ? (
-                            <Badge className="bg-sky-600 text-white font-semibold text-xs px-2.5 py-0.5">ชำระบางส่วน</Badge>
+                            <Badge className="bg-sky-600 text-white font-bold text-xs px-2.5 py-1">ชำระบางส่วน</Badge>
                           ) : (
-                            <Badge variant="outline" className="border-amber-400 text-amber-800 bg-amber-50 font-semibold text-xs px-2.5 py-0.5">
+                            <Badge variant="outline" className="border-amber-400 text-amber-800 bg-amber-50 font-bold text-xs px-2.5 py-1">
                               รอชำระ
                             </Badge>
                           )}
