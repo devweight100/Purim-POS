@@ -7,7 +7,7 @@ import {
   ShoppingCart, ClipboardList, Users, LayoutDashboard, Package, 
   Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, 
   FolderTree, Building2, Receipt, ShieldAlert, ArrowLeftRight, HandCoins,
-  ChevronDown, History, PackageX
+  ChevronDown, History, PackageX, TrendingUp, Sparkles, Coins, Boxes
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/store/auth-store';
@@ -29,11 +29,16 @@ interface NavGroup {
 const navGroups: NavGroup[] = [
   {
     id: 'overview',
-    title: 'ภาพรวม & รายงาน',
-    icon: LayoutDashboard,
+    title: 'ภาพรวม & รายงานธุรกิจ',
+    icon: BarChart3,
     items: [
-      { href: '/dashboard', label: 'แดชบอร์ดสรุป', icon: LayoutDashboard },
-      { href: '/reports', label: 'รายงานยอดขาย & สถิติ', icon: BarChart3 },
+      { href: '/dashboard', label: 'แดชบอร์ดภาพรวม', icon: LayoutDashboard },
+      { href: '/reports/sales', label: 'ยอดขาย & กำไรขั้นต้น', icon: TrendingUp },
+      { href: '/reports/bestsellers', label: 'สินค้าขายดี & ทำกำไร', icon: Sparkles },
+      { href: '/reports/inventory', label: 'มูลค่าคลัง & สต็อกช้า', icon: Boxes },
+      { href: '/reports/payments', label: 'ช่องทางชำระ & ปิดกะ', icon: Coins },
+      { href: '/reports/customers', label: 'วิเคราะห์ลูกค้า & อายุหนี้', icon: Users },
+      { href: '/reports/purchases', label: 'ยอดจัดซื้อ & สถิติของเคลม', icon: Truck },
     ],
   },
   {

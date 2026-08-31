@@ -1,5 +1,5 @@
 import { ReportsView } from '@/components/reports/ReportsView';
 
-export default function ReportsPage() {
+export default function SalesReportPage() {
   return <ReportsView initialTab="sales" />;
 }
