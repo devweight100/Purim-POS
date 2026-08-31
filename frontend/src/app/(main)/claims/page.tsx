@@ -354,26 +354,25 @@ export default function ClaimsPage() {
           <Table>
             <TableHeader className="bg-slate-50">
               <TableRow className="border-b border-slate-200 text-slate-700 font-bold text-sm">
-                <TableHead className="pl-4 text-left w-36 font-bold text-sm">เลขที่เคลม / วันที่</TableHead>
-                <TableHead className="text-left w-40 font-bold text-sm">ลูกค้า</TableHead>
-                <TableHead className="text-left font-bold text-sm">สินค้า & อาการชำรุด</TableHead>
-                <TableHead className="text-center w-24 font-bold text-sm">จำนวน</TableHead>
-                <TableHead className="text-right w-32 font-bold text-sm">มูลค่าเคลม (฿)</TableHead>
-                <TableHead className="text-center w-36 font-bold text-sm">วิธีดำเนินการ</TableHead>
-                <TableHead className="text-center w-24 pr-4 font-bold text-sm">พิมพ์เอกสาร</TableHead>
+                <TableHead className="pl-4 text-left w-48 font-bold text-sm">เลขที่เคลม / วันที่</TableHead>
+                <TableHead className="text-left font-bold text-sm">ลูกค้า</TableHead>
+                <TableHead className="text-center w-36 font-bold text-sm">จำนวนที่เคลม</TableHead>
+                <TableHead className="text-right w-40 font-bold text-sm">มูลค่าเคลม (฿)</TableHead>
+                <TableHead className="text-center w-40 font-bold text-sm">วิธีดำเนินการ</TableHead>
+                <TableHead className="text-center w-36 pr-4 font-bold text-sm whitespace-nowrap">การจัดการ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody className="divide-y divide-slate-100">
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-slate-400 text-sm">
+                  <TableCell colSpan={6} className="text-center py-12 text-slate-400 text-sm">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
                     กำลังโหลดข้อมูลรายการเคลม...
                   </TableCell>
                 </TableRow>
               ) : paginatedClaims.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-14 text-slate-400 text-sm">
+                  <TableCell colSpan={6} className="text-center py-14 text-slate-400 text-sm">
                     <div className="flex flex-col items-center gap-2">
                       <ShieldAlert className="w-8 h-8 text-slate-300" />
                       <span className="font-bold text-slate-600 text-base">ไม่พบประวัติการรับเคลมสินค้า</span>
@@ -394,15 +393,27 @@ export default function ClaimsPage() {
                     className="hover:bg-slate-50/70 transition-colors"
                   >
                     {/* 1. Claim ID & Date */}
-                    <TableCell className="py-3 pl-4 font-mono">
+                    <TableCell className="py-3.5 pl-4 font-mono">
                       <div className="font-bold text-indigo-600 text-[15px]">{claim.id}</div>
                       <div className="text-xs text-slate-500 mt-0.5">
                         {new Date(claim.claimDate).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
                       </div>
+                      {claim.returnDocId && (
+                        <div className="mt-1">
+                          <Link
+                            href="/supplier-returns"
+                            className="text-xs font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded-md hover:bg-indigo-100 transition-colors inline-flex items-center gap-1"
+                            title="ไปที่เอกสารส่งคืนบริษัท"
+                          >
+                            <Building2 className="w-3 h-3 text-indigo-600" />
+                            <span>ส่งคืน: {claim.returnDocId}</span>
+                          </Link>
+                        </div>
+                      )}
                     </TableCell>
 
-                    {/* 2. Customer Column (Separated, No Sales Bill) */}
-                    <TableCell className="py-3">
+                    {/* 2. Customer Column */}
+                    <TableCell className="py-3.5">
                       <div className="font-bold text-slate-900 text-[15px] flex items-center gap-1.5">
                         <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span>{claim.customerName || 'ลูกค้าทั่วไป'}</span>
@@ -414,59 +425,41 @@ export default function ClaimsPage() {
                       )}
                     </TableCell>
 
-                    {/* 3. Product Details & Defect Reason (No SKU) */}
-                    <TableCell className="py-3">
-                      <div className="font-bold text-slate-900 text-[15px]">{claim.productName}</div>
-                      <div className="text-xs text-rose-600 font-medium mt-0.5 line-clamp-1">
-                        * อาการ: {claim.defectReason}
-                      </div>
-                      {claim.returnDocId && (
-                        <div className="mt-1 flex items-center gap-1">
-                          <Link
-                            href="/supplier-returns"
-                            className="text-xs font-bold bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded-md hover:bg-indigo-100 transition-colors flex items-center gap-1"
-                            title="ไปที่เอกสารส่งคืนบริษัท"
-                          >
-                            <Building2 className="w-3.5 h-3.5 text-indigo-600" />
-                            <span>เอกสารส่งคืน: {claim.returnDocId}</span>
-                          </Link>
-                        </div>
-                      )}
-                    </TableCell>
-
-                    {/* 4. Quantity */}
-                    <TableCell className="py-3 text-center font-bold text-[15px] text-slate-900 font-mono">
-                      <div>
-                        {claim.baseQuantity !== undefined ? claim.baseQuantity : (claim.quantity * (claim.conversionFactor || 1))} {claim.conversionFactor && claim.conversionFactor > 1 ? (claim.replacementUnitName || 'ชิ้น') : claim.unitName}
+                    {/* 3. Total Claim Quantity */}
+                    <TableCell className="py-3.5 text-center font-mono">
+                      <div className="font-bold text-[15px] text-slate-900">
+                        {claim.baseQuantity !== undefined ? claim.baseQuantity : (claim.quantity * (claim.conversionFactor || 1))} {claim.conversionFactor && claim.conversionFactor > 1 ? (claim.replacementUnitName || 'ชิ้น') : (claim.unitName || 'ชิ้น')}
                       </div>
                       {claim.conversionFactor && claim.conversionFactor > 1 && (
-                        <div className="text-xs text-slate-400 font-normal">
+                        <div className="text-xs text-slate-400 font-normal mt-0.5">
                           ({claim.quantity} {claim.unitName})
                         </div>
                       )}
                     </TableCell>
 
-                    {/* 5. Claim Value */}
-                    <TableCell className="py-3 text-right font-black text-[15px] sm:text-base text-slate-900 font-mono">
-                      {formatCurrency(claim.totalClaimValue)}
+                    {/* 4. Total Claim Value */}
+                    <TableCell className="py-3.5 text-right font-mono">
+                      <span className="font-black text-[15px] sm:text-base text-slate-900 block">
+                        {formatCurrency(claim.totalClaimValue)}
+                      </span>
                     </TableCell>
 
-                    {/* 6. Resolution */}
-                    <TableCell className="py-3 text-center">
+                    {/* 5. Resolution */}
+                    <TableCell className="py-3.5 text-center">
                       {getResolutionBadge(claim.resolutionType)}
                     </TableCell>
 
-                    {/* 7. Action: Print */}
-                    <TableCell className="py-3 pr-4 text-center">
+                    {/* 6. Action: Print */}
+                    <TableCell className="py-3.5 pr-4 text-center">
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={(e) => handlePrintPdf(claim, e)}
-                        className="h-8 px-3 text-xs text-indigo-700 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 rounded-xl font-bold gap-1.5"
-                        title="พิมพ์ใบรับเคลม / ใบเปลี่ยนสินค้า"
+                        className="h-8 px-3 text-xs text-indigo-700 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 rounded-xl font-bold gap-1.5 whitespace-nowrap"
+                        title="พิมพ์ใบรับเคลม / ดูรายละเอียด"
                       >
                         <Printer className="w-3.5 h-3.5" />
-                        <span>พิมพ์</span>
+                        <span>พิมพ์เอกสาร</span>
                       </Button>
                     </TableCell>
                   </TableRow>
