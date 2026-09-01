@@ -64,10 +64,6 @@ export function PaymentVoucherModal({
     }
   };
 
-  const filledRowsCount = 1 + paymentEntry.deductedNotes.length + (paymentEntry.discountAmount && paymentEntry.discountAmount > 0 ? 1 : 0);
-  const MIN_VOUCHER_ROWS = 9;
-  const emptyRowsCount = Math.max(0, MIN_VOUCHER_ROWS - filledRowsCount);
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[98vw] max-w-5xl max-h-[95vh] flex flex-col bg-slate-100 border-slate-300 text-slate-900 rounded-3xl p-4 sm:p-6 shadow-2xl overflow-hidden font-sans">
@@ -178,7 +174,7 @@ export function PaymentVoucherModal({
               {/* ─── FIXED-HEIGHT TABLE FRAME ─── */}
               {/* Outer frame is fixed in height so layout never collapses or jumps */}
               <div className="border border-slate-300 rounded-xl overflow-hidden min-h-[110mm] flex flex-col justify-between bg-white">
-                <table className="w-full text-xs">
+                <table className="w-full h-full flex-1 border-collapse text-xs">
                   <thead className="bg-slate-100 text-slate-800 font-bold border-b-2 border-slate-300">
                     <tr>
                       <th className="py-2.5 px-3 text-center w-14 border-r border-slate-300">ลำดับ</th>
@@ -186,7 +182,7 @@ export function PaymentVoucherModal({
                       <th className="py-2.5 px-3 text-center w-44">จำนวนเงิน (บาท)</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200">
+                  <tbody>
                     {/* Row 1: Bill Amount */}
                     <tr className="hover:bg-slate-50/50">
                       <td className="py-2.5 px-3 text-center font-mono text-slate-500 border-r border-slate-300">1</td>
@@ -227,14 +223,12 @@ export function PaymentVoucherModal({
                       </tr>
                     )}
 
-                    {/* Empty Grid Rows so vertical lines run all the way down to hit the bottom border */}
-                    {Array.from({ length: emptyRowsCount }).map((_, emptyIdx) => (
-                      <tr key={`empty-${emptyIdx}`} className="h-8">
-                        <td className="py-2.5 px-3 text-center border-r border-slate-300 text-transparent select-none">-</td>
-                        <td className="py-2.5 px-3 border-r border-slate-300 text-transparent select-none">-</td>
-                        <td className="py-2.5 px-3 text-transparent select-none">-</td>
-                      </tr>
-                    ))}
+                    {/* Empty Space Row: Vertical lines extend down to the bottom border with ZERO horizontal lines */}
+                    <tr className="h-full">
+                      <td className="py-2.5 px-3 border-r border-slate-300">&nbsp;</td>
+                      <td className="py-2.5 px-3 border-r border-slate-300">&nbsp;</td>
+                      <td className="py-2.5 px-3">&nbsp;</td>
+                    </tr>
                   </tbody>
                 </table>
 

@@ -384,14 +384,14 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
                     {/* Actual Item Rows (No horizontal divider lines, all pure black text, NO note text) */}
                     {data.items.map((item, idx) => (
                       <tr key={idx} className="min-h-[34px] text-black">
-                        <td className="py-2 px-2 text-center font-mono text-black font-bold border-r border-slate-200 align-top">{idx + 1}</td>
-                        <td className="py-2 px-3 border-r border-slate-200 align-top">
+                        <td className="py-2 px-2 text-center font-mono text-black font-bold border-r border-slate-300 align-top">{idx + 1}</td>
+                        <td className="py-2 px-3 border-r border-slate-300 align-top">
                           <div className="font-bold text-black leading-snug">{item.name}</div>
                         </td>
-                        <td className="py-2 px-1.5 text-center font-bold text-black border-r border-slate-200 font-mono align-top">{item.quantity}</td>
-                        <td className="py-2 px-1.5 text-center text-black font-medium border-r border-slate-200 align-top">{item.unitName || 'ชิ้น'}</td>
-                        <td className="py-2 px-2 text-right font-mono text-black font-bold border-r border-slate-200 align-top">{formatCurrency(item.unitPrice)}</td>
-                        <td className="py-2 px-2 text-right font-mono text-black font-bold border-r border-slate-200 align-top">
+                        <td className="py-2 px-1.5 text-center font-bold text-black border-r border-slate-300 font-mono align-top">{item.quantity}</td>
+                        <td className="py-2 px-1.5 text-center text-black font-medium border-r border-slate-300 align-top">{item.unitName || 'ชิ้น'}</td>
+                        <td className="py-2 px-2 text-right font-mono text-black font-bold border-r border-slate-300 align-top">{formatCurrency(item.unitPrice)}</td>
+                        <td className="py-2 px-2 text-right font-mono text-black font-bold border-r border-slate-300 align-top">
                           {item.discountAmount && item.discountAmount > 0 ? `-${formatCurrency(item.discountAmount)}` : '-'}
                         </td>
                         <td className="py-2 px-2.5 text-right font-bold font-mono text-black align-top">{formatCurrency(item.lineTotal)}</td>
@@ -401,12 +401,12 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
                     {/* Fixed Vertical Grid Empty Rows (No horizontal dividers, only vertical column dividers) */}
                     {Array.from({ length: emptyRowsCount }).map((_, emptyIdx) => (
                       <tr key={`empty-${emptyIdx}`} className="h-[34px]">
-                        <td className="py-1.5 px-2 text-center border-r border-slate-200 text-transparent select-none">-</td>
-                        <td className="py-1.5 px-3 border-r border-slate-200 text-transparent select-none">-</td>
-                        <td className="py-1.5 px-1.5 text-center border-r border-slate-200 text-transparent select-none">-</td>
-                        <td className="py-1.5 px-1.5 text-center border-r border-slate-200 text-transparent select-none">-</td>
-                        <td className="py-1.5 px-2 text-right border-r border-slate-200 text-transparent select-none">-</td>
-                        <td className="py-1.5 px-2 text-right border-r border-slate-200 text-transparent select-none">-</td>
+                        <td className="py-1.5 px-2 text-center border-r border-slate-300 text-transparent select-none">-</td>
+                        <td className="py-1.5 px-3 border-r border-slate-300 text-transparent select-none">-</td>
+                        <td className="py-1.5 px-1.5 text-center border-r border-slate-300 text-transparent select-none">-</td>
+                        <td className="py-1.5 px-1.5 text-center border-r border-slate-300 text-transparent select-none">-</td>
+                        <td className="py-1.5 px-2 text-right border-r border-slate-300 text-transparent select-none">-</td>
+                        <td className="py-1.5 px-2 text-right border-r border-slate-300 text-transparent select-none">-</td>
                         <td className="py-1.5 px-2.5 text-right text-transparent select-none">-</td>
                       </tr>
                     ))}

@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, thaiBahtText } from '@/lib/utils';
 import { SupplierReturnNote } from '@/lib/types';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
@@ -178,132 +178,106 @@ export function SupplierReturnPdfModal({
               </div>
             </div>
 
-            {/* SECTION 1: Defective / Warranty RMA Items */}
-            {defectiveItems.length > 0 && (
-              <div className="space-y-1">
-                <div className="flex items-center justify-between border-b border-rose-200 pb-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                    <h4 className="font-extrabold text-slate-900 text-xs flex items-center gap-1">
-                      <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
-                      <span>หมวด 1: สินค้าชำรุด / เสียหาย (Defective Claims)</span>
-                    </h4>
-                  </div>
-                  <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
-                    {defectiveItems.length} รายการ
+            {/* ─── FIXED-HEIGHT RETURN ITEMS TABLE FRAME (Matching Payment Voucher) ─── */}
+            <div className="border border-slate-300 rounded-xl overflow-hidden min-h-[115mm] flex flex-col justify-between bg-white">
+              <table className="w-full h-full flex-1 border-collapse text-xs">
+                <thead className="bg-slate-100 text-slate-800 font-bold border-b-2 border-slate-300">
+                  <tr>
+                    <th className="py-2.5 px-2 text-center w-12 border-r border-slate-300">ลำดับ</th>
+                    <th className="py-2.5 px-3 text-center border-r border-slate-300">รายการสินค้า / รหัสสินค้า (SKU)</th>
+                    <th className="py-2.5 px-2.5 text-center w-48 border-r border-slate-300">หมวดหมู่ / อาการชำรุด / เหตุผล</th>
+                    <th className="py-2.5 px-2 text-center w-20 border-r border-slate-300">จำนวน</th>
+                    <th className="py-2.5 px-2.5 text-center w-24 border-r border-slate-300">ราคาทุน (฿)</th>
+                    <th className="py-2.5 px-3 text-center w-28">รวมทุน (฿)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Category 1: Defective Items */}
+                  {defectiveItems.map((item, idx) => (
+                    <tr key={`def-${idx}`} className="hover:bg-slate-50/50">
+                      <td className="py-2 px-2 text-center font-mono text-slate-500 border-r border-slate-300">{idx + 1}</td>
+                      <td className="py-2 px-3 border-r border-slate-300">
+                        <p className="font-bold text-slate-900 leading-tight">{item.productName}</p>
+                        <p className="text-[10px] text-slate-500 font-mono">SKU: {item.sku}</p>
+                        {item.claimId && (
+                          <p className="text-[9.5px] text-indigo-600 font-mono font-medium">ใบเคลม: #{item.claimId}</p>
+                        )}
+                      </td>
+                      <td className="py-2 px-2.5 text-rose-700 font-medium leading-tight border-r border-slate-300">
+                        <span className="inline-block bg-rose-50 text-rose-700 border border-rose-200 text-[10px] px-1.5 py-0.5 rounded font-bold mr-1">ชำรุด</span>
+                        {item.defectReason || 'สินค้าชำรุดจากการใช้งาน'}
+                      </td>
+                      <td className="py-2 px-2 text-center font-mono font-bold border-r border-slate-300">
+                        {item.quantity} {item.unitName || 'ชิ้น'}
+                      </td>
+                      <td className="py-2 px-2.5 text-right font-mono border-r border-slate-300">{formatCurrency(item.unitCost)}</td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                        {formatCurrency(item.totalCost)}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Category 2: Overstock Items */}
+                  {overstockItems.map((item, idx) => (
+                    <tr key={`ovs-${idx}`} className="hover:bg-slate-50/50">
+                      <td className="py-2 px-2 text-center font-mono text-slate-500 border-r border-slate-300">{defectiveItems.length + idx + 1}</td>
+                      <td className="py-2 px-3 border-r border-slate-300">
+                        <p className="font-bold text-slate-900 leading-tight">{item.productName}</p>
+                        <p className="text-[10px] text-slate-500 font-mono">SKU: {item.sku}</p>
+                      </td>
+                      <td className="py-2 px-2.5 text-sky-800 font-medium leading-tight border-r border-slate-300">
+                        <span className="inline-block bg-sky-50 text-sky-700 border border-sky-200 text-[10px] px-1.5 py-0.5 rounded font-bold mr-1">คืนสต็อก</span>
+                        {item.returnReason || 'สินค้าปกติขายไม่ออก / คืนสต็อก'}
+                      </td>
+                      <td className="py-2 px-2 text-center font-mono font-bold border-r border-slate-300">
+                        {item.quantity} {item.unitName || 'ชิ้น'}
+                      </td>
+                      <td className="py-2 px-2.5 text-right font-mono border-r border-slate-300">{formatCurrency(item.unitCost)}</td>
+                      <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                        {formatCurrency(item.totalCost)}
+                      </td>
+                    </tr>
+                  ))}
+
+                  {/* Empty Space Row: Vertical lines extend down to the bottom border with ZERO horizontal lines */}
+                  <tr className="h-full">
+                    <td className="py-2 px-2 border-r border-slate-300">&nbsp;</td>
+                    <td className="py-2 px-3 border-r border-slate-300">&nbsp;</td>
+                    <td className="py-2 px-2.5 border-r border-slate-300">&nbsp;</td>
+                    <td className="py-2 px-2 border-r border-slate-300">&nbsp;</td>
+                    <td className="py-2 px-2.5 border-r border-slate-300">&nbsp;</td>
+                    <td className="py-2 px-3">&nbsp;</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* Bottom of the table frame: Total Summary Bar */}
+              <div className="border-t-2 border-slate-300 bg-slate-50 p-3 space-y-1.5 shrink-0">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate-700 font-medium">
+                    จำนวนสินค้ารวม: <b className="text-slate-900 font-mono font-bold">{returnNote.totalQuantity} ชิ้น</b>
+                    {defectiveItems.length > 0 && overstockItems.length > 0 && (
+                      <span className="text-slate-500 ml-2">(ชำรุด {formatCurrency(defectiveTotal)} • ปกติ {formatCurrency(overstockTotal)})</span>
+                    )}
+                  </span>
+                  <span className="font-bold text-indigo-900 text-xs font-sans">
+                    ({thaiBahtText(returnNote.totalCreditAmount)})
                   </span>
                 </div>
-
-                <table className="w-full text-[10px] border border-slate-300">
-                  <thead className="bg-rose-50/70 text-slate-800 font-bold border-b-2 border-slate-300">
-                    <tr>
-                      <th className="p-1.5 text-center w-8 border-r border-slate-300">ลำดับ</th>
-                      <th className="p-1.5 text-center border-r border-slate-300">รายการสินค้า / SKU</th>
-                      <th className="p-1.5 text-center w-36 border-r border-slate-300">อาการชำรุด</th>
-                      <th className="p-1.5 text-center w-14 border-r border-slate-300">จำนวน</th>
-                      <th className="p-1.5 text-center w-20 border-r border-slate-300">ราคาทุน (฿)</th>
-                      <th className="p-1.5 text-center w-24">รวมทุน (฿)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {defectiveItems.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/60">
-                        <td className="p-1.5 text-center text-slate-500 border-r border-slate-300">{idx + 1}</td>
-                        <td className="p-1.5 border-r border-slate-300">
-                          <p className="font-bold text-slate-900 leading-tight">{item.productName}</p>
-                          <p className="text-[9px] text-slate-500 font-mono">SKU: {item.sku}</p>
-                          {item.claimId && (
-                            <p className="text-[9px] text-indigo-600 font-mono font-medium">ใบเคลม: #{item.claimId}</p>
-                          )}
-                        </td>
-                        <td className="p-1.5 text-rose-700 font-medium leading-tight border-r border-slate-300">
-                          {item.defectReason || 'สินค้าชำรุดจากการใช้งาน'}
-                        </td>
-                        <td className="p-1.5 text-center font-mono font-bold border-r border-slate-300">
-                          {item.quantity} {item.unitName || 'ชิ้น'}
-                        </td>
-                        <td className="p-1.5 text-right font-mono border-r border-slate-300">{formatCurrency(item.unitCost)}</td>
-                        <td className="p-1.5 text-right font-mono font-bold text-slate-900">
-                          {formatCurrency(item.totalCost)}
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="bg-rose-50/40 font-bold text-slate-900 border-t-2 border-slate-300">
-                      <td colSpan={5} className="p-1.5 text-right text-rose-900 border-r border-slate-300">
-                        รวมราคาทุนสินค้าชำรุด:
-                      </td>
-                      <td className="p-1.5 text-right font-mono text-rose-700">
-                        {formatCurrency(defectiveTotal)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* SECTION 2: Normal / Overstock / Unsold Items */}
-            {overstockItems.length > 0 && (
-              <div className="space-y-1 pt-1">
-                <div className="flex items-center justify-between border-b border-sky-200 pb-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-sky-500"></span>
-                    <h4 className="font-extrabold text-slate-900 text-xs flex items-center gap-1">
-                      <Package className="w-3.5 h-3.5 text-sky-600" />
-                      <span>หมวด 2: สินค้าปกติ / ขายไม่ออก / คืนสต็อก (Overstock Returns)</span>
-                    </h4>
-                  </div>
-                  <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200">
-                    {overstockItems.length} รายการ
+                <div className="flex justify-between items-center pt-1 border-t border-slate-200">
+                  <span className="font-black text-slate-900 text-sm">
+                    มูลค่าลดหนี้สุทธิที่หักจริง (Total Credit Amount):
+                  </span>
+                  <span className="font-black text-indigo-700 text-base font-mono">
+                    {formatCurrency(returnNote.totalCreditAmount)}
                   </span>
                 </div>
-
-                <table className="w-full text-[10px] border border-slate-300">
-                  <thead className="bg-sky-50/70 text-slate-800 font-bold border-b-2 border-slate-300">
-                    <tr>
-                      <th className="p-1.5 text-center w-8 border-r border-slate-300">ลำดับ</th>
-                      <th className="p-1.5 text-center border-r border-slate-300">รายการสินค้า / SKU</th>
-                      <th className="p-1.5 text-center w-36 border-r border-slate-300">เหตุผลการส่งคืน</th>
-                      <th className="p-1.5 text-center w-14 border-r border-slate-300">จำนวน</th>
-                      <th className="p-1.5 text-center w-20 border-r border-slate-300">ราคาทุน (฿)</th>
-                      <th className="p-1.5 text-center w-24">รวมทุน (฿)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200">
-                    {overstockItems.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/60">
-                        <td className="p-1.5 text-center text-slate-500 border-r border-slate-300">{idx + 1}</td>
-                        <td className="p-1.5 border-r border-slate-300">
-                          <p className="font-bold text-slate-900 leading-tight">{item.productName}</p>
-                          <p className="text-[9px] text-slate-500 font-mono">SKU: {item.sku}</p>
-                        </td>
-                        <td className="p-1.5 text-sky-800 font-medium leading-tight border-r border-slate-300">
-                          {item.returnReason || 'สินค้าปกติขายไม่ออก / คืนสต็อก'}
-                        </td>
-                        <td className="p-1.5 text-center font-mono font-bold border-r border-slate-300">
-                          {item.quantity} {item.unitName || 'ชิ้น'}
-                        </td>
-                        <td className="p-1.5 text-right font-mono border-r border-slate-300">{formatCurrency(item.unitCost)}</td>
-                        <td className="p-1.5 text-right font-mono font-bold text-slate-900">
-                          {formatCurrency(item.totalCost)}
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="bg-sky-50/40 font-bold text-slate-900 border-t-2 border-slate-300">
-                      <td colSpan={5} className="p-1.5 text-right text-sky-900 border-r border-slate-300">
-                        รวมราคาทุนสินค้าปกติ:
-                      </td>
-                      <td className="p-1.5 text-right font-mono text-sky-700">
-                        {formatCurrency(overstockTotal)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
               </div>
-            )}
+            </div>
 
-            {/* Grand Totals & Debt Deduction Reconciliation Box */}
-            <div className="grid grid-cols-2 gap-3 pt-1">
-              <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-[10px]">
+            {/* Notes & Deductions Summary Row */}
+            <div className="grid grid-cols-2 gap-3 pt-0.5">
+              <div className="space-y-1 bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-[10.5px]">
                 <p className="font-bold text-slate-700 flex items-center gap-1">
                   <Tag className="w-3 h-3 text-indigo-600" />
                   <span>หมายเหตุประกอบเอกสาร:</span>
@@ -311,9 +285,15 @@ export function SupplierReturnPdfModal({
                 <p className="text-slate-600 leading-relaxed italic">
                   {returnNote.notes || 'ส่งคืนสินค้าตามข้อตกลงเพื่อหักลดยอดหนี้ในใบเรียกเก็บเงิน/ใบสั่งซื้อของบริษัท'}
                 </p>
+              </div>
 
+              <div className="space-y-1 bg-indigo-50/40 p-2.5 rounded-lg border border-indigo-200 text-[10.5px]">
+                <div className="flex justify-between text-slate-600">
+                  <span>เครดิตคงเหลือที่ยังไม่ได้หัก:</span>
+                  <strong className="font-mono text-emerald-700 font-bold">{formatCurrency(returnNote.remainingCreditAmount)}</strong>
+                </div>
                 {returnNote.deductions && returnNote.deductions.length > 0 && (
-                  <div className="pt-1.5 border-t border-slate-200 space-y-0.5 text-[9.5px]">
+                  <div className="pt-1 border-t border-indigo-200 space-y-0.5 text-[9.5px]">
                     <span className="font-bold text-slate-700 block">ประวัติการตัดหนี้ในใบ PO:</span>
                     {returnNote.deductions.map((d, i) => (
                       <div key={i} className="flex justify-between text-slate-600">
@@ -323,42 +303,6 @@ export function SupplierReturnPdfModal({
                     ))}
                   </div>
                 )}
-              </div>
-
-              <div className="space-y-1 bg-indigo-50/50 p-2.5 rounded-lg border border-indigo-200 text-[10.5px]">
-                <div className="flex justify-between text-slate-600">
-                  <span>รวมจำนวนสินค้าที่ส่งคืน:</span>
-                  <span className="font-bold font-mono text-slate-900">{returnNote.totalQuantity} ชิ้น</span>
-                </div>
-                <div className="flex justify-between text-slate-600">
-                  <span>ยอดสินค้าชำรุด (หมวด 1):</span>
-                  <span className="font-mono text-slate-800">{formatCurrency(defectiveTotal)}</span>
-                </div>
-                <div className="flex justify-between text-slate-600">
-                  <span>ยอดสินค้าปกติ (หมวด 2):</span>
-                  <span className="font-mono text-slate-800">{formatCurrency(overstockTotal)}</span>
-                </div>
-                <div className="flex justify-between text-slate-600">
-                  <span>รวมราคาทุนสินค้าทั้งหมด:</span>
-                  <span className="font-mono text-slate-800">{formatCurrency(totalItemCost)}</span>
-                </div>
-                {Math.abs(totalItemCost - returnNote.totalCreditAmount) > 0.01 && (
-                  <div className="flex justify-between text-[10px] text-amber-900 font-bold bg-amber-50/80 px-1.5 py-0.2 rounded border border-amber-200">
-                    <span>ปรับยอดหักบิล / ส่วนลดท้ายบิล:</span>
-                    <span className="font-mono">
-                      {returnNote.totalCreditAmount < totalItemCost ? '-' : '+'}
-                      {formatCurrency(Math.abs(totalItemCost - returnNote.totalCreditAmount))}
-                    </span>
-                  </div>
-                )}
-                <div className="flex justify-between border-t border-indigo-200 pt-1 text-xs font-black text-indigo-950">
-                  <span>มูลค่าลดหนี้สุทธิที่หักจริง (Total Credit):</span>
-                  <span className="font-mono text-indigo-700 text-sm">{formatCurrency(returnNote.totalCreditAmount)}</span>
-                </div>
-                <div className="flex justify-between text-[10px] text-slate-600 pt-0.5 font-semibold">
-                  <span>เครดิตคงเหลือที่ยังไม่ได้หัก:</span>
-                  <span className="font-mono text-emerald-700">{formatCurrency(returnNote.remainingCreditAmount)}</span>
-                </div>
               </div>
             </div>
 
