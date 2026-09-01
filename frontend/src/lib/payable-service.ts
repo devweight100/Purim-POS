@@ -23,10 +23,13 @@ export interface PayablePaymentEntry {
 export interface SupplierPayableBill {
   poId: string;
   poNumber: string;
+  supplierInvoiceNo?: string; // เลขที่บิล / ใบกำกับภาษี / ใบส่งของ ของผู้จำหน่าย
+  supplierInvoiceDate?: string; // วันที่ในบิลผู้จำหน่าย
   supplierId: string;
   supplierName: string;
   supplierContact?: string;
   supplierPhone?: string;
+  supplierAddress?: string;
   billDate: string;
   status: string; // PO status: 'COMPLETED' | 'PARTIALLY_RECEIVED' | 'ISSUED'
   paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
@@ -45,6 +48,88 @@ export interface SupplierPayableBill {
     note?: string;
   }>;
   payments: PayablePaymentEntry[];
+}
+
+export interface PaymentVoucherBillItem {
+  poId: string;
+  poNumber: string;
+  supplierInvoiceNo?: string;
+  billDate: string;
+  totalBillAmount: number;
+  remainingBeforePay: number;
+  amountPaid: number; // ยอดที่ตัดชำระในบิลนี้
+}
+
+export interface PaymentVoucher {
+  id: string; // e.g. PV-20260901-0001
+  voucherNumber: string;
+  supplierId: string;
+  supplierName: string;
+  supplierContact?: string;
+  supplierPhone?: string;
+  supplierAddress?: string;
+  paymentDate: string;
+  bills: PaymentVoucherBillItem[]; // ทุกบิล/Invoice ที่ชำระในรอบนี้!
+  totalBillsAmount: number; // ผลรวมของยอดตัดจ่ายทุกบิล
+  deductedCreditAmount: number;
+  deductedNotes: Array<{
+    returnNoteId: string;
+    amount: number;
+  }>;
+  discountAmount?: number;
+  netPaidAmount: number; // เงินสด/โอน จ่ายจริงสุทธิ
+  paymentMethod: 'CASH' | 'TRANSFER' | 'CHEQUE' | 'OTHER';
+  bankAccountId?: string;
+  bankAccountLabel?: string;
+  referenceNo?: string;
+  note?: string;
+  cashierName: string;
+  createdAt: string;
+}
+
+const PAYMENT_VOUCHERS_KEY = 'pos_payment_vouchers';
+
+export function loadPaymentVouchers(): PaymentVoucher[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(PAYMENT_VOUCHERS_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    console.error('Error loading payment vouchers:', e);
+    return [];
+  }
+}
+
+export function savePaymentVouchers(vouchers: PaymentVoucher[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(PAYMENT_VOUCHERS_KEY, JSON.stringify(vouchers));
+  } catch (e) {
+    console.error('Error saving payment vouchers:', e);
+  }
+}
+
+export function getPaymentVoucherById(id: string): PaymentVoucher | undefined {
+  return loadPaymentVouchers().find((v) => v.id === id || v.voucherNumber === id);
+}
+
+export function updateBillInvoiceNo(
+  poId: string,
+  supplierInvoiceNo: string,
+  supplierInvoiceDate?: string
+): { success: boolean; message: string } {
+  const allPos = loadPurchaseOrders();
+  const po = allPos.find((p) => p.id === poId);
+  if (!po) return { success: false, message: 'ไม่พบใบสั่งซื้อ / บิลนี้' };
+
+  po.supplierInvoiceNo = supplierInvoiceNo.trim();
+  if (supplierInvoiceDate) {
+    po.supplierInvoiceDate = supplierInvoiceDate;
+  }
+  savePurchaseOrders(allPos);
+  return { success: true, message: 'บันทึกเลขที่บิลผู้จำหน่ายเรียบร้อยแล้ว' };
 }
 
 export function loadPayableBills(): SupplierPayableBill[] {
@@ -89,10 +174,13 @@ export function loadPayableBills(): SupplierPayableBill[] {
       return {
         poId: po.id,
         poNumber: po.poNumber,
+        supplierInvoiceNo: po.supplierInvoiceNo || po.invoiceNo || '',
+        supplierInvoiceDate: po.supplierInvoiceDate || po.invoiceDate || '',
         supplierId: po.supplierId || supp.id || 'supp_1',
         supplierName: po.supplierName || supp.name || 'ไม่ระบุผู้จำหน่าย',
         supplierContact: supp.contactName,
         supplierPhone: supp.phone,
+        supplierAddress: supp.address,
         billDate: po.createdAt || po.issueDate || po.issuedAt || new Date().toISOString(),
         status: po.status,
         paymentStatus,
@@ -130,6 +218,7 @@ export function settlePayableBill(params: SettlePayableParams): {
   message: string;
   paymentEntry?: PayablePaymentEntry;
   updatedBill?: SupplierPayableBill;
+  voucher?: PaymentVoucher;
 } {
   const allPos = loadPurchaseOrders();
   const targetPo = allPos.find((p) => p.id === params.poId);
@@ -225,10 +314,218 @@ export function settlePayableBill(params: SettlePayableParams): {
 
   savePurchaseOrders(allPos);
 
+  // 4. Also register a PaymentVoucher for unified history
+  const allVouchers = loadPaymentVouchers();
+  const dateStr = new Date(nowIso).toISOString().slice(0, 10).replace(/-/g, '');
+  const voucherCountToday = allVouchers.filter((v) => v.createdAt?.slice(0, 10).replace(/-/g, '') === dateStr).length;
+  const voucherNumber = `PV-${dateStr}-${String(voucherCountToday + 1).padStart(4, '0')}`;
+
+  const voucher: PaymentVoucher = {
+    id: `voucher_${Date.now()}`,
+    voucherNumber,
+    supplierId: targetPo.supplierId || targetPo.supplier?.id || 'supp_1',
+    supplierName: targetPo.supplierName || targetPo.supplier?.name || 'ไม่ระบุผู้จำหน่าย',
+    supplierContact: targetPo.supplier?.contactName,
+    supplierPhone: targetPo.supplier?.phone,
+    supplierAddress: targetPo.supplier?.address,
+    paymentDate: nowIso,
+    bills: [
+      {
+        poId: targetPo.id,
+        poNumber: targetPo.poNumber,
+        supplierInvoiceNo: targetPo.supplierInvoiceNo || targetPo.invoiceNo || '',
+        billDate: targetPo.createdAt || targetPo.issueDate || targetPo.issuedAt || nowIso,
+        totalBillAmount: totalAmount,
+        remainingBeforePay: totalAmount,
+        amountPaid: netPaidCashOrTransfer,
+      },
+    ],
+    totalBillsAmount: totalAmount,
+    deductedCreditAmount: totalDebitDeducted,
+    deductedNotes: deductedNotesRecord,
+    discountAmount: billDiscount > 0 ? billDiscount : undefined,
+    netPaidAmount: netPaidCashOrTransfer,
+    paymentMethod: params.paymentMethod,
+    bankAccountId: params.bankAccountId,
+    bankAccountLabel: params.bankAccountLabel,
+    referenceNo: params.referenceNo,
+    note: params.note,
+    cashierName: params.cashierName || 'เจ้าหน้าที่การเงิน',
+    createdAt: nowIso,
+  };
+
+  allVouchers.unshift(voucher);
+  savePaymentVouchers(allVouchers);
+
   return {
     success: true,
     message: `บันทึกการชำระเงินบิล ${targetPo.poNumber} สำเร็จ`,
     paymentEntry,
+    voucher,
+  };
+}
+
+export interface SettleMultipleBillsParams {
+  supplierId: string;
+  supplierName?: string;
+  billsToSettle: Array<{
+    poId: string;
+    amountToPay: number;
+  }>;
+  matchedDebitNotes: Array<{
+    returnNoteId: string;
+    amountToDeduct: number;
+  }>;
+  discountAmount?: number;
+  netCashOrTransferAmount: number;
+  paymentMethod: 'CASH' | 'TRANSFER' | 'CHEQUE' | 'OTHER';
+  bankAccountId?: string;
+  bankAccountLabel?: string;
+  referenceNo?: string;
+  note?: string;
+  cashierName?: string;
+  paymentDate?: string;
+}
+
+export function settleMultipleBills(params: SettleMultipleBillsParams): {
+  success: boolean;
+  message: string;
+  voucher?: PaymentVoucher;
+} {
+  const allPos = loadPurchaseOrders();
+  const allReturnNotes = loadSupplierReturnNotes();
+  const allVouchers = loadPaymentVouchers();
+  const suppliers = loadSuppliers();
+  const supp = suppliers.find((s) => s.id === params.supplierId);
+
+  const nowIso = params.paymentDate || new Date().toISOString();
+  const dateStr = new Date(nowIso).toISOString().slice(0, 10).replace(/-/g, '');
+  const voucherCountToday = allVouchers.filter((v) => v.createdAt?.slice(0, 10).replace(/-/g, '') === dateStr).length;
+  const voucherNumber = `PV-${dateStr}-${String(voucherCountToday + 1).padStart(4, '0')}`;
+  const voucherId = `voucher_${Date.now()}`;
+
+  // 1. Process matched Debit Notes
+  let totalDebitDeducted = 0;
+  const deductedNotesRecord: Array<{ returnNoteId: string; amount: number }> = [];
+
+  for (const match of params.matchedDebitNotes) {
+    if (match.amountToDeduct <= 0) continue;
+    const note = allReturnNotes.find((n) => n.id === match.returnNoteId);
+    if (!note) continue;
+
+    const actualDeduct = Math.min(match.amountToDeduct, note.remainingCreditAmount);
+    if (actualDeduct <= 0) continue;
+
+    note.remainingCreditAmount = Math.max(0, Math.round((note.remainingCreditAmount - actualDeduct) * 100) / 100);
+    note.status = note.remainingCreditAmount <= 0 ? 'DEDUCTED' : 'PARTIALLY_DEDUCTED';
+
+    note.deductions = [
+      ...(note.deductions || []),
+      {
+        billNumber: voucherNumber,
+        deductedAmount: actualDeduct,
+        deductedAt: nowIso,
+        netPaid: params.netCashOrTransferAmount,
+        note: `ประกบหักในใบสำคัญจ่าย ${voucherNumber}`,
+      },
+    ];
+
+    totalDebitDeducted += actualDeduct;
+    deductedNotesRecord.push({ returnNoteId: note.id, amount: actualDeduct });
+  }
+
+  saveSupplierReturnNotes(allReturnNotes);
+
+  // 2. Process each PO / Bill
+  const voucherBillItems: PaymentVoucherBillItem[] = [];
+  let totalBillsSettledAmount = 0;
+
+  for (const b of params.billsToSettle) {
+    if (b.amountToPay <= 0) continue;
+    const targetPo = allPos.find((p) => p.id === b.poId);
+    if (!targetPo) continue;
+
+    const poTotal = Number(targetPo.totalAmount || 0);
+    const prevDeducted = (targetPo.deductedReturns || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+    const prevPaid = (targetPo.payments || []).reduce((s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0), 0);
+    const prevDiscount = (targetPo.payments || []).reduce((s: number, p: any) => s + Number(p.discountAmount || 0), 0);
+    const remainingBefore = Math.max(0, Math.round((poTotal - prevDeducted - prevPaid - prevDiscount) * 100) / 100);
+
+    const actualPayForThisPo = Math.min(b.amountToPay, remainingBefore);
+
+    const paymentEntry: PayablePaymentEntry = {
+      id: `PAY-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      paymentDate: nowIso,
+      paymentMethod: params.paymentMethod,
+      totalBillAmount: poTotal,
+      deductedCreditAmount: 0,
+      netCashOrTransferPaid: actualPayForThisPo,
+      deductedNotes: [],
+      bankAccountId: params.bankAccountId,
+      bankAccountLabel: params.bankAccountLabel,
+      referenceNo: params.referenceNo || voucherNumber,
+      note: `ชำระตามใบสำคัญจ่าย ${voucherNumber}` + (params.note ? ` (${params.note})` : ''),
+      cashierName: params.cashierName || 'เจ้าหน้าที่การเงิน',
+    };
+
+    targetPo.payments = [...(targetPo.payments || []), paymentEntry];
+
+    const updatedPaid = (targetPo.payments || []).reduce((s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0), 0);
+    targetPo.netAmountPayable = Math.max(0, Math.round((poTotal - prevDeducted - updatedPaid - prevDiscount) * 100) / 100);
+
+    if (targetPo.netAmountPayable <= 0) {
+      targetPo.paymentStatus = 'PAID';
+    } else {
+      targetPo.paymentStatus = 'PARTIALLY_PAID';
+    }
+
+    voucherBillItems.push({
+      poId: targetPo.id,
+      poNumber: targetPo.poNumber,
+      supplierInvoiceNo: targetPo.supplierInvoiceNo || targetPo.invoiceNo || '',
+      billDate: targetPo.createdAt || targetPo.issueDate || targetPo.issuedAt || nowIso,
+      totalBillAmount: poTotal,
+      remainingBeforePay: remainingBefore,
+      amountPaid: actualPayForThisPo,
+    });
+
+    totalBillsSettledAmount += actualPayForThisPo;
+  }
+
+  savePurchaseOrders(allPos);
+
+  // 3. Create Unified Payment Voucher
+  const voucher: PaymentVoucher = {
+    id: voucherId,
+    voucherNumber,
+    supplierId: params.supplierId,
+    supplierName: params.supplierName || supp?.name || 'ไม่ระบุผู้จำหน่าย',
+    supplierContact: supp?.contactName,
+    supplierPhone: supp?.phone,
+    supplierAddress: supp?.address,
+    paymentDate: nowIso,
+    bills: voucherBillItems,
+    totalBillsAmount: totalBillsSettledAmount,
+    deductedCreditAmount: totalDebitDeducted,
+    deductedNotes: deductedNotesRecord,
+    discountAmount: params.discountAmount && params.discountAmount > 0 ? params.discountAmount : undefined,
+    netPaidAmount: params.netCashOrTransferAmount,
+    paymentMethod: params.paymentMethod,
+    bankAccountId: params.bankAccountId,
+    bankAccountLabel: params.bankAccountLabel,
+    referenceNo: params.referenceNo,
+    note: params.note,
+    cashierName: params.cashierName || 'เจ้าหน้าที่การเงิน',
+    createdAt: nowIso,
+  };
+
+  allVouchers.unshift(voucher);
+  savePaymentVouchers(allVouchers);
+
+  return {
+    success: true,
+    message: `สร้างใบชำระหนี้ ${voucherNumber} สำเร็จ (${voucherBillItems.length} บิล)`,
+    voucher,
   };
 }
 

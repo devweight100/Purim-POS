@@ -5,19 +5,31 @@ import Link from 'next/link';
 import { 
   Building2, Receipt, DollarSign, Plus, Search, Filter, 
   CreditCard, Banknote, ShieldAlert, CheckCircle2, Clock, 
-  ArrowLeftRight, FileText, Printer, Eye, ChevronRight, RefreshCw, AlertCircle, RotateCcw, XCircle
+  ArrowLeftRight, FileText, Printer, Eye, ChevronRight, RefreshCw, AlertCircle, RotateCcw, XCircle,
+  Edit3
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { 
   loadPayableBills, 
   SupplierPayableBill, 
   PayablePaymentEntry,
+  PaymentVoucher,
+  loadPaymentVouchers,
+  updateBillInvoiceNo,
   rollbackPayableBillPayment,
   cancelPayableBill
 } from '@/lib/payable-service';
@@ -27,6 +39,7 @@ import {
 } from '@/lib/supplier-return-service';
 import { SupplierReturnNote } from '@/lib/types';
 import { SettlePayableModal } from '@/components/payables/SettlePayableModal';
+import { SettleMultipleBillsModal } from '@/components/payables/SettleMultipleBillsModal';
 import { PaymentVoucherModal } from '@/components/payables/PaymentVoucherModal';
 import { PayableBillDetailsModal } from '@/components/payables/PayableBillDetailsModal';
 
@@ -34,6 +47,7 @@ export default function PayablesPage() {
   const [bills, setBills] = useState<SupplierPayableBill[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [returnNotes, setReturnNotes] = useState<SupplierReturnNote[]>([]);
+  const [paymentVouchers, setPaymentVouchers] = useState<PaymentVoucher[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
@@ -41,16 +55,28 @@ export default function PayablesPage() {
   const [supplierFilter, setSupplierFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  // Modals
+  // Multi-Bill Settle
+  const [selectedPoIds, setSelectedPoIds] = useState<string[]>([]);
+  const [isMultiSettleModalOpen, setIsMultiSettleModalOpen] = useState(false);
+  const [multiSettleSupplierId, setMultiSettleSupplierId] = useState<string | undefined>(undefined);
+
+  // Single Bill Settle
   const [selectedBillForSettle, setSelectedBillForSettle] = useState<SupplierPayableBill | null>(null);
   const [isSettleModalOpen, setIsSettleModalOpen] = useState(false);
 
+  // Voucher Modal
+  const [selectedVoucherForModal, setSelectedVoucherForModal] = useState<PaymentVoucher | null>(null);
   const [selectedPaymentForVoucher, setSelectedPaymentForVoucher] = useState<PayablePaymentEntry | null>(null);
   const [selectedBillForVoucher, setSelectedBillForVoucher] = useState<SupplierPayableBill | null>(null);
   const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
 
+  // Details Modal
   const [selectedBillForDetails, setSelectedBillForDetails] = useState<SupplierPayableBill | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+
+  // Quick edit invoice no dialog
+  const [editingInvoicePoId, setEditingInvoicePoId] = useState<string | null>(null);
+  const [editingInvoiceValue, setEditingInvoiceValue] = useState<string>('');
 
   const refreshData = () => {
     setLoading(true);
@@ -63,6 +89,9 @@ export default function PayablesPage() {
 
       const notes = loadSupplierReturnNotes();
       setReturnNotes(notes);
+
+      const vouchers = loadPaymentVouchers();
+      setPaymentVouchers(vouchers);
     } catch (e) {
       console.error('Failed to load payables data:', e);
     } finally {
@@ -82,7 +111,38 @@ export default function PayablesPage() {
   const handleOpenVoucher = (bill: SupplierPayableBill, payment: PayablePaymentEntry) => {
     setSelectedBillForVoucher(bill);
     setSelectedPaymentForVoucher(payment);
+    setSelectedVoucherForModal(null);
     setIsVoucherModalOpen(true);
+  };
+
+  const handleOpenVoucherDirect = (voucher: PaymentVoucher) => {
+    setSelectedVoucherForModal(voucher);
+    setSelectedBillForVoucher(null);
+    setSelectedPaymentForVoucher(null);
+    setIsVoucherModalOpen(true);
+  };
+
+  const handleSaveInlineInvoice = (poId: string) => {
+    if (!editingInvoiceValue.trim()) {
+      setEditingInvoicePoId(null);
+      return;
+    }
+    const res = updateBillInvoiceNo(poId, editingInvoiceValue.trim());
+    if (res.success) {
+      toast.success(res.message);
+      refreshData();
+    }
+    setEditingInvoicePoId(null);
+  };
+
+  const handleToggleSelectPo = (poId: string) => {
+    setSelectedPoIds((prev) => {
+      if (prev.includes(poId)) {
+        return prev.filter(id => id !== poId);
+      } else {
+        return [...prev, poId];
+      }
+    });
   };
 
   const handleOpenDetails = (bill: SupplierPayableBill) => {
@@ -177,6 +237,20 @@ export default function PayablesPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              setMultiSettleSupplierId(undefined);
+              setSelectedPoIds([]);
+              setIsMultiSettleModalOpen(true);
+            }}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white h-10 px-4 text-xs font-bold shadow-sm gap-1.5 rounded-xl"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ สร้างใบชำระหนี้ (หลายบิล)</span>
+          </Button>
+
           <Link href="/supplier-returns">
             <Button
               variant="outline"
@@ -344,46 +418,102 @@ export default function PayablesPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-sm">
                     <tr>
-                      <th className="py-3.5 px-3.5 text-center w-16">ลำดับ</th>
-                      <th className="py-3.5 px-3.5 text-left w-36">เลขที่ PO</th>
-                      <th className="py-3.5 px-3.5 text-center w-36">วันที่บิล</th>
-                      <th className="py-3.5 px-3.5 text-left">บริษัทผู้จำหน่าย</th>
-                      <th className="py-3.5 px-3.5 text-right font-bold text-sm">ยอดหนี้ตามบิล</th>
-                      <th className="py-3.5 px-3.5 text-right font-bold text-sm">ส่วนลดท้ายบิล</th>
-                      <th className="py-3.5 px-3.5 text-right font-bold text-sm">ประกบใบลดหนี้</th>
-                      <th className="py-3.5 px-3.5 text-right font-bold text-sm">จ่ายเงินแล้ว</th>
-                      <th className="py-3.5 px-3.5 text-right font-bold text-sm">หนี้คงเหลือสุทธิ</th>
-                      <th className="py-3.5 px-3.5 text-center font-bold text-sm">สถานะ</th>
-                      <th className="py-3.5 px-3.5 text-center font-bold text-sm whitespace-nowrap">การจัดการ</th>
+                      <th className="py-3.5 px-3 text-center w-12">
+                        <Checkbox
+                          checked={
+                            filteredBills.filter(b => b.remainingPayable > 0).length > 0 &&
+                            selectedPoIds.length === filteredBills.filter(b => b.remainingPayable > 0).length
+                          }
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              const unpaid = filteredBills.filter(b => b.remainingPayable > 0);
+                              setSelectedPoIds(unpaid.map(b => b.poId));
+                            } else {
+                              setSelectedPoIds([]);
+                            }
+                          }}
+                        />
+                      </th>
+                      <th className="py-3.5 px-2 text-center w-12">#</th>
+                      <th className="py-3.5 px-3.5 text-left min-w-[170px]">เลขที่บิลผู้จำหน่าย (Invoice)</th>
+                      <th className="py-3.5 px-3 text-left w-32">เลขที่ PO</th>
+                      <th className="py-3.5 px-3 text-center w-28">วันที่บิล</th>
+                      <th className="py-3.5 px-3 text-left">บริษัทผู้จำหน่าย</th>
+                      <th className="py-3.5 px-3 text-right font-bold text-sm">ยอดหนี้ตามบิล</th>
+                      <th className="py-3.5 px-2.5 text-right font-bold text-sm">ส่วนลด</th>
+                      <th className="py-3.5 px-2.5 text-right font-bold text-sm">ประกบลดหนี้</th>
+                      <th className="py-3.5 px-2.5 text-right font-bold text-sm">จ่ายแล้ว</th>
+                      <th className="py-3.5 px-3 text-right font-bold text-sm">หนี้คงเหลือสุทธิ</th>
+                      <th className="py-3.5 px-2.5 text-center font-bold text-sm">สถานะ</th>
+                      <th className="py-3.5 px-3 text-center font-bold text-sm whitespace-nowrap">การจัดการ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredBills.map((bill, idx) => (
                       <tr key={bill.poId} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                        <td className="py-3.5 px-3 text-center">
+                          {bill.remainingPayable > 0 ? (
+                            <Checkbox
+                              checked={selectedPoIds.includes(bill.poId)}
+                              onCheckedChange={() => handleToggleSelectPo(bill.poId)}
+                            />
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                        </td>
+
+                        <td className="py-3.5 px-2 text-center font-mono font-bold text-slate-500 text-sm">
                           {idx + 1}
                         </td>
 
-                        <td className="py-3.5 px-3.5 font-mono">
-                          <span className="font-bold text-slate-900 text-[15px] block">{bill.poNumber}</span>
+                        <td className="py-3.5 px-3.5">
+                          <div className="flex items-center gap-1.5">
+                            {bill.supplierInvoiceNo ? (
+                              <span className="font-mono font-bold text-indigo-900 text-[13px] bg-indigo-50/80 px-2 py-0.5 rounded border border-indigo-100">
+                                {bill.supplierInvoiceNo}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 italic text-xs">ยังไม่ระบุเลขที่บิล</span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingInvoicePoId(bill.poId);
+                                setEditingInvoiceValue(bill.supplierInvoiceNo || '');
+                              }}
+                              title="ระบุหรือแก้ไขเลขที่บิล Invoice"
+                              className="text-slate-400 hover:text-indigo-600 p-1 hover:bg-slate-100 rounded"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          {bill.supplierInvoiceDate && (
+                            <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                              ลงวันที่: {new Date(bill.supplierInvoiceDate).toLocaleDateString('th-TH')}
+                            </p>
+                          )}
                         </td>
 
-                        <td className="py-3.5 px-3.5 text-center font-mono text-xs text-slate-600">
+                        <td className="py-3.5 px-3 font-mono">
+                          <span className="font-bold text-slate-900 text-[14px] block">{bill.poNumber}</span>
+                        </td>
+
+                        <td className="py-3.5 px-3 text-center font-mono text-xs text-slate-600">
                           {new Date(bill.billDate).toLocaleDateString('th-TH')}
                         </td>
 
-                        <td className="py-3 px-3.5">
-                          <p className="font-bold text-slate-900 text-[15px]">{bill.supplierName}</p>
+                        <td className="py-3 px-3">
+                          <p className="font-bold text-slate-900 text-[14px]">{bill.supplierName}</p>
                           {bill.supplierPhone && (
                             <p className="text-xs text-slate-400 font-mono mt-0.5">{bill.supplierPhone}</p>
                           )}
                         </td>
 
-                        <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-800 text-sm sm:text-[15px]">
+                        <td className="py-3 px-3 text-right font-mono font-bold text-slate-800 text-sm sm:text-[14px]">
                           {formatCurrency(bill.totalAmount)}
                         </td>
 
-                        <td className="py-3 px-3.5 text-right font-mono text-sm sm:text-[15px]">
+                        <td className="py-3 px-2.5 text-right font-mono text-sm sm:text-[14px]">
                           {bill.alreadyDiscountAmount > 0 ? (
                             <span className="text-amber-700 font-bold">
                               {formatCurrency(bill.alreadyDiscountAmount)}
@@ -393,7 +523,7 @@ export default function PayablesPage() {
                           )}
                         </td>
 
-                        <td className="py-3 px-3.5 text-right font-mono text-sm sm:text-[15px]">
+                        <td className="py-3 px-2.5 text-right font-mono text-sm sm:text-[14px]">
                           {bill.alreadyDeductedReturns > 0 ? (
                             <span className="text-indigo-600 font-bold">
                               {formatCurrency(bill.alreadyDeductedReturns)}
@@ -403,7 +533,7 @@ export default function PayablesPage() {
                           )}
                         </td>
 
-                        <td className="py-3 px-3.5 text-right font-mono text-sm sm:text-[15px]">
+                        <td className="py-3 px-2.5 text-right font-mono text-sm sm:text-[14px]">
                           {bill.alreadyPaidAmount > 0 ? (
                             <span className="text-emerald-700 font-bold">
                               {formatCurrency(bill.alreadyPaidAmount)}
@@ -413,7 +543,7 @@ export default function PayablesPage() {
                           )}
                         </td>
 
-                        <td className="py-3 px-3.5 text-right font-mono font-black text-[15px] sm:text-base">
+                        <td className="py-3 px-3 text-right font-mono font-black text-[14px] sm:text-[15px]">
                           {bill.remainingPayable > 0 ? (
                             <span className="text-amber-700">
                               {formatCurrency(bill.remainingPayable)}
@@ -425,7 +555,7 @@ export default function PayablesPage() {
                           )}
                         </td>
 
-                        <td className="py-3 px-3.5 text-center">
+                        <td className="py-3 px-2.5 text-center">
                           {bill.paymentStatus === 'PAID' ? (
                             <Badge className="bg-emerald-600 text-white font-bold text-xs px-2.5 py-1">ชำระครบแล้ว</Badge>
                           ) : bill.paymentStatus === 'PARTIALLY_PAID' ? (
@@ -437,7 +567,7 @@ export default function PayablesPage() {
                           )}
                         </td>
 
-                        <td className="py-3 px-3.5 text-center">
+                        <td className="py-3 px-3 text-center">
                           <div className="flex items-center justify-center gap-1 flex-nowrap whitespace-nowrap">
                             <Button
                               size="sm"
@@ -458,7 +588,7 @@ export default function PayablesPage() {
                                 className="h-8 px-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs gap-1 shadow-xs shrink-0"
                               >
                                 <Receipt className="w-3.5 h-3.5" />
-                                <span>ชำระหนี้</span>
+                                <span>ชำระเงิน</span>
                               </Button>
                             )}
 
@@ -510,6 +640,41 @@ export default function PayablesPage() {
               </div>
             )}
           </div>
+
+          {/* Floating Sticky Multi-Bill Action Bar */}
+          {selectedPoIds.length > 0 && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3.5 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-4 z-50 animate-in fade-in slide-in-from-bottom-5 max-w-[90vw]">
+              <div className="flex items-center gap-2.5">
+                <Badge className="bg-indigo-500 text-white font-mono text-xs px-2.5 py-0.5 font-bold">
+                  {selectedPoIds.length} บิล
+                </Badge>
+                <span className="text-xs sm:text-sm font-bold text-slate-200">
+                  เลือกบิลแล้ว ยอดรวม: <strong className="text-amber-400 font-mono">{formatCurrency(bills.filter(b => selectedPoIds.includes(b.poId)).reduce((s, b) => s + b.remainingPayable, 0))}</strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const firstBill = bills.find(b => selectedPoIds.includes(b.poId));
+                    setMultiSettleSupplierId(firstBill?.supplierId);
+                    setIsMultiSettleModalOpen(true);
+                  }}
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 px-4 rounded-xl gap-1.5 shadow-sm"
+                >
+                  <Receipt className="w-4 h-4" />
+                  <span>สร้างใบชำระหนี้ (ออกใบสำคัญจ่าย)</span>
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedPoIds([])}
+                  className="text-xs text-slate-400 hover:text-white underline px-2 py-1"
+                >
+                  ยกเลิก
+                </button>
+              </div>
+            </div>
+          )}
         </TabsContent>
 
         {/* TAB 2: SUMMARY BY SUPPLIER */}
@@ -557,14 +722,18 @@ export default function PayablesPage() {
                     </div>
                   </div>
 
-                  {firstOpenBill ? (
+                  {suppBills.filter((b) => b.remainingPayable > 0).length > 0 ? (
                     <Button
                       type="button"
-                      onClick={() => handleOpenSettle(firstOpenBill)}
+                      onClick={() => {
+                        setMultiSettleSupplierId(supp.id);
+                        setSelectedPoIds(suppBills.filter(b => b.remainingPayable > 0).map(b => b.poId));
+                        setIsMultiSettleModalOpen(true);
+                      }}
                       className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-9 text-xs rounded-xl shadow-xs gap-1.5"
                     >
                       <Receipt className="w-3.5 h-3.5" />
-                      <span>ประกบลดหนี้ & ชำระเงินบิล ({firstOpenBill.poNumber})</span>
+                      <span>ชำระหนี้รอบบิล ({suppBills.filter((b) => b.remainingPayable > 0).length} บิล)</span>
                     </Button>
                   ) : (
                     <p className="text-center text-xs text-emerald-600 font-bold py-1">
@@ -580,11 +749,99 @@ export default function PayablesPage() {
         {/* TAB 3: PAYMENT HISTORY & VOUCHERS */}
         <TabsContent value="history" className="space-y-4 m-0">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            {bills.flatMap((b) => (b.payments || []).map((p) => ({ ...p, bill: b }))).length === 0 ? (
+            {paymentVouchers.length === 0 && bills.flatMap((b) => (b.payments || []).map((p) => ({ ...p, bill: b }))).length === 0 ? (
               <div className="p-12 text-center text-slate-400 space-y-2">
                 <FileText className="w-12 h-12 text-slate-300 mx-auto" />
                 <p className="text-base font-bold text-slate-700">ยังไม่มีประวัติการชำระเงินเจ้าหนี้</p>
-                <p className="text-xs sm:text-sm text-slate-400">เมื่อมีการประกบใบลดหนี้และบันทึกจ่ายเงิน ใบสำคัญจ่ายจะปรากฏที่นี่</p>
+                <p className="text-xs sm:text-sm text-slate-400">เมื่อมีการบันทึกชำระหนี้ ใบสำคัญจ่ายจะปรากฏที่นี่ และสามารถเปิดดูหรือพิมพ์ย้อนหลังได้ตลอดเวลา</p>
+              </div>
+            ) : paymentVouchers.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-xs sm:text-[13px]">
+                    <tr>
+                      <th className="py-3.5 px-3.5 text-left">เลขที่สำคัญจ่าย / วันที่</th>
+                      <th className="py-3.5 px-3.5 text-left">บิลและ Invoice ที่จ่าย</th>
+                      <th className="py-3.5 px-3.5 text-left">บริษัทผู้จำหน่าย</th>
+                      <th className="py-3.5 px-3.5 text-right">ยอดหนี้รวม</th>
+                      <th className="py-3.5 px-3.5 text-right">ส่วนลดท้ายบิล</th>
+                      <th className="py-3.5 px-3.5 text-right">หักใบลดหนี้</th>
+                      <th className="py-3.5 px-3.5 text-right">ยอดจ่ายจริงสุทธิ</th>
+                      <th className="py-3.5 px-3.5 text-center">วิธีชำระ</th>
+                      <th className="py-3.5 px-3.5 text-center whitespace-nowrap">การจัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {paymentVouchers.map((voucher) => (
+                      <tr key={voucher.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-3 px-3.5 font-mono">
+                          <span className="font-bold text-indigo-700 text-sm block">{voucher.voucherNumber}</span>
+                          <span className="text-xs text-slate-500 block mt-0.5">
+                            {new Date(voucher.paymentDate).toLocaleDateString('th-TH')}
+                          </span>
+                        </td>
+
+                        <td className="py-3 px-3.5">
+                          <div className="space-y-1">
+                            <Badge variant="outline" className="text-[11px] font-mono font-bold bg-slate-50">
+                              {voucher.bills.length} บิล
+                            </Badge>
+                            <div className="flex flex-wrap gap-1 max-w-xs">
+                              {voucher.bills.map((b, i) => (
+                                <span key={i} className="text-[11px] font-mono bg-indigo-50/70 text-indigo-900 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">
+                                  {b.supplierInvoiceNo || b.poNumber}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-3.5 font-bold text-slate-900 text-sm">
+                          {voucher.supplierName}
+                        </td>
+
+                        <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-800">
+                          {formatCurrency(voucher.totalBillsAmount)}
+                        </td>
+
+                        <td className="py-3 px-3.5 text-right font-mono text-amber-700 font-bold">
+                          {voucher.discountAmount && voucher.discountAmount > 0 ? formatCurrency(voucher.discountAmount) : '-'}
+                        </td>
+
+                        <td className="py-3 px-3.5 text-right font-mono text-indigo-700 font-bold">
+                          {voucher.deductedCreditAmount > 0 ? formatCurrency(voucher.deductedCreditAmount) : '-'}
+                        </td>
+
+                        <td className="py-3 px-3.5 text-right font-mono text-emerald-700 font-black text-sm sm:text-base">
+                          {formatCurrency(voucher.netPaidAmount)}
+                        </td>
+
+                        <td className="py-3 px-3.5 text-center">
+                          <Badge variant="outline" className="text-xs font-semibold px-2.5 py-0.5">
+                            {voucher.paymentMethod === 'CASH'
+                              ? '💵 เงินสด'
+                              : voucher.paymentMethod === 'TRANSFER'
+                              ? '📱 โอนเงิน'
+                              : '💳 อื่นๆ'}
+                          </Badge>
+                        </td>
+
+                        <td className="py-3 px-3.5 text-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleOpenVoucherDirect(voucher)}
+                            className="h-8 px-2.5 rounded-xl border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs gap-1 shrink-0"
+                            title="ดูและพิมพ์ใบสำคัญจ่าย A4 ย้อนหลัง"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>ใบสำคัญจ่าย (A4)</span>
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -690,7 +947,7 @@ export default function PayablesPage() {
         onReload={refreshData}
       />
 
-      {/* Settle Payable & Match Debit Note Modal */}
+      {/* Single Bill Settle Modal */}
       <SettlePayableModal
         open={isSettleModalOpen}
         onOpenChange={setIsSettleModalOpen}
@@ -703,13 +960,74 @@ export default function PayablesPage() {
         }}
       />
 
+      {/* Multi-Bill Settle Modal */}
+      <SettleMultipleBillsModal
+        open={isMultiSettleModalOpen}
+        onOpenChange={setIsMultiSettleModalOpen}
+        allBills={bills}
+        initialSupplierId={multiSettleSupplierId}
+        preSelectedPoIds={selectedPoIds}
+        onSuccess={(voucher) => {
+          refreshData();
+          setSelectedPoIds([]);
+          setSelectedVoucherForModal(voucher);
+          setSelectedBillForVoucher(null);
+          setSelectedPaymentForVoucher(null);
+          setIsVoucherModalOpen(true);
+        }}
+      />
+
       {/* Payment Voucher Modal */}
       <PaymentVoucherModal
         open={isVoucherModalOpen}
         onOpenChange={setIsVoucherModalOpen}
+        voucher={selectedVoucherForModal}
         paymentEntry={selectedPaymentForVoucher}
         bill={selectedBillForVoucher}
       />
+
+      {/* Quick Edit Invoice No Dialog */}
+      <Dialog open={!!editingInvoicePoId} onOpenChange={(open) => { if (!open) setEditingInvoicePoId(null); }}>
+        <DialogContent className="bg-white max-w-md rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <FileText className="w-5 h-5 text-indigo-600" />
+              <span>ระบุ / แก้ไขเลขที่บิลผู้จำหน่าย (Invoice No.)</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-xs text-slate-500">
+              เลขที่บิลหรือใบส่งของที่ผู้จำหน่ายแนบมากับสินค้า เพื่อใช้ในการตรวจสอบและวางบิล
+            </p>
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">เลขที่บิล Invoice / DO No.</label>
+              <Input
+                value={editingInvoiceValue}
+                onChange={(e) => setEditingInvoiceValue(e.target.value)}
+                placeholder="เช่น INV-670123 หรือ DO-9912"
+                className="font-mono font-bold"
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setEditingInvoicePoId(null)}>
+              ยกเลิก
+            </Button>
+            <Button
+              size="sm"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+              onClick={() => {
+                if (editingInvoicePoId) {
+                  handleSaveInlineInvoice(editingInvoicePoId);
+                }
+              }}
+            >
+              บันทึกเลขที่บิล
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

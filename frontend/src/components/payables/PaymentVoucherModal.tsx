@@ -15,7 +15,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { formatCurrency, thaiBahtText } from '@/lib/utils';
-import { PayablePaymentEntry, SupplierPayableBill } from '@/lib/payable-service';
+import { PayablePaymentEntry, SupplierPayableBill, PaymentVoucher } from '@/lib/payable-service';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
 import { toast } from 'sonner';
@@ -23,13 +23,15 @@ import { toast } from 'sonner';
 interface PaymentVoucherModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  paymentEntry: PayablePaymentEntry | null;
-  bill: SupplierPayableBill | null;
+  voucher?: PaymentVoucher | null;
+  paymentEntry?: PayablePaymentEntry | null;
+  bill?: SupplierPayableBill | null;
 }
 
 export function PaymentVoucherModal({
   open,
   onOpenChange,
+  voucher,
   paymentEntry,
   bill,
 }: PaymentVoucherModalProps) {
@@ -37,11 +39,46 @@ export function PaymentVoucherModal({
   const [isExporting, setIsExporting] = useState(false);
   const [storeSettings] = useState(() => loadStoreSettings());
 
-  if (!paymentEntry || !bill) return null;
+  // Consolidate into unified voucher data
+  const data: PaymentVoucher | null = voucher || (paymentEntry && bill ? {
+    id: paymentEntry.id,
+    voucherNumber: paymentEntry.id,
+    supplierId: bill.supplierId,
+    supplierName: bill.supplierName,
+    supplierContact: bill.supplierContact,
+    supplierPhone: bill.supplierPhone,
+    supplierAddress: bill.supplierAddress,
+    paymentDate: paymentEntry.paymentDate,
+    bills: [
+      {
+        poId: bill.poId,
+        poNumber: bill.poNumber,
+        supplierInvoiceNo: bill.supplierInvoiceNo || '',
+        billDate: bill.billDate,
+        totalBillAmount: paymentEntry.totalBillAmount,
+        remainingBeforePay: paymentEntry.totalBillAmount,
+        amountPaid: paymentEntry.netCashOrTransferPaid,
+      }
+    ],
+    totalBillsAmount: paymentEntry.totalBillAmount,
+    deductedCreditAmount: paymentEntry.deductedCreditAmount || 0,
+    deductedNotes: paymentEntry.deductedNotes || [],
+    discountAmount: paymentEntry.discountAmount,
+    netPaidAmount: paymentEntry.netCashOrTransferPaid,
+    paymentMethod: paymentEntry.paymentMethod,
+    bankAccountId: paymentEntry.bankAccountId,
+    bankAccountLabel: paymentEntry.bankAccountLabel,
+    referenceNo: paymentEntry.referenceNo,
+    note: paymentEntry.note,
+    cashierName: paymentEntry.cashierName || 'เจ้าหน้าที่การเงิน',
+    createdAt: paymentEntry.paymentDate,
+  } : null);
+
+  if (!data) return null;
 
   const handlePrint = () => {
     if (!docRef.current) return;
-    printDocumentIframe(docRef.current, `ใบสำคัญจ่าย - ${paymentEntry.id}`, 'a4');
+    printDocumentIframe(docRef.current, `ใบสำคัญจ่าย - ${data.voucherNumber}`, 'a4');
   };
 
   const handleDownloadPdf = async () => {
@@ -49,7 +86,7 @@ export function PaymentVoucherModal({
     setIsExporting(true);
     toast.loading('กำลังสร้างไฟล์ PDF...', { id: 'voucher-pdf-gen' });
     try {
-      const filename = `PaymentVoucher_${paymentEntry.id}.pdf`;
+      const filename = `PaymentVoucher_${data.voucherNumber}.pdf`;
       const success = await exportElementToPdf(docRef.current, filename, 'a4');
       if (success) {
         toast.success('ดาวน์โหลดใบสำคัญจ่าย (PDF) สำเร็จเรียบร้อย', { id: 'voucher-pdf-gen' });
@@ -74,7 +111,7 @@ export function PaymentVoucherModal({
               <span>ตัวอย่างใบสำคัญจ่าย (Payment Voucher Preview)</span>
             </DialogTitle>
             <Badge variant="outline" className="font-mono text-xs px-2.5 py-0.5 bg-white font-bold text-indigo-700 border-indigo-200">
-              {paymentEntry.id}
+              {data.voucherNumber}
             </Badge>
           </div>
         </DialogHeader>
@@ -127,9 +164,9 @@ export function PaymentVoucherModal({
                     PAYMENT VOUCHER
                   </p>
                   <div className="pt-1 text-[10.5px] space-y-0.5 font-mono">
-                    <p><span className="text-slate-500 font-sans">เลขที่เอกสาร:</span> <b className="text-indigo-700 font-bold">{paymentEntry.id}</b></p>
-                    <p><span className="text-slate-500 font-sans">วันที่จ่ายเงิน:</span> <b>{new Date(paymentEntry.paymentDate).toLocaleDateString('th-TH')}</b></p>
-                    <p><span className="text-slate-500 font-sans">อ้างอิงใบสั่งซื้อ (PO):</span> <b className="text-amber-800 font-bold">{bill.poNumber}</b></p>
+                    <p><span className="text-slate-500 font-sans">เลขที่เอกสาร:</span> <b className="text-indigo-700 font-bold">{data.voucherNumber}</b></p>
+                    <p><span className="text-slate-500 font-sans">วันที่จ่ายเงิน:</span> <b>{new Date(data.paymentDate).toLocaleDateString('th-TH')}</b></p>
+                    <p><span className="text-slate-500 font-sans">จำนวนบิลที่จ่าย:</span> <b className="text-amber-800 font-bold">{data.bills.length} บิล</b></p>
                   </div>
                 </div>
               </div>
@@ -140,9 +177,10 @@ export function PaymentVoucherModal({
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
                     จ่ายให้แก่ผู้จำหน่าย (Payee / Supplier):
                   </span>
-                  <p className="font-extrabold text-slate-900 text-sm">{bill.supplierName}</p>
-                  {bill.supplierContact && <p className="text-slate-600">ผู้ติดต่อ: {bill.supplierContact}</p>}
-                  {bill.supplierPhone && <p className="text-slate-600 font-mono">โทร: {bill.supplierPhone}</p>}
+                  <p className="font-extrabold text-slate-900 text-sm">{data.supplierName}</p>
+                  {data.supplierContact && <p className="text-slate-600">ผู้ติดต่อ: {data.supplierContact}</p>}
+                  {data.supplierPhone && <p className="text-slate-600 font-mono">โทร: {data.supplierPhone}</p>}
+                  {data.supplierAddress && <p className="text-slate-500 text-[10px]">{data.supplierAddress}</p>}
                 </div>
 
                 <div className="space-y-1 pl-2">
@@ -151,21 +189,21 @@ export function PaymentVoucherModal({
                   </span>
                   <div className="flex items-center gap-2">
                     <Badge className="bg-emerald-600 text-white font-bold text-xs px-2 py-0.5">
-                      {paymentEntry.paymentMethod === 'CASH'
+                      {data.paymentMethod === 'CASH'
                         ? '💵 ชำระด้วยเงินสด (Cash)'
-                        : paymentEntry.paymentMethod === 'TRANSFER'
+                        : data.paymentMethod === 'TRANSFER'
                         ? '📱 โอนเงินผ่านธนาคาร (Bank Transfer)'
                         : '💳 เช็ค / อื่นๆ'}
                     </Badge>
                   </div>
-                  {paymentEntry.bankAccountLabel && (
+                  {data.bankAccountLabel && (
                     <p className="text-slate-700 text-[11px] font-medium mt-0.5">
-                      บัญชี: <span className="font-mono">{paymentEntry.bankAccountLabel}</span>
+                      บัญชี: <span className="font-mono">{data.bankAccountLabel}</span>
                     </p>
                   )}
-                  {paymentEntry.referenceNo && (
+                  {data.referenceNo && (
                     <p className="text-slate-500 text-[10.5px] font-mono">
-                      เลขอ้างอิง / สลิปโอน: {paymentEntry.referenceNo}
+                      เลขอ้างอิง / สลิปโอน: {data.referenceNo}
                     </p>
                   )}
                 </div>
@@ -178,26 +216,40 @@ export function PaymentVoucherModal({
                   <thead className="bg-slate-100 text-slate-800 font-bold border-b-2 border-slate-300">
                     <tr>
                       <th className="py-2.5 px-3 text-center w-14 border-r border-slate-300">ลำดับ</th>
-                      <th className="py-2.5 px-3 text-center border-r border-slate-300">รายการ / รายละเอียดการตัดจ่ายหนี้</th>
+                      <th className="py-2.5 px-3 text-center border-r border-slate-300">รายการบิล / เลขที่ Invoice / อ้างอิง PO</th>
                       <th className="py-2.5 px-3 text-center w-44">จำนวนเงิน (บาท)</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {/* Row 1: Bill Amount */}
-                    <tr className="hover:bg-slate-50/50">
-                      <td className="py-2.5 px-3 text-center font-mono text-slate-500 border-r border-slate-300">1</td>
-                      <td className="py-2.5 px-3 border-r border-slate-300">
-                        <p className="font-bold text-slate-900">ชำระค่าสินค้าตามใบสั่งซื้อเลขที่ {bill.poNumber}</p>
-                        <p className="text-[10.5px] text-slate-500">วันที่เปิดบิลสั่งซื้อ: {new Date(bill.billDate).toLocaleDateString('th-TH')}</p>
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
-                        {formatCurrency(paymentEntry.totalBillAmount)}
-                      </td>
-                    </tr>
+                    {/* Bill Item Rows */}
+                    {data.bills.map((b, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50/50">
+                        <td className="py-2.5 px-3 text-center font-mono text-slate-500 border-r border-slate-300">{idx + 1}</td>
+                        <td className="py-2.5 px-3 border-r border-slate-300">
+                          <p className="font-bold text-slate-900">
+                            ชำระค่าสินค้าตามบิล Invoice: {b.supplierInvoiceNo ? (
+                              <span className="text-indigo-700 font-mono font-bold">{b.supplierInvoiceNo}</span>
+                            ) : (
+                              <span className="text-slate-400 font-normal italic">ไม่ระบุเลขที่บิล</span>
+                            )}
+                            <span className="text-slate-500 font-normal ml-2 font-mono text-[11px]">(PO: {b.poNumber})</span>
+                          </p>
+                          <p className="text-[10.5px] text-slate-500">
+                            วันที่ในบิล: {new Date(b.billDate).toLocaleDateString('th-TH')}
+                            {b.totalBillAmount > b.amountPaid && (
+                              <span className="text-amber-800 font-medium ml-2">• ยอดบิลเต็ม: {formatCurrency(b.totalBillAmount)} (ตัดจ่ายครั้งนี้)</span>
+                            )}
+                          </p>
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                          {formatCurrency(b.amountPaid)}
+                        </td>
+                      </tr>
+                    ))}
 
                     {/* Deducted Debit Notes */}
-                    {paymentEntry.deductedNotes.map((dn, idx) => (
-                      <tr key={idx} className="bg-indigo-50/30">
+                    {data.deductedNotes.map((dn, idx) => (
+                      <tr key={`dn-${idx}`} className="bg-indigo-50/30">
                         <td className="py-2.5 px-3 text-center font-bold text-indigo-600 border-r border-slate-300">-</td>
                         <td className="py-2.5 px-3 border-r border-slate-300 text-indigo-950">
                           <p className="font-bold">หักประกบใบลดหนี้เลขที่ {dn.returnNoteId}</p>
@@ -210,7 +262,7 @@ export function PaymentVoucherModal({
                     ))}
 
                     {/* Bill Discount */}
-                    {paymentEntry.discountAmount && paymentEntry.discountAmount > 0 && (
+                    {data.discountAmount && data.discountAmount > 0 && (
                       <tr className="bg-amber-50/30">
                         <td className="py-2.5 px-3 text-center font-bold text-amber-700 border-r border-slate-300">%</td>
                         <td className="py-2.5 px-3 border-r border-slate-300 text-amber-950">
@@ -218,7 +270,7 @@ export function PaymentVoucherModal({
                           <p className="text-[10.5px] text-amber-700">ส่วนลดเจรจาการค้าตามข้อตกลง</p>
                         </td>
                         <td className="py-2.5 px-3 text-right font-mono font-bold text-amber-700">
-                          -{formatCurrency(paymentEntry.discountAmount)}
+                          -{formatCurrency(data.discountAmount)}
                         </td>
                       </tr>
                     )}
@@ -234,10 +286,20 @@ export function PaymentVoucherModal({
 
                 {/* Bottom of the table frame: Total Summary bar */}
                 <div className="border-t-2 border-slate-300 bg-slate-50 p-3 space-y-1.5">
+                  {data.bills.length > 1 && (
+                    <div className="flex justify-between items-center text-xs pb-1 border-b border-slate-200">
+                      <span className="text-slate-600">
+                        รวมยอดบิลที่ตัดจ่ายทั้งหมด ({data.bills.length} ใบ):
+                      </span>
+                      <span className="font-mono font-bold text-slate-800">
+                        {formatCurrency(data.totalBillsAmount)}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center">
                     <span className="font-bold text-slate-700 text-xs">จำนวนเงินตัวอักษร:</span>
                     <span className="font-bold text-indigo-900 text-xs font-sans">
-                      ({thaiBahtText(paymentEntry.netCashOrTransferPaid)})
+                      ({thaiBahtText(data.netPaidAmount)})
                     </span>
                   </div>
                   <div className="flex justify-between items-center pt-1 border-t border-slate-200">
@@ -245,16 +307,16 @@ export function PaymentVoucherModal({
                       ยอดเงินสุทธิที่จ่ายจริง (Net Paid Amount):
                     </span>
                     <span className="font-black text-emerald-800 text-base font-mono">
-                      {formatCurrency(paymentEntry.netCashOrTransferPaid)}
+                      {formatCurrency(data.netPaidAmount)}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {paymentEntry.note && (
+              {data.note && (
                 <div className="text-[11px] text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200 space-y-0.5">
                   <span className="font-bold text-slate-800 block">หมายเหตุเพิ่มเติม:</span>
-                  <p className="whitespace-pre-wrap leading-relaxed">{paymentEntry.note}</p>
+                  <p className="whitespace-pre-wrap leading-relaxed">{data.note}</p>
                 </div>
               )}
             </div>
@@ -277,14 +339,14 @@ export function PaymentVoucherModal({
                   <p className="font-bold text-slate-800">ผู้รับเงิน / ผู้แทนจำหน่าย (Received By)</p>
                   <div className="border-b border-dashed border-slate-400 w-52 mx-auto"></div>
                   <div className="text-[10.5px] text-slate-500 space-y-0.5">
-                    <p>( {bill.supplierName} )</p>
+                    <p>( {data.supplierName} )</p>
                     <p>วันที่: ......./......./............</p>
                   </div>
                 </div>
               </div>
 
               <div className="pt-4 flex justify-between items-center text-[10.5px] text-slate-600 border-t border-slate-200 mt-4">
-                <span>ผู้จัดทำเอกสาร: <b className="text-slate-900 font-sans">{paymentEntry.cashierName || 'เจ้าหน้าที่การเงิน'}</b></span>
+                <span>ผู้จัดทำเอกสาร: <b className="text-slate-900 font-sans">{data.cashierName || 'เจ้าหน้าที่การเงิน'}</b></span>
                 <span className="font-mono text-slate-400 text-[9.5px]">เอกสารนี้ออกโดยระบบอัตโนมัติ Purim POS • พิมพ์เมื่อ {new Date().toLocaleString('th-TH')}</span>
               </div>
             </div>

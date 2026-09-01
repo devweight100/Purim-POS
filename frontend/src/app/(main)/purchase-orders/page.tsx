@@ -183,6 +183,8 @@ export default function PurchaseOrdersPage() {
   // Receive Dialog
   const [isReceiveOpen, setIsReceiveOpen] = useState(false);
   const [receiveItems, setReceiveItems] = useState<any[]>([]);
+  const [receiveSupplierInvoiceNo, setReceiveSupplierInvoiceNo] = useState<string>('');
+  const [receiveSupplierInvoiceDate, setReceiveSupplierInvoiceDate] = useState<string>('');
 
   // Under-Receive Confirmation State (เมื่อรับสินค้าไม่ครบตามใบสั่งซื้อ)
   const [isUnderReceiveModalOpen, setIsUnderReceiveModalOpen] = useState(false);
@@ -841,6 +843,8 @@ export default function PurchaseOrdersPage() {
     });
 
     setReceiveItems(items);
+    setReceiveSupplierInvoiceNo(po.supplierInvoiceNo || po.invoiceNo || '');
+    setReceiveSupplierInvoiceDate(po.supplierInvoiceDate || po.invoiceDate || new Date().toISOString().slice(0, 10));
     setIsReceiveOpen(true);
   };
 
@@ -980,6 +984,8 @@ export default function PurchaseOrdersPage() {
             vatAmount: newVatAmount,
             totalAmount: newTotalAmount,
             netAmount: newTotalAmount,
+            supplierInvoiceNo: receiveSupplierInvoiceNo.trim() || po.supplierInvoiceNo || '',
+            supplierInvoiceDate: receiveSupplierInvoiceDate || po.supplierInvoiceDate || '',
             receivedAt: new Date().toISOString(),
             statusHistory: [...(po.statusHistory || []), historyEntry],
           };
@@ -991,6 +997,8 @@ export default function PurchaseOrdersPage() {
             ...po,
             status: newPoStatus,
             items: updatedItems,
+            supplierInvoiceNo: receiveSupplierInvoiceNo.trim() || po.supplierInvoiceNo || '',
+            supplierInvoiceDate: receiveSupplierInvoiceDate || po.supplierInvoiceDate || '',
             receivedAt: new Date().toISOString(),
           };
           return updatedTargetPo;
@@ -2125,6 +2133,33 @@ export default function PurchaseOrdersPage() {
               <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold">ขั้นตอนการตรวจรับสินค้า (GRN):</span> ตรวจสอบจำนวนสินค้าจริงที่มาส่ง หากจำนวนไม่ตรงกับใบสั่งซื้อ สามารถปรับแก้ตัวเลขในช่อง <b>"รับเพิ่มครั้งนี้"</b> ได้ทันที เมื่อกดยืนยันระบบจะนำจำนวนที่ได้รับจริงไป <b>เพิ่มสต็อกสินค้าในคลังให้อัตโนมัติ</b>
+              </div>
+            </div>
+
+            {/* Supplier Invoice Information Card */}
+            <div className="bg-slate-50/90 border border-slate-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-4 shadow-2xs">
+              <div>
+                <label className="text-xs font-bold text-slate-800 block mb-1">
+                  เลขที่บิล / ใบกำกับภาษี / ใบส่งของของผู้จำหน่าย (Supplier Invoice / DO No.)
+                </label>
+                <Input
+                  placeholder="เช่น INV-670123 หรือ DO-8899"
+                  value={receiveSupplierInvoiceNo}
+                  onChange={(e) => setReceiveSupplierInvoiceNo(e.target.value)}
+                  className="bg-white border-slate-300 h-9 text-xs font-mono font-bold text-slate-900"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">ใช้ประกบคู่กับ PO เพื่อนำไปจับคู่ชำระเงินในระบบเจ้าหนี้การค้า</p>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-800 block mb-1">
+                  วันที่ในบิลผู้จำหน่าย (Invoice Date)
+                </label>
+                <Input
+                  type="date"
+                  value={receiveSupplierInvoiceDate}
+                  onChange={(e) => setReceiveSupplierInvoiceDate(e.target.value)}
+                  className="bg-white border-slate-300 h-9 text-xs text-slate-800"
+                />
               </div>
             </div>
 
