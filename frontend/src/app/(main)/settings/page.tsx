@@ -26,6 +26,7 @@ import {
   StoreSettings, 
   DEFAULT_STORE_SETTINGS 
 } from "@/lib/store-settings-storage";
+import { ThermalReceiptView, SAMPLE_RECEIPT_DATA } from "@/components/pos/ThermalReceiptView";
 import { formatCurrency } from "@/lib/utils";
 
 export default function SettingsPage() {
@@ -379,159 +380,20 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
               <Eye className="w-4 h-4 text-indigo-600" />
-              <span className="text-sm font-bold text-slate-900">ตัวอย่างสลิปแบบเรียลไทม์ (Live Slip Preview)</span>
+              <span className="text-sm font-bold text-slate-900">ตัวอย่างสลิปใบเสร็จจริงหน้าขาย (Live Real-Time Preview)</span>
             </div>
             <Badge variant="outline" className="text-[10.5px] bg-emerald-50 text-emerald-700 border-emerald-300 gap-1 font-bold">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Real-time
             </Badge>
           </div>
 
-          <div className="bg-slate-200/80 p-4 sm:p-5 rounded-2xl border border-slate-300 flex justify-center shadow-inner">
-            {/* The 80mm Mock Slip Paper */}
-            <div className="w-[300px] bg-white text-slate-900 px-4 py-5 shadow-xl font-mono text-[11px] leading-snug rounded-sm space-y-3 border-t-4 border-indigo-600 relative overflow-hidden select-none">
-              {/* Paper header notch indicator */}
-              <div className="text-center space-y-1 pb-2 border-b border-dashed border-slate-400">
-                <div className="flex items-center justify-center gap-1.5 font-bold text-sm font-sans text-slate-900">
-                  <Store className="w-4 h-4 text-indigo-600 shrink-0" />
-                  <span className="truncate">{settings.storeName || 'ชื่อร้านค้าของคุณ'}</span>
-                </div>
-
-                {settings.branchName && (
-                  <p className="text-[10px] text-slate-600 font-sans">
-                    สาขา: {settings.branchName}
-                  </p>
-                )}
-
-                {settings.taxId && (
-                  <p className="text-[10px] text-slate-600 font-mono">
-                    เลขผู้เสียภาษี: {settings.taxId}
-                  </p>
-                )}
-
-                <p className="text-[9.5px] text-slate-500 font-sans leading-tight whitespace-pre-wrap">
-                  {settings.storeAddress || 'ที่อยู่ร้านค้าจะแสดงที่นี่'}
-                </p>
-
-                {settings.storePhone && (
-                  <p className="text-[10px] text-slate-600 font-mono">
-                    โทร: {settings.storePhone}
-                  </p>
-                )}
-
-                {settings.storeEmail && (
-                  <p className="text-[9.5px] text-slate-500 font-sans">
-                    {settings.storeEmail}
-                  </p>
-                )}
-
-                {/* Live Custom Header Display */}
-                {settings.receiptHeader && (
-                  <div className="pt-1.5 pb-0.5">
-                    <div className="bg-indigo-50/80 border border-dashed border-indigo-300 rounded px-2 py-1 text-[10px] text-indigo-900 font-sans font-medium whitespace-pre-wrap leading-relaxed">
-                      {settings.receiptHeader}
-                    </div>
-                  </div>
-                )}
-
-                <div className="pt-1">
-                  <span className="text-[11px] font-black border border-slate-900 px-2 py-0.5 rounded font-sans inline-block text-slate-900 uppercase">
-                    ใบเสร็จรับเงิน (บิลตัวอย่าง)
-                  </span>
-                </div>
-              </div>
-
-              {/* Bill Details */}
-              <div className="text-[10px] space-y-0.5 pb-2 border-b border-dashed border-slate-400">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">เลขที่บิล:</span>
-                  <span className="font-bold font-mono">ORD-20260901-001</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">วันที่:</span>
-                  <span>01/09/2026 10:30</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">แคชเชียร์:</span>
-                  <span>แอดมิน (POS-01)</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">ลูกค้า:</span>
-                  <span className="font-bold text-slate-900">ลูกค้าทั่วไป</span>
-                </div>
-              </div>
-
-              {/* Sample Items */}
-              <div className="space-y-1.5 py-1 border-b border-dashed border-slate-400">
-                <div className="flex justify-between text-[10px] font-bold border-b border-slate-200 pb-0.5 text-slate-700">
-                  <span className="w-1/2">รายการ</span>
-                  <span className="w-1/6 text-center">จำนวน</span>
-                  <span className="w-1/3 text-right">รวม</span>
-                </div>
-
-                <div className="text-[10px] space-y-0.5">
-                  <div className="font-bold text-slate-900">1. กาแฟสดปุริม คลาสสิก</div>
-                  <div className="flex justify-between text-slate-600 text-[9px] pl-2">
-                    <span>1 แก้ว x 55.00</span>
-                    <span className="font-bold text-slate-900">55.00</span>
-                  </div>
-                </div>
-
-                <div className="text-[10px] space-y-0.5">
-                  <div className="font-bold text-slate-900">2. ขนมปังปิ้งเนยนมสด</div>
-                  <div className="flex justify-between text-slate-600 text-[9px] pl-2">
-                    <span>2 ชิ้น x 25.00</span>
-                    <span className="font-bold text-slate-900">50.00</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Totals */}
-              <div className="space-y-0.5 text-[10px] pb-2 border-b border-dashed border-slate-400">
-                <div className="flex justify-between text-slate-600">
-                  <span>ยอดรวม (Subtotal):</span>
-                  <span>105.00</span>
-                </div>
-                <div className="flex justify-between text-slate-500 text-[9.5px]">
-                  <span>ภาษีมูลค่าเพิ่ม ({settings.vatRate || 7}%):</span>
-                  <span>6.87</span>
-                </div>
-                <div className="flex justify-between text-xs font-black text-slate-900 pt-1 border-t border-slate-200">
-                  <span>ยอดสุทธิ (Total):</span>
-                  <span className="text-sm">฿105.00</span>
-                </div>
-                <div className="flex justify-between text-slate-700 pt-1">
-                  <span>ชำระด้วยเงินสด:</span>
-                  <span>฿105.00</span>
-                </div>
-              </div>
-
-              {/* Live Custom Footer Display */}
-              <div className="text-center pt-1 space-y-1.5">
-                {settings.receiptFooter ? (
-                  <div className="bg-amber-50/80 border border-dashed border-amber-300 rounded px-2.5 py-1.5 text-[9.5px] text-amber-950 font-sans font-medium whitespace-pre-wrap leading-relaxed">
-                    {settings.receiptFooter}
-                  </div>
-                ) : (
-                  <p className="text-[9px] text-slate-400 italic">
-                    (ยังไม่ได้กำหนดข้อความส่วนท้ายใบเสร็จ)
-                  </p>
-                )}
-
-                {/* Realistic Barcode */}
-                <div className="pt-2 flex flex-col items-center">
-                  <div className="font-mono text-base tracking-[0.25em] font-black text-slate-800 select-none">
-                    ||||| | |||| || ||| | |||
-                  </div>
-                  <span className="text-[8.5px] text-slate-400 font-mono mt-0.5">ORD-20260901-001</span>
-                </div>
-              </div>
-
-              {/* Paper zigzag bottom cut aesthetic */}
-              <div className="absolute -bottom-1 left-0 right-0 h-2 bg-slate-200/80 [mask-image:radial-gradient(circle,transparent_2px,black_2px)] [mask-size:6px_4px]"></div>
-            </div>
+          <div className="bg-slate-200/70 p-4 sm:p-5 rounded-2xl border border-slate-300 flex justify-center shadow-inner overflow-x-auto">
+            {/* The EXACT SAME Thermal Receipt View component as used in POS sales modal */}
+            <ThermalReceiptView data={SAMPLE_RECEIPT_DATA} settings={settings} />
           </div>
+
           <p className="text-[11px] text-center text-slate-500 font-sans">
-            💡 ข้อความหัว-ท้ายใบเสร็จ และข้อมูลร้านค้าที่ตั้งค่านี้ จะถูกนำไปพิมพ์ลงบนใบเสร็จสลิปและเอกสารจริงทุกฉบับ
+            💡 ตัวอย่างสลิปด้านบนนี้ ใช้แม่แบบเดียวกับใบเสร็จจริงหน้าขาย 100% (WYSIWYG) เมื่อพิมพ์ออกมาจะได้แบบนี้ทุกประการ
           </p>
         </div>
       </div>
