@@ -93,8 +93,8 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
     ? Math.max(0, receiptAmount - data.vatAmount) 
     : receiptAmount;
 
-  // Fix vertical table height: minimum 10 rows filled so position below stays constant!
-  const MIN_ROWS = 10;
+  // Fix vertical table height: minimum 15 rows filled so position below stays constant and fills A4!
+  const MIN_ROWS = 15;
   const emptyRowsCount = Math.max(0, MIN_ROWS - (data.items?.length || 0));
 
   const generatePdfBlob = async () => {

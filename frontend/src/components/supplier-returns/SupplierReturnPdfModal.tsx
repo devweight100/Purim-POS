@@ -178,8 +178,8 @@ export function SupplierReturnPdfModal({
               </div>
             </div>
 
-            {/* ─── FIXED-HEIGHT RETURN ITEMS TABLE FRAME (Matching Payment Voucher) ─── */}
-            <div className="border border-slate-300 rounded-xl overflow-hidden min-h-[115mm] flex flex-col justify-between bg-white">
+            {/* ─── FIXED-HEIGHT RETURN ITEMS TABLE FRAME (Expanded by 5 lines to fill A4 sheet) ─── */}
+            <div className="border border-slate-300 rounded-xl overflow-hidden min-h-[155mm] flex flex-col justify-between bg-white">
               <table className="w-full h-full flex-1 border-collapse text-xs">
                 <thead className="bg-slate-100 text-slate-800 font-bold border-b-2 border-slate-300">
                   <tr>

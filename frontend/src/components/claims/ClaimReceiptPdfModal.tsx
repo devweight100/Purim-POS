@@ -362,7 +362,7 @@ export function ClaimReceiptPdfModal({
                   {/* Formal Itemized Claims Table */}
                   <div className="space-y-1.5 pt-2">
                     <span className="font-bold text-xs text-slate-900">1. รายการสินค้าที่นำมาเคลม (Claimed Items)</span>
-                    <div className="border border-slate-300 rounded-xl overflow-hidden min-h-[55mm] flex flex-col justify-between bg-white">
+                    <div className="border border-slate-300 rounded-xl overflow-hidden min-h-[95mm] flex flex-col justify-between bg-white">
                       <table className="w-full h-full flex-1 border-collapse text-xs">
                         <thead>
                           <tr className="bg-slate-100 font-bold text-slate-800 border-b-2 border-slate-300">
