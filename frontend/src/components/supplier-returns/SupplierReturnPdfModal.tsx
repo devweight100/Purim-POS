@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { formatCurrency } from '@/lib/utils';
 import { SupplierReturnNote } from '@/lib/types';
+import { loadStoreSettings } from '@/lib/store-settings-storage';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -32,6 +33,7 @@ export function SupplierReturnPdfModal({
 }: SupplierReturnPdfModalProps) {
   const docRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const storeSettings = loadStoreSettings();
 
   if (!returnNote) return null;
 
@@ -62,23 +64,25 @@ export function SupplierReturnPdfModal({
             <style>
               body {
                 font-family: 'Prompt', 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif;
-                margin: 0;
-                padding: 6mm;
+                margin: 0 auto;
+                padding: 4mm 6mm;
                 background: #fff;
                 color: #0f172a;
                 font-size: 11px;
                 line-height: 1.35;
+                max-width: 210mm;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
               }
               @page {
                 size: A4 portrait;
-                margin: 6mm;
+                margin: 8mm;
               }
               table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
               tr { page-break-inside: avoid; page-break-after: auto; }
               th, td { border: 1px solid #cbd5e1; padding: 4px 6px; font-size: 10px; }
-              th { background-color: #f8fafc; font-weight: 700; }
+              th { background-color: #f8fafc !important; font-weight: 700; }
+              .a4-doc-sheet { width: 100% !important; max-width: 100% !important; box-shadow: none !important; border: none !important; padding: 0 !important; }
             </style>
           </head>
           <body>
@@ -164,25 +168,32 @@ export function SupplierReturnPdfModal({
           </div>
         </DialogHeader>
 
-        {/* Scrollable Printable Document Preview (Optimized strictly for A4) */}
-        <div className="flex-1 overflow-y-auto pr-1 py-2 flex justify-center">
+        {/* Scrollable Printable Document Preview (A4 Sheet Preview) */}
+        <div className="flex-1 overflow-y-auto pr-1 py-4 flex justify-center bg-slate-200/70 rounded-2xl border border-slate-300">
           <div
             ref={docRef}
-            className="w-full max-w-[740px] bg-white border border-slate-200 rounded-xl p-5 shadow-sm text-slate-800 text-[11px] space-y-3.5"
+            className="a4-doc-sheet w-[210mm] max-w-[210mm] min-h-[297mm] bg-white border border-slate-300 rounded-sm p-8 sm:p-10 shadow-2xl text-slate-800 text-[11.5px] space-y-4 box-border select-none"
+            style={{ width: '210mm', maxWidth: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
           >
             {/* Store & Document Header */}
-            <div className="flex justify-between items-start border-b border-slate-200 pb-3">
-              <div className="space-y-0.5 max-w-[58%]">
+            <div className="flex justify-between items-start border-b-2 border-slate-800 pb-3.5">
+              <div className="space-y-1 max-w-[58%]">
                 <div className="flex items-center gap-2">
                   <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white font-black flex items-center justify-center text-xs">
                     P
                   </div>
-                  <h2 className="text-base font-black text-slate-900">ร้านปุริม POS</h2>
+                  <h2 className="text-base font-black text-slate-900">{storeSettings.storeName || 'ร้านปุริม POS'}</h2>
                 </div>
-                <p className="text-slate-600 text-[10px] leading-tight">
-                  123/45 ถ.มิตรภาพ ต.ในเมือง อ.เมือง จ.ขอนแก่น 40000 | โทร: 081-234-5678<br />
-                  เลขประจำตัวผู้เสียภาษี: 0405562001234
+                {storeSettings.branchName && (
+                  <p className="text-[10.5px] text-slate-600 font-medium">สาขา: {storeSettings.branchName}</p>
+                )}
+                <p className="text-slate-600 text-[10.5px] leading-tight">
+                  {storeSettings.storeAddress}
                 </p>
+                <div className="text-[10.5px] text-slate-600 flex flex-wrap gap-x-3">
+                  {storeSettings.taxId && <span><b>เลขผู้เสียภาษี:</b> {storeSettings.taxId}</span>}
+                  {storeSettings.storePhone && <span><b>โทร:</b> {storeSettings.storePhone}</span>}
+                </div>
               </div>
 
               <div className="text-right space-y-0.5">

@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Printer, Download, ExternalLink, FileText, CheckCircle2, Store } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { loadStoreSettings } from '@/lib/store-settings-storage';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
@@ -57,6 +58,7 @@ interface ReceiptPdfModalProps {
 export function ReceiptPdfModal({ open, onOpenChange, data }: ReceiptPdfModalProps) {
   const receiptRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const storeSettings = loadStoreSettings();
 
   if (!data) return null;
 
@@ -214,12 +216,32 @@ export function ReceiptPdfModal({ open, onOpenChange, data }: ReceiptPdfModalPro
             <div className="text-center space-y-0.5 pb-2.5 border-b border-dashed border-slate-400">
               <div className="flex items-center justify-center gap-1.5 font-bold text-sm font-sans text-slate-900">
                 <Store className="w-4 h-4 text-sky-600 shrink-0" />
-                <span className="truncate">ร้านปุริม (PURIM POS)</span>
+                <span className="truncate">{storeSettings.storeName || 'ร้านปุริม (PURIM POS)'}</span>
               </div>
-              <p className="text-[9.5px] text-slate-600 leading-tight break-words">
-                123/45 ถนนสุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพฯ 10110<br />
-                โทร: 081-234-5678
+              {storeSettings.branchName && (
+                <p className="text-[9.5px] text-slate-600 font-sans">
+                  สาขา: {storeSettings.branchName}
+                </p>
+              )}
+              {storeSettings.taxId && (
+                <p className="text-[9.5px] text-slate-600 font-mono">
+                  เลขประจำตัวผู้เสียภาษี: {storeSettings.taxId}
+                </p>
+              )}
+              <p className="text-[9.5px] text-slate-600 leading-tight break-words font-sans">
+                {storeSettings.storeAddress || '123/45 ถนนสุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพฯ 10110'}<br />
+                {storeSettings.storePhone ? `โทร: ${storeSettings.storePhone}` : ''}
               </p>
+
+              {/* Custom Receipt Header Slogan */}
+              {storeSettings.receiptHeader && (
+                <div className="pt-1 pb-0.5">
+                  <p className="text-[9.5px] text-slate-700 font-sans whitespace-pre-wrap leading-tight">
+                    {storeSettings.receiptHeader}
+                  </p>
+                </div>
+              )}
+
               <div className="pt-0.5">
                 <span className="text-[11px] font-black border border-slate-900 px-2.5 py-0.5 rounded font-sans inline-block text-slate-900">
                   ใบเสร็จรับเงิน
@@ -388,11 +410,19 @@ export function ReceiptPdfModal({ open, onOpenChange, data }: ReceiptPdfModalPro
             )}
 
             {/* Footer */}
-            <div className="text-center pt-1 space-y-0.5 text-[9px] text-slate-600">
-              <p className="font-medium text-[8.5px] leading-tight text-slate-700 break-words">
-                * สินค้ารับเปลี่ยนเฉพาะชำรุดภายใน 7 วันพร้อมใบเสร็จ *
-              </p>
-              <p className="font-bold text-slate-900 pt-0.5">🙏 ขอบคุณที่อุดหนุน ร้านปุริม 🙏</p>
+            <div className="text-center pt-1 space-y-1 text-[9.5px] text-slate-700 font-sans">
+              {storeSettings.receiptFooter ? (
+                <p className="font-medium leading-relaxed whitespace-pre-wrap">
+                  {storeSettings.receiptFooter}
+                </p>
+              ) : (
+                <>
+                  <p className="font-medium text-[8.5px] leading-tight text-slate-700 break-words">
+                    * สินค้ารับเปลี่ยนเฉพาะชำรุดภายใน 7 วันพร้อมใบเสร็จ *
+                  </p>
+                  <p className="font-bold text-slate-900 pt-0.5">🙏 ขอบคุณที่อุดหนุน ร้านปุริม 🙏</p>
+                </>
+              )}
             </div>
           </div>
         </div>

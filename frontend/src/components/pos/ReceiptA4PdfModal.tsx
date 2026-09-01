@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { formatCurrency, formatDate, thaiBahtText } from '@/lib/utils';
+import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -79,6 +80,7 @@ interface ReceiptA4PdfModalProps {
 export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModalProps) {
   const receiptA4Ref = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const storeSettings = loadStoreSettings();
 
   if (!data) return null;
 
@@ -301,19 +303,25 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
                       P
                     </div>
                     <div>
-                      <h2 className="text-xl font-black text-slate-900 tracking-tight leading-none">ร้านปุริม (Purim POS)</h2>
-                      <span className="text-[11px] font-bold text-indigo-700 tracking-wide">PURIM POINT OF SALE CO., LTD.</span>
+                      <h2 className="text-xl font-black text-slate-900 tracking-tight leading-none">
+                        {storeSettings.storeName || 'ร้านปุริม (Purim POS)'}
+                      </h2>
+                      {storeSettings.branchName && (
+                        <span className="text-[11px] font-bold text-indigo-700 tracking-wide">
+                          สาขา: {storeSettings.branchName}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-600 leading-relaxed pt-1">
-                    123/45 ถนนสุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพมหานคร 10110
+                    {storeSettings.storeAddress}
                   </p>
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-600">
-                    <span><b>เลขประจำตัวผู้เสียภาษี:</b> 0-1055-66012-34-5 (สำนักงานใหญ่)</span>
+                    {storeSettings.taxId && <span><b>เลขประจำตัวผู้เสียภาษี:</b> {storeSettings.taxId}</span>}
                   </div>
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-600">
-                    <span><b>โทร:</b> 02-123-4567, 089-123-4567</span>
-                    <span><b>อีเมล:</b> contact@purimpos.com</span>
+                    {storeSettings.storePhone && <span><b>โทร:</b> {storeSettings.storePhone}</span>}
+                    {storeSettings.storeEmail && <span><b>อีเมล:</b> {storeSettings.storeEmail}</span>}
                   </div>
                 </div>
 
