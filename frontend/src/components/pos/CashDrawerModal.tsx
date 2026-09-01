@@ -18,6 +18,7 @@ import {
   CheckCircle2, AlertCircle, Sparkles, DollarSign, Wallet, Store
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { kickCashDrawer, getCashDrawerConfig } from '@/lib/cash-drawer-service';
 
 interface CashDrawerModalProps {
   open: boolean;
@@ -75,24 +76,20 @@ export function CashDrawerModal({
     setReason(r);
   };
 
-  // Simulate or execute cash drawer kick pulse
-  const triggerDrawerKick = () => {
+  // Execute cash drawer kick pulse through printer
+  const triggerDrawerKick = async () => {
     try {
-      // Audio beep feedback for cash drawer opening
-      if (typeof window !== 'undefined' && 'AudioContext' in window) {
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(800, audioCtx.currentTime);
-        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.15);
+      const res = await kickCashDrawer({
+        reason: mode === 'open_only' ? 'เปิดลิ้นชักอย่างเดียว' : mode === 'in' ? 'นำเงินเข้า' : 'นำเงินออก'
+      });
+      if (res.methodUsed === 'print_pulse') {
+        toast.info('⚡ ส่งสัญญาณสั่งเตะลิ้นชักผ่านเครื่องพิมพ์แล้ว');
+      } else if (res.methodUsed === 'web_serial') {
+        toast.success('⚡ สั่งเตะลิ้นชักผ่าน Web Serial สำเร็จ');
       }
-    } catch {}
+    } catch (err) {
+      console.warn('Failed to kick drawer:', err);
+    }
   };
 
   const handleSubmit = () => {

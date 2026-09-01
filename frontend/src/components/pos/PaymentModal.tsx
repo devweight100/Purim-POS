@@ -16,6 +16,7 @@ import { loadBankAccounts, BankAccount } from '@/lib/bank-account-storage';
 import { deductPosSaleStock } from '@/lib/stock-service';
 import { recordCustomerSale } from '@/lib/customer-service';
 import { updateClaimStatus } from '@/lib/claim-service';
+import { kickCashDrawer, getCashDrawerConfig } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
 
 type Step = 'METHOD' | 'PROCESS' | 'SUCCESS';
@@ -357,6 +358,15 @@ export function PaymentModal({
         toast.success(
           `🎉 สมาชิก ${custSaleRes.customerName} : ${custSaleRes.pointsUsed > 0 ? `ใช้ ${custSaleRes.pointsUsed.toLocaleString()} แต้ม ` : ''}${custSaleRes.earnedPoints > 0 ? `ได้รับ +${custSaleRes.earnedPoints} แต้ม ` : ''}(คงเหลือ ${custSaleRes.newTotalPoints.toLocaleString()} แต้ม)`
         );
+      }
+
+      // Automatically kick cash drawer open if cash payment was received!
+      const hasCash = method === 'CASH' || (method === 'SPLIT' && cashReceived > 0) || recordedCashReceived > 0;
+      if (hasCash) {
+        const drawerConf = getCashDrawerConfig();
+        if (drawerConf.enabled && drawerConf.openOnCashPayment) {
+          kickCashDrawer({ reason: 'รับชำระเงินสด' }).catch(() => {});
+        }
       }
 
       const completedReceipt: ReceiptData = {
