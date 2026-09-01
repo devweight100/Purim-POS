@@ -371,13 +371,13 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="bg-slate-100 text-black font-extrabold border-b-2 border-slate-300">
                     <tr>
-                      <th className="py-2.5 px-2 text-center w-[36px] border-r border-slate-200 text-black font-black">#</th>
-                      <th className="py-2.5 px-3 border-r border-slate-200 text-black font-black">รายการสินค้า (Description)</th>
-                      <th className="py-2.5 px-1.5 text-center w-[52px] border-r border-slate-200 text-black font-black">จำนวน</th>
-                      <th className="py-2.5 px-1.5 text-center w-[52px] border-r border-slate-200 text-black font-black">หน่วย</th>
-                      <th className="py-2.5 px-2 text-right w-[85px] border-r border-slate-200 text-black font-black">ราคา/หน่วย</th>
-                      <th className="py-2.5 px-2 text-right w-[75px] border-r border-slate-200 text-black font-black">ส่วนลด</th>
-                      <th className="py-2.5 px-2.5 text-right w-[95px] text-black font-black">จำนวนเงิน (฿)</th>
+                      <th className="py-2.5 px-2 text-center w-[36px] border-r border-slate-300 text-black font-black">#</th>
+                      <th className="py-2.5 px-3 text-center border-r border-slate-300 text-black font-black">รายการสินค้า (Description)</th>
+                      <th className="py-2.5 px-1.5 text-center w-[52px] border-r border-slate-300 text-black font-black">จำนวน</th>
+                      <th className="py-2.5 px-1.5 text-center w-[52px] border-r border-slate-300 text-black font-black">หน่วย</th>
+                      <th className="py-2.5 px-2 text-center w-[85px] border-r border-slate-300 text-black font-black">ราคา/หน่วย</th>
+                      <th className="py-2.5 px-2 text-center w-[75px] border-r border-slate-300 text-black font-black">ส่วนลด</th>
+                      <th className="py-2.5 px-2.5 text-center w-[95px] text-black font-black">จำนวนเงิน (฿)</th>
                     </tr>
                   </thead>
                   <tbody>

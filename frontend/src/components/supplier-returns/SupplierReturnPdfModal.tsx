@@ -194,42 +194,42 @@ export function SupplierReturnPdfModal({
                   </span>
                 </div>
 
-                <table className="w-full text-[10px] border border-slate-200">
-                  <thead className="bg-rose-50/50 text-slate-700 font-bold border-b border-slate-200">
+                <table className="w-full text-[10px] border border-slate-300">
+                  <thead className="bg-rose-50/70 text-slate-800 font-bold border-b-2 border-slate-300">
                     <tr>
-                      <th className="p-1.5 text-center w-8">ลำดับ</th>
-                      <th className="p-1.5 text-left">รายการสินค้า / SKU</th>
-                      <th className="p-1.5 text-left w-36">อาการชำรุด</th>
-                      <th className="p-1.5 text-right w-14">จำนวน</th>
-                      <th className="p-1.5 text-right w-20">ราคาทุน (฿)</th>
-                      <th className="p-1.5 text-right w-24">รวมทุน (฿)</th>
+                      <th className="p-1.5 text-center w-8 border-r border-slate-300">ลำดับ</th>
+                      <th className="p-1.5 text-center border-r border-slate-300">รายการสินค้า / SKU</th>
+                      <th className="p-1.5 text-center w-36 border-r border-slate-300">อาการชำรุด</th>
+                      <th className="p-1.5 text-center w-14 border-r border-slate-300">จำนวน</th>
+                      <th className="p-1.5 text-center w-20 border-r border-slate-300">ราคาทุน (฿)</th>
+                      <th className="p-1.5 text-center w-24">รวมทุน (฿)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
                     {defectiveItems.map((item, idx) => (
                       <tr key={idx} className="hover:bg-slate-50/60">
-                        <td className="p-1.5 text-center text-slate-500">{idx + 1}</td>
-                        <td className="p-1.5">
+                        <td className="p-1.5 text-center text-slate-500 border-r border-slate-300">{idx + 1}</td>
+                        <td className="p-1.5 border-r border-slate-300">
                           <p className="font-bold text-slate-900 leading-tight">{item.productName}</p>
                           <p className="text-[9px] text-slate-500 font-mono">SKU: {item.sku}</p>
                           {item.claimId && (
                             <p className="text-[9px] text-indigo-600 font-mono font-medium">ใบเคลม: #{item.claimId}</p>
                           )}
                         </td>
-                        <td className="p-1.5 text-rose-700 font-medium leading-tight">
+                        <td className="p-1.5 text-rose-700 font-medium leading-tight border-r border-slate-300">
                           {item.defectReason || 'สินค้าชำรุดจากการใช้งาน'}
                         </td>
-                        <td className="p-1.5 text-right font-mono font-bold">
+                        <td className="p-1.5 text-center font-mono font-bold border-r border-slate-300">
                           {item.quantity} {item.unitName || 'ชิ้น'}
                         </td>
-                        <td className="p-1.5 text-right font-mono">{formatCurrency(item.unitCost)}</td>
+                        <td className="p-1.5 text-right font-mono border-r border-slate-300">{formatCurrency(item.unitCost)}</td>
                         <td className="p-1.5 text-right font-mono font-bold text-slate-900">
                           {formatCurrency(item.totalCost)}
                         </td>
                       </tr>
                     ))}
-                    <tr className="bg-rose-50/40 font-bold text-slate-900 border-t border-slate-300">
-                      <td colSpan={5} className="p-1.5 text-right text-rose-900">
+                    <tr className="bg-rose-50/40 font-bold text-slate-900 border-t-2 border-slate-300">
+                      <td colSpan={5} className="p-1.5 text-right text-rose-900 border-r border-slate-300">
                         รวมราคาทุนสินค้าชำรุด:
                       </td>
                       <td className="p-1.5 text-right font-mono text-rose-700">
@@ -257,39 +257,39 @@ export function SupplierReturnPdfModal({
                   </span>
                 </div>
 
-                <table className="w-full text-[10px] border border-slate-200">
-                  <thead className="bg-sky-50/50 text-slate-700 font-bold border-b border-slate-200">
+                <table className="w-full text-[10px] border border-slate-300">
+                  <thead className="bg-sky-50/70 text-slate-800 font-bold border-b-2 border-slate-300">
                     <tr>
-                      <th className="p-1.5 text-center w-8">ลำดับ</th>
-                      <th className="p-1.5 text-left">รายการสินค้า / SKU</th>
-                      <th className="p-1.5 text-left w-36">เหตุผลการส่งคืน</th>
-                      <th className="p-1.5 text-right w-14">จำนวน</th>
-                      <th className="p-1.5 text-right w-20">ราคาทุน (฿)</th>
-                      <th className="p-1.5 text-right w-24">รวมทุน (฿)</th>
+                      <th className="p-1.5 text-center w-8 border-r border-slate-300">ลำดับ</th>
+                      <th className="p-1.5 text-center border-r border-slate-300">รายการสินค้า / SKU</th>
+                      <th className="p-1.5 text-center w-36 border-r border-slate-300">เหตุผลการส่งคืน</th>
+                      <th className="p-1.5 text-center w-14 border-r border-slate-300">จำนวน</th>
+                      <th className="p-1.5 text-center w-20 border-r border-slate-300">ราคาทุน (฿)</th>
+                      <th className="p-1.5 text-center w-24">รวมทุน (฿)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
                     {overstockItems.map((item, idx) => (
                       <tr key={idx} className="hover:bg-slate-50/60">
-                        <td className="p-1.5 text-center text-slate-500">{idx + 1}</td>
-                        <td className="p-1.5">
+                        <td className="p-1.5 text-center text-slate-500 border-r border-slate-300">{idx + 1}</td>
+                        <td className="p-1.5 border-r border-slate-300">
                           <p className="font-bold text-slate-900 leading-tight">{item.productName}</p>
                           <p className="text-[9px] text-slate-500 font-mono">SKU: {item.sku}</p>
                         </td>
-                        <td className="p-1.5 text-sky-800 font-medium leading-tight">
+                        <td className="p-1.5 text-sky-800 font-medium leading-tight border-r border-slate-300">
                           {item.returnReason || 'สินค้าปกติขายไม่ออก / คืนสต็อก'}
                         </td>
-                        <td className="p-1.5 text-right font-mono font-bold">
+                        <td className="p-1.5 text-center font-mono font-bold border-r border-slate-300">
                           {item.quantity} {item.unitName || 'ชิ้น'}
                         </td>
-                        <td className="p-1.5 text-right font-mono">{formatCurrency(item.unitCost)}</td>
+                        <td className="p-1.5 text-right font-mono border-r border-slate-300">{formatCurrency(item.unitCost)}</td>
                         <td className="p-1.5 text-right font-mono font-bold text-slate-900">
                           {formatCurrency(item.totalCost)}
                         </td>
                       </tr>
                     ))}
-                    <tr className="bg-sky-50/40 font-bold text-slate-900 border-t border-slate-300">
-                      <td colSpan={5} className="p-1.5 text-right text-sky-900">
+                    <tr className="bg-sky-50/40 font-bold text-slate-900 border-t-2 border-slate-300">
+                      <td colSpan={5} className="p-1.5 text-right text-sky-900 border-r border-slate-300">
                         รวมราคาทุนสินค้าปกติ:
                       </td>
                       <td className="p-1.5 text-right font-mono text-sky-700">

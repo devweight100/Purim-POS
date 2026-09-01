@@ -64,6 +64,10 @@ export function PaymentVoucherModal({
     }
   };
 
+  const filledRowsCount = 1 + paymentEntry.deductedNotes.length + (paymentEntry.discountAmount && paymentEntry.discountAmount > 0 ? 1 : 0);
+  const MIN_VOUCHER_ROWS = 9;
+  const emptyRowsCount = Math.max(0, MIN_VOUCHER_ROWS - filledRowsCount);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[98vw] max-w-5xl max-h-[95vh] flex flex-col bg-slate-100 border-slate-300 text-slate-900 rounded-3xl p-4 sm:p-6 shadow-2xl overflow-hidden font-sans">
@@ -175,18 +179,18 @@ export function PaymentVoucherModal({
               {/* Outer frame is fixed in height so layout never collapses or jumps */}
               <div className="border border-slate-300 rounded-xl overflow-hidden min-h-[110mm] flex flex-col justify-between bg-white">
                 <table className="w-full text-xs">
-                  <thead className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300">
+                  <thead className="bg-slate-100 text-slate-800 font-bold border-b-2 border-slate-300">
                     <tr>
-                      <th className="py-2.5 px-3 text-center w-12 border-r border-slate-300">ลำดับ</th>
-                      <th className="py-2.5 px-3 text-left border-r border-slate-300">รายการ / รายละเอียดการตัดจ่ายหนี้</th>
-                      <th className="py-2.5 px-3 text-right w-44">จำนวนเงิน (บาท)</th>
+                      <th className="py-2.5 px-3 text-center w-14 border-r border-slate-300">ลำดับ</th>
+                      <th className="py-2.5 px-3 text-center border-r border-slate-300">รายการ / รายละเอียดการตัดจ่ายหนี้</th>
+                      <th className="py-2.5 px-3 text-center w-44">จำนวนเงิน (บาท)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
                     {/* Row 1: Bill Amount */}
                     <tr className="hover:bg-slate-50/50">
-                      <td className="py-2.5 px-3 text-center font-mono text-slate-500 border-r border-slate-200">1</td>
-                      <td className="py-2.5 px-3 border-r border-slate-200">
+                      <td className="py-2.5 px-3 text-center font-mono text-slate-500 border-r border-slate-300">1</td>
+                      <td className="py-2.5 px-3 border-r border-slate-300">
                         <p className="font-bold text-slate-900">ชำระค่าสินค้าตามใบสั่งซื้อเลขที่ {bill.poNumber}</p>
                         <p className="text-[10.5px] text-slate-500">วันที่เปิดบิลสั่งซื้อ: {new Date(bill.billDate).toLocaleDateString('th-TH')}</p>
                       </td>
@@ -198,8 +202,8 @@ export function PaymentVoucherModal({
                     {/* Deducted Debit Notes */}
                     {paymentEntry.deductedNotes.map((dn, idx) => (
                       <tr key={idx} className="bg-indigo-50/30">
-                        <td className="py-2.5 px-3 text-center font-bold text-indigo-600 border-r border-slate-200">-</td>
-                        <td className="py-2.5 px-3 border-r border-slate-200 text-indigo-950">
+                        <td className="py-2.5 px-3 text-center font-bold text-indigo-600 border-r border-slate-300">-</td>
+                        <td className="py-2.5 px-3 border-r border-slate-300 text-indigo-950">
                           <p className="font-bold">หักประกบใบลดหนี้เลขที่ {dn.returnNoteId}</p>
                           <p className="text-[10.5px] text-indigo-700">เครดิตสินค้าชำรุด / ส่งคืนผู้จำหน่าย</p>
                         </td>
@@ -212,8 +216,8 @@ export function PaymentVoucherModal({
                     {/* Bill Discount */}
                     {paymentEntry.discountAmount && paymentEntry.discountAmount > 0 && (
                       <tr className="bg-amber-50/30">
-                        <td className="py-2.5 px-3 text-center font-bold text-amber-700 border-r border-slate-200">%</td>
-                        <td className="py-2.5 px-3 border-r border-slate-200 text-amber-950">
+                        <td className="py-2.5 px-3 text-center font-bold text-amber-700 border-r border-slate-300">%</td>
+                        <td className="py-2.5 px-3 border-r border-slate-300 text-amber-950">
                           <p className="font-bold">ส่วนลดท้ายบิลจากผู้จำหน่าย</p>
                           <p className="text-[10.5px] text-amber-700">ส่วนลดเจรจาการค้าตามข้อตกลง</p>
                         </td>
@@ -222,6 +226,15 @@ export function PaymentVoucherModal({
                         </td>
                       </tr>
                     )}
+
+                    {/* Empty Grid Rows so vertical lines run all the way down to hit the bottom border */}
+                    {Array.from({ length: emptyRowsCount }).map((_, emptyIdx) => (
+                      <tr key={`empty-${emptyIdx}`} className="h-8">
+                        <td className="py-2.5 px-3 text-center border-r border-slate-300 text-transparent select-none">-</td>
+                        <td className="py-2.5 px-3 border-r border-slate-300 text-transparent select-none">-</td>
+                        <td className="py-2.5 px-3 text-transparent select-none">-</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
 
@@ -254,31 +267,21 @@ export function PaymentVoucherModal({
 
             {/* ─── BOTTOM SECTION: SIGNATURE BLOCKS (ALWAYS PINNED TO BOTTOM) ─── */}
             <div className="mt-auto pt-6 pb-2 border-t border-slate-300">
-              <div className="grid grid-cols-3 gap-6 text-center text-xs">
-                {/* Sign 1: ผู้จัดทำ */}
-                <div className="space-y-6">
-                  <p className="font-bold text-slate-800">ผู้จัดทำเอกสาร</p>
-                  <div className="border-b border-dashed border-slate-400 w-44 mx-auto"></div>
-                  <div className="text-[10.5px] text-slate-500 space-y-0.5">
-                    <p>( {paymentEntry.cashierName || 'เจ้าหน้าที่การเงิน'} )</p>
-                    <p>วันที่: ......./......./............</p>
-                  </div>
-                </div>
-
-                {/* Sign 2: ผู้อนุมัติจ่าย */}
+              <div className="grid grid-cols-2 gap-12 text-center text-xs">
+                {/* Sign 1: ผู้อนุมัติจ่าย */}
                 <div className="space-y-6">
                   <p className="font-bold text-slate-800">ผู้อนุมัติจ่าย (Authorized By)</p>
-                  <div className="border-b border-dashed border-slate-400 w-44 mx-auto"></div>
+                  <div className="border-b border-dashed border-slate-400 w-52 mx-auto"></div>
                   <div className="text-[10.5px] text-slate-500 space-y-0.5">
                     <p>( ผู้จัดการ / เจ้าของร้าน )</p>
                     <p>วันที่: ......./......./............</p>
                   </div>
                 </div>
 
-                {/* Sign 3: ผู้รับเงิน */}
+                {/* Sign 2: ผู้รับเงิน */}
                 <div className="space-y-6">
-                  <p className="font-bold text-slate-800">ผู้รับเงิน / ผู้แทนจำหน่าย</p>
-                  <div className="border-b border-dashed border-slate-400 w-44 mx-auto"></div>
+                  <p className="font-bold text-slate-800">ผู้รับเงิน / ผู้แทนจำหน่าย (Received By)</p>
+                  <div className="border-b border-dashed border-slate-400 w-52 mx-auto"></div>
                   <div className="text-[10.5px] text-slate-500 space-y-0.5">
                     <p>( {bill.supplierName} )</p>
                     <p>วันที่: ......./......./............</p>
@@ -286,10 +289,9 @@ export function PaymentVoucherModal({
                 </div>
               </div>
 
-              <div className="pt-4 text-center">
-                <p className="text-[9.5px] text-slate-400 font-mono">
-                  เอกสารนี้ออกโดยระบบอัตโนมัติ Purim POS • พิมพ์เมื่อ {new Date().toLocaleString('th-TH')}
-                </p>
+              <div className="pt-4 flex justify-between items-center text-[10.5px] text-slate-600 border-t border-slate-200 mt-4">
+                <span>ผู้จัดทำเอกสาร: <b className="text-slate-900 font-sans">{paymentEntry.cashierName || 'เจ้าหน้าที่การเงิน'}</b></span>
+                <span className="font-mono text-slate-400 text-[9.5px]">เอกสารนี้ออกโดยระบบอัตโนมัติ Purim POS • พิมพ์เมื่อ {new Date().toLocaleString('th-TH')}</span>
               </div>
             </div>
           </div>

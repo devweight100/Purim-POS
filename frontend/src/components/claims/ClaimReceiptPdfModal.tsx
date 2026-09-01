@@ -359,48 +359,60 @@ export function ClaimReceiptPdfModal({
                   </div>
                 </div>
 
-                {/* Formal Itemized Claims Table */}
-                <div className="space-y-1.5 pt-2">
-                  <span className="font-bold text-xs text-slate-900">1. รายการสินค้าที่นำมาเคลม (Claimed Items)</span>
-                  <table className="w-full text-xs border border-slate-300">
-                    <thead>
-                      <tr className="bg-slate-100 font-bold text-slate-800">
-                        <th className="py-2 px-3 text-center w-12">ลำดับ</th>
-                        <th className="py-2 px-3 text-left w-32">รหัสสินค้า (SKU)</th>
-                        <th className="py-2 px-3 text-left">ชื่อรายการสินค้า</th>
-                        <th className="py-2 px-3 text-left w-48">สาเหตุ / อาการเสียที่พบ</th>
-                        <th className="py-2 px-3 text-center w-24">จำนวน</th>
-                        <th className="py-2 px-3 text-right w-28">มูลค่าเดิม</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-t border-slate-200">
-                        <td className="py-2.5 px-3 text-center font-mono font-bold">1</td>
-                        <td className="py-2.5 px-3 font-mono font-bold text-indigo-700">{claim.sku}</td>
-                        <td className="py-2.5 px-3 font-bold text-slate-900">{claim.productName}</td>
-                        <td className="py-2.5 px-3 text-rose-700 font-medium">
-                          {claim.defectReason || 'ไม่ระบุอาการ'}
-                        </td>
-                        <td className="py-2.5 px-3 text-center font-mono font-bold">
-                          {claim.quantity} {claim.unitName}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-black text-slate-900">
-                          {formatCurrency(claim.totalClaimValue)}
-                        </td>
-                      </tr>
-                    </tbody>
-                    <tfoot>
-                      <tr className="bg-slate-50 font-bold border-t border-slate-300">
-                        <td colSpan={4} className="py-2 px-3 text-right text-slate-600">
-                          จำนวนรวม: {claim.quantity} {claim.unitName}
-                        </td>
-                        <td className="py-2 px-3 text-right text-slate-700">มูลค่ารวม:</td>
-                        <td className="py-2 px-3 text-right font-mono font-black text-indigo-700">
-                          {formatCurrency(claim.totalClaimValue)}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
+                  {/* Formal Itemized Claims Table */}
+                  <div className="space-y-1.5 pt-2">
+                    <span className="font-bold text-xs text-slate-900">1. รายการสินค้าที่นำมาเคลม (Claimed Items)</span>
+                    <table className="w-full text-xs border border-slate-300">
+                      <thead>
+                        <tr className="bg-slate-100 font-bold text-slate-800 border-b-2 border-slate-300">
+                          <th className="py-2 px-3 text-center w-12 border-r border-slate-300">ลำดับ</th>
+                          <th className="py-2 px-3 text-center w-32 border-r border-slate-300">รหัสสินค้า (SKU)</th>
+                          <th className="py-2 px-3 text-center border-r border-slate-300">ชื่อรายการสินค้า</th>
+                          <th className="py-2 px-3 text-center w-48 border-r border-slate-300">สาเหตุ / อาการเสียที่พบ</th>
+                          <th className="py-2 px-3 text-center w-24 border-r border-slate-300">จำนวน</th>
+                          <th className="py-2 px-3 text-center w-28">มูลค่าเดิม</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        <tr className="hover:bg-slate-50/50">
+                          <td className="py-2.5 px-3 text-center font-mono font-bold border-r border-slate-300">1</td>
+                          <td className="py-2.5 px-3 font-mono font-bold text-indigo-700 border-r border-slate-300">{claim.sku}</td>
+                          <td className="py-2.5 px-3 font-bold text-slate-900 border-r border-slate-300">{claim.productName}</td>
+                          <td className="py-2.5 px-3 text-rose-700 font-medium border-r border-slate-300">
+                            {claim.defectReason || 'ไม่ระบุอาการ'}
+                          </td>
+                          <td className="py-2.5 px-3 text-center font-mono font-bold border-r border-slate-300">
+                            {claim.quantity} {claim.unitName}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono font-black text-slate-900">
+                            {formatCurrency(claim.totalClaimValue)}
+                          </td>
+                        </tr>
+
+                        {/* Empty Grid Rows so vertical lines run down to touch the bottom footer border */}
+                        {Array.from({ length: 3 }).map((_, emptyIdx) => (
+                          <tr key={`empty-${emptyIdx}`} className="h-7">
+                            <td className="py-1 px-3 text-center border-r border-slate-300 text-transparent select-none">-</td>
+                            <td className="py-1 px-3 border-r border-slate-300 text-transparent select-none">-</td>
+                            <td className="py-1 px-3 border-r border-slate-300 text-transparent select-none">-</td>
+                            <td className="py-1 px-3 border-r border-slate-300 text-transparent select-none">-</td>
+                            <td className="py-1 px-3 border-r border-slate-300 text-transparent select-none">-</td>
+                            <td className="py-1 px-3 text-transparent select-none">-</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-slate-50 font-bold border-t-2 border-slate-300">
+                          <td colSpan={4} className="py-2 px-3 text-right text-slate-600 border-r border-slate-300">
+                            จำนวนรวม: {claim.quantity} {claim.unitName}
+                          </td>
+                          <td className="py-2 px-3 text-center text-slate-700 border-r border-slate-300">มูลค่ารวม:</td>
+                          <td className="py-2 px-3 text-right font-mono font-black text-indigo-700">
+                            {formatCurrency(claim.totalClaimValue)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
                   <div className="text-[11px] text-right font-medium text-slate-500 font-mono">
                     ({thaiBahtText(claim.totalClaimValue)})
                   </div>
