@@ -13,7 +13,7 @@ import {
   Search, Plus, PackagePlus, Barcode, Tags, Truck, Package,
   Pencil, ChevronUp, ChevronDown, ChevronsUpDown, X,
   Layers, RefreshCw, Trash2, ChevronRight, Building2, Info,
-  ImagePlus, Star, Crown, Upload, FolderTree, FileSpreadsheet, AlertTriangle
+  ImagePlus, Star, Crown, Upload, FolderTree, FileSpreadsheet, AlertTriangle, Download
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
@@ -930,6 +930,19 @@ export default function ProductsPage() {
               e.target.value = "";
             }}
           />
+          <a
+            href="/template_import_products.csv"
+            download="template_import_products.csv"
+            className="w-full sm:w-auto"
+          >
+            <Button
+              variant="outline"
+              className="h-11 w-full border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50"
+              title="ดาวน์โหลดไฟล์ตัวอย่างสำหรับกรอกข้อมูลสินค้าเพื่อนำเข้า"
+            >
+              <Download className="w-4 h-4 mr-2 text-indigo-600" /> โหลด Template CSV
+            </Button>
+          </a>
           <Button
             variant="outline"
             className="h-11 w-full border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto"
