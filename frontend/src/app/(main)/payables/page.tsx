@@ -420,7 +420,7 @@ export default function PayablesPage() {
                             </span>
                           ) : (
                             <span className="text-emerald-600 font-bold text-sm">
-                              ฿0.00 (ครบแล้ว)
+                              ครบแล้ว
                             </span>
                           )}
                         </td>
@@ -459,6 +459,22 @@ export default function PayablesPage() {
                               >
                                 <Receipt className="w-3.5 h-3.5" />
                                 <span>ชำระหนี้</span>
+                              </Button>
+                            )}
+
+                            {bill.payments && bill.payments.length > 0 && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  const latestPayment = bill.payments[bill.payments.length - 1];
+                                  handleOpenVoucher(bill, latestPayment);
+                                }}
+                                title="พิมพ์ใบสำคัญจ่ายย้อนหลัง"
+                                className="h-8 px-2.5 rounded-xl border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs gap-1 shrink-0"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                                <span>ใบสำคัญจ่าย</span>
                               </Button>
                             )}
 

@@ -97,9 +97,10 @@ export function SupplierReturnPdfModal({
         <div className="flex-1 overflow-y-auto pr-1 py-4 flex justify-center bg-slate-200/70 rounded-2xl border border-slate-300">
           <div
             ref={docRef}
-            className="a4-doc-sheet w-[210mm] max-w-[210mm] min-h-[297mm] bg-white border border-slate-300 rounded-sm p-8 sm:p-10 shadow-2xl text-slate-800 text-[11.5px] space-y-4 box-border select-none"
+            className="a4-doc-sheet w-[210mm] max-w-[210mm] min-h-[297mm] bg-white border border-slate-300 rounded-sm p-[10mm] shadow-2xl text-slate-800 text-[11.5px] flex flex-col justify-between box-border select-none"
             style={{ width: '210mm', maxWidth: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
           >
+            <div className="space-y-3.5">
             {/* Store & Document Header */}
             <div className="flex justify-between items-start border-b-2 border-slate-800 pb-3.5">
               <div className="space-y-1 max-w-[58%]">
@@ -361,17 +362,19 @@ export function SupplierReturnPdfModal({
               </div>
             </div>
 
-            {/* Signature Blocks (Compact) */}
-            <div className="grid grid-cols-2 gap-6 pt-4 text-[10px]">
-              <div className="text-center space-y-6">
+            </div>
+
+            {/* Signature Blocks (Pinned at bottom of A4) */}
+            <div className="mt-auto pt-6 pb-2 border-t border-slate-300 grid grid-cols-2 gap-8 text-center text-xs">
+              <div className="space-y-4">
                 <p className="font-bold text-slate-700">ผู้ส่งคืนสินค้า (ตัวแทนร้านปุริม)</p>
-                <div className="border-b border-dashed border-slate-400 w-40 mx-auto"></div>
-                <p className="text-slate-500">วันที่: ......./......./............</p>
+                <div className="border-b border-dashed border-slate-400 w-44 mx-auto"></div>
+                <p className="text-slate-500 text-[10.5px]">วันที่: ......./......./............</p>
               </div>
-              <div className="text-center space-y-6">
+              <div className="space-y-4">
                 <p className="font-bold text-slate-700">ผู้รับมอบสินค้า (ตัวแทนบริษัทผู้จำหน่าย)</p>
-                <div className="border-b border-dashed border-slate-400 w-40 mx-auto"></div>
-                <p className="text-slate-500">วันที่: ......./......./............</p>
+                <div className="border-b border-dashed border-slate-400 w-44 mx-auto"></div>
+                <p className="text-slate-500 text-[10.5px]">วันที่: ......./......./............</p>
               </div>
             </div>
           </div>

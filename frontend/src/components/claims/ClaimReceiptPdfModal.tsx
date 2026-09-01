@@ -292,9 +292,10 @@ export function ClaimReceiptPdfModal({
             ════════════════════════════════════════════════════════════════ */}
             {printFormat === 'a4' && (
               <div 
-                className="a4-container w-[210mm] max-w-[210mm] min-h-[297mm] bg-white text-slate-900 p-8 sm:p-10 shadow-2xl font-sans text-xs leading-relaxed rounded-sm space-y-4 box-border border border-slate-300 relative select-none"
+                className="a4-container w-[210mm] max-w-[210mm] min-h-[297mm] bg-white text-slate-900 p-[10mm] shadow-2xl font-sans text-xs leading-relaxed rounded-sm flex flex-col justify-between box-border border border-slate-300 relative select-none"
                 style={{ width: '210mm', maxWidth: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
               >
+                <div className="space-y-3.5">
                 {/* A4 Header */}
                 <div className="flex justify-between items-start border-b-2 border-slate-800 pb-4">
                   <div className="space-y-1 max-w-[60%]">
@@ -463,18 +464,20 @@ export function ClaimReceiptPdfModal({
                   )}
                 </div>
 
-                {/* Formal Signatures Grid */}
-                <div className="pt-8 grid grid-cols-2 gap-8 text-center text-xs">
+                </div>
+
+                {/* Formal Signatures Grid (Pinned at the bottom of A4) */}
+                <div className="mt-auto pt-6 pb-2 border-t border-slate-300 grid grid-cols-2 gap-8 text-center text-xs">
                   <div className="space-y-4">
                     <p className="font-bold text-slate-700">ลงชื่อ ผู้ส่งเคลม / ลูกค้า</p>
-                    <div className="pt-8 border-b border-slate-400 mx-auto w-3/4" />
+                    <div className="pt-8 border-b border-slate-400 mx-auto w-3/4 border-dashed" />
                     <p className="text-slate-600">({claim.customerName || '................................................'})</p>
                     <p className="text-[10.5px] text-slate-400">วันที่: ......./......./...........</p>
                   </div>
 
                   <div className="space-y-4">
                     <p className="font-bold text-slate-700">ลงชื่อ ผู้รับเคลม / เจ้าหน้าที่ผู้อนุมัติ</p>
-                    <div className="pt-8 border-b border-slate-400 mx-auto w-3/4" />
+                    <div className="pt-8 border-b border-slate-400 mx-auto w-3/4 border-dashed" />
                     <p className="text-slate-900 font-bold">({claim.cashierName || 'พนักงาน POS'})</p>
                     <p className="text-[10.5px] text-slate-400">วันที่: {formatDate(claim.claimDate)}</p>
                   </div>

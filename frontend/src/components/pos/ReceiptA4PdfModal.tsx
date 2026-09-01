@@ -237,8 +237,8 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
           {/* Exact A4 Document Sheet (210mm proportional container) */}
           <div
             ref={receiptA4Ref}
-            className="w-full max-w-[800px] min-h-[1100px] bg-white p-8 sm:p-10 shadow-lg text-slate-900 font-sans border border-slate-300 rounded-sm flex flex-col justify-between"
-            style={{ boxSizing: 'border-box' }}
+            className="a4-container w-[210mm] max-w-[210mm] min-h-[297mm] bg-white p-[10mm] shadow-xl text-slate-900 font-sans border border-slate-300 rounded-sm flex flex-col justify-between box-border"
+            style={{ width: '210mm', maxWidth: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
           >
             {/* TOP SECTION: Header & Parties Information */}
             <div className="space-y-5">
@@ -569,8 +569,8 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
               </div>
             </div>
 
-            {/* BOTTOM SECTION: Signatures & Stamp Authorization */}
-            <div className="pt-8 border-t border-slate-300 mt-6 grid grid-cols-2 gap-8 text-xs text-center">
+            {/* BOTTOM SECTION: Signatures & Stamp Authorization (Pinned at bottom of A4) */}
+            <div className="mt-auto pt-6 pb-2 border-t border-slate-300 grid grid-cols-2 gap-8 text-xs text-center">
               {/* Customer / Receiver Signature */}
               <div className="space-y-4">
                 <p className="text-slate-600 font-semibold">ผู้รับสินค้า / ผู้จ่ายเงิน (Customer / Receiver)</p>
