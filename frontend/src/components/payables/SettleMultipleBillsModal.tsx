@@ -111,7 +111,7 @@ export function SettleMultipleBillsModal({
   // Initialize or reset state when modal opens
   useEffect(() => {
     if (open) {
-      const targetSuppId = initialSupplierId || (preSelectedPoIds.length > 0 ? allBills.find(b => preSelectedPoIds.includes(b.poId))?.supplierId : '') || availableSuppliers[0]?.id || '';
+      const targetSuppId = initialSupplierId || (preSelectedPoIds.length > 0 ? allBills.find(b => preSelectedPoIds.includes(b.poId))?.supplierId : '') || '';
       setSelectedSupplierId(targetSuppId);
       setSupplierSearchQuery('');
       setIsSupplierDropdownOpen(false);
@@ -362,7 +362,7 @@ export function SettleMultipleBillsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[98vw] max-w-[1240px] h-[95vh] max-h-[96vh] flex flex-col bg-white border-slate-200 text-slate-900 rounded-3xl p-0 overflow-hidden shadow-2xl font-sans">
+      <DialogContent className="w-[98vw] max-w-[1240px] h-[88vh] sm:h-[90vh] max-h-[90vh] flex flex-col bg-white border-slate-200 text-slate-900 rounded-3xl p-0 overflow-hidden shadow-2xl font-sans my-auto">
         {/* ─── MODAL HEADER (Consistent POS Theme) ─── */}
         <DialogHeader className="px-8 py-5 bg-gradient-to-r from-slate-50 via-white to-indigo-50/40 border-b border-slate-200 shrink-0 flex flex-row items-center justify-between">
           <div className="flex items-center gap-3.5">
@@ -413,17 +413,20 @@ export function SettleMultipleBillsModal({
                   <Input
                     value={supplierSearchQuery}
                     onChange={(e) => {
-                      setSupplierSearchQuery(e.target.value);
-                      setIsSupplierDropdownOpen(true);
+                      const val = e.target.value;
+                      setSupplierSearchQuery(val);
+                      setIsSupplierDropdownOpen(val.trim().length > 0);
                     }}
-                    onFocus={() => setIsSupplierDropdownOpen(true)}
                     placeholder="พิมพ์ชื่อบริษัท, ผู้ติดต่อ หรือเบอร์โทรศัพท์เพื่อค้นหาผู้จำหน่าย..."
                     className="pl-10 h-10 text-xs sm:text-sm bg-slate-50 border-slate-300 rounded-xl focus:bg-white font-medium"
                   />
                   {supplierSearchQuery && (
                     <button
                       type="button"
-                      onClick={() => setSupplierSearchQuery('')}
+                      onClick={() => {
+                        setSupplierSearchQuery('');
+                        setIsSupplierDropdownOpen(false);
+                      }}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
                     >
                       <X className="w-4 h-4" />
@@ -442,7 +445,7 @@ export function SettleMultipleBillsModal({
                 </Button>
               </div>
 
-              {/* Dropdown Options */}
+              {/* Dropdown Options - ONLY when user opened or typed something */}
               {isSupplierDropdownOpen && (
                 <div className="absolute z-20 top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-64 overflow-y-auto divide-y divide-slate-100">
                   {filteredSuppliers.length === 0 ? (
@@ -487,485 +490,523 @@ export function SettleMultipleBillsModal({
               )}
             </div>
 
-            {/* Selected Supplier Pill Display */}
+            {/* Selected Supplier Display */}
             {selectedSupplierObj && (
-              <div className="flex items-center justify-between p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-600">ผู้จำหน่ายที่เลือก:</span>
-                  <span className="font-black text-indigo-900 text-sm">{selectedSupplierObj.name}</span>
-                  {selectedSupplierObj.phone && (
-                    <span className="text-slate-500 font-mono">({selectedSupplierObj.phone})</span>
-                  )}
+              <div className="flex items-center justify-between p-3.5 bg-indigo-50/60 border border-indigo-100 rounded-xl text-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-indigo-950 text-sm">{selectedSupplierObj.name}</span>
+                      <Badge variant="outline" className="bg-white text-indigo-700 text-[10px] font-bold">
+                        หนี้ค้าง {selectedSupplierObj.unpaidCount} บิล
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                      {selectedSupplierObj.contact && `ติดต่อ: ${selectedSupplierObj.contact} • `}
+                      {selectedSupplierObj.phone && `โทร: ${selectedSupplierObj.phone} • `}
+                      ยอดหนี้รวม: <b className="text-rose-600">{formatCurrency(selectedSupplierObj.totalUnpaid)}</b>
+                    </p>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 font-mono">
-                  <span className="text-slate-500">บิลที่รอชำระ: <b>{supplierBills.length}</b> ใบ</span>
-                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedSupplierId('');
+                    setSupplierSearchQuery('');
+                    setIsSupplierDropdownOpen(false);
+                  }}
+                  className="h-8 text-xs font-bold text-slate-600 hover:text-indigo-600 border-slate-200 bg-white"
+                >
+                  เปลี่ยนผู้จำหน่าย
+                </Button>
               </div>
             )}
           </div>
 
-          {/* STEP 2: Multi-select Bills / Invoices & Partial Payment */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-indigo-600" />
-                  <span>2. รายการบิล / Invoice ที่เลือกชำระ:</span>
-                </span>
-                <Badge variant="outline" className="text-xs font-bold font-mono bg-slate-50">
-                  เลือกแล้ว {selectedBillIds.size} / {supplierBills.length} บิล
-                </Badge>
+          {/* STEP 2: Bills Section (Guarded by Supplier Selection) */}
+          {!selectedSupplierId ? (
+            <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center shadow-xs space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto shadow-2xs">
+                <Building2 className="w-7 h-7" />
               </div>
-
-              {/* Payment Mode Selector & Quick Percentage Buttons */}
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="inline-flex rounded-xl border border-slate-200 p-0.5 bg-slate-100">
-                  <button
-                    type="button"
-                    onClick={handleSelectFull}
-                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
-                      payMode === 'FULL'
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>ชำระเต็มจำนวน</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleSelectPartial}
-                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
-                      payMode === 'PARTIAL'
-                        ? 'bg-indigo-600 text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <Banknote className="w-3.5 h-3.5" />
-                    <span>แบ่งชำระ (ระบุยอดเอง)</span>
-                  </button>
-                </div>
-
-                {payMode === 'PARTIAL' && selectedBillIds.size > 0 && (
-                  <div className="flex items-center gap-1 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-xl">
-                    <span className="text-[11px] font-bold text-indigo-700 mr-1">แบ่งจ่ายด่วน:</span>
-                    {[25, 50, 75, 100].map((pct) => (
-                      <button
-                        key={pct}
-                        type="button"
-                        onClick={() => handleQuickPercent(pct)}
-                        className="px-2 py-0.5 text-xs font-bold bg-white text-indigo-700 border border-indigo-200 rounded-md hover:bg-indigo-600 hover:text-white transition-colors"
-                      >
-                        {pct}%
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {supplierBills.length > 0 && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={handleSelectAllBills}
-                    className="h-8 text-xs font-bold text-indigo-700 border-indigo-200 hover:bg-indigo-50 rounded-xl"
-                  >
-                    {selectedBillIds.size === supplierBills.length ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทุกบิล'}
-                  </Button>
-                )}
+              <div className="max-w-md mx-auto space-y-1">
+                <p className="text-base font-bold text-slate-800">กรุณาเลือกหรือค้นหาบริษัทผู้จำหน่ายก่อน</p>
+                <p className="text-xs text-slate-500">
+                  เมื่อเลือกบริษัทผู้จำหน่ายแล้ว ระบบจะดึงรายการบิลและ Invoice ที่ค้างชำระทั้งหมดของบริษัทนั้นมาแสดงให้เลือกตัดจ่ายทันที
+                </p>
               </div>
             </div>
+          ) : (
+            <>
+              {/* STEP 2: Multi-select Bills / Invoices & Partial Payment */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                      <FileText className="w-4 h-4 text-indigo-600" />
+                      <span>2. รายการบิล / Invoice ที่เลือกชำระ:</span>
+                    </span>
+                    <Badge variant="outline" className="text-xs font-bold font-mono bg-slate-50">
+                      เลือกแล้ว {selectedBillIds.size} / {supplierBills.length} บิล
+                    </Badge>
+                  </div>
 
-            {/* Bills Table with Row-Level Progress Bar (หลอดพลังประจำบิล) */}
-            {supplierBills.length === 0 ? (
-              <div className="p-10 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-xs">
-                ไม่มีบิลค้างชำระสำหรับผู้จำหน่ายรายนี้
+                  {/* Payment Mode Selector & Quick Percentage Buttons */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex rounded-xl border border-slate-200 p-0.5 bg-slate-100">
+                      <button
+                        type="button"
+                        onClick={handleSelectFull}
+                        className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
+                          payMode === 'FULL'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>ชำระเต็มจำนวน</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleSelectPartial}
+                        className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
+                          payMode === 'PARTIAL'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Banknote className="w-3.5 h-3.5" />
+                        <span>แบ่งชำระ (ระบุยอดเอง)</span>
+                      </button>
+                    </div>
+
+                    {payMode === 'PARTIAL' && selectedBillIds.size > 0 && (
+                      <div className="flex items-center gap-1 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-xl">
+                        <span className="text-[11px] font-bold text-indigo-700 mr-1">แบ่งจ่ายด่วน:</span>
+                        {[25, 50, 75, 100].map((pct) => (
+                          <button
+                            key={pct}
+                            type="button"
+                            onClick={() => handleQuickPercent(pct)}
+                            className="px-2 py-0.5 text-xs font-bold bg-white text-indigo-700 border border-indigo-200 rounded-md hover:bg-indigo-600 hover:text-white transition-colors"
+                          >
+                            {pct}%
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {supplierBills.length > 0 && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={handleSelectAllBills}
+                        className="h-8 text-xs font-bold text-indigo-700 border-indigo-200 hover:bg-indigo-50 rounded-xl"
+                      >
+                        {selectedBillIds.size === supplierBills.length ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทุกบิล'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Bills Table with Row-Level Progress Bar (หลอดพลังประจำบิล) */}
+                {supplierBills.length === 0 ? (
+                  <div className="p-10 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-xs">
+                    ไม่มีบิลค้างชำระสำหรับผู้จำหน่ายรายนี้
+                  </div>
+                ) : (
+                  <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+                    <table className="w-full text-xs text-left border-collapse">
+                      <thead className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200">
+                        <tr>
+                          <th className="py-3 px-3 w-10 text-center">
+                            <Checkbox
+                              checked={supplierBills.length > 0 && selectedBillIds.size === supplierBills.length}
+                              onCheckedChange={handleSelectAllBills}
+                            />
+                          </th>
+                          <th className="py-3 px-3">เลขที่บิลผู้จำหน่าย (Invoice No.)</th>
+                          <th className="py-3 px-2 text-center w-28">เลขที่ PO</th>
+                          <th className="py-3 px-2 text-center w-24">วันที่ในบิล</th>
+                          <th className="py-3 px-3 text-right w-28">ยอดหนี้เต็ม</th>
+                          <th className="py-3 px-3 text-right w-28">หนี้คงเหลือ</th>
+                          <th className="py-3 px-3 text-right w-40">ยอดตัดจ่ายรอบนี้ (฿)</th>
+                          <th className="py-3 px-3 text-center w-40">ความคืบหน้าชำระ</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {supplierBills.map((b) => {
+                          const isSelected = selectedBillIds.has(b.poId);
+                          const isEditingThis = editingPoId === b.poId;
+                          const currentAmount = billPayAmounts[b.poId] ?? b.remainingPayable;
+                          const isFull = currentAmount >= b.remainingPayable;
+                          const isPartial = currentAmount > 0 && currentAmount < b.remainingPayable;
+                          const billPercent = b.remainingPayable > 0 ? Math.min(100, Math.round((currentAmount / b.remainingPayable) * 100)) : 0;
+
+                          return (
+                            <tr
+                              key={b.poId}
+                              className={`transition-colors ${isSelected ? 'bg-indigo-50/40' : 'hover:bg-slate-50/60'}`}
+                            >
+                              <td className="py-2.5 px-3 text-center">
+                                <Checkbox
+                                  checked={isSelected}
+                                  onCheckedChange={() => handleToggleBill(b.poId, b.remainingPayable)}
+                                />
+                              </td>
+                              <td className="py-2.5 px-3">
+                                {isEditingThis ? (
+                                  <div className="flex items-center gap-1">
+                                    <Input
+                                      value={tempInvoiceNo}
+                                      onChange={(e) => setTempInvoiceNo(e.target.value)}
+                                      placeholder="ระบุเลข Invoice"
+                                      className="h-7 text-xs font-mono font-bold w-36"
+                                      autoFocus
+                                    />
+                                    <Button
+                                      size="sm"
+                                      className="h-7 px-2 text-[11px] bg-emerald-600 hover:bg-emerald-700"
+                                      onClick={() => handleSaveInvoiceNo(b.poId)}
+                                    >
+                                      บันทึก
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`font-mono font-bold text-xs ${b.supplierInvoiceNo ? 'text-indigo-900' : 'text-slate-400 italic'}`}>
+                                      {b.supplierInvoiceNo || 'ยังไม่ระบุเลขที่บิล'}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingPoId(b.poId);
+                                        setTempInvoiceNo(b.supplierInvoiceNo || '');
+                                      }}
+                                      className="text-[10px] text-slate-400 hover:text-indigo-600 underline ml-1"
+                                    >
+                                      [แก้ไข]
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-2 text-center font-mono text-slate-600 text-[11px]">
+                                {b.poNumber}
+                              </td>
+                              <td className="py-2.5 px-2 text-center text-slate-500 text-[11px]">
+                                {new Date(b.billDate).toLocaleDateString('th-TH')}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono text-slate-600">
+                                {formatCurrency(b.totalAmount)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-600">
+                                {formatCurrency(b.remainingPayable)}
+                              </td>
+                              <td className="py-2.5 px-3 text-right">
+                                {isSelected ? (
+                                  <Input
+                                    type="number"
+                                    step="any"
+                                    value={currentAmount}
+                                    onChange={(e) => handleBillAmountChange(b.poId, e.target.value, b.remainingPayable)}
+                                    className="h-8 text-right font-mono font-bold text-indigo-700 bg-white border-indigo-300 shadow-2xs"
+                                  />
+                                ) : (
+                                  <span className="text-slate-400 font-mono text-xs">-</span>
+                                )}
+                              </td>
+
+                              {/* ─── หลอดพลังความคืบหน้ารายบิล (Row-Level Progress Bar) ─── */}
+                              <td className="py-2.5 px-3 text-center">
+                                {isSelected ? (
+                                  <div className="space-y-1 max-w-[130px] mx-auto">
+                                    <div className="flex items-center justify-between text-[11px] font-semibold">
+                                      <span className={isFull ? 'text-teal-700 font-bold' : isPartial ? 'text-indigo-700 font-bold' : 'text-slate-400'}>
+                                        {isFull ? 'ครบ 100%' : `${billPercent}%`}
+                                      </span>
+                                      <span className="text-[10px] text-slate-500 font-mono">
+                                        {isFull ? 'ครบแล้ว' : `ค้าง ${formatCurrency(b.remainingPayable - currentAmount)}`}
+                                      </span>
+                                    </div>
+
+                                    {/* Soft Pastel Progress Bar */}
+                                    <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200">
+                                      <div
+                                        className={`h-full rounded-full transition-all duration-300 ${
+                                          isFull
+                                            ? 'bg-teal-500'
+                                            : isPartial
+                                            ? 'bg-indigo-500'
+                                            : 'bg-slate-200'
+                                        }`}
+                                        style={{ width: `${Math.max(billPercent > 0 ? 5 : 0, billPercent)}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-300 text-xs">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      {selectedBillIds.size > 0 && (
+                        <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-200">
+                          <tr>
+                            <td colSpan={6} className="py-3 px-3 text-right text-slate-700">
+                              รวมยอดที่เลือกชำระ ({selectedBillIds.size} บิล):
+                            </td>
+                            <td className="py-3 px-3 text-right font-mono font-black text-indigo-700 text-sm">
+                              {formatCurrency(totalBillsPayAmount)}
+                            </td>
+                            <td className="py-3 px-3 text-center font-mono text-xs text-slate-500">
+                              {selectedBillIds.size} รายการ
+                            </td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-                <table className="w-full text-xs text-left border-collapse">
-                  <thead className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200">
-                    <tr>
-                      <th className="py-3 px-3 w-10 text-center">
-                        <Checkbox
-                          checked={supplierBills.length > 0 && selectedBillIds.size === supplierBills.length}
-                          onCheckedChange={handleSelectAllBills}
-                        />
-                      </th>
-                      <th className="py-3 px-3">เลขที่บิลผู้จำหน่าย (Invoice No.)</th>
-                      <th className="py-3 px-2 text-center w-28">เลขที่ PO</th>
-                      <th className="py-3 px-2 text-center w-24">วันที่ในบิล</th>
-                      <th className="py-3 px-3 text-right w-28">ยอดหนี้เต็ม</th>
-                      <th className="py-3 px-3 text-right w-28">หนี้คงเหลือ</th>
-                      <th className="py-3 px-3 text-right w-40">ยอดตัดจ่ายรอบนี้ (฿)</th>
-                      <th className="py-3 px-3 text-center w-40">ความคืบหน้าชำระ</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white">
-                    {supplierBills.map((b) => {
-                      const isSelected = selectedBillIds.has(b.poId);
-                      const isEditingThis = editingPoId === b.poId;
-                      const currentAmount = billPayAmounts[b.poId] ?? b.remainingPayable;
-                      const isFull = currentAmount >= b.remainingPayable;
-                      const isPartial = currentAmount > 0 && currentAmount < b.remainingPayable;
-                      const billPercent = b.remainingPayable > 0 ? Math.min(100, Math.round((currentAmount / b.remainingPayable) * 100)) : 0;
+
+              {/* STEP 3: Match Debit Notes (ถ้ามี) */}
+              {availableDebitNotes.length > 0 && (
+                <div className="bg-amber-50/40 border border-amber-200/80 rounded-2xl p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                      <ShieldAlert className="w-4 h-4 text-amber-600" />
+                      <span>3. ประกบหักใบลดหนี้ / เครดิตสินค้าชำรุดส่งคืน (Debit Notes):</span>
+                    </span>
+                    <span className="text-[11px] text-amber-800 font-medium">
+                      มีเครดิตที่ใช้ได้ {availableDebitNotes.length} ฉบับ
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {availableDebitNotes.map((dn) => {
+                      const isChecked = matchedDebitNotes[dn.id] !== undefined;
 
                       return (
-                        <tr
-                          key={b.poId}
-                          className={`transition-colors ${isSelected ? 'bg-indigo-50/40' : 'hover:bg-slate-50/60'}`}
+                        <div
+                          key={dn.id}
+                          className={`p-3.5 rounded-xl border flex items-center justify-between transition-all ${
+                            isChecked ? 'bg-white border-amber-300 shadow-2xs' : 'bg-white/60 border-slate-200'
+                          }`}
                         >
-                          <td className="py-2.5 px-3 text-center">
+                          <div className="flex items-center gap-3">
                             <Checkbox
-                              checked={isSelected}
-                              onCheckedChange={() => handleToggleBill(b.poId, b.remainingPayable)}
+                              checked={isChecked}
+                              onCheckedChange={() => handleToggleDebitNote(dn.id, dn.remainingCreditAmount)}
                             />
-                          </td>
-                          <td className="py-2.5 px-3">
-                            {isEditingThis ? (
-                              <div className="flex items-center gap-1">
-                                <Input
-                                  value={tempInvoiceNo}
-                                  onChange={(e) => setTempInvoiceNo(e.target.value)}
-                                  placeholder="ระบุเลข Invoice"
-                                  className="h-7 text-xs font-mono font-bold w-36"
-                                  autoFocus
-                                />
-                                <Button
-                                  size="sm"
-                                  className="h-7 px-2 text-[11px] bg-emerald-600 hover:bg-emerald-700"
-                                  onClick={() => handleSaveInvoiceNo(b.poId)}
-                                >
-                                  บันทึก
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1.5">
-                                <span className={`font-mono font-bold text-xs ${b.supplierInvoiceNo ? 'text-indigo-900' : 'text-slate-400 italic'}`}>
-                                  {b.supplierInvoiceNo || 'ยังไม่ระบุเลขที่บิล'}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingPoId(b.poId);
-                                    setTempInvoiceNo(b.supplierInvoiceNo || '');
-                                  }}
-                                  className="text-[10px] text-slate-400 hover:text-indigo-600 underline ml-1"
-                                >
-                                  [แก้ไข]
-                                </button>
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-2 text-center font-mono text-slate-600 text-[11px]">
-                            {b.poNumber}
-                          </td>
-                          <td className="py-2.5 px-2 text-center text-slate-500 text-[11px]">
-                            {new Date(b.billDate).toLocaleDateString('th-TH')}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-mono text-slate-600">
-                            {formatCurrency(b.totalAmount)}
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-600">
-                            {formatCurrency(b.remainingPayable)}
-                          </td>
-                          <td className="py-2.5 px-3 text-right">
-                            {isSelected ? (
+                            <div>
+                              <p className="font-mono font-bold text-xs text-slate-900">
+                                ใบลดหนี้เลขที่ {dn.id}
+                              </p>
+                              <p className="text-[11px] text-slate-500">
+                                สินค้าส่งคืน: {dn.totalQuantity} ชิ้น • เครดิตคงเหลือ: <strong className="text-emerald-700 font-mono">{formatCurrency(dn.remainingCreditAmount)}</strong>
+                              </p>
+                            </div>
+                          </div>
+
+                          {isChecked && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-slate-600 font-medium">หักเครดิต:</span>
                               <Input
                                 type="number"
                                 step="any"
-                                value={currentAmount}
-                                onChange={(e) => handleBillAmountChange(b.poId, e.target.value, b.remainingPayable)}
-                                className="h-8 text-right font-mono font-bold text-indigo-700 bg-white border-indigo-300 shadow-2xs"
+                                value={matchedDebitNotes[dn.id]}
+                                onChange={(e) => {
+                                  const v = Math.max(0, Math.min(dn.remainingCreditAmount, Number(e.target.value) || 0));
+                                  setMatchedDebitNotes(cur => ({ ...cur, [dn.id]: v }));
+                                }}
+                                className="h-8 w-28 text-right font-mono font-bold text-rose-700 border-amber-300"
                               />
-                            ) : (
-                              <span className="text-slate-400 font-mono text-xs">-</span>
-                            )}
-                          </td>
-
-                          {/* ─── หลอดพลังความคืบหน้ารายบิล (Row-Level Progress Bar) ─── */}
-                          <td className="py-2.5 px-3 text-center">
-                            {isSelected ? (
-                              <div className="space-y-1 max-w-[130px] mx-auto">
-                                <div className="flex items-center justify-between text-[11px] font-semibold">
-                                  <span className={isFull ? 'text-teal-700 font-bold' : isPartial ? 'text-indigo-700 font-bold' : 'text-slate-400'}>
-                                    {isFull ? 'ครบ 100%' : `${billPercent}%`}
-                                  </span>
-                                  <span className="text-[10px] text-slate-500 font-mono">
-                                    {isFull ? 'ครบแล้ว' : `ค้าง ${formatCurrency(b.remainingPayable - currentAmount)}`}
-                                  </span>
-                                </div>
-
-                                {/* Soft Pastel Progress Bar */}
-                                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200">
-                                  <div
-                                    className={`h-full rounded-full transition-all duration-300 ${
-                                      isFull
-                                        ? 'bg-teal-500'
-                                        : isPartial
-                                        ? 'bg-indigo-500'
-                                        : 'bg-slate-200'
-                                    }`}
-                                    style={{ width: `${Math.max(billPercent > 0 ? 5 : 0, billPercent)}%` }}
-                                  />
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-slate-300 text-xs">-</span>
-                            )}
-                          </td>
-                        </tr>
+                            </div>
+                          )}
+                        </div>
                       );
                     })}
-                  </tbody>
-                  {selectedBillIds.size > 0 && (
-                    <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-200">
-                      <tr>
-                        <td colSpan={6} className="py-3 px-3 text-right text-slate-700">
-                          รวมยอดที่เลือกชำระ ({selectedBillIds.size} บิล):
-                        </td>
-                        <td className="py-3 px-3 text-right font-mono font-black text-indigo-700 text-sm">
-                          {formatCurrency(totalBillsPayAmount)}
-                        </td>
-                        <td className="py-3 px-3 text-center font-mono text-xs text-slate-500">
-                          {selectedBillIds.size} รายการ
-                        </td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* STEP 3: Match Debit Notes (ถ้ามี) */}
-          {availableDebitNotes.length > 0 && (
-            <div className="bg-amber-50/40 border border-amber-200/80 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                  <ShieldAlert className="w-4 h-4 text-amber-600" />
-                  <span>3. ประกบหักใบลดหนี้ / เครดิตสินค้าชำรุดส่งคืน (Debit Notes):</span>
-                </span>
-                <span className="text-[11px] text-amber-800 font-medium">
-                  มีเครดิตที่ใช้ได้ {availableDebitNotes.length} ฉบับ
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                {availableDebitNotes.map((dn) => {
-                  const isChecked = matchedDebitNotes[dn.id] !== undefined;
-
-                  return (
-                    <div
-                      key={dn.id}
-                      className={`p-3.5 rounded-xl border flex items-center justify-between transition-all ${
-                        isChecked ? 'bg-white border-amber-300 shadow-2xs' : 'bg-white/60 border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Checkbox
-                          checked={isChecked}
-                          onCheckedChange={() => handleToggleDebitNote(dn.id, dn.remainingCreditAmount)}
-                        />
-                        <div>
-                          <p className="font-mono font-bold text-xs text-slate-900">
-                            ใบลดหนี้เลขที่ {dn.id}
-                          </p>
-                          <p className="text-[11px] text-slate-500">
-                            สินค้าส่งคืน: {dn.totalQuantity} ชิ้น • เครดิตคงเหลือ: <strong className="text-emerald-700 font-mono">{formatCurrency(dn.remainingCreditAmount)}</strong>
-                          </p>
-                        </div>
-                      </div>
-
-                      {isChecked && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-600 font-medium">หักเครดิต:</span>
-                          <Input
-                            type="number"
-                            step="any"
-                            value={matchedDebitNotes[dn.id]}
-                            onChange={(e) => {
-                              const v = Math.max(0, Math.min(dn.remainingCreditAmount, Number(e.target.value) || 0));
-                              setMatchedDebitNotes(cur => ({ ...cur, [dn.id]: v }));
-                            }}
-                            className="h-8 w-28 text-right font-mono font-bold text-rose-700 border-amber-300"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* STEP 4: Payment Details & Themed Summary Box */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Left: Payment Method & Channel */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3.5">
-              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                <Wallet className="w-4 h-4 text-indigo-600" />
-                <span>4. ช่องทางชำระเงิน (Payment Method):</span>
-              </span>
-
-              <div className="grid grid-cols-3 gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('TRANSFER')}
-                  className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                    paymentMethod === 'TRANSFER'
-                      ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-2 ring-indigo-500/20 shadow-2xs'
-                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <CreditCard className="w-4 h-4" />
-                  <span>เงินโอน</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('CASH')}
-                  className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                    paymentMethod === 'CASH'
-                      ? 'border-emerald-600 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-500/20 shadow-2xs'
-                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <Banknote className="w-4 h-4" />
-                  <span>เงินสด</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPaymentMethod('CHEQUE')}
-                  className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
-                    paymentMethod === 'CHEQUE'
-                      ? 'border-amber-600 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20 shadow-2xs'
-                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <Tag className="w-4 h-4" />
-                  <span>เช็ค / อื่นๆ</span>
-                </button>
-              </div>
-
-              {paymentMethod === 'TRANSFER' && (
-                <div className="space-y-2 pt-1">
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
-                      บัญชีธนาคารที่ใช้จ่ายเงิน:
-                    </label>
-                    <Input
-                      value={bankAccountLabel}
-                      onChange={(e) => setBankAccountLabel(e.target.value)}
-                      className="h-8.5 text-xs bg-slate-50 border-slate-300 rounded-xl"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 block mb-1">
-                      เลขอ้างอิงสลิปโอน / หมายเลขอ้างอิง:
-                    </label>
-                    <Input
-                      value={referenceNo}
-                      onChange={(e) => setReferenceNo(e.target.value)}
-                      placeholder="เช่น K-12398471"
-                      className="h-8.5 text-xs font-mono bg-slate-50 border-slate-300 rounded-xl"
-                    />
                   </div>
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2.5 pt-1">
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">วันที่จ่ายเงิน:</label>
-                  <Input
-                    type="date"
-                    value={paymentDate}
-                    onChange={(e) => setPaymentDate(e.target.value)}
-                    className="h-8.5 text-xs bg-slate-50 border-slate-300 rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">ผู้จัดทำเอกสาร:</label>
-                  <Input
-                    value={cashierName}
-                    onChange={(e) => setCashierName(e.target.value)}
-                    className="h-8.5 text-xs bg-slate-50 border-slate-300 rounded-xl"
-                  />
-                </div>
-              </div>
-            </div>
+              {/* STEP 4: Payment Details & Themed Summary Box */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Left: Payment Method & Channel */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3.5">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Wallet className="w-4 h-4 text-indigo-600" />
+                    <span>4. ช่องทางชำระเงิน (Payment Method):</span>
+                  </span>
 
-            {/* Right: Themed Light Consistent Summary Box (NO DARK BLOCK) */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-4">
-              <div className="space-y-3">
-                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 pb-2 border-b border-slate-100">
-                  <DollarSign className="w-4 h-4 text-emerald-600" />
-                  <span>5. สรุปยอดเงินและส่วนลด (Payment Summary):</span>
-                </span>
+                  <div className="grid grid-cols-3 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('TRANSFER')}
+                      className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                        paymentMethod === 'TRANSFER'
+                          ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-2 ring-indigo-500/20 shadow-2xs'
+                          : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <CreditCard className="w-4 h-4" />
+                      <span>เงินโอน</span>
+                    </button>
 
-                <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-100">
-                  <span className="text-slate-600 font-medium">ยอดรวมบิลที่เลือกชำระ ({selectedBillIds.size} ใบ):</span>
-                  <span className="font-mono font-bold text-slate-900 text-sm">{formatCurrency(totalBillsPayAmount)}</span>
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('CASH')}
+                      className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                        paymentMethod === 'CASH'
+                          ? 'border-emerald-600 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-500/20 shadow-2xs'
+                          : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <Banknote className="w-4 h-4" />
+                      <span>เงินสด</span>
+                    </button>
 
-                {totalDebitDeducted > 0 && (
-                  <div className="flex items-center justify-between text-xs text-rose-600 pb-2 border-b border-slate-100">
-                    <span className="font-medium">หักเครดิตใบลดหนี้รวม:</span>
-                    <span className="font-mono font-bold text-sm">-{formatCurrency(totalDebitDeducted)}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('CHEQUE')}
+                      className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                        paymentMethod === 'CHEQUE'
+                          ? 'border-amber-600 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20 shadow-2xs'
+                          : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      <Tag className="w-4 h-4" />
+                      <span>เช็ค / อื่นๆ</span>
+                    </button>
                   </div>
-                )}
 
-                <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-100">
-                  <span className="text-amber-800 font-medium flex items-center gap-1">
-                    <Tag className="w-3.5 h-3.5 text-amber-600" />
-                    <span>ส่วนลดท้ายบิลเจรจาการค้า:</span>
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-amber-700 font-bold">-</span>
-                    <Input
-                      type="number"
-                      step="any"
-                      placeholder="0.00"
-                      value={discountAmount || ''}
-                      onChange={(e) => setDiscountAmount(Math.max(0, Number(e.target.value) || 0))}
-                      className="h-8.5 w-32 text-right font-mono font-bold text-amber-800 bg-amber-50/60 border-amber-300 text-xs rounded-xl focus:bg-white"
-                    />
+                  {paymentMethod === 'TRANSFER' && (
+                    <div className="space-y-2 pt-1">
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                          บัญชีธนาคารที่ใช้จ่ายเงิน:
+                        </label>
+                        <Input
+                          value={bankAccountLabel}
+                          onChange={(e) => setBankAccountLabel(e.target.value)}
+                          className="h-8.5 text-xs bg-slate-50 border-slate-300 rounded-xl"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                          เลขอ้างอิงสลิปโอน / หมายเลขอ้างอิง:
+                        </label>
+                        <Input
+                          value={referenceNo}
+                          onChange={(e) => setReferenceNo(e.target.value)}
+                          placeholder="เช่น K-12398471"
+                          className="h-8.5 text-xs font-mono bg-slate-50 border-slate-300 rounded-xl"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2.5 pt-1">
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 block mb-1">วันที่จ่ายเงิน:</label>
+                      <Input
+                        type="date"
+                        value={paymentDate}
+                        onChange={(e) => setPaymentDate(e.target.value)}
+                        className="h-8.5 text-xs bg-slate-50 border-slate-300 rounded-xl"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 block mb-1">ผู้จัดทำเอกสาร:</label>
+                      <Input
+                        value={cashierName}
+                        onChange={(e) => setCashierName(e.target.value)}
+                        className="h-8.5 text-xs bg-slate-50 border-slate-300 rounded-xl"
+                      />
+                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-[11px] font-bold text-slate-600 block mb-1">หมายเหตุบันทึกจ่ายเงิน (ถ้ามี):</label>
-                  <Input
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="เช่น จ่ายรอบบิลประจำสัปดาห์ / งวดที่ 1"
-                    className="h-8.5 text-xs bg-slate-50 border-slate-300 text-slate-800 placeholder:text-slate-400 rounded-xl focus:bg-white"
-                  />
-                </div>
-              </div>
+                {/* Right: Themed Light Consistent Summary Box (NO DARK BLOCK) */}
+                <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-4">
+                  <div className="space-y-3">
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 pb-2 border-b border-slate-100">
+                      <DollarSign className="w-4 h-4 text-emerald-600" />
+                      <span>5. สรุปยอดเงินและส่วนลด (Payment Summary):</span>
+                    </span>
 
-              {/* Total Net Payment Box (Consistent Pastel Emerald Highlight Box) */}
-              <div className="pt-3 border-t border-slate-200 space-y-1.5 bg-emerald-50/70 border border-emerald-200/80 p-4 rounded-xl">
-                <div className="flex justify-between items-baseline">
-                  <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
-                    ยอดเงินสุทธิที่ต้องจ่ายจริง:
-                  </span>
-                  <span className="text-2xl font-black font-mono text-emerald-700">
-                    {formatCurrency(netCashOrTransferRequired)}
-                  </span>
+                    <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-100">
+                      <span className="text-slate-600 font-medium">ยอดรวมบิลที่เลือกชำระ ({selectedBillIds.size} ใบ):</span>
+                      <span className="font-mono font-bold text-slate-900 text-sm">{formatCurrency(totalBillsPayAmount)}</span>
+                    </div>
+
+                    {totalDebitDeducted > 0 && (
+                      <div className="flex items-center justify-between text-xs text-rose-600 pb-2 border-b border-slate-100">
+                        <span className="font-medium">หักเครดิตใบลดหนี้รวม:</span>
+                        <span className="font-mono font-bold text-sm">-{formatCurrency(totalDebitDeducted)}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-100">
+                      <span className="text-amber-800 font-medium flex items-center gap-1">
+                        <Tag className="w-3.5 h-3.5 text-amber-600" />
+                        <span>ส่วนลดท้ายบิลเจรจาการค้า:</span>
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-amber-700 font-bold">-</span>
+                        <Input
+                          type="number"
+                          step="any"
+                          placeholder="0.00"
+                          value={discountAmount || ''}
+                          onChange={(e) => setDiscountAmount(Math.max(0, Number(e.target.value) || 0))}
+                          className="h-8.5 w-32 text-right font-mono font-bold text-amber-800 bg-amber-50/60 border-amber-300 text-xs rounded-xl focus:bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-slate-600 block mb-1">หมายเหตุบันทึกจ่ายเงิน (ถ้ามี):</label>
+                      <Input
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder="เช่น จ่ายรอบบิลประจำสัปดาห์ / งวดที่ 1"
+                        className="h-8.5 text-xs bg-slate-50 border-slate-300 text-slate-800 placeholder:text-slate-400 rounded-xl focus:bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Total Net Payment Box (Consistent Pastel Emerald Highlight Box) */}
+                  <div className="pt-3 border-t border-slate-200 space-y-1.5 bg-emerald-50/70 border border-emerald-200/80 p-4 rounded-xl">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
+                        ยอดเงินสุทธิที่ต้องจ่ายจริง:
+                      </span>
+                      <span className="text-2xl font-black font-mono text-emerald-700">
+                        {formatCurrency(netCashOrTransferRequired)}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-right font-medium text-emerald-800/80">
+                      ({thaiBahtText(netCashOrTransferRequired)})
+                    </p>
+                  </div>
                 </div>
-                <p className="text-[11px] text-right font-medium text-emerald-800/80">
-                  ({thaiBahtText(netCashOrTransferRequired)})
-                </p>
               </div>
-            </div>
-          </div>
+            </>
+          )}
         </div>
 
         {/* ─── MODAL FOOTER WITH COMFORTABLE INWARD PADDING ─── */}
-        <DialogFooter className="px-10 py-5 bg-slate-50 border-t border-slate-200 shrink-0 flex flex-row items-center justify-between">
+        <DialogFooter className="px-10 pt-4 pb-8 sm:pb-10 bg-slate-50 border-t border-slate-200 shrink-0 flex flex-row items-center justify-between">
           <Button
             type="button"
             variant="outline"
@@ -978,7 +1019,7 @@ export function SettleMultipleBillsModal({
           <Button
             type="button"
             onClick={handleSubmit}
-            disabled={isSubmitting || selectedBillIds.size === 0}
+            disabled={isSubmitting || !selectedSupplierId || selectedBillIds.size === 0}
             className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm px-8 h-10 rounded-xl shadow-md mr-2 gap-2"
           >
             <CheckCircle2 className="w-4 h-4" />
