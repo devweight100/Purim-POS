@@ -515,6 +515,19 @@ export function calculatePaymentsAndShiftsReport(orders: any[], shiftsHistory: a
 }
 
 // ─── 5. Customer & Debts Aging Report ───
+export interface CustomerSpendingSummary {
+  id: string;
+  code: string;
+  name: string;
+  phone: string;
+  points: number;
+  orderCount: number;
+  totalSpent: number;
+  averageTicket: number;
+  outstandingDebt: number;
+  lastOrderDate: string;
+}
+
 export interface DebtAgingBucket {
   bucketName: string;
   rangeDays: string;
@@ -523,31 +536,90 @@ export interface DebtAgingBucket {
 }
 
 export function calculateCustomerAndDebtsReport(orders: any[], debts: any[], customers: any[]) {
-  const customerSpendingMap = new Map<string, { id: string; name: string; phone: string; orderCount: number; totalSpent: number }>();
+  // 1. Build lookup maps from customers catalog
+  const customerProfileMap = new Map<string, any>();
+  (customers || []).forEach((c) => {
+    if (c.id) customerProfileMap.set(c.id, c);
+    if (c.name) customerProfileMap.set(c.name, c);
+    if (c.code) customerProfileMap.set(c.code, c);
+  });
+
+  // 2. Build debt map by customer
+  const debtByCustomerMap = new Map<string, number>();
+  (debts || []).forEach((d) => {
+    const remaining = Number(d.remainingDebt || 0);
+    if (remaining > 0 && d.status !== 'PAID') {
+      const key = d.customerId || d.customerName || 'UNKNOWN';
+      debtByCustomerMap.set(key, (debtByCustomerMap.get(key) || 0) + remaining);
+      if (d.customerName) {
+        debtByCustomerMap.set(d.customerName, (debtByCustomerMap.get(d.customerName) || 0) + remaining);
+      }
+    }
+  });
+
+  // 3. Aggregate spending from orders
+  const customerSpendingMap = new Map<string, CustomerSpendingSummary>();
 
   orders.forEach((o) => {
     if (o.status === 'VOIDED' || o.status === 'CANCELLED') return;
-    const cId = o.customerId || o.customerName || 'GENERAL';
-    const cName = o.customerName || 'ลูกค้าทั่วไป';
-    const cPhone = o.customerPhone || '-';
+    const cId = o.customerId || (o.customerName ? `NAME_${o.customerName}` : 'GENERAL');
+    const rawName = o.customerName || 'ลูกค้าทั่วไป';
+    const profile = o.customerId ? customerProfileMap.get(o.customerId) : customerProfileMap.get(rawName);
+
+    const cCode = profile?.code || profile?.customerCode || (o.customerId ? o.customerId.slice(-6).toUpperCase() : '-');
+    const cName = profile?.name || rawName;
+    const cPhone = profile?.phone || o.customerPhone || '-';
+    const cPoints = Number(profile?.points || 0);
     const amt = Number(o.totalAmount || o.total || 0);
+    const orderDate = o.createdAt || o.orderDate || '';
 
     const existing = customerSpendingMap.get(cId);
     if (!existing) {
       customerSpendingMap.set(cId, {
         id: cId,
+        code: cCode,
         name: cName,
         phone: cPhone,
+        points: cPoints,
         orderCount: 1,
         totalSpent: amt,
+        averageTicket: amt,
+        outstandingDebt: debtByCustomerMap.get(o.customerId) || debtByCustomerMap.get(cName) || 0,
+        lastOrderDate: orderDate,
       });
     } else {
       existing.orderCount += 1;
       existing.totalSpent += amt;
+      existing.averageTicket = Math.round(existing.totalSpent / existing.orderCount);
+      if (orderDate && (!existing.lastOrderDate || new Date(orderDate) > new Date(existing.lastOrderDate))) {
+        existing.lastOrderDate = orderDate;
+      }
     }
   });
 
-  const topCustomers = Array.from(customerSpendingMap.values()).sort((a, b) => b.totalSpent - a.totalSpent);
+  // Also include customers in catalog who haven't ordered in this period if debt exists
+  (customers || []).forEach((c) => {
+    if (c.id && !customerSpendingMap.has(c.id)) {
+      const debt = debtByCustomerMap.get(c.id) || debtByCustomerMap.get(c.name) || 0;
+      if (debt > 0 || (c.totalSpent && c.totalSpent > 0)) {
+        customerSpendingMap.set(c.id, {
+          id: c.id,
+          code: c.code || c.customerCode || '-',
+          name: c.name || 'สมาชิก',
+          phone: c.phone || '-',
+          points: Number(c.points || 0),
+          orderCount: Number(c.totalOrders || 0),
+          totalSpent: Number(c.totalSpent || 0),
+          averageTicket: (c.totalOrders && c.totalSpent) ? Math.round(c.totalSpent / c.totalOrders) : 0,
+          outstandingDebt: debt,
+          lastOrderDate: c.lastPurchaseDate || '',
+        });
+      }
+    }
+  });
+
+  const allCustomers = Array.from(customerSpendingMap.values()).sort((a, b) => b.totalSpent - a.totalSpent);
+  const topCustomers = allCustomers.slice(0, 15);
 
   // Debts Aging Breakdown
   const now = Date.now();
@@ -588,7 +660,8 @@ export function calculateCustomerAndDebtsReport(orders: any[], debts: any[], cus
     totalOutstandingDebt,
     unpaidBillsCount: unpaidDebts.length,
     agingBuckets: buckets,
-    topCustomers: topCustomers.slice(0, 15),
+    allCustomers,
+    topCustomers,
     unpaidDebtsList: unpaidDebts.sort((a, b) => b.remainingDebt - a.remainingDebt),
   };
 }

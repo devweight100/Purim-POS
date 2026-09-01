@@ -83,6 +83,106 @@ export type ReportTabKey = 'sales' | 'bestsellers' | 'inventory' | 'payments' | 
 
 const CHART_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#64748b'];
 
+interface ReportPaginationProps {
+  totalItems: number;
+  currentPage: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
+  unitLabel?: string;
+}
+
+function ReportPagination({
+  totalItems,
+  currentPage,
+  pageSize,
+  onPageChange,
+  onPageSizeChange,
+  unitLabel = 'รายการ',
+}: ReportPaginationProps) {
+  if (totalItems <= 0) return null;
+
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const start = (currentPage - 1) * pageSize + 1;
+  const end = Math.min(currentPage * pageSize, totalItems);
+
+  return (
+    <div className="p-3 sm:px-4 border-t border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+      <div className="text-slate-500 font-medium">
+        แสดงรายการที่ <span className="font-bold text-slate-800">{start}</span> - <span className="font-bold text-slate-800">{end}</span> จากทั้งหมด <span className="font-bold text-slate-800">{totalItems.toLocaleString()}</span> {unitLabel}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-1.5 text-slate-600">
+          <span>แสดงหน้าละ:</span>
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              onPageSizeChange(Number(e.target.value));
+              onPageChange(1);
+            }}
+            className="h-8 rounded-lg border border-slate-300 bg-white px-2 font-bold text-slate-800 outline-none focus:border-indigo-500 shadow-2xs cursor-pointer"
+          >
+            <option value={10}>10 {unitLabel}</option>
+            <option value={15}>15 {unitLabel}</option>
+            <option value={25}>25 {unitLabel}</option>
+            <option value={50}>50 {unitLabel}</option>
+            <option value={100}>100 {unitLabel}</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage <= 1}
+            onClick={() => onPageChange(1)}
+            className="h-8 w-8 p-0 text-slate-600 cursor-pointer disabled:cursor-not-allowed"
+            title="หน้าแรก"
+          >
+            <ChevronsLeft className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage <= 1}
+            onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+            className="h-8 w-8 p-0 text-slate-600 cursor-pointer disabled:cursor-not-allowed"
+            title="หน้าก่อนหน้า"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+
+          <div className="px-3 font-bold text-slate-800">
+            หน้า {currentPage} / {totalPages}
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage >= totalPages}
+            onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+            className="h-8 w-8 p-0 text-slate-600 cursor-pointer disabled:cursor-not-allowed"
+            title="หน้าถัดไป"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage >= totalPages}
+            onClick={() => onPageChange(totalPages)}
+            className="h-8 w-8 p-0 text-slate-600 cursor-pointer disabled:cursor-not-allowed"
+            title="หน้าสุดท้าย"
+          >
+            <ChevronsRight className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface ReportsViewProps {
   initialTab?: ReportTabKey;
 }
@@ -93,6 +193,10 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<ReportTabKey>(initialTab);
+
+  // Pagination State
+  const [pageSize, setPageSize] = useState<number>(15);
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   // Time Filter
   const [timeRange, setTimeRange] = useState<ReportTimeRange>('30days');
@@ -114,6 +218,11 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
 
   // Sub-filter for inventory (all / deadstock / lowstock)
   const [inventorySubFilter, setInventorySubFilter] = useState<'all' | 'deadstock' | 'lowstock'>('all');
+
+  // Reset pagination on filter or tab change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, timeRange, search, customStartDate, customEndDate, inventorySubFilter]);
 
   const { products, fetchProducts } = useProductStore();
 
@@ -198,7 +307,19 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
   // 5. Customers & Debts Aging (Lazy)
   const customerDebtsReport = useMemo(() => {
     if (activeTab !== 'customers') {
-      return { totalOutstandingDebt: 0, unpaidBillsCount: 0, agingBuckets: [{ bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }, { bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }, { bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }, { bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }], topCustomers: [], unpaidDebtsList: [] };
+      return { 
+        totalOutstandingDebt: 0, 
+        unpaidBillsCount: 0, 
+        agingBuckets: [
+          { bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }, 
+          { bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }, 
+          { bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }, 
+          { bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }
+        ], 
+        allCustomers: [],
+        topCustomers: [], 
+        unpaidDebtsList: [] 
+      };
     }
     return calculateCustomerAndDebtsReport(filteredOrders, debts, customers);
   }, [activeTab, filteredOrders, debts, customers]);
@@ -210,6 +331,82 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     }
     return calculatePurchasesAndClaimsReport(purchaseOrders, claims, suppliers);
   }, [activeTab, purchaseOrders, claims, suppliers]);
+
+  // ─── PAGINATED & FILTERED DATASETS FOR ALL REPORT TABLES ───
+  // 1. Sales
+  const filteredDailySales = useMemo(() => {
+    if (!search.trim()) return salesProfitReport.dailyBreakdown;
+    const q = search.toLowerCase().trim();
+    return salesProfitReport.dailyBreakdown.filter(d => d.date.includes(q));
+  }, [salesProfitReport.dailyBreakdown, search]);
+
+  const paginatedDailySales = useMemo(() => {
+    return filteredDailySales.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  }, [filteredDailySales, currentPage, pageSize]);
+
+  // 2. Best Sellers
+  const filteredBestSellers = useMemo(() => {
+    if (!search.trim()) return bestSellersReport.allProducts;
+    const q = search.toLowerCase().trim();
+    return bestSellersReport.allProducts.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.sku.toLowerCase().includes(q) ||
+      p.category.toLowerCase().includes(q)
+    );
+  }, [bestSellersReport.allProducts, search]);
+
+  const paginatedBestSellers = useMemo(() => {
+    return filteredBestSellers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  }, [filteredBestSellers, currentPage, pageSize]);
+
+  // 3. Inventory
+  const filteredInventoryItems = useMemo(() => {
+    let list = inventoryReport.items;
+    if (inventorySubFilter === 'deadstock') list = inventoryReport.deadstockList;
+    else if (inventorySubFilter === 'lowstock') list = inventoryReport.lowStockList;
+    if (!search.trim()) return list;
+    const q = search.toLowerCase().trim();
+    return list.filter(item =>
+      item.name.toLowerCase().includes(q) ||
+      item.sku.toLowerCase().includes(q) ||
+      item.category.toLowerCase().includes(q) ||
+      item.supplierName.toLowerCase().includes(q)
+    );
+  }, [inventoryReport, inventorySubFilter, search]);
+
+  const paginatedInventoryItems = useMemo(() => {
+    return filteredInventoryItems.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  }, [filteredInventoryItems, currentPage, pageSize]);
+
+  // 4. Customers
+  const filteredCustomers = useMemo(() => {
+    let list = customerDebtsReport.allCustomers || [];
+    if (!search.trim()) return list;
+    const q = search.toLowerCase().trim();
+    return list.filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      c.code.toLowerCase().includes(q) ||
+      c.phone.toLowerCase().includes(q)
+    );
+  }, [customerDebtsReport.allCustomers, search]);
+
+  const paginatedCustomers = useMemo(() => {
+    return filteredCustomers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  }, [filteredCustomers, currentPage, pageSize]);
+
+  // 5. Purchases / Suppliers
+  const filteredSuppliers = useMemo(() => {
+    let list = purchasesClaimsReport.supplierBreakdown || [];
+    if (!search.trim()) return list;
+    const q = search.toLowerCase().trim();
+    return list.filter(s =>
+      s.supplierName.toLowerCase().includes(q)
+    );
+  }, [purchasesClaimsReport.supplierBreakdown, search]);
+
+  const paginatedSuppliers = useMemo(() => {
+    return filteredSuppliers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  }, [filteredSuppliers, currentPage, pageSize]);
 
   // Print Handler
   const handlePrint = () => {
@@ -236,6 +433,16 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       inventoryReport.items.forEach((row, i) => {
         const status = row.isDeadstock ? 'ขายช้า(Deadstock)' : row.isLowStock ? 'สต็อกต่ำ' : 'ปกติ';
         csvContent += `${i + 1},"${row.sku}","${row.name}","${row.category}","${row.supplierName}",${row.stock},${row.costPrice},${row.totalCostValue},${row.retailPrice},${row.totalRetailValue},"${status}"\n`;
+      });
+    } else if (activeTab === 'customers') {
+      csvContent += 'ลำดับ,รหัสลูกค้า,ชื่อลูกค้า,เบอร์โทรศัพท์,จำนวนครั้งที่ซื้อ,ยอดซื้อเฉลี่ยต่อบิล,ยอดซื้อสะสมรวม,แต้มสะสม,หนี้คงค้าง,วันที่ซื้อล่าสุด\n';
+      customerDebtsReport.allCustomers.forEach((row, i) => {
+        csvContent += `${i + 1},"${row.code}","${row.name}","${row.phone}",${row.orderCount},${row.averageTicket},${row.totalSpent},${row.points},${row.outstandingDebt},"${row.lastOrderDate}"\n`;
+      });
+    } else if (activeTab === 'purchases') {
+      csvContent += 'ลำดับ,ชื่อบริษัทคู่ค้า,จำนวนใบสั่งซื้อ,ยอดสั่งซื้อรวม,ยอดจ่ายแล้ว,หนี้คงค้าง,จำนวนเคลม,ชิ้นที่เคลม,มูลค่าเคลมรวม\n';
+      purchasesClaimsReport.supplierBreakdown.forEach((row, i) => {
+        csvContent += `${i + 1},"${row.supplierName}",${row.poCount},${row.totalPurchaseAmount},${row.totalPaidAmount},${row.remainingPayable},${row.claimsCount},${row.claimPieces},${row.claimCostTotal}\n`;
       });
     } else {
       csvContent += 'ลำดับ,รายการ,ยอดรวม\n';
@@ -500,56 +707,69 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 </TableHeader>
 
                 <TableBody className="divide-y divide-slate-100">
-                  {salesProfitReport.dailyBreakdown.length === 0 ? (
+                  {filteredDailySales.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-12 text-slate-400 text-sm">
                         ไม่พบข้อมูลยอดขายในช่วงเวลาที่เลือก
                       </TableCell>
                     </TableRow>
                   ) : (
-                    salesProfitReport.dailyBreakdown.map((row, idx) => (
-                      <tr key={row.date} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
-                          {idx + 1}
-                        </td>
-                        <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-900 text-xs">
-                          {formatDate(row.date)}
-                        </td>
-                        <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-700 text-sm">
-                          {row.orderCount} บิล
-                        </td>
-                        <td className="py-3.5 px-3.5 text-right font-mono text-slate-600 text-sm">
-                          {formatCurrency(row.grossSales)}
-                        </td>
-                        <td className="py-3.5 px-3.5 text-right font-mono text-rose-600 text-sm">
-                          {row.discounts > 0 ? `-${formatCurrency(row.discounts)}` : '-'}
-                        </td>
-                        <td className="py-3.5 px-3.5 text-right font-mono font-bold text-slate-900 text-[15px]">
-                          {formatCurrency(row.netSales)}
-                        </td>
-                        <td className="py-3.5 px-3.5 text-right font-mono text-amber-700 text-sm">
-                          {formatCurrency(row.cogs)}
-                        </td>
-                        <td className="py-3.5 px-3.5 text-right font-mono font-black text-emerald-700 text-[15px] sm:text-base">
-                          {formatCurrency(row.grossProfit)}
-                        </td>
-                        <td className="py-3.5 px-3.5 text-center">
-                          <span className={`font-mono font-bold px-2 py-0.5 rounded text-xs ${
-                            row.profitMarginPercent >= 30
-                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                              : row.profitMarginPercent >= 15
-                              ? 'bg-sky-50 text-sky-800 border border-sky-200'
-                              : 'bg-amber-50 text-amber-800 border border-amber-200'
-                          }`}>
-                            {row.profitMarginPercent}%
-                          </span>
-                        </td>
-                      </tr>
-                    ))
+                    paginatedDailySales.map((row, idx) => {
+                      const itemIndex = (currentPage - 1) * pageSize + idx + 1;
+                      return (
+                        <tr key={row.date} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                            {itemIndex}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-900 text-xs">
+                            {formatDate(row.date)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-700 text-sm">
+                            {row.orderCount} บิล
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono text-slate-600 text-sm">
+                            {formatCurrency(row.grossSales)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono text-rose-600 text-sm">
+                            {row.discounts > 0 ? `-${formatCurrency(row.discounts)}` : '-'}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-slate-900 text-[15px]">
+                            {formatCurrency(row.netSales)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono text-amber-700 text-sm">
+                            {formatCurrency(row.cogs)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono font-black text-emerald-700 text-[15px] sm:text-base">
+                            {formatCurrency(row.grossProfit)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-center">
+                            <span className={`font-mono font-bold px-2 py-0.5 rounded text-xs ${
+                              row.profitMarginPercent >= 30
+                                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                : row.profitMarginPercent >= 15
+                                ? 'bg-sky-50 text-sky-800 border border-sky-200'
+                                : 'bg-amber-50 text-amber-800 border border-amber-200'
+                            }`}>
+                              {row.profitMarginPercent}%
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Controls */}
+            <ReportPagination
+              totalItems={filteredDailySales.length}
+              currentPage={currentPage}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+              unitLabel="วัน"
+            />
           </div>
         </div>
       )}
@@ -631,50 +851,63 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 </TableHeader>
 
                 <TableBody className="divide-y divide-slate-100">
-                  {bestSellersReport.allProducts.length === 0 ? (
+                  {filteredBestSellers.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-12 text-slate-400 text-sm">
                         ไม่พบข้อมูลสินค้าขายในช่วงเวลานี้
                       </TableCell>
                     </TableRow>
                   ) : (
-                    bestSellersReport.allProducts.map((p, idx) => (
-                      <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
-                          {idx + 1}
-                        </td>
-                        <td className="py-3.5 px-3.5 font-mono text-indigo-700 font-bold text-[15px]">
-                          {p.sku}
-                        </td>
-                        <td className="py-3.5 px-3.5 font-bold text-slate-900 text-[15px]">
-                          {p.name}
-                        </td>
-                        <td className="py-3.5 px-3.5 text-center">
-                          <Badge variant="outline" className="text-xs">{p.category}</Badge>
-                        </td>
-                        <td className="py-3.5 px-3.5 text-right font-mono font-black text-indigo-700 text-[15px]">
-                          {p.quantitySold} <span className="text-xs font-bold text-slate-500 font-sans">{p.unitName}</span>
-                        </td>
-                        <td className="py-3.5 px-3.5 text-right font-mono font-bold text-slate-800 text-[15px]">
-                          {formatCurrency(p.totalRevenue)}
-                        </td>
-                        <td className="py-3.5 px-3.5 text-right font-mono text-amber-700 text-sm">
-                          {formatCurrency(p.totalCost)}
-                        </td>
-                        <td className="py-3.5 px-3.5 text-right font-mono font-black text-emerald-700 text-[15px] sm:text-base">
-                          {formatCurrency(p.totalProfit)}
-                        </td>
-                        <td className="py-3.5 px-3.5 text-center font-mono font-bold text-xs">
-                          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded">
-                            {p.profitMarginPercent}%
-                          </span>
-                        </td>
-                      </tr>
-                    ))
+                    paginatedBestSellers.map((p, idx) => {
+                      const itemIndex = (currentPage - 1) * pageSize + idx + 1;
+                      return (
+                        <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                            {itemIndex}
+                          </td>
+                          <td className="py-3.5 px-3.5 font-mono text-indigo-700 font-bold text-[15px]">
+                            {p.sku}
+                          </td>
+                          <td className="py-3.5 px-3.5 font-bold text-slate-900 text-[15px]">
+                            {p.name}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-center">
+                            <Badge variant="outline" className="text-xs">{p.category}</Badge>
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono font-black text-indigo-700 text-[15px]">
+                            {p.quantitySold} <span className="text-xs font-bold text-slate-500 font-sans">{p.unitName}</span>
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-slate-800 text-[15px]">
+                            {formatCurrency(p.totalRevenue)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono text-amber-700 text-sm">
+                            {formatCurrency(p.totalCost)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono font-black text-emerald-700 text-[15px] sm:text-base">
+                            {formatCurrency(p.totalProfit)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-xs">
+                            <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded">
+                              {p.profitMarginPercent}%
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Controls */}
+            <ReportPagination
+              totalItems={filteredBestSellers.length}
+              currentPage={currentPage}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+              unitLabel="สินค้า"
+            />
           </div>
         </div>
       )}
@@ -785,57 +1018,73 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 </TableHeader>
 
                 <TableBody className="divide-y divide-slate-100">
-                  {(inventorySubFilter === 'deadstock'
-                    ? inventoryReport.deadstockList
-                    : inventorySubFilter === 'lowstock'
-                    ? inventoryReport.lowStockList
-                    : inventoryReport.items
-                  ).map((item, idx) => (
-                    <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
-                        {idx + 1}
-                      </td>
-                      <td className="py-3.5 px-3.5 font-mono text-indigo-700 font-bold text-[15px]">
-                        {item.sku}
-                      </td>
-                      <td className="py-3.5 px-3.5 font-bold text-slate-900 text-[15px]">
-                        {item.name}
-                      </td>
-                      <td className="py-3.5 px-3.5 text-slate-800 font-medium text-sm truncate max-w-[190px]">
-                        {item.supplierName}
-                      </td>
-                      <td className="py-3.5 px-3.5 text-right font-mono font-bold text-[15px] text-slate-900">
-                        {item.stock} <span className="text-xs font-normal text-slate-500">{item.unitName}</span>
-                      </td>
-                      <td className="py-3.5 px-3.5 text-right font-mono text-sm text-slate-700">
-                        {formatCurrency(item.costPrice)}
-                      </td>
-                      <td className="py-3.5 px-3.5 text-right font-mono font-black text-slate-900 text-[15px]">
-                        {formatCurrency(item.totalCostValue)}
-                      </td>
-                      <td className="py-3.5 px-3.5 text-right font-mono font-bold text-emerald-700 text-sm">
-                        {formatCurrency(item.totalRetailValue)}
-                      </td>
-                      <td className="py-3.5 px-3.5 text-center">
-                        {item.isDeadstock ? (
-                          <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-xs font-bold">
-                            ⚠️ ขายช้า ({item.daysSinceLastSale === 999 ? 'ไม่เคยขาย' : `${item.daysSinceLastSale} วัน`})
-                          </Badge>
-                        ) : item.isLowStock ? (
-                          <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs font-bold">
-                            📦 สต็อกต่ำ
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs">
-                            ✓ ปกติ
-                          </Badge>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredInventoryItems.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-12 text-slate-400 text-sm">
+                        ไม่พบรายการสินค้าคงคลังที่ตรงกับเงื่อนไข
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    paginatedInventoryItems.map((item, idx) => {
+                      const itemIndex = (currentPage - 1) * pageSize + idx + 1;
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                            {itemIndex}
+                          </td>
+                          <td className="py-3.5 px-3.5 font-mono text-indigo-700 font-bold text-[15px]">
+                            {item.sku}
+                          </td>
+                          <td className="py-3.5 px-3.5 font-bold text-slate-900 text-[15px]">
+                            {item.name}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-slate-800 font-medium text-sm truncate max-w-[190px]">
+                            {item.supplierName}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-[15px] text-slate-900">
+                            {item.stock} <span className="text-xs font-normal text-slate-500">{item.unitName}</span>
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono text-sm text-slate-700">
+                            {formatCurrency(item.costPrice)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono font-black text-slate-900 text-[15px]">
+                            {formatCurrency(item.totalCostValue)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-emerald-700 text-sm">
+                            {formatCurrency(item.totalRetailValue)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-center">
+                            {item.isDeadstock ? (
+                              <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-xs font-bold">
+                                ⚠️ ขายช้า ({item.daysSinceLastSale === 999 ? 'ไม่เคยขาย' : `${item.daysSinceLastSale} วัน`})
+                              </Badge>
+                            ) : item.isLowStock ? (
+                              <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs font-bold">
+                                📦 สต็อกต่ำ
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs">
+                                ✓ ปกติ
+                              </Badge>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Controls */}
+            <ReportPagination
+              totalItems={filteredInventoryItems.length}
+              currentPage={currentPage}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+              unitLabel="รายการ"
+            />
           </div>
         </div>
       )}
@@ -942,61 +1191,162 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════════
-          REPORT 5: CUSTOMERS & DEBTS AGING
+          REPORT 5: CUSTOMERS PURCHASES & DEBTS AGING
       ══════════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'customers' && (
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between">
+            <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-rose-50 text-rose-600 rounded-md border border-rose-100 shrink-0">
-                  <Receipt className="w-4 h-4" />
+                <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+                  <Users className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-rose-950">หนี้เงินเชื่อคงค้างรวม:</span>
+                <span className="text-sm font-bold text-indigo-950">ลูกค้าทั้งหมด:</span>
               </div>
-              <span className="text-lg sm:text-xl font-black text-rose-600 font-mono tracking-tight">
-                {formatCurrency(customerDebtsReport.totalOutstandingDebt)}
+              <span className="text-lg sm:text-xl font-black text-indigo-700 font-mono tracking-tight">
+                {customerDebtsReport.allCustomers.length} <span className="text-xs font-sans">คน</span>
+              </span>
+            </div>
+
+            <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
+                  <TrendingUp className="w-4 h-4" />
+                </div>
+                <span className="text-sm font-bold text-emerald-950">ยอดซื้อเฉลี่ย/คน:</span>
+              </div>
+              <span className="text-lg sm:text-xl font-black text-emerald-700 font-mono tracking-tight">
+                {formatCurrency(
+                  customerDebtsReport.allCustomers.length > 0
+                    ? Math.round(customerDebtsReport.allCustomers.reduce((s, c) => s + c.totalSpent, 0) / customerDebtsReport.allCustomers.length)
+                    : 0
+                )}
               </span>
             </div>
 
             <div className="bg-white px-3.5 py-2 rounded-xl border border-amber-200/80 shadow-2xs flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="p-1 bg-amber-50 text-amber-600 rounded-md border border-amber-100 shrink-0">
-                  <Clock className="w-4 h-4" />
+                  <Sparkles className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-amber-950">บิลค้างชำระ:</span>
+                <span className="text-sm font-bold text-amber-950">ลูกค้ายอดซื้อสูงสุด:</span>
               </div>
-              <span className="text-lg sm:text-xl font-black text-amber-700 font-mono tracking-tight">
-                {customerDebtsReport.unpaidBillsCount} <span className="text-xs font-sans">บิล</span>
+              <span className="text-xs sm:text-sm font-black text-amber-700 truncate max-w-[170px]">
+                {customerDebtsReport.allCustomers[0]?.name || '-'}
               </span>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+            <div className="bg-white px-3.5 py-2 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
-                  <Users className="w-4 h-4" />
+                <div className="p-1 bg-rose-50 text-rose-600 rounded-md border border-rose-100 shrink-0">
+                  <Receipt className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-indigo-950">ลูกค้ายอดซื้อสูงสุด:</span>
+                <span className="text-sm font-bold text-rose-950">หนี้เงินเชื่อคงค้าง:</span>
               </div>
-              <span className="text-xs sm:text-sm font-black text-indigo-700 truncate max-w-[170px]">
-                {customerDebtsReport.topCustomers[0]?.name || '-'}
-              </span>
-            </div>
-
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-red-200 shadow-2xs flex items-center justify-between bg-red-50/20">
-              <div className="flex items-center gap-2">
-                <div className="p-1 bg-red-100 text-red-700 rounded-md border border-red-200 shrink-0">
-                  <AlertTriangle className="w-4 h-4" />
-                </div>
-                <span className="text-sm font-bold text-red-950">หนี้ค้างนาน &gt; 60 วัน:</span>
-              </div>
-              <span className="text-lg sm:text-xl font-black text-red-700 font-mono tracking-tight">
-                {formatCurrency(customerDebtsReport.agingBuckets[3].totalAmount)}
+              <span className="text-lg sm:text-xl font-black text-rose-600 font-mono tracking-tight">
+                {formatCurrency(customerDebtsReport.totalOutstandingDebt)}
               </span>
             </div>
           </div>
 
-          {/* Debt Aging Buckets Table */}
+          {/* Table 1: Customer Purchases & Spending Report */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+            <div className="p-3.5 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-indigo-600" />
+                <span className="font-bold text-sm text-slate-900">ตารางสรุปยอดซื้อและสถิติประวัติลูกค้าแต่ละคน (Customer Purchases Report)</span>
+              </div>
+              <span className="text-xs text-slate-500 font-mono">เรียงตามยอดซื้อสะสมจากมากไปน้อย</span>
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-slate-50 border-b border-slate-200">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
+                    <TableHead className="py-3.5 px-3.5 text-left w-28 text-slate-700 font-bold text-sm">รหัสสมาชิก</TableHead>
+                    <TableHead className="py-3.5 px-3.5 text-left text-slate-700 font-bold text-sm">ชื่อ-นามสกุลลูกค้า</TableHead>
+                    <TableHead className="py-3.5 px-3.5 text-left w-36 text-slate-700 font-bold text-sm">เบอร์โทรศัพท์</TableHead>
+                    <TableHead className="py-3.5 px-3.5 text-center w-28 text-slate-700 font-bold text-sm">จำนวนบิล</TableHead>
+                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">ยอดซื้อเฉลี่ย/บิล</TableHead>
+                    <TableHead className="py-3.5 px-3.5 text-right w-40 text-slate-700 font-bold text-sm">ยอดซื้อสะสมรวม</TableHead>
+                    <TableHead className="py-3.5 px-3.5 text-right w-32 text-slate-700 font-bold text-sm">แต้มสะสม</TableHead>
+                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">หนี้ค้างชำระ</TableHead>
+                    <TableHead className="py-3.5 px-3.5 text-center w-32 text-slate-700 font-bold text-sm">ซื้อล่าสุด</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="divide-y divide-slate-100">
+                  {filteredCustomers.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={10} className="text-center py-12 text-slate-400 text-sm">
+                        ไม่พบข้อมูลประวัติยอดซื้อของลูกค้าที่ตรงกับเงื่อนไข
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    paginatedCustomers.map((c, idx) => {
+                      const itemIndex = (currentPage - 1) * pageSize + idx + 1;
+                      return (
+                        <tr key={c.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                            {itemIndex}
+                          </td>
+                          <td className="py-3.5 px-3.5 font-mono text-indigo-700 font-bold text-[14px]">
+                            {c.code}
+                          </td>
+                          <td className="py-3.5 px-3.5 font-bold text-slate-900 text-[15px]">
+                            <div className="flex items-center gap-1.5">
+                              <span>{c.name}</span>
+                              {idx === 0 && currentPage === 1 && (
+                                <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px] px-1 py-0 font-bold">
+                                  👑 VIP #1
+                                </Badge>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-3.5 font-mono text-slate-700 text-sm">
+                            {c.phone}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-700 text-sm">
+                            {c.orderCount} ครั้ง
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono text-slate-700 text-sm">
+                            {formatCurrency(c.averageTicket)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono font-black text-indigo-700 text-[15px] sm:text-base">
+                            {formatCurrency(c.totalSpent)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-amber-700 text-sm">
+                            {c.points.toLocaleString()} แต้ม
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-sm">
+                            {c.outstandingDebt > 0 ? (
+                              <span className="text-rose-600 font-black">{formatCurrency(c.outstandingDebt)}</span>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-center font-mono text-xs text-slate-500">
+                            {c.lastOrderDate ? formatDate(c.lastOrderDate) : '-'}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Pagination Controls */}
+            <ReportPagination
+              totalItems={filteredCustomers.length}
+              currentPage={currentPage}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+              unitLabel="คน"
+            />
+          </div>
+
+          {/* Table 2: Debt Aging Buckets Table */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="p-3.5 border-b border-slate-100 bg-slate-50/50">
               <span className="font-bold text-sm text-slate-900">ตารางวิเคราะห์อายุหนี้เงินเชื่อ (Debt Aging Schedule)</span>
@@ -1084,9 +1434,9 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
             <div className="bg-white px-3.5 py-2 rounded-xl border border-amber-200/80 shadow-2xs flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="p-1 bg-amber-50 text-amber-600 rounded-md border border-amber-100 shrink-0">
-                  <ShieldAlert className="w-4 h-4" />
+                  <Layers className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-amber-950">ชิ้นเคลมสะสม:</span>
+                <span className="text-sm font-bold text-amber-950">จำนวนชิ้นที่ส่งเคลม:</span>
               </div>
               <span className="text-lg sm:text-xl font-black text-amber-700 font-mono tracking-tight">
                 {purchasesClaimsReport.supplierBreakdown.reduce((s, i) => s + i.claimPieces, 0)} <span className="text-xs font-sans">ชิ้น</span>
@@ -1112,38 +1462,59 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 </TableHeader>
 
                 <TableBody className="divide-y divide-slate-100">
-                  {purchasesClaimsReport.supplierBreakdown.map((supp, idx) => (
-                    <tr key={supp.supplierId} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">{idx + 1}</td>
-                      <td className="py-3.5 px-3.5 font-bold text-slate-900 text-[15px]">
-                        <div className="flex items-center gap-1.5">
-                          <Truck className="w-4 h-4 text-indigo-600 shrink-0" />
-                          <span>{supp.supplierName}</span>
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-700 text-sm">
-                        {supp.poCount} ใบ
-                      </td>
-                      <td className="py-3.5 px-3.5 text-right font-mono font-black text-slate-900 text-[15px]">
-                        {formatCurrency(supp.totalPurchaseAmount)}
-                      </td>
-                      <td className="py-3.5 px-3.5 text-right font-mono text-emerald-700 text-sm">
-                        {formatCurrency(supp.totalPaidAmount)}
-                      </td>
-                      <td className="py-3.5 px-3.5 text-right font-mono font-bold text-amber-700 text-sm">
-                        {formatCurrency(supp.remainingPayable)}
-                      </td>
-                      <td className="py-3.5 px-3.5 text-right font-mono font-bold text-rose-600 text-sm">
-                        {supp.claimPieces} ชิ้น
-                      </td>
-                      <td className="py-3.5 px-3.5 text-right font-mono font-black text-rose-700 text-[15px]">
-                        {formatCurrency(supp.claimCostTotal)}
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredSuppliers.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-12 text-slate-400 text-sm">
+                        ไม่พบข้อมูลการสั่งซื้อบริษัทคู่ค้าที่ตรงกับเงื่อนไข
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    paginatedSuppliers.map((supp, idx) => {
+                      const itemIndex = (currentPage - 1) * pageSize + idx + 1;
+                      return (
+                        <tr key={supp.supplierId} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">{itemIndex}</td>
+                          <td className="py-3.5 px-3.5 font-bold text-slate-900 text-[15px]">
+                            <div className="flex items-center gap-1.5">
+                              <Truck className="w-4 h-4 text-indigo-600 shrink-0" />
+                              <span>{supp.supplierName}</span>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-700 text-sm">
+                            {supp.poCount} ใบ
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono font-black text-slate-900 text-[15px]">
+                            {formatCurrency(supp.totalPurchaseAmount)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono text-emerald-700 text-sm">
+                            {formatCurrency(supp.totalPaidAmount)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-amber-700 text-sm">
+                            {formatCurrency(supp.remainingPayable)}
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-rose-600 text-sm">
+                            {supp.claimPieces} ชิ้น
+                          </td>
+                          <td className="py-3.5 px-3.5 text-right font-mono font-black text-rose-700 text-[15px]">
+                            {formatCurrency(supp.claimCostTotal)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Controls */}
+            <ReportPagination
+              totalItems={filteredSuppliers.length}
+              currentPage={currentPage}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+              unitLabel="บริษัท"
+            />
           </div>
         </div>
       )}
