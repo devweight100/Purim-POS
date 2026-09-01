@@ -17,8 +17,8 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import { SupplierReturnNote } from '@/lib/types';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
+import { toast } from 'sonner';
 
 interface SupplierReturnPdfModalProps {
   open: boolean;
@@ -50,103 +50,28 @@ export function SupplierReturnPdfModal({
 
   const totalItemCost = defectiveTotal + overstockTotal;
 
-  // Print via browser
+  // Print via iframe with 100% WYSIWYG style preservation
   const handlePrint = () => {
     if (!docRef.current) return;
-    const printContent = docRef.current.innerHTML;
-    const win = window.open('', '', 'width=900,height=800');
-    if (win) {
-      win.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>ใบส่งคืนสินค้า / ใบลดหนี้ - ${returnNote.id}</title>
-            <style>
-              body {
-                font-family: 'Prompt', 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif;
-                margin: 0 auto;
-                padding: 4mm 6mm;
-                background: #fff;
-                color: #0f172a;
-                font-size: 11px;
-                line-height: 1.35;
-                max-width: 210mm;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-              }
-              @page {
-                size: A4 portrait;
-                margin: 8mm;
-              }
-              table { width: 100%; border-collapse: collapse; page-break-inside: auto; }
-              tr { page-break-inside: avoid; page-break-after: auto; }
-              th, td { border: 1px solid #cbd5e1; padding: 4px 6px; font-size: 10px; }
-              th { background-color: #f8fafc !important; font-weight: 700; }
-              .a4-doc-sheet { width: 100% !important; max-width: 100% !important; box-shadow: none !important; border: none !important; padding: 0 !important; }
-            </style>
-          </head>
-          <body>
-            ${printContent}
-            <script>
-              window.onload = function() {
-                window.print();
-                window.close();
-              };
-            </script>
-          </body>
-        </html>
-      `);
-      win.document.close();
-    }
+    printDocumentIframe(docRef.current, `ใบส่งคืนสินค้า / ใบลดหนี้ - ${returnNote.id}`, 'a4');
   };
 
-  // Export to PDF (Strict A4 Fit Guarantee)
+  // Export to PDF (Strict WYSIWYG A4 Fit)
   const handleDownloadPdf = async () => {
     if (!docRef.current) return;
     setIsExporting(true);
+    toast.loading('กำลังสร้างไฟล์ PDF...', { id: 'supplier-return-pdf' });
     try {
-      const canvas = await html2canvas(docRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-      });
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      
-      const pdfWidth = 210;
-      const pdfHeight = 297;
-      const margin = 8;
-      const printWidth = pdfWidth - (margin * 2);
-      const printHeight = pdfHeight - (margin * 2);
-
-      const imgHeight = (canvas.height * printWidth) / canvas.width;
-
-      if (imgHeight <= printHeight) {
-        // Fits on 1 single A4 page
-        pdf.addImage(imgData, 'PNG', margin, margin, printWidth, imgHeight);
+      const filename = `DebitNote_${returnNote.id}.pdf`;
+      const success = await exportElementToPdf(docRef.current, filename, 'a4');
+      if (success) {
+        toast.success('ดาวน์โหลดไฟล์ PDF สำเร็จเรียบร้อย', { id: 'supplier-return-pdf' });
       } else {
-        // If only slightly overflowing (> 75% fit), scale down slightly so it fits on 1 page!
-        const fitScale = printHeight / imgHeight;
-        if (fitScale >= 0.75) {
-          pdf.addImage(imgData, 'PNG', margin, margin, printWidth * fitScale, printHeight);
-        } else {
-          // Multi-page cleanly
-          let heightLeft = imgHeight;
-          let position = margin;
-          pdf.addImage(imgData, 'PNG', margin, position, printWidth, imgHeight);
-          heightLeft -= printHeight;
-          while (heightLeft > 0) {
-            position = heightLeft - imgHeight + margin;
-            pdf.addPage();
-            pdf.addImage(imgData, 'PNG', margin, position, printWidth, imgHeight);
-            heightLeft -= printHeight;
-          }
-        }
+        toast.error('ไม่สามารถสร้างไฟล์ PDF ได้', { id: 'supplier-return-pdf' });
       }
-
-      pdf.save(`DebitNote_${returnNote.id}.pdf`);
     } catch (e) {
       console.error('PDF export failed:', e);
+      toast.error('สร้าง PDF ไม่สำเร็จ', { id: 'supplier-return-pdf' });
     } finally {
       setIsExporting(false);
     }

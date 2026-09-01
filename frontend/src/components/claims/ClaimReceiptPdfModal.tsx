@@ -1,11 +1,10 @@
-﻿'use client';
+'use client';
 
 import { useRef, useState } from 'react';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 import { formatCurrency, formatDate, thaiBahtText } from '@/lib/utils';
 import { ClaimRecord } from '@/lib/types';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
+import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -31,130 +30,48 @@ export function ClaimReceiptPdfModal({
   claim,
 }: ClaimReceiptPdfModalProps) {
   const printDocRef = useRef<HTMLDivElement>(null);
-  const [printFormat, setPrintFormat] = useState<'80mm' | 'a4'>('80mm');
+  const [printFormat, setPrintFormat] = useState<'80mm' | 'a4'>('a4');
   const [isExporting, setIsExporting] = useState(false);
-  const storeSettings = loadStoreSettings();
+  const [storeSettings] = useState(() => loadStoreSettings());
 
   if (!claim) return null;
 
-  const getResolutionLabel = (type: string) => {
-    switch (type) {
-      case 'REPLACE_ITEM':
-        return '🔄 เปลี่ยนสินค้าชิ้นใหม่ทันที (Replacement)';
-      case 'REFUND_CASH':
-        return '💵 คืนเงินสด (Cash Refund)';
-      case 'REFUND_TRANSFER':
-        return '📱 คืนเงินโอนเข้าบัญชี (Bank Transfer Refund)';
-      case 'STORE_DISCOUNT':
-        return '🎟️ เปลี่ยนเป็นส่วนลดบิลซื้อ (Store Credit / Voucher)';
-      case 'SUPPLIER_RMA':
-        return '🏭 รับเข้าส่งเคลมโรงงาน/ซัพพลายเออร์ (Supplier RMA)';
-      default:
-        return type;
-    }
+  const resolutionLabels: Record<string, string> = {
+    REPLACE_ITEM: 'เปลี่ยนสินค้าตัวใหม่ทันที (Replacement)',
+    REFUND_CASH: 'คืนเงินสดให้ลูกค้า (Cash Refund)',
+    REFUND_TRANSFER: 'โอนเงินคืนลูกค้า (Bank Transfer)',
+    CLAIM_DISCOUNT: 'ออกคูปองส่วนลดเพื่อใช้ซื้อสินค้าใหม่ (Claim Discount)',
+    VENDOR_CLAIM: 'ส่งเคลมบริษัทผู้จัดจำหน่าย (Vendor Claim)',
+    REPAIR: 'ส่งซ่อม (Repair)',
+    REJECT: 'ปฏิเสธการเคลม (Reject)',
   };
 
-  // Direct WYSIWYG Print
+  const getResolutionLabel = (type: string) => {
+    return resolutionLabels[type] || type;
+  };
+
+  // Direct WYSIWYG Print with 100% style fidelity
   const handleNativePrint = () => {
     if (!printDocRef.current) return;
-    const printContent = printDocRef.current.innerHTML;
-    const win = window.open('', '_blank', 'width=950,height=850');
-    if (!win) {
-      toast.error('กรุณาอนุญาตป๊อปอัป (Popup) เพื่อพิมพ์เอกสาร');
-      return;
-    }
-
-    const isSlip = printFormat === '80mm';
-    const pageCss = isSlip
-      ? `
-        @page { size: 80mm auto; margin: 2mm 3mm; }
-        body { width: 80mm; margin: 0 auto; padding: 2mm 3mm; font-family: 'Prompt', 'Sarabun', -apple-system, sans-serif; font-size: 11px; line-height: 1.3; }
-        .receipt-container { width: 100% !important; max-width: 100% !important; box-shadow: none !important; border: none !important; padding: 0 !important; }
-      `
-      : `
-        @page { size: A4 portrait; margin: 8mm; }
-        body { width: 100%; max-width: 210mm; margin: 0 auto; padding: 4mm 6mm; font-family: 'Prompt', 'Sarabun', -apple-system, sans-serif; font-size: 12px; line-height: 1.4; }
-        .a4-container { width: 100% !important; max-width: 100% !important; box-shadow: none !important; border: none !important; padding: 0 !important; }
-      `;
-
-    win.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>ใบรับเคลมสินค้า - ${claim.id}</title>
-          <meta charset="utf-8" />
-          <style>
-            ${pageCss}
-            * { box-sizing: border-box; }
-            body { background: #ffffff; color: #0f172a; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
-            th { background-color: #f1f5f9 !important; font-weight: bold; }
-            .border-dashed { border-style: dashed !important; }
-            .no-print { display: none !important; }
-            .text-center { text-align: center !important; }
-            .text-right { text-align: right !important; }
-            .font-bold { font-weight: bold !important; }
-            .font-black { font-weight: 900 !important; }
-            .font-mono { font-family: monospace !important; }
-            .bg-slate-50 { background-color: #f8fafc !important; }
-            .bg-indigo-50 { background-color: #eef2ff !important; }
-            .bg-rose-50 { background-color: #fff1f2 !important; }
-            .bg-amber-50 { background-color: #fffbeb !important; }
-            .bg-emerald-50 { background-color: #ecfdf5 !important; }
-            .text-indigo-700, .text-indigo-900 { color: #4338ca !important; }
-            .text-rose-700 { color: #be123c !important; }
-            .text-amber-800, .text-amber-700 { color: #b45309 !important; }
-            .text-emerald-700 { color: #047857 !important; }
-          </style>
-        </head>
-        <body>
-          ${printContent}
-          <script>
-            window.onload = function() {
-              window.focus();
-              window.print();
-              setTimeout(() => { window.close(); }, 500);
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    win.document.close();
+    printDocumentIframe(printDocRef.current, `ใบรับเคลมสินค้า - ${claim.id}`, printFormat);
   };
 
-  // Download PDF
+  // Download PDF (True WYSIWYG PDF file)
   const handleDownloadPdf = async () => {
     if (!printDocRef.current) return;
     setIsExporting(true);
+    toast.loading('กำลังสร้างไฟล์ PDF...', { id: 'claim-pdf-gen' });
     try {
-      const isSlip = printFormat === '80mm';
-      const canvas = await html2canvas(printDocRef.current, {
-        scale: 2.5,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-      });
-      const imgData = canvas.toDataURL('image/png');
-
-      if (isSlip) {
-        const mmWidth = 80;
-        const mmHeight = (canvas.height * mmWidth) / canvas.width;
-        const pdf = new jsPDF('p', 'mm', [mmWidth, Math.max(120, mmHeight + 10)]);
-        pdf.addImage(imgData, 'PNG', 0, 0, mmWidth, mmHeight);
-        pdf.save(`ClaimSlip_${claim.id}.pdf`);
+      const filename = printFormat === '80mm' ? `ClaimSlip_${claim.id}.pdf` : `ClaimDoc_A4_${claim.id}.pdf`;
+      const success = await exportElementToPdf(printDocRef.current, filename, printFormat);
+      if (success) {
+        toast.success('ดาวน์โหลดไฟล์ PDF เรียบร้อยแล้ว', { id: 'claim-pdf-gen' });
       } else {
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pdfWidth = 210;
-        const margin = 8;
-        const printWidth = pdfWidth - margin * 2;
-        const printHeight = (canvas.height * printWidth) / canvas.width;
-        pdf.addImage(imgData, 'PNG', margin, margin, printWidth, printHeight);
-        pdf.save(`ClaimDoc_A4_${claim.id}.pdf`);
+        toast.error('ไม่สามารถสร้างไฟล์ PDF ได้', { id: 'claim-pdf-gen' });
       }
-      toast.success('ดาวน์โหลด PDF สำเร็จ');
-    } catch (e) {
-      console.error(e);
-      toast.error('สร้าง PDF ไม่สำเร็จ');
+    } catch (err) {
+      console.error(err);
+      toast.error('เกิดข้อผิดพลาดในการสร้าง PDF', { id: 'claim-pdf-gen' });
     } finally {
       setIsExporting(false);
     }

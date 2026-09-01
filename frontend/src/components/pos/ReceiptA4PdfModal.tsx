@@ -5,6 +5,7 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { formatCurrency, formatDate, thaiBahtText } from '@/lib/utils';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
+import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -126,90 +127,37 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
   };
 
   const handleDownloadPdf = async () => {
+    if (!receiptA4Ref.current) return;
     setIsGenerating(true);
+    toast.loading('กำลังสร้างไฟล์ PDF...', { id: 'a4-receipt-pdf' });
     try {
-      const pdf = await generatePdfBlob();
-      if (pdf) {
-        const prefix = isInstallment 
-          ? `Receipt_Inst${data.installmentNo}_` 
-          : hasVat ? 'TaxInvoice_A4_' : 'Receipt_A4_';
-        pdf.save(`${prefix}${data.orderNumber}.pdf`);
-        toast.success('ดาวน์โหลดใบเสร็จรับเงิน A4 (PDF) เรียบร้อยแล้ว');
+      const prefix = isInstallment 
+        ? `Receipt_Inst${data.installmentNo}_` 
+        : hasVat ? 'TaxInvoice_A4_' : 'Receipt_A4_';
+      const filename = `${prefix}${data.orderNumber}.pdf`;
+      const success = await exportElementToPdf(receiptA4Ref.current, filename, 'a4');
+      if (success) {
+        toast.success('ดาวน์โหลดใบเสร็จรับเงิน A4 (PDF) เรียบร้อยแล้ว', { id: 'a4-receipt-pdf' });
+      } else {
+        toast.error('ไม่สามารถสร้างไฟล์ PDF ได้', { id: 'a4-receipt-pdf' });
       }
+    } catch (err) {
+      console.error(err);
+      toast.error('เกิดข้อผิดพลาดในการสร้าง PDF', { id: 'a4-receipt-pdf' });
     } finally {
       setIsGenerating(false);
     }
   };
 
   const handleOpenPdfTab = async () => {
-    setIsGenerating(true);
-    try {
-      const pdf = await generatePdfBlob();
-      if (pdf) {
-        const blob = pdf.output('blob');
-        const blobUrl = URL.createObjectURL(blob);
-        window.open(blobUrl, '_blank');
-      }
-    } finally {
-      setIsGenerating(false);
-    }
+    if (!receiptA4Ref.current) return;
+    handleNativePrint();
   };
 
   const handleNativePrint = () => {
     if (!receiptA4Ref.current) return;
-    const printContent = receiptA4Ref.current.innerHTML;
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document;
-    if (doc) {
-      doc.open();
-      doc.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>${isInstallment ? `ใบเสร็จรับเงิน (งวดที่ ${data.installmentNo})` : hasVat ? 'ใบเสร็จรับเงิน / ใบกำกับภาษี' : 'ใบเสร็จรับเงิน'} (A4) - ${data.orderNumber}</title>
-            <meta charset="utf-8" />
-            <script src="https://cdn.tailwindcss.com"></script>
-            <style>
-              @page {
-                size: A4 portrait;
-                margin: 8mm;
-              }
-              body {
-                margin: 0;
-                padding: 0;
-                background-color: #ffffff;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-                font-family: 'Sarabun', 'Inter', -apple-system, sans-serif;
-              }
-            </style>
-          </head>
-          <body class="bg-white p-4">
-            <div style="width: 100%; max-width: 100%; margin: 0 auto;">
-              ${printContent}
-            </div>
-            <script>
-              setTimeout(() => {
-                window.focus();
-                window.print();
-                setTimeout(() => {
-                  window.parent.document.body.removeChild(window.frameElement);
-                }, 500);
-              }, 300);
-            </script>
-          </body>
-        </html>
-      `);
-      doc.close();
-    }
+    const docTitle = `${isInstallment ? `ใบเสร็จรับเงิน (งวดที่ ${data.installmentNo})` : hasVat ? 'ใบเสร็จรับเงิน / ใบกำกับภาษี' : 'ใบเสร็จรับเงิน'} (A4) - ${data.orderNumber}`;
+    printDocumentIframe(receiptA4Ref.current, docTitle, 'a4');
   };
 
   return (

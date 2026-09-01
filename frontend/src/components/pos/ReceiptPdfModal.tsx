@@ -9,6 +9,7 @@ import { loadStoreSettings } from '@/lib/store-settings-storage';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
+import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
 
 import { ThermalReceiptView, ReceiptData } from './ThermalReceiptView';
 export type { ReceiptData };
@@ -55,64 +56,33 @@ export function ReceiptPdfModal({ open, onOpenChange, data }: ReceiptPdfModalPro
   };
 
   const handleDownloadPdf = async () => {
+    if (!receiptRef.current) return;
     setIsGenerating(true);
-    const pdf = await generatePdfBlob();
-    if (pdf) {
-      pdf.save(`Receipt-${data.orderNumber}.pdf`);
-      toast.success(`ดาวน์โหลดไฟล์ PDF ใบเสร็จ ${data.orderNumber} เรียบร้อยแล้ว!`);
+    toast.loading('กำลังสร้างไฟล์ PDF...', { id: 'pos-receipt-pdf' });
+    try {
+      const filename = `Receipt-${data.orderNumber}.pdf`;
+      const success = await exportElementToPdf(receiptRef.current, filename, '80mm');
+      if (success) {
+        toast.success(`ดาวน์โหลดไฟล์ PDF ใบเสร็จ ${data.orderNumber} เรียบร้อยแล้ว!`, { id: 'pos-receipt-pdf' });
+      } else {
+        toast.error('ไม่สามารถสร้างไฟล์ PDF ได้', { id: 'pos-receipt-pdf' });
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error('เกิดข้อผิดพลาดในการสร้าง PDF', { id: 'pos-receipt-pdf' });
+    } finally {
+      setIsGenerating(false);
     }
-    setIsGenerating(false);
   };
 
   const handleOpenPdfTab = async () => {
-    setIsGenerating(true);
-    const pdf = await generatePdfBlob();
-    if (pdf) {
-      const blobUrl = pdf.output('bloburl');
-      window.open(blobUrl, '_blank');
-    }
-    setIsGenerating(false);
+    if (!receiptRef.current) return;
+    handlePrint();
   };
 
   const handlePrint = () => {
     if (!receiptRef.current) return;
-    const printContent = receiptRef.current.innerHTML;
-    const win = window.open('', '', 'width=400,height=700');
-    if (win) {
-      win.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>พิมพ์ใบเสร็จ - ${data.orderNumber}</title>
-            <style>
-              body {
-                font-family: 'Prompt', 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif;
-                margin: 0;
-                padding: 10px;
-                background: #fff;
-                color: #000;
-                font-size: 12px;
-              }
-              @page {
-                size: 80mm auto;
-                margin: 0;
-              }
-              .no-print { display: none; }
-            </style>
-          </head>
-          <body>
-            ${printContent}
-            <script>
-              window.onload = function() {
-                window.print();
-                window.close();
-              };
-            </script>
-          </body>
-        </html>
-      `);
-      win.document.close();
-    }
+    printDocumentIframe(receiptRef.current, `พิมพ์ใบเสร็จ - ${data.orderNumber}`, '80mm');
   };
 
   return (
