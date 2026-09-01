@@ -8,22 +8,18 @@ const STORAGE_KEY_POS = 'custom_purchase_orders';
 const STORAGE_KEY_PRODUCTS = 'custom_products';
 
 // ─── Default Suppliers Fallback ───
-export const DEFAULT_SUPPLIERS = [
-  { id: "supp_1", name: "บริษัท ปุริม ซัพพลาย จำกัด", contactName: "คุณสมชาย", phone: "081-234-5678", email: "contact@purimsupply.com", address: "123 ถ.สุขุมวิท กรุงเทพฯ", creditTerms: 30 },
-  { id: "supp_2", name: "บจก. สยามเทรดดิ้ง แอนด์ ดีสทริบิวชั่น", contactName: "คุณวิภา", phone: "089-876-5432", email: "sales@siamtrading.co.th", address: "456 ถ.รัชดาภิเษก กรุงเทพฯ", creditTerms: 15 },
-  { id: "supp_3", name: "หจก. รวมสินค้าค้าส่ง", contactName: "คุณกิตติ", phone: "02-999-8888", email: "wholesale@ruamkhong.com", address: "789 ถ.พหลโยธิน กรุงเทพฯ", creditTerms: 45 },
-];
+export const DEFAULT_SUPPLIERS: any[] = [];
 
 export function loadSuppliers(): any[] {
-  if (typeof window === 'undefined') return DEFAULT_SUPPLIERS;
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY_SUPPLIERS);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
   } catch {}
-  return DEFAULT_SUPPLIERS;
+  return [];
 }
 
 // ─── Purchase Orders Storage Helpers ───

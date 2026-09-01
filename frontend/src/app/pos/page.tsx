@@ -28,6 +28,7 @@ import { HeldBillsSheet } from '@/components/pos/HeldBillsSheet';
 import { CustomerSelectModal } from '@/components/pos/CustomerSelectModal';
 import { BarcodeScanModal } from '@/components/pos/BarcodeScanModal';
 import { OrderHistoryModal } from '@/components/pos/OrderHistoryModal';
+import { ClientDbSync } from '@/components/common/ClientDbSync';
 import { NumpadPopup } from '@/components/pos/NumpadPopup';
 import { PosListLayout } from '@/components/pos/PosListLayout';
 import { SelectUnitModal } from '@/components/pos/SelectUnitModal';
@@ -404,6 +405,7 @@ export default function POSPage() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-slate-50 text-slate-900 lg:h-screen lg:overflow-hidden" onClick={handleEmptySpaceClick}>
+      <ClientDbSync />
       
       {/* --- TOP STATUS BAR --- */}
       <header className="flex flex-col gap-3 border-b border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-4 lg:h-14 lg:flex-row lg:items-center lg:justify-between lg:py-0 shrink-0">
