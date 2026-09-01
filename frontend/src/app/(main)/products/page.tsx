@@ -192,9 +192,9 @@ export default function ProductsPage() {
   const [allImages, setAllImages] = useState<Record<string, ProductImage[]>>({});
   const csvInputRef = useRef<HTMLInputElement>(null);
 
-  const handleCSVImport = (file: File) => {
+  const handleCSVImport = async (file: File) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const text = e.target?.result as string;
         if (!text) return;
@@ -205,26 +205,34 @@ export default function ProductsPage() {
         }
         const newProducts = csvRowsToProducts(rows);
         
-        const savedCustom = localStorage.getItem('custom_products');
-        let existing: any[] = [];
-        if (savedCustom) {
-          try { existing = JSON.parse(savedCustom); } catch {}
+        // Sync to backend database
+        for (const p of newProducts) {
+          try {
+            await apiFetch('/products', {
+              method: 'POST',
+              body: JSON.stringify({
+                name: p.name,
+                sku: p.sku,
+                basePrice: Number(p.priceLevel1 || p.price || 0),
+                costPrice: Number(p.cost || 0),
+                priceLevel1: p.priceLevel1 != null ? Number(p.priceLevel1) : undefined,
+                priceLevel2: p.priceLevel2 != null ? Number(p.priceLevel2) : undefined,
+                priceLevel3: p.priceLevel3 != null ? Number(p.priceLevel3) : undefined,
+                priceLevel4: p.priceLevel4 != null ? Number(p.priceLevel4) : undefined,
+                priceLevel5: p.priceLevel5 != null ? Number(p.priceLevel5) : undefined,
+                unit: p.unit || 'ชิ้น',
+                barcodes: p.barcodes?.map((b: any) => b.barcode).filter(Boolean),
+              })
+            }).catch(() => {});
+          } catch {}
         }
 
-        const map = new Map<string, any>();
-        existing.forEach(p => map.set(p.id || p.sku, p));
-        newProducts.forEach(p => map.set(p.id || p.sku, p));
-        const combined = Array.from(map.values());
+        // Reload products state & store from database
+        await useProductStore.getState().fetchProducts();
+        const storeProducts = useProductStore.getState().products;
+        setProducts(storeProducts);
 
-        localStorage.setItem('custom_products', JSON.stringify(combined));
-        
-        // Reload products state & store
-        useProductStore.getState().fetchProducts().then(() => {
-          const storeProducts = useProductStore.getState().products;
-          setProducts(storeProducts);
-        });
-
-        toast.success(`นำเข้าสินค้าสำเร็จ ${newProducts.length} รายการ (หากไม่มีบาร์โค้ด จะใช้รหัสสินค้าแทนในการขาย)`);
+        toast.success(`นำเข้าสินค้าสำเร็จ ${newProducts.length} รายการ (ระดับราคา 1-5 ครบถ้วน)`);
       } catch (err: any) {
         toast.error("เกิดข้อผิดพลาดในการอ่านไฟล์ CSV: " + err.message);
       }

@@ -21,6 +21,34 @@ export class CreateProductDto {
   @IsNotEmpty()
   basePrice!: number;
 
+  @IsNumber()
+  @IsOptional()
+  costPrice?: number;
+
+  @IsNumber()
+  @IsOptional()
+  priceLevel1?: number;
+
+  @IsNumber()
+  @IsOptional()
+  priceLevel2?: number;
+
+  @IsNumber()
+  @IsOptional()
+  priceLevel3?: number;
+
+  @IsNumber()
+  @IsOptional()
+  priceLevel4?: number;
+
+  @IsNumber()
+  @IsOptional()
+  priceLevel5?: number;
+
+  @IsString()
+  @IsOptional()
+  unit?: string;
+
   @IsString()
   @IsOptional()
   imageUrl?: string;
