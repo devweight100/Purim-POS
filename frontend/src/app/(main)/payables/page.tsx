@@ -31,7 +31,8 @@ import {
   loadPaymentVouchers,
   updateBillInvoiceNo,
   rollbackPayableBillPayment,
-  cancelPayableBill
+  cancelPayableBill,
+  cancelPaymentVoucher
 } from '@/lib/payable-service';
 import { 
   loadSuppliers, 
@@ -120,6 +121,27 @@ export default function PayablesPage() {
     setSelectedBillForVoucher(null);
     setSelectedPaymentForVoucher(null);
     setIsVoucherModalOpen(true);
+  };
+
+  const handleCancelVoucher = (voucher: PaymentVoucher) => {
+    if (voucher.status === 'CANCELLED') {
+      toast.error('ใบสำคัญจ่ายนี้ถูกยกเลิกไปแล้ว');
+      return;
+    }
+
+    const confirmMsg = `ต้องการยกเลิกใบสำคัญจ่ายเลขที่ ${voucher.voucherNumber} หรือไม่?\n\n- ยอดเงินที่ชำระตามบิลทั้ง ${voucher.bills.length} ฉบับจะถูกคืนกลับสถานะเดิมเป็นหนี้ค้างชำระ\n- เครดิตใบลดหนี้ (ถ้ามี) จะถูกคืนกลับมาพร้อมใช้งาน\n\nกดยืนยันเพื่อดำเนินการ`;
+    if (!confirm(confirmMsg)) return;
+
+    const reason = prompt(`ระบุเหตุผลการยกเลิกใบสำคัญจ่าย ${voucher.voucherNumber}:`, 'ยกเลิกการชำระเงิน');
+    if (reason === null) return;
+
+    const res = cancelPaymentVoucher(voucher.id, reason);
+    if (res.success) {
+      toast.success(res.message);
+      refreshData();
+    } else {
+      toast.error(res.message);
+    }
   };
 
   const handleSaveInlineInvoice = (poId: string) => {
@@ -592,22 +614,6 @@ export default function PayablesPage() {
                               </Button>
                             )}
 
-                            {bill.payments && bill.payments.length > 0 && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  const latestPayment = bill.payments[bill.payments.length - 1];
-                                  handleOpenVoucher(bill, latestPayment);
-                                }}
-                                title="พิมพ์ใบสำคัญจ่ายย้อนหลัง"
-                                className="h-8 px-2.5 rounded-xl border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs gap-1 shrink-0"
-                              >
-                                <Printer className="w-3.5 h-3.5" />
-                                <span>ใบสำคัญจ่าย</span>
-                              </Button>
-                            )}
-
                             {(bill.alreadyPaidAmount > 0 || bill.alreadyDeductedReturns > 0 || bill.alreadyDiscountAmount > 0 || bill.paymentStatus === 'PAID') && (
                               <Button
                                 size="sm"
@@ -772,74 +778,116 @@ export default function PayablesPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {paymentVouchers.map((voucher) => (
-                      <tr key={voucher.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3 px-3.5 font-mono">
-                          <span className="font-bold text-indigo-700 text-sm block">{voucher.voucherNumber}</span>
-                          <span className="text-xs text-slate-500 block mt-0.5">
-                            {new Date(voucher.paymentDate).toLocaleDateString('th-TH')}
-                          </span>
-                        </td>
+                    {paymentVouchers.map((voucher) => {
+                      const isCancelled = voucher.status === 'CANCELLED';
 
-                        <td className="py-3 px-3.5">
-                          <div className="space-y-1">
-                            <Badge variant="outline" className="text-[11px] font-mono font-bold bg-slate-50">
-                              {voucher.bills.length} บิล
-                            </Badge>
-                            <div className="flex flex-wrap gap-1 max-w-xs">
-                              {voucher.bills.map((b, i) => (
-                                <span key={i} className="text-[11px] font-mono bg-indigo-50/70 text-indigo-900 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">
-                                  {b.supplierInvoiceNo || b.poNumber}
-                                </span>
-                              ))}
+                      return (
+                        <tr
+                          key={voucher.id}
+                          className={`transition-colors ${isCancelled ? 'bg-rose-50/30 opacity-75' : 'hover:bg-slate-50/70'}`}
+                        >
+                          <td className="py-3 px-3.5 font-mono">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`font-bold text-sm block ${isCancelled ? 'text-slate-500 line-through' : 'text-indigo-700'}`}>
+                                {voucher.voucherNumber}
+                              </span>
+                              {isCancelled && (
+                                <Badge variant="outline" className="text-[10px] font-bold text-rose-700 bg-rose-50 border-rose-300">
+                                  ยกเลิกแล้ว
+                                </Badge>
+                              )}
                             </div>
-                          </div>
-                        </td>
+                            <span className="text-xs text-slate-500 block mt-0.5">
+                              {new Date(voucher.paymentDate).toLocaleDateString('th-TH')}
+                            </span>
+                            {isCancelled && voucher.cancelReason && (
+                              <p className="text-[10px] text-rose-600 italic mt-0.5">
+                                เหตุผล: {voucher.cancelReason}
+                              </p>
+                            )}
+                          </td>
 
-                        <td className="py-3 px-3.5 font-bold text-slate-900 text-sm">
-                          {voucher.supplierName}
-                        </td>
+                          <td className="py-3 px-3.5">
+                            <div className="space-y-1">
+                              <Badge variant="outline" className="text-[11px] font-mono font-bold bg-slate-50">
+                                {voucher.bills.length} บิล
+                              </Badge>
+                              <div className="flex flex-wrap gap-1 max-w-xs">
+                                {voucher.bills.map((b, i) => (
+                                  <span key={i} className="text-[11px] font-mono bg-indigo-50/70 text-indigo-900 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">
+                                    {b.supplierInvoiceNo || b.poNumber}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </td>
 
-                        <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-800">
-                          {formatCurrency(voucher.totalBillsAmount)}
-                        </td>
+                          <td className="py-3 px-3.5 font-bold text-slate-900 text-sm">
+                            {voucher.supplierName}
+                          </td>
 
-                        <td className="py-3 px-3.5 text-right font-mono text-amber-700 font-bold">
-                          {voucher.discountAmount && voucher.discountAmount > 0 ? formatCurrency(voucher.discountAmount) : '-'}
-                        </td>
+                          <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-800">
+                            {formatCurrency(voucher.totalBillsAmount)}
+                          </td>
 
-                        <td className="py-3 px-3.5 text-right font-mono text-indigo-700 font-bold">
-                          {voucher.deductedCreditAmount > 0 ? formatCurrency(voucher.deductedCreditAmount) : '-'}
-                        </td>
+                          <td className="py-3 px-3.5 text-right font-mono text-amber-700 font-bold">
+                            {voucher.discountAmount && voucher.discountAmount > 0 ? formatCurrency(voucher.discountAmount) : '-'}
+                          </td>
 
-                        <td className="py-3 px-3.5 text-right font-mono text-emerald-700 font-black text-sm sm:text-base">
-                          {formatCurrency(voucher.netPaidAmount)}
-                        </td>
+                          <td className="py-3 px-3.5 text-right font-mono text-indigo-700 font-bold">
+                            {voucher.deductedCreditAmount > 0 ? formatCurrency(voucher.deductedCreditAmount) : '-'}
+                          </td>
 
-                        <td className="py-3 px-3.5 text-center">
-                          <Badge variant="outline" className="text-xs font-semibold px-2.5 py-0.5">
-                            {voucher.paymentMethod === 'CASH'
-                              ? '💵 เงินสด'
-                              : voucher.paymentMethod === 'TRANSFER'
-                              ? '📱 โอนเงิน'
-                              : '💳 อื่นๆ'}
-                          </Badge>
-                        </td>
+                          <td className="py-3 px-3.5 text-right font-mono font-black text-sm sm:text-base">
+                            <span className={isCancelled ? 'line-through text-slate-400' : 'text-emerald-700'}>
+                              {formatCurrency(voucher.netPaidAmount)}
+                            </span>
+                          </td>
 
-                        <td className="py-3 px-3.5 text-center">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleOpenVoucherDirect(voucher)}
-                            className="h-8 px-2.5 rounded-xl border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs gap-1 shrink-0"
-                            title="ดูและพิมพ์ใบสำคัญจ่าย A4 ย้อนหลัง"
-                          >
-                            <Printer className="w-3.5 h-3.5" />
-                            <span>ใบสำคัญจ่าย (A4)</span>
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
+                          <td className="py-3 px-3.5 text-center">
+                            <Badge variant="outline" className="text-xs font-semibold px-2.5 py-0.5">
+                              {voucher.paymentMethod === 'CASH'
+                                ? '💵 เงินสด'
+                                : voucher.paymentMethod === 'TRANSFER'
+                                ? '📱 โอนเงิน'
+                                : '💳 อื่นๆ'}
+                            </Badge>
+                          </td>
+
+                          <td className="py-3 px-3.5 text-center">
+                            <div className="flex items-center justify-center gap-1.5 flex-nowrap whitespace-nowrap">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenVoucherDirect(voucher)}
+                                className="h-8 px-2.5 rounded-xl border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs gap-1 shrink-0"
+                                title="ดูและพิมพ์ใบสำคัญจ่าย A4"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                                <span>ใบสำคัญจ่าย (A4)</span>
+                              </Button>
+
+                              {!isCancelled ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleCancelVoucher(voucher)}
+                                  className="h-8 px-2 rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50 hover:border-rose-300 font-bold text-xs gap-1 shrink-0"
+                                  title="ยกเลิกใบสำคัญจ่ายและคืนยอดหนี้ของบิลทั้งหมด"
+                                >
+                                  <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                                  <span>ยกเลิก</span>
+                                </Button>
+                              ) : (
+                                <span className="text-[11px] text-rose-600 font-bold px-1">
+                                  ยกเลิกแล้ว
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

@@ -110,9 +110,16 @@ export function PaymentVoucherModal({
               <FileText className="w-5 h-5 text-indigo-600" />
               <span>ตัวอย่างใบสำคัญจ่าย (Payment Voucher Preview)</span>
             </DialogTitle>
-            <Badge variant="outline" className="font-mono text-xs px-2.5 py-0.5 bg-white font-bold text-indigo-700 border-indigo-200">
-              {data.voucherNumber}
-            </Badge>
+            <div className="flex items-center gap-2">
+              {data.status === 'CANCELLED' && (
+                <Badge className="bg-rose-600 text-white font-bold text-xs px-2.5 py-0.5">
+                  ยกเลิกแล้ว (VOID)
+                </Badge>
+              )}
+              <Badge variant="outline" className="font-mono text-xs px-2.5 py-0.5 bg-white font-bold text-indigo-700 border-indigo-200">
+                {data.voucherNumber}
+              </Badge>
+            </div>
           </div>
         </DialogHeader>
 
@@ -126,6 +133,20 @@ export function PaymentVoucherModal({
           >
             {/* ─── TOP SECTION: LETTERHEAD, DOCUMENT META & PAYEE INFO ─── */}
             <div className="space-y-4">
+              {data.status === 'CANCELLED' && (
+                <div className="bg-rose-50 border-2 border-dashed border-rose-400 p-2.5 rounded-lg text-rose-900 flex items-center justify-between text-xs">
+                  <div>
+                    <span className="font-black text-rose-700 uppercase tracking-wide">⚠️ เอกสารนี้ถูกยกเลิกแล้ว (VOID / CANCELLED)</span>
+                    {data.cancelReason && <p className="text-[11px] text-rose-800 mt-0.5 font-medium">เหตุผล: {data.cancelReason}</p>}
+                  </div>
+                  {data.cancelledAt && (
+                    <span className="text-[10px] text-rose-600 font-mono">
+                      ยกเลิกเมื่อ: {new Date(data.cancelledAt).toLocaleString('th-TH')}
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Letterhead */}
               <div className="flex justify-between items-start border-b-2 border-slate-800 pb-3">
                 <div className="space-y-1 max-w-[60%]">
@@ -157,9 +178,16 @@ export function PaymentVoucherModal({
                 </div>
 
                 <div className="text-right space-y-1">
-                  <h1 className="text-xl font-black text-indigo-950 uppercase tracking-wide">
-                    ใบสำคัญจ่าย
-                  </h1>
+                  <div className="flex items-center justify-end gap-2">
+                    <h1 className="text-xl font-black text-indigo-950 uppercase tracking-wide">
+                      ใบสำคัญจ่าย
+                    </h1>
+                    {data.status === 'CANCELLED' && (
+                      <span className="text-rose-600 text-xs font-black border border-rose-600 px-1.5 py-0.2 rounded">
+                        ยกเลิกแล้ว
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[10px] font-bold text-slate-500 tracking-widest uppercase">
                     PAYMENT VOUCHER
                   </p>

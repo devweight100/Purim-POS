@@ -280,17 +280,6 @@ export function PayableBillDetailsModal({
                           type="button"
                           size="sm"
                           variant="outline"
-                          onClick={() => onViewVoucher(bill, p)}
-                          className="h-8 text-xs font-bold rounded-xl border-slate-200 hover:border-indigo-300 hover:text-indigo-600 gap-1"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                          <span>ใบสำคัญจ่าย</span>
-                        </Button>
-
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
                           disabled={isRollingBack}
                           onClick={() => handleRollbackPayment(p.id)}
                           className="h-8 text-xs font-bold rounded-xl border-amber-200 text-amber-700 hover:bg-amber-50 gap-1"

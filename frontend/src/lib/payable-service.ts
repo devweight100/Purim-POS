@@ -3,6 +3,8 @@ import { SupplierReturnNote } from './types';
 
 export interface PayablePaymentEntry {
   id: string;
+  voucherId?: string;
+  voucherNumber?: string;
   paymentDate: string;
   paymentMethod: 'CASH' | 'TRANSFER' | 'CHEQUE' | 'OTHER';
   totalBillAmount: number;
@@ -63,6 +65,9 @@ export interface PaymentVoucherBillItem {
 export interface PaymentVoucher {
   id: string; // e.g. PV-20260901-0001
   voucherNumber: string;
+  status?: 'ACTIVE' | 'CANCELLED';
+  cancelledAt?: string;
+  cancelReason?: string;
   supplierId: string;
   supplierName: string;
   supplierContact?: string;
@@ -276,8 +281,16 @@ export function settlePayableBill(params: SettlePayableParams): {
   const netPaidCashOrTransfer = Math.max(0, Number(params.cashOrTransferAmount || 0));
   const billDiscount = Math.max(0, Number(params.discountAmount || 0));
 
+  const allVouchers = loadPaymentVouchers();
+  const dateStr = new Date(nowIso).toISOString().slice(0, 10).replace(/-/g, '');
+  const voucherCountToday = allVouchers.filter((v) => v.createdAt?.slice(0, 10).replace(/-/g, '') === dateStr).length;
+  const voucherNumber = `PV-${dateStr}-${String(voucherCountToday + 1).padStart(4, '0')}`;
+  const voucherId = `voucher_${Date.now()}`;
+
   const paymentEntry: PayablePaymentEntry = {
     id: paymentId,
+    voucherId,
+    voucherNumber,
     paymentDate: nowIso,
     paymentMethod: params.paymentMethod,
     totalBillAmount: Number(targetPo.totalAmount || 0),
@@ -293,11 +306,13 @@ export function settlePayableBill(params: SettlePayableParams): {
   };
 
   // 3. Update PO in storage
-  targetPo.deductedReturns = [...(targetPo.deductedReturns || []), ...deductedEntriesForPo];
+  if (totalDebitDeducted > 0) {
+    targetPo.deductedReturns = [...(targetPo.deductedReturns || []), ...deductedEntriesForPo];
+  }
   targetPo.payments = [...(targetPo.payments || []), paymentEntry];
 
   const totalAmount = Number(targetPo.totalAmount || 0);
-  const totalDeducted = targetPo.deductedReturns.reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+  const totalDeducted = (targetPo.deductedReturns || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
   const totalPaid = targetPo.payments.reduce((s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0), 0);
   const totalDiscount = targetPo.payments.reduce((s: number, p: any) => s + Number(p.discountAmount || 0), 0);
   
@@ -315,14 +330,10 @@ export function settlePayableBill(params: SettlePayableParams): {
   savePurchaseOrders(allPos);
 
   // 4. Also register a PaymentVoucher for unified history
-  const allVouchers = loadPaymentVouchers();
-  const dateStr = new Date(nowIso).toISOString().slice(0, 10).replace(/-/g, '');
-  const voucherCountToday = allVouchers.filter((v) => v.createdAt?.slice(0, 10).replace(/-/g, '') === dateStr).length;
-  const voucherNumber = `PV-${dateStr}-${String(voucherCountToday + 1).padStart(4, '0')}`;
-
   const voucher: PaymentVoucher = {
-    id: `voucher_${Date.now()}`,
+    id: voucherId,
     voucherNumber,
+    status: 'ACTIVE',
     supplierId: targetPo.supplierId || targetPo.supplier?.id || 'supp_1',
     supplierName: targetPo.supplierName || targetPo.supplier?.name || 'ไม่ระบุผู้จำหน่าย',
     supplierContact: targetPo.supplier?.contactName,
@@ -455,6 +466,8 @@ export function settleMultipleBills(params: SettleMultipleBillsParams): {
 
     const paymentEntry: PayablePaymentEntry = {
       id: `PAY-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      voucherId,
+      voucherNumber,
       paymentDate: nowIso,
       paymentMethod: params.paymentMethod,
       totalBillAmount: poTotal,
@@ -498,6 +511,7 @@ export function settleMultipleBills(params: SettleMultipleBillsParams): {
   const voucher: PaymentVoucher = {
     id: voucherId,
     voucherNumber,
+    status: 'ACTIVE',
     supplierId: params.supplierId,
     supplierName: params.supplierName || supp?.name || 'ไม่ระบุผู้จำหน่าย',
     supplierContact: supp?.contactName,
@@ -638,3 +652,98 @@ export function cancelPayableBill(poId: string, reason?: string): { success: boo
 
   return { success: true, message: `ยกเลิกบิล ${targetPo.poNumber} เรียบร้อยแล้ว` };
 }
+
+// ─── Cancel / Void Payment Voucher ───
+export function cancelPaymentVoucher(
+  voucherId: string,
+  cancelReason?: string
+): { success: boolean; message: string } {
+  const allVouchers = loadPaymentVouchers();
+  const voucherIndex = allVouchers.findIndex((v) => v.id === voucherId || v.voucherNumber === voucherId);
+
+  if (voucherIndex === -1) {
+    return { success: false, message: 'ไม่พบใบสำคัญจ่ายนี้' };
+  }
+
+  const voucher = allVouchers[voucherIndex];
+
+  if (voucher.status === 'CANCELLED') {
+    return { success: false, message: 'ใบสำคัญจ่ายนี้ถูกยกเลิกไปแล้ว' };
+  }
+
+  const allPos = loadPurchaseOrders();
+  const allReturnNotes = loadSupplierReturnNotes();
+
+  // 1. Roll back debit notes deducted in this voucher
+  if (Array.isArray(voucher.deductedNotes)) {
+    for (const dn of voucher.deductedNotes) {
+      const note = allReturnNotes.find((n) => n.id === dn.returnNoteId);
+      if (note) {
+        note.remainingCreditAmount = Math.round((Number(note.remainingCreditAmount || 0) + Number(dn.amount)) * 100) / 100;
+        note.status = note.remainingCreditAmount >= note.totalCreditAmount ? 'PENDING_DEDUCTION' : 'PARTIALLY_DEDUCTED';
+        if (Array.isArray(note.deductions)) {
+          note.deductions = note.deductions.filter((d) => 
+            !d.note?.includes(voucher.voucherNumber) && 
+            !voucher.bills.some(b => b.poNumber === d.billNumber)
+          );
+        }
+      }
+    }
+    saveSupplierReturnNotes(allReturnNotes);
+  }
+
+  // 2. Roll back payments on all POs/bills covered by this voucher
+  for (const bill of voucher.bills) {
+    const targetPo = allPos.find((p) => p.id === bill.poId || p.poNumber === bill.poNumber);
+    if (!targetPo) continue;
+
+    // Remove payment entries tied to this voucher
+    if (Array.isArray(targetPo.payments)) {
+      targetPo.payments = targetPo.payments.filter((p: any) => {
+        if (p.voucherId && (p.voucherId === voucher.id || p.voucherId === voucher.voucherNumber)) return false;
+        if (p.voucherNumber && p.voucherNumber === voucher.voucherNumber) return false;
+        if (p.referenceNo && p.referenceNo === voucher.voucherNumber) return false;
+        if (p.note && p.note.includes(voucher.voucherNumber)) return false;
+        if (p.id === voucher.id || p.id === voucher.voucherNumber) return false;
+        return true;
+      });
+    }
+
+    // Also if targetPo had deductedReturns from this voucher
+    if (Array.isArray(targetPo.deductedReturns) && Array.isArray(voucher.deductedNotes)) {
+      const dnIds = new Set(voucher.deductedNotes.map(dn => dn.returnNoteId));
+      targetPo.deductedReturns = targetPo.deductedReturns.filter((r: any) => !dnIds.has(r.returnNoteId));
+    }
+
+    // Recalculate debt & status
+    const poTotal = Number(targetPo.totalAmount || 0);
+    const prevDeducted = (targetPo.deductedReturns || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+    const prevPaid = (targetPo.payments || []).reduce((s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0), 0);
+    const prevDiscount = (targetPo.payments || []).reduce((s: number, p: any) => s + Number(p.discountAmount || 0), 0);
+    
+    targetPo.netAmountPayable = Math.max(0, Math.round((poTotal - prevDeducted - prevPaid - prevDiscount) * 100) / 100);
+    if (targetPo.netAmountPayable <= 0) {
+      targetPo.paymentStatus = 'PAID';
+    } else if (targetPo.netAmountPayable < poTotal) {
+      targetPo.paymentStatus = 'PARTIALLY_PAID';
+    } else {
+      targetPo.paymentStatus = 'UNPAID';
+    }
+  }
+
+  savePurchaseOrders(allPos);
+
+  // 3. Mark voucher as CANCELLED
+  voucher.status = 'CANCELLED';
+  voucher.cancelledAt = new Date().toISOString();
+  voucher.cancelReason = cancelReason?.trim() || 'ยกเลิกใบสำคัญจ่ายโดยผู้ใช้';
+
+  allVouchers[voucherIndex] = voucher;
+  savePaymentVouchers(allVouchers);
+
+  return {
+    success: true,
+    message: `ยกเลิกใบสำคัญจ่าย ${voucher.voucherNumber} สำเร็จ และคืนสถานะหนี้ค้างชำระเรียบร้อยแล้ว`,
+  };
+}
+
