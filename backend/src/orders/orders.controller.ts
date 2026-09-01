@@ -12,6 +12,11 @@ export class OrdersController {
     return this.ordersService.checkout(data, req.user.id);
   }
 
+  @Post('sync-offline')
+  syncOffline(@Body('orders') orders: any[], @Request() req: any) {
+    return this.ordersService.syncOfflineOrders(orders || [], req.user.id);
+  }
+
   @Post(':id/void')
   voidOrder(@Param('id') id: string, @Body() data: { reason: string }) {
     return this.ordersService.voidOrder(id, data.reason);

@@ -4,30 +4,68 @@ import * as bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  // Hash passwords
+  // Hash passwords and PINs
   const adminPassword = await bcrypt.hash('admin123', 10);
   const cashierPassword = await bcrypt.hash('cashier123', 10);
+  const adminPin = await bcrypt.hash('1234', 10);
+  const cashierPin = await bcrypt.hash('0000', 10);
 
-  // 1. Users
+  const allPermissions = [
+    'ALL',
+    'POS_SELL',
+    'POS_DISCOUNT',
+    'POS_VOID',
+    'VIEW_COST',
+    'MANAGE_INVENTORY',
+    'MANAGE_PURCHASES',
+    'MANAGE_PAYABLES',
+    'MANAGE_DEBTS',
+    'MANAGE_CLAIMS',
+    'MANAGE_USERS',
+    'VIEW_REPORTS',
+    'MANAGE_SETTINGS',
+  ];
+
+  const cashierPermissions = [
+    'POS_SELL',
+    'POS_DISCOUNT',
+    'MANAGE_CLAIMS',
+  ];
+
+  // 1. Users (Admin Panel ready)
   await prisma.user.upsert({
     where: { username: 'admin' },
-    update: {},
+    update: {
+      pinCode: adminPin,
+      permissions: allPermissions,
+      isActive: true,
+    },
     create: {
       username: 'admin',
       password: adminPassword,
-      fullName: 'ผู้ดูแลระบบ',
+      fullName: 'ผู้ดูแลระบบ (Admin)',
       role: UserRole.ADMIN,
+      pinCode: adminPin,
+      permissions: allPermissions,
+      isActive: true,
     },
   });
 
   await prisma.user.upsert({
     where: { username: 'cashier1' },
-    update: {},
+    update: {
+      pinCode: cashierPin,
+      permissions: cashierPermissions,
+      isActive: true,
+    },
     create: {
       username: 'cashier1',
       password: cashierPassword,
-      fullName: 'สมศรี พนักงาน',
+      fullName: 'สมศรี พนักงานขาย',
       role: UserRole.CASHIER,
+      pinCode: cashierPin,
+      permissions: cashierPermissions,
+      isActive: true,
     },
   });
 
@@ -36,14 +74,31 @@ async function main() {
   if (settingsCount === 0) {
     await prisma.storeSettings.create({
       data: {
-        storeName: 'ร้านปุริม',
-        storePhone: '02-xxx-xxxx',
-        storeAddress: 'กรุงเทพฯ',
+        storeName: 'ร้านปุริม POS',
+        storePhone: '02-123-4567',
+        storeAddress: '123/45 ถนนสุขุมวิท กรุงเทพมหานคร',
+        receiptFooter: 'ขอบคุณที่ใช้บริการร้านปุริม โอกาสหน้าเชิญใหม่นะคะ',
+        pointsPerBaht: 0.01,
+        pointValue: 1.0,
       },
     });
   }
 
-  // 3. Categories
+  // 3. Bank Account
+  const bankAccountCount = await prisma.bankAccount.count();
+  if (bankAccountCount === 0) {
+    await prisma.bankAccount.create({
+      data: {
+        bankName: 'กสิกรไทย (KBANK)',
+        accountName: 'ร้านปุริม โดย นายปุริม',
+        accountNumber: '123-4-56789-0',
+        branch: 'สาขาสุขุมวิท',
+        isDefault: true,
+      },
+    });
+  }
+
+  // 4. Categories
   const categoriesData = [
     { name: 'อาหารสด', color: '#22c55e', sortOrder: 1 },
     { name: 'เครื่องดื่ม', color: '#3b82f6', sortOrder: 2 },
@@ -53,7 +108,7 @@ async function main() {
     { name: 'อื่นๆ', color: '#6b7280', sortOrder: 6 },
   ];
 
-  const categories = {};
+  const categories: Record<string, any> = {};
   for (const cat of categoriesData) {
     categories[cat.name] = await prisma.category.upsert({
       where: { name: cat.name },
@@ -62,7 +117,7 @@ async function main() {
     });
   }
 
-  // 4. Products & Barcodes
+  // 5. Products & Barcodes
   const productsData = [
     { name: 'ข้าวหอมมะลิ 5 กก.', sku: 'RICE-JAS-5KG', basePrice: 189.00, cat: 'อาหารสด', barcodes: ['885000000001'] },
     { name: 'น้ำดื่มสิงห์ 600ml', sku: 'DRK-SINGHA-600', basePrice: 12.00, cat: 'เครื่องดื่ม', barcodes: ['885000000002'] },
@@ -78,7 +133,6 @@ async function main() {
     { name: 'ถุงขยะดำ 30x40', sku: 'HH-TRASH-3040', basePrice: 20.00, cat: 'ของใช้ในบ้าน', barcodes: ['885000000012'] },
   ];
 
-  const createdProducts: any[] = [];
   for (const prod of productsData) {
     const p = await prisma.product.upsert({
       where: { sku: prod.sku },
@@ -87,15 +141,15 @@ async function main() {
         name: prod.name,
         sku: prod.sku,
         basePrice: prod.basePrice,
+        costPrice: prod.basePrice * 0.7,
         categoryId: categories[prod.cat].id,
         barcodes: {
           create: prod.barcodes.map(b => ({ barcode: b }))
         }
       }
     });
-    createdProducts.push(p);
 
-    // 5. Stock Batches
+    // Stock Batches
     const stockCount = await prisma.stockBatch.count({ where: { productId: p.id } });
     if (stockCount === 0) {
       await prisma.stockBatch.create({
@@ -103,8 +157,8 @@ async function main() {
           productId: p.id,
           quantityReceived: 100,
           quantityRemaining: 100,
-          unitCost: prod.basePrice * 0.7, // Assume 30% margin
-          note: 'Initial stock',
+          unitCost: prod.basePrice * 0.7,
+          note: 'สต็อกเริ่มต้นระบบ',
         }
       });
     }
@@ -118,20 +172,18 @@ async function main() {
     { name: 'บริษัท โฮมโปรดักส์ จำกัด', contactName: 'คุณอรุณ', phone: '02-777-8888', email: 'home@prod.co.th', creditTerms: 30 },
   ];
 
-  const createdSuppliers: any[] = [];
   for (const sup of suppliersData) {
-    let s = await prisma.supplier.findFirst({ where: { name: sup.name } });
+    const s = await prisma.supplier.findFirst({ where: { name: sup.name } });
     if (!s) {
-      s = await prisma.supplier.create({ data: sup });
+      await prisma.supplier.create({ data: sup });
     }
-    createdSuppliers.push(s);
   }
 
   // 7. Customers
   const customersData = [
-    { name: 'สมชาย มั่งมี', phone: '081-xxx-xxxx' },
-    { name: 'สมหญิง ใจดี', phone: '089-xxx-xxxx' },
-    { name: 'ประหยัด อดออม', phone: '086-xxx-xxxx' },
+    { name: 'สมชาย มั่งมี (ลูกค้าประจำ)', phone: '081-111-1111', address: 'กรุงเทพฯ' },
+    { name: 'สมหญิง ใจดี (สมาชิกร้าน)', phone: '089-222-2222', address: 'นนทบุรี' },
+    { name: 'ประหยัด อดออม (เครดิตเชื่อ)', phone: '086-333-3333', address: 'ปทุมธานี' },
   ];
 
   for (const cust of customersData) {
@@ -142,7 +194,7 @@ async function main() {
     });
   }
 
-  console.log('Seed completed successfully');
+  console.log('✅ Purim POS database seed completed successfully!');
 }
 
 main()

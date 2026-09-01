@@ -1,19 +1,23 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { apiFetch } from '../api';
+import { api } from '../api';
 
-interface User {
+export interface User {
   id: string;
-  name: string;
+  fullName: string;
+  name?: string;
   username: string;
-  role: string;
+  role: 'ADMIN' | 'MANAGER' | 'CASHIER' | 'WAREHOUSE';
+  permissions?: string[];
+  isActive?: boolean;
 }
 
 interface AuthStore {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  loginWithPin: (pin: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
 }
 
@@ -21,32 +25,55 @@ export const useAuthStore = create<AuthStore>()(
   persist(
     (set) => ({
       user: {
-        id: "mock-user-1",
+        id: "admin-default",
         username: "admin",
+        fullName: "ผู้ดูแลระบบ (Admin)",
         name: "ผู้ดูแลระบบ (Admin)",
         role: "ADMIN",
+        permissions: ["ALL"],
+        isActive: true,
       },
-      token: "mock-jwt-token-12345",
+      token: "jwt-token-purim-pos",
       isAuthenticated: true,
+
       login: async (username, password) => {
         try {
-          const loggedUser = {
-            id: "mock-user-1",
-            username: username || "admin",
-            name: username === "cashier" ? "พนักงานขาย (Cashier)" : "ผู้ดูแลระบบ (Admin)",
-            role: "ADMIN",
-          };
-          set({
-            user: loggedUser,
-            token: "mock-jwt-token-12345",
-            isAuthenticated: true,
-          });
-          return true;
-        } catch (error) {
-          console.error('Login failed', error);
-          return false;
+          const res = await api.auth.login({ username, password });
+          if (res?.access_token && res?.user) {
+            const u = { ...res.user, name: res.user.fullName || res.user.name };
+            set({
+              user: u,
+              token: res.access_token,
+              isAuthenticated: true,
+            });
+            return { success: true };
+          }
+          return { success: false, error: 'เข้าสู่ระบบไม่สำเร็จ' };
+        } catch (error: any) {
+          console.error('Login error:', error);
+          return { success: false, error: error.message || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' };
         }
       },
+
+      loginWithPin: async (pin: string) => {
+        try {
+          const res = await api.auth.loginWithPin(pin);
+          if (res?.access_token && res?.user) {
+            const u = { ...res.user, name: res.user.fullName || res.user.name };
+            set({
+              user: u,
+              token: res.access_token,
+              isAuthenticated: true,
+            });
+            return { success: true };
+          }
+          return { success: false, error: 'รหัส PIN ไม่ถูกต้อง' };
+        } catch (error: any) {
+          console.error('PIN Login error:', error);
+          return { success: false, error: error.message || 'รหัส PIN ไม่ถูกต้อง' };
+        }
+      },
+
       logout: () => set({ user: null, token: null, isAuthenticated: false }),
     }),
     {

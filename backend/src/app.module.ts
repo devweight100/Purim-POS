@@ -13,6 +13,12 @@ import { SettingsModule } from './settings/settings.module';
 import { ReportsModule } from './reports/reports.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
 import { PurchaseOrdersModule } from './purchase-orders/purchase-orders.module';
+import { ShiftsModule } from './shifts/shifts.module';
+import { DebtsModule } from './debts/debts.module';
+import { PayablesModule } from './payables/payables.module';
+import { SupplierReturnsModule } from './supplier-returns/supplier-returns.module';
+import { ClaimsModule } from './claims/claims.module';
+import { BankAccountsModule } from './bank-accounts/bank-accounts.module';
 
 @Module({
   imports: [
@@ -28,6 +34,12 @@ import { PurchaseOrdersModule } from './purchase-orders/purchase-orders.module';
     ReportsModule,
     SuppliersModule,
     PurchaseOrdersModule,
+    ShiftsModule,
+    DebtsModule,
+    PayablesModule,
+    SupplierReturnsModule,
+    ClaimsModule,
+    BankAccountsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -7,7 +7,7 @@ import {
   ShoppingCart, ClipboardList, Users, LayoutDashboard, Package, 
   Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, 
   FolderTree, Building2, Receipt, ShieldAlert, ArrowLeftRight, HandCoins,
-  ChevronDown, History, PackageX, TrendingUp, Sparkles, Coins, Boxes
+  ChevronDown, History, PackageX, TrendingUp, Sparkles, Coins, Boxes, UserCog
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/store/auth-store';
@@ -88,6 +88,7 @@ const navGroups: NavGroup[] = [
     icon: Settings,
     items: [
       { href: '/accounts', label: 'บัญชีธนาคาร & QR Code', icon: Building2 },
+      { href: '/users', label: 'จัดการพนักงาน & สิทธิ์ (Admin)', icon: UserCog },
       { href: '/settings', label: 'ตั้งค่าร้านค้า & ระบบ', icon: Settings },
     ],
   },

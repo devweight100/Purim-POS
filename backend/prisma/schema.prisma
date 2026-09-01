@@ -7,6 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ──────────────────────────────────────────────
+// ENUMS
+// ──────────────────────────────────────────────
+
 enum UserRole {
   ADMIN
   MANAGER
@@ -27,15 +31,36 @@ enum PaymentMethod {
   CREDIT_CARD
   TRANSFER
   CREDIT_NOTE
+  CREDIT_DEBT
 }
 
 enum POStatus {
   DRAFT
   PENDING
   ISSUED
+  ORDERED
   PARTIALLY_RECEIVED
+  RECEIVED
   COMPLETED
   CANCELLED
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+}
+
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+enum DebtStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
 }
 
 enum ClaimType {
@@ -44,21 +69,85 @@ enum ClaimType {
   WARRANTY
 }
 
-model User {
-  id        String   @id @default(uuid())
-  username  String   @unique
-  password  String
-  fullName  String   @map("full_name")
-  role      UserRole @default(CASHIER)
-  isActive  Boolean  @default(true) @map("is_active")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+enum ClaimStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+}
 
-  orders    Order[]
-  auditLogs AuditLog[]
+enum ReturnNoteStatus {
+  PENDING
+  USED
+  PARTIALLY_USED
+  CANCELLED
+}
+
+enum VoucherStatus {
+  ACTIVE
+  CANCELLED
+}
+
+// ──────────────────────────────────────────────
+// 1. USERS & ACCESS CONTROL (ADMIN PANEL READY)
+// ──────────────────────────────────────────────
+
+model User {
+  id          String    @id @default(uuid())
+  username    String    @unique
+  password    String
+  fullName    String    @map("full_name")
+  role        UserRole  @default(CASHIER)
+  pinCode     String?   @map("pin_code")     // 4-6 digit hashed PIN for fast cashier shift unlock
+  permissions Json?                          // Granular permission keys: ["POS_SELL", "POS_DISCOUNT", "POS_VOID", "VIEW_REPORTS", etc.]
+  isActive    Boolean   @default(true) @map("is_active")
+  lastLoginAt DateTime? @map("last_login_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  orders      Order[]
+  shifts      Shift[]
+  auditLogs   AuditLog[]
 
   @@map("users")
 }
+
+// ──────────────────────────────────────────────
+// 2. SHIFTS (กะการทำงาน & เงินสดลิ้นชัก)
+// ──────────────────────────────────────────────
+
+model Shift {
+  id              String      @id @default(uuid())
+  shiftNumber     String      @unique @map("shift_number") // SHF-YYYYMMDD-0001
+  userId          String      @map("user_id")
+  openedAt        DateTime    @default(now()) @map("opened_at")
+  closedAt        DateTime?   @map("closed_at")
+  startingCash    Decimal     @default(0) @map("starting_cash") @db.Decimal(12, 2)
+  cashSales       Decimal     @default(0) @map("cash_sales") @db.Decimal(12, 2)
+  promptpaySales  Decimal     @default(0) @map("promptpay_sales") @db.Decimal(12, 2)
+  creditCardSales Decimal     @default(0) @map("credit_card_sales") @db.Decimal(12, 2)
+  debtSales       Decimal     @default(0) @map("debt_sales") @db.Decimal(12, 2)
+  totalSales      Decimal     @default(0) @map("total_sales") @db.Decimal(12, 2)
+  expectedCash    Decimal     @default(0) @map("expected_cash") @db.Decimal(12, 2)
+  actualCash      Decimal?    @map("actual_cash") @db.Decimal(12, 2)
+  cashDifference  Decimal?    @map("cash_difference") @db.Decimal(12, 2)
+  status          ShiftStatus @default(OPEN)
+  note            String?
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  user            User        @relation(fields: [userId], references: [id])
+  orders          Order[]
+
+  @@index([userId])
+  @@index([openedAt])
+  @@index([status])
+  @@map("shifts")
+}
+
+// ──────────────────────────────────────────────
+// 3. PRODUCTS & CATEGORIES
+// ──────────────────────────────────────────────
 
 model Category {
   id        String    @id @default(uuid())
@@ -81,17 +170,23 @@ model Product {
   sku         String   @unique
   categoryId  String?  @map("category_id")
   basePrice   Decimal  @map("base_price") @db.Decimal(10, 2)
+  costPrice   Decimal  @default(0) @map("cost_price") @db.Decimal(10, 2)
   imageUrl    String?  @map("image_url")
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  category    Category?        @relation(fields: [categoryId], references: [id])
-  barcodes    ProductBarcode[]
-  stockBatches StockBatch[]
-  orderItems  OrderItem[]
-  suppliers   ProductSupplier[]
+  category        Category?         @relation(fields: [categoryId], references: [id])
+  barcodes        ProductBarcode[]
+  stockBatches    StockBatch[]
+  orderItems      OrderItem[]
+  suppliers       ProductSupplier[]
+  claims          CustomerClaim[]
+  claimInventory  ClaimInventory[]
+  purchaseOrderItems PurchaseOrderItem[]
 
+  @@index([categoryId])
+  @@index([name])
   @@map("products")
 }
 
@@ -104,24 +199,53 @@ model ProductBarcode {
 
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
+  @@index([productId])
   @@map("product_barcodes")
 }
 
+// ──────────────────────────────────────────────
+// 4. INVENTORY & FIFO STOCK BATCHES
+// ──────────────────────────────────────────────
+
 model StockBatch {
-  id                String   @id @default(uuid())
-  productId         String   @map("product_id")
-  quantityReceived  Int      @map("quantity_received")
-  quantityRemaining Int      @map("quantity_remaining")
-  unitCost          Decimal  @map("unit_cost") @db.Decimal(10, 2)
-  receivedAt        DateTime @default(now()) @map("received_at")
-  supplierId        String?  @map("supplier_id")
+  id                String         @id @default(uuid())
+  productId         String         @map("product_id")
+  quantityReceived  Int            @map("quantity_received")
+  quantityRemaining Int            @map("quantity_remaining")
+  unitCost          Decimal        @map("unit_cost") @db.Decimal(10, 2)
+  receivedAt        DateTime       @default(now()) @map("received_at")
+  supplierId        String?        @map("supplier_id")
+  purchaseOrderId   String?        @map("purchase_order_id")
   note              String?
 
-  product   Product   @relation(fields: [productId], references: [id])
-  supplier  Supplier? @relation(fields: [supplierId], references: [id])
+  product           Product        @relation(fields: [productId], references: [id])
+  supplier          Supplier?      @relation(fields: [supplierId], references: [id])
+  purchaseOrder     PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
 
+  @@index([productId, quantityRemaining])
+  @@index([receivedAt])
   @@map("stock_batches")
 }
+
+model ProductSupplier {
+  id          String   @id @default(uuid())
+  productId   String   @map("product_id")
+  supplierId  String   @map("supplier_id")
+  supplierSku String?  @map("supplier_sku")
+  unitCost    Decimal? @map("unit_cost") @db.Decimal(10, 2)
+  isPreferred Boolean  @default(false) @map("is_preferred")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplier    Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, supplierId])
+  @@map("product_suppliers")
+}
+
+// ──────────────────────────────────────────────
+// 5. SUPPLIERS & PROCUREMENT (PO)
+// ──────────────────────────────────────────────
 
 model Supplier {
   id          String   @id @default(uuid())
@@ -133,78 +257,244 @@ model Supplier {
   creditTerms Int?     @map("credit_terms")
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
 
-  stockBatches   StockBatch[]
-  purchaseOrders PurchaseOrder[]
-  products       ProductSupplier[]
+  stockBatches    StockBatch[]
+  purchaseOrders  PurchaseOrder[]
+  products        ProductSupplier[]
+  returnNotes     SupplierReturnNote[]
+  paymentVouchers PaymentVoucher[]
 
   @@map("suppliers")
 }
 
 model PurchaseOrder {
-  id           String   @id @default(uuid())
-  poNumber     String   @unique @map("po_number")
-  supplierId   String   @map("supplier_id")
-  status       POStatus @default(DRAFT)
-  totalAmount  Decimal? @map("total_amount") @db.Decimal(12, 2)
-  notes        String?
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id                String        @id @default(uuid())
+  poNumber          String        @unique @map("po_number")
+  supplierId        String        @map("supplier_id")
+  supplierInvoiceNo String?       @map("supplier_invoice_no") // เลขที่บิลคู่ค้า
+  billDate          DateTime      @default(now()) @map("bill_date")
+  dueDate           DateTime?     @map("due_date")
+  status            POStatus      @default(DRAFT)
+  paymentStatus     PaymentStatus @default(UNPAID) @map("payment_status")
+  totalAmount       Decimal       @default(0) @map("total_amount") @db.Decimal(12, 2)
+  paidAmount        Decimal       @default(0) @map("paid_amount") @db.Decimal(12, 2)
+  remainingPayable  Decimal       @default(0) @map("remaining_payable") @db.Decimal(12, 2)
+  notes             String?
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
 
-  supplier     Supplier          @relation(fields: [supplierId], references: [id])
-  items        PurchaseOrderItem[]
+  supplier          Supplier              @relation(fields: [supplierId], references: [id])
+  items             PurchaseOrderItem[]
+  stockBatches      StockBatch[]
+  voucherItems      PaymentVoucherItem[]
 
+  @@index([supplierId])
+  @@index([paymentStatus])
+  @@index([billDate])
+  @@index([supplierInvoiceNo])
   @@map("purchase_orders")
 }
 
 model PurchaseOrderItem {
-  id              String   @id @default(uuid())
-  purchaseOrderId String   @map("purchase_order_id")
-  productId       String   @map("product_id")
+  id              String        @id @default(uuid())
+  purchaseOrderId String        @map("purchase_order_id")
+  productId       String        @map("product_id")
   quantity        Int
-  unitCost        Decimal  @map("unit_cost") @db.Decimal(10, 2)
-  receivedQty     Int      @default(0) @map("received_qty")
+  unitCost        Decimal       @map("unit_cost") @db.Decimal(10, 2)
+  receivedQty     Int           @default(0) @map("received_qty")
+  total           Decimal       @default(0) @map("total") @db.Decimal(12, 2)
 
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product         Product       @relation(fields: [productId], references: [id])
 
+  @@index([purchaseOrderId])
   @@map("purchase_order_items")
 }
 
+// ──────────────────────────────────────────────
+// 6. PAYMENT VOUCHERS (ใบสำคัญจ่าย A4 & ชำระหลายบิล)
+// ──────────────────────────────────────────────
+
+model PaymentVoucher {
+  id               String               @id @default(uuid())
+  voucherNumber    String               @unique @map("voucher_number") // PV-YYYYMMDD-0001
+  supplierId       String               @map("supplier_id")
+  paymentDate      DateTime             @default(now()) @map("payment_date")
+  totalBillsAmount Decimal              @map("total_bills_amount") @db.Decimal(12, 2)
+  debitDeducted    Decimal              @default(0) @map("debit_deducted") @db.Decimal(12, 2)
+  discountAmount   Decimal              @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  netPaidAmount    Decimal              @map("net_paid_amount") @db.Decimal(12, 2)
+  paymentMethod    PaymentMethod        @map("payment_method")
+  bankAccountLabel String?              @map("bank_account_label")
+  referenceNo      String?              @map("reference_no")
+  note             String?
+  cashierName      String               @map("cashier_name")
+  status           VoucherStatus        @default(ACTIVE)
+  cancelledAt      DateTime?            @map("cancelled_at")
+  cancelReason     String?              @map("cancel_reason")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  supplier         Supplier             @relation(fields: [supplierId], references: [id])
+  items            PaymentVoucherItem[]
+  debitNotes       PaymentVoucherDebit[]
+
+  @@index([supplierId])
+  @@index([paymentDate])
+  @@index([status])
+  @@map("payment_vouchers")
+}
+
+model PaymentVoucherItem {
+  id              String         @id @default(uuid())
+  voucherId       String         @map("voucher_id")
+  purchaseOrderId String         @map("purchase_order_id")
+  amountPaid      Decimal        @map("amount_paid") @db.Decimal(12, 2)
+
+  voucher         PaymentVoucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  purchaseOrder   PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id])
+
+  @@index([voucherId])
+  @@index([purchaseOrderId])
+  @@map("payment_voucher_items")
+}
+
+model PaymentVoucherDebit {
+  id             String             @id @default(uuid())
+  voucherId      String             @map("voucher_id")
+  returnNoteId   String             @map("return_note_id")
+  amountDeducted Decimal            @map("amount_deducted") @db.Decimal(12, 2)
+
+  voucher        PaymentVoucher     @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  returnNote     SupplierReturnNote @relation(fields: [returnNoteId], references: [id])
+
+  @@index([voucherId])
+  @@index([returnNoteId])
+  @@map("payment_voucher_debits")
+}
+
+// ──────────────────────────────────────────────
+// 7. SUPPLIER RETURNS & DEBIT NOTES (ส่งเคลม & ใบลดหนี้)
+// ──────────────────────────────────────────────
+
+model SupplierReturnNote {
+  id                    String                @id @default(uuid()) // DN-YYYY-0001
+  returnNumber          String                @unique @map("return_number")
+  supplierId            String                @map("supplier_id")
+  totalQuantity         Int                   @default(0) @map("total_quantity")
+  totalAmount           Decimal               @map("total_amount") @db.Decimal(12, 2)
+  remainingCreditAmount Decimal               @map("remaining_credit_amount") @db.Decimal(12, 2)
+  status                ReturnNoteStatus      @default(PENDING)
+  note                  String?
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+
+  supplier              Supplier              @relation(fields: [supplierId], references: [id])
+  voucherDebits         PaymentVoucherDebit[]
+
+  @@index([supplierId])
+  @@index([status])
+  @@map("supplier_return_notes")
+}
+
+// ──────────────────────────────────────────────
+// 8. CUSTOMERS & DEBTS (ลูกค้า & ลูกหนี้)
+// ──────────────────────────────────────────────
+
 model Customer {
-  id        String   @id @default(uuid())
+  id        String          @id @default(uuid())
   name      String
-  phone     String?  @unique
+  phone     String?         @unique
   email     String?
   address   String?
-  points    Int      @default(0)
+  points    Int             @default(0)
   note      String?
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
 
   orders    Order[]
+  debts     CustomerDebt[]
+  claims    CustomerClaim[]
 
   @@map("customers")
 }
 
-model Order {
-  id            String      @id @default(uuid())
-  orderNumber   String      @unique @map("order_number")
-  userId        String      @map("user_id")
-  customerId    String?     @map("customer_id")
-  status        OrderStatus @default(COMPLETED)
-  subtotal      Decimal     @db.Decimal(12, 2)
-  discountAmount Decimal    @default(0) @map("discount_amount") @db.Decimal(12, 2)
-  totalAmount   Decimal     @map("total_amount") @db.Decimal(12, 2)
-  totalCogs     Decimal     @default(0) @map("total_cogs") @db.Decimal(12, 2)
+model CustomerDebt {
+  id              String        @id @default(uuid())
+  customerId      String        @map("customer_id")
+  orderId         String        @unique @map("order_id")
+  totalDebt       Decimal       @map("total_debt") @db.Decimal(12, 2)
+  paidAmount      Decimal       @default(0) @map("paid_amount") @db.Decimal(12, 2)
+  remainingAmount Decimal       @map("remaining_amount") @db.Decimal(12, 2)
+  dueDate         DateTime?     @map("due_date")
+  status          DebtStatus    @default(PENDING)
+  note            String?
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  customer        Customer      @relation(fields: [customerId], references: [id])
+  order           Order         @relation(fields: [orderId], references: [id])
+  payments        DebtPayment[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("customer_debts")
+}
+
+model DebtPayment {
+  id            String        @id @default(uuid())
+  debtId        String        @map("debt_id")
+  amount        Decimal       @map("amount") @db.Decimal(12, 2)
+  paymentMethod PaymentMethod @map("payment_method")
+  referenceNo   String?       @map("reference_no")
+  paymentDate   DateTime      @default(now()) @map("payment_date")
+  cashierName   String        @map("cashier_name")
+  receiptNo     String?       @map("receipt_no")
   note          String?
-  voidReason    String?     @map("void_reason")
-  createdAt     DateTime    @default(now()) @map("created_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
 
-  user       User        @relation(fields: [userId], references: [id])
-  customer   Customer?   @relation(fields: [customerId], references: [id])
-  items      OrderItem[]
-  payments   Payment[]
+  debt          CustomerDebt  @relation(fields: [debtId], references: [id], onDelete: Cascade)
 
+  @@index([debtId])
+  @@index([paymentDate])
+  @@map("debt_payments")
+}
+
+// ──────────────────────────────────────────────
+// 9. ORDERS & SALES (OFFLINE-FIRST RESILIENT)
+// ──────────────────────────────────────────────
+
+model Order {
+  id             String        @id @default(uuid())
+  clientOrderId  String?       @unique @map("client_order_id") // UUID Idempotency Key for offline sync
+  orderNumber    String        @unique @map("order_number")    // ORD-YYYYMMDD-0001
+  userId         String        @map("user_id")
+  customerId     String?       @map("customer_id")
+  shiftId        String?       @map("shift_id")
+  status         OrderStatus   @default(COMPLETED)
+  subtotal       Decimal       @db.Decimal(12, 2)
+  discountAmount Decimal       @default(0) @map("discount_amount") @db.Decimal(12, 2)
+  totalAmount    Decimal       @map("total_amount") @db.Decimal(12, 2)
+  totalCogs      Decimal       @default(0) @map("total_cogs") @db.Decimal(12, 2)
+  note           String?
+  voidReason     String?       @map("void_reason")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @default(now()) @updatedAt @map("updated_at")
+
+  user           User          @relation(fields: [userId], references: [id])
+  customer       Customer?     @relation(fields: [customerId], references: [id])
+  shift          Shift?        @relation(fields: [shiftId], references: [id])
+  items          OrderItem[]
+  payments       Payment[]
+  debt           CustomerDebt?
+  claims         CustomerClaim[]
+
+  @@index([createdAt, status])
+  @@index([userId])
+  @@index([customerId])
+  @@index([shiftId])
   @@map("orders")
 }
 
@@ -217,40 +507,108 @@ model OrderItem {
   unitCost  Decimal @default(0) @map("unit_cost") @db.Decimal(10, 2)
   total     Decimal @db.Decimal(12, 2)
 
-  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id])
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
 
+  @@index([orderId])
+  @@index([productId])
   @@map("order_items")
 }
 
 model Payment {
-  id            String        @id @default(uuid())
-  orderId       String        @map("order_id")
-  method        PaymentMethod
-  amount        Decimal       @db.Decimal(12, 2)
-  referenceNo   String?       @map("reference_no")
-  createdAt     DateTime      @default(now()) @map("created_at")
+  id          String        @id @default(uuid())
+  orderId     String        @map("order_id")
+  method      PaymentMethod
+  amount      Decimal       @db.Decimal(12, 2)
+  referenceNo String?       @map("reference_no")
+  createdAt   DateTime      @default(now()) @map("created_at")
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  @@index([orderId])
   @@map("payments")
 }
 
+// ──────────────────────────────────────────────
+// 10. CLAIMS & CLAIM INVENTORY
+// ──────────────────────────────────────────────
+
+model CustomerClaim {
+  id                 String      @id @default(uuid())
+  claimNumber        String      @unique @map("claim_number") // CLM-YYYYMMDD-0001
+  orderId            String?     @map("order_id")
+  customerId         String?     @map("customer_id")
+  productId          String      @map("product_id")
+  serialNo           String?     @map("serial_no")
+  claimType          ClaimType   @map("claim_type")
+  problemDescription String      @map("problem_description")
+  status             ClaimStatus @default(PENDING)
+  resolutionNote     String?     @map("resolution_note")
+  receivedDate       DateTime    @default(now()) @map("received_date")
+  completedDate      DateTime?   @map("completed_date")
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+
+  order              Order?      @relation(fields: [orderId], references: [id])
+  customer           Customer?   @relation(fields: [customerId], references: [id])
+  product            Product     @relation(fields: [productId], references: [id])
+
+  @@index([status])
+  @@index([productId])
+  @@index([customerId])
+  @@map("customer_claims")
+}
+
+model ClaimInventory {
+  id        String   @id @default(uuid())
+  productId String   @map("product_id")
+  quantity  Int      @default(0)
+  unitCost  Decimal  @default(0) @map("unit_cost") @db.Decimal(10, 2)
+  condition String?  // เช่น ของเสียรอส่งเคลม, ซ่อมเสร็จแล้วรอส่งมอบ
+  location  String?  // ชั้นวางคลังเคลม
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@map("claim_inventory")
+}
+
+// ──────────────────────────────────────────────
+// 11. BANK ACCOUNTS & STORE SETTINGS
+// ──────────────────────────────────────────────
+
+model BankAccount {
+  id            String   @id @default(uuid())
+  bankName      String   @map("bank_name")
+  accountName   String   @map("account_name")
+  accountNumber String   @unique @map("account_number")
+  branch        String?
+  qrCodeUrl     String?  @map("qr_code_url")
+  isDefault     Boolean  @default(false) @map("is_default")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("bank_accounts")
+}
+
 model StoreSettings {
-  id           String  @id @default(uuid())
-  storeName    String  @default("My Store") @map("store_name")
-  storePhone   String? @map("store_phone")
-  storeAddress String? @map("store_address")
-  storeEmail   String? @map("store_email")
-  logoUrl      String? @map("logo_url")
-  qrImageUrl   String? @map("qr_image_url")
-  qrLabel      String? @map("qr_label")
-  taxId        String? @map("tax_id")
-  receiptFooter String? @map("receipt_footer")
-  pointsPerBaht Decimal @default(0.01) @map("points_per_baht") @db.Decimal(10, 4)
-  pointValue    Decimal @default(1) @map("point_value") @db.Decimal(10, 2)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id            String   @id @default(uuid())
+  storeName     String   @default("ร้านปุริม POS") @map("store_name")
+  storePhone    String?  @map("store_phone")
+  storeAddress  String?  @map("store_address")
+  storeEmail    String?  @map("store_email")
+  logoUrl       String?  @map("logo_url")
+  qrImageUrl    String?  @map("qr_image_url")
+  qrLabel       String?  @map("qr_label")
+  taxId         String?  @map("tax_id")
+  receiptFooter String?  @map("receipt_footer")
+  pointsPerBaht Decimal  @default(0.01) @map("points_per_baht") @db.Decimal(10, 4)
+  pointValue    Decimal  @default(1) @map("point_value") @db.Decimal(10, 2)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   @@map("store_settings")
 }
@@ -264,23 +622,10 @@ model AuditLog {
   details   Json?
   createdAt DateTime @default(now()) @map("created_at")
 
-  user User? @relation(fields: [userId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
 
+  @@index([entity, entityId])
+  @@index([userId])
+  @@index([createdAt])
   @@map("audit_logs")
-}
-
-model ProductSupplier {
-  id         String   @id @default(uuid())
-  productId  String   @map("product_id")
-  supplierId String   @map("supplier_id")
-  supplierSku String?  @map("supplier_sku")   // supplier's own product code
-  unitCost    Decimal? @map("unit_cost") @db.Decimal(10, 2)  // last known cost from this supplier
-  isPreferred Boolean  @default(false) @map("is_preferred")
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
-
-  @@unique([productId, supplierId])
-  @@map("product_suppliers")
 }
