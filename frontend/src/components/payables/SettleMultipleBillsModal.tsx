@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Building2, CheckCircle2, DollarSign, FileText, 
   Receipt, ShieldAlert, Sparkles, Tag, Wallet, ArrowRight,
-  HelpCircle, CreditCard, Banknote, Calendar, AlertCircle
+  HelpCircle, CreditCard, Banknote, Calendar, AlertCircle,
+  Search, X, Check, ChevronDown, Percent, Zap
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,10 +48,17 @@ export function SettleMultipleBillsModal({
 }: SettleMultipleBillsModalProps) {
   // Available suppliers with pending bills
   const availableSuppliers = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; unpaidCount: number; totalUnpaid: number }>();
+    const map = new Map<string, { id: string; name: string; contact?: string; phone?: string; unpaidCount: number; totalUnpaid: number }>();
     allBills.forEach((b) => {
       if (b.status === 'CANCELLED' || b.paymentStatus === 'PAID' || b.remainingPayable <= 0) return;
-      const cur = map.get(b.supplierId) || { id: b.supplierId, name: b.supplierName, unpaidCount: 0, totalUnpaid: 0 };
+      const cur = map.get(b.supplierId) || { 
+        id: b.supplierId, 
+        name: b.supplierName, 
+        contact: b.supplierContact,
+        phone: b.supplierPhone,
+        unpaidCount: 0, 
+        totalUnpaid: 0 
+      };
       cur.unpaidCount++;
       cur.totalUnpaid += b.remainingPayable;
       map.set(b.supplierId, cur);
@@ -58,7 +66,14 @@ export function SettleMultipleBillsModal({
     return Array.from(map.values());
   }, [allBills]);
 
+  // Selected supplier & search query
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
+  const [supplierSearchQuery, setSupplierSearchQuery] = useState<string>('');
+  const [isSupplierDropdownOpen, setIsSupplierDropdownOpen] = useState<boolean>(false);
+  const supplierSearchRef = useRef<HTMLDivElement>(null);
+
+  // Payment Mode: FULL vs PARTIAL
+  const [payMode, setPayMode] = useState<'FULL' | 'PARTIAL'>('FULL');
 
   // Selected bills & payment amount mapping
   const [selectedBillIds, setSelectedBillIds] = useState<Set<string>>(new Set());
@@ -82,11 +97,25 @@ export function SettleMultipleBillsModal({
   const [editingPoId, setEditingPoId] = useState<string | null>(null);
   const [tempInvoiceNo, setTempInvoiceNo] = useState<string>('');
 
-  // Initialize or change supplier
+  // Close supplier dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (supplierSearchRef.current && !supplierSearchRef.current.contains(e.target as Node)) {
+        setIsSupplierDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Initialize or reset state when modal opens
   useEffect(() => {
     if (open) {
       const targetSuppId = initialSupplierId || (preSelectedPoIds.length > 0 ? allBills.find(b => preSelectedPoIds.includes(b.poId))?.supplierId : '') || availableSuppliers[0]?.id || '';
       setSelectedSupplierId(targetSuppId);
+      setSupplierSearchQuery('');
+      setIsSupplierDropdownOpen(false);
+      setPayMode('FULL');
 
       // Pre-select POs
       if (preSelectedPoIds && preSelectedPoIds.length > 0) {
@@ -109,6 +138,19 @@ export function SettleMultipleBillsModal({
       setNote('');
     }
   }, [open, initialSupplierId, preSelectedPoIds, allBills, availableSuppliers]);
+
+  // Filtered suppliers for search
+  const filteredSuppliers = useMemo(() => {
+    const q = supplierSearchQuery.trim().toLowerCase();
+    if (!q) return availableSuppliers;
+    return availableSuppliers.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.contact && s.contact.toLowerCase().includes(q)) ||
+        (s.phone && s.phone.includes(q)) ||
+        s.id.toLowerCase().includes(q)
+    );
+  }, [availableSuppliers, supplierSearchQuery]);
 
   // Load bills for currently selected supplier
   const supplierBills = useMemo(() => {
@@ -138,6 +180,8 @@ export function SettleMultipleBillsModal({
     setSelectedBillIds(new Set());
     setBillPayAmounts({});
     setMatchedDebitNotes({});
+    setIsSupplierDropdownOpen(false);
+    setSupplierSearchQuery('');
   };
 
   // Toggle bill selection
@@ -175,13 +219,42 @@ export function SettleMultipleBillsModal({
     }
   };
 
-  // Handle amount change for a bill
+  // Handle individual amount change for a bill
   const handleBillAmountChange = (poId: string, val: string, maxAmount: number) => {
     const num = Math.max(0, Math.min(maxAmount, Number(val) || 0));
     setBillPayAmounts((prev) => ({
       ...prev,
       [poId]: num,
     }));
+  };
+
+  // Switch to Full Payment mode
+  const handleSelectFull = () => {
+    setPayMode('FULL');
+    const amounts: Record<string, number> = {};
+    supplierBills.forEach((b) => {
+      if (selectedBillIds.has(b.poId)) {
+        amounts[b.poId] = b.remainingPayable;
+      }
+    });
+    setBillPayAmounts(amounts);
+  };
+
+  // Switch to Partial Payment mode
+  const handleSelectPartial = () => {
+    setPayMode('PARTIAL');
+  };
+
+  // Quick percentage allocation across selected bills (25%, 50%, 75%, 100%)
+  const handleQuickPercent = (pct: number) => {
+    const amounts: Record<string, number> = {};
+    supplierBills.forEach((b) => {
+      if (selectedBillIds.has(b.poId)) {
+        const calculated = Math.round((b.remainingPayable * pct) / 100);
+        amounts[b.poId] = calculated;
+      }
+    });
+    setBillPayAmounts(amounts);
   };
 
   // Toggle debit note deduction
@@ -206,7 +279,6 @@ export function SettleMultipleBillsModal({
     const res = updateBillInvoiceNo(poId, tempInvoiceNo.trim());
     if (res.success) {
       toast.success(res.message);
-      // update local in allBills
       const bill = allBills.find(b => b.poId === poId);
       if (bill) bill.supplierInvoiceNo = tempInvoiceNo.trim();
     }
@@ -214,9 +286,17 @@ export function SettleMultipleBillsModal({
   };
 
   // Totals calculations
+  const totalSelectedBillsDebt = useMemo(() => {
+    return supplierBills
+      .filter((b) => selectedBillIds.has(b.poId))
+      .reduce((sum, b) => sum + b.remainingPayable, 0);
+  }, [supplierBills, selectedBillIds]);
+
   const totalBillsPayAmount = useMemo(() => {
-    return Object.values(billPayAmounts).reduce((sum, val) => sum + (Number(val) || 0), 0);
-  }, [billPayAmounts]);
+    return Object.entries(billPayAmounts)
+      .filter(([id]) => selectedBillIds.has(id))
+      .reduce((sum, [_, val]) => sum + (Number(val) || 0), 0);
+  }, [billPayAmounts, selectedBillIds]);
 
   const totalDebitDeducted = useMemo(() => {
     return Object.values(matchedDebitNotes).reduce((sum, val) => sum + (Number(val) || 0), 0);
@@ -225,6 +305,14 @@ export function SettleMultipleBillsModal({
   const netCashOrTransferRequired = useMemo(() => {
     return Math.max(0, Math.round((totalBillsPayAmount - totalDebitDeducted - (Number(discountAmount) || 0)) * 100) / 100);
   }, [totalBillsPayAmount, totalDebitDeducted, discountAmount]);
+
+  // Remaining debt after this payment
+  const remainingDebtAfterPayment = Math.max(0, Math.round((totalSelectedBillsDebt - totalBillsPayAmount) * 100) / 100);
+
+  // Progress Bar percentage
+  const progressPercent = totalSelectedBillsDebt > 0
+    ? Math.min(100, Math.round((totalBillsPayAmount / totalSelectedBillsDebt) * 100))
+    : 0;
 
   // Submit payment
   const handleSubmit = () => {
@@ -288,137 +376,306 @@ export function SettleMultipleBillsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[96vw] max-w-4xl max-h-[92vh] flex flex-col bg-white border-slate-200 text-slate-900 rounded-3xl p-0 overflow-hidden shadow-2xl font-sans">
-        {/* Header */}
-        <DialogHeader className="px-6 py-4 bg-slate-900 text-white shrink-0 flex flex-row items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
-              <Receipt className="w-5 h-5" />
+      <DialogContent className="w-[98vw] max-w-[1240px] h-[95vh] max-h-[96vh] flex flex-col bg-white border-slate-200 text-slate-900 rounded-3xl p-0 overflow-hidden shadow-2xl font-sans">
+        {/* ─── MODAL HEADER (Consistent POS Theme) ─── */}
+        <DialogHeader className="px-7 py-5 bg-gradient-to-r from-slate-50 via-white to-indigo-50/40 border-b border-slate-200 shrink-0 flex flex-row items-center justify-between">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-200">
+              <Receipt className="w-6 h-6" />
             </div>
             <div>
-              <DialogTitle className="text-lg font-black text-white flex items-center gap-2">
+              <DialogTitle className="text-xl font-black text-slate-900 flex items-center gap-2">
                 <span>สร้างใบชำระหนี้ / จ่ายเงินเจ้าหนี้</span>
-                <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-400/30 font-mono text-xs">
-                  Multi-Invoice Payment
+                <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200 font-mono text-xs font-bold px-2 py-0.5">
+                  Multi-Invoice Settlement
                 </Badge>
               </DialogTitle>
-              <p className="text-xs text-slate-300">
-                เลือกชำระบิลหลายใบของผู้จำหน่ายในรอบเดียว พร้อมออกใบสำคัญจ่าย A4
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                เลือกตัดชำระบิลหลายใบในรอบเดียว รองรับทั้งชำระเต็มจำนวนหรือแบ่งชำระ ประกบใบลดหนี้ และออกใบสำคัญจ่าย A4
               </p>
             </div>
           </div>
         </DialogHeader>
 
-        {/* Scrollable Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-          {/* STEP 1: Select Supplier */}
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+        {/* ─── SCROLLABLE BODY WITH GENEROUS PADDING ─── */}
+        <div className="flex-1 overflow-y-auto px-7 py-6 space-y-6 bg-slate-50/40">
+          {/* STEP 1: Search & Select Supplier */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-2">
                 <Building2 className="w-4 h-4 text-indigo-600" />
-                <span>1. เลือกบริษัทผู้จำหน่าย (Supplier):</span>
+                <span>1. ค้นหาและเลือกบริษัทผู้จำหน่าย (Search Supplier):</span>
               </label>
               {selectedSupplierObj && (
-                <span className="text-xs font-medium text-slate-500">
-                  มีหนี้ค้างชำระ: <strong className="text-rose-600 font-mono">{formatCurrency(selectedSupplierObj.totalUnpaid)}</strong> ({selectedSupplierObj.unpaidCount} บิล)
-                </span>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-slate-500">ยอดหนี้ค้างชำระรวม:</span>
+                  <span className="font-mono font-black text-rose-600 text-sm">
+                    {formatCurrency(selectedSupplierObj.totalUnpaid)}
+                  </span>
+                  <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 text-[11px] font-bold">
+                    {selectedSupplierObj.unpaidCount} บิลค้าง
+                  </Badge>
+                </div>
               )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-              {availableSuppliers.map((s) => (
-                <button
-                  key={s.id}
+            {/* Search Input with Auto-Suggest Dropdown */}
+            <div className="relative" ref={supplierSearchRef}>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Input
+                    value={supplierSearchQuery}
+                    onChange={(e) => {
+                      setSupplierSearchQuery(e.target.value);
+                      setIsSupplierDropdownOpen(true);
+                    }}
+                    onFocus={() => setIsSupplierDropdownOpen(true)}
+                    placeholder="พิมพ์ชื่อบริษัท, ผู้ติดต่อ หรือเบอร์โทรศัพท์เพื่อค้นหาผู้จำหน่าย..."
+                    className="pl-10 h-10 text-xs sm:text-sm bg-slate-50 border-slate-300 rounded-xl focus:bg-white font-medium"
+                  />
+                  {supplierSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSupplierSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                <Button
                   type="button"
-                  onClick={() => handleSupplierChange(s.id)}
-                  className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
-                    selectedSupplierId === s.id
-                      ? 'border-indigo-600 bg-indigo-50/50 shadow-xs ring-2 ring-indigo-500/20'
-                      : 'border-slate-200 bg-white hover:bg-slate-50'
-                  }`}
+                  variant="outline"
+                  onClick={() => setIsSupplierDropdownOpen((prev) => !prev)}
+                  className="h-10 px-3.5 text-xs font-bold border-slate-300 rounded-xl gap-1.5 shrink-0"
                 >
-                  <div>
-                    <p className={`font-bold text-xs line-clamp-1 ${selectedSupplierId === s.id ? 'text-indigo-950' : 'text-slate-800'}`}>
-                      {s.name}
-                    </p>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                      ค้างชำระ {s.unpaidCount} บิล
-                    </p>
-                  </div>
-                  <p className="text-xs font-mono font-black text-rose-700 mt-2">
-                    {formatCurrency(s.totalUnpaid)}
-                  </p>
-                </button>
-              ))}
+                  <span>รายชื่อทั้งหมด ({availableSuppliers.length})</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isSupplierDropdownOpen ? 'rotate-180' : ''}`} />
+                </Button>
+              </div>
+
+              {/* Dropdown Options */}
+              {isSupplierDropdownOpen && (
+                <div className="absolute z-20 top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-64 overflow-y-auto divide-y divide-slate-100">
+                  {filteredSuppliers.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-slate-400">
+                      ไม่พบบริษัทผู้จำหน่ายที่ตรงกับการค้นหา
+                    </div>
+                  ) : (
+                    filteredSuppliers.map((s) => {
+                      const isSelected = selectedSupplierId === s.id;
+                      return (
+                        <div
+                          key={s.id}
+                          onClick={() => handleSupplierChange(s.id)}
+                          className={`p-3.5 flex items-center justify-between cursor-pointer transition-colors ${
+                            isSelected ? 'bg-indigo-50/80 text-indigo-900' : 'hover:bg-slate-50 text-slate-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                              <Building2 className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="font-bold text-xs sm:text-sm">{s.name}</p>
+                              <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono">
+                                {s.contact && <span>ติดต่อ: {s.contact}</span>}
+                                {s.phone && <span>โทร: {s.phone}</span>}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <span className="text-[11px] text-slate-400 block font-sans">หนี้ค้าง {s.unpaidCount} บิล</span>
+                            <span className="font-mono font-black text-xs sm:text-sm text-rose-600">
+                              {formatCurrency(s.totalUnpaid)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
             </div>
+
+            {/* Selected Supplier Pill Display */}
+            {selectedSupplierObj && (
+              <div className="flex items-center justify-between p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-600">ผู้จำหน่ายที่เลือก:</span>
+                  <span className="font-black text-indigo-900 text-sm">{selectedSupplierObj.name}</span>
+                  {selectedSupplierObj.phone && (
+                    <span className="text-slate-500 font-mono">({selectedSupplierObj.phone})</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 font-mono">
+                  <span className="text-slate-500">บิลที่รอชำระ: <b>{supplierBills.length}</b> ใบ</span>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* STEP 2: Multi-select Bills / Invoices */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
+          {/* STEP 2: Multi-select Bills / Invoices & Partial Payment */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
                   <FileText className="w-4 h-4 text-indigo-600" />
-                  <span>2. เลือกบิล / Invoice ที่ต้องการชำระในรอบนี้:</span>
+                  <span>2. รายการบิล / Invoice ที่เลือกชำระ:</span>
                 </span>
-                <Badge variant="outline" className="text-xs font-bold font-mono">
+                <Badge variant="outline" className="text-xs font-bold font-mono bg-slate-50">
                   เลือกแล้ว {selectedBillIds.size} / {supplierBills.length} บิล
                 </Badge>
               </div>
 
-              {supplierBills.length > 0 && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={handleSelectAllBills}
-                  className="h-7 text-xs font-semibold text-indigo-700 border-indigo-200 hover:bg-indigo-50"
-                >
-                  {selectedBillIds.size === supplierBills.length ? 'ยกเลิกการเลือกทั้งหมด' : 'เลือกทั้งหมด'}
-                </Button>
-              )}
+              {/* Payment Mode Selector & Quick Percentage Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex rounded-xl border border-slate-200 p-0.5 bg-slate-100">
+                  <button
+                    type="button"
+                    onClick={handleSelectFull}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
+                      payMode === 'FULL'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>ชำระเต็มจำนวน</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSelectPartial}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
+                      payMode === 'PARTIAL'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Banknote className="w-3.5 h-3.5" />
+                    <span>แบ่งชำระ (ระบุยอดเอง)</span>
+                  </button>
+                </div>
+
+                {payMode === 'PARTIAL' && selectedBillIds.size > 0 && (
+                  <div className="flex items-center gap-1 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-xl">
+                    <span className="text-[11px] font-bold text-indigo-700 mr-1">แบ่งจ่ายด่วน:</span>
+                    {[25, 50, 75, 100].map((pct) => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => handleQuickPercent(pct)}
+                        className="px-2 py-0.5 text-xs font-bold bg-white text-indigo-700 border border-indigo-200 rounded-md hover:bg-indigo-600 hover:text-white transition-colors"
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {supplierBills.length > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleSelectAllBills}
+                    className="h-8 text-xs font-bold text-indigo-700 border-indigo-200 hover:bg-indigo-50 rounded-xl"
+                  >
+                    {selectedBillIds.size === supplierBills.length ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทุกบิล'}
+                  </Button>
+                )}
+              </div>
             </div>
 
+            {/* ─── หลอดพลังความคืบหน้าการชำระหนี้ (ENERGY / PROGRESS BAR) ─── */}
+            {selectedBillIds.size > 0 && (
+              <div className="bg-gradient-to-r from-indigo-50/70 via-slate-50 to-emerald-50/50 border border-indigo-100 rounded-2xl p-4 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between text-xs gap-2">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-amber-500 fill-amber-400" />
+                    <span className="font-bold text-slate-800">หลอดพลังการตัดชำระหนี้ (Payment Progress):</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs font-mono">
+                    <span>ยอดหนี้บิลที่เลือก: <b className="text-slate-800">{formatCurrency(totalSelectedBillsDebt)}</b></span>
+                    <span>• ตัดจ่ายรอบนี้: <b className="text-indigo-700">{formatCurrency(totalBillsPayAmount)}</b></span>
+                    <span>• คงเหลือหลังชำระ: <b className={remainingDebtAfterPayment <= 0 ? 'text-emerald-700' : 'text-rose-600'}>{formatCurrency(remainingDebtAfterPayment)}</b></span>
+                  </div>
+                </div>
+
+                {/* Progress Bar Container */}
+                <div className="relative w-full bg-slate-200/80 rounded-full h-4 overflow-hidden border border-slate-300/80 shadow-inner">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 flex items-center justify-end pr-2 text-[10px] font-black text-white ${
+                      progressPercent >= 100
+                        ? 'bg-gradient-to-r from-teal-500 to-emerald-500'
+                        : 'bg-gradient-to-r from-indigo-500 to-emerald-500'
+                    }`}
+                    style={{ width: `${Math.max(progressPercent > 0 ? 5 : 0, progressPercent)}%` }}
+                  >
+                    {progressPercent >= 15 && `${progressPercent}%`}
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center text-[11px] text-slate-500 font-medium">
+                  <span>
+                    {remainingDebtAfterPayment <= 0 
+                      ? '🎉 บิลที่เลือกจะถูกชำระครบเต็มจำนวน 100% ไม่มียอดคงค้าง' 
+                      : `หลังชำระเงินรอบนี้ ยอดหนี้จะลดลงเหลือ ${formatCurrency(remainingDebtAfterPayment)} (แบ่งชำระลดหนี้ลงได้ ${progressPercent}%)`}
+                  </span>
+                  <span className="font-bold text-indigo-700">ความคืบหน้า: {progressPercent}%</span>
+                </div>
+              </div>
+            )}
+
+            {/* Bills Table */}
             {supplierBills.length === 0 ? (
-              <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-500 text-xs">
+              <div className="p-10 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-xs">
                 ไม่มีบิลค้างชำระสำหรับผู้จำหน่ายรายนี้
               </div>
             ) : (
               <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
                 <table className="w-full text-xs text-left border-collapse">
-                  <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                  <thead className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200">
                     <tr>
-                      <th className="py-2.5 px-3 w-10 text-center">
+                      <th className="py-3 px-3 w-10 text-center">
                         <Checkbox
                           checked={supplierBills.length > 0 && selectedBillIds.size === supplierBills.length}
                           onCheckedChange={handleSelectAllBills}
                         />
                       </th>
-                      <th className="py-2.5 px-3">เลขที่บิลผู้จำหน่าย (Invoice No.)</th>
-                      <th className="py-2.5 px-2 text-center w-28">เลขที่ PO</th>
-                      <th className="py-2.5 px-2 text-center w-24">วันที่ในบิล</th>
-                      <th className="py-2.5 px-3 text-right w-28">ยอดหนี้เต็ม</th>
-                      <th className="py-2.5 px-3 text-right w-28">หนี้คงเหลือ</th>
-                      <th className="py-2.5 px-3 text-right w-36">ยอดที่จะจ่ายครั้งนี้ (฿)</th>
+                      <th className="py-3 px-3">เลขที่บิลผู้จำหน่าย (Invoice No.)</th>
+                      <th className="py-3 px-2 text-center w-28">เลขที่ PO</th>
+                      <th className="py-3 px-2 text-center w-24">วันที่ในบิล</th>
+                      <th className="py-3 px-3 text-right w-28">ยอดหนี้เต็ม</th>
+                      <th className="py-3 px-3 text-right w-28">หนี้คงเหลือ</th>
+                      <th className="py-3 px-3 text-right w-44">ยอดที่จะจ่ายครั้งนี้ (฿)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {supplierBills.map((b) => {
                       const isSelected = selectedBillIds.has(b.poId);
                       const isEditingThis = editingPoId === b.poId;
+                      const currentAmount = billPayAmounts[b.poId] ?? b.remainingPayable;
+                      const isFull = currentAmount >= b.remainingPayable;
+                      const isPartial = currentAmount > 0 && currentAmount < b.remainingPayable;
+                      const billPercent = b.remainingPayable > 0 ? Math.round((currentAmount / b.remainingPayable) * 100) : 0;
 
                       return (
                         <tr
                           key={b.poId}
                           className={`transition-colors ${isSelected ? 'bg-indigo-50/40' : 'hover:bg-slate-50/60'}`}
                         >
-                          <td className="py-2 px-3 text-center">
+                          <td className="py-2.5 px-3 text-center">
                             <Checkbox
                               checked={isSelected}
                               onCheckedChange={() => handleToggleBill(b.poId, b.remainingPayable)}
                             />
                           </td>
-                          <td className="py-2 px-3">
+                          <td className="py-2.5 px-3">
                             {isEditingThis ? (
                               <div className="flex items-center gap-1">
                                 <Input
@@ -454,27 +711,43 @@ export function SettleMultipleBillsModal({
                               </div>
                             )}
                           </td>
-                          <td className="py-2 px-2 text-center font-mono text-slate-600 text-[11px]">
+                          <td className="py-2.5 px-2 text-center font-mono text-slate-600 text-[11px]">
                             {b.poNumber}
                           </td>
-                          <td className="py-2 px-2 text-center text-slate-500 text-[11px]">
+                          <td className="py-2.5 px-2 text-center text-slate-500 text-[11px]">
                             {new Date(b.billDate).toLocaleDateString('th-TH')}
                           </td>
-                          <td className="py-2 px-3 text-right font-mono text-slate-600">
+                          <td className="py-2.5 px-3 text-right font-mono text-slate-600">
                             {formatCurrency(b.totalAmount)}
                           </td>
-                          <td className="py-2 px-3 text-right font-mono font-bold text-rose-600">
+                          <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-600">
                             {formatCurrency(b.remainingPayable)}
                           </td>
-                          <td className="py-2 px-3 text-right">
+                          <td className="py-2.5 px-3 text-right">
                             {isSelected ? (
-                              <Input
-                                type="number"
-                                step="any"
-                                value={billPayAmounts[b.poId] ?? b.remainingPayable}
-                                onChange={(e) => handleBillAmountChange(b.poId, e.target.value, b.remainingPayable)}
-                                className="h-8 text-right font-mono font-bold text-indigo-700 bg-white border-indigo-300"
-                              />
+                              <div className="space-y-1">
+                                <Input
+                                  type="number"
+                                  step="any"
+                                  value={currentAmount}
+                                  onChange={(e) => handleBillAmountChange(b.poId, e.target.value, b.remainingPayable)}
+                                  className="h-8 text-right font-mono font-bold text-indigo-700 bg-white border-indigo-300 shadow-2xs"
+                                />
+                                <div className="flex items-center justify-between text-[10px]">
+                                  {isFull ? (
+                                    <span className="text-emerald-700 font-bold">เต็มจำนวน (100%)</span>
+                                  ) : isPartial ? (
+                                    <span className="text-amber-700 font-bold">แบ่งจ่าย ({billPercent}%)</span>
+                                  ) : (
+                                    <span className="text-slate-400">ยังไม่ระบุ</span>
+                                  )}
+                                  {isPartial && (
+                                    <span className="text-slate-400 font-mono">
+                                      เหลือ: {formatCurrency(b.remainingPayable - currentAmount)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             ) : (
                               <span className="text-slate-400 font-mono text-xs">-</span>
                             )}
@@ -486,10 +759,10 @@ export function SettleMultipleBillsModal({
                   {selectedBillIds.size > 0 && (
                     <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-200">
                       <tr>
-                        <td colSpan={6} className="py-2.5 px-3 text-right text-slate-700">
+                        <td colSpan={6} className="py-3 px-3 text-right text-slate-700">
                           รวมยอดที่เลือกชำระ ({selectedBillIds.size} บิล):
                         </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-black text-indigo-700 text-sm">
+                        <td className="py-3 px-3 text-right font-mono font-black text-indigo-700 text-sm">
                           {formatCurrency(totalBillsPayAmount)}
                         </td>
                       </tr>
@@ -502,7 +775,7 @@ export function SettleMultipleBillsModal({
 
           {/* STEP 3: Match Debit Notes (ถ้ามี) */}
           {availableDebitNotes.length > 0 && (
-            <div className="bg-amber-50/40 border border-amber-200/80 rounded-2xl p-4 space-y-3">
+            <div className="bg-amber-50/40 border border-amber-200/80 rounded-2xl p-5 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
                   <ShieldAlert className="w-4 h-4 text-amber-600" />
@@ -520,7 +793,7 @@ export function SettleMultipleBillsModal({
                   return (
                     <div
                       key={dn.id}
-                      className={`p-3 rounded-xl border flex items-center justify-between transition-all ${
+                      className={`p-3.5 rounded-xl border flex items-center justify-between transition-all ${
                         isChecked ? 'bg-white border-amber-300 shadow-2xs' : 'bg-white/60 border-slate-200'
                       }`}
                     >
@@ -562,51 +835,51 @@ export function SettleMultipleBillsModal({
           )}
 
           {/* STEP 4: Payment Details & Discount */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Left: Payment Method & Channel */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3.5">
               <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <Wallet className="w-4 h-4 text-indigo-600" />
                 <span>4. ช่องทางชำระเงิน (Payment Method):</span>
               </span>
 
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-2.5">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('TRANSFER')}
-                  className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
                     paymentMethod === 'TRANSFER'
-                      ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-2 ring-indigo-500/20'
-                      : 'border-slate-200 bg-white text-slate-700'
+                      ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-2 ring-indigo-500/20 shadow-2xs'
+                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <CreditCard className="w-3.5 h-3.5" />
+                  <CreditCard className="w-4 h-4" />
                   <span>เงินโอน</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('CASH')}
-                  className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
                     paymentMethod === 'CASH'
-                      ? 'border-emerald-600 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-500/20'
-                      : 'border-slate-200 bg-white text-slate-700'
+                      ? 'border-emerald-600 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-500/20 shadow-2xs'
+                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <Banknote className="w-3.5 h-3.5" />
+                  <Banknote className="w-4 h-4" />
                   <span>เงินสด</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('CHEQUE')}
-                  className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
                     paymentMethod === 'CHEQUE'
-                      ? 'border-amber-600 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20'
-                      : 'border-slate-200 bg-white text-slate-700'
+                      ? 'border-amber-600 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20 shadow-2xs'
+                      : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <Tag className="w-3.5 h-3.5" />
+                  <Tag className="w-4 h-4" />
                   <span>เช็ค / อื่นๆ</span>
                 </button>
               </div>
@@ -620,7 +893,7 @@ export function SettleMultipleBillsModal({
                     <Input
                       value={bankAccountLabel}
                       onChange={(e) => setBankAccountLabel(e.target.value)}
-                      className="h-8 text-xs bg-white border-slate-300"
+                      className="h-8.5 text-xs bg-slate-50 border-slate-300 rounded-xl"
                     />
                   </div>
                   <div>
@@ -631,20 +904,20 @@ export function SettleMultipleBillsModal({
                       value={referenceNo}
                       onChange={(e) => setReferenceNo(e.target.value)}
                       placeholder="เช่น K-12398471"
-                      className="h-8 text-xs font-mono bg-white border-slate-300"
+                      className="h-8.5 text-xs font-mono bg-slate-50 border-slate-300 rounded-xl"
                     />
                   </div>
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
                 <div>
                   <label className="text-[11px] font-bold text-slate-600 block mb-1">วันที่จ่ายเงิน:</label>
                   <Input
                     type="date"
                     value={paymentDate}
                     onChange={(e) => setPaymentDate(e.target.value)}
-                    className="h-8 text-xs bg-white border-slate-300"
+                    className="h-8.5 text-xs bg-slate-50 border-slate-300 rounded-xl"
                   />
                 </div>
                 <div>
@@ -652,17 +925,17 @@ export function SettleMultipleBillsModal({
                   <Input
                     value={cashierName}
                     onChange={(e) => setCashierName(e.target.value)}
-                    className="h-8 text-xs bg-white border-slate-300"
+                    className="h-8.5 text-xs bg-slate-50 border-slate-300 rounded-xl"
                   />
                 </div>
               </div>
             </div>
 
-            {/* Right: Discount & Final Summary */}
-            <div className="bg-slate-900 text-white rounded-2xl p-4 flex flex-col justify-between space-y-4">
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-800">
-                  <span className="text-slate-400">ยอดรวมบิลที่เลือก ({selectedBillIds.size} ใบ):</span>
+            {/* Right: Discount & Final Summary Box */}
+            <div className="bg-slate-900 text-white rounded-2xl p-5 flex flex-col justify-between shadow-lg space-y-4">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-xs pb-2.5 border-b border-slate-800">
+                  <span className="text-slate-400">ยอดรวมบิลที่เลือกชำระ ({selectedBillIds.size} ใบ):</span>
                   <span className="font-mono font-bold text-white text-sm">{formatCurrency(totalBillsPayAmount)}</span>
                 </div>
 
@@ -674,7 +947,7 @@ export function SettleMultipleBillsModal({
                 )}
 
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-amber-300">ส่วนลดท้ายบิลเจรจาการค้า:</span>
+                  <span className="text-amber-300 font-medium">ส่วนลดท้ายบิลเจรจาการค้า:</span>
                   <div className="flex items-center gap-1.5">
                     <span className="text-amber-400 font-bold">-</span>
                     <Input
@@ -683,7 +956,7 @@ export function SettleMultipleBillsModal({
                       placeholder="0.00"
                       value={discountAmount || ''}
                       onChange={(e) => setDiscountAmount(Math.max(0, Number(e.target.value) || 0))}
-                      className="h-7 w-24 text-right font-mono font-bold text-amber-400 bg-slate-800 border-slate-700 text-xs"
+                      className="h-8 w-28 text-right font-mono font-bold text-amber-400 bg-slate-800 border-slate-700 text-xs rounded-lg"
                     />
                   </div>
                 </div>
@@ -693,19 +966,19 @@ export function SettleMultipleBillsModal({
                   <Input
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
-                    placeholder="เช่น จ่ายรอบบิลประจำสัปดาห์"
-                    className="h-7 text-xs bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-500"
+                    placeholder="เช่น จ่ายรอบบิลประจำสัปดาห์ / งวดที่ 1"
+                    className="h-8 text-xs bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-500 rounded-lg"
                   />
                 </div>
               </div>
 
               {/* Total Net Payment Box */}
-              <div className="pt-3 border-t border-slate-800 space-y-1 bg-slate-950/60 p-3 rounded-xl">
+              <div className="pt-3 border-t border-slate-800 space-y-1 bg-slate-950/70 p-4 rounded-xl">
                 <div className="flex justify-between items-baseline">
                   <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
                     ยอดเงินสุทธิที่ต้องจ่ายจริง:
                   </span>
-                  <span className="text-xl font-black font-mono text-emerald-400">
+                  <span className="text-2xl font-black font-mono text-emerald-400">
                     {formatCurrency(netCashOrTransferRequired)}
                   </span>
                 </div>
@@ -717,13 +990,13 @@ export function SettleMultipleBillsModal({
           </div>
         </div>
 
-        {/* Footer */}
-        <DialogFooter className="px-6 py-3.5 bg-slate-100 border-t border-slate-200 shrink-0 flex flex-row items-center justify-between">
+        {/* ─── MODAL FOOTER ─── */}
+        <DialogFooter className="px-7 py-4 bg-white border-t border-slate-200 shrink-0 flex flex-row items-center justify-between">
           <Button
             type="button"
             variant="ghost"
             onClick={() => onOpenChange(false)}
-            className="text-slate-600 hover:bg-slate-200 font-bold text-xs"
+            className="text-slate-600 hover:bg-slate-100 font-bold text-xs px-4"
           >
             ยกเลิก
           </Button>
@@ -732,7 +1005,7 @@ export function SettleMultipleBillsModal({
             type="button"
             onClick={handleSubmit}
             disabled={isSubmitting || selectedBillIds.size === 0}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-6 h-10 shadow-sm gap-2"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-7 h-10 rounded-xl shadow-sm gap-2"
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>{isSubmitting ? 'กำลังบันทึก...' : 'บันทึกชำระหนี้ & พิมพ์ใบสำคัญจ่าย (A4)'}</span>
