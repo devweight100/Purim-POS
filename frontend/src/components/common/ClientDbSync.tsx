@@ -9,7 +9,7 @@ export function ClientDbSync() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const PURGE_FLAG = 'purim_clean_state_v4';
+    const PURGE_FLAG = 'purim_clean_state_v6';
     if (!localStorage.getItem(PURGE_FLAG)) {
       console.log('[ClientDbSync] 🚀 Purging all legacy mock data from browser localStorage and IndexedDB...');
 

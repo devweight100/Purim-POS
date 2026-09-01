@@ -9,32 +9,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Search, Plus, Edit, Trash2, Building2 } from "lucide-react";
 import { toast } from "sonner";
 
-function loadSuppliersFromStorage(): any[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem('custom_suppliers');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch {}
-  
-  const initial = [
-    { id: "supp_1", name: "บริษัท ปุริม ซัพพลาย จำกัด", contactName: "คุณสมชาย", phone: "081-234-5678", email: "contact@purimsupply.com", address: "123 ถ.สุขุมวิท กรุงเทพฯ", creditTerms: 30 },
-    { id: "supp_2", name: "บจก. สยามเทรดดิ้ง แอนด์ ดีสทริบิวชั่น", contactName: "คุณวิภา", phone: "089-876-5432", email: "sales@siamtrading.co.th", address: "456 ถ.รัชดาภิเษก กรุงเทพฯ", creditTerms: 15 },
-    { id: "supp_3", name: "หจก. รวมสินค้าค้าส่ง", contactName: "คุณกิตติ", phone: "02-999-8888", email: "wholesale@ruamkhong.com", address: "789 ถ.พหลโยธิน กรุงเทพฯ", creditTerms: 45 },
-  ];
-  try { localStorage.setItem('custom_suppliers', JSON.stringify(initial)); } catch {}
-  return initial;
-}
-
-function saveSuppliersToStorage(suppliers: any[]) {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem('custom_suppliers', JSON.stringify(suppliers));
-  } catch {}
-}
-
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,252 +26,242 @@ export default function SuppliersPage() {
 
   const fetchSuppliers = async () => {
     setLoading(true);
-    let list: any[] = [];
     try {
       const data = await apiFetch("/suppliers");
-      if (Array.isArray(data) && data.length > 0) {
-        list = data;
+      if (Array.isArray(data)) {
+        setSuppliers(data);
+      } else {
+        setSuppliers([]);
       }
-    } catch {}
-
-    if (list.length === 0) {
-      list = loadSuppliersFromStorage();
-    } else {
-      saveSuppliersToStorage(list);
+    } catch (err: any) {
+      console.error("Failed to fetch suppliers:", err);
+      setSuppliers([]);
+    } finally {
+      setLoading(false);
     }
-
-    setSuppliers(list);
-    setLoading(false);
   };
 
   useEffect(() => {
     fetchSuppliers();
   }, []);
 
-  const handleOpenDialog = (supplier: any = null) => {
-    if (supplier) {
-      setCurrentSupplier(supplier);
-      setIsEditMode(true);
-    } else {
-      setCurrentSupplier({
-        name: "",
-        contactName: "",
-        phone: "",
-        email: "",
-        address: "",
-        creditTerms: 0,
-      });
-      setIsEditMode(false);
-    }
+  const handleOpenAdd = () => {
+    setIsEditMode(false);
+    setCurrentSupplier({
+      name: "",
+      contactName: "",
+      phone: "",
+      email: "",
+      address: "",
+      creditTerms: 0,
+    });
+    setIsDialogOpen(true);
+  };
+
+  const handleOpenEdit = (supp: any) => {
+    setIsEditMode(true);
+    setCurrentSupplier({ ...supp });
     setIsDialogOpen(true);
   };
 
   const handleSave = async () => {
     if (!currentSupplier.name.trim()) {
-      toast.error("กรุณาระบุชื่อบริษัท");
+      toast.error("กรุณากรอกชื่อบริษัทผู้จำหน่าย");
       return;
     }
-    
-    const existing = loadSuppliersFromStorage();
-    let updatedList: any[] = [];
 
-    if (isEditMode) {
-      updatedList = existing.map(s => s.id === currentSupplier.id ? { ...s, ...currentSupplier, creditTerms: Number(currentSupplier.creditTerms) || 0 } : s);
-      try {
+    try {
+      if (isEditMode) {
         await apiFetch(`/suppliers/${currentSupplier.id}`, {
           method: "PATCH",
-          body: JSON.stringify({
-            ...currentSupplier,
-            creditTerms: Number(currentSupplier.creditTerms) || 0
-          }),
+          body: JSON.stringify(currentSupplier),
         });
-      } catch {}
-      toast.success("อัปเดตผู้จำหน่ายสำเร็จ");
-    } else {
-      const newSupplier = {
-        ...currentSupplier,
-        id: currentSupplier.id || "supp_" + Date.now(),
-        creditTerms: Number(currentSupplier.creditTerms) || 0,
-      };
-      updatedList = [newSupplier, ...existing];
-      try {
+        toast.success("อัปเดตข้อมูลผู้จำหน่ายสำเร็จ");
+      } else {
         await apiFetch("/suppliers", {
           method: "POST",
-          body: JSON.stringify(newSupplier),
+          body: JSON.stringify(currentSupplier),
         });
-      } catch {}
-      toast.success("เพิ่มผู้จำหน่ายสำเร็จ");
+        toast.success("เพิ่มผู้จำหน่ายสำเร็จ");
+      }
+      setIsDialogOpen(false);
+      fetchSuppliers();
+    } catch (err: any) {
+      toast.error("เกิดข้อผิดพลาด: " + (err.message || "ไม่สามารถบันทึกได้"));
     }
-
-    saveSuppliersToStorage(updatedList);
-    setSuppliers(updatedList);
-    setIsDialogOpen(false);
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("คุณแน่ใจหรือไม่ว่าต้องการลบผู้จำหน่ายนี้?")) return;
-    const existing = loadSuppliersFromStorage();
-    const updatedList = existing.filter(s => s.id !== id);
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`คุณต้องการลบผู้จำหน่าย "${name}" ใช่หรือไม่?`)) return;
     try {
       await apiFetch(`/suppliers/${id}`, { method: "DELETE" });
-    } catch {}
-    saveSuppliersToStorage(updatedList);
-    setSuppliers(updatedList);
-    toast.success("ลบผู้จำหน่ายสำเร็จ");
+      toast.success("ลบผู้จำหน่ายสำเร็จ");
+      fetchSuppliers();
+    } catch (err: any) {
+      toast.error("เกิดข้อผิดพลาดในการลบ: " + err.message);
+    }
   };
 
-  const filteredSuppliers = suppliers.filter(s => 
-    s.name?.toLowerCase().includes(search.toLowerCase()) ||
-    s.contactName?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = suppliers.filter((s) => {
+    const term = search.toLowerCase();
+    return (
+      (s.name || "").toLowerCase().includes(term) ||
+      (s.contactName || "").toLowerCase().includes(term) ||
+      (s.phone || "").toLowerCase().includes(term)
+    );
+  });
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
-            <Building2 className="w-6 h-6 text-sky-500" /> จัดการผู้จำหน่าย (Suppliers)
+            <Building2 className="w-6 h-6 text-indigo-600" /> ข้อมูลบริษัทผู้จำหน่าย (Suppliers)
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">รายชื่อบริษัทผู้จำหน่ายสินค้า ซัพพลายเออร์ และเงื่อนไขเครดิตเทอม</p>
+          <p className="text-xs text-slate-500 mt-0.5">จัดการรายชื่อคู่ค้า ซัพพลายเออร์ เครดิตเทอม และช่องทางติดต่อ</p>
         </div>
-        <Button 
-          className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-10 px-5 text-xs shadow-sm rounded-xl"
-          onClick={() => handleOpenDialog()}
-        >
-          <Plus className="w-4 h-4 mr-1.5" />
-          เพิ่มผู้จำหน่าย
+        <Button className="h-11 bg-primary px-6 font-bold text-white hover:bg-primary/90" onClick={handleOpenAdd}>
+          <Plus className="w-5 h-5 mr-2" /> เพิ่มผู้จำหน่ายใหม่
         </Button>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs w-full">
-        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 p-4">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input 
-              placeholder="ค้นหาชื่อบริษัท, ผู้ติดต่อ..." 
-              className="pl-9 bg-white border-slate-300 h-10 text-slate-900"
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="ค้นหาชื่อผู้จำหน่าย, ผู้ติดต่อ, เบอร์โทร..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
             />
           </div>
+          <span className="text-xs text-slate-500">พบทั้งหมด {filtered.length} รายการ</span>
         </div>
 
         <div className="overflow-x-auto">
           <Table>
             <TableHeader className="bg-slate-50">
-              <TableRow className="border-slate-200 hover:bg-transparent">
-                <TableHead className="text-slate-500">ชื่อบริษัท</TableHead>
-                <TableHead className="text-slate-500">ผู้ติดต่อ</TableHead>
-                <TableHead className="text-slate-500">เบอร์โทร</TableHead>
-                <TableHead className="text-slate-500">อีเมล</TableHead>
-                <TableHead className="text-slate-500 text-right">เครดิต (วัน)</TableHead>
-                <TableHead className="text-slate-500 text-center">จัดการ</TableHead>
+              <TableRow>
+                <TableHead className="py-3.5 px-6 font-semibold">ชื่อบริษัท / ผู้จำหน่าย</TableHead>
+                <TableHead className="py-3.5 px-4 font-semibold">ชื่อผู้ติดต่อ</TableHead>
+                <TableHead className="py-3.5 px-4 font-semibold">เบอร์โทรศัพท์</TableHead>
+                <TableHead className="py-3.5 px-4 font-semibold">อีเมล</TableHead>
+                <TableHead className="py-3.5 px-4 font-semibold text-center">เครดิตเทอม (วัน)</TableHead>
+                <TableHead className="py-3.5 px-6 text-right font-semibold">จัดการ</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center h-32 text-slate-500">
-                    กำลังโหลดข้อมูล...
-                  </TableCell>
-                </TableRow>
-              ) : filteredSuppliers.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center h-32 text-slate-500">
-                    ไม่พบข้อมูล
-                  </TableCell>
-                </TableRow>
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                    กำลังโหลดข้อมูลผู้จำหน่าย...
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                    ไม่พบข้อมูลผู้จำหน่ายในฐานข้อมูล
+                  </td>
+                </tr>
               ) : (
-                filteredSuppliers.map((supplier) => (
-                  <TableRow key={supplier.id} className="border-slate-200 hover:bg-slate-50">
-                    <TableCell className="font-medium text-slate-900">{supplier.name}</TableCell>
-                    <TableCell className="text-slate-700">{supplier.contactName || "-"}</TableCell>
-                    <TableCell className="text-slate-700">{supplier.phone || "-"}</TableCell>
-                    <TableCell className="text-slate-700">{supplier.email || "-"}</TableCell>
-                    <TableCell className="text-right text-slate-700">{supplier.creditTerms || 0}</TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex gap-2 justify-center">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-sky-600 hover:bg-slate-100" onClick={() => handleOpenDialog(supplier)}>
-                          <Edit className="w-4 h-4" />
+                filtered.map((supp) => (
+                  <TableRow key={supp.id} className="hover:bg-slate-50/70">
+                    <td className="py-4 px-6 font-medium text-slate-900">{supp.name}</td>
+                    <td className="py-4 px-4 text-slate-600">{supp.contactName || "-"}</td>
+                    <td className="py-4 px-4 text-slate-600">{supp.phone || "-"}</td>
+                    <td className="py-4 px-4 text-slate-600">{supp.email || "-"}</td>
+                    <td className="py-4 px-4 text-center text-slate-600">
+                      {supp.creditTerms ? `${supp.creditTerms} วัน` : "-"}
+                    </td>
+                    <td className="py-4 px-6 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(supp)}>
+                          <Edit className="w-4 h-4 text-slate-600" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-slate-100" onClick={() => handleDelete(supplier.id)}>
-                          <Trash2 className="w-4 h-4" />
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(supp.id, supp.name)}>
+                          <Trash2 className="w-4 h-4 text-rose-500" />
                         </Button>
                       </div>
-                    </TableCell>
+                    </td>
                   </TableRow>
                 ))
               )}
-            </TableBody>
+            </tbody>
           </Table>
         </div>
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="bg-white border-slate-200 text-slate-900 sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[550px]">
           <DialogHeader>
-            <DialogTitle className="text-slate-900">{isEditMode ? "แก้ไขผู้จำหน่าย" : "เพิ่มผู้จำหน่าย"}</DialogTitle>
+            <DialogTitle>{isEditMode ? "แก้ไขข้อมูลผู้จำหน่าย" : "เพิ่มผู้จำหน่ายใหม่"}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <label className="text-sm font-medium text-slate-500">ชื่อบริษัท *</label>
-              <Input 
+          <div className="space-y-4 py-3">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">
+                ชื่อบริษัท / ผู้จำหน่าย <span className="text-rose-500">*</span>
+              </label>
+              <Input
                 value={currentSupplier.name}
-                onChange={e => setCurrentSupplier({...currentSupplier, name: e.target.value})}
-                className="bg-white border-slate-300 text-slate-900"
+                onChange={(e) => setCurrentSupplier({ ...currentSupplier, name: e.target.value })}
+                placeholder="เช่น บริษัท ปุริม ซัพพลาย จำกัด"
               />
             </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium text-slate-500">ผู้ติดต่อ</label>
-              <Input 
-                value={currentSupplier.contactName}
-                onChange={e => setCurrentSupplier({...currentSupplier, contactName: e.target.value})}
-                className="bg-white border-slate-300 text-slate-900"
-              />
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="grid gap-2">
-                <label className="text-sm font-medium text-slate-500">เบอร์โทร</label>
-                <Input 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">ชื่อผู้ติดต่อ</label>
+                <Input
+                  value={currentSupplier.contactName}
+                  onChange={(e) => setCurrentSupplier({ ...currentSupplier, contactName: e.target.value })}
+                  placeholder="เช่น คุณสมชาย"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">เบอร์โทรศัพท์</label>
+                <Input
                   value={currentSupplier.phone}
-                  onChange={e => setCurrentSupplier({...currentSupplier, phone: e.target.value})}
-                  className="bg-white border-slate-300 text-slate-900"
+                  onChange={(e) => setCurrentSupplier({ ...currentSupplier, phone: e.target.value })}
+                  placeholder="เช่น 081-234-5678"
                 />
               </div>
-              <div className="grid gap-2">
-                <label className="text-sm font-medium text-slate-500">อีเมล</label>
-                <Input 
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">อีเมล</label>
+                <Input
                   value={currentSupplier.email}
-                  onChange={e => setCurrentSupplier({...currentSupplier, email: e.target.value})}
-                  className="bg-white border-slate-300 text-slate-900"
+                  onChange={(e) => setCurrentSupplier({ ...currentSupplier, email: e.target.value })}
+                  placeholder="เช่น contact@supplier.com"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1">เครดิตเทอม (วัน)</label>
+                <Input
+                  type="number"
+                  value={currentSupplier.creditTerms}
+                  onChange={(e) => setCurrentSupplier({ ...currentSupplier, creditTerms: Number(e.target.value) })}
+                  placeholder="30"
                 />
               </div>
             </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium text-slate-500">ที่อยู่</label>
-              <Input 
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">ที่อยู่</label>
+              <textarea
                 value={currentSupplier.address}
-                onChange={e => setCurrentSupplier({...currentSupplier, address: e.target.value})}
-                className="bg-white border-slate-300 text-slate-900"
-              />
-            </div>
-            <div className="grid gap-2">
-              <label className="text-sm font-medium text-slate-500">เครดิต (วัน)</label>
-              <Input 
-                type="number"
-                value={currentSupplier.creditTerms}
-                onChange={e => setCurrentSupplier({...currentSupplier, creditTerms: e.target.value})}
-                className="bg-white border-slate-300 text-slate-900"
+                onChange={(e) => setCurrentSupplier({ ...currentSupplier, address: e.target.value })}
+                placeholder="ที่อยู่สำหรับจัดส่งหรือออกใบกำกับภาษี..."
+                className="w-full text-sm p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                rows={3}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="border-slate-300 text-slate-700 hover:bg-slate-50">
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
               ยกเลิก
             </Button>
-            <Button onClick={handleSave} className="bg-sky-500 hover:bg-sky-600 text-white font-bold">
-              บันทึก
-            </Button>
+            <Button onClick={handleSave}>บันทึกข้อมูล</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

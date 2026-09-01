@@ -189,19 +189,7 @@ export function saveLoyaltyConfig(config: LoyaltySystemConfig): void {
 }
 
 export function loadCustomers(): Customer[] {
-  if (typeof window === 'undefined') return INITIAL_CUSTOMERS;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_CUSTOMERS);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    }
-  } catch {}
-
-  // saveCustomers(INITIAL_CUSTOMERS);
-  return INITIAL_CUSTOMERS;
+  return [];
 }
 
 export function saveCustomers(customers: Customer[]): void {

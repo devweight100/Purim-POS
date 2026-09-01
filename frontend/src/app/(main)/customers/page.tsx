@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
+import { apiFetch } from '@/lib/api';
 import {
   Customer,
   CustomerType,
@@ -98,9 +99,13 @@ export default function CustomersPage() {
 
   const [activeFormTab, setActiveFormTab] = useState<'general' | 'tax' | 'credit' | 'loyalty'>('general');
 
-  const reloadData = () => {
-    const list = loadCustomers();
-    setCustomers(list);
+  const reloadData = async () => {
+    try {
+      const list = await apiFetch('/customers');
+      setCustomers(Array.isArray(list) ? list : []);
+    } catch {
+      setCustomers([]);
+    }
     setLoyaltyConfig(loadLoyaltyConfig());
   };
 
@@ -212,7 +217,7 @@ export default function CustomersPage() {
   };
 
   // Save Customer
-  const handleSaveCustomer = () => {
+  const handleSaveCustomer = async () => {
     if (!formData.name?.trim()) {
       toast.error('กรุณากรอกชื่อลูกค้า / ชื่อบริษัท');
       return;
@@ -222,26 +227,56 @@ export default function CustomersPage() {
       return;
     }
 
-    const res = upsertCustomer({
-      ...formData,
-      id: selectedCustomer?.id,
-      name: formData.name.trim(),
-      phone: formData.phone.trim(),
-    });
+    try {
+      const payload: any = {
+        name: formData.name.trim(),
+        phone: formData.phone.trim(),
+        email: formData.email?.trim() || undefined,
+        address: formData.address?.trim() || undefined,
+        type: formData.type || 'INDIVIDUAL',
+        priceLevel: formData.priceLevel || 1,
+        creditLimit: Number(formData.creditLimit || 0),
+        creditTerms: Number(formData.creditTerms || 0),
+        companyName: formData.companyName?.trim() || undefined,
+        taxId: formData.taxId?.trim() || undefined,
+        branchType: formData.branchType || 'HEAD_OFFICE',
+        branchNumber: formData.branchNumber?.trim() || undefined,
+        taxAddress: formData.taxAddress?.trim() || undefined,
+        contactPerson: formData.contactPerson?.trim() || undefined,
+        contactPhone: formData.contactPhone?.trim() || undefined,
+        note: formData.note?.trim() || undefined,
+      };
 
-    if (res.success) {
-      toast.success(`${selectedCustomer ? 'แก้ไข' : 'เพิ่ม'}ข้อมูลสมาชิก "${res.customer.name}" เรียบร้อยแล้ว`);
+      if (selectedCustomer?.id) {
+        await apiFetch(`/customers/${selectedCustomer.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        });
+        toast.success(`แก้ไขข้อมูลสมาชิก "${payload.name}" เรียบร้อยแล้ว`);
+      } else {
+        await apiFetch('/customers', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        toast.success(`เพิ่มข้อมูลสมาชิก "${payload.name}" เรียบร้อยแล้ว`);
+      }
       setIsFormOpen(false);
       reloadData();
+    } catch (err: any) {
+      toast.error('เกิดข้อผิดพลาด: ' + (err.message || 'ไม่สามารถบันทึกได้'));
     }
   };
 
   // Delete Customer
-  const handleDeleteCustomer = (cust: Customer) => {
+  const handleDeleteCustomer = async (cust: Customer) => {
     if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลสมาชิก "${cust.name}"?`)) {
-      deleteCustomer(cust.id);
-      toast.success(`ลบสมาชิก "${cust.name}" เรียบร้อยแล้ว`);
-      reloadData();
+      try {
+        await apiFetch(`/customers/${cust.id}`, { method: 'DELETE' });
+        toast.success(`ลบสมาชิก "${cust.name}" เรียบร้อยแล้ว`);
+        reloadData();
+      } catch (err: any) {
+        toast.error('เกิดข้อผิดพลาดในการลบ: ' + err.message);
+      }
     }
   };
 
