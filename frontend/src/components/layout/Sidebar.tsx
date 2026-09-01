@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShoppingCart, ClipboardList, Users, LayoutDashboard, Package, 
   Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, 
@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/store/auth-store';
-import { useRouter } from 'next/navigation';
 
 interface SubMenuItem {
   href: string;
@@ -100,6 +99,10 @@ export function Sidebar() {
   const { user, logout } = useAuthStore();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Persistent scroll position refs
+  const desktopScrollRef = useRef<HTMLDivElement>(null);
+  const mobileScrollRef = useRef<HTMLDivElement>(null);
+
   // Group accordion state (open all by default)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     overview: true,
@@ -135,7 +138,40 @@ export function Sidebar() {
     setMobileOpen(false);
   }, [pathname]);
 
+  // Save and restore sidebar scroll position across navigation
+  const saveCurrentScroll = () => {
+    if (desktopScrollRef.current) {
+      sessionStorage.setItem('purim_sidebar_scroll_top', String(desktopScrollRef.current.scrollTop));
+    }
+  };
+
+  useEffect(() => {
+    const restoreScroll = () => {
+      const saved = sessionStorage.getItem('purim_sidebar_scroll_top');
+      if (saved !== null) {
+        const top = parseInt(saved, 10);
+        if (!isNaN(top)) {
+          if (desktopScrollRef.current && Math.abs(desktopScrollRef.current.scrollTop - top) > 2) {
+            desktopScrollRef.current.scrollTop = top;
+          }
+        }
+      }
+    };
+
+    restoreScroll();
+    const r1 = requestAnimationFrame(restoreScroll);
+    const t1 = setTimeout(restoreScroll, 20);
+    const t2 = setTimeout(restoreScroll, 60);
+
+    return () => {
+      cancelAnimationFrame(r1);
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [pathname]);
+
   const toggleGroup = (groupId: string) => {
+    saveCurrentScroll();
     setOpenGroups((prev) => ({
       ...prev,
       [groupId]: !prev[groupId],
@@ -147,7 +183,7 @@ export function Sidebar() {
     router.push('/login');
   };
 
-  const NavContent = () => (
+  const renderNavContent = (scrollRef: React.RefObject<HTMLDivElement | null>, isMobile = false) => (
     <>
       {/* Brand Header */}
       <div className="p-4 flex items-center h-16 shrink-0 border-b border-sidebar-border bg-sidebar">
@@ -160,12 +196,22 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Navigation Groups */}
-      <div className="flex-1 py-3 overflow-y-auto overflow-x-hidden flex flex-col gap-3 px-2">
+      {/* Navigation Groups (Scrollable container with preserved scroll position) */}
+      <div 
+        ref={scrollRef}
+        onScroll={(e) => {
+          if (!isMobile) {
+            sessionStorage.setItem('purim_sidebar_scroll_top', String(e.currentTarget.scrollTop));
+          }
+        }}
+        className="flex-1 py-3 overflow-y-auto overflow-x-hidden flex flex-col gap-3 px-2"
+      >
         {/* Quick POS Action Button (Purim POS สีฟ้า) */}
         <div className="px-1">
           <Link
             href="/pos"
+            scroll={false}
+            onClick={saveCurrentScroll}
             className={cn(
               'flex items-center justify-between px-3.5 py-2.5 rounded-xl font-bold transition-all shadow-xs group',
               pathname === '/pos'
@@ -237,6 +283,7 @@ export function Sidebar() {
                         <div key={item.href} className="space-y-0.5">
                           <div
                             onClick={() => {
+                              saveCurrentScroll();
                               setOpenSubMenus((prev) => ({ ...prev, [item.href]: !isSubOpen }));
                             }}
                             className={cn(
@@ -248,7 +295,11 @@ export function Sidebar() {
                           >
                             <Link
                               href={item.href}
-                              onClick={(e) => e.stopPropagation()}
+                              scroll={false}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                saveCurrentScroll();
+                              }}
                               className="flex items-center flex-1 min-w-0"
                             >
                               <ItemIcon className={cn('w-4 h-4 shrink-0 mr-2.5', (isSelfActive || isChildActive) ? 'text-indigo-600' : 'text-slate-500')} />
@@ -259,6 +310,7 @@ export function Sidebar() {
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
+                                saveCurrentScroll();
                                 setOpenSubMenus((prev) => ({ ...prev, [item.href]: !isSubOpen }));
                               }}
                               className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors ml-1"
@@ -266,14 +318,14 @@ export function Sidebar() {
                             >
                               <ChevronDown
                                 className={cn(
-                                  'w-3.5 h-3.5 transition-transform duration-200',
+                                   'w-3.5 h-3.5 transition-transform duration-200',
                                   isSubOpen ? 'rotate-0' : '-rotate-90'
                                 )}
                               />
                             </button>
                           </div>
 
-                          {/* 6 Sub-items strictly INSIDE รายงาน */}
+                          {/* Sub-items inside รายงาน */}
                           {isSubOpen && (
                             <div className="ml-3 pl-2 border-l-2 border-indigo-200/90 space-y-0.5 py-0.5">
                               {item.children?.map((sub) => {
@@ -283,6 +335,8 @@ export function Sidebar() {
                                   <Link
                                     key={sub.href}
                                     href={sub.href}
+                                    scroll={false}
+                                    onClick={saveCurrentScroll}
                                     className={cn(
                                       'flex items-center px-2 py-1.5 rounded-lg text-xs transition-all duration-150 whitespace-nowrap',
                                       isSubActive
@@ -305,6 +359,8 @@ export function Sidebar() {
                       <Link
                         key={item.href}
                         href={item.href}
+                        scroll={false}
+                        onClick={saveCurrentScroll}
                         className={cn(
                           'flex items-center px-2.5 py-1.5 rounded-lg text-[13px] transition-all duration-150 whitespace-nowrap',
                           isSelfActive
@@ -370,12 +426,12 @@ export function Sidebar() {
         'lg:hidden fixed top-0 left-0 h-full w-64 bg-sidebar z-50 flex flex-col transition-transform duration-300 shadow-2xl border-r border-sidebar-border',
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       )}>
-        <NavContent />
+        {renderNavContent(mobileScrollRef, true)}
       </div>
 
       {/* Desktop sidebar */}
       <div className="hidden lg:flex fixed top-0 left-0 h-full w-[240px] bg-sidebar flex-col z-50 border-r border-sidebar-border">
-        <NavContent />
+        {renderNavContent(desktopScrollRef, false)}
       </div>
     </>
   );
