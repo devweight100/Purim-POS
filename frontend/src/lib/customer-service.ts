@@ -200,7 +200,7 @@ export function loadCustomers(): Customer[] {
     }
   } catch {}
 
-  saveCustomers(INITIAL_CUSTOMERS);
+  // saveCustomers(INITIAL_CUSTOMERS);
   return INITIAL_CUSTOMERS;
 }
 

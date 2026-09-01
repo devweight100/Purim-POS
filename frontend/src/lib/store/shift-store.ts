@@ -64,44 +64,7 @@ const saveCashTransactions = (txs: CashTransaction[]) => {
   } catch {}
 };
 
-const loadInitialOrders = (): Order[] => {
-  if (typeof window === 'undefined') return masterMockOrders;
-  try {
-    const raw = localStorage.getItem('pos_completed_orders');
-    const parsed: Order[] = raw ? JSON.parse(raw) : [];
-
-    // Filter out any legacy ORD-2026 bills
-    const cleanedParsed = parsed.filter(
-      (o) => !o.orderNumber?.startsWith('ORD-2026') && !o.id?.startsWith('ORD-2026')
-    );
-    if (cleanedParsed.length !== parsed.length) {
-      try {
-        localStorage.setItem('pos_completed_orders', JSON.stringify(cleanedParsed));
-      } catch {}
-    }
-
-    const combinedMap = new Map<string, Order>();
-    // Pre-populate with master ORD-OFFLINE orders matching real store products
-    masterMockOrders
-      .filter((o) => !o.orderNumber?.startsWith('ORD-2026') && !o.id?.startsWith('ORD-2026'))
-      .forEach((o) => {
-        const k = o.orderNumber || o.id;
-        if (k) combinedMap.set(k, o);
-      });
-    // Overlay user completed orders from POS checkouts
-    cleanedParsed.forEach((o) => {
-      const k = o.orderNumber || o.id;
-      if (k) combinedMap.set(k, o);
-    });
-
-    const all = Array.from(combinedMap.values()).sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-    return all;
-  } catch {
-    return masterMockOrders;
-  }
-};
+const loadInitialOrders = (): Order[] => [];
 
 const saveCompletedOrders = (orders: Order[]) => {
   if (typeof window === 'undefined') return;

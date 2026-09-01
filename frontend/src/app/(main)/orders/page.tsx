@@ -203,18 +203,7 @@ export default function OrdersPage() {
       // Merge and deduplicate
       const combinedMap = new Map<string, any>();
 
-      // Master orders history (ORD-OFFLINE matching actual store products and member customers)
-      masterMockOrders
-        .filter((mOrder) => !mOrder.orderNumber?.startsWith('ORD-2026') && !mOrder.id?.startsWith('ORD-2026'))
-        .forEach((mOrder) => {
-          const key = mOrder.orderNumber || mOrder.id;
-          if (key) {
-            combinedMap.set(key, {
-              ...mOrder,
-              isSynced: true,
-            });
-          }
-        });
+      // Master orders history removed - purely using real backend and completed orders
 
       // Overlay local completed orders from POS checkouts
       localOrders
