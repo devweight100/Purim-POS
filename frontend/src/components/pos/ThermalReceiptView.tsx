@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React from 'react';
 import { Store } from 'lucide-react';
@@ -96,45 +96,47 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
         <div className="text-center space-y-0.5 pb-2.5 border-b border-dashed border-slate-400">
           <div className="flex items-center justify-center gap-1.5 font-bold text-sm font-sans text-slate-900">
             <Store className="w-4 h-4 text-sky-600 shrink-0" />
-            <span className="truncate">{settings.storeName || 'ร้านปุริม (PURIM POS)'}</span>
+            <span className="truncate">{settings.storeName}</span>
           </div>
 
-          {settings.branchName && (
+          {settings.branchName ? (
             <p className="text-[9.5px] text-slate-600 font-sans">
               สาขา: {settings.branchName}
             </p>
-          )}
+          ) : null}
 
-          {settings.taxId && (
+          {settings.taxId ? (
             <p className="text-[9.5px] text-slate-600 font-mono">
               เลขประจำตัวผู้เสียภาษี: {settings.taxId}
             </p>
-          )}
+          ) : null}
 
-          <p className="text-[9.5px] text-slate-600 leading-tight break-words font-sans whitespace-pre-wrap">
-            {settings.storeAddress || '123/45 ถนนสุขุมวิท แขวงคลองเตย เขตคลองเตย กรุงเทพฯ 10110'}
-          </p>
+          {settings.storeAddress ? (
+            <p className="text-[9.5px] text-slate-600 leading-tight break-words font-sans whitespace-pre-wrap">
+              {settings.storeAddress}
+            </p>
+          ) : null}
 
-          {settings.storePhone && (
+          {settings.storePhone ? (
             <p className="text-[9.5px] text-slate-600 font-mono">
               โทร: {settings.storePhone}
             </p>
-          )}
+          ) : null}
 
-          {settings.storeEmail && (
+          {settings.storeEmail ? (
             <p className="text-[9px] text-slate-500 font-sans">
               {settings.storeEmail}
             </p>
-          )}
+          ) : null}
 
           {/* Custom Receipt Header Slogan */}
-          {settings.receiptHeader && (
+          {settings.receiptHeader ? (
             <div className="pt-1 pb-0.5">
               <p className="text-[9.5px] text-slate-800 font-sans font-medium whitespace-pre-wrap leading-tight">
                 {settings.receiptHeader}
               </p>
             </div>
-          )}
+          ) : null}
 
           <div className="pt-0.5">
             <span className="text-[11px] font-black border border-slate-900 px-2.5 py-0.5 rounded font-sans inline-block text-slate-900">
@@ -304,20 +306,13 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
         )}
 
         {/* Footer */}
-        <div className="text-center pt-1 space-y-1 text-[9.5px] text-slate-700 font-sans">
-          {settings.receiptFooter ? (
+        {settings.receiptFooter ? (
+          <div className="text-center pt-1 space-y-1 text-[9.5px] text-slate-700 font-sans">
             <p className="font-medium leading-relaxed whitespace-pre-wrap">
               {settings.receiptFooter}
             </p>
-          ) : (
-            <>
-              <p className="font-medium text-[8.5px] leading-tight text-slate-700 break-words">
-                * สินค้ารับเปลี่ยนเฉพาะชำรุดภายใน 7 วันพร้อมใบเสร็จ *
-              </p>
-              <p className="font-bold text-slate-900 pt-0.5">🙏 ขอบคุณที่อุดหนุน ร้านปุริม 🙏</p>
-            </>
-          )}
-        </div>
+          </div>
+        ) : null}
       </div>
     );
   }
