@@ -5,7 +5,7 @@ import {
   Building2, CheckCircle2, DollarSign, FileText, 
   Receipt, ShieldAlert, Sparkles, Tag, Wallet, ArrowRight,
   HelpCircle, CreditCard, Banknote, Calendar, AlertCircle,
-  Search, X, Check, ChevronDown, Percent, Zap
+  Search, X, Check, ChevronDown, Percent
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -286,12 +286,6 @@ export function SettleMultipleBillsModal({
   };
 
   // Totals calculations
-  const totalSelectedBillsDebt = useMemo(() => {
-    return supplierBills
-      .filter((b) => selectedBillIds.has(b.poId))
-      .reduce((sum, b) => sum + b.remainingPayable, 0);
-  }, [supplierBills, selectedBillIds]);
-
   const totalBillsPayAmount = useMemo(() => {
     return Object.entries(billPayAmounts)
       .filter(([id]) => selectedBillIds.has(id))
@@ -305,14 +299,6 @@ export function SettleMultipleBillsModal({
   const netCashOrTransferRequired = useMemo(() => {
     return Math.max(0, Math.round((totalBillsPayAmount - totalDebitDeducted - (Number(discountAmount) || 0)) * 100) / 100);
   }, [totalBillsPayAmount, totalDebitDeducted, discountAmount]);
-
-  // Remaining debt after this payment
-  const remainingDebtAfterPayment = Math.max(0, Math.round((totalSelectedBillsDebt - totalBillsPayAmount) * 100) / 100);
-
-  // Progress Bar percentage
-  const progressPercent = totalSelectedBillsDebt > 0
-    ? Math.min(100, Math.round((totalBillsPayAmount / totalSelectedBillsDebt) * 100))
-    : 0;
 
   // Submit payment
   const handleSubmit = () => {
@@ -378,7 +364,7 @@ export function SettleMultipleBillsModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[98vw] max-w-[1240px] h-[95vh] max-h-[96vh] flex flex-col bg-white border-slate-200 text-slate-900 rounded-3xl p-0 overflow-hidden shadow-2xl font-sans">
         {/* ─── MODAL HEADER (Consistent POS Theme) ─── */}
-        <DialogHeader className="px-7 py-5 bg-gradient-to-r from-slate-50 via-white to-indigo-50/40 border-b border-slate-200 shrink-0 flex flex-row items-center justify-between">
+        <DialogHeader className="px-8 py-5 bg-gradient-to-r from-slate-50 via-white to-indigo-50/40 border-b border-slate-200 shrink-0 flex flex-row items-center justify-between">
           <div className="flex items-center gap-3.5">
             <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-200">
               <Receipt className="w-6 h-6" />
@@ -398,7 +384,7 @@ export function SettleMultipleBillsModal({
         </DialogHeader>
 
         {/* ─── SCROLLABLE BODY WITH GENEROUS PADDING ─── */}
-        <div className="flex-1 overflow-y-auto px-7 py-6 space-y-6 bg-slate-50/40">
+        <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6 bg-slate-50/40">
           {/* STEP 1: Search & Select Supplier */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
             <div className="flex items-center justify-between">
@@ -591,47 +577,7 @@ export function SettleMultipleBillsModal({
               </div>
             </div>
 
-            {/* ─── หลอดพลังความคืบหน้าการชำระหนี้ (ENERGY / PROGRESS BAR) ─── */}
-            {selectedBillIds.size > 0 && (
-              <div className="bg-gradient-to-r from-indigo-50/70 via-slate-50 to-emerald-50/50 border border-indigo-100 rounded-2xl p-4 space-y-2.5">
-                <div className="flex flex-wrap items-center justify-between text-xs gap-2">
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-amber-500 fill-amber-400" />
-                    <span className="font-bold text-slate-800">หลอดพลังการตัดชำระหนี้ (Payment Progress):</span>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs font-mono">
-                    <span>ยอดหนี้บิลที่เลือก: <b className="text-slate-800">{formatCurrency(totalSelectedBillsDebt)}</b></span>
-                    <span>• ตัดจ่ายรอบนี้: <b className="text-indigo-700">{formatCurrency(totalBillsPayAmount)}</b></span>
-                    <span>• คงเหลือหลังชำระ: <b className={remainingDebtAfterPayment <= 0 ? 'text-emerald-700' : 'text-rose-600'}>{formatCurrency(remainingDebtAfterPayment)}</b></span>
-                  </div>
-                </div>
-
-                {/* Progress Bar Container */}
-                <div className="relative w-full bg-slate-200/80 rounded-full h-4 overflow-hidden border border-slate-300/80 shadow-inner">
-                  <div
-                    className={`h-full rounded-full transition-all duration-300 flex items-center justify-end pr-2 text-[10px] font-black text-white ${
-                      progressPercent >= 100
-                        ? 'bg-gradient-to-r from-teal-500 to-emerald-500'
-                        : 'bg-gradient-to-r from-indigo-500 to-emerald-500'
-                    }`}
-                    style={{ width: `${Math.max(progressPercent > 0 ? 5 : 0, progressPercent)}%` }}
-                  >
-                    {progressPercent >= 15 && `${progressPercent}%`}
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center text-[11px] text-slate-500 font-medium">
-                  <span>
-                    {remainingDebtAfterPayment <= 0 
-                      ? '🎉 บิลที่เลือกจะถูกชำระครบเต็มจำนวน 100% ไม่มียอดคงค้าง' 
-                      : `หลังชำระเงินรอบนี้ ยอดหนี้จะลดลงเหลือ ${formatCurrency(remainingDebtAfterPayment)} (แบ่งชำระลดหนี้ลงได้ ${progressPercent}%)`}
-                  </span>
-                  <span className="font-bold text-indigo-700">ความคืบหน้า: {progressPercent}%</span>
-                </div>
-              </div>
-            )}
-
-            {/* Bills Table */}
+            {/* Bills Table with Row-Level Progress Bar (หลอดพลังประจำบิล) */}
             {supplierBills.length === 0 ? (
               <div className="p-10 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-xs">
                 ไม่มีบิลค้างชำระสำหรับผู้จำหน่ายรายนี้
@@ -652,7 +598,8 @@ export function SettleMultipleBillsModal({
                       <th className="py-3 px-2 text-center w-24">วันที่ในบิล</th>
                       <th className="py-3 px-3 text-right w-28">ยอดหนี้เต็ม</th>
                       <th className="py-3 px-3 text-right w-28">หนี้คงเหลือ</th>
-                      <th className="py-3 px-3 text-right w-44">ยอดที่จะจ่ายครั้งนี้ (฿)</th>
+                      <th className="py-3 px-3 text-right w-40">ยอดตัดจ่ายรอบนี้ (฿)</th>
+                      <th className="py-3 px-3 text-center w-40">ความคืบหน้าชำระ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
@@ -662,7 +609,7 @@ export function SettleMultipleBillsModal({
                       const currentAmount = billPayAmounts[b.poId] ?? b.remainingPayable;
                       const isFull = currentAmount >= b.remainingPayable;
                       const isPartial = currentAmount > 0 && currentAmount < b.remainingPayable;
-                      const billPercent = b.remainingPayable > 0 ? Math.round((currentAmount / b.remainingPayable) * 100) : 0;
+                      const billPercent = b.remainingPayable > 0 ? Math.min(100, Math.round((currentAmount / b.remainingPayable) * 100)) : 0;
 
                       return (
                         <tr
@@ -725,31 +672,47 @@ export function SettleMultipleBillsModal({
                           </td>
                           <td className="py-2.5 px-3 text-right">
                             {isSelected ? (
-                              <div className="space-y-1">
-                                <Input
-                                  type="number"
-                                  step="any"
-                                  value={currentAmount}
-                                  onChange={(e) => handleBillAmountChange(b.poId, e.target.value, b.remainingPayable)}
-                                  className="h-8 text-right font-mono font-bold text-indigo-700 bg-white border-indigo-300 shadow-2xs"
-                                />
-                                <div className="flex items-center justify-between text-[10px]">
-                                  {isFull ? (
-                                    <span className="text-emerald-700 font-bold">เต็มจำนวน (100%)</span>
-                                  ) : isPartial ? (
-                                    <span className="text-amber-700 font-bold">แบ่งจ่าย ({billPercent}%)</span>
-                                  ) : (
-                                    <span className="text-slate-400">ยังไม่ระบุ</span>
-                                  )}
-                                  {isPartial && (
-                                    <span className="text-slate-400 font-mono">
-                                      เหลือ: {formatCurrency(b.remainingPayable - currentAmount)}
-                                    </span>
-                                  )}
+                              <Input
+                                type="number"
+                                step="any"
+                                value={currentAmount}
+                                onChange={(e) => handleBillAmountChange(b.poId, e.target.value, b.remainingPayable)}
+                                className="h-8 text-right font-mono font-bold text-indigo-700 bg-white border-indigo-300 shadow-2xs"
+                              />
+                            ) : (
+                              <span className="text-slate-400 font-mono text-xs">-</span>
+                            )}
+                          </td>
+
+                          {/* ─── หลอดพลังความคืบหน้ารายบิล (Row-Level Progress Bar) ─── */}
+                          <td className="py-2.5 px-3 text-center">
+                            {isSelected ? (
+                              <div className="space-y-1 max-w-[130px] mx-auto">
+                                <div className="flex items-center justify-between text-[11px] font-semibold">
+                                  <span className={isFull ? 'text-teal-700 font-bold' : isPartial ? 'text-indigo-700 font-bold' : 'text-slate-400'}>
+                                    {isFull ? 'ครบ 100%' : `${billPercent}%`}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500 font-mono">
+                                    {isFull ? 'ครบแล้ว' : `ค้าง ${formatCurrency(b.remainingPayable - currentAmount)}`}
+                                  </span>
+                                </div>
+
+                                {/* Soft Pastel Progress Bar */}
+                                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-300 ${
+                                      isFull
+                                        ? 'bg-teal-500'
+                                        : isPartial
+                                        ? 'bg-indigo-500'
+                                        : 'bg-slate-200'
+                                    }`}
+                                    style={{ width: `${Math.max(billPercent > 0 ? 5 : 0, billPercent)}%` }}
+                                  />
                                 </div>
                               </div>
                             ) : (
-                              <span className="text-slate-400 font-mono text-xs">-</span>
+                              <span className="text-slate-300 text-xs">-</span>
                             )}
                           </td>
                         </tr>
@@ -764,6 +727,9 @@ export function SettleMultipleBillsModal({
                         </td>
                         <td className="py-3 px-3 text-right font-mono font-black text-indigo-700 text-sm">
                           {formatCurrency(totalBillsPayAmount)}
+                        </td>
+                        <td className="py-3 px-3 text-center font-mono text-xs text-slate-500">
+                          {selectedBillIds.size} รายการ
                         </td>
                       </tr>
                     </tfoot>
@@ -834,7 +800,7 @@ export function SettleMultipleBillsModal({
             </div>
           )}
 
-          {/* STEP 4: Payment Details & Discount */}
+          {/* STEP 4: Payment Details & Themed Summary Box */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* Left: Payment Method & Channel */}
             <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3.5">
@@ -931,58 +897,66 @@ export function SettleMultipleBillsModal({
               </div>
             </div>
 
-            {/* Right: Discount & Final Summary Box */}
-            <div className="bg-slate-900 text-white rounded-2xl p-5 flex flex-col justify-between shadow-lg space-y-4">
+            {/* Right: Themed Light Consistent Summary Box (NO DARK BLOCK) */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs flex flex-col justify-between space-y-4">
               <div className="space-y-3">
-                <div className="flex items-center justify-between text-xs pb-2.5 border-b border-slate-800">
-                  <span className="text-slate-400">ยอดรวมบิลที่เลือกชำระ ({selectedBillIds.size} ใบ):</span>
-                  <span className="font-mono font-bold text-white text-sm">{formatCurrency(totalBillsPayAmount)}</span>
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5 pb-2 border-b border-slate-100">
+                  <DollarSign className="w-4 h-4 text-emerald-600" />
+                  <span>5. สรุปยอดเงินและส่วนลด (Payment Summary):</span>
+                </span>
+
+                <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-100">
+                  <span className="text-slate-600 font-medium">ยอดรวมบิลที่เลือกชำระ ({selectedBillIds.size} ใบ):</span>
+                  <span className="font-mono font-bold text-slate-900 text-sm">{formatCurrency(totalBillsPayAmount)}</span>
                 </div>
 
                 {totalDebitDeducted > 0 && (
-                  <div className="flex items-center justify-between text-xs text-rose-400">
-                    <span>หักใบลดหนี้รวม:</span>
-                    <span className="font-mono font-bold">-{formatCurrency(totalDebitDeducted)}</span>
+                  <div className="flex items-center justify-between text-xs text-rose-600 pb-2 border-b border-slate-100">
+                    <span className="font-medium">หักเครดิตใบลดหนี้รวม:</span>
+                    <span className="font-mono font-bold text-sm">-{formatCurrency(totalDebitDeducted)}</span>
                   </div>
                 )}
 
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-amber-300 font-medium">ส่วนลดท้ายบิลเจรจาการค้า:</span>
+                <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-100">
+                  <span className="text-amber-800 font-medium flex items-center gap-1">
+                    <Tag className="w-3.5 h-3.5 text-amber-600" />
+                    <span>ส่วนลดท้ายบิลเจรจาการค้า:</span>
+                  </span>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-amber-400 font-bold">-</span>
+                    <span className="text-amber-700 font-bold">-</span>
                     <Input
                       type="number"
                       step="any"
                       placeholder="0.00"
                       value={discountAmount || ''}
                       onChange={(e) => setDiscountAmount(Math.max(0, Number(e.target.value) || 0))}
-                      className="h-8 w-28 text-right font-mono font-bold text-amber-400 bg-slate-800 border-slate-700 text-xs rounded-lg"
+                      className="h-8.5 w-32 text-right font-mono font-bold text-amber-800 bg-amber-50/60 border-amber-300 text-xs rounded-xl focus:bg-white"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-[11px] text-slate-400 block mb-1">หมายเหตุบันทึกจ่ายเงิน (ถ้ามี):</label>
+                  <label className="text-[11px] font-bold text-slate-600 block mb-1">หมายเหตุบันทึกจ่ายเงิน (ถ้ามี):</label>
                   <Input
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
                     placeholder="เช่น จ่ายรอบบิลประจำสัปดาห์ / งวดที่ 1"
-                    className="h-8 text-xs bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-500 rounded-lg"
+                    className="h-8.5 text-xs bg-slate-50 border-slate-300 text-slate-800 placeholder:text-slate-400 rounded-xl focus:bg-white"
                   />
                 </div>
               </div>
 
-              {/* Total Net Payment Box */}
-              <div className="pt-3 border-t border-slate-800 space-y-1 bg-slate-950/70 p-4 rounded-xl">
+              {/* Total Net Payment Box (Consistent Pastel Emerald Highlight Box) */}
+              <div className="pt-3 border-t border-slate-200 space-y-1.5 bg-emerald-50/70 border border-emerald-200/80 p-4 rounded-xl">
                 <div className="flex justify-between items-baseline">
-                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                  <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
                     ยอดเงินสุทธิที่ต้องจ่ายจริง:
                   </span>
-                  <span className="text-2xl font-black font-mono text-emerald-400">
+                  <span className="text-2xl font-black font-mono text-emerald-700">
                     {formatCurrency(netCashOrTransferRequired)}
                   </span>
                 </div>
-                <p className="text-[11px] text-right font-medium text-slate-400">
+                <p className="text-[11px] text-right font-medium text-emerald-800/80">
                   ({thaiBahtText(netCashOrTransferRequired)})
                 </p>
               </div>
@@ -990,13 +964,13 @@ export function SettleMultipleBillsModal({
           </div>
         </div>
 
-        {/* ─── MODAL FOOTER ─── */}
-        <DialogFooter className="px-7 py-4 bg-white border-t border-slate-200 shrink-0 flex flex-row items-center justify-between">
+        {/* ─── MODAL FOOTER WITH COMFORTABLE INWARD PADDING ─── */}
+        <DialogFooter className="px-10 py-5 bg-slate-50 border-t border-slate-200 shrink-0 flex flex-row items-center justify-between">
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             onClick={() => onOpenChange(false)}
-            className="text-slate-600 hover:bg-slate-100 font-bold text-xs px-4"
+            className="text-slate-700 bg-white hover:bg-slate-100 border-slate-300 font-bold text-xs sm:text-sm px-6 h-10 rounded-xl ml-2 shadow-2xs"
           >
             ยกเลิก
           </Button>
@@ -1005,7 +979,7 @@ export function SettleMultipleBillsModal({
             type="button"
             onClick={handleSubmit}
             disabled={isSubmitting || selectedBillIds.size === 0}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-7 h-10 rounded-xl shadow-sm gap-2"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm px-8 h-10 rounded-xl shadow-md mr-2 gap-2"
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>{isSubmitting ? 'กำลังบันทึก...' : 'บันทึกชำระหนี้ & พิมพ์ใบสำคัญจ่าย (A4)'}</span>
