@@ -20,6 +20,7 @@ import { loadAllClaimRecords } from '@/lib/claim-service';
 import { loadAllDebtRecords } from '@/lib/debt-service';
 import { loadCustomers } from '@/lib/customer-service';
 import { loadAllShiftSummaries } from '@/lib/shift-service';
+import { apiFetch } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -82,6 +83,13 @@ import { toast } from 'sonner';
 export type ReportTabKey = 'sales' | 'bestsellers' | 'inventory' | 'payments' | 'customers' | 'purchases';
 
 const CHART_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#64748b'];
+
+function formatCategory(cat: any): string {
+  if (!cat) return 'ทั่วไป';
+  if (typeof cat === 'string') return cat;
+  if (typeof cat === 'object' && cat.name) return String(cat.name);
+  return 'ทั่วไป';
+}
 
 interface ReportPaginationProps {
   totalItems: number;
@@ -215,6 +223,9 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
   const [customers, setCustomers] = useState<any[]>([]);
   const [shifts, setShifts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [batchValuationByProduct, setBatchValuationByProduct] = useState<
+    Record<string, { quantityRemaining: number; totalCostValue: number; averageUnitCost: number }>
+  >({});
 
   // Sub-filter for inventory (all / deadstock / lowstock)
   const [inventorySubFilter, setInventorySubFilter] = useState<'all' | 'deadstock' | 'lowstock'>('all');
@@ -227,17 +238,67 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
   const { products, fetchProducts } = useProductStore();
 
   // Load all raw data
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true);
     try {
-      setRawOrders(loadAllOrders());
-      setPurchaseOrders(loadPurchaseOrders());
-      setClaims(loadAllClaimRecords());
-      setDebts(loadAllDebtRecords());
-      setCustomers(loadCustomers());
-      setShifts(loadAllShiftSummaries());
-      setSuppliers(loadSuppliers());
-      fetchProducts();
+      const [
+        analyticsRes,
+        ordersRes,
+        posRes,
+        claimsRes,
+        debtsRes,
+        custsRes,
+        shiftsRes,
+        suppsRes,
+      ] = await Promise.allSettled([
+        apiFetch('/reports/analytics'),
+        apiFetch('/orders?limit=10000'),
+        apiFetch('/purchase-orders?limit=5000'),
+        apiFetch('/claims?limit=5000'),
+        apiFetch('/debts?limit=5000'),
+        apiFetch('/customers?limit=5000'),
+        apiFetch('/shifts/history?limit=1000'),
+        apiFetch('/suppliers'),
+      ]);
+
+      const unwrap = (res: any, fallback: () => any) => {
+        if (res.status === 'fulfilled') {
+          const val = res.value;
+          if (val?.data && Array.isArray(val.data)) return val.data;
+          if (Array.isArray(val)) return val;
+          return [];
+        }
+        return fallback();
+      };
+
+      const analyticsData =
+        analyticsRes.status === 'fulfilled' && analyticsRes.value
+          ? analyticsRes.value
+          : null;
+
+      const realOrders =
+        analyticsData && Array.isArray(analyticsData.orders)
+          ? analyticsData.orders
+          : unwrap(ordersRes, loadAllOrders);
+      const realPOs = unwrap(posRes, loadPurchaseOrders);
+      const realClaims = unwrap(claimsRes, loadAllClaimRecords);
+      const realDebts = unwrap(debtsRes, loadAllDebtRecords);
+      const realCusts = unwrap(custsRes, loadCustomers);
+      const realShifts = unwrap(shiftsRes, loadAllShiftSummaries);
+      const realSupps = unwrap(suppsRes, loadSuppliers);
+
+      if (analyticsData?.stockBatchValuation?.byProductId) {
+        setBatchValuationByProduct(analyticsData.stockBatchValuation.byProductId);
+      }
+
+      setRawOrders(realOrders);
+      setPurchaseOrders(realPOs);
+      setClaims(realClaims);
+      setDebts(realDebts);
+      setCustomers(realCusts);
+      setShifts(realShifts);
+      setSuppliers(realSupps);
+      await fetchProducts();
     } catch (err) {
       console.error('Failed to load reports data:', err);
       toast.error('ไม่สามารถโหลดข้อมูลรายงานได้');
@@ -248,6 +309,13 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
 
   useEffect(() => {
     loadData();
+    const handleSynced = () => {
+      loadData();
+    };
+    window.addEventListener('purim:data-synced', handleSynced);
+    return () => {
+      window.removeEventListener('purim:data-synced', handleSynced);
+    };
   }, []);
 
   // Sync tab with props when navigating between sub-routes
@@ -293,8 +361,8 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     if (activeTab !== 'inventory') {
       return { totalProducts: 0, totalStockPieces: 0, totalCostVal: 0, totalRetailVal: 0, totalPotentialProfit: 0, deadstockPieces: 0, deadstockCostVal: 0, lowStockCount: 0, items: [], deadstockList: [], lowStockList: [] };
     }
-    return calculateInventoryValuationReport(products, rawOrders);
-  }, [activeTab, products, rawOrders]);
+    return calculateInventoryValuationReport(products, rawOrders, batchValuationByProduct);
+  }, [activeTab, products, rawOrders, batchValuationByProduct]);
 
   // 4. Payments & Shifts (Lazy)
   const paymentsShiftsReport = useMemo(() => {
@@ -351,7 +419,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     return bestSellersReport.allProducts.filter(p =>
       p.name.toLowerCase().includes(q) ||
       p.sku.toLowerCase().includes(q) ||
-      p.category.toLowerCase().includes(q)
+      formatCategory(p.category).toLowerCase().includes(q)
     );
   }, [bestSellersReport.allProducts, search]);
 
@@ -369,7 +437,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     return list.filter(item =>
       item.name.toLowerCase().includes(q) ||
       item.sku.toLowerCase().includes(q) ||
-      item.category.toLowerCase().includes(q) ||
+      formatCategory(item.category).toLowerCase().includes(q) ||
       item.supplierName.toLowerCase().includes(q)
     );
   }, [inventoryReport, inventorySubFilter, search]);
@@ -426,13 +494,13 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     } else if (activeTab === 'bestsellers') {
       csvContent += 'ลำดับ,บาร์โค้ด,ชื่อสินค้า,หมวดหมู่,จำนวนที่ขายได้,ยอดขายรวม,ต้นทุนรวม,กำไรสุทธิ,% กำไร\n';
       bestSellersReport.allProducts.forEach((row, i) => {
-        csvContent += `${i + 1},"${row.sku}","${row.name}","${row.category}",${row.quantitySold},${row.totalRevenue},${row.totalCost},${row.totalProfit},${row.profitMarginPercent}%\n`;
+        csvContent += `${i + 1},"${row.sku}","${row.name}","${formatCategory(row.category)}",${row.quantitySold},${row.totalRevenue},${row.totalCost},${row.totalProfit},${row.profitMarginPercent}%\n`;
       });
     } else if (activeTab === 'inventory') {
       csvContent += 'ลำดับ,บาร์โค้ด,ชื่อสินค้า,หมวดหมู่,ผู้จำหน่าย,สต็อกคงเหลือ,ราคาทุน,มูลค่าทุนรวม,ราคาขาย,มูลค่าขายรวม,สถานะ\n';
       inventoryReport.items.forEach((row, i) => {
         const status = row.isDeadstock ? 'ขายช้า(Deadstock)' : row.isLowStock ? 'สต็อกต่ำ' : 'ปกติ';
-        csvContent += `${i + 1},"${row.sku}","${row.name}","${row.category}","${row.supplierName}",${row.stock},${row.costPrice},${row.totalCostValue},${row.retailPrice},${row.totalRetailValue},"${status}"\n`;
+        csvContent += `${i + 1},"${row.sku}","${row.name}","${formatCategory(row.category)}","${row.supplierName}",${row.stock},${row.costPrice},${row.totalCostValue},${row.retailPrice},${row.totalRetailValue},"${status}"\n`;
       });
     } else if (activeTab === 'customers') {
       csvContent += 'ลำดับ,รหัสลูกค้า,ชื่อลูกค้า,เบอร์โทรศัพท์,จำนวนครั้งที่ซื้อ,ยอดซื้อเฉลี่ยต่อบิล,ยอดซื้อสะสมรวม,แต้มสะสม,หนี้คงค้าง,วันที่ซื้อล่าสุด\n';
@@ -872,7 +940,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                             {p.name}
                           </td>
                           <td className="py-3.5 px-3.5 text-center">
-                            <Badge variant="outline" className="text-xs">{p.category}</Badge>
+                            <Badge variant="outline" className="text-xs">{formatCategory(p.category)}</Badge>
                           </td>
                           <td className="py-3.5 px-3.5 text-right font-mono font-black text-indigo-700 text-[15px]">
                             {p.quantitySold} <span className="text-xs font-bold text-slate-500 font-sans">{p.unitName}</span>

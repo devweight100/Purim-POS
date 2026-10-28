@@ -1,4 +1,5 @@
 'use client';
+import { api } from './api';
 
 export type CustomerType = 'INDIVIDUAL' | 'COMPANY';
 
@@ -55,6 +56,9 @@ export interface LoyaltySystemConfig {
 const STORAGE_KEY_CUSTOMERS = 'custom_customers';
 const STORAGE_KEY_LOYALTY_CONFIG = 'custom_loyalty_config';
 
+let lastCustomerSyncAt = 0;
+let lastLoyaltySyncAt = 0;
+
 export const DEFAULT_LOYALTY_CONFIG: LoyaltySystemConfig = {
   defaultPointEarnRateBaht: 500,
   defaultPointEarnUnits: 10,
@@ -63,125 +67,59 @@ export const DEFAULT_LOYALTY_CONFIG: LoyaltySystemConfig = {
   isLoyaltyEnabled: true,
 };
 
-const INITIAL_CUSTOMERS: Customer[] = [
-  {
-    id: 'cust_1',
-    type: 'INDIVIDUAL',
-    code: 'CUST-0001',
-    name: 'คุณสมชาย ใจดี',
-    phone: '081-234-5678',
-    email: 'somchai@gmail.com',
-    address: '123/45 ถ.สุขุมวิท ต.ในเมือง อ.เมือง จ.เชียงใหม่ 50000',
-    creditLimit: 20000,
-    creditTerms: 30,
-    currentDebt: 4500,
-    isCreditBlocked: false,
-    priceLevel: 2, // สมาชิกระดับ 2
-    points: 350,
-    totalPointsEarned: 500,
-    totalPointsRedeemed: 150,
-    pointEarnRateBaht: 500,
-    pointEarnUnits: 10,
-    pointRedeemRatePoints: 100,
-    pointRedeemDiscountBaht: 1,
-    createdAt: '2026-01-15T09:00:00.000Z',
-    updatedAt: '2026-08-20T14:30:00.000Z',
-  },
-  {
-    id: 'cust_2',
-    type: 'COMPANY',
-    code: 'CUST-0002',
-    name: 'บริษัท ปุริมพัฒนา คอนสตรัคชั่น จำกัด',
-    phone: '02-789-4561',
-    email: 'finance@purimcon.co.th',
-    address: '99/1 อาคารปุริมทาวเวอร์ ชั้น 12 ถ.รัชดาภิเษก แขวงห้วยขวาง เขตห้วยขวาง กรุงเทพฯ 10310',
-    creditLimit: 100000,
-    creditTerms: 45,
-    currentDebt: 32800,
-    isCreditBlocked: false,
-    priceLevel: 3, // ระดับราคาส่ง/ช่าง
-    points: 1240,
-    totalPointsEarned: 2000,
-    totalPointsRedeemed: 760,
-    pointEarnRateBaht: 500,
-    pointEarnUnits: 10,
-    pointRedeemRatePoints: 100,
-    pointRedeemDiscountBaht: 1,
-    companyName: 'บริษัท ปุริมพัฒนา คอนสตรัคชั่น จำกัด',
-    taxId: '0105560123456',
-    branchType: 'HEAD_OFFICE',
-    branchNumber: '00000',
-    taxAddress: '99/1 อาคารปุริมทาวเวอร์ ชั้น 12 ถ.รัชดาภิเษก แขวงห้วยขวาง เขตห้วยขวาง กรุงเทพฯ 10310',
-    contactPerson: 'คุณกิตติศักดิ์ (ฝ่ายจัดซื้อ)',
-    contactPhone: '089-111-2233',
-    createdAt: '2026-02-10T10:00:00.000Z',
-    updatedAt: '2026-08-25T11:00:00.000Z',
-  },
-  {
-    id: 'cust_3',
-    type: 'INDIVIDUAL',
-    code: 'CUST-0003',
-    name: 'คุณสมหญิง รักสวย',
-    phone: '089-876-5432',
-    email: 'somying.beauty@yahoo.com',
-    address: '88 หมู่ 2 ต.ช้างเผือก อ.เมือง จ.เชียงใหม่ 50300',
-    creditLimit: 0, // ไม่มีเครดิต
-    creditTerms: 0,
-    currentDebt: 0,
-    isCreditBlocked: false,
-    priceLevel: 1, // ราคาปกติทั่วไป
-    points: 120,
-    totalPointsEarned: 120,
-    totalPointsRedeemed: 0,
-    pointEarnRateBaht: 500,
-    pointEarnUnits: 10,
-    pointRedeemRatePoints: 100,
-    pointRedeemDiscountBaht: 1,
-    createdAt: '2026-03-01T15:00:00.000Z',
-    updatedAt: '2026-08-22T08:20:00.000Z',
-  },
-  {
-    id: 'cust_4',
-    type: 'COMPANY',
-    code: 'CUST-0004',
-    name: 'ห้างหุ้นส่วนจำกัด สยามการช่าง เอ็นจิเนียริ่ง',
-    phone: '053-123-456',
-    email: 'siam.engineer@gmail.com',
-    address: '45/8 ถ.เชียงใหม่-ลำปาง ต.หนองป่าครั่ง อ.เมือง จ.เชียงใหม่ 50000',
-    creditLimit: 50000,
-    creditTerms: 30,
-    currentDebt: 0,
-    isCreditBlocked: false,
-    priceLevel: 4, // ระดับ VIP
-    points: 890,
-    totalPointsEarned: 1500,
-    totalPointsRedeemed: 610,
-    pointEarnRateBaht: 500,
-    pointEarnUnits: 10,
-    pointRedeemRatePoints: 100,
-    pointRedeemDiscountBaht: 1,
-    companyName: 'ห้างหุ้นส่วนจำกัด สยามการช่าง เอ็นจิเนียริ่ง',
-    taxId: '0503554001234',
-    branchType: 'BRANCH',
-    branchNumber: '00001',
-    taxAddress: '45/8 ถ.เชียงใหม่-ลำปาง ต.หนองป่าครั่ง อ.เมือง จ.เชียงใหม่ 50000',
-    contactPerson: 'ช่างวิรัช',
-    contactPhone: '081-998-8776',
-    createdAt: '2026-03-12T11:20:00.000Z',
-    updatedAt: '2026-08-24T16:00:00.000Z',
-  },
-];
+function normalizeCustomerRow(c: any, idx = 0): Customer {
+  const profile = typeof c?.profile === 'object' && c?.profile !== null ? c.profile : {};
+  const merged = { ...profile, ...c };
+  return {
+    ...merged,
+    id: String(merged.id || `cust_${idx}`),
+    type: merged.type === 'COMPANY' ? 'COMPANY' : 'INDIVIDUAL',
+    code: merged.code || `CUST-${String(idx + 1).padStart(4, '0')}`,
+    name: String(merged.name || 'ลูกค้า'),
+    phone: String(merged.phone || ''),
+    creditLimit: Number(merged.creditLimit ?? 0),
+    creditTerms: Number(merged.creditTerms ?? 30),
+    currentDebt: Number(merged.currentDebt ?? 0),
+    priceLevel: ([1, 2, 3, 4, 5].includes(Number(merged.priceLevel))
+      ? Number(merged.priceLevel)
+      : 1) as 1 | 2 | 3 | 4 | 5,
+    points: Number(merged.points ?? 0),
+    totalPointsEarned: Number(merged.totalPointsEarned ?? merged.points ?? 0),
+    totalPointsRedeemed: Number(merged.totalPointsRedeemed ?? 0),
+    pointEarnRateBaht: Number(merged.pointEarnRateBaht ?? DEFAULT_LOYALTY_CONFIG.defaultPointEarnRateBaht),
+    pointEarnUnits: Number(merged.pointEarnUnits ?? DEFAULT_LOYALTY_CONFIG.defaultPointEarnUnits),
+    pointRedeemRatePoints: Number(merged.pointRedeemRatePoints ?? DEFAULT_LOYALTY_CONFIG.defaultPointRedeemRatePoints),
+    pointRedeemDiscountBaht: Number(merged.pointRedeemDiscountBaht ?? DEFAULT_LOYALTY_CONFIG.defaultPointRedeemDiscountBaht),
+    createdAt: merged.createdAt || new Date().toISOString(),
+    updatedAt: merged.updatedAt || new Date().toISOString(),
+  };
+}
+
+function readLocalCustomers(): Customer[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY_CUSTOMERS) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
 export function loadLoyaltyConfig(): LoyaltySystemConfig {
   if (typeof window === 'undefined') return DEFAULT_LOYALTY_CONFIG;
+  if (Date.now() - lastLoyaltySyncAt > 15000) {
+    lastLoyaltySyncAt = Date.now();
+    void fetchLoyaltyConfig().catch(() => {});
+  }
   try {
     const raw = localStorage.getItem(STORAGE_KEY_LOYALTY_CONFIG);
-    if (raw) return JSON.parse(raw);
+    if (raw) return { ...DEFAULT_LOYALTY_CONFIG, ...JSON.parse(raw) };
   } catch {}
   return DEFAULT_LOYALTY_CONFIG;
 }
 
-export function saveLoyaltyConfig(config: LoyaltySystemConfig): void {
+export async function saveLoyaltyConfig(config: LoyaltySystemConfig): Promise<void> {
+  await api.settings.update({ loyaltyConfig: config });
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(STORAGE_KEY_LOYALTY_CONFIG, JSON.stringify(config));
@@ -189,7 +127,41 @@ export function saveLoyaltyConfig(config: LoyaltySystemConfig): void {
 }
 
 export function loadCustomers(): Customer[] {
-  return [];
+  const cached = readLocalCustomers();
+  if (typeof window !== 'undefined' && Date.now() - lastCustomerSyncAt > 10000) {
+    lastCustomerSyncAt = Date.now();
+    void fetchCustomers().catch(() => {});
+  }
+  return cached;
+}
+
+export async function fetchCustomers(): Promise<Customer[]> {
+  try {
+    const rows = await api.customers.getAll();
+    if (Array.isArray(rows)) {
+      lastCustomerSyncAt = Date.now();
+      const normalized = rows.map((c: any, idx: number) => normalizeCustomerRow(c, idx));
+      saveCustomers(normalized);
+      return normalized;
+    }
+  } catch (err) {
+    console.warn('[CustomerService] Failed to fetch customers from backend, using offline cache:', err);
+  }
+  return readLocalCustomers();
+}
+
+export async function fetchLoyaltyConfig(): Promise<LoyaltySystemConfig> {
+  try {
+    const settings = await api.settings.get();
+    lastLoyaltySyncAt = Date.now();
+    const config = { ...DEFAULT_LOYALTY_CONFIG, ...(settings?.loyaltyConfig || {}) };
+    try {
+      localStorage.setItem(STORAGE_KEY_LOYALTY_CONFIG, JSON.stringify(config));
+    } catch {}
+    return config;
+  } catch {
+    return loadLoyaltyConfig();
+  }
 }
 
 export function saveCustomers(customers: Customer[]): void {
@@ -200,13 +172,13 @@ export function saveCustomers(customers: Customer[]): void {
 }
 
 export function getCustomerById(id: string): Customer | null {
-  const list = loadCustomers();
+  const list = readLocalCustomers();
   return list.find((c) => c.id === id || c.code === id) || null;
 }
 
 // Automatically generate sequential customer code CUST-0001, CUST-0002...
 export function generateNextCustomerCode(): string {
-  const list = loadCustomers();
+  const list = readLocalCustomers();
   let maxNum = 0;
   list.forEach((c) => {
     if (c.code) {
@@ -222,104 +194,21 @@ export function generateNextCustomerCode(): string {
   return `CUST-${String(maxNum + 1).padStart(4, '0')}`;
 }
 
-export function upsertCustomer(customerData: Partial<Customer> & { name: string; phone: string }): { success: boolean; customer: Customer } {
-  const list = loadCustomers();
-  const now = new Date().toISOString();
-  const config = loadLoyaltyConfig();
-
-  let target: Customer;
-
-  if (customerData.id) {
-    // Edit existing (keep existing code)
-    const idx = list.findIndex((c) => c.id === customerData.id);
-    if (idx >= 0) {
-      target = {
-        ...list[idx],
-        ...customerData,
-        code: list[idx].code || generateNextCustomerCode(),
-        updatedAt: now,
-      };
-      list[idx] = target;
-    } else {
-      target = {
-        id: customerData.id,
-        type: customerData.type || 'INDIVIDUAL',
-        code: generateNextCustomerCode(),
-        name: customerData.name.trim(),
-        phone: customerData.phone.trim(),
-        email: customerData.email?.trim() || '',
-        address: customerData.address?.trim() || '',
-        creditLimit: Number(customerData.creditLimit || 0),
-        creditTerms: Number(customerData.creditTerms || 0),
-        currentDebt: Number(customerData.currentDebt || 0),
-        isCreditBlocked: Boolean(customerData.isCreditBlocked),
-        creditNote: customerData.creditNote || '',
-        priceLevel: (customerData.priceLevel || 1) as any,
-        points: Number(customerData.points || 0),
-        totalPointsEarned: Number(customerData.totalPointsEarned || customerData.points || 0),
-        totalPointsRedeemed: Number(customerData.totalPointsRedeemed || 0),
-        pointEarnRateBaht: customerData.pointEarnRateBaht || config.defaultPointEarnRateBaht,
-        pointEarnUnits: customerData.pointEarnUnits || config.defaultPointEarnUnits,
-        pointRedeemRatePoints: customerData.pointRedeemRatePoints || config.defaultPointRedeemRatePoints,
-        pointRedeemDiscountBaht: customerData.pointRedeemDiscountBaht || config.defaultPointRedeemDiscountBaht,
-        companyName: customerData.companyName?.trim() || '',
-        taxId: customerData.taxId?.trim() || '',
-        branchType: customerData.branchType || 'HEAD_OFFICE',
-        branchNumber: customerData.branchNumber?.trim() || '00000',
-        taxAddress: customerData.taxAddress?.trim() || '',
-        contactPerson: customerData.contactPerson?.trim() || '',
-        contactPhone: customerData.contactPhone?.trim() || '',
-        note: customerData.note || '',
-        createdAt: now,
-        updatedAt: now,
-      };
-      list.unshift(target);
-    }
-  } else {
-    // Create new (auto assign sequential code)
-    target = {
-      id: `cust_${Date.now()}`,
-      type: customerData.type || 'INDIVIDUAL',
-      code: generateNextCustomerCode(),
-      name: customerData.name.trim(),
-      phone: customerData.phone.trim(),
-      email: customerData.email?.trim() || '',
-      address: customerData.address?.trim() || '',
-      creditLimit: Number(customerData.creditLimit || 0),
-      creditTerms: Number(customerData.creditTerms || 0),
-      currentDebt: Number(customerData.currentDebt || 0),
-      isCreditBlocked: Boolean(customerData.isCreditBlocked),
-      creditNote: customerData.creditNote || '',
-      priceLevel: (customerData.priceLevel || 1) as any,
-      points: Number(customerData.points || 0),
-      totalPointsEarned: Number(customerData.totalPointsEarned || customerData.points || 0),
-      totalPointsRedeemed: Number(customerData.totalPointsRedeemed || 0),
-      pointEarnRateBaht: customerData.pointEarnRateBaht || config.defaultPointEarnRateBaht,
-      pointEarnUnits: customerData.pointEarnUnits || config.defaultPointEarnUnits,
-      pointRedeemRatePoints: customerData.pointRedeemRatePoints || config.defaultPointRedeemRatePoints,
-      pointRedeemDiscountBaht: customerData.pointRedeemDiscountBaht || config.defaultPointRedeemDiscountBaht,
-      companyName: customerData.companyName?.trim() || '',
-      taxId: customerData.taxId?.trim() || '',
-      branchType: customerData.branchType || 'HEAD_OFFICE',
-      branchNumber: customerData.branchNumber?.trim() || '00000',
-      taxAddress: customerData.taxAddress?.trim() || '',
-      contactPerson: customerData.contactPerson?.trim() || '',
-      contactPhone: customerData.contactPhone?.trim() || '',
-      note: customerData.note || '',
-      createdAt: now,
-      updatedAt: now,
-    };
-    list.unshift(target);
-  }
-
-  saveCustomers(list);
-  return { success: true, customer: target };
+export async function upsertCustomer(
+  customerData: Partial<Customer> & { name: string; phone: string },
+): Promise<{ success: boolean; customer: Customer }> {
+  const saved = customerData.id
+    ? await api.customers.update(customerData.id, customerData)
+    : await api.customers.create(customerData);
+  const customer = normalizeCustomerRow({ ...customerData, ...saved });
+  const rows = readLocalCustomers().filter((c) => c.id !== customer.id);
+  saveCustomers([...rows, customer]);
+  return { success: true, customer };
 }
 
-export function deleteCustomer(id: string): boolean {
-  const list = loadCustomers();
-  const next = list.filter((c) => c.id !== id);
-  saveCustomers(next);
+export async function deleteCustomer(id: string): Promise<boolean> {
+  await api.customers.delete(id);
+  saveCustomers(readLocalCustomers().filter((c) => c.id !== id));
   return true;
 }
 
@@ -347,7 +236,7 @@ export function recordCustomerSale(
   saleTotalBaht: number,
   isCredit: boolean,
   orderNumber: string,
-  pointsUsed: number = 0
+  pointsUsed: number = 0,
 ): {
   earnedPoints: number;
   pointsUsed: number;
@@ -357,13 +246,27 @@ export function recordCustomerSale(
   customerName: string;
 } {
   if (!customerId) {
-    return { earnedPoints: 0, pointsUsed: 0, newTotalPoints: 0, previousPoints: 0, debtAdded: 0, customerName: 'ลูกค้าทั่วไป' };
+    return {
+      earnedPoints: 0,
+      pointsUsed: 0,
+      newTotalPoints: 0,
+      previousPoints: 0,
+      debtAdded: 0,
+      customerName: 'ลูกค้าทั่วไป',
+    };
   }
 
-  const list = loadCustomers();
+  const list = readLocalCustomers();
   const target = list.find((c) => c.id === customerId || c.code === customerId);
   if (!target) {
-    return { earnedPoints: 0, pointsUsed: 0, newTotalPoints: 0, previousPoints: 0, debtAdded: 0, customerName: 'ลูกค้าทั่วไป' };
+    return {
+      earnedPoints: 0,
+      pointsUsed: 0,
+      newTotalPoints: 0,
+      previousPoints: 0,
+      debtAdded: 0,
+      customerName: 'ลูกค้าทั่วไป',
+    };
   }
 
   const previousPoints = target.points || 0;
@@ -403,10 +306,10 @@ export function rollbackCustomerSale(
   customerId: string | null | undefined,
   saleTotalBaht: number,
   isCredit: boolean,
-  pointsUsed: number = 0
+  pointsUsed: number = 0,
 ): boolean {
   if (!customerId) return false;
-  const list = loadCustomers();
+  const list = readLocalCustomers();
   const target = list.find((c) => c.id === customerId || c.code === customerId);
   if (!target) return false;
 

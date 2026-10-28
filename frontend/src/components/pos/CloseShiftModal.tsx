@@ -9,12 +9,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { LogOut, Calculator, Coins } from 'lucide-react';
+import { LogOut, Calculator, Coins, Unlock } from 'lucide-react';
 import { CountCashModal } from './CountCashModal';
 import { ShiftSummaryPdfModal, ShiftSummaryData, BankAccountBreakdownItem } from './ShiftSummaryPdfModal';
 import { loadBankAccounts } from '@/lib/bank-account-storage';
 import { getShiftDebtCollections } from '@/lib/debt-service';
 import { saveShiftSummary } from '@/lib/shift-service';
+import { kickCashDrawer } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
 
 interface CloseShiftModalProps {
@@ -32,11 +33,17 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
   const [summaryData, setSummaryData] = useState<ShiftSummaryData | null>(null);
   const [showSummaryPdf, setShowSummaryPdf] = useState(false);
 
-  // Reset when dialog opens
+  // Reset and fetch live shift data when dialog opens
   useEffect(() => {
     if (open) {
       setActualCash(null);
       setShowSummaryPdf(false);
+      setShowCountCashModal(false);
+      useShiftStore.getState().fetchCurrentShift();
+    } else {
+      setActualCash(null);
+      setShowSummaryPdf(false);
+      setShowCountCashModal(false);
     }
   }, [open]);
 
@@ -51,7 +58,7 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
   const expectedCash = getExpectedCash();
   const diff = actualCash !== null ? actualCash - expectedCash : 0;
 
-  const handleCloseShift = () => {
+  const handleCloseShift = async () => {
     if (!currentShift) return;
 
     const finalActualCash = actualCash !== null ? actualCash : expectedCash;
@@ -117,7 +124,7 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
 
       if (Array.isArray(order.payments) && order.payments.length > 0) {
         order.payments.forEach(p => {
-          if (p.method === 'CREDIT_NOTE' || (p.method as any) === 'CREDIT') {
+          if ((p.method as string) === 'CREDIT_DEBT' || p.method === 'CREDIT_NOTE' || (p.method as any) === 'CREDIT') {
             creditSalesCalculated += (p.amount || 0);
           }
         });
@@ -165,7 +172,8 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
       bankAccountBreakdown: bankAccountBreakdown,
     };
 
-    closeShift(finalActualCash);
+    try { await closeShift(finalActualCash); }
+    catch (error) { toast.error('ปิดกะไม่ได้: ' + (error instanceof Error ? error.message : String(error))); return; }
     onOpenChange(false);
 
     // Save rich shift summary to history
@@ -260,6 +268,24 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
                   title="คลิกเพื่อนับแบงค์และเหรียญเหมือนตอนเปิดกะ"
                 >
                   <Coins className="w-6 h-6 text-sky-600" />
+                </Button>
+
+                {/* Open Drawer Button */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={async () => {
+                    const res = await kickCashDrawer({ reason: 'เปิดลิ้นชักเพื่อนับเงินปิดกะ' });
+                    if (res.success) {
+                      toast.success(`🔓 สั่งเปิดลิ้นชักเรียบร้อย (${res.printer || 'เครื่องพิมพ์สลิป'})`);
+                    } else {
+                      toast.error(`⚠️ ไม่สามารถเปิดลิ้นชักได้: ${res.error || 'ตรวจสอบเครื่องพิมพ์'}`);
+                    }
+                  }}
+                  className="h-13 w-13 shrink-0 border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:border-amber-400 rounded-xl shadow-xs transition-all cursor-pointer"
+                  title="คลิกเพื่อสั่งเด้งเปิดลิ้นชักเก็บเงิน"
+                >
+                  <Unlock className="w-6 h-6 text-amber-600" />
                 </Button>
               </div>
 

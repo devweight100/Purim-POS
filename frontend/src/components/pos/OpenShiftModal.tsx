@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { formatCurrency } from '@/lib/utils';
@@ -11,6 +11,7 @@ import {
   DialogHeader,
 } from '@/components/ui/dialog';
 import { LogIn, Coins, SkipForward, RotateCcw, Calculator } from 'lucide-react';
+import { kickCashDrawer } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
 
 interface OpenShiftModalProps {
@@ -96,25 +97,34 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
     setIsDirectMode(false);
   };
 
-  const handleConfirmOpen = () => {
+  useEffect(() => {
+    handleReset();
+  }, [open]);
+
+  const handleConfirmOpen = async () => {
     if (activeTotal < 0) {
       toast.error('กรุณาระบุจำนวนเงินตั้งต้นให้ถูกต้อง');
       return;
     }
 
-    openShift(user?.name || 'พนักงานขาย', activeTotal);
+    try { await openShift(user?.name || 'พนักงานขาย', activeTotal); }
+    catch (error) { toast.error('เปิดกะไม่ได้: ' + (error instanceof Error ? error.message : String(error))); return; }
+    if (activeTotal > 0) {
+      kickCashDrawer({ reason: 'เปิดกะ - ระบุเงินตั้งต้นลิ้นชัก' }).catch(() => {});
+    }
     toast.success(`✅ เปิดกะสำเร็จ! เงินตั้งต้นลิ้นชัก ${formatCurrency(activeTotal)}`);
     onOpenChange(false);
     handleReset();
   };
 
-  const handleSkipOpenShift = () => {
+  const handleSkipOpenShift = async () => {
     try {
       const todayStr = new Date().toISOString().split('T')[0];
       localStorage.setItem('pos_shift_skipped_date', todayStr);
     } catch (e) {}
 
-    openShift(user?.name || 'พนักงานขาย', 0);
+    try { await openShift(user?.name || 'พนักงานขาย', 0); }
+    catch (error) { toast.error('เปิดกะไม่ได้: ' + (error instanceof Error ? error.message : String(error))); return; }
     toast.info('⏩ ข้ามการระบุเงินตั้งต้น (เงินในลิ้นชักเริ่มต้น ฿0.00)');
     onOpenChange(false);
     handleReset();

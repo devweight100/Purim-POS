@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 import { 
@@ -42,7 +42,7 @@ export function DeductReturnNoteModal({
   const [note, setNote] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const supplierId = po?.supplierId || po?.supplier?.id || 'supp_1';
+  const supplierId = po?.supplierId || po?.supplier?.id || '';
   const supplierName = po?.supplierName || po?.supplier?.name || 'บริษัทคู่ค้า';
 
   // Calculate remaining payable on PO (considering any already applied deductions)

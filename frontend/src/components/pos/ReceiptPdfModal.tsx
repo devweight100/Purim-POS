@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Printer, Download, ExternalLink, FileText, CheckCircle2, Store } from 'lucide-react';
@@ -18,12 +18,25 @@ interface ReceiptPdfModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   data: ReceiptData | null;
+  autoPrint?: boolean;
 }
 
-export function ReceiptPdfModal({ open, onOpenChange, data }: ReceiptPdfModalProps) {
+export function ReceiptPdfModal({ open, onOpenChange, data, autoPrint = false }: ReceiptPdfModalProps) {
   const receiptRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const storeSettings = loadStoreSettings();
+
+  // Auto-print immediately when opened (e.g. after payment in POS)
+  useEffect(() => {
+    if (open && data && autoPrint) {
+      const timer = setTimeout(() => {
+        if (receiptRef.current) {
+          printDocumentIframe(receiptRef.current, `พิมพ์ใบเสร็จ - ${data.orderNumber}`, '80mm');
+        }
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [open, data?.orderNumber, autoPrint]);
 
   if (!data) return null;
 
@@ -102,9 +115,9 @@ export function ReceiptPdfModal({ open, onOpenChange, data }: ReceiptPdfModalPro
 
         {/* Action Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm shrink-0 my-2">
-          <div className="text-xs text-slate-600 font-medium flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-            <span>สร้างไฟล์ PDF 80mm Thermal Receipt อัตโนมัติ</span>
+          <div className="text-xs text-slate-700 font-bold flex items-center gap-1.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span>{autoPrint ? '🖨️ สั่งพิมพ์สลิป EPSON (ดำสนิท) อัตโนมัติแล้ว' : 'สลิปความร้อน 80mm สำหรับ EPSON (สีดำสนิท)'}</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -116,7 +129,7 @@ export function ReceiptPdfModal({ open, onOpenChange, data }: ReceiptPdfModalPro
               className="border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-bold gap-1.5 rounded-xl h-9"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              เปิด PDF ในแท็บใหม่
+              เปิดแท็บใหม่
             </Button>
             <Button
               variant="outline"
@@ -131,10 +144,10 @@ export function ReceiptPdfModal({ open, onOpenChange, data }: ReceiptPdfModalPro
             <Button
               size="sm"
               onClick={handlePrint}
-              className="bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold gap-1.5 rounded-xl h-9 shadow-md"
+              className="bg-black hover:bg-slate-800 text-white text-xs font-bold gap-1.5 rounded-xl h-9 shadow-md"
             >
               <Printer className="w-3.5 h-3.5" />
-              พิมพ์ใบเสร็จ (Print)
+              พิมพ์ใบเสร็จอีกครั้ง (Print)
             </Button>
           </div>
         </div>

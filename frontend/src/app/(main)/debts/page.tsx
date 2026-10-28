@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { DebtRecord, DebtPaymentInstallment, DebtStatus } from '@/lib/types';
-import { loadAllDebtRecords } from '@/lib/debt-service';
+import { fetchDebtRecords } from '@/lib/debt-service';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -86,14 +86,16 @@ function DebtsContent() {
   const [receiptDebtRecord, setReceiptDebtRecord] = useState<DebtRecord | null>(null);
   const [receiptInstallment, setReceiptInstallment] = useState<DebtPaymentInstallment | null>(null);
 
-  const reloadData = () => {
+  const reloadData = async () => {
     setLoading(true);
     try {
-      const records = loadAllDebtRecords();
+      const records = await fetchDebtRecords();
       setDebts(records);
-    } catch (err) {
-      console.error('Failed to load debt records:', err);
-      toast.error('ไม่สามารถโหลดข้อมูลบิลค้างชำระได้');
+    } catch (err: any) {
+      console.warn('Failed to load debt records:', err);
+      if (err?.status !== 401) {
+        toast.error('ไม่สามารถโหลดข้อมูลบิลค้างชำระได้');
+      }
     } finally {
       setLoading(false);
     }

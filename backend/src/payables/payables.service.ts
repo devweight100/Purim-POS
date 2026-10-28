@@ -1,27 +1,70 @@
+import { businessTransaction } from '../prisma/business-transaction';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentStatus, VoucherStatus, PaymentMethod, ReturnNoteStatus } from '@prisma/client';
 
+import { IsString, IsNotEmpty, IsArray, IsOptional, IsNumber, IsEnum, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
 export class SettleBillItemDto {
-  poId: string;
-  amountToPay: number;
+  @IsString()
+  @IsNotEmpty()
+  poId!: string;
+
+  @IsNumber()
+  amountToPay!: number;
 }
 
 export class MatchedDebitNoteDto {
-  returnNoteId: string;
-  amountToDeduct: number;
+  @IsString()
+  @IsNotEmpty()
+  returnNoteId!: string;
+
+  @IsNumber()
+  amountToDeduct!: number;
 }
 
 export class SettleMultipleBillsDto {
-  supplierId: string;
-  billsToSettle: SettleBillItemDto[];
+  @IsString()
+  @IsNotEmpty()
+  supplierId!: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SettleBillItemDto)
+  billsToSettle!: SettleBillItemDto[];
+
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => MatchedDebitNoteDto)
   matchedDebitNotes?: MatchedDebitNoteDto[];
+
+  @IsNumber()
+  @IsOptional()
   discountAmount?: number;
-  paymentMethod: PaymentMethod;
+
+  @IsEnum(PaymentMethod)
+  paymentMethod!: PaymentMethod;
+
+  @IsString()
+  @IsOptional()
   bankAccountLabel?: string;
+
+  @IsString()
+  @IsOptional()
   referenceNo?: string;
+
+  @IsString()
+  @IsOptional()
   note?: string;
-  cashierName: string;
+
+  @IsString()
+  @IsOptional()
+  cashierName?: string;
+
+  @IsString()
+  @IsOptional()
   paymentDate?: string;
 }
 
@@ -125,7 +168,7 @@ export class PayablesService {
   }
 
   async settleMultipleBills(dto: SettleMultipleBillsDto) {
-    return this.prisma.$transaction(async (tx) => {
+    return businessTransaction(this.prisma, async (tx) => {
       const {
         supplierId,
         billsToSettle,
@@ -143,6 +186,19 @@ export class PayablesService {
         throw new BadRequestException('กรุณาเลือกบิลอย่างน้อย 1 ใบเพื่อชำระ');
       }
 
+      const validMoney = (value: number, positive = true) => Number.isFinite(value) && (positive ? value > 0 : value >= 0) && Math.abs(value * 100 - Math.round(value * 100)) < 0.00001;
+      if (!Array.isArray(billsToSettle) || !Array.isArray(matchedDebitNotes) || billsToSettle.some(item => !validMoney(item.amountToPay)) || matchedDebitNotes.some(item => !validMoney(item.amountToDeduct)) || !validMoney(discountAmount, false)) throw new BadRequestException('จำนวนเงินต้องถูกต้องและมีทศนิยมไม่เกินสองตำแหน่ง');
+      if (new Set(billsToSettle.map(item => item.poId)).size !== billsToSettle.length || new Set(matchedDebitNotes.map(item => item.returnNoteId)).size !== matchedDebitNotes.length) throw new BadRequestException('มีบิลหรือใบลดหนี้ซ้ำในรายการ');
+      for (const item of billsToSettle) {
+        const po = await tx.purchaseOrder.findUnique({where:{id:item.poId}});
+        if (!po || po.supplierId !== supplierId || po.status === 'CANCELLED' || po.status === 'DRAFT') throw new BadRequestException('บิลไม่ถูกต้อง ไม่ใช่ผู้จำหน่ายรายนี้ หรือยังไม่พร้อมชำระ');
+        if (item.amountToPay > Number(po.remainingPayable)) throw new BadRequestException('ยอดชำระเกินยอดค้างของบิล กรุณาโหลดข้อมูลล่าสุด');
+      }
+      for (const item of matchedDebitNotes) {
+        const credit = await tx.supplierReturnNote.findUnique({where:{id:item.returnNoteId}});
+        if (!credit || credit.supplierId !== supplierId || credit.status === ReturnNoteStatus.CANCELLED || item.amountToDeduct > Number(credit.remainingCreditAmount)) throw new BadRequestException('ใบลดหนี้ไม่ถูกต้องหรือยอดหักเกินวงเงินคงเหลือ');
+      }
+
       // Calculate totals
       let totalBillsAmount = 0;
       for (const item of billsToSettle) {
@@ -155,14 +211,18 @@ export class PayablesService {
       }
 
       const disc = Math.max(0, Number(discountAmount) || 0);
+      if (Math.round((totalDebitDeducted + disc - totalBillsAmount) * 100) > 0) throw new BadRequestException('ยอดใบลดหนี้และส่วนลดรวมเกินยอดบิล');
       const netPaidAmount = Math.max(0, Math.round((totalBillsAmount - totalDebitDeducted - disc) * 100) / 100);
 
-      // Generate voucher number (PV-YYYYMMDD-0001)
-      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      // Generate voucher number (Format: PV-YYMMxxxxx e.g. PV-260900001)
+      const now = new Date();
+      const yy = now.getFullYear().toString().slice(-2);
+      const mm = (now.getMonth() + 1).toString().padStart(2, '0');
+      const prefix = `PV-${yy}${mm}`;
       const countToday = await tx.paymentVoucher.count({
-        where: { voucherNumber: { startsWith: `PV-${dateStr}` } },
+        where: { voucherNumber: { startsWith: prefix } },
       });
-      const voucherNumber = `PV-${dateStr}-${String(countToday + 1).padStart(4, '0')}`;
+      const voucherNumber = `${prefix}${String(countToday + 1).padStart(5, '0')}`;
 
       // 1. Create PaymentVoucher
       const voucher = await tx.paymentVoucher.create({
@@ -178,7 +238,7 @@ export class PayablesService {
           bankAccountLabel: paymentMethod === PaymentMethod.TRANSFER ? bankAccountLabel : null,
           referenceNo: referenceNo?.trim() || null,
           note: note?.trim() || null,
-          cashierName,
+          cashierName: cashierName || 'เจ้าหน้าที่การเงิน',
           status: VoucherStatus.ACTIVE,
         },
       });
@@ -328,7 +388,7 @@ export class PayablesService {
   }
 
   async cancelVoucher(voucherId: string, cancelReason: string) {
-    return this.prisma.$transaction(async (tx) => {
+    return businessTransaction(this.prisma, async (tx) => {
       const voucher = await tx.paymentVoucher.findUnique({
         where: { id: voucherId },
         include: { items: true, debitNotes: true },

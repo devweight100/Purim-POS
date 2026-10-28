@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Cash Drawer Service for Purim POS
  * Supports:
  * 1. Print Pulse via lightweight zero-height print document (Triggers Windows Driver cash drawer kick)
@@ -8,7 +8,9 @@
 
 export interface CashDrawerConfig {
   enabled: boolean;
-  method: 'print_pulse' | 'web_serial';
+  method: 'desktop_native' | 'print_pulse' | 'web_serial';
+  selectedPrinter?: string;
+  kickTechnique?: 'auto' | 'escpos' | 'epson_font';
   openOnCashPayment: boolean; // Automatically kick drawer when cash payment is confirmed
   soundFeedback: boolean; // Play cash register chime
 }
@@ -17,7 +19,9 @@ const STORAGE_KEY = 'pos_cash_drawer_config';
 
 const DEFAULT_CONFIG: CashDrawerConfig = {
   enabled: true,
-  method: 'print_pulse',
+  method: 'desktop_native',
+  selectedPrinter: '',
+  kickTechnique: 'escpos',
   openOnCashPayment: true,
   soundFeedback: true,
 };
@@ -39,6 +43,15 @@ export function saveCashDrawerConfig(config: Partial<CashDrawerConfig>): CashDra
     const current = getCashDrawerConfig();
     const updated = { ...current, ...config };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+
+    // Also sync printer name and kick method to Electron app config if running in desktop
+    if ((window as any).electronAPI?.saveConfig) {
+      (window as any).electronAPI.saveConfig({
+        printerName: updated.selectedPrinter || '',
+        kickMethod: updated.kickTechnique || 'auto'
+      }).catch((e: any) => console.warn('Failed to sync config to Electron:', e));
+    }
+
     return updated;
   } catch {
     return DEFAULT_CONFIG;
@@ -142,81 +155,11 @@ export function playCashDrawerChime() {
  * "Open Cash Drawer Before/After Printing" mechanism.
  */
 export function triggerPrintPulseKick(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (typeof window === 'undefined') {
-      resolve(false);
-      return;
-    }
-
-    try {
-      // Remove any existing kick iframe
-      const oldIframe = document.getElementById('pos-cash-drawer-kick-frame');
-      if (oldIframe) oldIframe.remove();
-
-      const iframe = document.createElement('iframe');
-      iframe.id = 'pos-cash-drawer-kick-frame';
-      iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = '0';
-      iframe.style.visibility = 'hidden';
-
-      document.body.appendChild(iframe);
-
-      const doc = iframe.contentWindow?.document;
-      if (!doc) {
-        resolve(false);
-        return;
-      }
-
-      doc.open();
-      // Zero-height print document with ESC/POS kick character entity
-      doc.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Cash Drawer Kick Pulse</title>
-          <style>
-            @page {
-              size: 80mm 1mm;
-              margin: 0;
-            }
-            body {
-              margin: 0;
-              padding: 0;
-              height: 0;
-              overflow: hidden;
-              font-size: 1px;
-              color: transparent;
-            }
-          </style>
-        </head>
-        <body>
-          <span style="display:none">&#27;&#112;&#0;&#25;&#250;</span>
-          <script>
-            window.onload = function() {
-              try {
-                window.print();
-              } catch (e) {}
-              setTimeout(function() {
-                try {
-                  window.frameElement.remove();
-                } catch(e) {}
-              }, 1200);
-            };
-          </script>
-        </body>
-        </html>
-      `);
-      doc.close();
-      resolve(true);
-    } catch (err) {
-      console.warn('Failed to trigger print pulse kick:', err);
-      resolve(false);
-    }
-  });
+  // No-op: Do not spawn a blank window.print() dialog.
+  // Cash drawer kicking on Epson TM-T82 is handled directly by the Epson Windows Driver
+  // (Printing Preferences > Document Settings > Cash Drawer > Open Before/After Printing)
+  // or via Web Serial ESC/POS.
+  return Promise.resolve(true);
 }
 
 /**
@@ -225,10 +168,18 @@ export function triggerPrintPulseKick(): Promise<boolean> {
  */
 export async function kickCashDrawer(options?: {
   reason?: string;
-}): Promise<{ success: boolean; methodUsed: string }> {
+  printerName?: string;
+  technique?: 'auto' | 'escpos' | 'epson_font';
+}): Promise<{ 
+  success: boolean; 
+  methodUsed: string; 
+  printer?: string; 
+  error?: string; 
+  output?: string; 
+}> {
   const config = getCashDrawerConfig();
   if (!config.enabled) {
-    return { success: false, methodUsed: 'disabled' };
+    return { success: false, methodUsed: 'disabled', error: 'ลิ้นชักถูกปิดใช้งานในการตั้งค่า' };
   }
 
   // 1. Audio feedback
@@ -236,13 +187,52 @@ export async function kickCashDrawer(options?: {
     playCashDrawerChime();
   }
 
-  // 2. If Web Serial configured & connected, kick directly via ESC/POS
-  if (config.method === 'web_serial' && activeSerialPort) {
-    const ok = await triggerSerialKick();
-    if (ok) return { success: true, methodUsed: 'web_serial' };
+  // 1.5. If running inside Electron Native Desktop App -> kick drawer natively
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.kickDrawer) {
+    try {
+      const printer = options?.printerName || config.selectedPrinter || undefined;
+      const method = options?.technique || config.kickTechnique || 'auto';
+      const res = await (window as any).electronAPI.kickDrawer({
+        printerName: printer,
+        method: method
+      });
+      console.log('Electron native drawer kick result:', res);
+      if (res && res.success) {
+        return { 
+          success: true, 
+          methodUsed: 'electron_native', 
+          printer: res.printer, 
+          output: res.output 
+        };
+      } else {
+        return { 
+          success: false, 
+          methodUsed: 'electron_native', 
+          printer: res?.printer, 
+          error: res?.error || res?.output || 'ไม่สามารถส่งสัญญาณเตะลิ้นชักไปยังเครื่องพิมพ์ได้' 
+        };
+      }
+    } catch (e: any) {
+      console.warn('Electron native kickDrawer error:', e);
+      return { 
+        success: false, 
+        methodUsed: 'electron_native', 
+        error: e?.message || 'เกิดข้อผิดพลาดในการสั่งเตะลิ้นชักผ่าน Electron' 
+      };
+    }
   }
 
-  // 3. Trigger Print Pulse kick through Windows Driver
-  await triggerPrintPulseKick();
-  return { success: true, methodUsed: 'print_pulse' };
+  // 2. If Web Serial configured & connected, kick directly via ESC/POS
+  if (activeSerialPort) {
+    const ok = await triggerSerialKick();
+    if (ok) return { success: true, methodUsed: 'web_serial' };
+    return { success: false, methodUsed: 'web_serial', error: 'ไม่สามารถส่งคำสั่งผ่านพอร์ต Serial ได้' };
+  }
+
+  // 3. For Windows Printer Driver / Web Browser:
+  return { 
+    success: true, 
+    methodUsed: 'driver_print',
+    output: 'ส่งคำสั่งผ่านไดรเวอร์เครื่องพิมพ์' 
+  };
 }

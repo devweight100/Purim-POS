@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { SupplierReturnsService } from './supplier-returns.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
 
@@ -30,5 +30,20 @@ export class SupplierReturnsController {
   @Post()
   create(@Body() body: any) {
     return this.returnsService.createReturnNote(body);
+  }
+
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() body: any) {
+    return this.returnsService.updateReturnNote(id, body);
+  }
+
+  @Post(':id/deduct')
+  deductCredit(@Param('id') id: string, @Body() body: any) {
+    return this.returnsService.deductCredit(id, body);
+  }
+
+  @Post(':id/cancel')
+  cancel(@Param('id') id: string, @Body('reason') reason?: string) {
+    return this.returnsService.cancelReturnNote(id, reason);
   }
 }

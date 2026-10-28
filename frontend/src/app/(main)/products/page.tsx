@@ -3,22 +3,23 @@
 import { useEffect, useState, useMemo, useRef, useCallback, Fragment } from "react";
 import { api, apiFetch } from "@/lib/api";
 import Link from "next/link";
-import { loadCategories } from "@/lib/category-storage";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   Search, Plus, PackagePlus, Barcode, Tags, Truck, Package,
   Pencil, ChevronUp, ChevronDown, ChevronsUpDown, X,
   Layers, RefreshCw, Trash2, ChevronRight, Building2, Info,
-  ImagePlus, Star, Crown, Upload, FolderTree, FileSpreadsheet, AlertTriangle, Download
+  ImagePlus, Star, Crown, Upload, FolderTree, FileSpreadsheet, AlertTriangle, Download, Gift
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
 import { parseProductCSV, csvRowsToProducts } from "@/lib/csv-parser";
 import { useProductStore } from "@/lib/store/product-store";
+import * as XLSX from "xlsx";
 
 // ─── EAN-13 Generator ─────────────────────────────────────────────────
 function generateEAN13(): string {
@@ -128,11 +129,182 @@ function saveSavedProducts(prods: any[]) {
   try { localStorage.setItem("custom_products", JSON.stringify(prods)); } catch {}
 }
 
-function loadSavedProducts(): any[] | null {
-  try {
-    const raw = localStorage.getItem("custom_products");
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+function clearSavedProducts() {
+  try { localStorage.removeItem("custom_products"); } catch {}
+}
+
+function normalizeKey(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function getProductBarcodes(product: any): string[] {
+  const fromBarcodes = Array.isArray(product?.barcodes)
+    ? product.barcodes.map((b: any) => typeof b === 'string' ? b : b?.barcode)
+    : [];
+  const fromUnits = Array.isArray(product?.units)
+    ? product.units.map((u: any) => u?.barcode)
+    : [];
+  const directBarcodes = [
+    product?.barcode,
+    product?.customBarcodeId,
+    product?.barcodeForSelling,
+  ];
+  const seen = new Set<string>();
+  return [...fromBarcodes, ...fromUnits, ...directBarcodes]
+    .map((b) => String(b ?? '').trim())
+    .filter((barcode) => {
+      const key = normalizeKey(barcode);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function getProductPackagingUnits(product: any): PackagingUnit[] {
+  const units = Array.isArray(product?.packagingUnits) && product.packagingUnits.length > 0
+    ? product.packagingUnits
+    : product?.id ? loadPackaging(product.id) : [];
+
+  return units.map((unit: any) => ({
+    name: unit.name || unit.unitName || '',
+    qtyPerPrev: String(unit.qtyPerPrev ?? unit.factor ?? ''),
+    barcode: unit.barcode || '',
+    priceLevel1: unit.priceLevel1 != null ? String(unit.priceLevel1) : '',
+    priceLevel2: unit.priceLevel2 != null ? String(unit.priceLevel2) : '',
+    priceLevel3: unit.priceLevel3 != null ? String(unit.priceLevel3) : '',
+    priceLevel4: unit.priceLevel4 != null ? String(unit.priceLevel4) : '',
+    priceLevel5: unit.priceLevel5 != null ? String(unit.priceLevel5) : '',
+  }));
+}
+
+function getProductImages(product: any): ProductImage[] {
+  if (Array.isArray(product?.images) && product.images.length > 0) {
+    return product.images
+      .filter((image: any) => image?.dataUrl)
+      .map((image: any) => ({
+        id: image.id || generateId(),
+        dataUrl: image.dataUrl,
+        name: image.name || '',
+        isCover: Boolean(image.isCover),
+      }));
+  }
+  return product?.id ? loadImages(product.id) : [];
+}
+
+function getProductWholesaleSteps(product: any) {
+  const prices = Array.isArray(product?.wholesalePrices) && product.wholesalePrices.length > 0
+    ? product.wholesalePrices
+    : product?.id ? loadWholesale(product.id) : [];
+
+  const rows = prices.map((price: any) => ({
+    minQuantity: price.minQuantity != null ? String(price.minQuantity) : '',
+    unitPrice: price.unitPrice != null ? String(price.unitPrice) : '',
+  }));
+
+  return rows.length > 0 ? rows : Array.from({ length: 5 }, () => ({ minQuantity: "", unitPrice: "" }));
+}
+
+function findDuplicateProduct(candidate: any, existingProducts: any[]): any | null {
+  const candidateSku = normalizeKey(candidate.sku);
+  const candidateBarcodes = new Set(getProductBarcodes(candidate).map(normalizeKey).filter(Boolean));
+
+  return existingProducts.find((product) => {
+    if (candidateSku && normalizeKey(product.sku) === candidateSku) return true;
+    if (candidateSku) return false;
+    return getProductBarcodes(product).some((barcode) => candidateBarcodes.has(normalizeKey(barcode)));
+  }) || null;
+}
+
+function getConflictingImportBarcodeKeys(importedProducts: any[]): Set<string> {
+  const barcodeToSkus = new Map<string, Set<string>>();
+
+  importedProducts.forEach((product) => {
+    const sku = normalizeKey(product.sku || product.id);
+    getProductBarcodes(product).forEach((barcode) => {
+      const key = normalizeKey(barcode);
+      if (!key) return;
+      const skus = barcodeToSkus.get(key) || new Set<string>();
+      skus.add(sku);
+      barcodeToSkus.set(key, skus);
+    });
+  });
+
+  const conflicts = new Set<string>();
+  barcodeToSkus.forEach((skus, barcode) => {
+    if (skus.size > 1) conflicts.add(barcode);
+  });
+  return conflicts;
+}
+
+function stripConflictingBarcodes(product: any, conflictingBarcodeKeys: Set<string>) {
+  if (conflictingBarcodeKeys.size === 0) return product;
+
+  const safeBarcodes = getProductBarcodes(product).filter((barcode) => !conflictingBarcodeKeys.has(normalizeKey(barcode)));
+  const safeBarcodeSet = new Set(safeBarcodes.map(normalizeKey));
+
+  return {
+    ...product,
+    barcodes: safeBarcodes.map((barcode) => ({ barcode })),
+    units: Array.isArray(product.units)
+      ? product.units.map((unit: any) => ({
+          ...unit,
+          barcode: safeBarcodeSet.has(normalizeKey(unit?.barcode)) ? unit.barcode : '',
+        }))
+      : product.units,
+  };
+}
+
+function productToApiPayload(product: any, conflictingBarcodeKeys = new Set<string>()) {
+  const sellingPrice = Number(product.priceLevel1 ?? product.price ?? 0);
+  const barcodes = getProductBarcodes(product).filter((barcode) => !conflictingBarcodeKeys.has(normalizeKey(barcode)));
+  return {
+    name: product.name,
+    sku: product.sku,
+    categoryId: product.categoryId || undefined,
+    basePrice: sellingPrice,
+    costPrice: Number(product.cost ?? product.costPrice ?? product.basePrice ?? 0),
+    priceLevel1: product.priceLevel1 != null ? Number(product.priceLevel1) : undefined,
+    priceLevel2: product.priceLevel2 != null ? Number(product.priceLevel2) : undefined,
+    priceLevel3: product.priceLevel3 != null ? Number(product.priceLevel3) : undefined,
+    priceLevel4: product.priceLevel4 != null ? Number(product.priceLevel4) : undefined,
+    priceLevel5: product.priceLevel5 != null ? Number(product.priceLevel5) : undefined,
+    unit: product.unit || '',
+    barcodes,
+    packagingUnits: Array.isArray(product.packagingUnits)
+      ? product.packagingUnits.map((unit: any) => ({
+          name: unit.name || unit.unitName || '',
+          qtyPerPrev: Number(unit.qtyPerPrev || 1),
+          barcode: unit.barcode || '',
+          priceLevel1: unit.priceLevel1 !== '' && unit.priceLevel1 != null ? Number(unit.priceLevel1) : undefined,
+          priceLevel2: unit.priceLevel2 !== '' && unit.priceLevel2 != null ? Number(unit.priceLevel2) : undefined,
+          priceLevel3: unit.priceLevel3 !== '' && unit.priceLevel3 != null ? Number(unit.priceLevel3) : undefined,
+          priceLevel4: unit.priceLevel4 !== '' && unit.priceLevel4 != null ? Number(unit.priceLevel4) : undefined,
+          priceLevel5: unit.priceLevel5 !== '' && unit.priceLevel5 != null ? Number(unit.priceLevel5) : undefined,
+        })).filter((unit: any) => unit.name)
+      : undefined,
+    images: Array.isArray(product.images)
+      ? product.images.map((image: any) => ({
+          dataUrl: image.dataUrl,
+          name: image.name || '',
+          isCover: Boolean(image.isCover),
+        })).filter((image: any) => image.dataUrl)
+      : undefined,
+    wholesalePrices: Array.isArray(product.wholesalePrices)
+      ? product.wholesalePrices.map((price: any) => ({
+          minQuantity: Number(price.minQuantity || 0),
+          unitPrice: Number(price.unitPrice || 0),
+        })).filter((price: any) => price.minQuantity > 0 && price.unitPrice > 0)
+      : undefined,
+    isBundle: Boolean(product.isBundle),
+    bundleItems: product.isBundle && Array.isArray(product.bundleItems)
+      ? product.bundleItems
+          .map((item: any) => ({
+            childProductId: item.childProductId,
+            quantity: Number(item.quantity) || 1,
+          }))
+          .filter((item: any) => item.childProductId)
+      : undefined,
+  };
 }
 
 function loadSuppliersFromStorage(): any[] {
@@ -144,11 +316,7 @@ function loadSuppliersFromStorage(): any[] {
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch {}
-  return [
-    { id: "supp_1", name: "บริษัท ปุริม ซัพพลาย จำกัด", contactName: "คุณสมชาย", phone: "081-234-5678", email: "contact@purimsupply.com", address: "123 ถ.สุขุมวิท กรุงเทพฯ", creditTerms: 30 },
-    { id: "supp_2", name: "บจก. สยามเทรดดิ้ง แอนด์ ดีสทริบิวชั่น", contactName: "คุณวิภา", phone: "089-876-5432", email: "sales@siamtrading.co.th", address: "456 ถ.รัชดาภิเษก กรุงเทพฯ", creditTerms: 15 },
-    { id: "supp_3", name: "หจก. รวมสินค้าค้าส่ง", contactName: "คุณกิตติ", phone: "02-999-8888", email: "wholesale@ruamkhong.com", address: "789 ถ.พหลโยธิน กรุงเทพฯ", creditTerms: 45 },
-  ];
+  return [];
 }
 
 // ─── Initial form ─────────────────────────────────────────────────────
@@ -169,6 +337,8 @@ const makeInitialForm = () => ({
   images: [] as ProductImage[],
   wholesaleSteps: Array.from({ length: 5 }, () => ({ minQuantity: "", unitPrice: "" })),
   defaultSellingUnitId: "",
+  isBundle: false,
+  bundleItems: [] as Array<{ childProductId: string; quantity: number | string }>,
 });
 
 type ProductForm = ReturnType<typeof makeInitialForm>;
@@ -190,7 +360,361 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [allPackaging, setAllPackaging] = useState<Record<string, PackagingUnit[]>>({});
   const [allImages, setAllImages] = useState<Record<string, ProductImage[]>>({});
+  const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const excelInputRef = useRef<HTMLInputElement>(null);
+
+  // Excel Import Preview state
+  const [importPreviewData, setImportPreviewData] = useState<any[]>([]);
+  const [isImportPreviewOpen, setIsImportPreviewOpen] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+
+  // Export current products to .xlsx
+  const handleExportExcel = () => {
+    if (products.length === 0) {
+      toast.warning("ไม่มีรายการสินค้าให้ส่งออก");
+      return;
+    }
+
+    const exportRows = products.map((p, idx) => {
+      const barcodesList = [
+        p.barcode,
+        ...(Array.isArray(p.barcodes) ? p.barcodes.map((b: any) => (typeof b === "string" ? b : b.barcode)) : []),
+      ].filter(Boolean);
+      const uniqueBarcodes = Array.from(new Set(barcodesList)).join(", ");
+
+      const costVal = Number(p.costPrice !== undefined && p.costPrice !== null ? p.costPrice : (p.cost ?? p.basePrice ?? 0));
+      const price1Val = Number(p.priceLevel1 !== undefined && p.priceLevel1 !== null ? p.priceLevel1 : (p.price ?? p.basePrice ?? 0));
+
+      return {
+        "ลำดับ (No.)": idx + 1,
+        "รหัสสินค้า (SKU)": p.sku || "",
+        "บาร์โค้ด (Barcode)": uniqueBarcodes || p.sku || "",
+        "ชื่อสินค้า (Product Name)": p.name || "",
+        "หมวดหมู่ (Category)": p.category?.name || p.category || "ทั่วไป",
+        "หน่วยนับ (Unit)": p.unit || "ชิ้น",
+        "ราคาทุน (Cost Price)": costVal,
+        "ราคาขาย 1 / ขายปลีก (Price 1)": price1Val,
+        "ราคาขาย 2 (Price Level 2)": Number(p.priceLevel2 || 0),
+        "ราคาขาย 3 (Price Level 3)": Number(p.priceLevel3 || 0),
+        "ราคาขาย 4 (Price Level 4)": Number(p.priceLevel4 || 0),
+        "ราคาขาย 5 (Price Level 5)": Number(p.priceLevel5 || 0),
+        "จำนวนสต็อก (Stock)": Number(p.stock || 0),
+        "จุดแจ้งเตือนสต็อกต่ำ (Min Stock)": Number(p.minStockAlert ?? 10),
+        "รายละเอียดสินค้า (Description)": p.description || "",
+        "รหัสระบบ (System ID - ห้ามแก้ไข)": p.id || "",
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(exportRows);
+    worksheet["!cols"] = [
+      { wch: 8 },  // ลำดับ
+      { wch: 18 }, // SKU
+      { wch: 22 }, // Barcode
+      { wch: 35 }, // Name
+      { wch: 16 }, // Category
+      { wch: 10 }, // Unit
+      { wch: 14 }, // Cost
+      { wch: 16 }, // Price 1
+      { wch: 14 }, // Level 2
+      { wch: 14 }, // Level 3
+      { wch: 14 }, // Level 4
+      { wch: 14 }, // Level 5
+      { wch: 12 }, // Stock
+      { wch: 14 }, // Min Stock
+      { wch: 30 }, // Description
+      { wch: 38 }, // ID
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "รายการสินค้า");
+    const todayStr = new Date().toISOString().split("T")[0];
+    XLSX.writeFile(workbook, `สินค้า_POSร้านปุริม_${todayStr}.xlsx`);
+    toast.success(`📊 ส่งออกข้อมูลสินค้า ${products.length} รายการเป็นไฟล์ Excel สำเร็จ`);
+  };
+
+  // Download Sample Excel Template
+  const handleDownloadExcelTemplate = () => {
+    const templateRows = [
+      {
+        "ลำดับ (No.)": 1,
+        "รหัสสินค้า (SKU)": "SKU-001",
+        "บาร์โค้ด (Barcode)": "8850001234567",
+        "ชื่อสินค้า (Product Name)": "น้ำดื่มตราช้าง 600ml",
+        "หมวดหมู่ (Category)": "เครื่องดื่ม",
+        "หน่วยนับ (Unit)": "ขวด",
+        "ราคาทุน (Cost Price)": 5.0,
+        "ราคาขาย 1 / ขายปลีก (Price 1)": 10.0,
+        "ราคาขาย 2 (Price Level 2)": 9.5,
+        "ราคาขาย 3 (Price Level 3)": 9.0,
+        "ราคาขาย 4 (Price Level 4)": 8.5,
+        "ราคาขาย 5 (Price Level 5)": 8.0,
+        "จำนวนสต็อก (Stock)": 100,
+        "จุดแจ้งเตือนสต็อกต่ำ (Min Stock)": 10,
+        "รายละเอียดสินค้า (Description)": "น้ำดื่มบริสุทธิ์ 600 มล.",
+        "รหัสระบบ (System ID - ห้ามแก้ไข)": "",
+      },
+      {
+        "ลำดับ (No.)": 2,
+        "รหัสสินค้า (SKU)": "SKU-002",
+        "บาร์โค้ด (Barcode)": "8850009876543",
+        "ชื่อสินค้า (Product Name)": "มาม่ารสต้มยำกุ้ง 55g",
+        "หมวดหมู่ (Category)": "บะหมี่กึ่งสำเร็จรูป",
+        "หน่วยนับ (Unit)": "ซอง",
+        "ราคาทุน (Cost Price)": 6.0,
+        "ราคาขาย 1 / ขายปลีก (Price 1)": 7.0,
+        "ราคาขาย 2 (Price Level 2)": 6.8,
+        "ราคาขาย 3 (Price Level 3)": 6.5,
+        "ราคาขาย 4 (Price Level 4)": 6.2,
+        "ราคาขาย 5 (Price Level 5)": 6.0,
+        "จำนวนสต็อก (Stock)": 200,
+        "จุดแจ้งเตือนสต็อกต่ำ (Min Stock)": 20,
+        "รายละเอียดสินค้า (Description)": "บะหมี่กึ่งสำเร็จรูป รสต้มยำกุ้ง",
+        "รหัสระบบ (System ID - ห้ามแก้ไข)": "",
+      },
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(templateRows);
+    worksheet["!cols"] = [
+      { wch: 8 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 35 },
+      { wch: 16 },
+      { wch: 10 },
+      { wch: 14 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 30 },
+      { wch: 38 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "แม่แบบสินค้า");
+    XLSX.writeFile(workbook, "แม่แบบนำเข้าสินค้า_Template_POS.xlsx");
+    toast.success("ดาวน์โหลดไฟล์แม่แบบ Excel สำหรับกรอกสินค้าเรียบร้อย");
+  };
+
+  const [importFilterTab, setImportFilterTab] = useState<"all" | "changed" | "new" | "unchanged">("all");
+  const [importProgress, setImportProgress] = useState<number>(0);
+
+  // Import from Excel or CSV with intelligent diff comparison
+  const handleFileSelectForImport = async (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const buffer = e.target?.result as ArrayBuffer;
+        if (!buffer) return;
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const firstSheetName = workbook.SheetNames[0];
+        if (!firstSheetName) {
+          toast.error("ไม่พบข้อมูลในไฟล์ Excel");
+          return;
+        }
+        const worksheet = workbook.Sheets[firstSheetName];
+        const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet);
+
+        if (rawJson.length === 0) {
+          toast.error("ไม่พบแถวข้อมูลสินค้าในไฟล์ที่อัพโหลด");
+          return;
+        }
+
+        const parsedItems = rawJson
+          .map((row: any) => {
+            const id = row["รหัสระบบ (System ID - ห้ามแก้ไข)"] || row["System ID"] || row["ID"] || row["id"] || undefined;
+            const sku = String(row["รหัสสินค้า (SKU)"] || row["รหัสสินค้า"] || row["SKU"] || row["sku"] || row["code"] || "").trim();
+            const name = String(row["ชื่อสินค้า (Product Name)"] || row["ชื่อสินค้า"] || row["Name"] || row["name"] || row["product_name"] || "").trim();
+            const barcode = String(row["บาร์โค้ด (Barcode)"] || row["บาร์โค้ด"] || row["Barcode"] || row["barcode"] || "").trim();
+            const categoryName = String(row["หมวดหมู่ (Category)"] || row["หมวดหมู่"] || row["Category"] || row["category"] || "ทั่วไป").trim();
+            const unit = String(row["หน่วยนับ (Unit)"] || row["หน่วยนับ"] || row["Unit"] || row["unit"] || "ชิ้น").trim();
+
+            const costPrice = Number(
+              row["ราคาทุน (Cost Price)"] ??
+              row["ราคาทุน"] ??
+              row["Cost Price"] ??
+              row["Cost"] ??
+              row["costPrice"] ??
+              row["cost"] ??
+              0
+            );
+
+            const priceLevel1 = Number(
+              row["ราคาขาย 1 / ขายปลีก (Price 1)"] ??
+              row["ราคาขาย 1 / ขายปลีก (Price Level 1)"] ??
+              row["ราคาขายปลีก / ราคาฐาน (Retail Price)"] ??
+              row["ระดับราคา 1 (Price Level 1)"] ??
+              row["ระดับราคา 1"] ??
+              row["ราคาขาย 1"] ??
+              row["ราคา 1"] ??
+              row["ราคาขายปลีก"] ??
+              row["ราคาขาย"] ??
+              row["Retail Price"] ??
+              row["Price 1"] ??
+              row["priceLevel1"] ??
+              row["price"] ??
+              0
+            );
+
+            const priceLevel2 = Number(row["ราคาขาย 2 (Price Level 2)"] ?? row["ราคาขาย 2 (Price 2)"] ?? row["ระดับราคา 2 (Price Level 2)"] ?? row["ระดับราคา 2"] ?? row["ราคาขาย 2"] ?? row["ราคา 2"] ?? row["priceLevel2"] ?? 0);
+            const priceLevel3 = Number(row["ราคาขาย 3 (Price Level 3)"] ?? row["ราคาขาย 3 (Price 3)"] ?? row["ระดับราคา 3 (Price Level 3)"] ?? row["ระดับราคา 3"] ?? row["ราคาขาย 3"] ?? row["ราคา 3"] ?? row["priceLevel3"] ?? 0);
+            const priceLevel4 = Number(row["ราคาขาย 4 (Price Level 4)"] ?? row["ราคาขาย 4 (Price 4)"] ?? row["ระดับราคา 4 (Price Level 4)"] ?? row["ระดับราคา 4"] ?? row["ราคาขาย 4"] ?? row["ราคา 4"] ?? row["priceLevel4"] ?? 0);
+            const priceLevel5 = Number(row["ราคาขาย 5 (Price Level 5)"] ?? row["ราคาขาย 5 (Price 5)"] ?? row["ระดับราคา 5 (Price Level 5)"] ?? row["ระดับราคา 5"] ?? row["ราคาขาย 5"] ?? row["ราคา 5"] ?? row["priceLevel5"] ?? 0);
+            const stock = Number(row["จำนวนสต็อก (Stock)"] ?? row["จำนวนสต็อก"] ?? row["สต็อก"] ?? row["Stock"] ?? row["stock"] ?? 0);
+            const minStockAlert = Number(row["จุดแจ้งเตือนสต็อกต่ำ (Min Stock)"] ?? row["จุดแจ้งเตือน"] ?? row["minStockAlert"] ?? 10);
+            const description = String(row["รายละเอียดสินค้า (Description)"] ?? row["รายละเอียด"] ?? row["Description"] ?? row["description"] ?? "").trim();
+
+            // Find matching product in existing catalog
+            const existing = products.find(
+              (p) => (id && p.id === id) || (sku && p.sku?.toLowerCase() === sku.toLowerCase()) || (barcode && p.barcode === barcode)
+            );
+
+            let changeType: "NEW" | "CHANGED" | "UNCHANGED" = "NEW";
+            const diffs: string[] = [];
+
+            if (existing) {
+              const existingCost = Number(existing.costPrice !== undefined && existing.costPrice !== null ? existing.costPrice : (existing.cost ?? existing.basePrice ?? 0));
+              const existingPrice1 = Number(existing.priceLevel1 !== undefined && existing.priceLevel1 !== null ? existing.priceLevel1 : (existing.price ?? existing.basePrice ?? 0));
+              const existingPrice2 = Number(existing.priceLevel2 || 0);
+              const existingPrice3 = Number(existing.priceLevel3 || 0);
+              const existingPrice4 = Number(existing.priceLevel4 || 0);
+              const existingPrice5 = Number(existing.priceLevel5 || 0);
+              const existingStock = Number(existing.stock ?? existing.computedStock ?? 0);
+
+              if (name && name !== existing.name) {
+                diffs.push(`ชื่อ: "${existing.name}" ➔ "${name}"`);
+              }
+              if (sku && sku !== existing.sku) {
+                diffs.push(`SKU: ${existing.sku} ➔ ${sku}`);
+              }
+              if (costPrice !== existingCost) {
+                diffs.push(`ทุน: ${existingCost} ➔ ${costPrice}`);
+              }
+              if (priceLevel1 !== existingPrice1) {
+                diffs.push(`ราคา 1: ${existingPrice1} ➔ ${priceLevel1}`);
+              }
+              if (priceLevel2 !== existingPrice2) {
+                diffs.push(`ราคา 2: ${existingPrice2} ➔ ${priceLevel2}`);
+              }
+              if (priceLevel3 !== existingPrice3) {
+                diffs.push(`ราคา 3: ${existingPrice3} ➔ ${priceLevel3}`);
+              }
+              if (priceLevel4 !== existingPrice4) {
+                diffs.push(`ราคา 4: ${existingPrice4} ➔ ${priceLevel4}`);
+              }
+              if (priceLevel5 !== existingPrice5) {
+                diffs.push(`ราคา 5: ${existingPrice5} ➔ ${priceLevel5}`);
+              }
+              if (stock !== existingStock) {
+                diffs.push(`สต็อก: ${existingStock} ➔ ${stock}`);
+              }
+              const existingUnit = String(existing.unit || "ชิ้น").trim();
+              const newUnit = String(unit || "ชิ้น").trim();
+              if (existingUnit !== newUnit) {
+                diffs.push(`หน่วย: ${existingUnit} ➔ ${newUnit}`);
+              }
+
+              const existingCat = String(existing.category?.name || existing.category || "ทั่วไป").trim();
+              const newCat = String(categoryName || "ทั่วไป").trim();
+              if (existingCat !== newCat) {
+                diffs.push(`หมวด: "${existingCat}" ➔ "${newCat}"`);
+              }
+
+              changeType = diffs.length > 0 ? "CHANGED" : "UNCHANGED";
+            } else {
+              changeType = "NEW";
+              diffs.push("สินค้าใหม่");
+            }
+
+            return {
+              id: existing?.id || id,
+              sku,
+              name,
+              barcode,
+              categoryName,
+              unit,
+              costPrice,
+              retailPrice: priceLevel1,
+              priceLevel1,
+              priceLevel2,
+              priceLevel3,
+              priceLevel4,
+              priceLevel5,
+              stock,
+              minStockAlert,
+              description,
+              isExisting: !!existing,
+              changeType,
+              diffs,
+            };
+          })
+          .filter((item) => item.name || item.sku);
+
+        if (parsedItems.length === 0) {
+          toast.error("ไม่พบข้อมูลสินค้าที่ถูกต้องในไฟล์");
+          return;
+        }
+
+        setImportPreviewData(parsedItems);
+        setImportFilterTab("all");
+        setImportProgress(0);
+        setIsImportPreviewOpen(true);
+      } catch (err: any) {
+        console.error("Failed to parse Excel:", err);
+        toast.error("เกิดข้อผิดพลาดในการอ่านไฟล์ Excel กรุณาตรวจสอบรูปแบบไฟล์");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const handleConfirmImport = async () => {
+    // Only upload changed and new items!
+    const itemsToUpsert = importPreviewData.filter((i) => i.changeType !== "UNCHANGED");
+
+    if (itemsToUpsert.length === 0) {
+      toast.info("ข้อมูลสินค้าในไฟล์ตรงกับระบบทั้งหมด ไม่มีรายการที่ต้องอัพเดต");
+      setIsImportPreviewOpen(false);
+      return;
+    }
+
+    setIsImporting(true);
+    setImportProgress(0);
+
+    try {
+      // Chunk into batches of 150 items to optimize network & memory
+      const chunkSize = 150;
+      let totalCreated = 0;
+      let totalUpdated = 0;
+
+      for (let i = 0; i < itemsToUpsert.length; i += chunkSize) {
+        const chunk = itemsToUpsert.slice(i, i + chunkSize);
+        const res: any = await api.products.bulkUpsert(chunk);
+        totalCreated += (res?.created || 0);
+        totalUpdated += (res?.updated || 0);
+        const currentProgress = Math.min(100, Math.round(((i + chunk.length) / itemsToUpsert.length) * 100));
+        setImportProgress(currentProgress);
+      }
+
+      const unchangedCount = importPreviewData.length - itemsToUpsert.length;
+      toast.success(
+        `✅ นำเข้าสำเร็จ: แก้ไข ${totalUpdated} รายการ, เพิ่มใหม่ ${totalCreated} รายการ (ข้ามที่ไม่เปลี่ยน ${unchangedCount} รายการ)`
+      );
+      setIsImportPreviewOpen(false);
+      setImportPreviewData([]);
+      loadData();
+    } catch (err: any) {
+      console.error("Import failed:", err);
+      toast.error(err?.message || "ไม่สามารถนำเข้าข้อมูลสินค้าได้");
+    } finally {
+      setIsImporting(false);
+      setImportProgress(0);
+    }
+  };
 
   const handleCSVImport = async (file: File) => {
     const reader = new FileReader();
@@ -203,36 +727,98 @@ export default function ProductsPage() {
           toast.error("ไม่พบข้อมูลสินค้าในไฟล์ CSV");
           return;
         }
-        const newProducts = csvRowsToProducts(rows);
-        
-        // Sync to backend database
-        for (const p of newProducts) {
+        const importedProducts = csvRowsToProducts(rows);
+        const conflictingImportBarcodeKeys = getConflictingImportBarcodeKeys(importedProducts);
+        let workingProducts = [...products];
+        let duplicateSourceProducts = [...products];
+        let canUseBackend = false;
+        try {
+          const latest = await api.getProducts();
+          if (Array.isArray(latest)) {
+            canUseBackend = true;
+            duplicateSourceProducts = latest;
+            workingProducts = latest;
+          }
+        } catch {}
+
+        let createdCount = 0;
+        let updatedCount = 0;
+        let failedCount = 0;
+        const failedMessages: string[] = [];
+
+        for (const rawProduct of importedProducts) {
+          const p = stripConflictingBarcodes(rawProduct, conflictingImportBarcodeKeys);
+          const duplicate = findDuplicateProduct(p, duplicateSourceProducts);
+          const payload = productToApiPayload(p, conflictingImportBarcodeKeys);
           try {
-            await apiFetch('/products', {
-              method: 'POST',
-              body: JSON.stringify({
-                name: p.name,
-                sku: p.sku,
-                basePrice: Number(p.priceLevel1 || p.price || 0),
-                costPrice: Number(p.cost || 0),
-                priceLevel1: p.priceLevel1 != null ? Number(p.priceLevel1) : undefined,
-                priceLevel2: p.priceLevel2 != null ? Number(p.priceLevel2) : undefined,
-                priceLevel3: p.priceLevel3 != null ? Number(p.priceLevel3) : undefined,
-                priceLevel4: p.priceLevel4 != null ? Number(p.priceLevel4) : undefined,
-                priceLevel5: p.priceLevel5 != null ? Number(p.priceLevel5) : undefined,
-                unit: p.unit || 'ชิ้น',
-                barcodes: p.barcodes?.map((b: any) => b.barcode).filter(Boolean),
-              })
-            }).catch(() => {});
-          } catch {}
+            if (!canUseBackend) {
+              const localDuplicate = findDuplicateProduct(p, workingProducts);
+              if (localDuplicate?.id) {
+                updatedCount++;
+                workingProducts = workingProducts.map((item) =>
+                  item.id === localDuplicate.id ? { ...item, ...p, id: localDuplicate.id, stock: item.stock ?? p.stock } : item
+                );
+              } else {
+                createdCount++;
+                workingProducts = [{ ...p, id: p.id || p.sku || `prod_${Date.now()}` }, ...workingProducts];
+              }
+            } else if (duplicate?.id) {
+              await apiFetch(`/products/${duplicate.id}`, {
+                method: 'PATCH',
+                body: JSON.stringify(payload),
+              });
+              updatedCount++;
+              workingProducts = workingProducts.map((item) =>
+                item.id === duplicate.id ? { ...item, ...p, id: duplicate.id, stock: item.stock ?? p.stock } : item
+              );
+              duplicateSourceProducts = duplicateSourceProducts.map((item) =>
+                item.id === duplicate.id ? { ...item, ...p, id: duplicate.id, stock: item.stock ?? p.stock } : item
+              );
+            } else {
+              const created = await apiFetch('/products', {
+                method: 'POST',
+                body: JSON.stringify(payload),
+              });
+              createdCount++;
+              workingProducts = [created || p, ...workingProducts];
+              duplicateSourceProducts = [created || p, ...duplicateSourceProducts];
+            }
+          } catch (err: any) {
+            failedCount++;
+            failedMessages.push(`${p.sku || p.name}: ${err?.message || 'import failed'}`);
+
+            const localDuplicate = findDuplicateProduct(p, workingProducts);
+            if (localDuplicate?.id) {
+              updatedCount++;
+              workingProducts = workingProducts.map((item) =>
+                item.id === localDuplicate.id ? { ...item, ...p, id: localDuplicate.id, stock: item.stock ?? p.stock } : item
+              );
+            } else {
+              createdCount++;
+              workingProducts = [{ ...p, id: p.id || p.sku || `prod_${Date.now()}` }, ...workingProducts];
+            }
+          }
         }
 
-        // Reload products state & store from database
+        if (failedCount > 0) {
+          saveSavedProducts(workingProducts);
+        } else {
+          clearSavedProducts();
+        }
         await useProductStore.getState().fetchProducts();
-        const storeProducts = useProductStore.getState().products;
+        const storeProducts = failedCount === 0 && useProductStore.getState().products.length > 0
+          ? useProductStore.getState().products
+          : workingProducts;
         setProducts(storeProducts);
 
-        toast.success(`นำเข้าสินค้าสำเร็จ ${newProducts.length} รายการ (ระดับราคา 1-5 ครบถ้วน)`);
+        if (failedCount > 0) {
+          console.warn('[Products CSV import] Backend errors, local fallback applied:', failedMessages);
+          toast.warning(`นำเข้าสำเร็จแบบ fallback: เพิ่ม ${createdCount} | อัปเดต ${updatedCount} | API error ${failedCount} รายการ`);
+        } else if (conflictingImportBarcodeKeys.size > 0) {
+          toast.warning(`นำเข้าสินค้าสำเร็จ: เพิ่มใหม่ ${createdCount} | อัปเดตสินค้าเดิม ${updatedCount} รายการ | ข้ามบาร์โค้ดซ้ำ ${conflictingImportBarcodeKeys.size} ค่า`);
+        } else {
+          toast.success(`นำเข้าสินค้าสำเร็จ: เพิ่มใหม่ ${createdCount} | อัปเดตสินค้าเดิม ${updatedCount} รายการ`);
+        }
       } catch (err: any) {
         toast.error("เกิดข้อผิดพลาดในการอ่านไฟล์ CSV: " + err.message);
       }
@@ -242,17 +828,32 @@ export default function ProductsPage() {
 
   const loadData = useCallback(() => {
     setLoading(true);
-    useProductStore.getState().fetchProducts().then(() => {
+    useProductStore.getState().fetchProducts().then(async () => {
       const storeProducts = useProductStore.getState().products;
       const storeCategories = useProductStore.getState().categories;
       setProducts(storeProducts);
       setCategories(storeCategories);
 
-      // Load suppliers fallback
+      const pkgMap: Record<string, PackagingUnit[]> = {};
+      const imgMap: Record<string, ProductImage[]> = {};
+      (storeProducts as any[]).forEach((p: any) => {
+        pkgMap[p.id] = getProductPackagingUnits(p);
+        imgMap[p.id] = getProductImages(p);
+      });
+      setAllPackaging(pkgMap);
+      setAllImages(imgMap);
+
+      // Load real suppliers from database API
       try {
-        const savedSuppliers = localStorage.getItem('custom_suppliers');
-        if (savedSuppliers) setSuppliers(JSON.parse(savedSuppliers));
-      } catch {}
+        const supps = await apiFetch('/suppliers');
+        if (Array.isArray(supps)) {
+          setSuppliers(supps);
+        } else {
+          setSuppliers([]);
+        }
+      } catch {
+        setSuppliers([]);
+      }
 
       setLoading(false);
     });
@@ -276,29 +877,6 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [form, setForm] = useState<ProductForm>(makeInitialForm());
 
-  useEffect(() => {
-    Promise.all([api.getProducts(), apiFetch("/suppliers").catch(() => [])]).then(([prods, supps]) => {
-      const savedProds = loadSavedProducts();
-      const finalProds = savedProds && savedProds.length > 0 ? savedProds : prods;
-      setProducts(finalProds);
-      setCategories(loadCategories());
-
-      const localSupps = loadSuppliersFromStorage();
-      const finalSupps = Array.isArray(supps) && supps.length > 0 ? supps : localSupps;
-      setSuppliers(finalSupps);
-
-      const pkgMap: Record<string, PackagingUnit[]> = {};
-      const imgMap: Record<string, ProductImage[]> = {};
-      (finalProds as any[]).forEach((p: any) => {
-        pkgMap[p.id] = loadPackaging(p.id);
-        imgMap[p.id] = loadImages(p.id);
-      });
-      setAllPackaging(pkgMap);
-      setAllImages(imgMap);
-      setLoading(false);
-    });
-  }, []);
-
   const getCategoryName = (id: string) => categories.find(c => c.id === id)?.name || "-";
   const getSupplierName = (id: string) => suppliers.find(s => s.id === id)?.name || "-";
 
@@ -308,8 +886,8 @@ export default function ProductsPage() {
   const filtered = useMemo(() => {
     let list = products.filter((p: any) => {
       const q = search.toLowerCase();
-      const allBarcodes = [...(p.barcodes || []).map((b: any) => b.barcode), ...(allPackaging[p.id] || []).map(u => u.barcode)];
-      const matchSearch = (p.name || "").toLowerCase().includes(q) || (p.sku || "").toLowerCase().includes(q) || allBarcodes.some(b => b?.includes(search));
+      const allBarcodes = [...getProductBarcodes(p), ...(allPackaging[p.id] || []).map(u => u.barcode).filter(Boolean)];
+      const matchSearch = (p.name || "").toLowerCase().includes(q) || (p.sku || "").toLowerCase().includes(q) || allBarcodes.some(b => normalizeKey(b).includes(q));
       const matchCat = categoryFilter === "all" || p.categoryId === categoryFilter;
       const matchSupplier = supplierFilter === "all" || 
         (p.supplierId === supplierFilter) || 
@@ -347,6 +925,82 @@ export default function ProductsPage() {
 
   const handleSort = (key: SortKey) => { if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc"); else { setSortKey(key); setSortDir("asc"); } };
   const toggleExpand = (id: string) => setExpandedRows(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const currentPageIds = useMemo(() => paginatedList.map((p: any) => p.id).filter(Boolean), [paginatedList]);
+  const isCurrentPageSelected = currentPageIds.length > 0 && currentPageIds.every((id) => selectedProductIds.has(id));
+
+  const toggleSelectProduct = (id: string) => {
+    setSelectedProductIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectCurrentPage = () => {
+    setSelectedProductIds((prev) => {
+      const next = new Set(prev);
+      if (isCurrentPageSelected) {
+        currentPageIds.forEach((id) => next.delete(id));
+      } else {
+        currentPageIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedProductIds(new Set());
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedProductIds);
+    if (ids.length === 0) {
+      toast.info("กรุณาเลือกสินค้าที่ต้องการลบ");
+      return;
+    }
+    const ok = window.confirm(`ยืนยันลบสินค้า ${ids.length} รายการ? การลบนี้จะเอาออกจากรายการสินค้าและข้อมูลรูป/ขนาดบรรจุในเครื่อง`);
+    if (!ok) return;
+
+    setIsBulkDeleting(true);
+    let apiFailed = 0;
+    for (const id of ids) {
+      try {
+        await api.products.delete(id);
+      } catch {
+        apiFailed++;
+      }
+      try {
+        localStorage.removeItem(`pkg_${id}`);
+        localStorage.removeItem(`img_${id}`);
+        localStorage.removeItem(`ws_${id}`);
+      } catch {}
+    }
+
+    const nextProducts = products.filter((p: any) => !selectedProductIds.has(p.id));
+    setProducts(nextProducts);
+    saveSavedProducts(nextProducts);
+    setAllPackaging((prev) => {
+      const next = { ...prev };
+      ids.forEach((id) => delete next[id]);
+      return next;
+    });
+    setAllImages((prev) => {
+      const next = { ...prev };
+      ids.forEach((id) => delete next[id]);
+      return next;
+    });
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.delete(id));
+      return next;
+    });
+    clearSelection();
+    setIsBulkDeleting(false);
+
+    if (apiFailed > 0) {
+      toast.warning(`ลบออกจากหน้าร้านแล้ว ${ids.length} รายการ แต่ API ลบไม่สำเร็จ ${apiFailed} รายการ`);
+    } else {
+      toast.success(`ลบสินค้าเรียบร้อย ${ids.length} รายการ`);
+    }
+  };
 
   const updateForm = <K extends keyof ProductForm>(key: K, value: ProductForm[K]) =>
     setForm(prev => ({ ...prev, [key]: value }));
@@ -381,14 +1035,12 @@ export default function ProductsPage() {
   }, [form.supplierEntries]);
 
   const handleOpenAdd = () => {
-    setSuppliers(loadSuppliersFromStorage());
     setForm(makeInitialForm());
     setEditingProduct(null);
     setDialogMode("add");
   };
 
   const handleOpenEdit = (p: any) => {
-    setSuppliers(loadSuppliersFromStorage());
     setEditingProduct(p);
     setForm({
       name: p.name || "", sku: p.sku || generateEAN13(), unit: p.unit || "",
@@ -401,16 +1053,51 @@ export default function ProductsPage() {
       priceLevel5: p.priceLevel5?.toString() || "",
       barcodes: p.barcodes?.length ? p.barcodes.map((b: any) => ({ barcode: b.barcode || "", supplierId: b.supplierId || "", label: b.label || "" })) : [{ barcode: "", supplierId: "", label: "" }],
       supplierEntries: [],
-      packagingUnits: allPackaging[p.id] || [],
-      images: p.id ? loadImages(p.id) : [],
-      wholesaleSteps: p.id && loadWholesale(p.id).length ? loadWholesale(p.id) : Array.from({ length: 5 }, () => ({ minQuantity: "", unitPrice: "" })),
+      packagingUnits: getProductPackagingUnits(p),
+      images: getProductImages(p),
+      wholesaleSteps: getProductWholesaleSteps(p),
       defaultSellingUnitId: p.defaultSellingUnitId || "",
+      isBundle: Boolean(p.isBundle),
+      bundleItems: Array.isArray(p.bundleItems)
+        ? p.bundleItems.map((bi: any) => ({
+            childProductId: bi.childProductId || bi.productId || "",
+            quantity: Number(bi.quantity) || 1,
+          }))
+        : [],
     });
     setDialogMode("edit");
   };
 
-  const handleSave = () => {
+  const addBundleItem = () => {
+    setForm((f) => ({
+      ...f,
+      bundleItems: [...f.bundleItems, { childProductId: "", quantity: 1 }],
+    }));
+  };
+
+  const removeBundleItem = (idx: number) => {
+    setForm((f) => ({
+      ...f,
+      bundleItems: f.bundleItems.filter((_, i) => i !== idx),
+    }));
+  };
+
+  const updateBundleItem = (idx: number, field: string, val: any) => {
+    setForm((f) => ({
+      ...f,
+      bundleItems: f.bundleItems.map((item, i) => (i === idx ? { ...item, [field]: val } : item)),
+    }));
+  };
+
+  const handleSave = async () => {
     if (!form.name.trim()) { toast.error("กรุณาระบุชื่อสินค้า"); return; }
+    if (form.isBundle) {
+      const validItems = form.bundleItems.filter((bi) => bi.childProductId);
+      if (validItems.length === 0) {
+        toast.error("สินค้าจัดเซ็ตต้องมีสินค้าส่วนประกอบอย่างน้อย 1 รายการ");
+        return;
+      }
+    }
     
     let targetId = editingProduct?.id;
     if (!targetId) {
@@ -437,6 +1124,18 @@ export default function ProductsPage() {
       priceLevel5: form.priceLevel5 ? parseFloat(form.priceLevel5) : null,
       stock: finalStock,
       defaultSellingUnitId: form.defaultSellingUnitId || null,
+      packagingUnits: form.packagingUnits,
+      images: form.images,
+      wholesalePrices: form.wholesaleSteps,
+      isBundle: Boolean(form.isBundle),
+      bundleItems: form.isBundle
+        ? form.bundleItems
+            .filter((bi) => bi.childProductId)
+            .map((bi) => ({
+              childProductId: bi.childProductId,
+              quantity: Math.max(1, Number(bi.quantity) || 1),
+            }))
+        : [],
       barcodes: form.barcodes.filter(b => b.barcode.trim()).map(b => ({
         barcode: b.barcode.trim(),
         supplierId: b.supplierId || "",
@@ -444,23 +1143,43 @@ export default function ProductsPage() {
       })),
     };
 
+    let persistedProduct: any = null;
+    try {
+      const payload = productToApiPayload(updatedProductObj);
+      persistedProduct = editingProduct?.id
+        ? await api.products.update(editingProduct.id, payload)
+        : await api.products.create(payload);
+      targetId = persistedProduct?.id || targetId;
+      clearSavedProducts();
+    } catch (err: any) {
+      toast.warning(`บันทึกลงฐานข้อมูลไม่สำเร็จ ใช้ข้อมูลสำรองในเครื่องแทน: ${err.message || 'Server error'}`);
+    }
+
+    const displayProduct = {
+      ...updatedProductObj,
+      ...(persistedProduct || {}),
+      id: targetId,
+    };
+
     let newProductsList: any[];
     if (editingProduct?.id) {
-      newProductsList = products.map(p => p.id === editingProduct.id ? { ...p, ...updatedProductObj } : p);
+      newProductsList = products.map(p => p.id === editingProduct.id ? { ...p, ...displayProduct } : p);
     } else {
-      newProductsList = [updatedProductObj, ...products];
+      newProductsList = [displayProduct, ...products];
     }
 
     setProducts(newProductsList);
-    saveSavedProducts(newProductsList);
-    useProductStore.getState().fetchProducts();
+    if (!persistedProduct) {
+      saveSavedProducts(newProductsList);
+    }
+    await useProductStore.getState().fetchProducts();
 
-    savePackaging(targetId, form.packagingUnits);
+    if (!persistedProduct) savePackaging(targetId, form.packagingUnits);
     setAllPackaging(prev => ({ ...prev, [targetId]: form.packagingUnits }));
     if (form.packagingUnits.length > 0) setExpandedRows(prev => new Set([...prev, targetId]));
-    saveImages(targetId, form.images);
+    if (!persistedProduct) saveImages(targetId, form.images);
     setAllImages(prev => ({ ...prev, [targetId]: form.images }));
-    saveWholesale(targetId, form.wholesaleSteps);
+    if (!persistedProduct) saveWholesale(targetId, form.wholesaleSteps);
 
     toast.success(`${dialogMode === "edit" ? "แก้ไข" : "เพิ่ม"}สินค้าสำเร็จ`);
     setDialogMode(null);
@@ -583,6 +1302,42 @@ export default function ProductsPage() {
             <h3 className="font-semibold text-slate-900">รายละเอียดสินค้า</h3>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5 sm:col-span-2 pb-3 border-b border-slate-100">
+              <label className="text-sm font-bold text-slate-700 block">ประเภทสินค้า</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => updateForm("isBundle", false)}
+                  className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    !form.isBundle
+                      ? "border-sky-500 bg-sky-50/70 text-sky-900 ring-2 ring-sky-500/20 font-bold"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <Package className="w-5 h-5 shrink-0 text-sky-600" />
+                  <div>
+                    <div className="text-sm">สินค้าเดี่ยวทั่วไป (Standard)</div>
+                    <div className="text-[11px] font-normal text-slate-400">สินค้าชิ้นเดี่ยว ตัดสต็อกตามบาร์โค้ด</div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateForm("isBundle", true)}
+                  className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                    form.isBundle
+                      ? "border-purple-500 bg-purple-50/70 text-purple-900 ring-2 ring-purple-500/20 font-bold"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <Gift className="w-5 h-5 shrink-0 text-purple-600" />
+                  <div>
+                    <div className="text-sm">สินค้าจัดเซ็ต / เป็นชุด (Bundle)</div>
+                    <div className="text-[11px] font-normal text-slate-400">รวมสินค้าหลายชิ้น ตัดสต็อกและเคลมแยกชิ้นได้</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
             <div className="space-y-1.5 sm:col-span-2">
               <label className="text-sm font-medium text-slate-700">ชื่อสินค้า *</label>
               <Input value={form.name} onChange={e => updateForm("name", e.target.value)} className="h-10 border-slate-300" />
@@ -649,6 +1404,148 @@ export default function ProductsPage() {
             </div>
           </div>
         </section>
+
+        {/* รายการสินค้าในชุด (Bundle Items) */}
+        {form.isBundle && (
+          <section className="rounded-xl border-2 border-purple-200 bg-purple-50/20 p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3 border-b border-purple-100">
+              <div className="flex items-center gap-2">
+                <Gift className="h-5 w-5 text-purple-600 shrink-0" />
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">รายการสินค้าในชุด (Bundle Items)</h3>
+                  <p className="text-xs text-slate-500">เลือกสินค้าและจำนวนที่จะรวมอยู่ในชุดนี้ เมื่อขายจะตัดสต็อกและเคลมแยกชิ้นตามรายการนี้</p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs border-purple-400 bg-white text-purple-700 hover:bg-purple-50 font-bold shadow-2xs cursor-pointer"
+                onClick={addBundleItem}
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" /> เพิ่มสินค้าเข้าชุด
+              </Button>
+            </div>
+
+            {form.bundleItems.length === 0 ? (
+              <div className="rounded-xl border-2 border-dashed border-purple-200 bg-white/70 py-6 text-center text-sm text-slate-400">
+                <Gift className="w-8 h-8 mx-auto text-purple-300 mb-2" />
+                <p className="font-medium text-slate-600">ยังไม่มีรายการสินค้าในชุด</p>
+                <p className="text-xs text-slate-400 mt-0.5">คลิก "เพิ่มสินค้าเข้าชุด" เพื่อเลือกสินค้ามารวมเป็นเซ็ต</p>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {form.bundleItems.map((bi, idx) => {
+                  const child = products.find((p) => p.id === bi.childProductId);
+                  const childPrice = child ? Number(child.priceLevel1 ?? child.basePrice ?? 0) : 0;
+                  const childStock = child ? Number(child.stock ?? 0) : 0;
+                  const itemLineTotal = childPrice * (Number(bi.quantity) || 1);
+
+                  return (
+                    <div
+                      key={idx}
+                      className="bg-white p-3 rounded-xl border border-purple-200/80 shadow-2xs flex flex-col sm:flex-row sm:items-center gap-3"
+                    >
+                      <div className="flex-1 space-y-1 min-w-[200px]">
+                        <label className="text-xs font-semibold text-slate-600">สินค้าส่วนประกอบ #{idx + 1}</label>
+                        <select
+                          value={bi.childProductId}
+                          onChange={(e) => updateBundleItem(idx, "childProductId", e.target.value)}
+                          className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-purple-500 font-medium text-slate-800"
+                        >
+                          <option value="">-- เลือกสินค้า --</option>
+                          {products
+                            .filter((p) => p.id !== editingProduct?.id && !p.isBundle)
+                            .map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} ({p.sku}) - สต็อก: {p.stock ?? 0} {p.unit || "ชิ้น"}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+
+                      <div className="w-32 space-y-1">
+                        <label className="text-xs font-semibold text-slate-600">จำนวนใน 1 ชุด</label>
+                        <div className="flex items-center gap-1.5">
+                          <Input
+                            type="number"
+                            min="1"
+                            value={bi.quantity}
+                            onChange={(e) => updateBundleItem(idx, "quantity", e.target.value)}
+                            className="h-9 border-slate-300 font-bold text-center"
+                          />
+                          <span className="text-xs text-slate-500 shrink-0">{child?.unit || "ชิ้น"}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-right sm:w-36 space-y-0.5">
+                        <div className="text-[11px] text-slate-400">ราคาปกติ/ชิ้น: {formatCurrency(childPrice)}</div>
+                        <div className="text-xs font-bold text-slate-700">
+                          รวม {formatCurrency(itemLineTotal)}
+                        </div>
+                        <div className="text-[10px] text-slate-400">สต็อกคงเหลือ: {childStock}</div>
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-rose-500 hover:bg-rose-50 self-end sm:self-center cursor-pointer"
+                        onClick={() => removeBundleItem(idx)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  );
+                })}
+
+                {/* Summary card for Bundle */}
+                {(() => {
+                  const totalComponentPrice = form.bundleItems.reduce((sum, bi) => {
+                    const child = products.find((p) => p.id === bi.childProductId);
+                    const pPrice = child ? Number(child.priceLevel1 ?? child.basePrice ?? 0) : 0;
+                    return sum + pPrice * (Number(bi.quantity) || 1);
+                  }, 0);
+
+                  const totalComponentCost = form.bundleItems.reduce((sum, bi) => {
+                    const child = products.find((p) => p.id === bi.childProductId);
+                    const pCost = child ? Number(child.costPrice ?? child.basePrice ?? 0) : 0;
+                    return sum + pCost * (Number(bi.quantity) || 1);
+                  }, 0);
+
+                  const maxPossibleSets = form.bundleItems.length > 0 && form.bundleItems.every(bi => bi.childProductId)
+                    ? Math.min(
+                        ...form.bundleItems.map((bi) => {
+                          const child = products.find((p) => p.id === bi.childProductId);
+                          const childStock = child ? Number(child.stock ?? 0) : 0;
+                          return Math.floor(childStock / Math.max(1, Number(bi.quantity) || 1));
+                        })
+                      )
+                    : 0;
+
+                  return (
+                    <div className="p-3.5 bg-purple-100/60 rounded-xl border border-purple-200 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                      <div>
+                        <span className="text-slate-500 block">ราคาสินค้าปกติรวมกัน:</span>
+                        <span className="text-sm font-bold text-slate-800">{formatCurrency(totalComponentPrice)}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block">ต้นทุนสินค้ารวมกัน:</span>
+                        <span className="text-sm font-bold text-slate-800">{formatCurrency(totalComponentCost)}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block">สต็อกชุดที่จัดได้สูงสุด:</span>
+                        <span className={`text-sm font-black ${maxPossibleSets > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                          {maxPossibleSets.toLocaleString()} ชุด
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </section>
+        )}
 
         {/* 2. บาร์โค้ดทั้งหมด */}
         <section className="rounded-xl border border-slate-200 bg-white p-5">
@@ -927,44 +1824,57 @@ export default function ProductsPage() {
           <p className="text-xs text-slate-500 mt-0.5">จัดการรายการสินค้า ราคาขาย ขนาดบรรจุ บาร์โค้ด และนำเข้าข้อมูลสินค้า</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          {/* Hidden File Input for Excel / CSV */}
           <input
             type="file"
-            ref={csvInputRef}
-            accept=".csv"
+            ref={excelInputRef}
+            accept=".xlsx, .xls, .csv"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) handleCSVImport(file);
+              if (file) handleFileSelectForImport(file);
               e.target.value = "";
             }}
           />
-          <a
-            href="/template_import_products.csv"
-            download="template_import_products.csv"
-            className="w-full sm:w-auto"
-          >
-            <Button
-              variant="outline"
-              className="h-11 w-full border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50"
-              title="ดาวน์โหลดไฟล์ตัวอย่างสำหรับกรอกข้อมูลสินค้าเพื่อนำเข้า"
-            >
-              <Download className="w-4 h-4 mr-2 text-indigo-600" /> โหลด Template CSV
-            </Button>
-          </a>
+
+          {/* Export Excel Button */}
           <Button
             variant="outline"
-            className="h-11 w-full border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto"
-            onClick={() => csvInputRef.current?.click()}
+            onClick={handleExportExcel}
+            className="h-10 border-emerald-300 bg-emerald-50/60 font-bold text-emerald-800 hover:bg-emerald-100 hover:border-emerald-400 shadow-2xs cursor-pointer"
+            title="ส่งออกรายการสินค้าทั้งหมดเป็นไฟล์ Excel (.xlsx) เพื่อแก้ไขราคา บาร์โค้ด ชื่อ หรือสต็อก"
           >
-            <FileSpreadsheet className="w-5 h-5 mr-2 text-emerald-600" /> นำเข้า CSV
+            <Download className="w-4 h-4 mr-1.5 text-emerald-700" /> ส่งออก Excel (.xlsx)
           </Button>
+
+          {/* Import Excel / CSV Button */}
+          <Button
+            variant="outline"
+            onClick={() => excelInputRef.current?.click()}
+            className="h-10 border-indigo-300 bg-indigo-50/60 font-bold text-indigo-800 hover:bg-indigo-100 hover:border-indigo-400 shadow-2xs cursor-pointer"
+            title="นำเข้าไฟล์ Excel หรือ CSV เพื่ออัพเดตและเพิ่มสินค้าเป็นชุด"
+          >
+            <Upload className="w-4 h-4 mr-1.5 text-indigo-700" /> นำเข้า Excel / CSV
+          </Button>
+
+          {/* Download Template Excel Button */}
+          <Button
+            variant="outline"
+            onClick={handleDownloadExcelTemplate}
+            className="h-10 border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs cursor-pointer"
+            title="ดาวน์โหลดไฟล์แม่แบบ Excel สำหรับกรอกข้อมูลสินค้าเพื่อนำเข้า"
+          >
+            <FileSpreadsheet className="w-4 h-4 mr-1.5 text-sky-600" /> โหลด Template
+          </Button>
+
           <Link href="/categories" className="w-full sm:w-auto">
-            <Button variant="outline" className="h-11 w-full border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto">
-              <FolderTree className="w-5 h-5 mr-2 text-primary" /> จัดการหมวดหมู่
+            <Button variant="outline" className="h-10 w-full border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs">
+              <FolderTree className="w-4 h-4 mr-1.5 text-slate-700" /> จัดการหมวดหมู่
             </Button>
           </Link>
-          <Button className="h-11 w-full bg-primary px-6 font-bold text-white hover:bg-primary/90 sm:w-auto" onClick={handleOpenAdd}>
-            <Plus className="w-5 h-5 mr-2" /> เพิ่มสินค้าใหม่
+
+          <Button className="h-10 w-full bg-indigo-600 px-5 font-bold text-white hover:bg-indigo-700 shadow-2xs cursor-pointer sm:w-auto" onClick={handleOpenAdd}>
+            <Plus className="w-4 h-4 mr-1.5" /> เพิ่มสินค้าใหม่
           </Button>
         </div>
       </div>
@@ -1011,12 +1921,48 @@ export default function ProductsPage() {
         {stockFilter !== "all" && <span>· <b className="text-amber-600">{stockFilter === "out" ? "หมดสต็อก" : "ใกล้หมด"}</b></span>}
       </div>
 
+      {selectedProductIds.size > 0 && (
+        <div className="mb-3 flex flex-col gap-2 rounded-xl border border-rose-200 bg-rose-50/80 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-sm font-bold text-rose-900">
+            เลือกสินค้าแล้ว {selectedProductIds.size.toLocaleString()} รายการ
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              onClick={clearSelection}
+            >
+              ยกเลิกเลือก
+            </Button>
+            <Button
+              type="button"
+              className="h-9 bg-rose-600 text-white hover:bg-rose-700"
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting}
+            >
+              <Trash2 className="mr-1.5 h-4 w-4" />
+              {isBulkDeleting ? "กำลังลบ..." : "ลบรายการที่เลือก"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader className="bg-slate-50">
               <TableRow className="border-slate-200 hover:bg-transparent">
+                <TableHead className="w-10 text-center">
+                  <div className="flex justify-center">
+                    <Checkbox
+                      checked={isCurrentPageSelected}
+                      onCheckedChange={toggleSelectCurrentPage}
+                      aria-label="เลือกสินค้าทั้งหมดในหน้านี้"
+                    />
+                  </div>
+                </TableHead>
                 <TableHead className="w-8"></TableHead>
                 <TableHead className="text-slate-500 text-center whitespace-nowrap">บาร์โค้ด</TableHead>
                 <TableHead className="text-slate-500 whitespace-nowrap">รหัสสินค้า</TableHead>
@@ -1035,9 +1981,9 @@ export default function ProductsPage() {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={14} className="text-center h-32 text-slate-500">กำลังโหลด...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={15} className="text-center h-32 text-slate-500">กำลังโหลด...</TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={14} className="text-center h-40 text-slate-400">ไม่พบสินค้าที่ตรงกับเงื่อนไข</TableCell></TableRow>
+                <TableRow><TableCell colSpan={15} className="text-center h-40 text-slate-400">ไม่พบสินค้าที่ตรงกับเงื่อนไข</TableCell></TableRow>
               ) : paginatedList.map((p: any) => {
                 const stock = p.stock ?? 0;
                 const lowThreshold = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : 10;
@@ -1055,10 +2001,20 @@ export default function ProductsPage() {
                 const isExpanded = expandedRows.has(p.id);
                 const prodImages = allImages[p.id] || [];
                 const coverImg = prodImages.find(img => img.isCover)?.dataUrl || prodImages[0]?.dataUrl || p.imageUrl || null;
+                const displayBarcodes = getProductBarcodes(p);
 
                 return (
                   <Fragment key={p.id}>
                     <TableRow className={`border-slate-100 hover:bg-slate-50 ${isExpanded ? "bg-sky-50/20" : ""}`}>
+                      <TableCell className="text-center align-middle">
+                        <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                          checked={selectedProductIds.has(p.id)}
+                            onCheckedChange={() => toggleSelectProduct(p.id)}
+                          aria-label={`เลือกสินค้า ${p.name}`}
+                        />
+                        </div>
+                      </TableCell>
                       <TableCell className="text-center p-0 pl-2">
                         {pkgUnits.length > 0 ? (
                           <button onClick={() => toggleExpand(p.id)} className="w-7 h-7 rounded flex items-center justify-center text-sky-500 hover:bg-sky-100 transition-colors">
@@ -1068,13 +2024,13 @@ export default function ProductsPage() {
                       </TableCell>
                       <TableCell className="text-center">
                         <div className="flex flex-col gap-1 items-center">
-                          {(p.barcodes?.slice(0, 3) || []).map((b: any, bi: number) => (
+                          {displayBarcodes.slice(0, 3).map((barcode: string, bi: number) => (
                             <div key={bi} className="inline-flex items-center font-mono text-xs text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                              <span>{b.barcode}</span>
+                              <span>{barcode}</span>
                             </div>
                           ))}
-                          {(p.barcodes?.length || 0) > 3 && <span className="text-xs text-slate-400">+{p.barcodes.length - 3} อื่นๆ</span>}
-                          {!p.barcodes?.length && <span className="text-slate-300 text-xs">—</span>}
+                          {displayBarcodes.length > 3 && <span className="text-xs text-slate-400">+{displayBarcodes.length - 3} อื่นๆ</span>}
+                          {displayBarcodes.length === 0 && <span className="text-slate-300 text-xs">—</span>}
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-xs font-semibold text-slate-600 whitespace-nowrap">{p.sku}</TableCell>
@@ -1090,6 +2046,11 @@ export default function ProductsPage() {
                           <div>
                             <div className="flex items-center gap-1.5">
                               <span>{p.name}</span>
+                              {p.isBundle && (
+                                <span className="text-[10px] text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded font-bold shrink-0">
+                                  🎁 ชุด ({p.bundleItems?.length || 0} ชิ้น)
+                                </span>
+                              )}
                               {prodImages.length > 0 && (
                                 <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1 py-0.2 rounded font-medium">
                                   📷 {prodImages.length}
@@ -1124,6 +2085,7 @@ export default function ProductsPage() {
                       const unitCost = p.basePrice != null ? p.basePrice * mult : null;
                       return (
                         <TableRow key={`${p.id}-pkg-${ui}`} className="bg-sky-50/40 border-sky-100 hover:bg-sky-50/60">
+                          <TableCell className="py-2" />
                           <TableCell className="p-0 pl-2"><div className="w-7 h-7 flex items-center justify-center"><div className="w-px h-5 bg-sky-200 ml-3.5" /></div></TableCell>
                           <TableCell className="text-center py-2"><span className="font-mono text-xs text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded">{unit.barcode || "-"}</span></TableCell>
                           <TableCell className="py-2"><span className="text-xs text-slate-300">—</span></TableCell>
@@ -1205,6 +2167,189 @@ export default function ProductsPage() {
             <Button className={`px-8 h-10 font-bold ${dialogMode === "edit" ? "bg-sky-500 text-white hover:bg-sky-600" : "bg-primary text-white hover:bg-primary/90"}`} onClick={handleSave}>
               {dialogMode === "edit" ? "บันทึกการแก้ไข" : "บันทึกสินค้า"}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── EXCEL IMPORT PREVIEW DIALOG (SMART SELECTIVE DIFF & CHUNKING) ─── */}
+      <Dialog open={isImportPreviewOpen} onOpenChange={setIsImportPreviewOpen}>
+        <DialogContent className="flex flex-col bg-white p-0 text-slate-900 sm:max-w-5xl max-h-[88vh] overflow-hidden gap-0 rounded-2xl shadow-2xl">
+          <DialogHeader className="border-b border-slate-200 px-6 py-4 pr-14 shrink-0 bg-slate-50/80">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <DialogTitle className="flex items-center gap-2 text-lg font-black text-slate-900">
+                <FileSpreadsheet className="h-5 w-5 text-indigo-600" />
+                <span>ตรวจสอบข้อมูลก่อนนำเข้า (Smart Selective Import & Diff)</span>
+              </DialogTitle>
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <Badge className="bg-sky-100 text-sky-800 border-sky-300 font-bold">
+                  🔵 แก้ไข {importPreviewData.filter((i) => i.changeType === "CHANGED").length} รายการ
+                </Badge>
+                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold">
+                  🟢 เพิ่มใหม่ {importPreviewData.filter((i) => i.changeType === "NEW").length} รายการ
+                </Badge>
+                <Badge className="bg-slate-100 text-slate-700 border-slate-300 font-bold">
+                  ⚪ ไม่เปลี่ยน {importPreviewData.filter((i) => i.changeType === "UNCHANGED").length} รายการ (ข้าม)
+                </Badge>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            {/* Selective diff summary banner */}
+            <div className="bg-indigo-50/70 p-3.5 rounded-xl border border-indigo-200/90 text-xs text-indigo-950 flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-sm text-indigo-950">
+                    ตรวจพบรายการที่มีการเปลี่ยนแปลง/เพิ่มใหม่:{" "}
+                    <span className="text-indigo-700 font-black">
+                      {importPreviewData.filter((i) => i.changeType !== "UNCHANGED").length}
+                    </span>{" "}
+                    จากทั้งหมด {importPreviewData.length} รายการ
+                  </p>
+                  <p className="text-slate-600 mt-0.5">
+                    💡 ระบบจะส่งเฉพาะรายการที่มีการแก้ไขหรือเพิ่มใหม่เท่านั้นไปยังฐานข้อมูล (ข้าม {importPreviewData.filter((i) => i.changeType === "UNCHANGED").length} รายการที่ตรงกับของเดิม) เพื่อประหยัดทรัพยากรและทำงานได้รวดเร็วสูงสุด
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Filter Tabs */}
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 w-fit text-xs font-bold">
+              {[
+                { id: "all", label: `ทั้งหมด (${importPreviewData.length})` },
+                { id: "changed", label: `🔵 มีการแก้ไข (${importPreviewData.filter((i) => i.changeType === "CHANGED").length})` },
+                { id: "new", label: `🟢 เพิ่มใหม่ (${importPreviewData.filter((i) => i.changeType === "NEW").length})` },
+                { id: "unchanged", label: `⚪ ไม่เปลี่ยน (${importPreviewData.filter((i) => i.changeType === "UNCHANGED").length})` },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setImportFilterTab(tab.id as any)}
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    importFilterTab === tab.id
+                      ? "bg-white text-indigo-700 shadow-2xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Table Preview */}
+            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+              <Table>
+                <TableHeader className="bg-slate-100">
+                  <TableRow className="text-xs">
+                    <TableHead className="w-12 text-center font-bold">ลำดับ</TableHead>
+                    <TableHead className="w-28 font-bold">สถานะ</TableHead>
+                    <TableHead className="w-32 font-bold">รหัส (SKU)</TableHead>
+                    <TableHead className="font-bold">ชื่อสินค้า</TableHead>
+                    <TableHead className="w-24 font-bold text-right text-slate-700">ราคาทุน</TableHead>
+                    <TableHead className="w-24 font-bold text-right text-emerald-700">ราคาขาย 1</TableHead>
+                    <TableHead className="w-20 font-bold text-center">สต็อก</TableHead>
+                    <TableHead className="font-bold">รายการที่เปลี่ยนแปลง</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody className="text-xs font-medium">
+                  {importPreviewData
+                    .filter((row) => {
+                      if (importFilterTab === "changed") return row.changeType === "CHANGED";
+                      if (importFilterTab === "new") return row.changeType === "NEW";
+                      if (importFilterTab === "unchanged") return row.changeType === "UNCHANGED";
+                      return true;
+                    })
+                    .slice(0, 30)
+                    .map((row, idx) => (
+                      <TableRow key={idx} className="hover:bg-slate-50/80">
+                        <TableCell className="text-center font-mono text-slate-500">{idx + 1}</TableCell>
+                        <TableCell>
+                          {row.changeType === "CHANGED" ? (
+                            <Badge className="bg-sky-50 text-sky-700 border-sky-200 text-[10.5px] font-bold">
+                              🔵 แก้ไข
+                            </Badge>
+                          ) : row.changeType === "NEW" ? (
+                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10.5px] font-bold">
+                              🟢 เพิ่มใหม่
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-slate-100 text-slate-500 border-slate-200 text-[10.5px] font-medium">
+                              ⚪ ไม่เปลี่ยน
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono text-slate-700 font-bold">{row.sku || "-"}</TableCell>
+                        <TableCell className="font-bold text-slate-900 truncate max-w-[200px]">
+                          {row.name}
+                          {row.barcode && <span className="text-[10.5px] text-slate-400 block font-mono font-normal">บาร์โค้ด: {row.barcode}</span>}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-slate-600">{formatCurrency(row.costPrice)}</TableCell>
+                        <TableCell className="text-right font-mono text-emerald-700 font-bold">{formatCurrency(row.priceLevel1)}</TableCell>
+                        <TableCell className="text-center font-mono text-slate-800">{row.stock} {row.unit}</TableCell>
+                        <TableCell className="text-[11px] text-indigo-700 font-medium">
+                          {row.diffs?.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {row.diffs.map((d: string, di: number) => (
+                                <span key={di} className="bg-indigo-50 text-indigo-700 border border-indigo-100 px-1.5 py-0.5 rounded text-[10.5px]">
+                                  {d}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          <DialogFooter className="border-t border-slate-200 bg-slate-50 px-6 pt-4 pb-7 shrink-0 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-xs text-slate-500 font-medium w-full sm:w-auto">
+              {isImporting && importProgress > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="w-32 bg-slate-200 rounded-full h-2 overflow-hidden">
+                    <div className="bg-indigo-600 h-full transition-all duration-300" style={{ width: `${importProgress}%` }} />
+                  </div>
+                  <span className="font-bold text-indigo-700 font-mono">{importProgress}%</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsImportPreviewOpen(false)}
+                disabled={isImporting}
+                className="text-xs font-bold rounded-xl h-10 px-5 cursor-pointer border-slate-300 text-slate-700 hover:bg-slate-100"
+              >
+                ยกเลิก
+              </Button>
+              <Button
+                type="button"
+                onClick={handleConfirmImport}
+                disabled={isImporting || importPreviewData.filter((i) => i.changeType !== "UNCHANGED").length === 0}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl h-10 px-6 gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                {isImporting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>กำลังอัพเดต ({importProgress}%)...</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4" />
+                    <span>
+                      ยืนยันอัพเดตเฉพาะรายการที่เปลี่ยน ({importPreviewData.filter((i) => i.changeType !== "UNCHANGED").length} รายการ)
+                    </span>
+                  </>
+                )}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

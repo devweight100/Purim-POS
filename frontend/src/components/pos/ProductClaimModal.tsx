@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { 
-  verifyClaimEligibility, 
+  verifyClaimEligibility,
+  fetchClaimEligibleItems,
   processClaim, 
   ClaimVerificationQuery,
   loadAllClaimRecords 
@@ -96,13 +97,13 @@ export function ProductClaimModal({
   const { products, fetchProducts } = useProductStore();
 
   // Search only when keyword is entered
-  const handleSearch = () => {
+  const handleSearch = async () => {
     const trimmed = searchKeyword.trim();
     if (!trimmed) {
       setEligibleItems([]);
       return;
     }
-    const results = verifyClaimEligibility({
+    const results = await fetchClaimEligibleItems({
       searchKeyword: trimmed,
     });
     setEligibleItems(results);
@@ -215,7 +216,9 @@ export function ProductClaimModal({
   const maxClaimQty = Math.max(1, Math.floor(remainingBaseQuota / currentClaimUnit.factor));
 
   // Submit Claim
+  const claimSubmitting = useRef(false);
   const handleSubmitClaim = async () => {
+    if (claimSubmitting.current) return;
     if (!selectedItem) {
       toast.error('กรุณาเลือกรายการสินค้าที่ต้องการเคลม');
       return;
@@ -241,6 +244,7 @@ export function ProductClaimModal({
       return;
     }
 
+    claimSubmitting.current = true;
     setIsSubmitting(true);
     try {
       const claimVal = claimQty * currentClaimUnit.price;
@@ -262,7 +266,7 @@ export function ProductClaimModal({
         ? (selectedReplacementItem.unit.factor || 1) 
         : currentClaimUnit.factor;
 
-      const claimRecord = processClaim({
+      const claimRecord = await processClaim({
         item: selectedItem,
         quantity: claimQty,
         chosenUnitName: currentClaimUnit.unitName,
@@ -336,6 +340,7 @@ export function ProductClaimModal({
       console.error('Failed to process claim:', err);
       toast.error('เกิดข้อผิดพลาดในการบันทึกการรับเคลม');
     } finally {
+      claimSubmitting.current = false;
       setIsSubmitting(false);
     }
   };

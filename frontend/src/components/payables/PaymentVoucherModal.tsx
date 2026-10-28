@@ -18,6 +18,7 @@ import { formatCurrency, thaiBahtText } from '@/lib/utils';
 import { PayablePaymentEntry, SupplierPayableBill, PaymentVoucher } from '@/lib/payable-service';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
+import { BarcodeView } from '@/components/common/BarcodeView';
 import { toast } from 'sonner';
 
 interface PaymentVoucherModalProps {
@@ -195,6 +196,9 @@ export function PaymentVoucherModal({
                     <p><span className="text-slate-500 font-sans">เลขที่เอกสาร:</span> <b className="text-indigo-700 font-bold">{data.voucherNumber}</b></p>
                     <p><span className="text-slate-500 font-sans">วันที่จ่ายเงิน:</span> <b>{new Date(data.paymentDate).toLocaleDateString('th-TH')}</b></p>
                     <p><span className="text-slate-500 font-sans">จำนวนบิลที่จ่าย:</span> <b className="text-amber-800 font-bold">{data.bills.length} บิล</b></p>
+                  </div>
+                  <div className="pt-1 flex justify-end">
+                    <BarcodeView value={data.voucherNumber} height={32} />
                   </div>
                 </div>
               </div>

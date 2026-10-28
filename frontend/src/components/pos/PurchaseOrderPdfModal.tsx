@@ -8,6 +8,9 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
+import { BarcodeView } from '@/components/common/BarcodeView';
+import { loadStoreSettings } from '@/lib/store-settings-storage';
+import { printDocumentIframe } from '@/lib/pdf-print-service';
 
 export interface PurchaseOrderData {
   id: string;
@@ -174,40 +177,11 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
   const vatAmount = poData.vatAmount !== undefined && poData.vatAmount !== null ? Number(poData.vatAmount) : calculatedVat;
   const netAmount = poData.netAmount !== undefined && poData.netAmount !== null ? Number(poData.netAmount) : netBeforeVat;
 
+  const [storeSettings] = useState(() => loadStoreSettings());
+
   const handlePrint = () => {
     if (!printRef.current) return;
-    const printContent = printRef.current.innerHTML;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      toast.error('กรุณาอนุญาตป๊อปอัปเพื่อพิมพ์เอกสาร');
-      return;
-    }
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>ใบสั่งซื้อ ${po.poNumber}</title>
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap');
-            * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Sarabun', sans-serif; }
-            body { padding: 20px; color: #1e293b; background: #fff; font-size: 13px; line-height: 1.4; }
-            .po-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-            .po-table th { background: #f8fafc; border: 1px solid #cbd5e1; padding: 8px 10px; font-weight: 700; text-align: left; }
-            .po-table td { border: 1px solid #cbd5e1; padding: 8px 10px; }
-            @media print {
-              body { padding: 0; }
-              @page { size: A4 portrait; margin: 15mm; }
-            }
-          </style>
-          <script src="https://cdn.tailwindcss.com"></script>
-        </head>
-        <body onload="setTimeout(() => { window.print(); window.close(); }, 300)">
-          ${printContent}
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    printDocumentIframe(printRef.current, `ใบสั่งซื้อ - ${poNumber}`, 'a4');
   };
 
   const handleDownloadPdf = async () => {
@@ -284,16 +258,22 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <Store className="w-7 h-7 text-sky-600" />
-                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">ร้านปุริม POS / PURIM POS STORE</h1>
+                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">{storeSettings?.storeName || 'ร้านปุริม POS / PURIM POS STORE'}</h1>
                   </div>
-                  <p className="text-xs text-slate-600 font-medium">123/45 ถนนรัชดาภิเษก แขวงห้วยขวาง เขตห้วยขวาง กรุงเทพมหานคร 10310</p>
-                  <p className="text-xs text-slate-600 font-medium">เลขประจำตัวผู้เสียภาษี: 0-1055-65012-34-5 | โทร: 02-123-4567 | อีเมล: contact@purimpos.com</p>
+                  <p className="text-xs text-slate-600 font-medium">{storeSettings?.storeAddress || '123/45 ถนนรัชดาภิเษก แขวงห้วยขวาง เขตห้วยขวาง กรุงเทพมหานคร 10310'}</p>
+                  <p className="text-xs text-slate-600 font-medium">
+                    {storeSettings?.taxId && `เลขประจำตัวผู้เสียภาษี: ${storeSettings.taxId} | `}
+                    {storeSettings?.storePhone && `โทร: ${storeSettings.storePhone}`}
+                  </p>
                 </div>
-                <div className="text-right">
+                <div className="text-right flex flex-col items-end">
                   <div className="inline-block bg-sky-600 text-white font-black px-4 py-1.5 rounded text-lg uppercase tracking-wider mb-2">
                     ใบสั่งซื้อ / PURCHASE ORDER
                   </div>
                   <div className="text-xs text-slate-500 font-mono font-bold">ต้นฉบับ (ORIGINAL)</div>
+                  <div className="mt-1">
+                    <BarcodeView value={poNumber} height={32} />
+                  </div>
                 </div>
               </div>
 

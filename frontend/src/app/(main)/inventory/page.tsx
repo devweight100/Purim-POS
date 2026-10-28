@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { categories } from '@/lib/mock-data';
 import { useProductStore } from '@/lib/store/product-store';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -54,6 +53,7 @@ import {
 import {
   StockMovement,
   loadStockMovements,
+  fetchStockMovements,
   adjustSingleProductStock,
 } from '@/lib/stock-service';
 import { toast } from 'sonner';
@@ -69,30 +69,31 @@ export default function InventoryPage() {
   const [inventoryPageSize, setInventoryPageSize] = useState(10);
 
   // Movements filtering & pagination
+  const [movements, setMovements] = useState<StockMovement[]>([]);
   const [movementSearch, setMovementSearch] = useState('');
-  const [movementTypeFilter, setMovementTypeFilter] = useState<string>('all');
-  const [movementDateFilter, setMovementDateFilter] = useState<'all' | 'today' | '7days' | '30days'>('all');
+  const [movementTypeFilter, setMovementTypeFilter] = useState<string>('ALL');
+  const [movementDateFilter, setMovementDateFilter] = useState<string>('ALL');
   const [movementPage, setMovementPage] = useState(1);
   const [movementPageSize, setMovementPageSize] = useState(10);
-  const [movements, setMovements] = useState<StockMovement[]>([]);
 
-  // Adjustment Modal State
+  // Modal State for Manual Adjustment
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
-  const [targetProduct, setTargetProduct] = useState<any | null>(null);
+  const [targetProduct, setTargetProduct] = useState<any>(null);
   const [adjustType, setAdjustType] = useState<'ADD' | 'SUB' | 'SET'>('ADD');
   const [adjustAmount, setAdjustAmount] = useState<number | string>('');
   const [adjustReason, setAdjustReason] = useState<string>('');
   const [adjustCustomReason, setAdjustCustomReason] = useState<string>('');
 
-  // Single Product Stock Card Modal
+  // Modal State for Stock Card Detail
   const [isStockCardOpen, setIsStockCardOpen] = useState(false);
-  const [stockCardProduct, setStockCardProduct] = useState<any | null>(null);
+  const [stockCardProduct, setStockCardProduct] = useState<any>(null);
 
-  const { products, fetchProducts, isLoading } = useProductStore();
+  const { products, categories: storeCategories, fetchProducts, isLoading } = useProductStore();
 
   const reloadData = async () => {
     await fetchProducts();
-    setMovements(loadStockMovements());
+    const movs = await fetchStockMovements();
+    setMovements(movs);
   };
 
   useEffect(() => {
@@ -108,7 +109,7 @@ export default function InventoryPage() {
     setMovementPage(1);
   }, [movementSearch, movementTypeFilter, movementDateFilter, movementPageSize]);
 
-  const getCategoryName = (id: string) => categories.find((c) => c.id === id)?.name || 'ไม่ระบุ';
+  const getCategoryName = (id: string) => storeCategories.find((c) => c.id === id)?.name || 'ไม่ระบุ';
 
   // Load custom packaging from localStorage
   const allPackaging: Record<string, any[]> = useMemo(() => {
@@ -285,7 +286,7 @@ export default function InventoryPage() {
   };
 
   // Submit Stock Adjustment
-  const handleSaveAdjustment = () => {
+  const handleSaveAdjustment = async () => {
     if (!targetProduct) {
       toast.error('กรุณาเลือกสินค้าที่ต้องการปรับสต็อก');
       return;
@@ -300,7 +301,7 @@ export default function InventoryPage() {
     const finalReason =
       adjustReason === 'other' ? adjustCustomReason.trim() || 'ปรับยอดสต็อก' : adjustReason;
 
-    const res = adjustSingleProductStock({
+    const res = await adjustSingleProductStock({
       productId: targetProduct.id || targetProduct.sku,
       type: adjustType,
       amount: numAmount,
@@ -313,7 +314,7 @@ export default function InventoryPage() {
         `ปรับสต็อก ${targetProduct.name} เรียบร้อย: ${res.previousStock} ➔ ${res.newStock} (${res.delta >= 0 ? '+' : ''}${res.delta} ${targetProduct.unit || 'ชิ้น'})`
       );
       setIsAdjustModalOpen(false);
-      reloadData();
+      await reloadData();
     } else {
       toast.error('ไม่สามารถปรับสต็อกสินค้าได้');
     }
@@ -495,7 +496,7 @@ export default function InventoryPage() {
                 className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-sky-500 shadow-2xs"
               >
                 <option value="all">หมวดหมู่ทั้งหมด</option>
-                {categories.map((c) => (
+                {storeCategories.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>

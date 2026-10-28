@@ -1,0 +1,8 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="128" fill="#4f46e5"/>
+  <circle cx="256" cy="256" r="180" fill="#ffffff" opacity="0.15"/>
+  <rect x="140" y="140" width="232" height="60" rx="16" fill="#ffffff"/>
+  <rect x="140" y="220" width="232" height="150" rx="20" fill="#ffffff"/>
+  <circle cx="256" cy="295" r="28" fill="#4f46e5"/>
+  <text x="256" y="440" font-family="system-ui, sans-serif" font-size="38" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="2">PURIM POS</text>
+</svg>

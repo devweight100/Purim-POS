@@ -1,15 +1,18 @@
-import { Controller, Get, Post, Body, Patch, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Query, UseGuards } from '@nestjs/common';
 import { PurchaseOrdersService } from './purchase-orders.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles, RequirePermissions } from '../auth/roles.decorator';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@RequirePermissions('MANAGE_PURCHASES')
 @Controller('purchase-orders')
 export class PurchaseOrdersController {
   constructor(private readonly purchaseOrdersService: PurchaseOrdersService) {}
 
   @Get()
-  findAll() {
-    return this.purchaseOrdersService.findAll();
+  findAll(@Query() query: any) {
+    return this.purchaseOrdersService.findAll(query);
   }
 
   @Get(':id')
@@ -32,10 +35,15 @@ export class PurchaseOrdersController {
     return this.purchaseOrdersService.issue(id);
   }
 
+  @Post(':id/cancel')
+  cancel(@Param('id') id: string, @Body() data: { reason?: string }) {
+    return this.purchaseOrdersService.cancel(id, data?.reason);
+  }
+
   @Post(':id/receive')
   receive(
     @Param('id') id: string,
-    @Body() data: { items: { purchaseOrderItemId: string; receivedQty: number; unitCost: number }[] }
+    @Body() data: { clientReceiptId?: string; adjustAndComplete?: boolean; supplierInvoiceNo?: string; items: { purchaseOrderItemId: string; receivedQty: number; unitCost: number }[] }
   ) {
     return this.purchaseOrdersService.receive(id, data);
   }

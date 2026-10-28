@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>เชื่อมต่อระบบเซิร์ฟเวอร์ - ร้านปุริม POS</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    body {
+      background: #0f172a;
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 24px;
+      padding: 36px 32px;
+      max-width: 540px;
+      width: 100%;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .glow-header {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, #0284c7, #38bdf8, #10b981);
+    }
+    .logo-badge {
+      width: 68px;
+      height: 68px;
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      color: #ffffff;
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 25px -5px rgba(2, 132, 199, 0.4);
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }
+    p.subtitle {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    /* Auto-connect loader state */
+    #loading-state {
+      padding: 20px 0;
+    }
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid #334155;
+      border-top-color: #38bdf8;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px auto;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .loading-text {
+      font-size: 14px;
+      font-weight: 600;
+      color: #38bdf8;
+    }
+    .loading-hint {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 8px;
+    }
+
+    /* Manual config section */
+    #config-section {
+      display: none;
+      text-align: left;
+    }
+    .info-box {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 20px;
+      font-size: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .info-box span {
+      color: #94a3b8;
+    }
+    .info-box strong {
+      color: #38bdf8;
+      font-family: Consolas, monospace;
+      font-size: 13px;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: #cbd5e1;
+      margin-bottom: 8px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 14px 16px;
+      background: #0f172a;
+      border: 2px solid #334155;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #ffffff;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus {
+      border-color: #38bdf8;
+    }
+    .quick-ips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .quick-ip-btn {
+      background: #334155;
+      border: none;
+      color: #cbd5e1;
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-size: 11.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .quick-ip-btn:hover {
+      background: #475569;
+      color: #ffffff;
+    }
+    .quick-ip-btn.scan-btn {
+      background: #0369a1;
+      color: #ffffff;
+    }
+    .quick-ip-btn.scan-btn:hover {
+      background: #0284c7;
+    }
+
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 20px;
+    }
+    button.btn-primary {
+      width: 100%;
+      padding: 14px 20px;
+      background: #0284c7;
+      color: white;
+      border: none;
+      border-radius: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 10px 20px -5px rgba(2, 132, 199, 0.4);
+      transition: background 0.15s, transform 0.05s;
+    }
+    button.btn-primary:hover {
+      background: #0369a1;
+    }
+    button.btn-primary:active {
+      transform: scale(0.99);
+    }
+    button.btn-secondary {
+      width: 100%;
+      padding: 11px 20px;
+      background: transparent;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      border-radius: 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    button.btn-secondary:hover {
+      background: #334155;
+      color: #ffffff;
+    }
+
+    #status-msg {
+      margin-top: 14px;
+      font-size: 12.5px;
+      font-weight: 600;
+      min-height: 20px;
+      border-radius: 10px;
+      padding: 9px 12px;
+      display: none;
+      line-height: 1.4;
+    }
+    .status-success {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      display: block !important;
+    }
+    .status-error {
+      background: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      display: block !important;
+    }
+    .status-info {
+      background: rgba(56, 189, 248, 0.15);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      display: block !important;
+    }
+
+    .auto-retry-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 14px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      background: #10b981;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <div class="glow-header"></div>
+    <div class="logo-badge">🛒</div>
+    <h1>ร้านปุริม POS (Desktop Client)</h1>
+    <p class="subtitle">ระบบขายหน้าร้านแบบเชื่อมโยงเซิร์ฟเวอร์กลาง</p>
+
+    <!-- State 1: Connecting Loader -->
+    <div id="loading-state">
+      <div class="spinner"></div>
+      <div class="loading-text" id="loader-title">กำลังค้นหาเครื่องแม่ข่ายและเข้าสู่ระบบ POS...</div>
+      <div class="loading-hint">ตรวจสอบ localhost และเครือข่ายอัตโนมัติ</div>
+    </div>
+
+    <!-- State 2: Configuration Form -->
+    <div id="config-section">
+      <div class="info-box">
+        <span>📡 IP ของเครื่องนี้ (Client IP):</span>
+        <strong id="my-ip-label">กำลังโหลด...</strong>
+      </div>
+
+      <div class="form-group">
+        <label for="server-url">ที่อยู่ IP ของเครื่องแม่ข่าย (Server URL):</label>
+        <input type="text" id="server-url" placeholder="http://localhost:3000" spellcheck="false" />
+        
+        <div class="quick-ips" id="quick-ip-container">
+          <button class="quick-ip-btn" onclick="setIp('http://localhost:3000')">💻 เครื่องนี้ (localhost:3000)</button>
+          <button class="quick-ip-btn scan-btn" id="scan-btn" onclick="scanNetwork()">🔍 สแกนหาเครื่องแม่ในวง LAN</button>
+        </div>
+      </div>
+
+      <div id="status-msg"></div>
+
+      <div class="btn-group">
+        <button class="btn-primary" id="connect-btn" onclick="saveAndConnect()">🚀 บันทึกและเข้าสู่หน้าขาย (Connect POS)</button>
+        <button class="btn-secondary" id="test-btn" onclick="testConnection()">🔍 ทดสอบการเชื่อมต่อ (Test Connection)</button>
+      </div>
+
+      <div class="auto-retry-badge">
+        <div class="dot"></div>
+        <span>กำลังตรวจสอบเซิร์ฟเวอร์อัตโนมัติทุก 3 วินาที (หากเปิดเครื่องแม่จะเข้าสู่ระบบทันที)</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const loadingState = document.getElementById('loading-state');
+    const configSection = document.getElementById('config-section');
+    const loaderTitle = document.getElementById('loader-title');
+    const input = document.getElementById('server-url');
+    const statusMsg = document.getElementById('status-msg');
+    const connectBtn = document.getElementById('connect-btn');
+    const testBtn = document.getElementById('test-btn');
+    const scanBtn = document.getElementById('scan-btn');
+    const myIpLabel = document.getElementById('my-ip-label');
+    const quickIpContainer = document.getElementById('quick-ip-container');
+
+    let isScanning = false;
+    let autoRetryTimer = null;
+
+    function setIp(ip) {
+      input.value = ip;
+      showStatus('เลือกที่อยู่: ' + ip, 'info');
+    }
+
+    function showStatus(text, type) {
+      statusMsg.textContent = text;
+      statusMsg.className = type ? `status-${type}` : '';
+    }
+
+    function showConfigUI() {
+      loadingState.style.display = 'none';
+      configSection.style.display = 'block';
+    }
+
+    async function init() {
+      if (window.electronAPI) {
+        // Handle connection failure notice from main process
+        window.electronAPI.onConnectionFailed((data) => {
+          showConfigUI();
+          if (data && data.localIps && data.localIps.length > 0) {
+            updateMyIps(data.localIps);
+          }
+          if (data && data.lastUrl) {
+            input.value = data.lastUrl;
+          }
+          showStatus('⚠️ ยังไม่พบเครื่องเซิร์ฟเวอร์ กรุณาเปิด Purim-POS-Server.exe บนเครื่องแม่ หรือกดสแกน', 'error');
+        });
+
+        // Fetch initial config & local IPs
+        try {
+          const savedUrl = await window.electronAPI.getServerUrl();
+          input.value = savedUrl || 'http://localhost:3000';
+
+          const ips = await window.electronAPI.getLocalIps();
+          updateMyIps(ips);
+        } catch (e) {
+          console.error(e);
+        }
+
+        // If after 2.5s we are still on loading state, fallback to show config
+        setTimeout(() => {
+          if (loadingState.style.display !== 'none') {
+            showConfigUI();
+            showStatus('⚠️ ยังไม่พบเครื่องเซิร์ฟเวอร์ กรุณาเปิด Purim-POS-Server.exe แล้วกดลองใหม่', 'error');
+          }
+        }, 2500);
+
+        // Start auto-poll heartbeat
+        startAutoHeartbeat();
+      } else {
+        showConfigUI();
+      }
+    }
+
+    function updateMyIps(ips) {
+      if (!ips || ips.length === 0) {
+        myIpLabel.textContent = '127.0.0.1';
+        return;
+      }
+      myIpLabel.textContent = ips.join(', ');
+      
+      // Add quick button for own IP if not already added
+      for (const ip of ips) {
+        const url = `http://${ip}:3000`;
+        const id = `btn-ip-${ip.replace(/\./g, '-')}`;
+        if (!document.getElementById(id)) {
+          const btn = document.createElement('button');
+          btn.id = id;
+          btn.className = 'quick-ip-btn';
+          btn.textContent = `📡 IP เครื่องนี้ (${ip}:3000)`;
+          btn.onclick = () => setIp(url);
+          quickIpContainer.insertBefore(btn, scanBtn);
+        }
+      }
+    }
+
+    function startAutoHeartbeat() {
+      if (autoRetryTimer) clearInterval(autoRetryTimer);
+      autoRetryTimer = setInterval(async () => {
+        if (!window.electronAPI) return;
+        const targetUrl = (input.value || 'http://localhost:3000').trim();
+        try {
+          // Check localhost first (fastest)
+          const localRes = await window.electronAPI.testServerUrl('http://localhost:3000');
+          if (localRes.ok) {
+            clearInterval(autoRetryTimer);
+            showStatus('🎉 พบเซิร์ฟเวอร์ที่ localhost:3000! กำลังเข้าสู่ระบบขาย...', 'success');
+            await window.electronAPI.saveServerUrl('http://localhost:3000');
+            setTimeout(() => window.electronAPI.loadPosScreen('http://localhost:3000'), 500);
+            return;
+          }
+
+          // Check entered url
+          if (targetUrl && targetUrl !== 'http://localhost:3000') {
+            const res = await window.electronAPI.testServerUrl(targetUrl);
+            if (res.ok) {
+              clearInterval(autoRetryTimer);
+              showStatus(`🎉 พบเซิร์ฟเวอร์ที่ ${targetUrl}! กำลังเข้าสู่ระบบขาย...`, 'success');
+              await window.electronAPI.saveServerUrl(targetUrl);
+              setTimeout(() => window.electronAPI.loadPosScreen(targetUrl), 500);
+              return;
+            }
+          }
+        } catch (e) {}
+      }, 3000);
+    }
+
+    async function scanNetwork() {
+      if (isScanning || !window.electronAPI) return;
+      isScanning = true;
+      scanBtn.disabled = true;
+      scanBtn.textContent = '⏳ กำลังสแกนวง LAN...';
+      showStatus('🔍 กำลังสแกนหาเครื่องแม่ข่าย Purim POS ในวงแลน...', 'info');
+
+      try {
+        const found = await window.electronAPI.scanNetwork();
+        if (found && found.length > 0) {
+          const target = found[0];
+          setIp(target);
+          showStatus(`✅ พบเครื่องแม่ข่ายที่ ${target}! กำลังเชื่อมต่อ...`, 'success');
+          setTimeout(() => saveAndConnect(), 1000);
+        } else {
+          showStatus('❌ ไม่พบเซิร์ฟเวอร์ในวง LAN กรุณาตรวจสอบว่า Purim-POS-Server.exe เปิดอยู่', 'error');
+        }
+      } catch (err) {
+        showStatus('❌ เกิดข้อผิดพลาดในการสแกน: ' + err.message, 'error');
+      } finally {
+        isScanning = false;
+        scanBtn.disabled = false;
+        scanBtn.textContent = '🔍 สแกนหาเครื่องแม่ในวง LAN';
+      }
+    }
+
+    async function testConnection() {
+      let url = input.value.trim();
+      if (!url) {
+        showStatus('กรุณากรอกที่อยู่ Server URL', 'error');
+        return;
+      }
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'http://' + url;
+        input.value = url;
+      }
+
+      showStatus('⏳ กำลังทดสอบเชื่อมต่อไปยัง ' + url + '...', 'info');
+      testBtn.disabled = true;
+
+      try {
+        const res = await window.electronAPI.testServerUrl(url);
+        if (res.ok) {
+          showStatus('✅ เชื่อมต่อกับเครื่องเซิร์ฟเวอร์สำเร็จ พร้อมใช้งาน!', 'success');
+        } else {
+          showStatus('❌ ไม่สามารถเชื่อมต่อได้: ' + (res.error || 'Connection timed out'), 'error');
+        }
+      } catch (err) {
+        showStatus('❌ เกิดข้อผิดพลาดในการเชื่อมต่อ: ' + err.message, 'error');
+      } finally {
+        testBtn.disabled = false;
+      }
+    }
+
+    async function saveAndConnect() {
+      let url = input.value.trim();
+      if (!url) {
+        showStatus('กรุณากรอกที่อยู่ Server URL', 'error');
+        return;
+      }
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'http://' + url;
+        input.value = url;
+      }
+
+      showStatus('⏳ กำลังบันทึกและเข้าสู่หน้าขาย...', 'info');
+      connectBtn.disabled = true;
+
+      try {
+        await window.electronAPI.saveServerUrl(url);
+        await window.electronAPI.loadPosScreen(url);
+      } catch (err) {
+        showStatus('❌ ไม่สามารถเปิดหน้าขายได้: ' + err.message, 'error');
+        connectBtn.disabled = false;
+      }
+    }
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        saveAndConnect();
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>

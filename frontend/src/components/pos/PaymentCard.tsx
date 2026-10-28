@@ -2,15 +2,17 @@
 
 import { forwardRef, useEffect, useState } from 'react';
 import { useCartStore } from '@/lib/store/cart-store';
-import { storeSettings } from '@/lib/mock-data';
+import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import html2canvas from 'html2canvas';
 
 export const PaymentCard = forwardRef<HTMLDivElement, {}>((props, ref) => {
   const cart = useCartStore();
   const [orderNumber, setOrderNumber] = useState('');
+  const [storeSettings, setStoreSettings] = useState(loadStoreSettings());
   
   useEffect(() => {
+    setStoreSettings(loadStoreSettings());
     setOrderNumber(`ORD-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(Math.random()*1000)}`);
   }, []);
 

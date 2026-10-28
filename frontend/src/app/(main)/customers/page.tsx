@@ -9,6 +9,7 @@ import {
   LoyaltySystemConfig,
   loadCustomers,
   saveCustomers,
+  fetchLoyaltyConfig,
   upsertCustomer,
   deleteCustomer,
   loadLoyaltyConfig,
@@ -103,10 +104,14 @@ export default function CustomersPage() {
     try {
       const list = await apiFetch('/customers');
       setCustomers(Array.isArray(list) ? list : []);
-    } catch {
-      setCustomers([]);
+      saveCustomers(Array.isArray(list) ? list : []);
+    } catch (err: any) {
+      setCustomers(loadCustomers());
+      if (err?.status !== 401) {
+        toast.error('โหลดข้อมูลลูกค้าจากฐานข้อมูลไม่ได้');
+      }
     }
-    setLoyaltyConfig(loadLoyaltyConfig());
+    try { setLoyaltyConfig(await fetchLoyaltyConfig()); } catch { toast.warning('โหลดการตั้งค่าคะแนนไม่ได้ กำลังใช้ค่าล่าสุดในเครื่อง'); }
   };
 
   useEffect(() => {
@@ -281,8 +286,9 @@ export default function CustomersPage() {
   };
 
   // Save Global Loyalty Settings
-  const handleSaveLoyaltySettings = () => {
-    saveLoyaltyConfig(loyaltyConfig);
+  const handleSaveLoyaltySettings = async () => {
+    try { await saveLoyaltyConfig(loyaltyConfig); }
+    catch (error) { toast.error('บันทึกการตั้งค่าคะแนนไม่ได้: ' + (error instanceof Error ? error.message : String(error))); return; }
     toast.success('บันทึกการตั้งค่าระบบคะแนนสะสมเรียบร้อยแล้ว');
     setIsSettingsOpen(false);
     reloadData();

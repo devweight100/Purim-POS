@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { 
-  loadAllClaimRecords, 
+  loadAllClaimRecords,
+  fetchAllClaimRecords, 
   getClaimStockSummary 
 } from '@/lib/claim-service';
 import { ClaimRecord, ClaimResolutionType } from '@/lib/types';
@@ -61,10 +62,10 @@ export default function ClaimsPage() {
   const [selectedClaimForPdf, setSelectedClaimForPdf] = useState<ClaimRecord | null>(null);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
 
-  const fetchClaims = () => {
+  const fetchClaims = async () => {
     setLoading(true);
     try {
-      const records = loadAllClaimRecords();
+      const records = await fetchAllClaimRecords();
       setClaims(records);
     } catch (err) {
       toast.error('ไม่สามารถโหลดข้อมูลรายการเคลมได้');
@@ -325,14 +326,16 @@ export default function ClaimsPage() {
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="bg-transparent text-xs text-slate-700 outline-none"
+                onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
+                className="bg-transparent text-xs text-slate-700 outline-none cursor-pointer"
               />
               <span className="text-slate-400">-</span>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="bg-transparent text-xs text-slate-700 outline-none"
+                onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
+                className="bg-transparent text-xs text-slate-700 outline-none cursor-pointer"
               />
             </div>
           </div>
@@ -409,7 +412,7 @@ export default function ClaimsPage() {
 
                     {/* 3. Date (แยก col. วันที่) */}
                     <TableCell className="py-3.5 text-center font-mono text-xs text-slate-600">
-                      {new Date(claim.claimDate).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
+                      {formatDate(claim.claimDate)}
                     </TableCell>
 
                     {/* 4. Customer Column (Center Align) */}

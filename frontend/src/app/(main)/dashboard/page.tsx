@@ -47,13 +47,19 @@ import {
   Percent,
   CheckCircle2,
   Box,
-  Truck
+  Truck,
+  RotateCcw,
+  Ban,
+  ShieldAlert,
+  ArrowRight,
+  Info
 } from "lucide-react";
 import { useShiftStore } from "@/lib/store/shift-store";
 import { useProductStore } from "@/lib/store/product-store";
 import { loadAllDebtRecords } from "@/lib/debt-service";
 import { loadCustomers } from "@/lib/customer-service";
-import { DebtRecord, Customer } from "@/lib/types";
+import { fetchAllClaimRecords, loadAllClaimRecords } from "@/lib/claim-service";
+import { DebtRecord, Customer, ClaimRecord } from "@/lib/types";
 
 // Palette colors for charts
 const COLORS = ["#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#64748b"];
@@ -62,22 +68,32 @@ export default function DashboardPage() {
   const [timeFilter, setTimeFilter] = useState<"today" | "7days" | "30days" | "month" | "all">("7days");
   const [loading, setLoading] = useState(false);
   const [backendOrders, setBackendOrders] = useState<any[]>([]);
+  const [claims, setClaims] = useState<ClaimRecord[]>([]);
   const [isMounted, setIsMounted] = useState(false);
 
   const shiftStore = useShiftStore();
   const { products, fetchProducts } = useProductStore();
 
-  // Load backend orders + local shift orders
-  const loadOrders = async () => {
+  // Load backend orders + claims + local shift orders
+  const loadDashboardData = async () => {
     setLoading(true);
     try {
-      let bOrders: any[] = [];
-      try {
-        bOrders = await apiFetch("/orders");
-      } catch {
-        bOrders = await api.getOrders();
-      }
-      setBackendOrders(Array.isArray(bOrders) ? bOrders : []);
+      const [ordersRes, claimsRes] = await Promise.allSettled([
+        apiFetch("/orders?limit=1000"),
+        fetchAllClaimRecords().catch(() => loadAllClaimRecords()),
+      ]);
+
+      const unwrap = (res: any) => {
+        if (res.status === "fulfilled") {
+          const val = res.value;
+          if (val?.data && Array.isArray(val.data)) return val.data;
+          if (Array.isArray(val)) return val;
+        }
+        return [];
+      };
+
+      setBackendOrders(unwrap(ordersRes));
+      setClaims(unwrap(claimsRes));
     } catch {
       setBackendOrders([]);
     } finally {
@@ -88,7 +104,7 @@ export default function DashboardPage() {
   useEffect(() => {
     setIsMounted(true);
     fetchProducts();
-    loadOrders();
+    loadDashboardData();
   }, [fetchProducts]);
 
   // Combine and deduplicate orders from shift store & backend
@@ -151,12 +167,33 @@ export default function DashboardPage() {
     });
   }, [allOrders, timeFilter]);
 
-  // Key KPI metrics calculations
+  // Filter claims by selected time range
+  const filteredClaims = useMemo(() => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+    return claims.filter((claim) => {
+      const claimTime = new Date(claim.claimDate || claim.orderDate || "").getTime();
+      if (!claimTime) return true;
+
+      if (timeFilter === "today") return claimTime >= startOfToday;
+      if (timeFilter === "7days") return claimTime >= now.getTime() - 7 * 24 * 60 * 60 * 1000;
+      if (timeFilter === "30days") return claimTime >= now.getTime() - 30 * 24 * 60 * 60 * 1000;
+      if (timeFilter === "month") return claimTime >= new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+      return true;
+    });
+  }, [claims, timeFilter]);
+
+  // Key KPI metrics calculations (Clear distinction between Gross Sales, Refunds, and Net Revenue)
   const kpi = useMemo(() => {
-    let totalRevenue = 0;
+    let grossSales = 0; // ยอดขายรวมก่อนหักบิลยกเลิก/คืนเงิน
+    let completedRevenue = 0; // ยอดขายเฉพาะบิลที่สำเร็จ
+    let voidedAmount = 0; // ยอดเงินบิลที่ถูกยกเลิก (Voided / Cancelled)
     let completedOrdersCount = 0;
     let voidedOrdersCount = 0;
     let totalUnitsSold = 0;
+    let voidedUnits = 0;
+
     let cashSales = 0;
     let qrSales = 0;
     let creditSales = 0;
@@ -164,14 +201,20 @@ export default function DashboardPage() {
 
     filteredOrders.forEach((o) => {
       const isVoid = o.status === "VOIDED" || o.status === "CANCELLED";
+      const total = Number(o.totalAmount || o.total || 0);
+      grossSales += total;
+
       if (isVoid) {
         voidedOrdersCount++;
+        voidedAmount += total;
+        (o.items || []).forEach((it: any) => {
+          voidedUnits += Number(it.quantity || 1);
+        });
         return;
       }
 
       completedOrdersCount++;
-      const total = Number(o.totalAmount || o.total || 0);
-      totalRevenue += total;
+      completedRevenue += total;
 
       // Units sold
       (o.items || []).forEach((it: any) => {
@@ -198,7 +241,26 @@ export default function DashboardPage() {
       }
     });
 
-    const averageBasket = completedOrdersCount > 0 ? totalRevenue / completedOrdersCount : 0;
+    // Claim Refunds (คืนเงินจากการเคลมสินค้า)
+    let claimRefundAmount = 0;
+    let claimRefundCount = 0;
+    filteredClaims.forEach((c) => {
+      const isRefund =
+        c.resolutionType === "REFUND_CASH" ||
+        c.resolutionType === "REFUND_TRANSFER" ||
+        (c as any).claimType === "REFUND";
+      if (isRefund) {
+        claimRefundCount++;
+        claimRefundAmount += Number(c.totalClaimValue || c.refundAmount || 0);
+      }
+    });
+
+    // Total Refunds & Net Revenue
+    const totalRefunds = voidedAmount + claimRefundAmount;
+    const netRevenue = Math.max(0, completedRevenue - claimRefundAmount);
+    const averageBasket = completedOrdersCount > 0 ? netRevenue / completedOrdersCount : 0;
+    const totalOrdersCount = completedOrdersCount + voidedOrdersCount;
+    const refundRate = grossSales > 0 ? ((totalRefunds / grossSales) * 100).toFixed(1) : "0";
 
     // Debt KPI
     let totalPendingDebt = 0;
@@ -222,10 +284,19 @@ export default function DashboardPage() {
     });
 
     return {
-      totalRevenue,
+      grossSales,
+      completedRevenue,
+      voidedAmount,
+      claimRefundAmount,
+      claimRefundCount,
+      totalRefunds,
+      netRevenue,
+      refundRate,
+      totalOrdersCount,
       completedOrdersCount,
       voidedOrdersCount,
       totalUnitsSold,
+      voidedUnits,
       averageBasket,
       cashSales,
       qrSales,
@@ -238,11 +309,11 @@ export default function DashboardPage() {
       totalInventoryValue,
       totalCustomers: customers.length,
     };
-  }, [filteredOrders, debtRecords, products, customers]);
+  }, [filteredOrders, filteredClaims, debtRecords, products, customers]);
 
-  // Timeline Revenue Trend Chart Data (Group by date)
+  // Timeline Revenue Trend Chart Data (Group by date: Sales, Refunds, Net)
   const salesTimelineData = useMemo(() => {
-    const map = new Map<string, { date: string; fullDate: string; sales: number; orders: number }>();
+    const map = new Map<string, { date: string; fullDate: string; grossSales: number; refunds: number; netSales: number; orders: number }>();
 
     // Prepare chronological buckets
     const now = new Date();
@@ -252,31 +323,43 @@ export default function DashboardPage() {
       const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
       const key = `${d.getDate()}/${d.getMonth() + 1}`;
       const fullDateStr = d.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
-      map.set(key, { date: fullDateStr, fullDate: d.toISOString().split("T")[0], sales: 0, orders: 0 });
+      map.set(key, { date: fullDateStr, fullDate: d.toISOString().split("T")[0], grossSales: 0, refunds: 0, netSales: 0, orders: 0 });
     }
 
     filteredOrders.forEach((o) => {
       const isVoid = o.status === "VOIDED" || o.status === "CANCELLED";
-      if (isVoid) return;
-
+      const amt = Number(o.totalAmount || o.total || 0);
       const d = new Date(o.createdAt);
       const key = `${d.getDate()}/${d.getMonth() + 1}`;
       const entry = map.get(key);
-      const amt = Number(o.totalAmount || o.total || 0);
 
       if (entry) {
-        entry.sales += amt;
-        entry.orders += 1;
+        if (isVoid) {
+          entry.refunds += amt;
+        } else {
+          entry.grossSales += amt;
+          entry.orders += 1;
+        }
       } else {
         const fullDateStr = d.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
-        map.set(key, { date: fullDateStr, fullDate: d.toISOString().split("T")[0], sales: amt, orders: 1 });
+        map.set(key, {
+          date: fullDateStr,
+          fullDate: d.toISOString().split("T")[0],
+          grossSales: isVoid ? 0 : amt,
+          refunds: isVoid ? amt : 0,
+          netSales: isVoid ? 0 : amt,
+          orders: isVoid ? 0 : 1,
+        });
       }
     });
 
-    return Array.from(map.values());
+    return Array.from(map.values()).map((item) => ({
+      ...item,
+      netSales: Math.max(0, item.grossSales - item.refunds),
+    }));
   }, [filteredOrders, timeFilter]);
 
-  // Payment Channels Donut Chart Data
+  // Payment Channels Donut Chart Data (Net Sales per channel)
   const paymentChartData = useMemo(() => {
     const data = [
       { name: "เงินสด (Cash)", value: kpi.cashSales, color: "#10b981" },
@@ -329,13 +412,6 @@ export default function DashboardPage() {
     return allOrders.slice(0, 6);
   }, [allOrders]);
 
-  // Low stock products alert list
-  const lowStockProducts = useMemo(() => {
-    return products
-      .filter((p) => Number(p.stock || 0) <= Number(p.minStockAlert ?? 10))
-      .slice(0, 5);
-  }, [products]);
-
   return (
     <div className="mx-auto max-w-[1600px] space-y-5 p-4 sm:p-6 lg:p-7 font-sans">
       {/* ─── PAGE HEADER & TIME RANGE SELECTOR ─── */}
@@ -345,10 +421,10 @@ export default function DashboardPage() {
             <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-sm">
               <LayoutDashboard className="w-5 h-5" />
             </div>
-            <span>แดชบอร์ด & รายงานภาพรวม (Dashboard Overview)</span>
+            <span>แดชบอร์ด & ภาพรวมรายได้ (Dashboard & Revenue Overview)</span>
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            วิเคราะห์ยอดขาย ผลการดำเนินงาน สถิติการชำระเงิน และสถานะสต็อกสินค้าแบบเรียลไทม์
+            วิเคราะห์ยอดขายจริง สรุปรายการคืนเงิน/ยกเลิกบิล และสถานะการเงินหน้าร้านแบบเรียลไทม์
           </p>
         </div>
 
@@ -380,8 +456,8 @@ export default function DashboardPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={loadOrders}
-            className="border-slate-300 text-slate-700 hover:bg-slate-50 h-9 px-3 text-xs font-bold rounded-xl shadow-2xs gap-1.5"
+            onClick={loadDashboardData}
+            className="border-slate-300 text-slate-700 hover:bg-slate-50 h-9 px-3 text-xs font-bold rounded-xl shadow-2xs gap-1.5 cursor-pointer"
             title="รีเฟรชข้อมูลแดชบอร์ด"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
@@ -390,70 +466,165 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ─── PRIMARY KPI STATS CARDS (4 Cards, Single-line Inline Layout matching other pages) ─── */}
+      {/* ─── 🌟 CRYSTAL CLEAR FINANCIAL FLOW BANNER (สรุปแจกแจงรายได้ & การคืนเงินแบบชัดเจน - ธีมสว่างคลีน) ─── */}
+      <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-slate-200/90 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center shrink-0">
+              <Info className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <span>สรุปแจกแจงกระแสรายได้และการคืนเงิน (Financial Flow Breakdown)</span>
+                {kpi.totalRefunds > 0 && (
+                  <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-bold">
+                    มีรายการคืนเงิน/ยกเลิก
+                  </Badge>
+                )}
+              </h2>
+              <p className="text-[11px] text-slate-500">
+                แจกแจงยอดขายรวมก่อนหัก ยอดที่ยกเลิก/คืนเงินให้ลูกค้า และรายได้สุทธิที่ร้านค้าได้รับจริง
+              </p>
+            </div>
+          </div>
+
+          <div className="text-xs text-slate-500 font-medium">
+            ช่วงเวลา: <span className="text-indigo-600 font-bold">{timeFilter === "today" ? "วันนี้" : timeFilter === "7days" ? "7 วันล่าสุด" : timeFilter === "30days" ? "30 วันล่าสุด" : timeFilter === "month" ? "เดือนนี้" : "ทั้งหมด"}</span>
+          </div>
+        </div>
+
+        {/* 3 Steps Equation: [ Gross Sales ] - [ Refunds & Voids ] = [ Net Revenue ] */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+          {/* Step 1: Gross Sales */}
+          <div className="bg-emerald-50/50 p-3.5 rounded-xl border border-emerald-200/80 relative">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-emerald-900 font-bold">1. ยอดขายรวม (Gross Sales)</span>
+              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] font-bold">
+                {kpi.totalOrdersCount} ออเดอร์
+              </Badge>
+            </div>
+            <div className="text-xl sm:text-2xl font-black font-mono text-emerald-700 mt-1">
+              +{formatCurrency(kpi.grossSales)}
+            </div>
+            <p className="text-[11px] text-emerald-700/90 mt-1 font-medium">
+              มูลค่าสินค้าที่ขายออกไปทั้งหมดก่อนหักรายการยกเลิก
+            </p>
+          </div>
+
+          {/* Step 2: Total Refunds & Voids */}
+          <div className="bg-rose-50/50 p-3.5 rounded-xl border border-rose-200/80 relative">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-rose-900 font-bold">2. คืนเงิน & ยกเลิกบิล (Refunds)</span>
+              <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px] font-bold">
+                {kpi.voidedOrdersCount} ยกเลิก / {kpi.claimRefundCount} เคลม
+              </Badge>
+            </div>
+            <div className="text-xl sm:text-2xl font-black font-mono text-rose-600 mt-1">
+              -{formatCurrency(kpi.totalRefunds)}
+            </div>
+            <div className="text-[11px] text-rose-700/90 mt-1 flex flex-wrap gap-x-2 font-medium">
+              <span>ยกเลิกบิล: -{formatCurrency(kpi.voidedAmount)}</span>
+              {kpi.claimRefundAmount > 0 && <span>• เคลมคืนเงิน: -{formatCurrency(kpi.claimRefundAmount)}</span>}
+            </div>
+          </div>
+
+          {/* Step 3: Net Revenue */}
+          <div className="bg-indigo-50/60 p-3.5 rounded-xl border border-indigo-200/90 relative">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-indigo-950 font-bold">3. รายได้สุทธิที่ได้รับจริง (Net)</span>
+              <Badge className="bg-indigo-100 text-indigo-800 border-indigo-300 text-[10px] font-bold">
+                รับจริง {kpi.completedOrdersCount} บิล
+              </Badge>
+            </div>
+            <div className="text-xl sm:text-2xl font-black font-mono text-indigo-700 mt-1">
+              ={formatCurrency(kpi.netRevenue)}
+            </div>
+            <p className="text-[11px] text-indigo-800/90 mt-1 font-medium">
+              ยอดเงินคงเหลือสุทธิหลังหักการคืนเงินทั้งหมดแล้ว
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── PRIMARY KPI STATS CARDS (4 Cards) ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
         {/* 1. Net Revenue (Indigo Theme) */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+        <div className="bg-white px-3.5 py-2.5 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg border border-indigo-100 shrink-0">
               <DollarSign className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-indigo-950">ยอดขายรวมสุทธิ:</span>
+            <div>
+              <span className="text-xs text-slate-500 block font-bold">รายได้สุทธิ (Net Sales)</span>
+              <span className="text-base sm:text-lg font-black text-indigo-700 font-mono tracking-tight">
+                {formatCurrency(kpi.netRevenue)}
+              </span>
+            </div>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-indigo-700 tracking-tight">
-              {formatCurrency(kpi.totalRevenue)}
-            </span>
+          <div className="text-right text-[10px] text-slate-400 font-mono">
+            <div>ขาย {formatCurrency(kpi.grossSales)}</div>
+            <div className="text-rose-500">คืน -{formatCurrency(kpi.totalRefunds)}</div>
           </div>
         </div>
 
-        {/* 2. Total Completed Orders (Sky Theme) */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-sky-200/80 shadow-2xs flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-1 bg-sky-50 text-sky-600 rounded-md border border-sky-100 shrink-0">
+        {/* 2. Total Refunds & Voids (Rose Theme) */}
+        <div className="bg-white px-3.5 py-2.5 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg border border-rose-100 shrink-0">
+              <RotateCcw className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-xs text-slate-500 block font-bold">คืนเงิน & ยกเลิกบิล</span>
+              <span className="text-base sm:text-lg font-black text-rose-600 font-mono tracking-tight">
+                {formatCurrency(kpi.totalRefunds)}
+              </span>
+            </div>
+          </div>
+          <div className="text-right text-[10px] text-slate-400">
+            <div>{kpi.voidedOrdersCount} บิลยกเลิก</div>
+            <div>{kpi.claimRefundCount} รายการเคลม</div>
+          </div>
+        </div>
+
+        {/* 3. Total Completed Orders (Sky Theme) */}
+        <div className="bg-white px-3.5 py-2.5 rounded-xl border border-sky-200/80 shadow-2xs flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-sky-50 text-sky-600 rounded-lg border border-sky-100 shrink-0">
               <ShoppingCart className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-sky-950">จำนวนออเดอร์:</span>
-          </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-sky-700 tracking-tight">
-              {kpi.completedOrdersCount}
-            </span>
-            <span className="text-xs text-slate-600 font-sans font-bold">บิล</span>
-          </div>
-        </div>
-
-        {/* 3. Average Basket Size (AOV) (Emerald Theme) */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
-              <ShoppingBag className="w-4 h-4" />
+            <div>
+              <span className="text-xs text-slate-500 block font-bold">ออเดอร์สำเร็จ</span>
+              <span className="text-base sm:text-lg font-black text-sky-700 font-mono tracking-tight">
+                {kpi.completedOrdersCount} <span className="text-xs font-bold text-slate-600 font-sans">บิล</span>
+              </span>
             </div>
-            <span className="text-sm font-bold text-emerald-950">เฉลี่ยต่อบิล:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-emerald-600 tracking-tight">
-              {formatCurrency(kpi.averageBasket)}
-            </span>
+          <div className="text-right text-[10px] text-slate-400">
+            <div>เฉลี่ย/บิล</div>
+            <div className="font-mono font-bold text-sky-700">{formatCurrency(kpi.averageBasket)}</div>
           </div>
         </div>
 
         {/* 4. Pending Credit Receivables (Amber Theme) */}
         <Link
           href="/debts"
-          className="bg-white px-3.5 py-2 rounded-xl border border-amber-200/80 shadow-2xs flex items-center justify-between hover:border-amber-400 transition-colors group cursor-pointer"
+          className="bg-white px-3.5 py-2.5 rounded-xl border border-amber-200/80 shadow-2xs flex items-center justify-between hover:border-amber-400 transition-colors group cursor-pointer"
           title="คลิกเพื่อไปที่หน้าระบบลูกหนี้"
         >
-          <div className="flex items-center gap-2">
-            <div className="p-1 bg-amber-50 text-amber-600 rounded-md border border-amber-100 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg border border-amber-100 shrink-0">
               <Receipt className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-amber-950 group-hover:text-amber-800">เงินเชื่อคงค้าง:</span>
+            <div>
+              <span className="text-xs text-slate-500 block font-bold group-hover:text-amber-800">เงินเชื่อคงค้าง</span>
+              <span className="text-base sm:text-lg font-black text-amber-700 font-mono tracking-tight">
+                {formatCurrency(kpi.totalPendingDebt)}
+              </span>
+            </div>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-amber-700 tracking-tight">
-              {formatCurrency(kpi.totalPendingDebt)}
-            </span>
+          <div className="text-right text-[10px] text-slate-400">
+            <div>ลูกหนี้ค้าง</div>
+            <div className="font-bold text-amber-800">คลิกดูรายละเอียด &gt;</div>
           </div>
         </Link>
       </div>
@@ -509,15 +680,23 @@ export default function DashboardPage() {
             <div>
               <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-indigo-600" />
-                <span>แนวโน้มยอดขายตามช่วงเวลา</span>
+                <span>แนวโน้มยอดขาย & การคืนเงินตามช่วงเวลา</span>
               </CardTitle>
               <CardDescription className="text-xs text-slate-500">
-                กราฟแสดงยอดขายสุทธิและจำนวนออเดอร์ในแต่ละวัน
+                กราฟแสดงยอดขายรวม ยอดคืนเงิน/ยกเลิก และยอดสุทธิในแต่ละวัน
               </CardDescription>
             </div>
-            <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[11px] font-bold">
-              {timeFilter === "today" ? "วันนี้" : timeFilter === "7days" ? "7 วันล่าสุด" : timeFilter === "30days" ? "30 วันล่าสุด" : timeFilter === "month" ? "เดือนนี้" : "ทั้งหมด"}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <span className="flex items-center gap-1 text-[11px] font-bold text-indigo-600">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span> ยอดสุทธิ
+              </span>
+              <span className="flex items-center gap-1 text-[11px] font-bold text-rose-500">
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> คืนเงิน
+              </span>
+              <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[11px] font-bold">
+                {timeFilter === "today" ? "วันนี้" : timeFilter === "7days" ? "7 วันล่าสุด" : timeFilter === "30days" ? "30 วันล่าสุด" : timeFilter === "month" ? "เดือนนี้" : "ทั้งหมด"}
+              </Badge>
+            </div>
           </CardHeader>
           <CardContent className="p-4 pt-5">
             <div className="h-[320px] w-full">
@@ -527,6 +706,10 @@ export default function DashboardPage() {
                     <linearGradient id="dashboardSalesGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.4} />
                       <stop offset="95%" stopColor="#4f46e5" stopOpacity={0.0} />
+                    </linearGradient>
+                    <linearGradient id="dashboardRefundGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#f43f5e" stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -549,13 +732,24 @@ export default function DashboardPage() {
                       if (active && payload && payload.length) {
                         const dataItem = payload[0].payload;
                         return (
-                          <div className="bg-slate-900 text-white p-3 rounded-xl shadow-xl text-xs space-y-1 border border-slate-700">
+                          <div className="bg-slate-900 text-white p-3.5 rounded-xl shadow-xl text-xs space-y-1.5 border border-slate-700 min-w-[170px]">
                             <p className="font-bold text-slate-300 border-b border-slate-700 pb-1">{label}</p>
-                            <p className="text-emerald-400 font-mono font-black text-sm">
-                              ยอดขาย: {formatCurrency(Number(dataItem.sales || 0))}
+                            <p className="text-emerald-400 font-mono font-medium flex justify-between">
+                              <span>ขายรวม:</span>
+                              <span>+{formatCurrency(Number(dataItem.grossSales || 0))}</span>
                             </p>
-                            <p className="text-sky-300 font-medium">
-                              จำนวนออเดอร์: {dataItem.orders} บิล
+                            {Number(dataItem.refunds || 0) > 0 && (
+                              <p className="text-rose-400 font-mono font-medium flex justify-between">
+                                <span>คืนเงิน/ยกเลิก:</span>
+                                <span>-{formatCurrency(Number(dataItem.refunds || 0))}</span>
+                              </p>
+                            )}
+                            <p className="text-indigo-300 font-mono font-black text-sm border-t border-slate-700/80 pt-1 flex justify-between">
+                              <span>ยอดสุทธิ:</span>
+                              <span>{formatCurrency(Number(dataItem.netSales || 0))}</span>
+                            </p>
+                            <p className="text-sky-300 font-medium text-[11px] pt-0.5">
+                              ออเดอร์สำเร็จ: {dataItem.orders} บิล
                             </p>
                           </div>
                         );
@@ -565,12 +759,21 @@ export default function DashboardPage() {
                   />
                   <Area
                     type="monotone"
-                    dataKey="sales"
-                    name="ยอดขาย (฿)"
+                    dataKey="netSales"
+                    name="ยอดขายสุทธิ (฿)"
                     stroke="#4f46e5"
                     strokeWidth={3}
                     fillOpacity={1}
                     fill="url(#dashboardSalesGradient)"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="refunds"
+                    name="ยอดคืนเงิน (฿)"
+                    stroke="#f43f5e"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#dashboardRefundGradient)"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -586,7 +789,7 @@ export default function DashboardPage() {
               <span>สัดส่วนช่องทางชำระเงิน</span>
             </CardTitle>
             <CardDescription className="text-xs text-slate-500">
-              ยอดเงินรวมแบ่งตามวิธีการชำระ
+              ยอดเงินที่ได้รับจำแนกตามช่องทาง
             </CardDescription>
           </CardHeader>
           <CardContent className="p-4 flex-1 flex flex-col items-center justify-center">
@@ -623,9 +826,9 @@ export default function DashboardPage() {
 
               {/* Center Total Text */}
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
-                <span className="text-xs font-bold text-slate-400">ยอดรวม</span>
+                <span className="text-xs font-bold text-slate-400">รายได้สุทธิ</span>
                 <span className="text-sm font-black text-slate-900 font-mono tracking-tight mt-0.5">
-                  {formatCurrency(kpi.totalRevenue)}
+                  {formatCurrency(kpi.netRevenue)}
                 </span>
               </div>
             </div>
@@ -633,7 +836,7 @@ export default function DashboardPage() {
             {/* Custom Payment Legend */}
             <div className="w-full space-y-2 pt-3 border-t border-slate-100">
               {paymentChartData.map((p, idx) => {
-                const percent = kpi.totalRevenue > 0 ? ((p.value / kpi.totalRevenue) * 100).toFixed(1) : "0";
+                const percent = kpi.netRevenue > 0 ? ((p.value / kpi.netRevenue) * 100).toFixed(1) : "0";
                 return (
                   <div key={idx} className="flex justify-between items-center text-xs">
                     <div className="flex items-center gap-2">
@@ -770,7 +973,7 @@ export default function DashboardPage() {
                         </span>
                         {isVoid ? (
                           <Badge className="bg-rose-100 text-rose-700 border-rose-300 text-xs py-0.5 font-bold line-through">
-                            ยกเลิก
+                            ยกเลิก/คืนเงิน
                           </Badge>
                         ) : isCredit ? (
                           <Badge className="bg-amber-100 text-amber-900 border-amber-300 text-xs py-0.5 font-bold">
@@ -784,14 +987,14 @@ export default function DashboardPage() {
                       </div>
 
                       <div className="text-xs text-slate-500 truncate flex items-center gap-2 font-medium">
-                        <span>{ord.customerName || ord.customer || "ลูกค้าทั่วไป"}</span>
+                        <span>{ord.customerName || (typeof ord.customer === "object" ? ord.customer?.name : ord.customer) || "ลูกค้าทั่วไป"}</span>
                         <span>•</span>
                         <span>{new Date(ord.createdAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })} น.</span>
                       </div>
                     </div>
 
                     <div className="text-right shrink-0">
-                      <span className="font-mono font-black text-slate-900 text-sm block">
+                      <span className={`font-mono font-black text-sm block ${isVoid ? "text-slate-400 line-through" : "text-slate-900"}`}>
                         {formatCurrency(ord.totalAmount || ord.total || 0)}
                       </span>
                       <span className="text-xs text-slate-400">
@@ -811,7 +1014,7 @@ export default function DashboardPage() {
         {/* Quick Shortcut 1: POS Selling */}
         <Link
           href="/pos"
-          className="bg-gradient-to-br from-indigo-600 to-indigo-700 p-3.5 sm:p-4 rounded-xl text-white shadow-xs hover:shadow-md transition-all flex items-center justify-between group"
+          className="bg-gradient-to-br from-indigo-600 to-indigo-700 p-3.5 sm:p-4 rounded-xl text-white shadow-xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer"
         >
           <div className="space-y-1">
             <span className="text-xs font-semibold text-indigo-200 block">เปิดจุดขายหน้าร้าน</span>
@@ -826,7 +1029,7 @@ export default function DashboardPage() {
         {/* Quick Shortcut 2: Debt Management */}
         <Link
           href="/debts"
-          className="bg-gradient-to-br from-amber-500 to-amber-600 p-3.5 sm:p-4 rounded-xl text-white shadow-xs hover:shadow-md transition-all flex items-center justify-between group"
+          className="bg-gradient-to-br from-amber-500 to-amber-600 p-3.5 sm:p-4 rounded-xl text-white shadow-xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer"
         >
           <div className="space-y-1">
             <span className="text-xs font-semibold text-amber-200 block">ระบบลูกหนี้ & เงินเชื่อ</span>
@@ -841,7 +1044,7 @@ export default function DashboardPage() {
         {/* Quick Shortcut 3: Inventory Warehouse */}
         <Link
           href="/inventory"
-          className="bg-gradient-to-br from-slate-800 to-slate-900 p-3.5 sm:p-4 rounded-xl text-white shadow-xs hover:shadow-md transition-all flex items-center justify-between group"
+          className="bg-gradient-to-br from-slate-800 to-slate-900 p-3.5 sm:p-4 rounded-xl text-white shadow-xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer"
         >
           <div className="space-y-1">
             <span className="text-xs font-semibold text-slate-300 block">คลังสินค้า & สต็อก</span>

@@ -8,11 +8,12 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { useRouter } from 'next/navigation';
 import { formatCurrency } from '@/lib/utils';
 import { useGlobalBarcodeScanner } from '@/lib/use-scanner';
+import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
 import { getProductPackagingUnits } from '@/lib/cart-pricing';
 import { 
   Search, ScanLine, ShoppingCart, Trash2, 
   Minus, Plus, Tag, PauseCircle, PlayCircle, 
-  CreditCard, Clock, LogOut, Percent, Check, Receipt, Coins
+  CreditCard, Clock, LogOut, Percent, Check, Receipt, Coins, ArrowLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -36,11 +37,17 @@ import { RedeemPointsModal } from '@/components/pos/RedeemPointsModal';
 import { PosDebtSelectModal } from '@/components/pos/PosDebtSelectModal';
 import { ProductClaimModal } from '@/components/pos/ProductClaimModal';
 import { ClaimReceiptPdfModal } from '@/components/claims/ClaimReceiptPdfModal';
+import { ItemClaimModal } from '@/components/pos/ItemClaimModal';
+import { CustomerClaimStockModal } from '@/components/pos/CustomerClaimStockModal';
+import { PwaInstallButton } from '@/components/common/PwaInstallButton';
 import { CartItem, Product, ProductUnit, ClaimRecord } from '@/lib/types';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, Package } from 'lucide-react';
 import { getProductAvailableUnits, getDefaultSelectedUnit } from '@/lib/product-unit-helpers';
 import { getCustomerById, Customer } from '@/lib/customer-service';
+import { useDocumentSearchStore } from '@/lib/store/document-search-store';
 import { toast } from 'sonner';
+import { apiFetch } from '@/lib/api';
+import { getTerminalId } from '@/lib/terminal-id';
 
 const PAGE_SIZE = 32;
 
@@ -68,6 +75,12 @@ function PosProductCardItem({
       onClick={() => onAddToCart(product, activeUnit)}
       className="relative flex cursor-pointer select-none flex-col rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-xs transition-all hover:border-sky-400 hover:bg-sky-50/40 hover:shadow-md group"
     >
+      {product.isBundle && (
+        <Badge className="absolute top-2 left-2 bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-bold z-10">
+          🎁 สินค้าชุด ({product.bundleItems?.length || 0})
+        </Badge>
+      )}
+
       {product.stock <= (product.minStockAlert !== undefined && product.minStockAlert !== null ? Number(product.minStockAlert) : 10) && (
         <Badge variant="destructive" className="absolute top-2 right-2 bg-red-50 text-xs text-red-600 border-red-200 z-10 font-bold">
           เหลือ {product.stock}
@@ -78,7 +91,7 @@ function PosProductCardItem({
         {product.imageUrl ? (
           <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
         ) : (
-          <span className="text-3xl sm:text-4xl">📦</span>
+          <span className="text-3xl sm:text-4xl">{product.isBundle ? "🎁" : "📦"}</span>
         )}
       </div>
 
@@ -158,6 +171,8 @@ export default function POSPage() {
   const [showDebtCollectModal, setShowDebtCollectModal] = useState(false);
   const [debtTargetCustomer, setDebtTargetCustomer] = useState<Customer | null>(null);
   const [showClaimModal, setShowClaimModal] = useState(false);
+  const [showCustomerStockModal, setShowCustomerStockModal] = useState(false);
+  const [claimTargetItem, setClaimTargetItem] = useState<CartItem | null>(null);
   const [completedClaimForPdf, setCompletedClaimForPdf] = useState<ClaimRecord | null>(null);
   const [showClaimPdfModal, setShowClaimPdfModal] = useState(false);
   const [showCashDrawerModal, setShowCashDrawerModal] = useState(false);
@@ -178,14 +193,16 @@ export default function POSPage() {
 
   const cartBottomRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const scannerInputRef = useRef<HTMLInputElement>(null);
+  const [scannerInputValue, setScannerInputValue] = useState('');
 
   const handleEmptySpaceClick = (e: React.MouseEvent) => {
-    const isModalOpen = showPayment || showOpenShift || showCloseShift || editItem || showCustomerSelect || showHeldBills || qtyEditItem || showDebtCollectModal || showCashDrawerModal || showClaimModal;
+    const isModalOpen = showPayment || showOpenShift || showCloseShift || editItem || showCustomerSelect || showHeldBills || qtyEditItem || showDebtCollectModal || showCashDrawerModal || showClaimModal || showUnitModal || showRedeemModal || showBarcodeScan;
     if (isModalOpen) return;
     const target = e.target as HTMLElement;
     const isInteractive = target.closest('button, input, select, textarea, a, [role="button"], dialog, label');
-    if (!isInteractive && searchInputRef.current) {
-      searchInputRef.current.focus();
+    if (!isInteractive && scannerInputRef.current) {
+      scannerInputRef.current.focus();
     }
   };
 
@@ -197,11 +214,19 @@ export default function POSPage() {
   }, [cart.items.length, cart.items]);
 
   const handleOpenNormalPayment = () => {
+    if (cart.items.length === 0) {
+      toast.warning('ไม่มีสินค้าในตะกร้า ไม่สามารถชำระเงินได้');
+      return;
+    }
     setPaymentInitialMethod(null);
     setShowPayment(true);
   };
 
   const handleOpenSplitPayment = () => {
+    if (cart.items.length === 0) {
+      toast.warning('ไม่มีสินค้าในตะกร้า ไม่สามารถชำระเงินได้');
+      return;
+    }
     setPaymentInitialMethod('SPLIT');
     setShowPayment(true);
   };
@@ -215,6 +240,120 @@ export default function POSPage() {
     }
   }, []);
 
+  // Heartbeat to Server Control Command Deck
+  useEffect(() => {
+    const reportHeartbeat = async () => {
+      try {
+        const terminalId = getTerminalId();
+        const storedName = localStorage.getItem('purim_terminal_custom_name') || `จุดขาย #${terminalId.slice(0, 6).toUpperCase()}`;
+        await apiFetch('/server-control/ping', {
+          method: 'POST',
+          body: JSON.stringify({
+            terminalId,
+            terminalName: storedName,
+            userName: authStore.user?.name || authStore.user?.username || 'แคชเชียร์',
+          }),
+        });
+      } catch {
+        // silent
+      }
+    };
+    reportHeartbeat();
+    const interval = setInterval(reportHeartbeat, 10000);
+    return () => clearInterval(interval);
+  }, [authStore.user]);
+
+  // Real-time Digital Twin state sync to Master Command Deck (0.5KB lightweight state broadcast)
+  const prevItemsCount = useRef<number>(cart.items.length);
+  useEffect(() => {
+    let timeout: NodeJS.Timeout | null = null;
+    const sendState = async () => {
+      try {
+        const terminalId = getTerminalId();
+        const storedName = localStorage.getItem('purim_terminal_custom_name') || `จุดขาย #${terminalId.slice(0, 6).toUpperCase()}`;
+
+        let currentAction: 'IDLE' | 'SCANNING' | 'PAYMENT' | 'VOID' | 'DRAWER' | 'CLAIM' = 'IDLE';
+        let currentDesc = 'จุดขายพร้อมให้บริการ (ว่าง)';
+        let alertLevel: 'NORMAL' | 'WARNING' | 'ALERT' = 'NORMAL';
+
+        const totalAmt = cart.getTotal();
+        const discountAmt = cart.getBillDiscountAmount();
+
+        if (showPayment) {
+          currentAction = 'PAYMENT';
+          currentDesc = `กำลังเปิดหน้าชำระเงิน (ยอดรวม ฿${totalAmt.toLocaleString('th-TH', { minimumFractionDigits: 2 })})`;
+        } else if (showCashDrawerModal) {
+          currentAction = 'DRAWER';
+          currentDesc = 'เปิดลิ้นชักเก็บเงินหน้าร้าน';
+        } else if (showClaimModal || showCustomerStockModal) {
+          currentAction = 'CLAIM';
+          currentDesc = 'กำลังทำรายการเคลม/เปลี่ยนสินค้า';
+        } else if (cart.items.length > 0) {
+          currentAction = 'SCANNING';
+          const lastItem = cart.items[cart.items.length - 1];
+          currentDesc = `ยิงสินค้า: ${lastItem.name} (${lastItem.quantity} ${lastItem.unitName})`;
+
+          if (cart.items.length < prevItemsCount.current) {
+            currentAction = 'VOID';
+            currentDesc = `⚠️ มีการลบสินค้าออกจากตะกร้า (เหลือ ${cart.items.length} รายการ)`;
+            alertLevel = 'WARNING';
+          }
+        }
+
+        prevItemsCount.current = cart.items.length;
+
+        const simplifiedCartItems = cart.items.map((it) => ({
+          productId: it.productId,
+          name: it.name,
+          barcode: it.sku || '',
+          unitName: it.unitName,
+          price: cart.getEffectivePrice(it),
+          quantity: it.quantity,
+          total: cart.getItemLineTotal(it),
+        }));
+
+        const liveState = {
+          activeAction: currentAction,
+          actionDescription: currentDesc,
+          actionTimestamp: new Date().toISOString(),
+          customerName: activeCustomer?.name || (cart.customerId ? 'ลูกค้าสมาชิก' : undefined),
+          itemCount: cart.getItemCount(),
+          totalAmount: totalAmt,
+          discountAmount: discountAmt,
+          cartItems: simplifiedCartItems,
+          alertLevel,
+        };
+
+        await apiFetch('/server-control/sync-live-state', {
+          method: 'POST',
+          body: JSON.stringify({
+            terminalId,
+            terminalName: storedName,
+            userName: authStore.user?.name || authStore.user?.username || 'แคชเชียร์',
+            liveState,
+          }),
+        });
+      } catch {
+        // silent fail - zero impact on cashier operations
+      }
+    };
+
+    // Debounce 300ms so rapid scanning batches cleanly
+    timeout = setTimeout(sendState, 300);
+
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [
+    cart.items,
+    showPayment,
+    showCashDrawerModal,
+    showClaimModal,
+    showCustomerStockModal,
+    activeCustomer,
+    authStore.user,
+  ]);
+
   const handleViewModeChange = (mode: 'touch_screen' | 'list_view') => {
     setViewMode(mode);
     try {
@@ -226,35 +365,50 @@ export default function POSPage() {
   useEffect(() => {
     setMounted(true);
     fetchProducts();
+    // Outbox sync is managed globally by ClientDbSync.
+
+    const handleOnline = () => {
+      void fetchProducts();
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('focus', handleOnline);
+    const timer = setInterval(() => { if (!document.hidden) void fetchProducts(); }, 15000);
+    return () => { clearInterval(timer); window.removeEventListener('online', handleOnline); window.removeEventListener('focus', handleOnline); };
   }, [fetchProducts]);
 
-  // Auto popup OpenShiftModal when entering POS page if shift is not open and not skipped today
+  // Auto fetch current shift from central database on POS load
   useEffect(() => {
     if (mounted) {
-      const isShiftOpen = shiftStore.currentShift?.isOpen === true;
-      const todayStr = new Date().toISOString().split('T')[0];
-      let skippedDate: string | null = null;
-      try {
-        skippedDate = localStorage.getItem('pos_shift_skipped_date');
-      } catch (e) {}
+      shiftStore.fetchCurrentShift().then((serverShift) => {
+        const isShiftOpen = serverShift?.isOpen === true || shiftStore.currentShift?.isOpen === true;
+        const todayStr = new Date().toISOString().split('T')[0];
+        let skippedDate: string | null = null;
+        try {
+          skippedDate = localStorage.getItem('pos_shift_skipped_date');
+        } catch (e) {}
 
-      if (!isShiftOpen && skippedDate !== todayStr) {
-        setShowOpenShift(true);
-      }
+        if (!isShiftOpen && skippedDate !== todayStr) {
+          setShowOpenShift(true);
+        }
+      });
     }
-  }, [mounted, shiftStore.currentShift]);
+  }, [mounted]);
 
   // Reset pagination limit on search/category filter change
   useEffect(() => {
     setDisplayLimit(PAGE_SIZE);
   }, [searchQuery, activeCategory]);
 
-  // Global Barcode Scanner Listener (scans automatically regardless of cursor focus)
-  useGlobalBarcodeScanner((scannedBarcode) => {
+  // Unified Barcode Scan Processor (supports Thai-to-English auto-conversion)
+  const processBarcodeScan = (scannedBarcode: string) => {
     if (showPayment || showOpenShift || showCloseShift || editItem || showCustomerSelect || showHeldBills) return;
 
-    const code = scannedBarcode.trim().toLowerCase();
-    if (!code) return;
+    const raw = scannedBarcode.trim();
+    if (!raw) return;
+
+    // Convert Thai Kedmanee to English/Numeric
+    const convertedCode = convertThaiToEnBarcode(raw).trim();
+    const code = convertedCode.toLowerCase();
 
     const matchedProduct = products.find(p => {
       const matchSku = p.sku?.toLowerCase().trim() === code;
@@ -292,11 +446,28 @@ export default function POSPage() {
       if (existingItem) {
         toast.success(`⚡ สแกนสินค้าเดิมซ้ำ: ${matchedProduct.name} (+1 รวมเป็น ${newQty} ${unit.unitName})`);
       } else {
-        toast.success(`⚡ สแกนบาร์โค้ดสำเร็จ: ${matchedProduct.name} (${unit.unitName})`);
+        toast.success(`⚡ สแกนบาร์โค้ดสำเร็จ: ${matchedProduct.name} (1 ${unit.unitName})`);
       }
     } else {
-      toast.error(`ไม่พบสินค้าจากบาร์โค้ด: ${scannedBarcode}`);
+      const docPrefixes = ['ord-', 'clm-', 'shf-', 'po-', 'dn-', 'pv-', 'debt-'];
+      const isDocCode = docPrefixes.some(p => code.startsWith(p));
+      if (isDocCode) {
+        toast.info(`🔍 ตรวจพบบาร์โค้ดเอกสาร: ${convertedCode.toUpperCase()} เปิดหน้าค้นหาทันที...`);
+        useDocumentSearchStore.getState().openSearch(convertedCode.toUpperCase());
+      } else {
+        const thaiHint = convertedCode !== raw ? ` (แปลงจากภาษาไทย: "${raw}")` : '';
+        toast.error(`❌ ไม่พบสินค้าบาร์โค้ด: "${convertedCode}"${thaiHint}`);
+      }
     }
+
+    // Always reset scanner input and refocus
+    setScannerInputValue('');
+    setTimeout(() => scannerInputRef.current?.focus(), 10);
+  };
+
+  // Global Barcode Scanner Listener
+  useGlobalBarcodeScanner((scannedBarcode) => {
+    processBarcodeScan(scannedBarcode);
   }, mounted);
 
   // POS Global Keyboard Shortcuts (F12, F10, Ctrl+H, Ctrl+M, Ctrl+E, Ctrl+P) - Supports Toggle & Thai/English OS layouts
@@ -404,121 +575,9 @@ export default function POSPage() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-slate-50 text-slate-900 lg:h-screen lg:overflow-hidden" onClick={handleEmptySpaceClick}>
-      <ClientDbSync />
+    <div className="flex min-h-dvh flex-col bg-slate-50 pb-20 lg:pb-0 text-slate-900 lg:h-screen lg:overflow-hidden" onClick={handleEmptySpaceClick}>
+      <a href="#pos-cart" className="lg:hidden fixed bottom-3 left-3 right-3 z-40 rounded-xl bg-sky-700 px-4 py-3 text-center font-bold text-white shadow-lg">ดูตะกร้า / ชำระเงิน</a>
       
-      {/* --- TOP STATUS BAR --- */}
-      <header className="flex flex-col gap-3 border-b border-slate-200 bg-white px-3 py-3 shadow-sm sm:px-4 lg:h-14 lg:flex-row lg:items-center lg:justify-between lg:py-0 shrink-0">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <Link href="/dashboard" className="mr-2 text-lg font-bold text-primary sm:text-xl">
-            PURIM POS
-          </Link>
-          <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
-            กะ: {shiftStore.isShiftOpen() ? shiftStore.currentShift?.userName : 'ยังไม่เปิดกะ'}
-          </Badge>
-          <button
-            type="button"
-            onClick={() => setShowCashDrawerModal(true)}
-            className="cursor-pointer hover:scale-105 transition-transform"
-            title="คลิกเพื่อเปิดลิ้นชัก หรือนำเงินเข้า-ออก (F9)"
-          >
-            <Badge 
-              variant="outline" 
-              className={`flex items-center gap-1.5 font-bold shadow-xs cursor-pointer ${
-                shiftStore.getExpectedCash() > 0 
-                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100' 
-                  : 'border-slate-300 bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              <Coins className={`w-3.5 h-3.5 ${shiftStore.getExpectedCash() > 0 ? 'text-emerald-600' : 'text-slate-400'}`} />
-              <span>เงินลิ้นชัก: {formatCurrency(shiftStore.getExpectedCash())}</span>
-            </Badge>
-          </button>
-
-          {/* VAT 7% Toggle in Top Header */}
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs ml-auto sm:ml-2">
-            <button
-              type="button"
-              onClick={() => { cart.setVatEnabled(true); toast.success('เปิดโหมดคิดภาษี VAT 7%'); }}
-              className={`px-2.5 py-1 rounded-md font-semibold transition-all ${cart.isVatEnabled ? "bg-emerald-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-900"}`}
-            >
-              มี VAT 7%
-            </button>
-            <button
-              type="button"
-              onClick={() => { cart.setVatEnabled(false); toast.info('เปลี่ยนเป็นโหมด ไม่มี VAT (0%)'); }}
-              className={`px-2.5 py-1 rounded-md font-semibold transition-all ${!cart.isVatEnabled ? "bg-slate-700 text-white shadow-sm" : "text-slate-500 hover:text-slate-900"}`}
-            >
-              ไม่มี VAT (0%)
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Screen View Mode Option Selector */}
-          <select 
-            value={viewMode}
-            onChange={(e) => handleViewModeChange(e.target.value as 'touch_screen' | 'list_view')}
-            className="bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 text-xs font-bold rounded-md px-2.5 py-1.5 outline-none shadow-sm cursor-pointer transition-all"
-          >
-            <option value="touch_screen">📱 หน้าจอแบบ touch screen</option>
-            <option value="list_view">📋 หน้าจอแบบรายการ</option>
-          </select>
-
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="text-slate-600 hover:text-primary font-bold"
-            onClick={() => setShowOrderHistoryModal(prev => !prev)}
-          >
-            <Clock className="w-4 h-4 mr-2" />
-            ประวัติการขาย (Ctrl+H)
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="text-rose-700 hover:bg-rose-50 font-bold border border-rose-200 shadow-2xs"
-            onClick={() => {
-              setDebtTargetCustomer(activeCustomer);
-              setShowDebtCollectModal(true);
-            }}
-          >
-            <Receipt className="w-4 h-4 mr-1.5 text-rose-600" />
-            รับชำระหนี้
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="text-indigo-700 hover:bg-indigo-50 font-bold border border-indigo-200 shadow-2xs"
-            onClick={() => setShowClaimModal(true)}
-            title="รับเคลมสินค้า / ตรวจสอบประวัติการซื้อ"
-          >
-            <ShieldAlert className="w-4 h-4 mr-1.5 text-indigo-600" />
-            รับเคลมสินค้า
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="text-slate-600 hover:text-primary"
-            onClick={() => setShowHeldBills(prev => !prev)}
-          >
-            <PlayCircle className="w-4 h-4 mr-2" />
-            บิลพัก ({cart.heldBills.length})
-          </Button>
-          <div className="hidden h-4 w-px bg-slate-200 mx-2 sm:block" />
-          {!shiftStore.isShiftOpen() ? (
-            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold" onClick={() => setShowOpenShift(true)}>
-              เปิดกะ
-            </Button>
-          ) : (
-            <Button size="sm" variant="destructive" className="bg-red-600 hover:bg-red-700 text-white font-bold" onClick={() => setShowCloseShift(true)}>
-              <LogOut className="w-4 h-4 mr-2" />
-              ปิดกะ
-            </Button>
-          )}
-        </div>
-      </header>
-
       {/* --- MAIN CONTENT --- */}
       {viewMode === 'list_view' ? (
         <PosListLayout 
@@ -545,6 +604,8 @@ export default function POSPage() {
           }}
           onOpenNumpadQty={(item) => setQtyEditItem(item)}
           onOpenCashDrawer={() => setShowCashDrawerModal(true)}
+          onOpenCustomerStock={() => setShowCustomerStockModal(true)}
+          onOpenItemClaim={(item) => setClaimTargetItem(item)}
         />
       ) : (
       <div className="flex flex-1 flex-col overflow-visible lg:flex-row lg:overflow-hidden">
@@ -568,35 +629,140 @@ export default function POSPage() {
             </div>
           )}
           
+          {/* Hidden input dedicated for Barcode Scanner (Invisible to user, captures scanner input & converts Thai to English) */}
+          <input
+            ref={scannerInputRef}
+            type="text"
+            value={scannerInputValue}
+            onChange={(e) => setScannerInputValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                const raw = scannerInputValue.trim();
+                setScannerInputValue('');
+                if (raw) {
+                  processBarcodeScan(raw);
+                }
+              }
+            }}
+            className="sr-only absolute -top-[9999px] -left-[9999px] opacity-0 pointer-events-none w-0 h-0"
+            tabIndex={-1}
+            aria-hidden="true"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+          />
+
           {/* Toolbar */}
-          <div className="flex shrink-0 flex-col gap-3 border-b border-slate-200 bg-white p-3 sm:flex-row sm:p-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+          <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white p-2.5 sm:px-3 sm:py-2.5">
+            {/* Back to Dashboard */}
+            <Link
+              href="/dashboard"
+              className="h-11 px-3 rounded-xl border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-2xs transition-colors"
+              title="กลับไปหน้าแดชบอร์ด / เมนูหลัก"
+            >
+              <ArrowLeft className="w-4 h-4 text-slate-500" />
+              <span className="hidden sm:inline">แดชบอร์ด</span>
+            </Link>
+
+            {/* Search Input */}
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input 
-                placeholder="ค้นหาชื่อสินค้า, SKU, บาร์โค้ด (หรือยิงสแกนเนอร์ได้ทันที)..." 
+                ref={searchInputRef}
+                placeholder="ค้นหาชื่อสินค้า, หมวดหมู่, SKU (พิมพ์ค้นหา)..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && filteredProducts.length > 0) {
+                  if (e.key === 'Enter') {
                     e.preventDefault();
-                    const matched = filteredProducts[0];
-                    cart.addItem(matched, matched.units[0]);
-                    setSearchQuery('');
-                    toast.success(`เพิ่ม ${matched.name} ลงตะกร้าแล้ว`);
+                    const raw = searchQuery.trim();
+                    if (!raw) return;
+
+                    const converted = convertThaiToEnBarcode(raw).toLowerCase().trim();
+                    const matchedByBarcode = products.find(p => {
+                      const matchSku = p.sku?.toLowerCase().trim() === converted;
+                      const matchUnitBarcode = p.units?.some(u => u.barcode?.toLowerCase().trim() === converted);
+                      const matchProductBarcodes = (p as any).barcodes?.some((b: any) => b.barcode?.toLowerCase().trim() === converted);
+                      const pkgUnits = getProductPackagingUnits(p.id);
+                      const matchPkgBarcode = pkgUnits.some(u => u.barcode?.toLowerCase().trim() === converted);
+                      return matchSku || matchUnitBarcode || matchProductBarcodes || matchPkgBarcode;
+                    });
+
+                    if (matchedByBarcode) {
+                      processBarcodeScan(raw);
+                      setSearchQuery('');
+                    } else if (filteredProducts.length > 0) {
+                      const matched = filteredProducts[0];
+                      cart.addItem(matched, matched.units[0]);
+                      setSearchQuery('');
+                      toast.success(`เพิ่ม ${matched.name} ลงตะกร้าแล้ว`);
+                    }
                   }
                 }}
-                className="h-12 bg-white pl-10 text-base sm:text-lg"
+                className="h-11 bg-white pl-9 text-xs sm:text-sm font-medium"
               />
             </div>
+
+            {/* Scan Barcode Modal Button */}
             <Button 
               size="icon" 
               variant="outline" 
-              className="h-12 w-full shrink-0 border-slate-300 bg-white sm:w-12"
+              className="h-11 w-11 shrink-0 border-slate-300 bg-white shadow-2xs"
               onClick={() => setShowBarcodeScan(true)}
               title="เปิดกล้องสแกนบาร์โค้ด"
             >
               <ScanLine className="w-5 h-5 text-slate-600" />
             </Button>
+
+            {/* Document Search (F3) */}
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="h-11 border-indigo-200 bg-indigo-50/80 text-indigo-900 hover:bg-indigo-100 font-bold text-xs shadow-2xs hidden sm:flex items-center gap-1.5"
+              onClick={() => useDocumentSearchStore.getState().openSearch()}
+              title="ค้นหาเอกสารทั้งหมด / สแกนบาร์โค้ดใบเสร็จ (F3)"
+            >
+              <ScanLine className="w-3.5 h-3.5 text-indigo-600 animate-pulse" />
+              <span className="hidden md:inline">ค้นหาเอกสาร</span>
+              <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-white text-indigo-700 border border-indigo-200 font-bold">F3</span>
+            </Button>
+
+            {/* Screen View Mode Selector */}
+            <select 
+              value={viewMode}
+              onChange={(e) => handleViewModeChange(e.target.value as 'touch_screen' | 'list_view')}
+              className="h-11 bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-800 text-xs font-bold rounded-xl px-2.5 outline-none shadow-2xs cursor-pointer transition-all shrink-0"
+              title="สลับรูปแบบหน้าจอขาย"
+            >
+              <option value="touch_screen">📱 Touch Screen</option>
+              <option value="list_view">📋 แบบรายการ</option>
+            </select>
+
+            {/* Order History (Ctrl+H) */}
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-11 text-slate-600 hover:text-primary font-bold text-xs hidden lg:flex items-center"
+              onClick={() => setShowOrderHistoryModal(prev => !prev)}
+              title="ประวัติการขาย (Ctrl+H)"
+            >
+              <Clock className="w-3.5 h-3.5 mr-1 text-slate-400" />
+              <span>ประวัติ</span>
+            </Button>
+
+            {/* Shift Open / Close */}
+            {!shiftStore.isShiftOpen() ? (
+              <Button size="sm" className="h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs" onClick={() => setShowOpenShift(true)}>
+                เปิดกะ
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" className="h-11 border-slate-200 text-slate-600 hover:text-rose-600 hover:bg-rose-50 font-bold text-xs" onClick={() => setShowCloseShift(true)} title="ปิดกะ">
+                <LogOut className="w-3.5 h-3.5 mr-1" />
+                <span className="hidden sm:inline">ปิดกะ</span>
+              </Button>
+            )}
           </div>
 
           {/* Categories */}
@@ -667,7 +833,7 @@ export default function POSPage() {
         </div>
 
         {/* RIGHT: CART */}
-        <div className="flex w-full shrink-0 flex-col bg-white lg:w-[420px] xl:w-[450px]">
+        <div id="pos-cart" className="flex w-full shrink-0 flex-col bg-white lg:w-[420px] xl:w-[450px]">
           
           {/* Cart Header */}
           <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white p-4">
@@ -705,6 +871,16 @@ export default function POSPage() {
               )}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100 font-bold text-xs flex items-center gap-1 shadow-2xs"
+                onClick={() => setShowCustomerStockModal(true)}
+                title="เปิดดูคลังสินค้าลูกค้า & สิทธิ์เคลมคงเหลือ"
+              >
+                <Package className="w-3.5 h-3.5 text-indigo-600" />
+                <span>สิทธิ์เคลม</span>
+              </Button>
               {activeCustomer && (
                 <Button
                   size="sm"
@@ -728,6 +904,42 @@ export default function POSPage() {
 
           {/* Cart Item List */}
           <div className="flex-1 overflow-y-auto p-4">
+            {/* Pending Claims Discount Banner */}
+            {cart.pendingClaims && cart.pendingClaims.length > 0 && (
+              <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 mb-3 text-xs shadow-xs space-y-1.5 animate-in fade-in">
+                <div className="flex items-center justify-between text-amber-900 font-bold">
+                  <span className="flex items-center gap-1.5">
+                    <ShieldAlert className="w-4 h-4 text-amber-600" />
+                    มีส่วนลดเคลมรอหักในบิลนี้ ({cart.pendingClaims.length} รายการ):
+                  </span>
+                  <span className="text-sm font-black text-amber-700">
+                    -{formatCurrency(cart.getClaimDiscountAmount())}
+                  </span>
+                </div>
+                <div className="text-[11px] text-amber-800">
+                  * สิทธิ์เคลมจะยังไม่ถูกตัดจนกว่าจะชำระเงินเสร็จสิ้น หากยกเลิกบิลสิทธิ์เคลมจะคงเดิม 100%
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {cart.pendingClaims.map((pc) => (
+                    <span key={pc.id} className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded-md border border-amber-200 text-[10px] text-slate-700 font-medium">
+                      <span>{pc.productName} ({pc.quantity} {pc.unitName})</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          cart.removePendingClaim(pc.id);
+                          toast.info(`ยกเลิกส่วนลดเคลม ${pc.productName} แล้ว`);
+                        }}
+                        className="text-slate-400 hover:text-red-600 font-bold ml-1 text-xs"
+                        title="ยกเลิกส่วนลดรายการนี้"
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {cart.items.length === 0 ? (
               <div className="flex h-full min-h-48 flex-col items-center justify-center text-slate-400 space-y-2">
                 <ShoppingCart className="w-12 h-12 opacity-20" />
@@ -748,12 +960,30 @@ export default function POSPage() {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="font-bold text-slate-900">{item.name}</div>
+                          <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                            <span>{item.name}</span>
+                            {item.isBundle && (
+                              <span className="text-[10px] text-purple-700 bg-purple-50 border border-purple-200 px-1 py-0.2 rounded font-bold shrink-0">
+                                🎁 ชุด
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 text-xs text-slate-500">
                             <span>{item.sku}</span>
                             <span>·</span>
                             <span className="font-semibold text-slate-700">{item.unitName}</span>
                           </div>
+                          {item.bundleData && item.bundleData.length > 0 && (
+                            <div className="mt-1 text-[11px] text-purple-800 bg-purple-50/80 rounded px-2 py-0.5 border border-purple-100">
+                              <span className="font-semibold">ในชุด: </span>
+                              {item.bundleData.map((b, i) => (
+                                <span key={i}>
+                                  {i > 0 && ", "}
+                                  {b.productName} x{b.quantityPerBundle * item.quantity}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <Button 
                           variant="ghost" size="icon" 
@@ -773,16 +1003,40 @@ export default function POSPage() {
                         </div>
                       </div>
 
+                      {/* Free Claim Badge */}
+                      {item.claimQuantity !== undefined && item.claimQuantity > 0 && (
+                        <div className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-lg w-fit shadow-2xs">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>เคลมฟรี {item.claimQuantity} {item.unitName} (คิดเงิน {Math.max(0, item.quantity - item.claimQuantity)} {item.unitName})</span>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between pt-1">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-7 px-2 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                          onClick={() => setEditItem(item)}
-                        >
-                          <Tag className="w-3.5 h-3.5 mr-1" />
-                          <span>แก้ไขราคา/ส่วนลด</span>
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-7 px-2 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                            onClick={() => setEditItem(item)}
+                          >
+                            <Tag className="w-3.5 h-3.5 mr-1" />
+                            <span>แก้ไขราคา</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={`h-7 px-2 text-xs font-semibold ${
+                              item.claimQuantity && item.claimQuantity > 0
+                                ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200'
+                                : 'text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700'
+                            }`}
+                            onClick={() => setClaimTargetItem(item)}
+                            title="ระบุจำนวนสินค้าเคลมฟรีในรายการนี้"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5 mr-1 text-indigo-600" />
+                            <span>{item.claimQuantity && item.claimQuantity > 0 ? `เคลมฟรี ${item.claimQuantity}` : 'สินค้าเคลม'}</span>
+                          </Button>
+                        </div>
                         <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-1">
                           <Button 
                             variant="ghost" size="icon" className="h-9 w-9 text-slate-600 hover:bg-white hover:text-slate-900 shadow-sm"
@@ -878,20 +1132,19 @@ export default function POSPage() {
             )}
 
             {/* Separate Claim Discount Row */}
-            {cart.attachedClaim && (
+            {cart.getClaimDiscountAmount() > 0 && (
               <div className="flex justify-between items-center text-sm bg-emerald-50 border border-emerald-200 p-2 rounded-xl text-emerald-950">
                 <div className="flex items-center gap-1.5 truncate">
                   <ShieldAlert className="w-4 h-4 text-emerald-700 shrink-0" />
                   <div className="truncate">
-                    <span className="font-bold text-xs block truncate">ส่วนลดเคลม: {cart.attachedClaim.productName}</span>
-                    <span className="text-[10px] text-emerald-700 block font-mono">
-                      #{cart.attachedClaim.id} · สิทธิ์ {formatCurrency(Number(cart.attachedClaim.discountAmount ?? cart.attachedClaim.totalClaimValue ?? cart.attachedClaim.quantity * cart.attachedClaim.unitPrice))}
+                    <span className="font-bold text-xs block truncate">
+                      {cart.attachedClaim
+                        ? `ส่วนลดเคลม: ${cart.attachedClaim.productName}`
+                        : `ส่วนลดสินค้าเคลม (${cart.pendingClaims.length} รายการ)`}
                     </span>
-                    {Number(cart.attachedClaim.discountAmount ?? cart.attachedClaim.totalClaimValue ?? cart.attachedClaim.quantity * cart.attachedClaim.unitPrice) > cart.getClaimDiscountAmount() && (
-                      <span className="text-[10px] text-amber-700 block font-bold">
-                        ต้องเพิ่มยอดบิลอีก {formatCurrency(Number(cart.attachedClaim.discountAmount ?? cart.attachedClaim.totalClaimValue ?? cart.attachedClaim.quantity * cart.attachedClaim.unitPrice) - cart.getClaimDiscountAmount())} เพื่อใช้สิทธิ์ครบ
-                      </span>
-                    )}
+                    <span className="text-[10px] text-emerald-700 block font-mono">
+                      หักส่วนลดในบิลนี้ทันที (ตัดสิทธิ์เมื่อชำระเงิน)
+                    </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -902,10 +1155,11 @@ export default function POSPage() {
                     type="button"
                     onClick={() => {
                       cart.clearAttachedClaim();
+                      cart.clearPendingClaims();
                       toast.info('ยกเลิกการใช้ส่วนลดเคลมในบิลนี้แล้ว');
                     }}
                     className="w-5 h-5 rounded-full hover:bg-emerald-200/80 flex items-center justify-center text-slate-500 hover:text-slate-900 font-black text-xs"
-                    title="ยกเลิกส่วนลดเคลม"
+                    title="ยกเลิกส่วนลดเคลมทั้งหมด"
                   >
                     &times;
                   </button>
@@ -973,6 +1227,44 @@ export default function POSPage() {
       </div>
       )}
       
+      {/* Mobile Sticky Bottom Summary Bar (< lg) */}
+      {cart.items.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-30 lg:hidden bg-white/95 backdrop-blur-md border-t border-slate-200 px-4 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] flex items-center justify-between gap-3">
+          <div className="flex flex-col">
+            <span className="text-xs text-slate-500 font-bold">
+              ตะกร้า ({cart.items.reduce((s, i) => s + i.quantity, 0)} ชิ้น)
+            </span>
+            <span className="text-xl font-black text-primary font-mono">
+              {formatCurrency(cart.getTotal())}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const cartElem = document.getElementById('pos-cart');
+                if (cartElem) cartElem.scrollIntoView({ behavior: 'smooth' });
+              }}
+              className="h-11 px-3 text-xs font-bold rounded-xl border-slate-300 text-slate-700"
+            >
+              <ShoppingCart className="w-4 h-4 mr-1" />
+              ดูตะกร้า
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleOpenNormalPayment}
+              className="h-11 px-5 text-sm font-black rounded-xl bg-primary hover:bg-primary/90 text-white shadow-md flex items-center gap-1.5"
+            >
+              <CreditCard className="w-4 h-4" />
+              ชำระเงิน
+            </Button>
+          </div>
+        </div>
+      )}
+
       <PaymentModal open={showPayment} onOpenChange={setShowPayment} initialMethod={paymentInitialMethod} />
       <ItemEditPopup open={!!editItem} onOpenChange={(open) => !open && setEditItem(null)} item={editItem} />
       <BillDiscountPopup open={showBillDiscount} onOpenChange={setShowBillDiscount} />
@@ -1018,7 +1310,7 @@ export default function POSPage() {
         onOpenChange={(open) => {
           if (!open) {
             setQtyEditItem(null);
-            setTimeout(() => searchInputRef.current?.focus(), 20);
+            setTimeout(() => scannerInputRef.current?.focus(), 20);
           }
         }}
         title={`ระบุจำนวน: ${qtyEditItem?.name || ''}`}
@@ -1031,7 +1323,7 @@ export default function POSPage() {
             toast.success(`อัปเดตจำนวนเป็น ${Math.floor(val)} ${qtyEditItem.unitName}`);
           }
           setQtyEditItem(null);
-          setTimeout(() => searchInputRef.current?.focus(), 20);
+          setTimeout(() => scannerInputRef.current?.focus(), 20);
         }}
       />
 
@@ -1047,6 +1339,31 @@ export default function POSPage() {
         open={showClaimPdfModal}
         onOpenChange={setShowClaimPdfModal}
         claim={completedClaimForPdf}
+      />
+
+      {/* Item Claim Popup (In-Cart Replacement) */}
+      <ItemClaimModal
+        isOpen={!!claimTargetItem}
+        onClose={() => setClaimTargetItem(null)}
+        item={claimTargetItem}
+        onConfirm={(claimQty, reason, sourceOrderId) => {
+          if (claimTargetItem) {
+            cart.setItemClaim(
+              claimTargetItem.productId,
+              claimQty,
+              reason,
+              claimTargetItem.unitId,
+              sourceOrderId
+            );
+          }
+        }}
+      />
+
+      {/* Customer Claim Stock & Quota Inventory Modal */}
+      <CustomerClaimStockModal
+        isOpen={showCustomerStockModal}
+        onClose={() => setShowCustomerStockModal(false)}
+        onOpenCustomerSelect={() => setShowCustomerSelect(true)}
       />
     </div>
   );

@@ -15,11 +15,14 @@ import { formatCurrency } from '@/lib/utils';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { ShiftSummaryData, ShiftSummaryPdfModal } from '@/components/pos/ShiftSummaryPdfModal';
 import { loadAllShiftSummaries } from '@/lib/shift-service';
+import { apiFetch } from '@/lib/api';
 
 export default function ShiftsHistoryPage() {
   const [shifts, setShifts] = useState<ShiftSummaryData[]>([]);
+  const [usersList, setUsersList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [userFilter, setUserFilter] = useState('ALL');
   const [dateFilter, setDateFilter] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | '7DAYS' | '30DAYS' | 'CUSTOM'>('ALL');
   const [customDate, setCustomDate] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'BALANCED' | 'SHORT' | 'OVER'>('ALL');
@@ -31,13 +34,21 @@ export default function ShiftsHistoryPage() {
   // Active current shift in store
   const { currentShift, isShiftOpen } = useShiftStore();
 
-  const fetchShifts = () => {
+  const fetchShifts = async () => {
     setLoading(true);
     try {
+      const res = await apiFetch('/shifts/history');
+      const list = res?.data || (Array.isArray(res) ? res : []);
+      if (Array.isArray(list) && list.length > 0) {
+        setShifts(list);
+      } else {
+        const data = loadAllShiftSummaries();
+        setShifts(data);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch shifts from backend, using local:', err);
       const data = loadAllShiftSummaries();
       setShifts(data);
-    } catch (err) {
-      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -45,9 +56,43 @@ export default function ShiftsHistoryPage() {
 
   useEffect(() => {
     fetchShifts();
+    useShiftStore.getState().fetchCurrentShift();
+    apiFetch('/auth/users')
+      .then((data) => {
+        if (Array.isArray(data)) setUsersList(data);
+      })
+      .catch(() => {});
   }, []);
 
-  // Filter shifts based on Date, Search, and Status
+  // Unique cashiers extracted from users and shifts
+  const uniqueCashiers = useMemo(() => {
+    const list: Array<{ id: string; name: string; aliases: string[] }> = [];
+    const seenNames = new Set<string>();
+
+    usersList.forEach((u) => {
+      const displayName = u.fullName || u.username;
+      const aliases = [u.id, u.username, u.fullName].filter(Boolean).map((s) => String(s).toLowerCase());
+      if (displayName && !seenNames.has(displayName.toLowerCase())) {
+        seenNames.add(displayName.toLowerCase());
+        list.push({ id: u.id || displayName, name: displayName, aliases });
+      }
+    });
+
+    shifts.forEach((s) => {
+      if (s.userName && !seenNames.has(s.userName.toLowerCase())) {
+        seenNames.add(s.userName.toLowerCase());
+        list.push({
+          id: s.userId || s.userName,
+          name: s.userName,
+          aliases: [s.userId, s.userName].filter(Boolean).map((x) => String(x).toLowerCase()),
+        });
+      }
+    });
+
+    return list;
+  }, [usersList, shifts]);
+
+  // Filter shifts based on Cashier, Date, Search, and Status
   const filteredShifts = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
     const yest = new Date();
@@ -61,7 +106,27 @@ export default function ShiftsHistoryPage() {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     return shifts.filter((s) => {
-      // 1. Date Filter
+      // 1. Cashier Filter (Flexible matching by ID, username, and fullName)
+      if (userFilter !== 'ALL') {
+        const selectedCashier = uniqueCashiers.find((c) => c.id === userFilter || c.name === userFilter);
+        const shiftUserId = String(s.userId || '').toLowerCase();
+        const shiftUserName = String(s.userName || '').toLowerCase();
+
+        let isMatch = false;
+        if (selectedCashier) {
+          isMatch = selectedCashier.aliases.some((alias) => 
+            (shiftUserId && shiftUserId === alias) || 
+            (shiftUserName && (shiftUserName === alias || shiftUserName.includes(alias) || alias.includes(shiftUserName)))
+          );
+        } else {
+          const target = userFilter.toLowerCase();
+          isMatch = shiftUserId === target || shiftUserName === target || shiftUserName.includes(target);
+        }
+
+        if (!isMatch) return false;
+      }
+
+      // 2. Date Filter
       const shiftDate = s.closedAt ? s.closedAt.split('T')[0] : s.openedAt.split('T')[0];
 
       if (dateFilter === 'TODAY' && shiftDate !== today) return false;
@@ -70,13 +135,13 @@ export default function ShiftsHistoryPage() {
       if (dateFilter === '30DAYS' && new Date(shiftDate) < thirtyDaysAgo) return false;
       if (dateFilter === 'CUSTOM' && customDate && shiftDate !== customDate) return false;
 
-      // 2. Status Filter
+      // 3. Status Filter
       const diff = s.actualCash - s.expectedCash;
       if (statusFilter === 'BALANCED' && diff !== 0) return false;
       if (statusFilter === 'SHORT' && diff >= 0) return false;
       if (statusFilter === 'OVER' && diff <= 0) return false;
 
-      // 3. Search Filter
+      // 4. Search Filter
       if (search.trim()) {
         const q = search.toLowerCase().trim();
         const matchId = s.shiftId.toLowerCase().includes(q);
@@ -86,7 +151,7 @@ export default function ShiftsHistoryPage() {
 
       return true;
     });
-  }, [shifts, dateFilter, customDate, statusFilter, search]);
+  }, [shifts, userFilter, dateFilter, customDate, statusFilter, search]);
 
   // Group filtered shifts by Calendar Day (Date string 'YYYY-MM-DD')
   const groupedByDay = useMemo(() => {
@@ -327,12 +392,27 @@ export default function ShiftsHistoryPage() {
           />
         </div>
 
-        {/* Quick Date Filters */}
+        {/* Dropdown Filters */}
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          {/* Cashier Filter */}
+          <select
+            value={userFilter}
+            onChange={(e) => setUserFilter(e.target.value)}
+            className="h-11 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:border-indigo-500"
+          >
+            <option value="ALL">👤 แคชเชียร์ทุกคน {uniqueCashiers.length > 0 ? `(${uniqueCashiers.length})` : ''}</option>
+            {uniqueCashiers.map((c) => (
+              <option key={c.id} value={c.id}>
+                👤 {c.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Quick Date Filters */}
           <select
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value as any)}
-            className="h-11 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700"
+            className="h-11 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:border-indigo-500"
           >
             <option value="ALL">📅 ทุกช่วงวันที่</option>
             <option value="TODAY">วันนี้</option>
@@ -355,7 +435,7 @@ export default function ShiftsHistoryPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as any)}
-            className="h-11 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700"
+            className="h-11 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:border-indigo-500"
           >
             <option value="ALL">ทุกผลการปิดกะ</option>
             <option value="BALANCED">✓ เงินตรงพอดี</option>

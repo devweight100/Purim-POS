@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { apiFetch } from '@/lib/api';
+import { submitPurchaseReceipt } from '@/lib/purchase-receipt-sync';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
   Table, TableBody, TableCell, TableHead,
@@ -24,7 +25,7 @@ import {
 import { toast } from 'sonner';
 
 import { useProductStore } from '@/lib/store/product-store';
-import sampleProducts from '@/lib/sample-products.json';
+
 import PurchaseOrderPdfModal, { PurchaseOrderData } from '@/components/pos/PurchaseOrderPdfModal';
 import { recordPoReceiveStock, recordPoRollbackStock } from '@/lib/stock-service';
 import { DeductReturnNoteModal } from '@/components/pos/DeductReturnNoteModal';
@@ -54,11 +55,7 @@ function loadSuppliersFromStorage(): any[] {
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch {}
-  return [
-    { id: "supp_1", name: "บริษัท ปุริม ซัพพลาย จำกัด", contactName: "คุณสมชาย", phone: "081-234-5678", email: "contact@purimsupply.com", address: "123 ถ.สุขุมวิท กรุงเทพฯ", creditTerms: 30 },
-    { id: "supp_2", name: "บจก. สยามเทรดดิ้ง แอนด์ ดีสทริบิวชั่น", contactName: "คุณวิภา", phone: "089-876-5432", email: "sales@siamtrading.co.th", address: "456 ถ.รัชดาภิเษก กรุงเทพฯ", creditTerms: 15 },
-    { id: "supp_3", name: "หจก. รวมสินค้าค้าส่ง", contactName: "คุณกิตติ", phone: "02-999-8888", email: "wholesale@ruamkhong.com", address: "789 ถ.พหลโยธิน กรุงเทพฯ", creditTerms: 45 },
-  ];
+  return [];
 }
 
 function loadPOsFromStorage(): any[] {
@@ -199,18 +196,23 @@ export default function PurchaseOrdersPage() {
     let list: any[] = [];
     try {
       const data = await apiFetch("/purchase-orders");
-      if (Array.isArray(data) && data.length > 0) list = data;
-    } catch (error) {}
-
-    if (list.length === 0) {
-      list = loadPOsFromStorage();
-    } else {
+      list = Array.isArray(data) ? data : data.data;
+      if (!Array.isArray(list)) throw new Error("ข้อมูลใบสั่งซื้อไม่ถูกต้อง");
       savePOsToStorage(list);
+    } catch (error) {
+      toast.error("โหลดใบสั่งซื้อจากฐานข้อมูลไม่ได้ กำลังแสดงข้อมูลที่เก็บไว้ในเครื่อง");
+      list = loadPOsFromStorage();
     }
 
     setPurchaseOrders(list);
     setLoading(false);
   };
+
+  useEffect(() => {
+    const refresh = () => { void fetchPOs(); };
+    window.addEventListener('pos-data-synced', refresh);
+    return () => window.removeEventListener('pos-data-synced', refresh);
+  }, []);
 
   const loadAllProducts = async () => {
     let prods = useProductStore.getState().products;
@@ -227,7 +229,7 @@ export default function PurchaseOrdersPage() {
       }
     }
     if (!prods || prods.length === 0) {
-      prods = (sampleProducts as any[]) || [];
+      return [];
     }
     return prods || [];
   };
@@ -241,12 +243,8 @@ export default function PurchaseOrdersPage() {
     let supps: any[] = [];
     try {
       const data = await apiFetch("/suppliers");
-      if (Array.isArray(data) && data.length > 0) supps = data;
+      if (Array.isArray(data)) supps = data;
     } catch (error) {}
-
-    if (supps.length === 0) {
-      supps = loadSuppliersFromStorage();
-    }
 
     const prods = await loadAllProducts();
     setSupplierProducts(prods);
@@ -279,15 +277,12 @@ export default function PurchaseOrdersPage() {
     let supps: any[] = [];
     try {
       const data = await apiFetch("/suppliers");
-      if (Array.isArray(data) && data.length > 0) supps = data;
+      if (Array.isArray(data)) supps = data;
     } catch (error) {}
-    if (supps.length === 0) {
-      supps = loadSuppliersFromStorage();
-    }
     setSuppliers(supps);
 
     const supp = po.supplier || supps.find((s: any) => s.id === (po.supplierId || po.supplier?.id)) || {
-      id: po.supplierId || 'supp_1',
+      id: po.supplierId || '',
       name: po.supplierName || 'ผู้จำหน่าย',
       contactName: '-',
       phone: '-',
@@ -355,6 +350,16 @@ export default function PurchaseOrdersPage() {
     if (!targetCancelPo) return;
     const finalReason = cancelReason === 'other' ? (cancelCustomReason.trim() || 'ยกเลิกโดยผู้ใช้งาน') : cancelReason;
 
+    try {
+      await apiFetch(`/purchase-orders/${targetCancelPo.id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: finalReason }),
+      });
+    } catch (error) {
+      toast.error("ยกเลิกใบสั่งซื้อไม่สำเร็จ");
+      return;
+    }
+
     const existingPOs = loadPOsFromStorage();
     const updatedPOs = existingPOs.map((p) => {
       if (p.id === targetCancelPo.id) {
@@ -370,13 +375,6 @@ export default function PurchaseOrdersPage() {
 
     savePOsToStorage(updatedPOs);
     setPurchaseOrders(updatedPOs);
-
-    try {
-      await apiFetch(`/purchase-orders/${targetCancelPo.id}/cancel`, {
-        method: 'POST',
-        body: JSON.stringify({ reason: finalReason }),
-      });
-    } catch (error) {}
 
     toast.success(`ยกเลิกใบสั่งซื้อ ${targetCancelPo.poNumber} เรียบร้อยแล้ว`);
     setIsCancelModalOpen(false);
@@ -541,7 +539,7 @@ export default function PurchaseOrdersPage() {
 
       try {
         await apiFetch(`/purchase-orders/${editingPo.id}`, {
-          method: "PUT",
+          method: "PATCH",
           body: JSON.stringify(updatedPO),
         });
       } catch (error) {}
@@ -587,13 +585,9 @@ export default function PurchaseOrdersPage() {
       })),
     };
 
-    const existingPOs = loadPOsFromStorage();
-    const updatedPOs = [newPO, ...existingPOs];
-    savePOsToStorage(updatedPOs);
-    setPurchaseOrders(updatedPOs);
-
+    let createdPoObj = newPO;
     try {
-      await apiFetch("/purchase-orders", {
+      const serverRes = await apiFetch("/purchase-orders", {
         method: "POST",
         body: JSON.stringify({
           supplierId: selectedSupplier.id,
@@ -604,12 +598,36 @@ export default function PurchaseOrdersPage() {
           }))
         })
       });
-    } catch (error) {}
+      if (serverRes && serverRes.id) {
+        createdPoObj = {
+          ...newPO,
+          id: serverRes.id,
+          poNumber: serverRes.poNumber || newPO.poNumber,
+          items: Array.isArray(serverRes.items) && serverRes.items.length > 0
+            ? serverRes.items.map((srvItem: any, idx: number) => ({
+                ...newPO.items[idx],
+                id: srvItem.id,
+                purchaseOrderItemId: srvItem.id,
+                productId: srvItem.productId,
+                quantity: Number(srvItem.quantity) || newPO.items[idx]?.quantity,
+                unitCost: Number(srvItem.unitCost) || newPO.items[idx]?.unitCost,
+              }))
+            : newPO.items
+        };
+      }
+    } catch (error) {
+      console.warn("Backend PO creation failed or offline, fallback to local:", error);
+    }
+
+    const existingPOs = loadPOsFromStorage();
+    const updatedPOs = [createdPoObj, ...existingPOs.filter((p: any) => p.id !== createdPoObj.id)];
+    savePOsToStorage(updatedPOs);
+    setPurchaseOrders(updatedPOs);
 
     toast.success("สร้างใบสั่งซื้อสำเร็จ");
     setViewMode('list');
-    setCurrentPo(newPO);
-    setPdfPoData(newPO);
+    setCurrentPo(createdPoObj);
+    setPdfPoData(createdPoObj);
     setIsPdfModalOpen(true);
   };
 
@@ -744,7 +762,7 @@ export default function PurchaseOrdersPage() {
 
     try {
       await apiFetch(`/purchase-orders/${targetStatusChangePo.id}`, {
-        method: "PUT",
+        method: "PATCH",
         body: JSON.stringify(updatedCurrentPo),
       });
     } catch (error) {}
@@ -778,7 +796,7 @@ export default function PurchaseOrdersPage() {
     if (poData) {
       // Hydrate supplier info if missing
       if (!poData.supplier || !poData.supplier.name) {
-        const allSuppliers = suppliers.length > 0 ? suppliers : loadSuppliersFromStorage();
+        const allSuppliers = suppliers;
         const supp = allSuppliers.find((s: any) => s.id === (poData.supplierId || poData.supplier?.id));
         if (supp) {
           poData = { ...poData, supplier: supp, supplierName: supp.name };
@@ -821,7 +839,7 @@ export default function PurchaseOrdersPage() {
       const prod = allProds.find((p: any) => (p.id === item.productId || p.sku === item.productId || p.sku === item.sku));
       const currentStock = Number(prod?.stock !== undefined && prod?.stock !== null ? prod.stock : (item.stock || 0));
       const ordered = Number(item.quantity) || 1;
-      const received = Number(item.receivedQuantity) || 0;
+      const received = Number(item.receivedQty ?? item.receivedQuantity) || 0;
       const remaining = Math.max(0, ordered - received);
       const mult = Number(item.multiplier) || 1;
 
@@ -871,178 +889,35 @@ export default function PurchaseOrdersPage() {
     }
   };
 
+  const receiveBusy = useRef(false);
   const executeReceivePO = async (adjustAndComplete: boolean) => {
-    if (!currentPo) return;
-
-    // 1. Update stock in custom_products localStorage and store
-    let updatedProductsCount = 0;
-    if (typeof window !== 'undefined') {
-      try {
-        let storedProds: any[] = [];
-        const raw = localStorage.getItem('custom_products');
-        if (raw) {
-          storedProds = JSON.parse(raw);
-        } else {
-          storedProds = useProductStore.getState().products;
-        }
-
-        if (Array.isArray(storedProds) && storedProds.length > 0) {
-          const updatedProds = storedProds.map((prod: any) => {
-            const pId = prod.id || prod.sku;
-            const rec = receiveItems.find((r: any) => (
-              r.productId === pId || r.productId === prod.id || r.productId === prod.sku || r.sku === prod.sku
-            ));
-            if (rec && Number(rec.toReceive) > 0) {
-              const addQty = Number(rec.toReceive) * (Number(rec.multiplier) || 1);
-              const curStock = Number(prod.stock !== undefined && prod.stock !== null ? prod.stock : 0);
-              updatedProductsCount++;
-              return {
-                ...prod,
-                stock: curStock + addQty,
-              };
-            }
-            return prod;
-          });
-
-          localStorage.setItem('custom_products', JSON.stringify(updatedProds));
-          useProductStore.getState().fetchProducts();
-          recordPoReceiveStock(receiveItems, currentPo.poNumber);
-        }
-      } catch (err) {
-        console.error('Failed to update product stock on receive:', err);
-      }
-    }
-
-    // 2. Update PO status, items, receivedQuantity and amounts
-    const existingPOs = loadPOsFromStorage();
-    let newPoStatus = "PARTIALLY_RECEIVED";
-    let updatedTargetPo: any = null;
-
-    const updatedPOs = existingPOs.map(po => {
-      if (po.id === currentPo.id) {
-        let updatedItems = (po.items || []).map((item: any) => {
-          const rec = receiveItems.find(r => r.id === item.id || r.productId === item.productId);
-          const addQty = rec ? Number(rec.toReceive) || 0 : 0;
-          const newReceivedQty = (Number(item.receivedQuantity) || 0) + addQty;
-
-          if (adjustAndComplete) {
-            const unitCost = Number(item.unitCost) || 0;
-            return {
-              ...item,
-              quantity: newReceivedQty,
-              receivedQuantity: newReceivedQty,
-              subtotal: newReceivedQty * unitCost,
-            };
-          } else {
-            return {
-              ...item,
-              receivedQuantity: newReceivedQty,
-            };
-          }
-        });
-
-        if (adjustAndComplete) {
-          newPoStatus = "COMPLETED";
-          const newSubtotal = updatedItems.reduce((s: number, i: any) => s + (Number(i.subtotal) || 0), 0);
-          let newDiscountAmount = 0;
-          if (po.discountType === 'percent' || po.discountPercent) {
-            const pct = Number(po.discountPercent) || 0;
-            newDiscountAmount = (newSubtotal * pct) / 100;
-          } else {
-            newDiscountAmount = Math.min(Number(po.discountAmount) || 0, newSubtotal);
-          }
-
-          const netBeforeVat = Math.max(0, newSubtotal - newDiscountAmount);
-          const vatType = po.vatType || 'none';
-          let newVatAmount = 0;
-          let newTotalAmount = netBeforeVat;
-
-          if (vatType === 'include') {
-            newVatAmount = netBeforeVat - (netBeforeVat / 1.07);
-            newTotalAmount = netBeforeVat;
-          } else if (vatType === 'exclude') {
-            newVatAmount = netBeforeVat * 0.07;
-            newTotalAmount = netBeforeVat + newVatAmount;
-          } else {
-            newVatAmount = 0;
-            newTotalAmount = netBeforeVat;
-          }
-
-          const historyEntry = {
-            from: po.status,
-            to: 'COMPLETED',
-            changedAt: new Date().toISOString(),
-            note: 'รับสินค้าไม่ครบ และทำการปรับลดยอดในใบ PO ให้ตรงกับจำนวนรับจริงเพื่อปิดเอกสารและตัดยอดจ่ายเงิน',
-          };
-
-          updatedTargetPo = {
-            ...po,
-            status: 'COMPLETED',
-            items: updatedItems,
-            subtotal: newSubtotal,
-            discountAmount: newDiscountAmount,
-            vatAmount: newVatAmount,
-            totalAmount: newTotalAmount,
-            netAmount: newTotalAmount,
-            supplierInvoiceNo: receiveSupplierInvoiceNo.trim() || po.supplierInvoiceNo || '',
-            supplierInvoiceDate: receiveSupplierInvoiceDate || po.supplierInvoiceDate || '',
-            receivedAt: new Date().toISOString(),
-            statusHistory: [...(po.statusHistory || []), historyEntry],
-          };
-          return updatedTargetPo;
-        } else {
-          const isAllReceived = updatedItems.every((i: any) => (Number(i.receivedQuantity) || 0) >= Number(i.quantity));
-          newPoStatus = isAllReceived ? "COMPLETED" : "PARTIALLY_RECEIVED";
-          updatedTargetPo = {
-            ...po,
-            status: newPoStatus,
-            items: updatedItems,
-            supplierInvoiceNo: receiveSupplierInvoiceNo.trim() || po.supplierInvoiceNo || '',
-            supplierInvoiceDate: receiveSupplierInvoiceDate || po.supplierInvoiceDate || '',
-            receivedAt: new Date().toISOString(),
-          };
-          return updatedTargetPo;
-        }
-      }
-      return po;
-    });
-
-    savePOsToStorage(updatedPOs);
-    setPurchaseOrders(updatedPOs);
-
-    if (updatedTargetPo) {
-      setCurrentPo(updatedTargetPo);
-      setPdfPoData(updatedTargetPo);
-    }
-
+    if (!currentPo || receiveBusy.current) return;
+    receiveBusy.current = true;
     try {
-      await apiFetch(`/purchase-orders/${currentPo.id}/receive`, {
-        method: "POST",
-        body: JSON.stringify({
-          adjustAndComplete,
-          items: receiveItems.map((i: any) => ({
-            purchaseOrderItemId: i.id,
-            productId: i.productId,
-            receivedQty: Number(i.toReceive),
-            unitCost: Number(i.unitCost)
-          })).filter((i: any) => i.receivedQty > 0)
-        })
+      const result = await submitPurchaseReceipt(currentPo.id, {
+        adjustAndComplete,
+        supplierInvoiceNo: receiveSupplierInvoiceNo.trim(),
+        items: receiveItems.map((item: any) => ({
+          purchaseOrderItemId: item.id,
+          receivedQty: Number(item.toReceive),
+          unitCost: Number(item.unitCost),
+        })).filter((item: any) => item.receivedQty > 0),
       });
-    } catch (error) {}
-
-    if (adjustAndComplete) {
-      toast.success(`ปรับยอดในใบสั่งซื้อ ${currentPo.poNumber} ให้เท่ากับจำนวนรับจริง และปิดเอกสาร COMPLETED เรียบร้อย (สต็อกเพิ่ม ${updatedProductsCount} รายการ)`);
-    } else {
-      toast.success(
-        newPoStatus === "COMPLETED"
-          ? `รับสินค้าครบถ้วนแล้ว! ใบสั่งซื้อเปลี่ยนเป็น COMPLETED และเพิ่มสต็อกเข้าคลังเรียบร้อย (${updatedProductsCount} รายการ)`
-          : `บันทึกการรับสินค้าเรียบร้อย (รับบางส่วน) และเพิ่มสต็อกเข้าคลังแล้ว (${updatedProductsCount} รายการ)`
-      );
-    }
-
-    setIsUnderReceiveModalOpen(false);
-    setIsReceiveOpen(false);
-    fetchPOs();
+      if (!result) {
+        setIsUnderReceiveModalOpen(false);
+        setIsReceiveOpen(false);
+        return;
+      }
+      setCurrentPo(result);
+      setPdfPoData(result);
+      toast.success('ฐานข้อมูลยืนยันรับสินค้าและปรับสต็อกเรียบร้อยแล้ว');
+      setIsUnderReceiveModalOpen(false);
+      setIsReceiveOpen(false);
+      await fetchPOs();
+      void useProductStore.getState().fetchProducts();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'บันทึกรับสินค้าไม่สำเร็จ กรุณาตรวจสอบรายการ');
+    } finally { receiveBusy.current = false; }
   };
 
   const filteredPOs = purchaseOrders.filter(po => 

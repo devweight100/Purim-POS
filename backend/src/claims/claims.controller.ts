@@ -24,9 +24,39 @@ export class ClaimsController {
     );
   }
 
+  @Get('warranties/list')
+  getWarrantiesList() {
+    return this.claimsService.getReplacementWarranties();
+  }
+
+  @Get('warranties')
+  getWarranties() {
+    return this.claimsService.getReplacementWarranties();
+  }
+
+  @Post('warranties')
+  createWarranty(@Body() body: any) {
+    return this.claimsService.saveReplacementWarranty(body);
+  }
+
+  @Patch('warranties/:id')
+  updateWarranty(@Param('id') id: string, @Body() body: any) {
+    return this.claimsService.updateReplacementWarranty(id, body);
+  }
+
+  @Get('inventory/list')
+  getClaimInventoryList() {
+    return this.claimsService.getClaimInventory();
+  }
+
   @Get('inventory')
   getClaimInventory() {
     return this.claimsService.getClaimInventory();
+  }
+
+  @Post('inventory')
+  createClaimInventory(@Body() body: any) {
+    return this.claimsService.createClaimInventory(body);
   }
 
   @Patch('inventory/:id')

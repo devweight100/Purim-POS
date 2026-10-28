@@ -1,0 +1,4 @@
+ALTER TABLE "store_settings"
+  ADD COLUMN IF NOT EXISTS "branch_name" TEXT,
+  ADD COLUMN IF NOT EXISTS "receipt_header" TEXT,
+  ADD COLUMN IF NOT EXISTS "vat_rate" DECIMAL(5,2) NOT NULL DEFAULT 7;

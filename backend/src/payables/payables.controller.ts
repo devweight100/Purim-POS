@@ -1,8 +1,11 @@
 import { Controller, Get, Post, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { PayablesService, SettleMultipleBillsDto } from './payables.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles, RequirePermissions } from '../auth/roles.decorator';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@RequirePermissions('MANAGE_PAYABLES')
 @Controller('payables')
 export class PayablesController {
   constructor(private readonly payablesService: PayablesService) {}
@@ -57,6 +60,7 @@ export class PayablesController {
     return this.payablesService.getVoucherDetails(id);
   }
 
+  @Roles('ADMIN', 'MANAGER')
   @Post('vouchers/:id/cancel')
   cancelVoucher(@Param('id') id: string, @Body('reason') reason: string) {
     return this.payablesService.cancelVoucher(id, reason);

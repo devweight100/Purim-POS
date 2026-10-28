@@ -118,7 +118,7 @@ export function SettlePayableModal({
     ? (parseFloat(cashOrTransferAmountStr) || 0)
     : netDebtToPay;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (totalDebitDeducted <= 0 && billDiscount <= 0 && finalCashOrTransferAmount <= 0) {
       toast.error('กรุณาเลือกประกบใบลดหนี้, ระบุส่วนลดท้ายบิล หรือระบุจำนวนเงินที่ต้องการจ่าย');
       return;
@@ -133,7 +133,7 @@ export function SettlePayableModal({
 
       const selectedBank = bankAccounts.find((b) => b.id === selectedBankId);
 
-      const res = settlePayableBill({
+      const res = await settlePayableBill({
         poId: bill.poId,
         matchedDebitNotes,
         discountAmount: billDiscount,

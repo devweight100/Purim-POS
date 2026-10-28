@@ -143,4 +143,101 @@ export class ReportsService {
       voidedOrders
     };
   }
+
+  async getFullAnalytics(startDate?: string, endDate?: string) {
+    const whereClause: any = {};
+    const hasDateFilter = Boolean(startDate || endDate);
+
+    if (hasDateFilter) {
+      whereClause.createdAt = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        if (!isNaN(start.getTime())) {
+          whereClause.createdAt.gte = start;
+        }
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        if (!isNaN(end.getTime())) {
+          end.setHours(23, 59, 59, 999);
+          whereClause.createdAt.lte = end;
+        }
+      }
+    }
+
+    const [orders, activeBatches, products] = await Promise.all([
+      this.prisma.order.findMany({
+        where: whereClause,
+        ...(hasDateFilter ? {} : { take: 50000 }),
+        orderBy: { createdAt: 'desc' },
+        include: {
+          items: { include: { product: true } },
+          payments: true,
+          customer: { select: { id: true, name: true, phone: true } },
+          user: { select: { id: true, fullName: true } },
+        },
+      }),
+      this.prisma.stockBatch.findMany({
+        where: { quantityRemaining: { gt: 0 } },
+        select: {
+          productId: true,
+          quantityRemaining: true,
+          unitCost: true,
+        },
+      }),
+      this.prisma.product.findMany({
+        where: { isActive: true },
+        select: {
+          id: true,
+          sku: true,
+          name: true,
+          costPrice: true,
+          basePrice: true,
+          priceLevel1: true,
+        },
+      }),
+    ]);
+
+    const batchValuationByProduct: Record<
+      string,
+      { quantityRemaining: number; totalCostValue: number; averageUnitCost: number }
+    > = {};
+
+    for (const batch of activeBatches) {
+      const qty = Number(batch.quantityRemaining || 0);
+      if (qty <= 0) continue;
+      const unitCost = Number(batch.unitCost ?? 0);
+      const current = batchValuationByProduct[batch.productId] || {
+        quantityRemaining: 0,
+        totalCostValue: 0,
+        averageUnitCost: 0,
+      };
+      current.quantityRemaining += qty;
+      current.totalCostValue += qty * unitCost;
+      current.averageUnitCost =
+        current.quantityRemaining > 0
+          ? current.totalCostValue / current.quantityRemaining
+          : unitCost;
+      batchValuationByProduct[batch.productId] = current;
+    }
+
+    let totalInventoryCostValue = 0;
+    for (const p of products) {
+      const batchInfo = batchValuationByProduct[p.id];
+      if (batchInfo && batchInfo.quantityRemaining > 0) {
+        totalInventoryCostValue +=
+          batchInfo.totalCostValue > 0
+            ? batchInfo.totalCostValue
+            : batchInfo.quantityRemaining * Number(p.costPrice ?? 0);
+      }
+    }
+
+    return {
+      orders,
+      stockBatchValuation: {
+        byProductId: batchValuationByProduct,
+        totalInventoryCostValue,
+      },
+    };
+  }
 }

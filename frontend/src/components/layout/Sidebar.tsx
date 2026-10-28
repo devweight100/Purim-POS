@@ -7,10 +7,14 @@ import {
   ShoppingCart, ClipboardList, Users, LayoutDashboard, Package, 
   Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, 
   FolderTree, Building2, Receipt, ShieldAlert, ArrowLeftRight, HandCoins,
-  ChevronDown, History, PackageX, TrendingUp, Sparkles, Coins, Boxes, UserCog
+  ChevronDown, History, PackageX, TrendingUp, Sparkles, Coins, Boxes, UserCog,
+  ScanLine, Radio
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { canAccessRoute } from '@/lib/permissions';
+import { PwaInstallButton } from '@/components/common/PwaInstallButton';
+import { useDocumentSearchStore } from '@/lib/store/document-search-store';
 
 interface SubMenuItem {
   href: string;
@@ -32,6 +36,7 @@ const navGroups: NavGroup[] = [
     title: 'ภาพรวม & รายงาน',
     icon: BarChart3,
     items: [
+      { href: '/master-control', label: '🚀 แผงควบคุมเครื่องแม่ (Master Command)', icon: Radio },
       { href: '/dashboard', label: 'แดชบอร์ดสรุปภาพรวม', icon: LayoutDashboard },
       { 
         href: '/reports', 
@@ -118,9 +123,32 @@ export function Sidebar() {
     '/reports': true,
   });
 
+  // Filter nav groups and submenus according to user permissions
+  const visibleNavGroups = React.useMemo(() => {
+    return navGroups
+      .map((group) => {
+        const visibleItems = group.items
+          .filter((item) => canAccessRoute(user, item.href))
+          .map((item) => {
+            if (!item.children || item.children.length === 0) return item;
+            const visibleChildren = item.children.filter((child) => canAccessRoute(user, child.href));
+            return {
+              ...item,
+              children: visibleChildren,
+            };
+          });
+
+        return {
+          ...group,
+          items: visibleItems,
+        };
+      })
+      .filter((group) => group.items.length > 0);
+  }, [user]);
+
   // Ensure current pathname's group and submenus are open
   useEffect(() => {
-    navGroups.forEach((group) => {
+    visibleNavGroups.forEach((group) => {
       const isMatch = group.items.some(
         (item) => item.href === pathname || item.children?.some((c) => c.href === pathname)
       );
@@ -132,7 +160,7 @@ export function Sidebar() {
     if (pathname.startsWith('/reports')) {
       setOpenSubMenus((prev) => ({ ...prev, '/reports': true }));
     }
-  }, [pathname]);
+  }, [pathname, visibleNavGroups]);
 
   // Close mobile menu on route change
   useEffect(() => {
@@ -207,7 +235,7 @@ export function Sidebar() {
         }}
         className="flex-1 py-3 overflow-y-auto overflow-x-hidden flex flex-col gap-3 px-2"
       >
-        {/* Quick POS Action Button (Purim POS สีฟ้า) */}
+        {/* Quick POS Action Button (กลับไปหน้าขาย POS) */}
         <div className="px-1">
           <Link
             href="/pos"
@@ -227,10 +255,13 @@ export function Sidebar() {
               )}>
                 <ShoppingCart className="w-4 h-4" />
               </div>
-              <span className="text-sm font-black tracking-wide">Purim POS</span>
+              <div>
+                <span className="text-sm font-black tracking-wide block">หน้าขายหน้าร้าน (POS)</span>
+                <span className="text-[10px] text-sky-700 block font-normal">สลับไปหน้าจอแคชเชียร์</span>
+              </div>
             </div>
             <span className={cn(
-              'text-[10px] px-2 py-0.5 rounded font-black uppercase',
+              'text-[10px] px-2 py-0.5 rounded font-black uppercase shrink-0',
               pathname === '/pos' ? 'bg-white/20 text-white' : 'bg-sky-200/80 text-sky-800'
             )}>
               ขายสด
@@ -238,8 +269,27 @@ export function Sidebar() {
           </Link>
         </div>
 
+        {/* Universal Document Search Button */}
+        <div className="pt-0.5 pb-2">
+          <button
+            type="button"
+            onClick={() => useDocumentSearchStore.getState().openSearch()}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold bg-indigo-50/80 hover:bg-indigo-100 text-indigo-950 border border-indigo-200/80 transition-all shadow-xs cursor-pointer group"
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                <ScanLine className="w-3.5 h-3.5 animate-pulse" />
+              </div>
+              <span className="font-bold">ค้นหาเอกสารทั้งหมด</span>
+            </div>
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-white text-indigo-700 border border-indigo-200 font-black">
+              F3
+            </span>
+          </button>
+        </div>
+
         {/* Grouped Accordion Menu */}
-        {navGroups.map((group) => {
+        {visibleNavGroups.map((group) => {
           const isOpen = openGroups[group.id] ?? true;
           const isGroupActive = group.items.some((i) => pathname === i.href);
           const GroupIcon = group.icon;
@@ -383,6 +433,7 @@ export function Sidebar() {
 
       {/* User Footer Profile */}
       <div className="p-3 border-t border-sidebar-border shrink-0 bg-sidebar">
+        <PwaInstallButton className="w-full justify-center mb-2.5" />
         <div className="flex items-center px-2 mb-2">
           <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center shrink-0">
             <span className="text-indigo-700 text-xs font-bold">{user?.name?.charAt(0)?.toUpperCase() || 'P'}</span>
@@ -392,13 +443,23 @@ export function Sidebar() {
             <p className="text-[10px] text-slate-400 truncate">{user?.role || 'เจ้าของร้าน'}</p>
           </div>
         </div>
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center px-2.5 py-1.5 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors text-xs font-medium"
-        >
-          <LogOut className="w-3.5 h-3.5 shrink-0 mr-2" />
-          <span>ออกจากระบบ</span>
-        </button>
+        {user ? (
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center px-2.5 py-1.5 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors text-xs font-medium cursor-pointer"
+          >
+            <LogOut className="w-3.5 h-3.5 shrink-0 mr-2" />
+            <span>ออกจากระบบ</span>
+          </button>
+        ) : (
+          <Link
+            href="/login"
+            className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors text-xs font-bold"
+          >
+            <UserCog className="w-3.5 h-3.5" />
+            <span>เข้าสู่ระบบ (Login)</span>
+          </Link>
+        )}
       </div>
     </>
   );

@@ -14,10 +14,13 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { 
-  loadSuppliers, 
+  loadSuppliers,
+  fetchSuppliers, 
   loadSupplierReturnNotes,
+  fetchSupplierReturnNotes,
   getEligibleClaimsForReturn,
   loadPurchaseOrders,
+  fetchPurchaseOrders,
   cancelSupplierReturnNote,
   restoreSupplierReturnNote
 } from '@/lib/supplier-return-service';
@@ -50,16 +53,16 @@ export default function SupplierReturnsPage() {
   const [statusChangeNote, setStatusChangeNote] = useState<SupplierReturnNote | null>(null);
   const [isStatusChangeModalOpen, setIsStatusChangeModalOpen] = useState(false);
 
-  const refreshData = () => {
+  const refreshData = async () => {
     setLoading(true);
     try {
-      const notes = loadSupplierReturnNotes();
+      const [notes, supps, purchaseOrders] = await Promise.all([
+        fetchSupplierReturnNotes(),
+        fetchSuppliers(),
+        fetchPurchaseOrders(),
+      ]);
       setReturnNotes(notes);
-
-      const supps = loadSuppliers();
       setSuppliers(supps);
-
-      const purchaseOrders = loadPurchaseOrders();
       setPos(purchaseOrders);
 
       const claims = getEligibleClaimsForReturn();
@@ -157,7 +160,7 @@ export default function SupplierReturnsPage() {
       note.id.toLowerCase().includes(search.toLowerCase()) ||
       (note.supplierName || '').toLowerCase().includes(search.toLowerCase()) ||
       (note.linkedPoNumber || '').toLowerCase().includes(search.toLowerCase()) ||
-      note.items.some((i) => (i.productName || '').toLowerCase().includes(search.toLowerCase()));
+      (note.items || []).some((i) => (i.productName || '').toLowerCase().includes(search.toLowerCase()));
 
     const matchesSupplier =
       selectedSupplierFilter === 'ALL' || note.supplierId === selectedSupplierFilter;
@@ -176,7 +179,7 @@ export default function SupplierReturnsPage() {
       note.id.toLowerCase().includes(search.toLowerCase()) ||
       (note.supplierName || '').toLowerCase().includes(search.toLowerCase()) ||
       (note.linkedPoNumber || '').toLowerCase().includes(search.toLowerCase()) ||
-      note.items.some((i) => (i.productName || '').toLowerCase().includes(search.toLowerCase()));
+      (note.items || []).some((i) => (i.productName || '').toLowerCase().includes(search.toLowerCase()));
 
     const matchesSupplier =
       selectedSupplierFilter === 'ALL' || note.supplierId === selectedSupplierFilter;
@@ -409,7 +412,7 @@ export default function SupplierReturnsPage() {
                               <span className="text-xs text-slate-400 font-mono">{note.supplierPhone}</span>
                             )}
                             <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
-                              รวม {note.items.length} รายการ
+                              รวม {note.items?.length ?? note.totalQuantity ?? 0} รายการ
                             </span>
                           </div>
                         </td>
@@ -652,7 +655,7 @@ export default function SupplierReturnsPage() {
                         <td className="py-3.5 px-3.5">
                           <p className="font-bold text-slate-700 text-[15px]">{note.supplierName}</p>
                           <span className="text-xs font-semibold text-slate-500 bg-slate-200/60 px-2 py-0.5 rounded-md mt-0.5 inline-block">
-                            รวม {note.items.length} รายการ
+                            รวม {note.items?.length ?? note.totalQuantity ?? 0} รายการ
                           </span>
                         </td>
 

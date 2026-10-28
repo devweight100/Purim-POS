@@ -1,6 +1,7 @@
 import { ClaimRecord, SupplierReturnNote, SupplierReturnItem, SupplierReturnItemType } from './types';
-import { loadAllClaimRecords, saveClaimRecords } from './claim-service';
+import { loadAllClaimRecords, saveClaimRecords, markClaimsAsReturnedToSupplier, updateClaimStatus } from './claim-service';
 import { useProductStore } from './store/product-store';
+import { apiFetch, api } from './api';
 
 const STORAGE_KEY_RETURNS = 'pos_supplier_returns';
 const STORAGE_KEY_SUPPLIERS = 'custom_suppliers';
@@ -9,6 +10,21 @@ const STORAGE_KEY_PRODUCTS = 'custom_products';
 
 // ─── Default Suppliers Fallback ───
 export const DEFAULT_SUPPLIERS: any[] = [];
+
+export async function fetchSuppliers(): Promise<any[]> {
+  try {
+    const data = await apiFetch('/suppliers');
+    if (Array.isArray(data)) {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY_SUPPLIERS, JSON.stringify(data));
+      }
+      return data;
+    }
+  } catch (err) {
+    console.warn('[SupplierReturnService] Failed to fetch suppliers from backend:', err);
+  }
+  return loadSuppliers();
+}
 
 export function loadSuppliers(): any[] {
   if (typeof window === 'undefined') return [];
@@ -23,6 +39,19 @@ export function loadSuppliers(): any[] {
 }
 
 // ─── Purchase Orders Storage Helpers ───
+export async function fetchPurchaseOrders(): Promise<any[]> {
+  try {
+    const data = await apiFetch('/purchase-orders');
+    if (Array.isArray(data)) {
+      savePurchaseOrders(data);
+      return data;
+    }
+  } catch (err) {
+    console.warn('[SupplierReturnService] Failed to fetch POs from backend:', err);
+  }
+  return loadPurchaseOrders();
+}
+
 export function loadPurchaseOrders(): any[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -56,6 +85,63 @@ export function savePurchaseOrders(pos: any[]): void {
 }
 
 // ─── Local Storage for Supplier Return Notes ───
+export async function fetchSupplierReturnNotes(): Promise<SupplierReturnNote[]> {
+  try {
+    const res = await apiFetch('/supplier-returns?limit=200');
+    const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : null);
+    if (Array.isArray(list)) {
+      const localNotes = loadSupplierReturnNotes();
+      const localMap = new Map<string, SupplierReturnNote>();
+      localNotes.forEach((n) => {
+        if (n.id) localMap.set(n.id, n);
+        if ((n as any).noteNumber) localMap.set((n as any).noteNumber, n);
+      });
+
+      const mappedList: SupplierReturnNote[] = list.map((item: any) => {
+        const docNum = item.returnNumber || item.noteNumber || item.id;
+        const local = localMap.get(docNum) || localMap.get(item.id);
+        const rawStatus = item.frontendStatus || item.status;
+        const resolvedStatus =
+          rawStatus === 'PENDING'
+            ? 'PENDING_DEDUCTION'
+            : rawStatus === 'PARTIALLY_USED'
+              ? 'PARTIALLY_DEDUCTED'
+              : rawStatus === 'USED'
+                ? 'DEDUCTED'
+                : rawStatus || local?.status || 'PENDING_DEDUCTION';
+
+        return {
+          id: docNum,
+          noteNumber: docNum,
+          returnDate: item.returnDate || item.createdAt || new Date().toISOString(),
+          supplierId: item.supplierId || item.supplier?.id || '',
+          supplierName: item.supplierName || item.supplier?.name || local?.supplierName || 'ไม่ระบุผู้จำหน่าย',
+          supplierPhone: item.supplierPhone || item.supplier?.phone || local?.supplierPhone || '',
+          supplierContact: item.supplierContact || item.supplier?.contactName || local?.supplierContact || '',
+          supplierAddress: item.supplierAddress || item.supplier?.address || local?.supplierAddress || '',
+          linkedPoId: item.linkedPoId || local?.linkedPoId,
+          linkedPoNumber: item.linkedPoNumber || local?.linkedPoNumber,
+          items: Array.isArray(item.items) && item.items.length > 0 ? item.items : (Array.isArray(item.items) ? (local?.items || []) : []),
+          totalQuantity: Number(item.totalQuantity ?? local?.totalQuantity ?? 0),
+          defectiveTotalCost: Number(item.defectiveTotalCost ?? local?.defectiveTotalCost ?? 0),
+          overstockTotalCost: Number(item.overstockTotalCost ?? local?.overstockTotalCost ?? 0),
+          totalCreditAmount: Number(item.totalCreditAmount ?? item.totalAmount ?? local?.totalCreditAmount ?? 0),
+          remainingCreditAmount: Number(item.remainingCreditAmount ?? item.totalAmount ?? local?.remainingCreditAmount ?? 0),
+          status: resolvedStatus as any,
+          notes: item.notes ?? item.note ?? item.reason ?? local?.notes ?? '',
+          deductions: Array.isArray(item.deductions) && item.deductions.length > 0 ? item.deductions : (local?.deductions || []),
+          createdBy: item.createdBy || local?.createdBy || 'เจ้าหน้าที่ฝ่ายส่งคืน/เคลม',
+        } as SupplierReturnNote;
+      });
+      saveSupplierReturnNotes(mappedList);
+      return mappedList;
+    }
+  } catch (err) {
+    console.warn('[SupplierReturnService] Failed to fetch return notes from backend:', err);
+  }
+  return loadSupplierReturnNotes();
+}
+
 export function loadSupplierReturnNotes(): SupplierReturnNote[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -79,11 +165,13 @@ export function saveSupplierReturnNotes(notes: SupplierReturnNote[]): void {
 
 export function generateReturnDocNumber(): string {
   const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  const rand = Math.floor(1000 + Math.random() * 9000);
-  return `RTN-${y}${m}${d}-${rand}`;
+  const yy = now.getFullYear().toString().slice(-2);
+  const mm = (now.getMonth() + 1).toString().padStart(2, '0');
+  const prefix = `SRN-${yy}${mm}`;
+  const existing = loadSupplierReturnNotes();
+  const monthNotes = existing.filter((n) => (n.id || (n as any).returnNumber || '').startsWith(prefix));
+  const seq = (monthNotes.length + 1).toString().padStart(5, '0');
+  return `${prefix}${seq}`;
 }
 
 // ─── Helper to resolve Product's Supplier & Cost ───
@@ -147,13 +235,13 @@ export function resolveProductSupplierAndCost(productId: string, sku?: string): 
     } catch {}
   }
 
-  // If no supplier matched, assign default supplier #1
+  // If no supplier matched, assign fallback safely
   if (!supplier) {
-    supplier = suppliers[0] || DEFAULT_SUPPLIERS[0];
-    supplierId = supplier.id;
-  } else {
-    supplierId = supplier.id;
+    supplier = (suppliers && suppliers.length > 0) ? suppliers[0] : (DEFAULT_SUPPLIERS && DEFAULT_SUPPLIERS.length > 0 ? DEFAULT_SUPPLIERS[0] : null);
   }
+
+  const resolvedSupplierId = supplier?.id || 'UNKNOWN';
+  const resolvedSupplierName = supplier?.name || 'ไม่ระบุผู้จำหน่าย';
 
   const supplierEntryCost = supplierEntry?.lastCost !== undefined ? Number(supplierEntry.lastCost) : 0;
   let costPrice = Number(prod?.costPrice || prod?.basePrice || supplierEntryCost || 0);
@@ -163,8 +251,8 @@ export function resolveProductSupplierAndCost(productId: string, sku?: string): 
   }
 
   return {
-    supplierId: supplier.id,
-    supplierName: supplier.name,
+    supplierId: resolvedSupplierId,
+    supplierName: resolvedSupplierName,
     costPrice: Math.round(costPrice * 100) / 100,
   };
 }
@@ -413,15 +501,15 @@ export function getPendingReturnsGroupedBySupplier(): PendingSupplierGroup[] {
   const groupsMap = new Map<string, PendingSupplierGroup>();
 
   eligible.forEach((claim) => {
-    const suppId = claim.supplierId || 'supp_1';
-    const supp = suppliers.find((s) => s.id === suppId) || DEFAULT_SUPPLIERS[0];
+    const suppId = claim.supplierId || 'unassigned';
+    const supp = suppliers.find((s) => s.id === suppId);
 
     if (!groupsMap.has(suppId)) {
       groupsMap.set(suppId, {
         supplierId: suppId,
-        supplierName: claim.supplierName || supp.name,
-        supplierPhone: supp.phone,
-        supplierContact: supp.contactName,
+        supplierName: claim.supplierName || supp?.name || 'ไม่ระบุผู้จำหน่าย',
+        supplierPhone: supp?.phone,
+        supplierContact: supp?.contactName,
         pendingCount: 0,
         totalItemsQuantity: 0,
         totalCostValue: 0,
@@ -500,11 +588,10 @@ export function createSupplierReturnNote(params: CreateReturnNoteParams): Suppli
   let totalQty = 0;
   let defectiveTotalCost = 0;
   let overstockTotalCost = 0;
+  const claimIdsToUpdate = new Set<string>();
 
   // Case 1: Advanced items array provided (combines Defective and Overstock)
   if (Array.isArray(params.items) && params.items.length > 0) {
-    const claimIdsToUpdate = new Set<string>();
-
     params.items.forEach((item) => {
       const itemTotalCost = Math.round(Number(item.unitCost) * Number(item.quantity) * 100) / 100;
       const rItem: SupplierReturnItem = {
@@ -538,27 +625,10 @@ export function createSupplierReturnNote(params: CreateReturnNoteParams): Suppli
         }
       } else {
         overstockTotalCost += itemTotalCost;
-        // Deduct active store stock for unsold/overstock return
-        if (typeof window !== 'undefined') {
-          try {
-            const rawProds = localStorage.getItem(STORAGE_KEY_PRODUCTS);
-            if (rawProds) {
-              const prods: any[] = JSON.parse(rawProds);
-              const target = prods.find((p) => p.id === item.productId || p.sku === item.sku);
-              if (target) {
-                target.stock = Math.max(0, Number(target.stock || 0) - Number(item.quantity));
-                localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(prods));
-                useProductStore.getState().fetchProducts();
-              }
-            }
-          } catch (e) {
-            console.error('Failed to deduct inventory for overstock return:', e);
-          }
-        }
       }
     });
 
-    // Update claim records if any
+    // Update claim records locally & on backend
     if (claimIdsToUpdate.size > 0) {
       allClaims.forEach((c) => {
         if (claimIdsToUpdate.has(c.id)) {
@@ -569,10 +639,18 @@ export function createSupplierReturnNote(params: CreateReturnNoteParams): Suppli
         }
       });
       saveClaimRecords(allClaims);
+      void markClaimsAsReturnedToSupplier(
+        Array.from(claimIdsToUpdate),
+        returnId,
+        params.supplierId,
+        params.supplierName
+      );
     }
   } else if (Array.isArray(params.claimItems) && params.claimItems.length > 0) {
     // Case 2: Legacy claimItems fallback
-    const claimIdsToUpdate = new Set(params.claimItems.map((i) => i.claimId));
+    params.claimItems.forEach((i) => {
+      if (i.claimId) claimIdsToUpdate.add(i.claimId);
+    });
 
     allClaims.forEach((c) => {
       if (claimIdsToUpdate.has(c.id)) {
@@ -607,6 +685,14 @@ export function createSupplierReturnNote(params: CreateReturnNoteParams): Suppli
     });
 
     saveClaimRecords(allClaims);
+    if (claimIdsToUpdate.size > 0) {
+      void markClaimsAsReturnedToSupplier(
+        Array.from(claimIdsToUpdate),
+        returnId,
+        params.supplierId,
+        params.supplierName
+      );
+    }
   }
 
   const itemsTotalCost = Math.round((defectiveTotalCost + overstockTotalCost) * 100) / 100;
@@ -686,6 +772,55 @@ export function createSupplierReturnNote(params: CreateReturnNoteParams): Suppli
   existingNotes.unshift(newReturnNote);
   saveSupplierReturnNotes(existingNotes);
 
+  // Sync full payload to backend API so PostgreSQL is the Single Source of Truth (and backend deducts overstock FIFO stock)
+  if (params.supplierId) {
+    api.supplierReturns
+      .create({
+        returnNumber: returnId,
+        noteNumber: returnId,
+        returnDate: nowIso,
+        supplierId: params.supplierId,
+        supplierName: params.supplierName,
+        supplierContact: params.supplierContact,
+        supplierPhone: params.supplierPhone,
+        supplierAddress: params.supplierAddress,
+        linkedPoId: params.linkedPoId,
+        linkedPoNumber: params.linkedPoNumber,
+        items: returnItems,
+        totalQuantity: totalQty,
+        defectiveTotalCost: newReturnNote.defectiveTotalCost,
+        overstockTotalCost: newReturnNote.overstockTotalCost,
+        totalCreditAmount: totalCredit,
+        totalAmount: totalCredit,
+        remainingCreditAmount: newReturnNote.remainingCreditAmount,
+        status: newReturnNote.status,
+        deductions: newReturnNote.deductions || [],
+        notes: params.notes,
+        reason: params.notes || 'ส่งเคลม/คืนสินค้าบริษัท',
+        createdBy: newReturnNote.createdBy,
+        deductStock: true,
+      })
+      .then((saved) => {
+        if (saved && (saved.returnNumber || saved.id)) {
+          const serverNum = saved.returnNumber || saved.id;
+          if (serverNum !== returnId) {
+            const currentNotes = loadSupplierReturnNotes();
+            const target = currentNotes.find((n) => n.id === returnId);
+            if (target) {
+              target.id = serverNum;
+              (target as any).noteNumber = serverNum;
+              saveSupplierReturnNotes(currentNotes);
+            }
+          }
+        }
+        if (typeof window !== 'undefined') {
+          void useProductStore.getState().fetchProducts();
+          window.dispatchEvent(new Event('pos-data-synced'));
+        }
+      })
+      .catch((err) => console.warn('[SupplierReturnService] Failed to sync return note to backend:', err));
+  }
+
   return newReturnNote;
 }
 
@@ -707,32 +842,12 @@ export function cancelSupplierReturnNote(noteId: string): { success: boolean; me
     if (c.returnDocId === noteId) {
       c.returnDocId = undefined;
       c.status = 'PENDING_SUPPLIER';
+      void updateClaimStatus(c.id, 'PENDING_SUPPLIER', { returnDocId: null });
     }
   });
   saveClaimRecords(allClaims);
 
-  // 2. Rollback inventory stock for overstock items
-  const overstockItems = note.items.filter((i) => i.itemType === 'OVERSTOCK');
-  if (overstockItems.length > 0 && typeof window !== 'undefined') {
-    try {
-      const rawProds = localStorage.getItem(STORAGE_KEY_PRODUCTS);
-      if (rawProds) {
-        const prods: any[] = JSON.parse(rawProds);
-        overstockItems.forEach((item) => {
-          const p = prods.find((prod) => prod.id === item.productId || prod.sku === item.sku);
-          if (p) {
-            p.stock = Number(p.stock || 0) + Number(item.quantity);
-          }
-        });
-        localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(prods));
-        useProductStore.getState().fetchProducts();
-      }
-    } catch (e) {
-      console.error('Failed to rollback overstock products:', e);
-    }
-  }
-
-  // 3. Rollback PO deductions if applied
+  // 2. Rollback PO deductions if applied
   if (note.deductions && note.deductions.length > 0) {
     try {
       const allPos = loadPurchaseOrders();
@@ -756,6 +871,19 @@ export function cancelSupplierReturnNote(noteId: string): { success: boolean; me
   (note as any).cancelledAt = new Date().toISOString();
   saveSupplierReturnNotes(notes);
 
+  // Sync cancellation to backend (which also restores overstock stockBatch & claim statuses)
+  void apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({ reason: 'ยกเลิกเอกสารส่งคืน' }),
+  })
+    .then(() => {
+      if (typeof window !== 'undefined') {
+        void useProductStore.getState().fetchProducts();
+        window.dispatchEvent(new Event('pos-data-synced'));
+      }
+    })
+    .catch((err) => console.warn('[SupplierReturnService] Failed to sync cancel return note to backend:', err));
+
   return { success: true, message: `ย้ายเอกสารส่งคืน ${noteId} ไปที่ถังขยะ และคืนยอดสต็อก/สถานะเรียบร้อยแล้ว` };
 }
 
@@ -773,6 +901,7 @@ export function restoreSupplierReturnNote(noteId: string): { success: boolean; m
   // Re-link claims if applicable
   try {
     const allClaims = loadAllClaimRecords();
+    const restoredClaimIds: string[] = [];
     for (const item of note.items) {
       if (item.claimId) {
         const claimIds = item.claimId.split(',').map((s) => s.trim()).filter(Boolean);
@@ -781,16 +910,28 @@ export function restoreSupplierReturnNote(noteId: string): { success: boolean; m
           if (claim) {
             claim.returnDocId = noteId;
             claim.status = 'SENT_TO_SUPPLIER';
+            restoredClaimIds.push(cid);
           }
         }
       }
     }
     saveClaimRecords(allClaims);
+    if (restoredClaimIds.length > 0) {
+      void markClaimsAsReturnedToSupplier(restoredClaimIds, noteId, note.supplierId, note.supplierName);
+    }
   } catch (e) {
     console.error('Failed to re-link claims on restore:', e);
   }
 
   saveSupplierReturnNotes(notes);
+
+  void apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      status: 'PENDING_DEDUCTION',
+      remainingCreditAmount: note.totalCreditAmount,
+    }),
+  }).catch((err) => console.warn('[SupplierReturnService] Failed to sync restore return note to backend:', err));
 
   return { success: true, message: `กู้คืนเอกสารส่งคืน ${noteId} กลับมาใช้งานเรียบร้อยแล้ว` };
 }
@@ -849,9 +990,22 @@ export function deductReturnNoteFromBill(
         c.status = 'COMPLETED';
         c.completedDate = new Date().toISOString();
       }
+      void updateClaimStatus(c.id, c.status, {
+        settledInBillNumber: billNumber,
+      });
     }
   });
   saveClaimRecords(allClaims);
+
+  void apiFetch(`/supplier-returns/${encodeURIComponent(returnNoteId)}/deduct`, {
+    method: 'POST',
+    body: JSON.stringify({
+      billNumber,
+      amountToDeduct: actualDeduct,
+      billTotal,
+      note,
+    }),
+  }).catch((err) => console.warn('[SupplierReturnService] Failed to sync credit deduction to backend:', err));
 
   const netPayable = Math.max(0, Math.round((billTotal - actualDeduct) * 100) / 100);
   return {
@@ -861,6 +1015,8 @@ export function deductReturnNoteFromBill(
     message: `หักลดยอดสินค้าเคลมคืนสำเร็จ ฿${actualDeduct.toLocaleString()} (ยอดชำระสุทธิคงเหลือ ฿${netPayable.toLocaleString()})`,
   };
 }
+
+export const deductReturnNoteCredit = deductReturnNoteFromBill;
 
 // ─── Update Supplier Return Note (When not yet fully deducted) ───
 export function updateSupplierReturnNote(
@@ -878,25 +1034,7 @@ export function updateSupplierReturnNote(
     throw new Error('เอกสารนี้ถูกหักลดหนี้ในบิลแล้ว ไม่สามารถแก้ไขได้โดยตรง (กรุณาย้อนสถานะก่อน)');
   }
 
-  // 1. Rollback old overstock items from current store stock first
-  const oldOverstockItems = existingNote.items.filter((i) => i.itemType === 'OVERSTOCK');
-  if (oldOverstockItems.length > 0 && typeof window !== 'undefined') {
-    try {
-      const rawProds = localStorage.getItem(STORAGE_KEY_PRODUCTS);
-      if (rawProds) {
-        const prods: any[] = JSON.parse(rawProds);
-        oldOverstockItems.forEach((item) => {
-          const p = prods.find((prod) => prod.id === item.productId || prod.sku === item.sku);
-          if (p) {
-            p.stock = Number(p.stock || 0) + Number(item.quantity);
-          }
-        });
-        localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(prods));
-      }
-    } catch (e) {}
-  }
-
-  // 2. Rollback old claims
+  // 1. Rollback old claims
   const allClaims = loadAllClaimRecords();
   allClaims.forEach((c) => {
     if (c.returnDocId === noteId) {
@@ -905,7 +1043,7 @@ export function updateSupplierReturnNote(
     }
   });
 
-  // 3. Process new items
+  // 2. Process new items
   const newReturnItems: SupplierReturnItem[] = [];
   let totalQty = 0;
   let defectiveTotalCost = 0;
@@ -945,26 +1083,8 @@ export function updateSupplierReturnNote(
       }
     } else {
       overstockTotalCost += itemTotalCost;
-      // Deduct new overstock quantity from store
-      if (typeof window !== 'undefined') {
-        try {
-          const rawProds = localStorage.getItem(STORAGE_KEY_PRODUCTS);
-          if (rawProds) {
-            const prods: any[] = JSON.parse(rawProds);
-            const target = prods.find((p) => p.id === item.productId || p.sku === item.sku);
-            if (target) {
-              target.stock = Math.max(0, Number(target.stock || 0) - Number(item.quantity));
-              localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(prods));
-            }
-          }
-        } catch (e) {}
-      }
     }
   });
-
-  if (typeof window !== 'undefined') {
-    useProductStore.getState().fetchProducts();
-  }
 
   // Update claim records
   allClaims.forEach((c) => {
@@ -1002,6 +1122,18 @@ export function updateSupplierReturnNote(
 
   notes[existingIndex] = updatedNote;
   saveSupplierReturnNotes(notes);
+
+  void apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updatedNote),
+  })
+    .then(() => {
+      if (typeof window !== 'undefined') {
+        void useProductStore.getState().fetchProducts();
+        window.dispatchEvent(new Event('pos-data-synced'));
+      }
+    })
+    .catch((err) => console.warn('[SupplierReturnService] Failed to sync updated return note to backend:', err));
 
   return updatedNote;
 }
@@ -1052,27 +1184,8 @@ export function changeSupplierReturnStatus(
     return cancelSupplierReturnNote(noteId);
   } else if (oldStatus === 'CANCELLED' && newStatus === 'PENDING_DEDUCTION') {
     // 3. If reviving from CANCELLED
-    // Re-deduct overstock items from store stock
-    const overstockItems = note.items.filter((i) => i.itemType === 'OVERSTOCK');
-    if (overstockItems.length > 0 && typeof window !== 'undefined') {
-      try {
-        const rawProds = localStorage.getItem(STORAGE_KEY_PRODUCTS);
-        if (rawProds) {
-          const prods: any[] = JSON.parse(rawProds);
-          overstockItems.forEach((item) => {
-            const p = prods.find((prod) => prod.id === item.productId || prod.sku === item.sku);
-            if (p) {
-              p.stock = Math.max(0, Number(p.stock || 0) - Number(item.quantity));
-            }
-          });
-          localStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(prods));
-          useProductStore.getState().fetchProducts();
-        }
-      } catch (e) {}
-    }
-
     // Re-link defective claims
-    const claimIds = new Set(note.items.filter((i) => i.itemType === 'DEFECTIVE' && i.claimId).map((i) => i.claimId));
+    const claimIds = new Set(note.items.filter((i) => i.itemType === 'DEFECTIVE' && i.claimId).map((i) => i.claimId!));
     if (claimIds.size > 0) {
       const allClaims = loadAllClaimRecords();
       allClaims.forEach((c) => {
@@ -1095,6 +1208,25 @@ export function changeSupplierReturnStatus(
   }
 
   saveSupplierReturnNotes(notes);
+
+  void apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      status: note.status,
+      remainingCreditAmount: note.remainingCreditAmount,
+      deductions: note.deductions,
+    }),
+  })
+    .then(() => {
+      if (typeof window !== 'undefined') {
+        void useProductStore.getState().fetchProducts();
+        window.dispatchEvent(new Event('pos-data-synced'));
+      }
+    })
+    .catch((err) => console.warn('[SupplierReturnService] Failed to sync status change to backend:', err));
+
   return { success: true, message: `เปลี่ยนสถานะเอกสาร ${noteId} เป็น "${newStatus}" เรียบร้อยแล้ว`, updatedNote: note };
 }
+
+export const updateSupplierReturnStatus = changeSupplierReturnStatus;
 

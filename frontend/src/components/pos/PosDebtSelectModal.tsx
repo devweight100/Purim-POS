@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { DebtRecord, DebtPaymentInstallment, Customer } from '@/lib/types';
-import { loadAllDebtRecords } from '@/lib/debt-service';
+import { fetchDebtRecords } from '@/lib/debt-service';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -47,10 +47,10 @@ export function PosDebtSelectModal({
   const [receiptDebtRecord, setReceiptDebtRecord] = useState<DebtRecord | null>(null);
   const [receiptInstallment, setReceiptInstallment] = useState<DebtPaymentInstallment | null>(null);
 
-  const reloadDebts = () => {
+  const reloadDebts = async () => {
     setLoading(true);
     try {
-      const records = loadAllDebtRecords();
+      const records = await fetchDebtRecords();
       setDebts(records);
     } catch {
       toast.error('ไม่สามารถโหลดข้อมูลบิลลูกหนี้ได้');
@@ -67,6 +67,8 @@ export function PosDebtSelectModal({
       } else {
         setSearch('');
       }
+    } else {
+      setSearch('');
     }
   }, [open, targetCustomer]);
 
@@ -103,20 +105,7 @@ export function PosDebtSelectModal({
     setPayModalOpen(true);
   };
 
-  const handlePaymentSuccess = (updatedDebt: DebtRecord, newInstallment: DebtPaymentInstallment) => {
-    // 1. If payment method is CASH, automatically record cash into current shift drawer!
-    if (newInstallment.paymentMethod === 'CASH') {
-      const isShiftActive = useShiftStore.getState().isShiftOpen();
-      if (isShiftActive) {
-        useShiftStore.getState().addCashTransaction(
-          'in',
-          newInstallment.amountPaid,
-          `รับชำระหนี้บิล #${updatedDebt.orderNumber} (${updatedDebt.customerName})`
-        );
-        toast.success(`💵 เพิ่มเงินสด ${formatCurrency(newInstallment.amountPaid)} เข้าลิ้นชักกะการขายเรียบร้อยแล้ว!`);
-      }
-    }
-
+  const handlePaymentSuccess = async (updatedDebt: DebtRecord, newInstallment: DebtPaymentInstallment) => {
     reloadDebts();
     setReceiptDebtRecord(updatedDebt);
     setReceiptInstallment(newInstallment);

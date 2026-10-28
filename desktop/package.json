@@ -1,0 +1,59 @@
+{
+  "name": "purim-pos-desktop",
+  "version": "1.0.0",
+  "description": "Purim POS Native Desktop Client for Windows",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:dir": "electron-builder --dir",
+    "build:exe": "electron-builder",
+    "build:installer": "electron-builder && node -e \"const fs=require('fs'); fs.copyFileSync('release-bin/Purim POS Setup 1.0.0.exe', '../Installer/Client/Purim POS Setup 1.0.0.exe'); fs.copyFileSync('release-bin/PurimPOS-Portable.exe', '../Installer/Client/PurimPOS-Portable.exe'); console.log('Successfully deployed to Installer/Client/');\""
+  },
+  "keywords": ["pos", "electron", "purim-pos", "receipt-printer"],
+  "author": "Purim POS",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.purimpos.desktop",
+    "productName": "Purim POS",
+    "files": [
+      "main.js",
+      "preload.js",
+      "connect-server.html",
+      "kick-drawer.exe",
+      "kick-drawer.ps1"
+    ],
+    "asarUnpack": [
+      "kick-drawer.exe",
+      "kick-drawer.ps1"
+    ],
+    "directories": {
+      "output": "release-bin"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ร้านปุริม POS"
+    },
+    "portable": {
+      "artifactName": "PurimPOS-Portable.exe"
+    }
+  }
+}

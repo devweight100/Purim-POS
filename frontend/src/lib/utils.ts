@@ -8,7 +8,7 @@ export function cn(...inputs: ClassValue[]) {
 /**
  * Format currency with THB symbol and comma thousands separators e.g. ฿12,500 (no decimal if whole) or ฿12,500.50 (2 decimals if fraction)
  */
-export function formatCurrency(amount: number): string {
+export function formatCurrency(amount: number | string | null | undefined): string {
   const val = Number(amount) || 0;
   const hasDecimal = val % 1 !== 0;
   return '฿' + val.toLocaleString('th-TH', {
@@ -20,7 +20,7 @@ export function formatCurrency(amount: number): string {
 /**
  * Format number with comma thousands separators e.g. 12,500 or 12,500.50
  */
-export function formatNumber(amount: number): string {
+export function formatNumber(amount: number | string | null | undefined): string {
   const val = Number(amount) || 0;
   const hasDecimal = val % 1 !== 0;
   return val.toLocaleString('th-TH', {
@@ -47,21 +47,23 @@ export function formatDate(dateStr: string | Date | null | undefined): string {
 }
 
 export function generateOrderNumber(): string {
-  const date = new Date()
-  const d = date.toISOString().slice(0,10).replace(/-/g, '')
-  const r = Math.floor(Math.random() * 10000).toString().padStart(4, '0')
-  return `ORD-${d}-${r}`
+  const date = new Date();
+  const yy = date.getFullYear().toString().slice(-2);
+  const mm = (date.getMonth() + 1).toString().padStart(2, '0');
+  const r = Math.floor(10000 + Math.random() * 90000).toString();
+  return `ORD-${yy}${mm}${r}`;
 }
 
 /**
  * Convert numeric Thai Baht to Thai wording text e.g. 1250.50 -> หนึ่งพันสองร้อยห้าสิบบาทห้าสิบสตางค์
  */
-export function thaiBahtText(num: number): string {
-  if (!num || isNaN(num) || num <= 0) return "ศูนย์บาทถ้วน";
+export function thaiBahtText(num: number | string | null | undefined): string {
+  const n = typeof num === 'string' ? parseFloat(num) : Number(num);
+  if (num === null || num === undefined || isNaN(n) || n <= 0) return "ศูนย์บาทถ้วน";
   const thaiNums = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"];
   const thaiUnits = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน", "ล้าน"];
   
-  const [bahtStr, satangStr] = num.toFixed(2).split(".");
+  const [bahtStr, satangStr] = n.toFixed(2).split(".");
   let bahtVal = parseInt(bahtStr, 10);
   
   if (bahtVal === 0 && parseInt(satangStr, 10) === 0) return "ศูนย์บาทถ้วน";
@@ -114,4 +116,3 @@ export function thaiBahtText(num: number): string {
   }
   return result;
 }
-

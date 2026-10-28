@@ -50,7 +50,7 @@
   --popover: #ffffff;
   --popover-foreground: #0f172a;
   
-  --primary: #0ea5e9;
+  --primary: #4f46e5;
   --primary-foreground: #ffffff;
   
   --secondary: #f1f5f9;
@@ -59,26 +59,26 @@
   --muted: #f1f5f9;
   --muted-foreground: #64748b;
   
-  --accent: #f0f9ff;
-  --accent-foreground: #0c4a6e;
+  --accent: #eef2ff;
+  --accent-foreground: #312e81;
   
   --destructive: #ef4444;
   --success: #22c55e;
   
   --border: #e2e8f0;
   --input: #e2e8f0;
-  --ring: #0ea5e9;
+  --ring: #4f46e5;
   
   --radius: 0.625rem;
   
   --sidebar: #ffffff;
   --sidebar-foreground: #334155;
-  --sidebar-primary: #0ea5e9;
+  --sidebar-primary: #4f46e5;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f0f9ff;
-  --sidebar-accent-foreground: #0c4a6e;
+  --sidebar-accent: #eef2ff;
+  --sidebar-accent-foreground: #312e81;
   --sidebar-border: #e2e8f0;
-  --sidebar-ring: #0ea5e9;
+  --sidebar-ring: #4f46e5;
 }
 
 * {
@@ -121,4 +121,12 @@ input::-webkit-inner-spin-button {
 }
 input[type=number] {
   -moz-appearance: textfield;
+}
+
+/* Date Picker Full Area Click & Pointer */
+input[type="date"] {
+  cursor: pointer;
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
 }

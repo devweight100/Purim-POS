@@ -301,7 +301,7 @@ export function SettleMultipleBillsModal({
   }, [totalBillsPayAmount, totalDebitDeducted, discountAmount]);
 
   // Submit payment
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (selectedBillIds.size === 0) {
       toast.error('กรุณาเลือกบิล / Invoice ที่ต้องการชำระอย่างน้อย 1 ใบ');
       return;
@@ -328,7 +328,7 @@ export function SettleMultipleBillsModal({
           amountToDeduct: Number(amountToDeduct),
         }));
 
-      const res = settleMultipleBills({
+      const res = await settleMultipleBills({
         supplierId: selectedSupplierId,
         supplierName: currentSupp?.name,
         billsToSettle,

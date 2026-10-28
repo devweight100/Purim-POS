@@ -6,6 +6,7 @@ import { useCartStore } from '@/lib/store/cart-store';
 import { useProductStore } from '@/lib/store/product-store';
 import { rollbackCustomerSale } from '@/lib/customer-service';
 import { restoreVoidOrderStock } from '@/lib/stock-service';
+import { fetchAllClaimRecords } from '@/lib/claim-service';
 import { ReceiptPdfModal, ReceiptData } from './ReceiptPdfModal';
 import { PaymentModal } from './PaymentModal';
 import {
@@ -76,11 +77,24 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
     setLoading(true);
     try {
       let fetchedBackend: any[] = [];
+      let allClaims: any[] = [];
+
       try {
-        fetchedBackend = await apiFetch('/orders');
+        const [ordersRes, claimsRes] = await Promise.all([
+          apiFetch('/orders?limit=100'),
+          fetchAllClaimRecords().catch(() => []),
+        ]);
+        fetchedBackend = ordersRes?.data || (Array.isArray(ordersRes) ? ordersRes : []);
+        allClaims = claimsRes || [];
       } catch (e) {
         // Fallback gracefully if backend is offline
       }
+
+      const claimedOrderMap = new Set<string>();
+      allClaims.forEach((c) => {
+        if (c.orderId) claimedOrderMap.add(c.orderId);
+        if (c.orderNumber) claimedOrderMap.add(c.orderNumber);
+      });
 
       const localOrders = useShiftStore.getState().completedOrders || [];
       const combinedMap = new Map<string, any>();
@@ -88,16 +102,40 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
       // Load local shift store orders first
       localOrders.forEach((o) => {
         const key = o.orderNumber || o.id;
-        if (key) combinedMap.set(key, o);
+        const hasClaims = claimedOrderMap.has(key) || claimedOrderMap.has(o.id) || claimedOrderMap.has(o.orderNumber);
+        if (key) combinedMap.set(key, { ...o, hasClaims });
       });
 
       // Merge backend orders
-      fetchedBackend.forEach((o) => {
-        const key = o.orderNumber || o.id;
-        if (key) {
-          const existing = combinedMap.get(key);
-          combinedMap.set(key, { ...existing, ...o });
-        }
+      fetchedBackend.forEach((bOrder) => {
+        const key = bOrder.orderNumber || bOrder.id;
+        const existing = combinedMap.get(key);
+        const hasClaims =
+          (Array.isArray(bOrder.claims) && bOrder.claims.length > 0) ||
+          claimedOrderMap.has(key) ||
+          claimedOrderMap.has(bOrder.id) ||
+          claimedOrderMap.has(bOrder.orderNumber);
+
+        const bItems = Array.isArray(bOrder.items)
+          ? bOrder.items.map((it: any) => ({
+              ...it,
+              name: it.product?.name || it.name || 'สินค้า',
+              sku: it.product?.sku || it.sku || '',
+            }))
+          : [];
+
+        combinedMap.set(key, {
+          ...bOrder,
+          ...(existing || {}),
+          hasClaims,
+          claims: bOrder.claims || existing?.claims || [],
+          items: existing?.items && existing.items.length > 0 ? existing.items : bItems,
+          total: Number(bOrder.totalAmount || bOrder.total || existing?.total || 0),
+          totalAmount: Number(bOrder.totalAmount || bOrder.total || existing?.total || 0),
+          subtotal: Number(bOrder.subtotal || existing?.subtotal || 0),
+          payments: bOrder.payments || existing?.payments || [],
+          isSynced: true,
+        });
       });
 
       const list = Array.from(combinedMap.values()).sort((a, b) => {
@@ -282,15 +320,11 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
     const oldMethod = editPaymentOrder.paymentMethod || editPaymentOrder.payments?.[0]?.method || 'CASH';
 
     try {
-      // 1. Call Backend Update API if available
-      try {
-        await apiFetch(`/orders/${editPaymentOrder.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ paymentMethod: newPaymentMethod })
-        });
-      } catch (err) {}
+      await apiFetch(`/orders/${editPaymentOrder.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ paymentMethod: newPaymentMethod })
+      });
 
-      // 2. Update Shift Store Sales Accounting & Order
       shiftStore.updateOrderPaymentMethod(
         orderId, 
         oldMethod, 
@@ -322,12 +356,10 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
     }
 
     try {
-      try {
-        await apiFetch(`/orders/${voidTargetOrder.id}/void`, {
-          method: 'POST',
-          body: JSON.stringify({ reason: voidReason })
-        });
-      } catch (err) {}
+      await apiFetch(`/orders/${voidTargetOrder.id}/void`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: voidReason })
+      });
 
       shiftStore.voidOrder(voidTargetOrder.orderNumber || voidTargetOrder.id, voidReason);
       restoreVoidOrderStock(
@@ -499,12 +531,19 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                       >
                         {/* Receipt # */}
                         <td className="py-3.5 px-3 font-bold text-sky-700">
-                          #{order.orderNumber || order.id}
-                          {isCancelled && (
-                            <span className="ml-2 text-[10px] text-rose-600 bg-rose-100 border border-rose-200 px-1.5 py-0.5 rounded font-bold">
-                              ยกเลิกแล้ว
-                            </span>
-                          )}
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span>#{order.orderNumber || order.id}</span>
+                            {isCancelled && (
+                              <span className="text-[10px] text-rose-600 bg-rose-100 border border-rose-200 px-1.5 py-0.5 rounded font-bold">
+                                ยกเลิกแล้ว
+                              </span>
+                            )}
+                            {order.hasClaims && (
+                              <span className="text-[10px] text-amber-700 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded font-bold">
+                                ⚠️ มีรายการเคลม
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* Customer */}

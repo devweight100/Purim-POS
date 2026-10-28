@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { convertThaiToEnBarcode } from './thai-barcode-converter';
 
 /**
  * Passive Global Barcode Scanner Listener Hook
@@ -34,11 +35,12 @@ export function useGlobalBarcodeScanner(
       lastKeyTimeRef.current = currentTime;
 
       if (e.key === 'Enter' || e.key === 'Tab') {
-        const scannedCode = bufferRef.current.trim();
+        const rawCode = bufferRef.current.trim();
         bufferRef.current = '';
-        if (scannedCode.length >= 2) {
+        if (rawCode.length >= 2) {
           e.preventDefault();
-          onScanRef.current(scannedCode);
+          const convertedCode = convertThaiToEnBarcode(rawCode);
+          onScanRef.current(convertedCode);
         }
         return;
       }

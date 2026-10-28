@@ -14,6 +14,9 @@ import { FileText, Printer, Download, ExternalLink, CheckCircle2, Store, User, B
 import { toast } from 'sonner';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { BarcodeView } from '@/components/common/BarcodeView';
+import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
+import { loadStoreSettings } from '@/lib/store-settings-storage';
 
 interface DebtReceiptPdfModalProps {
   open: boolean;
@@ -25,6 +28,7 @@ interface DebtReceiptPdfModalProps {
 export function DebtReceiptPdfModal({ open, onOpenChange, debtRecord, installment }: DebtReceiptPdfModalProps) {
   const receiptRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [storeSettings] = useState(() => loadStoreSettings());
 
   if (!debtRecord || !installment) return null;
 
@@ -61,13 +65,22 @@ export function DebtReceiptPdfModal({ open, onOpenChange, debtRecord, installmen
   };
 
   const handleDownloadPdf = async () => {
+    if (!receiptRef.current) return;
     setIsGenerating(true);
-    const pdf = await generatePdfBlob();
-    if (pdf) {
-      pdf.save(`DebtReceipt-${debtRecord.orderNumber}-Inst${installment.installmentNo}.pdf`);
-      toast.success(`ดาวน์โหลดไฟล์ PDF ใบเสร็จรับเงิน #${debtRecord.orderNumber} เรียบร้อยแล้ว!`);
+    toast.loading('กำลังสร้างไฟล์ PDF...', { id: 'debt-pdf' });
+    try {
+      const docCode = installment.receiptNo || debtRecord.orderNumber;
+      const success = await exportElementToPdf(receiptRef.current, `DebtReceipt-${docCode}.pdf`, '80mm');
+      if (success) {
+        toast.success(`ดาวน์โหลดไฟล์ PDF ใบเสร็จรับเงิน #${docCode} เรียบร้อยแล้ว!`, { id: 'debt-pdf' });
+      } else {
+        toast.error('ไม่สามารถสร้างไฟล์ PDF ได้', { id: 'debt-pdf' });
+      }
+    } catch (e) {
+      toast.error('เกิดข้อผิดพลาดในการสร้าง PDF', { id: 'debt-pdf' });
+    } finally {
+      setIsGenerating(false);
     }
-    setIsGenerating(false);
   };
 
   const handleOpenPdfTab = async () => {
@@ -82,42 +95,8 @@ export function DebtReceiptPdfModal({ open, onOpenChange, debtRecord, installmen
 
   const handlePrint = () => {
     if (!receiptRef.current) return;
-    const printContent = receiptRef.current.innerHTML;
-    const win = window.open('', '', 'width=400,height=750');
-    if (win) {
-      win.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>ใบเสร็จรับชำระหนี้ - ${debtRecord.orderNumber}</title>
-            <style>
-              body {
-                font-family: 'Prompt', 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif;
-                margin: 0;
-                padding: 10px;
-                background: #fff;
-                color: #000;
-                font-size: 11px;
-              }
-              @page {
-                size: 80mm auto;
-                margin: 0;
-              }
-            </style>
-          </head>
-          <body>
-            ${printContent}
-            <script>
-              window.onload = function() {
-                window.print();
-                window.close();
-              };
-            </script>
-          </body>
-        </html>
-      `);
-      win.document.close();
-    }
+    const docCode = installment.receiptNo || debtRecord.orderNumber;
+    printDocumentIframe(receiptRef.current, `ใบเสร็จรับชำระหนี้ - ${docCode}`, '80mm');
   };
 
   const getMethodLabel = (method: string) => {
@@ -190,147 +169,152 @@ export function DebtReceiptPdfModal({ open, onOpenChange, debtRecord, installmen
         <div className="flex-1 overflow-y-auto overflow-x-auto p-3 sm:p-4 flex justify-center bg-slate-300/60 rounded-2xl border border-slate-300/80 min-h-[420px] max-h-[72vh]">
           <div
             ref={receiptRef}
-            className="w-[80mm] max-w-[80mm] bg-white text-slate-900 px-4 py-5 shadow-2xl font-mono text-[10.5px] leading-snug rounded-sm space-y-2.5 overflow-hidden box-border h-fit"
-            style={{ width: '80mm', maxWidth: '80mm', boxSizing: 'border-box' }}
+            className="w-[80mm] max-w-[80mm] bg-white text-black px-4 py-5 shadow-2xl font-mono text-xs leading-snug rounded-sm space-y-2.5 overflow-hidden box-border h-fit"
+            style={{ width: '80mm', maxWidth: '80mm', boxSizing: 'border-box', color: '#000000' }}
           >
             {/* Store Header */}
-            <div className="text-center space-y-0.5 pb-2 border-b border-dashed border-slate-400">
-              <div className="flex items-center justify-center gap-1.5 font-bold text-sm font-sans text-slate-900">
-                <Store className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span className="truncate">ร้านปุริม (PURIM POS)</span>
+            <div className="text-center space-y-1 pb-2 border-b-2 border-dashed border-black">
+              <div className="flex items-center justify-center gap-1.5 font-black text-base font-sans text-black">
+                <Store className="w-5 h-5 text-black shrink-0" />
+                <span className="truncate">{storeSettings?.storeName || 'ร้านปุริม (PURIM POS)'}</span>
               </div>
-              <p className="text-[9px] text-slate-600 leading-tight break-words">
-                123/45 ถนนสุขุมวิท กรุงเทพฯ 10110 โทร: 081-234-5678
+              <p className="text-[11px] text-black font-semibold leading-tight break-words">
+                {storeSettings?.storeAddress || '123/45 ถนนสุขุมวิท กรุงเทพฯ 10110 โทร: 081-234-5678'}
               </p>
-              <div className="pt-0.5">
-                <span className="text-[11px] font-black border border-slate-900 px-2.5 py-0.5 rounded font-sans inline-block text-slate-900 bg-slate-50">
+              {storeSettings?.storePhone && (
+                <p className="text-[11px] text-black font-semibold">โทร: {storeSettings.storePhone}</p>
+              )}
+              {storeSettings?.taxId && (
+                <p className="text-[11px] text-black font-semibold">เลขประจำตัวผู้เสียภาษี: {storeSettings.taxId}</p>
+              )}
+              <div className="pt-1">
+                <span className="text-xs font-black border-2 border-black px-3 py-0.5 rounded font-sans inline-block text-black bg-white">
                   ใบเสร็จรับเงินชำระหนี้ / ชำระเงินเชื่อ
                 </span>
+              </div>
+
+              {/* Barcode */}
+              <div className="pt-1">
+                <BarcodeView value={installment.receiptNo || debtRecord.orderNumber} />
               </div>
             </div>
 
             {/* Receipt Meta & Customer Info */}
-            <div className="text-[10px] space-y-0.5 pb-1.5 border-b border-dashed border-slate-400">
+            <div className="text-[11px] space-y-1 pb-2 border-b-2 border-dashed border-black font-bold">
+              {installment.receiptNo && (
+                <div className="flex justify-between items-center gap-1">
+                  <span className="text-black shrink-0">เลขที่ใบเสร็จ:</span>
+                  <span className="font-black truncate text-right font-mono text-black">{installment.receiptNo}</span>
+                </div>
+              )}
               <div className="flex justify-between items-center gap-1">
-                <span className="text-slate-600 shrink-0">เลขที่บิลอ้างอิง:</span>
-                <span className="font-bold truncate text-right font-mono text-slate-900">{debtRecord.orderNumber}</span>
+                <span className="text-black shrink-0">เลขที่บิลอ้างอิง:</span>
+                <span className="font-black truncate text-right font-mono text-black">{debtRecord.orderNumber}</span>
               </div>
               <div className="flex justify-between items-center gap-1">
-                <span className="text-slate-600 shrink-0">วันที่ซื้อเดิม:</span>
+                <span className="text-black shrink-0">วันที่ซื้อเดิม:</span>
                 <span className="truncate text-right">{new Date(debtRecord.orderDate).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
               </div>
               <div className="flex justify-between items-center gap-1">
-                <span className="text-slate-600 shrink-0">วันที่รับชำระ:</span>
-                <span className="font-bold text-emerald-700 truncate text-right">{new Date(installment.paymentDate).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                <span className="text-black shrink-0">วันที่รับชำระ:</span>
+                <span className="font-black text-black truncate text-right">{new Date(installment.paymentDate).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
               </div>
-              <div className="flex justify-between items-center gap-1 pt-1 border-t border-slate-100">
-                <span className="text-slate-600 shrink-0 flex items-center gap-1">
-                  {debtRecord.customerType === 'COMPANY' ? <Building2 className="w-3 h-3 text-indigo-600" /> : <User className="w-3 h-3 text-sky-600" />}
+              <div className="flex justify-between items-center gap-1 pt-1 border-t border-black">
+                <span className="text-black shrink-0 flex items-center gap-1">
+                  {debtRecord.customerType === 'COMPANY' ? <Building2 className="w-3.5 h-3.5 text-black" /> : <User className="w-3.5 h-3.5 text-black" />}
                   ลูกค้า:
                 </span>
-                <span className="font-bold text-slate-900 truncate text-right">{debtRecord.customerName}</span>
+                <span className="font-black text-black truncate text-right">{debtRecord.customerName}</span>
               </div>
               {debtRecord.companyName && (
-                <div className="flex justify-between items-center gap-1 text-[9px] text-slate-600">
+                <div className="flex justify-between items-center gap-1 text-[10.5px] text-black">
                   <span className="shrink-0">บริษัท:</span>
-                  <span className="truncate text-right">{debtRecord.companyName}</span>
+                  <span className="truncate text-right font-bold">{debtRecord.companyName}</span>
                 </div>
               )}
               {debtRecord.taxId && (
-                <div className="flex justify-between items-center gap-1 text-[9px] text-slate-600">
+                <div className="flex justify-between items-center gap-1 text-[10.5px] text-black">
                   <span className="shrink-0">เลขผู้เสียภาษี:</span>
-                  <span className="font-mono text-right">{debtRecord.taxId}</span>
+                  <span className="font-mono text-right font-bold">{debtRecord.taxId}</span>
                 </div>
               )}
               {debtRecord.customerPhone && (
-                <div className="flex justify-between items-center gap-1 text-[9px] text-slate-600">
+                <div className="flex justify-between items-center gap-1 text-[10.5px] text-black">
                   <span className="shrink-0">โทร:</span>
-                  <span className="text-right">{debtRecord.customerPhone}</span>
+                  <span className="text-right font-bold">{debtRecord.customerPhone}</span>
                 </div>
               )}
             </div>
 
             {/* Payment Settlement Breakdown */}
-            <div className="space-y-1 text-[10px] pb-2 border-b border-dashed border-slate-400">
-              <div className="font-bold text-slate-900 border-b border-slate-200 pb-0.5 font-sans flex items-center justify-between">
+            <div className="space-y-1.5 text-[11px] pb-2 border-b-2 border-dashed border-black font-bold">
+              <div className="font-black text-black border-b border-black pb-1 font-sans flex items-center justify-between text-xs">
                 <span>📑 รายละเอียดการชำระเงิน</span>
-                <span className="text-[9.5px] text-slate-500 font-normal">งวดที่ {installment.installmentNo}</span>
+                <span className="text-[11px] font-bold">งวดที่ {installment.installmentNo}</span>
               </div>
 
               <div className="flex justify-between items-center">
-                <span className="text-slate-600 truncate pr-1">• ยอดเต็มตามบิล:</span>
-                <span className="shrink-0 font-bold text-slate-900">{formatCurrency(debtRecord.totalAmount)}</span>
+                <span className="truncate pr-1">• ยอดเต็มตามบิล:</span>
+                <span className="shrink-0 font-black">{formatCurrency(debtRecord.totalAmount)}</span>
               </div>
-              <div className="flex justify-between items-center text-slate-600">
+              <div className="flex justify-between items-center">
                 <span className="truncate pr-1">• ยอดที่เคยชำระแล้ว:</span>
-                <span className="shrink-0">{formatCurrency(installment.previousPaid)}</span>
+                <span className="shrink-0 font-bold">{formatCurrency(installment.previousPaid)}</span>
               </div>
 
               {/* Amount Paid This Time */}
-              <div className="flex justify-between items-center text-emerald-800 font-bold bg-emerald-50/80 p-1.5 rounded-lg border border-emerald-200 my-1">
-                <span className="truncate pr-1 font-sans">💳 ยอดที่ชำระในครั้งนี้:</span>
-                <span className="shrink-0 text-[12px] font-black text-emerald-700">
+              <div className="flex justify-between items-center text-black font-black border-2 border-black p-2 rounded my-1.5 bg-white">
+                <span className="truncate pr-1 font-sans text-xs">💳 ยอดที่ชำระครั้งนี้:</span>
+                <span className="shrink-0 text-sm font-black">
                   +{formatCurrency(installment.amountPaid)}
                 </span>
               </div>
 
-              <div className="flex justify-between items-center text-[9.5px] text-slate-600 pl-1">
+              <div className="flex justify-between items-center text-[10.5px]">
                 <span className="truncate pr-1">• ช่องทางชำระ:</span>
-                <span className="font-bold text-slate-800 shrink-0">{getMethodLabel(installment.paymentMethod)}</span>
+                <span className="font-black shrink-0">{getMethodLabel(installment.paymentMethod)}</span>
               </div>
 
               {installment.accountLabel && (
-                <div className="flex justify-between items-center text-[9px] text-slate-600 pl-1">
+                <div className="flex justify-between items-center text-[10.5px]">
                   <span className="truncate pr-1">• บัญชีรับเงิน:</span>
-                  <span className="font-mono text-sky-700 shrink-0">{installment.accountLabel}</span>
+                  <span className="font-mono font-bold shrink-0">{installment.accountLabel}</span>
                 </div>
               )}
 
               {installment.referenceNo && (
-                <div className="flex justify-between items-center text-[9px] text-slate-600 pl-1">
+                <div className="flex justify-between items-center text-[10.5px]">
                   <span className="truncate pr-1">• เลขอ้างอิง:</span>
-                  <span className="font-mono text-slate-700 shrink-0">{installment.referenceNo}</span>
+                  <span className="font-mono font-bold shrink-0">{installment.referenceNo}</span>
                 </div>
               )}
 
               {installment.note && (
-                <div className="text-[9px] text-slate-500 italic pl-1">
+                <div className="text-[10px] italic">
                   * หมายเหตุ: {installment.note}
                 </div>
               )}
             </div>
 
             {/* Remaining Balance & Progress Box */}
-            <div className="space-y-1 text-[10px] pb-2 border-b border-dashed border-slate-400">
-              <div className="flex justify-between items-center font-black text-slate-900 pt-0.5">
-                <span>ยอดหนี้คงเหลือสุทธิ:</span>
-                <span className={`text-[12.5px] shrink-0 ${installment.remainingAfter <= 0 ? 'text-emerald-700 font-extrabold' : 'text-rose-600 font-black'}`}>
+            <div className="space-y-1.5 text-[11px] pb-2 border-b-2 border-dashed border-black">
+              <div className="flex justify-between items-center font-black text-black pt-0.5">
+                <span className="text-xs">ยอดหนี้คงเหลือสุทธิ:</span>
+                <span className="text-sm shrink-0 font-black">
                   {formatCurrency(installment.remainingAfter)}
                 </span>
               </div>
 
-              {/* Progress Power Bar */}
-              <div className="space-y-1 pt-1">
-                <div className="flex justify-between items-center text-[9px] font-bold text-slate-600">
-                  <span>ความคืบหน้าการชำระ:</span>
-                  <span className={progressAfter === 100 ? 'text-emerald-700' : 'text-amber-700'}>
-                    {progressAfter}% {progressAfter === 100 ? '(ชำระครบแล้ว)' : `(คงค้าง ${formatCurrency(installment.remainingAfter)})`}
-                  </span>
-                </div>
-                <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden border border-slate-300">
-                  <div 
-                    className={`h-full transition-all duration-300 ${progressAfter === 100 ? 'bg-emerald-500' : 'bg-amber-500'}`}
-                    style={{ width: `${progressAfter}%` }}
-                  />
-                </div>
+              {/* Progress Summary */}
+              <div className="flex justify-between items-center text-[10.5px] font-black border border-black px-2 py-1 rounded">
+                <span>ความคืบหน้าการชำระ:</span>
+                <span>
+                  {progressAfter}% {progressAfter === 100 ? '(ชำระครบแล้ว)' : `(คงค้าง ${formatCurrency(installment.remainingAfter)})`}
+                </span>
               </div>
 
               {/* Status Badge */}
-              <div className={`text-center font-bold text-[10.5px] p-1.5 rounded mt-1.5 border ${
-                installment.remainingAfter <= 0 
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300' 
-                  : 'bg-amber-50 text-amber-900 border-amber-300'
-              }`}>
+              <div className="text-center font-black text-xs p-1.5 rounded mt-1.5 border-2 border-black">
                 {installment.remainingAfter <= 0 
                   ? '✅ ชำระครบถ้วนสมบูรณ์แล้ว (Fully Paid)' 
                   : `⏳ บันทึกรับชำระเรียบร้อย (คงค้าง ${formatCurrency(installment.remainingAfter)})`}
@@ -338,7 +322,7 @@ export function DebtReceiptPdfModal({ open, onOpenChange, debtRecord, installmen
             </div>
 
             {/* Signatures */}
-            <div className="pt-2 space-y-2 text-[9px] text-slate-600">
+            <div className="pt-2 space-y-3 text-[10.5px] font-bold text-black">
               <div className="flex justify-between items-center">
                 <span>ผู้รับเงิน ({installment.cashierName}):</span>
                 <span>.................................</span>
@@ -347,7 +331,7 @@ export function DebtReceiptPdfModal({ open, onOpenChange, debtRecord, installmen
                 <span>ผู้ชำระเงิน:</span>
                 <span>.................................</span>
               </div>
-              <div className="text-center text-[8.5px] text-slate-400 pt-1 border-t border-slate-200">
+              <div className="text-center text-[10px] text-black pt-1 border-t border-black font-semibold">
                 พิมพ์เมื่อ: {new Date().toLocaleString('th-TH')}
               </div>
             </div>

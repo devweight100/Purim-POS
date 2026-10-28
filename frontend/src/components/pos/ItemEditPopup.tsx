@@ -32,6 +32,11 @@ export function ItemEditPopup({ item, open, onOpenChange }: ItemEditPopupProps) 
       setDiscountType(item.discountType);
       setDiscountValue(item.discountValue > 0 ? item.discountValue.toString() : '');
       setItemNote(item.itemNote || '');
+    } else {
+      setCustomPrice('');
+      setDiscountType('none');
+      setDiscountValue('');
+      setItemNote('');
     }
   }, [item, open]);
 

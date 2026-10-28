@@ -23,6 +23,11 @@ export interface CachedProduct {
 }
 
 export interface OfflineOrder {
+  ownerId?: string;
+  note?: string;
+  pointsUsed?: number;
+  pointsDiscountAmount?: number;
+  payloadVersion?: number;
   clientOrderId: string; // UUID Idempotency Key
   orderNumber: string;
   items: Array<{
@@ -30,6 +35,10 @@ export interface OfflineOrder {
     quantity: number;
     unitPrice: number;
     productName?: string;
+    unitId?: string;
+    unitName?: string;
+    conversionFactor?: number;
+    discountAmount?: number;
   }>;
   payments: Array<{
     method: string;
@@ -41,7 +50,8 @@ export interface OfflineOrder {
   discountAmount?: number;
   totalAmount: number;
   createdAt: string;
-  syncStatus: 'pending' | 'syncing' | 'failed';
+  syncStatus: 'pending' | 'syncing' | 'failed' | 'confirmed';
+  serverOrder?: any;
   retryCount: number;
   lastError?: string;
 }
@@ -73,7 +83,11 @@ function openDB(): Promise<IDBDatabase> {
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      request.result.onversionchange = () => request.result.close();
+      resolve(request.result);
+    };
+    request.onblocked = () => reject(new Error('กรุณาปิดแท็บ POS อื่นก่อนอัปเดตที่เก็บข้อมูล'));
     request.onerror = () => reject(request.error);
   });
 }
@@ -87,6 +101,7 @@ export async function cacheProducts(products: any[]): Promise<void> {
     const db = await openDB();
     const tx = db.transaction('products', 'readwrite');
     const store = tx.objectStore('products');
+    store.clear();
 
     for (const p of products) {
       const barcodes: string[] = [];
@@ -99,6 +114,7 @@ export async function cacheProducts(products: any[]): Promise<void> {
       if (p.barcode && !barcodes.includes(p.barcode)) barcodes.push(p.barcode);
 
       const cachedItem: CachedProduct = {
+        ...p,
         id: p.id,
         name: p.name,
         sku: p.sku,
@@ -113,7 +129,7 @@ export async function cacheProducts(products: any[]): Promise<void> {
     }
 
     return new Promise((resolve, reject) => {
-      tx.oncomplete = () => resolve();
+      tx.oncomplete = () => { db.close(); resolve(); };
       tx.onerror = () => reject(tx.error);
     });
   } catch (err) {
@@ -134,6 +150,22 @@ export async function getCachedProducts(): Promise<CachedProduct[]> {
     });
   } catch {
     return [];
+  }
+}
+
+export async function clearCachedProducts(): Promise<void> {
+  try {
+    const db = await openDB();
+    const tx = db.transaction('products', 'readwrite');
+    const store = tx.objectStore('products');
+    store.clear();
+
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (err) {
+    console.warn('[OfflineDB] Failed to clear cached products:', err);
   }
 }
 
@@ -159,21 +191,20 @@ export async function findCachedProductByBarcode(code: string): Promise<CachedPr
 // ──────────────────────────────────────────────
 
 export async function enqueueOfflineOrder(order: Omit<OfflineOrder, 'syncStatus' | 'retryCount'>): Promise<void> {
+  return saveOfflineOrder({ ...order, syncStatus: 'pending', retryCount: 0 });
+}
+
+export async function saveOfflineOrder(item: OfflineOrder): Promise<void> {
   const db = await openDB();
   const tx = db.transaction('offline_orders', 'readwrite');
   const store = tx.objectStore('offline_orders');
 
-  const item: OfflineOrder = {
-    ...order,
-    syncStatus: 'pending',
-    retryCount: 0,
-  };
-
   store.put(item);
 
   return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+    tx.onabort = () => { db.close(); reject(tx.error || new Error('บันทึกข้อมูลสำรองไม่สำเร็จ')); };
   });
 }
 
@@ -185,14 +216,15 @@ export async function getPendingOfflineOrders(): Promise<OfflineOrder[]> {
     const request = store.getAll();
 
     return new Promise((resolve, reject) => {
+      tx.oncomplete = () => db.close();
       request.onsuccess = () => {
         const list = request.result || [];
-        resolve(list.filter((o: OfflineOrder) => o.syncStatus !== 'syncing'));
+        resolve(list);
       };
       request.onerror = () => reject(request.error);
     });
-  } catch {
-    return [];
+  } catch (error) {
+    throw new Error('อ่านคิวบิลในเครื่องไม่ได้ กรุณาตรวจสอบพื้นที่จัดเก็บ: ' + String(error));
   }
 }
 
@@ -216,49 +248,6 @@ export async function removeOfflineOrder(clientOrderId: string): Promise<void> {
 // SYNC ENGINE
 // ──────────────────────────────────────────────
 
-export async function syncOfflineOrdersNow(apiUrl: string, token: string | null): Promise<{ synced: number; failed: number }> {
-  if (typeof window === 'undefined' || !navigator.onLine) {
-    return { synced: 0, failed: 0 };
-  }
-
-  const pending = await getPendingOfflineOrders();
-  if (pending.length === 0) return { synced: 0, failed: 0 };
-
-  console.log(`[OfflineDB] Synchronizing ${pending.length} offline orders...`);
-
-  try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const res = await fetch(`${apiUrl}/orders/sync-offline`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ orders: pending }),
-    });
-
-    if (!res.ok) throw new Error(`Sync failed with HTTP ${res.status}`);
-
-    const result = await res.json();
-    let synced = 0;
-    let failed = 0;
-
-    if (result.results && Array.isArray(result.results)) {
-      for (const item of result.results) {
-        if (item.success) {
-          await removeOfflineOrder(item.clientOrderId);
-          synced++;
-        } else {
-          failed++;
-        }
-      }
-    }
-
-    console.log(`[OfflineDB] Sync complete: ${synced} synced, ${failed} failed.`);
-    return { synced, failed };
-  } catch (err) {
-    console.error('[OfflineDB] Error syncing offline orders:', err);
-    return { synced: 0, failed: pending.length };
-  }
+export async function syncOfflineOrdersNow(_apiUrl: string, _token: string | null): Promise<{ synced: number; failed: number }> {
+  return (await import('./order-sync-service')).syncPendingOrders();
 }

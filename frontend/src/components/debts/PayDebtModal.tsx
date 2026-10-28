@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { DebtRecord, DebtPaymentInstallment, PaymentMethodType } from '@/lib/types';
 import { recordDebtPayment } from '@/lib/debt-service';
 import { loadBankAccounts } from '@/lib/bank-account-storage';
@@ -42,6 +42,7 @@ export function PayDebtModal({
   const [note, setNote] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
+  const submitting = useRef(false);
   const bankAccounts = useMemo(() => loadBankAccounts(), []);
 
   // Initialize form state whenever modal opens with a debt record
@@ -55,6 +56,12 @@ export function PayDebtModal({
       if (bankAccounts.length > 0) {
         setSelectedBank(`${bankAccounts[0].bankName} (${bankAccounts[0].accountNumber})`);
       }
+    } else {
+      setPayMode('FULL');
+      setAmountInput('');
+      setPaymentMethod('CASH');
+      setReferenceNo('');
+      setNote('');
     }
   }, [debtRecord, open, bankAccounts]);
 
@@ -84,7 +91,8 @@ export function PayDebtModal({
     setAmountInput(calculated.toString());
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (submitting.current) return;
     if (numAmount <= 0) {
       toast.error('กรุณาระบุจำนวนเงินที่ต้องการชำระ');
       return;
@@ -95,10 +103,11 @@ export function PayDebtModal({
       return;
     }
 
+    submitting.current = true;
     setIsSubmitting(true);
 
     try {
-      const res = recordDebtPayment(
+      const res = await recordDebtPayment(
         debtRecord.orderId,
         numAmount,
         paymentMethod,
@@ -120,6 +129,7 @@ export function PayDebtModal({
     } catch (err: any) {
       toast.error(err.message || 'บันทึกรับชำระไม่สำเร็จ');
     } finally {
+      submitting.current = false;
       setIsSubmitting(false);
     }
   };

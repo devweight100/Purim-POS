@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useProductStore } from '@/lib/store/product-store';
 import { Product, CartItem, ProductUnit } from '@/lib/types';
 import { getProductAvailableUnits, getDefaultSelectedUnit } from '@/lib/product-unit-helpers';
 import { 
   Grid, Calculator, ChevronDown, Edit3, Trash2, 
-  Clock, User, ShoppingBag, ScanLine, StickyNote, Coins
+  Clock, User, ShoppingBag, ScanLine, StickyNote, Coins,
+  ShieldCheck, ShieldAlert, Package, ArrowLeft
 } from 'lucide-react';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { NumpadPopup } from './NumpadPopup';
@@ -15,6 +17,7 @@ import { ItemNotePopup } from './ItemNotePopup';
 import { SelectUnitModal } from './SelectUnitModal';
 import { RedeemPointsModal } from './RedeemPointsModal';
 import { Customer, getCustomerById, calculateEarnedPoints } from '@/lib/customer-service';
+import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
 import { toast } from 'sonner';
 
 interface PosListLayoutProps {
@@ -31,6 +34,8 @@ interface PosListLayoutProps {
   onOpenBarcodeScan: () => void;
   onOpenDebtPay?: (customer?: Customer | null) => void;
   onOpenCashDrawer?: () => void;
+  onOpenCustomerStock?: () => void;
+  onOpenItemClaim?: (item: CartItem) => void;
 }
 
 export function PosListLayout({
@@ -46,7 +51,9 @@ export function PosListLayout({
   onOpenHistory,
   onOpenBarcodeScan,
   onOpenDebtPay,
-  onOpenCashDrawer
+  onOpenCashDrawer,
+  onOpenCustomerStock,
+  onOpenItemClaim
 }: PosListLayoutProps) {
   const cart = useCartStore();
   const { products } = useProductStore();
@@ -75,23 +82,57 @@ export function PosListLayout({
   const earnedPointsFromCart = currentCustomer ? calculateEarnedPoints(currentCustomer, cart.getTotal()) : 0;
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const scannerInputRef = useRef<HTMLInputElement>(null);
+  const [scannerInputValue, setScannerInputValue] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
   const cartBottomRef = useRef<HTMLDivElement>(null);
 
   const handleEmptySpaceClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     const isInteractive = target.closest('button, input, select, textarea, a, [role="button"], label, table');
-    if (!isInteractive && searchInputRef.current) {
-      searchInputRef.current.focus();
+    if (!isInteractive && scannerInputRef.current) {
+      scannerInputRef.current.focus();
     }
   };
 
-  // Auto focus search input on mount
+  // Auto focus hidden scanner input on mount
   useEffect(() => {
-    if (searchInputRef.current) {
-      searchInputRef.current.focus();
+    if (scannerInputRef.current) {
+      scannerInputRef.current.focus();
     }
   }, []);
+
+  // Process barcode scan for PosListLayout (converts Thai Kedmanee to English/Numeric)
+  const processBarcodeScan = (scannedBarcode: string) => {
+    const raw = scannedBarcode.trim();
+    if (!raw) return;
+
+    const convertedCode = convertThaiToEnBarcode(raw).trim();
+    const code = convertedCode.toLowerCase();
+
+    const matchedProduct = products.find(p => {
+      const matchSku = p.sku?.toLowerCase().trim() === code;
+      const matchUnitBarcode = p.units?.some(u => u.barcode?.toLowerCase().trim() === code);
+      const matchProductBarcodes = (p as any).barcodes?.some((b: any) => b.barcode?.toLowerCase().trim() === code);
+      const availableUnits = getProductAvailableUnits(p);
+      const matchAvailBarcode = availableUnits.some(u => u.barcode?.toLowerCase().trim() === code);
+      return matchSku || matchUnitBarcode || matchProductBarcodes || matchAvailBarcode;
+    });
+
+    if (matchedProduct) {
+      const availableUnits = getProductAvailableUnits(matchedProduct);
+      const targetUnit = availableUnits.find(u => u.barcode?.toLowerCase().trim() === code) || getDefaultSelectedUnit(matchedProduct, availableUnits, convertedCode);
+      handleSelectProduct(matchedProduct, targetUnit);
+      setSearchQuery('');
+      setIsSearchOpen(false);
+    } else {
+      const thaiHint = convertedCode !== raw ? ` (แปลงจากภาษาไทย: "${raw}")` : '';
+      toast.error(`❌ ไม่พบสินค้าบาร์โค้ด: "${convertedCode}"${thaiHint}`);
+    }
+
+    setScannerInputValue('');
+    setTimeout(() => scannerInputRef.current?.focus(), 10);
+  };
 
   // Auto-scroll to bottom of list when items change
   useEffect(() => {
@@ -166,20 +207,28 @@ export function PosListLayout({
       }
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (filteredProducts.length > 0) {
+      const raw = searchQuery.trim();
+      if (!raw) return;
+
+      const converted = convertThaiToEnBarcode(raw).toLowerCase().trim();
+      const matchedBarcode = products.find(p => {
+        const matchSku = p.sku?.toLowerCase().trim() === converted;
+        const matchUnitBarcode = p.units?.some(u => u.barcode?.toLowerCase().trim() === converted);
+        const matchProductBarcodes = (p as any).barcodes?.some((b: any) => b.barcode?.toLowerCase().trim() === converted);
+        const availableUnits = getProductAvailableUnits(p);
+        const matchAvailBarcode = availableUnits.some(u => u.barcode?.toLowerCase().trim() === converted);
+        return matchSku || matchUnitBarcode || matchProductBarcodes || matchAvailBarcode;
+      });
+
+      if (matchedBarcode) {
+        processBarcodeScan(raw);
+      } else if (filteredProducts.length > 0) {
         const p = filteredProducts[selectedIndex || 0];
         const availableUnits = getProductAvailableUnits(p);
         const targetUnit = availableUnits[selectedUnitIndex] || getDefaultSelectedUnit(p, availableUnits, searchQuery);
         handleSelectProduct(p, targetUnit);
-      } else if (searchQuery.trim()) {
-        const exact = products.find(p => p.sku === searchQuery.trim() || p.units?.some(u => u.barcode === searchQuery.trim()));
-        if (exact) {
-          const availableUnits = getProductAvailableUnits(exact);
-          const targetUnit = availableUnits[selectedUnitIndex] || getDefaultSelectedUnit(exact, availableUnits, searchQuery);
-          handleSelectProduct(exact, targetUnit);
-        } else {
-          toast.error(`ไม่พบสินค้า: ${searchQuery}`);
-        }
+      } else {
+        toast.error(`ไม่พบสินค้า: ${raw}`);
       }
     } else if (e.key === 'Escape') {
       setIsSearchOpen(false);
@@ -206,7 +255,11 @@ export function PosListLayout({
       // F12 -> Payment
       else if (code === 'F12' || keyLower === 'f12') {
         e.preventDefault();
-        if (useCartStore.getState().items.length > 0) onOpenPayment();
+        if (useCartStore.getState().items.length > 0) {
+          onOpenPayment();
+        } else {
+          toast.warning('ไม่มีสินค้าในตะกร้า ไม่สามารถชำระเงินได้');
+        }
       } 
       // Ctrl + H -> Order History
       else if (e.ctrlKey && (code === 'KeyH' || keyLower === 'h')) {
@@ -353,6 +406,31 @@ export function PosListLayout({
               className="w-full text-base font-bold outline-none bg-transparent px-3.5 text-slate-900 placeholder:text-slate-400"
             />
           </div>
+
+          {/* Hidden input dedicated for Barcode Scanner (Invisible to user, captures scanner input & converts Thai to English) */}
+          <input
+            ref={scannerInputRef}
+            type="text"
+            value={scannerInputValue}
+            onChange={(e) => setScannerInputValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                const raw = scannerInputValue.trim();
+                setScannerInputValue('');
+                if (raw) {
+                  processBarcodeScan(raw);
+                }
+              }
+            }}
+            className="sr-only absolute -top-[9999px] -left-[9999px] opacity-0 pointer-events-none w-0 h-0"
+            tabIndex={-1}
+            aria-hidden="true"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+          />
 
           {/* Search/Barcode Dropdown Box */}
           <div className="relative">
@@ -544,7 +622,44 @@ export function PosListLayout({
             </div>
           </div>
         ) : (
-          <div className="w-full overflow-x-auto border border-slate-200 rounded-xl shadow-sm">
+          <div className="w-full space-y-3">
+            {/* Pending Claims Discount Banner */}
+            {cart.pendingClaims && cart.pendingClaims.length > 0 && (
+              <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-xs shadow-xs space-y-1.5 animate-in fade-in">
+                <div className="flex items-center justify-between text-amber-900 font-bold">
+                  <span className="flex items-center gap-1.5">
+                    <ShieldAlert className="w-4 h-4 text-amber-600" />
+                    มีส่วนลดเคลมรอหักในบิลนี้ ({cart.pendingClaims.length} รายการ):
+                  </span>
+                  <span className="text-sm font-black text-amber-700">
+                    -{formatCurrency(cart.getClaimDiscountAmount())}
+                  </span>
+                </div>
+                <div className="text-[11px] text-amber-800">
+                  * สิทธิ์เคลมจะยังไม่ถูกตัดจนกว่าจะชำระเงินเสร็จสิ้น หากยกเลิกบิลสิทธิ์เคลมจะคงเดิม 100%
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {cart.pendingClaims.map((pc) => (
+                    <span key={pc.id} className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded-md border border-amber-200 text-[10px] text-slate-700 font-medium">
+                      <span>{pc.productName} ({pc.quantity} {pc.unitName})</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          cart.removePendingClaim(pc.id);
+                          toast.info(`ยกเลิกส่วนลดเคลม ${pc.productName} แล้ว`);
+                        }}
+                        className="text-slate-400 hover:text-red-600 font-bold ml-1 text-xs"
+                        title="ยกเลิกส่วนลดรายการนี้"
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="w-full overflow-x-auto border border-slate-200 rounded-xl shadow-sm">
             <table className="w-full text-left">
                 <thead className="text-sm font-bold text-slate-700 border-b-2 border-slate-200 bg-slate-50/90 sticky top-0 z-10">
                   <tr>
@@ -553,7 +668,7 @@ export function PosListLayout({
                     <th className="py-3.5 px-4 font-bold text-center w-28">จำนวน</th>
                     <th className="py-3.5 px-4 font-bold text-center">ส่วนลด</th>
                     <th className="py-3.5 px-4 font-bold text-right">ราคารวม</th>
-                    <th className="py-3.5 px-4 font-bold text-center w-20">จัดการ</th>
+                    <th className="py-3.5 px-4 font-bold text-center w-28">จัดการ</th>
                   </tr>
                 </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
@@ -570,6 +685,12 @@ export function PosListLayout({
                             <span className="text-slate-400 font-bold text-base min-w-[24px]">{idx + 1}.</span>
                             <span className="text-base sm:text-lg font-bold text-slate-900 leading-snug">{item.name}</span>
                           </div>
+                          {item.claimQuantity !== undefined && item.claimQuantity > 0 && (
+                            <span className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md font-bold mt-0.5 inline-flex items-center gap-1 w-fit ml-8">
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>เคลมฟรี {item.claimQuantity} {item.unitName} (คิดเงิน {Math.max(0, item.quantity - item.claimQuantity)} {item.unitName})</span>
+                            </span>
+                          )}
                           {item.itemNote && (
                             <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md font-medium mt-0.5 inline-block w-fit ml-8">
                               📝 โน้ต: {item.itemNote}
@@ -623,6 +744,18 @@ export function PosListLayout({
                         <div className="flex items-center justify-center gap-1">
                           <button 
                             type="button"
+                            onClick={() => onOpenItemClaim?.(item)} 
+                            className={`p-2 rounded-lg transition-colors ${
+                              item.claimQuantity && item.claimQuantity > 0
+                                ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+                                : 'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50'
+                            }`}
+                            title="ระบุสินค้าเคลมฟรีในรายการนี้"
+                          >
+                            <ShieldCheck className="w-5 h-5" />
+                          </button>
+                          <button 
+                            type="button"
                             onClick={() => setNoteEditItem(item)} 
                             className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
                             title="ระบุโน้ตประจำรายการ"
@@ -645,6 +778,7 @@ export function PosListLayout({
               </tbody>
             </table>
             <div ref={cartBottomRef} />
+          </div>
           </div>
         )}
       </div>
@@ -670,6 +804,16 @@ export function PosListLayout({
             <User className="w-4 h-4" />
             <span>ลูกค้า</span>
             <span className="text-xs opacity-80 font-normal">(Ctrl+M)</span>
+          </button>
+
+          <button 
+            type="button"
+            onClick={onOpenCustomerStock} 
+            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-3.5 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm"
+            title="เปิดคลังสินค้าลูกค้า & สิทธิ์เคลม"
+          >
+            <Package className="w-4 h-4" />
+            <span>สิทธิ์เคลม</span>
           </button>
           
           <button 
@@ -721,8 +865,16 @@ export function PosListLayout({
           </button>
         </div>
 
-        {/* Option Selector for Sales Screen View */}
+        {/* Option Selector for Sales Screen View & Exit to Dashboard */}
         <div className="flex items-center gap-2 ml-auto">
+          <Link
+            href="/dashboard"
+            className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-800 text-white font-extrabold px-3 py-2 rounded-lg shadow-sm transition-all text-xs sm:text-sm shrink-0"
+            title="กลับไปหน้าแดชบอร์ด / เมนูหลัก"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>เมนูหลัก</span>
+          </Link>
           <span className="text-xs sm:text-sm text-slate-700 font-extrabold hidden sm:inline">รูปแบบหน้าจอขาย:</span>
           <select 
             value={viewMode}
@@ -741,7 +893,7 @@ export function PosListLayout({
         onOpenChange={(open) => {
           if (!open) {
             setPriceEditItem(null);
-            setTimeout(() => searchInputRef.current?.focus(), 20);
+            setTimeout(() => scannerInputRef.current?.focus(), 20);
           }
         }}
         title={`ระบุราคาต่อหน่วย: ${priceEditItem?.name || ''}`}
@@ -754,7 +906,7 @@ export function PosListLayout({
             toast.success(`อัปเดตราคาเป็น ฿${val.toFixed(2)} / ${priceEditItem.unitName}`);
           }
           setPriceEditItem(null);
-          setTimeout(() => searchInputRef.current?.focus(), 20);
+          setTimeout(() => scannerInputRef.current?.focus(), 20);
         }}
       />
 
@@ -764,7 +916,7 @@ export function PosListLayout({
         onOpenChange={(open) => {
           if (!open) {
             setDiscountEditItem(null);
-            setTimeout(() => searchInputRef.current?.focus(), 20);
+            setTimeout(() => scannerInputRef.current?.focus(), 20);
           }
         }}
         title={`ระบุส่วนลด: ${discountEditItem?.name || ''}`}
@@ -778,7 +930,7 @@ export function PosListLayout({
             toast.success(`อัปเดตส่วนลดเป็น ${val} ${currentType === 'percent' ? '%' : 'บาท'}`);
           }
           setDiscountEditItem(null);
-          setTimeout(() => searchInputRef.current?.focus(), 20);
+          setTimeout(() => scannerInputRef.current?.focus(), 20);
         }}
       />
 
@@ -788,7 +940,7 @@ export function PosListLayout({
         onOpenChange={(open) => {
           if (!open) {
             setNoteEditItem(null);
-            setTimeout(() => searchInputRef.current?.focus(), 20);
+            setTimeout(() => scannerInputRef.current?.focus(), 20);
           }
         }}
         title={`ระบุโน้ต: ${noteEditItem?.name || ''}`}
@@ -803,7 +955,7 @@ export function PosListLayout({
             }
           }
           setNoteEditItem(null);
-          setTimeout(() => searchInputRef.current?.focus(), 20);
+          setTimeout(() => scannerInputRef.current?.focus(), 20);
         }}
       />
 
@@ -815,7 +967,7 @@ export function PosListLayout({
           if (unitModalProduct) {
             cart.addItem(unitModalProduct, unit);
             toast.success(`เพิ่ม ${unitModalProduct.name} (${unit.unitName}) ลงตะกร้าแล้ว`);
-            setTimeout(() => searchInputRef.current?.focus(), 20);
+            setTimeout(() => scannerInputRef.current?.focus(), 20);
           }
         }}
       />

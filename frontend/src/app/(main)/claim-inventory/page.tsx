@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { loadAllClaimRecords } from '@/lib/claim-service';
+import { loadAllClaimRecords, fetchAllClaimRecords } from '@/lib/claim-service';
 import { 
   loadSuppliers, 
+  fetchSuppliers,
   resolveProductSupplierAndCost 
 } from '@/lib/supplier-return-service';
 import { useProductStore } from '@/lib/store/product-store';
@@ -136,14 +137,20 @@ export default function ClaimInventoryPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   // Load and enrich all claim stock data
-  const fetchData = () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const rawClaims = loadAllClaimRecords();
-      const loadedSuppliers = loadSuppliers();
-      setSuppliersList(loadedSuppliers);
+      const [rawClaims, loadedSuppliers] = await Promise.all([
+        fetchAllClaimRecords(),
+        fetchSuppliers().catch(() => loadSuppliers()),
+      ]);
+      setSuppliersList(loadedSuppliers || []);
 
-      const storeProducts = useProductStore.getState().products || [];
+      let storeProducts = useProductStore.getState().products || [];
+      if (!storeProducts.length) {
+        await useProductStore.getState().fetchProducts();
+        storeProducts = useProductStore.getState().products || [];
+      }
 
       const enriched: ClaimStockItem[] = rawClaims.map((c) => {
         // Resolve supplier and cost price
@@ -166,7 +173,10 @@ export default function ClaimInventoryPage() {
         const matchedProduct = storeProducts.find(
           (p) => p.id === c.productId || p.sku === c.sku
         );
-        const category = matchedProduct?.category || 'ทั่วไป';
+        const rawCategory: any = matchedProduct?.category;
+        const category = typeof rawCategory === 'object' && rawCategory !== null
+          ? (rawCategory.name || 'ทั่วไป')
+          : (rawCategory || 'ทั่วไป');
 
         // Base unit quantity
         const factor = Number(c.conversionFactor || 1);
@@ -223,12 +233,12 @@ export default function ClaimInventoryPage() {
       // 1. Status Filter
       if (statusFilter === 'IN_STOCK') {
         // Items currently in claim stock (unreturned to supplier and not scrapped)
-        if (item.returnDocId || item.status === 'SCRAPPED' || item.status === 'SENT_TO_SUPPLIER' || item.status === 'COMPLETED' || item.status === 'SUPPLIER_REPLACED') {
+        if (item.returnDocId || item.status === 'SCRAPPED' || item.status === 'SENT_TO_SUPPLIER' || item.status === 'SUPPLIER_REPLACED') {
           return false;
         }
       } else if (statusFilter === 'RETURNED') {
-        // Items already packaged in a supplier return note
-        if (!item.returnDocId && item.status !== 'SENT_TO_SUPPLIER' && item.status !== 'COMPLETED' && item.status !== 'SUPPLIER_REPLACED') {
+        // Items already packaged in a supplier return note or sent to supplier
+        if (!item.returnDocId && item.status !== 'SENT_TO_SUPPLIER' && item.status !== 'SUPPLIER_REPLACED') {
           return false;
         }
       }
@@ -266,7 +276,7 @@ export default function ClaimInventoryPage() {
       const key = `${item.productId}_${item.sku}_${item.supplierId}`;
       const existing = map.get(key);
 
-      const isInStock = !item.returnDocId && item.status !== 'SCRAPPED' && item.status !== 'SENT_TO_SUPPLIER' && item.status !== 'COMPLETED' && item.status !== 'SUPPLIER_REPLACED';
+      const isInStock = !item.returnDocId && item.status !== 'SCRAPPED' && item.status !== 'SENT_TO_SUPPLIER' && item.status !== 'SUPPLIER_REPLACED';
 
       if (!existing) {
         map.set(key, {

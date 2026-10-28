@@ -12,6 +12,38 @@ export interface ProductUnit {
   barcode?: string;
 }
 
+export interface ProductPackagingUnit {
+  id?: string;
+  name: string;
+  qtyPerPrev: number | string;
+  barcode?: string;
+  priceLevel1?: number | string | null;
+  priceLevel2?: number | string | null;
+  priceLevel3?: number | string | null;
+  priceLevel4?: number | string | null;
+  priceLevel5?: number | string | null;
+}
+
+export interface ProductImage {
+  id?: string;
+  dataUrl: string;
+  name?: string;
+  isCover?: boolean;
+}
+
+export interface ProductWholesalePrice {
+  id?: string;
+  minQuantity: number | string;
+  unitPrice: number | string;
+}
+
+export interface ProductBundleItem {
+  id?: string;
+  childProductId: string;
+  childProduct?: Product;
+  quantity: number;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -36,6 +68,11 @@ export interface Product {
   supplierId?: string | null;
   barcodes?: Array<{ barcode?: string; supplierId?: string; label?: string }>;
   supplierEntries?: Array<{ supplierId?: string; lastCost?: number | string; notes?: string }>;
+  packagingUnits?: ProductPackagingUnit[];
+  images?: ProductImage[];
+  wholesalePrices?: ProductWholesalePrice[];
+  isBundle?: boolean;
+  bundleItems?: ProductBundleItem[];
 }
 
 export interface Category {
@@ -63,6 +100,40 @@ export interface CartItem {
   isWholesaleApplied?: boolean;
   pricingNote?: string;
   itemNote?: string;
+  isBundle?: boolean;
+  bundleData?: Array<{
+    productId: string;
+    productName: string;
+    sku: string;
+    quantityPerBundle: number;
+    totalQuantity: number;
+    unitPrice: number;
+  }>;
+  // Claim replacement integration
+  claimQuantity?: number; // จำนวนชิ้นในรายการนี้ที่เป็นสินค้าเคลม (ไม่คิดเงิน)
+  claimDefectReason?: string; // สาเหตุการเคลม
+  claimSourceOrderId?: string; // บิลเดิมที่ใช้อ้างอิงสิทธิ์
+}
+
+export interface PendingClaimItem {
+  id: string; // temporary draft id
+  orderId: string;
+  orderNumber: string;
+  orderDate: string;
+  customerId: string | null;
+  customerName: string;
+  customerPhone?: string | null;
+  productId: string;
+  productName: string;
+  sku: string;
+  unitName: string;
+  quantity: number;
+  unitPrice: number;
+  totalClaimValue: number;
+  defectReason: string;
+  resolutionType: 'STORE_DISCOUNT' | 'REFUND_CASH' | 'REFUND_TRANSFER';
+  refundAmount?: number;
+  discountAmount?: number;
 }
 
 export interface HeldBill {
@@ -76,6 +147,7 @@ export interface HeldBill {
   pointsDiscountValue?: number;
   pointsUsed?: number;
   note?: string;
+  pendingClaims?: PendingClaimItem[];
   heldAt: string;
 }
 
@@ -121,6 +193,8 @@ export interface Customer {
 
 export interface Shift {
   id: string;
+  shiftNumber?: string;
+  shiftId?: string;
   userId: string;
   userName: string;
   openedAt: string;
@@ -177,6 +251,7 @@ export interface OrderPayment {
 }
 
 export interface Order {
+  outboxVersion?: number;
   id: string;
   orderNumber: string;
   customerId: string | null;
@@ -241,6 +316,7 @@ export type DebtStatus = 'UNPAID' | 'PARTIAL' | 'PAID';
 
 export interface DebtPaymentInstallment {
   id: string;
+  receiptNo?: string;
   installmentNo: number;
   paymentDate: string;
   amountPaid: number;

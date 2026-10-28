@@ -1,6 +1,6 @@
 import { create } from 'zustand';
+import { api } from '../api';
 import { Shift, CashTransaction, Order } from '../types';
-import { orders as masterMockOrders } from '../mock-data';
 
 interface ShiftStore {
   currentShift: Shift | null;
@@ -8,15 +8,17 @@ interface ShiftStore {
   completedOrders: Order[];
 
   // Actions
-  openShift: (userName: string, openingCash: number) => void;
-  closeShift: (actualCash?: number) => Shift | null;
-  addCashTransaction: (type: 'in' | 'out', amount: number, reason: string) => void;
+  fetchCurrentShift: () => Promise<Shift | null>;
+  openShift: (userName: string, openingCash: number) => Promise<void>;
+  closeShift: (actualCash?: number) => Promise<Shift | null>;
+  addCashTransaction: (type: 'in' | 'out', amount: number, reason: string, operationId?: string) => Promise<void>;
   recordClaimRefund: (amount: number, claimId?: string, reason?: string) => void;
   recordSale: (order: Order) => void;
   recordVoid: () => void;
   voidOrder: (orderId: string, reason: string) => void;
   updateOrderPaymentMethod: (orderId: string, oldPayments: any, newPayments: Array<{ method: any; amount: number; referenceNo?: string }>, totalAmount: number) => void;
   updateOrderSyncStatus: (orderId: string, isSynced: boolean) => void;
+  updateOrderAfterSync: (localIdOrNumber: string, backendOrderNumber: string, backendId?: string) => void;
   updateOrderNote: (orderId: string, note: string) => void;
 
   // Getters
@@ -64,7 +66,11 @@ const saveCashTransactions = (txs: CashTransaction[]) => {
   } catch {}
 };
 
-const loadInitialOrders = (): Order[] => [];
+const loadInitialOrders = (): Order[] => {
+  if (typeof window === 'undefined') return [];
+  try { const rows = JSON.parse(localStorage.getItem('pos_completed_orders') || '[]'); return Array.isArray(rows) ? rows : []; }
+  catch { return []; }
+};
 
 const saveCompletedOrders = (orders: Order[]) => {
   if (typeof window === 'undefined') return;
@@ -78,36 +84,113 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
   cashTransactions: loadInitialCashTransactions(),
   completedOrders: loadInitialOrders(),
 
-  openShift: (userName: string, openingCash: number) => {
-    const shift: Shift = {
-      id: Date.now().toString(),
-      userId: '1',
-      userName,
-      openedAt: new Date().toISOString(),
-      openingCash,
-      closedAt: null,
-      cashSales: 0,
-      qrSales: 0,
-      cardSales: 0,
-      transferSales: 0,
-      creditSales: 0,
-      cashIn: 0,
-      cashOut: 0,
-      cashRefunds: 0,
-      claimRefundCount: 0,
-      orderCount: 0,
-      voidCount: 0,
-      isOpen: true,
-    };
-    saveCurrentShift(shift);
-    saveCashTransactions([]);
-    set({ currentShift: shift, cashTransactions: [] });
+  fetchCurrentShift: async () => {
+    try {
+      const res: any = await api.shifts.getCurrent();
+      const s = res?.shift || res;
+      if (s && (s.status === 'OPEN' || res?.status === 'OPEN')) {
+        const cashMovements: CashTransaction[] = Array.isArray(s.cashMovements)
+          ? s.cashMovements.map((m: any) => ({
+              id: m.id,
+              shiftId: s.id,
+              type: (m.type || '').toLowerCase() === 'out' ? 'out' : 'in',
+              amount: Number(m.amount) || 0,
+              reason: m.reason || '',
+              createdAt: m.createdAt,
+            }))
+          : get().cashTransactions;
+
+        const mapped: Shift = {
+          id: s.id,
+          shiftId: s.shiftNumber || s.id,
+          userId: s.userId || '1',
+          userName: s.user?.fullName || 'พนักงานขาย',
+          openedAt: s.openedAt,
+          openingCash: Number(res.startingCash ?? s.startingCash) || 0,
+          closedAt: s.closedAt,
+          cashSales: Number(res.cashSales ?? s.cashSales) || 0,
+          qrSales: Number(res.qrSales ?? res.promptpaySales ?? s.promptpaySales) || 0,
+          cardSales: Number(res.cardSales ?? res.creditCardSales ?? s.creditCardSales) || 0,
+          transferSales: Number(res.transferSales ?? 0) || 0,
+          creditSales: Number(res.creditSales ?? res.debtSales ?? s.debtSales) || 0,
+          cashIn: Number(res.cashIn ?? s.cashIn) || 0,
+          cashOut: Number(res.cashOut ?? s.cashOut) || 0,
+          cashRefunds: Number(res.cashRefunds ?? 0) || 0,
+          claimRefundCount: Number(res.claimRefundCount ?? 0) || 0,
+          orderCount: Number(res.orderCount ?? s.orders?.length) || 0,
+          voidCount: Number(res.voidCount ?? 0) || 0,
+          isOpen: true,
+        };
+        saveCurrentShift(mapped);
+        saveCashTransactions(cashMovements);
+        set({ currentShift: mapped, cashTransactions: cashMovements });
+        return mapped;
+      } else {
+        saveCurrentShift(null);
+        saveCashTransactions([]);
+        set({ currentShift: null, cashTransactions: [] });
+        return null;
+      }
+    } catch (err) {
+      console.warn('[ShiftStore] Failed to fetch current shift from server:', err);
+      return get().currentShift;
+    }
   },
 
-  closeShift: (actualCash?: number) => {
+  openShift: async (userName: string, openingCash: number) => {
+    try {
+      const serverRes: any = await api.shifts.open(openingCash);
+      const s = serverRes?.shift || serverRes;
+      if (s?.id) {
+        const cashMovements: CashTransaction[] = Array.isArray(s.cashMovements)
+          ? s.cashMovements.map((m: any) => ({
+              id: m.id,
+              shiftId: s.id,
+              type: (m.type || '').toLowerCase() === 'out' ? 'out' : 'in',
+              amount: Number(m.amount) || 0,
+              reason: m.reason || '',
+              createdAt: m.createdAt,
+            }))
+          : [];
+        const mapped: Shift = {
+          id: s.id,
+          shiftId: s.shiftNumber || s.id,
+          userId: s.userId || '1',
+          userName: s.user?.fullName || userName,
+          openedAt: s.openedAt || new Date().toISOString(),
+          openingCash: Number(serverRes.startingCash ?? s.startingCash ?? openingCash) || 0,
+          closedAt: null,
+          cashSales: Number(serverRes.cashSales ?? s.cashSales ?? 0) || 0,
+          qrSales: Number(serverRes.qrSales ?? serverRes.promptpaySales ?? s.promptpaySales ?? 0) || 0,
+          cardSales: Number(serverRes.cardSales ?? serverRes.creditCardSales ?? s.creditCardSales ?? 0) || 0,
+          transferSales: Number(serverRes.transferSales ?? 0) || 0,
+          creditSales: Number(serverRes.creditSales ?? serverRes.debtSales ?? s.debtSales ?? 0) || 0,
+          cashIn: Number(serverRes.cashIn ?? s.cashIn ?? 0) || 0,
+          cashOut: Number(serverRes.cashOut ?? s.cashOut ?? 0) || 0,
+          cashRefunds: Number(serverRes.cashRefunds ?? 0) || 0,
+          claimRefundCount: Number(serverRes.claimRefundCount ?? 0) || 0,
+          orderCount: Number(serverRes.orderCount ?? s.orders?.length ?? 0) || 0,
+          voidCount: Number(serverRes.voidCount ?? 0) || 0,
+          isOpen: true,
+        };
+        saveCurrentShift(mapped);
+        saveCashTransactions(cashMovements);
+        set({ currentShift: mapped, cashTransactions: cashMovements });
+        return;
+      }
+    } catch (err) { throw err; }
+    throw new Error('เซิร์ฟเวอร์ยังไม่ยืนยันการเปิดกะ');
+  },
+
+  closeShift: async (actualCash?: number) => {
     const shift = get().currentShift;
     if (!shift) return null;
 
+    const { getPendingOfflineOrders } = await import('../offline-db');
+    if ((await getPendingOfflineOrders()).some(o => o.syncStatus !== 'confirmed' && o.shiftId === shift.id)) {
+      throw new Error('ยังมีบิลรอส่งในกะนี้ กรุณาซิงค์ให้ครบก่อนปิดกะ');
+    }
+    await api.shifts.close(shift.id, actualCash ?? 0);
     const closedShift: Shift = {
       ...shift,
       closedAt: new Date().toISOString(),
@@ -127,37 +210,17 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
     return closedShift;
   },
 
-  addCashTransaction: (type: 'in' | 'out', amount: number, reason: string) => {
-    let shift = get().currentShift;
-    if (!shift || !shift.isOpen) {
-      shift = {
-        id: Date.now().toString(),
-        userId: '1',
-        userName: 'พนักงานขาย',
-        openedAt: new Date().toISOString(),
-        openingCash: 0,
-        closedAt: null,
-        cashSales: 0,
-        qrSales: 0,
-        cardSales: 0,
-        transferSales: 0,
-        creditSales: 0,
-        cashIn: 0,
-        cashOut: 0,
-        cashRefunds: 0,
-        claimRefundCount: 0,
-        orderCount: 0,
-        voidCount: 0,
-        isOpen: true,
-      };
-    }
+  addCashTransaction: async (type: 'in' | 'out', amount: number, reason: string, operationId?: string) => {
+    const shift = get().currentShift;
+    if (!shift?.isOpen) throw new Error('กรุณาเปิดกะบนฐานข้อมูลก่อนทำรายการเงินสด');
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error('จำนวนเงินต้องมากกว่า 0');
 
     const currentCash = Math.max(0, shift.openingCash + shift.cashSales + shift.cashIn - shift.cashOut - (shift.cashRefunds || 0));
     if (type === 'out' && currentCash <= 0) {
-      return;
+      throw new Error('ยอดเงินสดคงเหลือไม่เพียงพอ');
     }
 
-    const safeAmount = type === 'out' ? Math.min(amount, currentCash) : amount;
+    const safeAmount = amount;
 
     const transaction: CashTransaction = {
       id: Date.now().toString(),
@@ -173,8 +236,11 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
       cashIn: shift.cashIn + (type === 'in' ? safeAmount : 0),
       cashOut: shift.cashOut + (type === 'out' ? safeAmount : 0),
     };
+    const { newOperationId } = await import('../order-sync-service');
+    const serverMovement = await api.shifts.addCashMovement(shift.id, { type, amount: safeAmount, reason, clientMovementId: operationId || newOperationId() });
+    transaction.id = serverMovement.id;
+    if (get().cashTransactions.some(t => t.id === transaction.id)) return;
     saveCurrentShift(updatedShift);
-
     const nextTxs = [...get().cashTransactions, transaction];
     saveCashTransactions(nextTxs);
 
@@ -188,12 +254,14 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
     const shift = get().currentShift;
     if (!shift) return;
 
+    const refundReason = `คืนเงินสดเคลมสินค้า #${claimId || ''}${reason ? `: ${reason}` : ''}`;
+    const clientMovementId = ('claim-refund-' + (claimId || Date.now()) + '-' + Math.random().toString(36).slice(2, 8)).slice(0, 95);
     const transaction: CashTransaction = {
-      id: Date.now().toString(),
+      id: clientMovementId,
       shiftId: shift.id,
       type: 'out',
       amount,
-      reason: `คืนเงินสดเคลมสินค้า #${claimId || ''}${reason ? `: ${reason}` : ''}`,
+      reason: refundReason,
       createdAt: new Date().toISOString(),
     };
 
@@ -211,6 +279,16 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
       cashTransactions: nextTxs,
       currentShift: updatedShift,
     });
+
+    // Notify backend shift cash movement so expectedCash in database is reduced accurately
+    try {
+      api.shifts.addCashMovement(shift.id, {
+        type: 'out',
+        amount,
+        reason: refundReason,
+        clientMovementId,
+      }).catch((e) => console.warn('[ShiftStore] Failed to sync claim refund cash movement:', e));
+    } catch {}
   },
 
   recordSale: (order: Order) => {
@@ -227,6 +305,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
           case 'QR_PROMPTPAY': qrAdd += p.amount; break;
           case 'CREDIT_CARD': cardAdd += p.amount; break;
           case 'TRANSFER': transferAdd += p.amount; break;
+          case 'CREDIT_DEBT' as any:
           case 'CREDIT_NOTE' as any:
           case 'CREDIT' as any:
             creditAdd += p.amount;
@@ -288,6 +367,18 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
     });
   },
 
+  updateOrderAfterSync: (localIdOrNumber: string, backendOrderNumber: string, backendId?: string) => {
+    set((state) => {
+      const updated = state.completedOrders.map((o) =>
+        o.id === localIdOrNumber || o.orderNumber === localIdOrNumber
+          ? { ...o, id: backendId || o.id, orderNumber: backendOrderNumber, isSynced: true }
+          : o
+      );
+      saveCompletedOrders(updated);
+      return { completedOrders: updated };
+    });
+  },
+
   recordVoid: () => {
     set((state) => ({
       currentShift: state.currentShift
@@ -319,7 +410,8 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
             case 'QR_PROMPTPAY': qrDeduct += p.amount; break;
             case 'CREDIT_CARD': cardDeduct += p.amount; break;
             case 'TRANSFER': transferDeduct += p.amount; break;
-            case 'CREDIT_NOTE' as any:
+            case 'CREDIT_DEBT' as any:
+          case 'CREDIT_NOTE' as any:
             case 'CREDIT' as any:
               creditDeduct += p.amount;
               break;
@@ -367,14 +459,17 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
       let qrDeduct = 0;
       let cardDeduct = 0;
       let transferDeduct = 0;
+      let creditDeduct = 0;
 
       const oldList = Array.isArray(oldPayments) ? oldPayments : [oldPayments];
       for (const p of oldList) {
         const m = typeof p === 'string' ? p : (p?.method || '');
         const amt = typeof p === 'string' ? totalAmount : (p?.amount || totalAmount);
         if (m === 'CASH' || m === 'เงินสด') cashDeduct += amt;
-        else if (m === 'QR_PROMPTPAY' || m === 'TRANSFER' || m.includes?.('โอน') || m.includes?.('คิวอาร์')) qrDeduct += amt;
+        else if (m === 'QR_PROMPTPAY' || m.includes?.('คิวอาร์') || m.includes?.('พร้อมเพย์')) qrDeduct += amt;
+        else if (m === 'TRANSFER' || m.includes?.('โอน')) transferDeduct += amt;
         else if (m === 'CREDIT_CARD' || m.includes?.('บัตร')) cardDeduct += amt;
+        else if (m === 'CREDIT_DEBT' || m === 'CREDIT_NOTE' || m === 'CREDIT' || m.includes?.('เชื่อ') || m.includes?.('เครดิต')) creditDeduct += amt;
         else transferDeduct += amt;
       }
 
@@ -383,13 +478,16 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
       let qrAdd = 0;
       let cardAdd = 0;
       let transferAdd = 0;
+      let creditAdd = 0;
 
       for (const p of newPayments) {
         const m = p.method;
         const amt = p.amount || 0;
         if (m === 'CASH' || m === 'เงินสด') cashAdd += amt;
-        else if (m === 'QR_PROMPTPAY' || m === 'TRANSFER' || m.includes?.('โอน') || m.includes?.('คิวอาร์')) qrAdd += amt;
+        else if (m === 'QR_PROMPTPAY' || m.includes?.('คิวอาร์') || m.includes?.('พร้อมเพย์')) qrAdd += amt;
+        else if (m === 'TRANSFER' || m.includes?.('โอน')) transferAdd += amt;
         else if (m === 'CREDIT_CARD' || m.includes?.('บัตร')) cardAdd += amt;
+        else if (m === 'CREDIT_DEBT' || m === 'CREDIT_NOTE' || m === 'CREDIT' || m.includes?.('เชื่อ') || m.includes?.('เครดิต')) creditAdd += amt;
         else transferAdd += amt;
       }
 
@@ -399,7 +497,10 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
         qrSales: Math.max(0, shift.qrSales - qrDeduct + qrAdd),
         cardSales: Math.max(0, shift.cardSales - cardDeduct + cardAdd),
         transferSales: Math.max(0, shift.transferSales - transferDeduct + transferAdd),
+        creditSales: Math.max(0, (shift.creditSales || 0) - creditDeduct + creditAdd),
       } : null;
+
+      if (updatedShift) saveCurrentShift(updatedShift);
 
       const primaryMethodStr = newPayments.length > 1 
         ? 'SPLIT' 
@@ -439,8 +540,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
   getExpectedCash: () => {
     const shift = get().currentShift;
     if (!shift || !shift.isOpen) return 0;
-    const calculated = shift.openingCash + shift.cashSales + shift.cashIn - shift.cashOut - (shift.cashRefunds || 0);
-    return Math.max(0, calculated);
+    return shift.openingCash + shift.cashSales + shift.cashIn - shift.cashOut - (shift.cashRefunds || 0);
   },
 
   getTotalSales: () => {

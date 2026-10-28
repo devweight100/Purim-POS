@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { useRef, useState } from 'react';
 import html2canvas from 'html2canvas';
@@ -13,55 +13,56 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { 
-  Printer, Download, ExternalLink, FileText, CheckCircle2, 
-  Building2, User, Phone, MapPin, CreditCard, ShieldCheck, AlertCircle, ShieldAlert 
+import {
+  Printer,
+  Download,
+  ExternalLink,
+  FileText,
+  User,
+  MapPin,
+  Phone,
+  Building2,
+  ShieldAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+export interface ReceiptA4Item {
+  sku?: string;
+  name: string;
+  quantity: number;
+  unitName?: string;
+  unitPrice: number;
+  discountAmount?: number;
+  claimDiscountAmount?: number;
+  lineTotal: number;
+}
 
 export interface ReceiptA4Data {
   orderNumber: string;
   createdAt: string;
-  customerName?: string | null;
-  customerPhone?: string | null;
-  customerAddress?: string | null;
-  customerTaxId?: string | null;
-  customerBranch?: string | null;
-  customerCompany?: string | null;
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  customerTaxId?: string;
+  customerBranch?: string;
+  customerCompany?: string;
   userName?: string;
-  claimDiscountAmount?: number;
-  claimInfo?: {
-    claimId: string;
-    originalOrderNumber?: string;
-    productName: string;
-    quantity: number;
-    unitName: string;
-    defectReason: string;
-    discountAmount: number;
-  };
-  items: Array<{
-    sku?: string;
-    name: string;
-    quantity: number;
-    unitName: string;
-    unitPrice: number;
-    lineTotal: number;
-    discountAmount?: number;
-  }>;
+  items: ReceiptA4Item[];
   subtotal: number;
   billDiscountAmount: number;
   pointsDiscountAmount?: number;
+  claimDiscountAmount?: number;
   pointsUsed?: number;
   customerPointsEarned?: number;
   customerPointsBalance?: number;
   vatAmount: number;
   totalAmount: number;
   paymentMethod: string;
-  payments?: Array<{ method: string; amount: number; referenceNo?: string }>;
+  payments?: { method: string; amount: number; referenceNo?: string }[];
   cashReceived?: number;
   changeAmount?: number;
-  
-  // Credit Sales & Installment Specific Data
+
+  // Credit / Installment Specific metadata
   isCreditBill?: boolean;
   isInstallmentReceipt?: boolean;
   installmentNo?: number;
@@ -70,6 +71,16 @@ export interface ReceiptA4Data {
   accumulatedPaid?: number;
   remainingDebt?: number;
   installmentDate?: string;
+
+  // Claim specific info if this sale settles a warranty claim
+  claimInfo?: {
+    claimId: string;
+    productName: string;
+    quantity: number;
+    unitName?: string;
+    discountAmount: number;
+    defectReason?: string;
+  };
 }
 
 interface ReceiptA4PdfModalProps {
@@ -85,17 +96,19 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
 
   if (!data) return null;
 
-  const hasVat = (data.vatAmount || 0) > 0;
+  const vatNum = Number(data.vatAmount) || 0;
+  const hasVat = vatNum > 0;
   const isInstallment = data.isInstallmentReceipt === true;
-  const receiptAmount = isInstallment ? (data.installmentAmount ?? data.totalAmount) : data.totalAmount;
+  const rawReceiptAmount = isInstallment ? (data.installmentAmount ?? data.totalAmount) : data.totalAmount;
+  const receiptAmount = Number(rawReceiptAmount) || 0;
 
   const totalBeforeVat = hasVat 
-    ? Math.max(0, receiptAmount - data.vatAmount) 
+    ? Math.max(0, receiptAmount - vatNum) 
     : receiptAmount;
 
-  // Fix vertical table height: minimum 15 rows filled so position below stays constant and fills A4!
-  const MIN_ROWS = 15;
-  const emptyRowsCount = Math.max(0, MIN_ROWS - (data.items?.length || 0));
+  // Calculate compact empty rows to keep the entire document strictly within 1 single A4 page!
+  const targetRows = data.items.length <= 5 ? 6 : Math.min(8, data.items.length);
+  const emptyRowsCount = Math.max(0, targetRows - data.items.length);
 
   const generatePdfBlob = async () => {
     if (!receiptA4Ref.current) return null;
@@ -151,7 +164,22 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
 
   const handleOpenPdfTab = async () => {
     if (!receiptA4Ref.current) return;
-    handleNativePrint();
+    setIsGenerating(true);
+    toast.loading('กำลังจัดเตรียมเอกสาร A4...', { id: 'a4-receipt-tab' });
+    try {
+      const pdf = await generatePdfBlob();
+      if (pdf) {
+        const blobUrl = pdf.output('bloburl');
+        window.open(blobUrl, '_blank');
+        toast.success('เปิดเอกสารในแท็บใหม่แล้ว', { id: 'a4-receipt-tab' });
+      } else {
+        handleNativePrint();
+      }
+    } catch {
+      handleNativePrint();
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleNativePrint = () => {
@@ -234,55 +262,53 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
 
         {/* ─── A4 PAPER PREVIEW CONTAINER ─── */}
         <div className="flex-1 overflow-y-auto p-2 sm:p-4 flex justify-center bg-slate-200/70 rounded-2xl border border-slate-300/80 my-2">
-          {/* Exact A4 Document Sheet (210mm proportional container) */}
+          {/* Exact A4 Document Sheet (Strict 210mm x 297mm container to fit 100% on 1 page) */}
           <div
             ref={receiptA4Ref}
-            className="a4-container w-[210mm] max-w-[210mm] min-h-[297mm] bg-white p-[10mm] shadow-xl text-slate-900 font-sans border border-slate-300 rounded-sm flex flex-col justify-between box-border"
-            style={{ width: '210mm', maxWidth: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
+            className="a4-container w-[210mm] max-w-[210mm] h-[297mm] max-h-[297mm] bg-white p-[8mm] shadow-xl text-slate-900 font-sans border border-slate-300 rounded-sm flex flex-col justify-between box-border overflow-hidden"
+            style={{ width: '210mm', maxWidth: '210mm', height: '297mm', maxHeight: '297mm', boxSizing: 'border-box' }}
           >
             {/* TOP SECTION: Header & Parties Information */}
-            <div className="space-y-5">
+            <div className="space-y-2.5">
               {/* 1. Header (Store Branding & Title Box) */}
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pb-4 border-b-2 border-slate-800">
+              <div className="flex flex-row justify-between items-start gap-4 pb-2.5 border-b-2 border-slate-800">
                 {/* Store Branding */}
-                <div className="space-y-1 max-w-[450px]">
+                <div className="space-y-0.5 max-w-[450px]">
                   <div className="flex items-center gap-2">
-                    <div className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-black text-lg shadow-sm">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-black text-base shadow-sm">
                       P
                     </div>
                     <div>
-                      <h2 className="text-xl font-black text-slate-900 tracking-tight leading-none">
+                      <h2 className="text-lg font-black text-slate-900 tracking-tight leading-none">
                         {storeSettings.storeName || 'ร้านปุริม (Purim POS)'}
                       </h2>
                       {storeSettings.branchName && (
-                        <span className="text-[11px] font-bold text-indigo-700 tracking-wide">
+                        <span className="text-[10.5px] font-bold text-indigo-700 tracking-wide">
                           สาขา: {storeSettings.branchName}
                         </span>
                       )}
                     </div>
                   </div>
-                  <p className="text-[11px] text-slate-600 leading-relaxed pt-1">
+                  <p className="text-[10.5px] text-slate-600 leading-snug pt-0.5">
                     {storeSettings.storeAddress}
                   </p>
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-600">
+                  <div className="flex flex-wrap gap-x-3 text-[10.5px] text-slate-600">
                     {storeSettings.taxId && <span><b>เลขประจำตัวผู้เสียภาษี:</b> {storeSettings.taxId}</span>}
-                  </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-600">
                     {storeSettings.storePhone && <span><b>โทร:</b> {storeSettings.storePhone}</span>}
                     {storeSettings.storeEmail && <span><b>อีเมล:</b> {storeSettings.storeEmail}</span>}
                   </div>
                 </div>
 
                 {/* Document Title Box */}
-                <div className="sm:text-right border-2 border-indigo-700 bg-indigo-50/60 p-3 rounded-xl min-w-[240px]">
-                  <h3 className="text-base font-black text-indigo-950 uppercase tracking-tight">
+                <div className="text-right border-2 border-indigo-700 bg-indigo-50/60 p-2.5 rounded-xl min-w-[220px]">
+                  <h3 className="text-sm font-black text-indigo-950 uppercase tracking-tight">
                     {isInstallment 
                       ? 'ใบเสร็จรับเงิน' 
                       : hasVat 
                       ? 'ใบเสร็จรับเงิน / ใบกำกับภาษี' 
                       : 'ใบเสร็จรับเงิน'}
                   </h3>
-                  <span className="text-[11px] font-extrabold text-indigo-700 block">
+                  <span className="text-[10.5px] font-extrabold text-indigo-700 block">
                     {isInstallment
                       ? `RECEIPT (INSTALLMENT NO. ${data.installmentNo})`
                       : hasVat 
@@ -291,43 +317,43 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
                   </span>
                   <div className="flex gap-1 justify-end mt-1">
                     {isInstallment && (
-                      <span className="inline-block bg-amber-600 text-white text-[10px] font-bold px-2 py-0.5 rounded">
+                      <span className="inline-block bg-amber-600 text-white text-[9.5px] font-bold px-1.5 py-0.5 rounded">
                         ชำระงวดที่ {data.installmentNo}
                       </span>
                     )}
-                    <span className="inline-block bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded">
+                    <span className="inline-block bg-indigo-600 text-white text-[9.5px] font-bold px-1.5 py-0.5 rounded">
                       ต้นฉบับ (ORIGINAL)
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* 2. Document Info & Customer Details (2 Columns Box) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              {/* 2. Document Info & Customer Details (Fixed 2 Columns Grid) */}
+              <div className="grid grid-cols-2 gap-2.5 text-xs">
                 {/* Customer Box (Left) */}
-                <div className="border border-slate-300 rounded-xl p-3.5 bg-slate-50/50 space-y-1">
+                <div className="border border-slate-300 rounded-xl p-2.5 bg-slate-50/50 space-y-0.5">
                   <div className="font-extrabold text-slate-900 border-b border-slate-200 pb-1 flex items-center gap-1.5">
                     {data.customerCompany ? <Building2 className="w-3.5 h-3.5 text-indigo-600" /> : <User className="w-3.5 h-3.5 text-sky-600" />}
-                    <span>ข้อมูลลูกค้า / ผู้ซื้อ (Customer Details)</span>
+                    <span className="text-[11px]">ข้อมูลลูกค้า / ผู้ซื้อ (Customer Details)</span>
                   </div>
                   <div className="pt-0.5 space-y-0.5">
-                    <div className="text-[12.5px] font-bold text-slate-900">
+                    <div className="text-[11.5px] font-bold text-slate-900">
                       {data.customerCompany || data.customerName || 'ลูกค้าทั่วไป (General Customer)'}
                     </div>
                     {data.customerAddress && (
-                      <div className="text-slate-600 leading-tight flex items-start gap-1">
+                      <div className="text-slate-600 leading-tight flex items-start gap-1 text-[10.5px]">
                         <MapPin className="w-3 h-3 text-slate-400 mt-0.5 shrink-0" />
                         <span>{data.customerAddress}</span>
                       </div>
                     )}
                     {data.customerTaxId && (
-                      <div className="text-slate-700">
+                      <div className="text-slate-700 text-[10.5px]">
                         <b>เลขผู้เสียภาษี:</b> <span className="font-mono">{data.customerTaxId}</span>
                         {data.customerBranch && <span className="ml-2 font-medium">({data.customerBranch})</span>}
                       </div>
                     )}
                     {data.customerPhone && (
-                      <div className="text-slate-700 flex items-center gap-1">
+                      <div className="text-slate-700 flex items-center gap-1 text-[10.5px]">
                         <Phone className="w-3 h-3 text-slate-400" />
                         <span>โทร: {data.customerPhone}</span>
                       </div>
@@ -336,15 +362,15 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
                 </div>
 
                 {/* Metadata Box (Right) */}
-                <div className="border border-slate-300 rounded-xl p-3.5 bg-slate-50/50 space-y-1">
+                <div className="border border-slate-300 rounded-xl p-2.5 bg-slate-50/50 space-y-0.5">
                   <div className="font-extrabold text-slate-900 border-b border-slate-200 pb-1 flex items-center gap-1.5">
                     <FileText className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>ข้อมูลเอกสาร (Document Details)</span>
+                    <span className="text-[11px]">ข้อมูลเอกสาร (Document Details)</span>
                   </div>
-                  <div className="pt-0.5 space-y-1">
+                  <div className="pt-0.5 space-y-0.5 text-[11px]">
                     <div className="flex justify-between">
                       <span className="text-slate-500 font-semibold">เลขที่เอกสาร (No.):</span>
-                      <span className="font-mono font-bold text-slate-900 text-[12.5px]">{data.orderNumber}</span>
+                      <span className="font-mono font-bold text-slate-900">{data.orderNumber}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500 font-semibold">
@@ -366,70 +392,70 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
                 </div>
               </div>
 
-              {/* 3. Items Table (Expanded Description, Compact Numeric Columns, All Black Text, Fixed 10-Row Height, NO Note Text) */}
+              {/* 3. Items Table (Compact, Clean, Fits A4) */}
               <div className="border border-slate-300 rounded-xl overflow-hidden bg-white">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead className="bg-slate-100 text-black font-extrabold border-b-2 border-slate-300">
                     <tr>
-                      <th className="py-2.5 px-2 text-center w-[36px] border-r border-slate-300 text-black font-black">#</th>
-                      <th className="py-2.5 px-3 text-center border-r border-slate-300 text-black font-black">รายการสินค้า (Description)</th>
-                      <th className="py-2.5 px-1.5 text-center w-[52px] border-r border-slate-300 text-black font-black">จำนวน</th>
-                      <th className="py-2.5 px-1.5 text-center w-[52px] border-r border-slate-300 text-black font-black">หน่วย</th>
-                      <th className="py-2.5 px-2 text-center w-[85px] border-r border-slate-300 text-black font-black">ราคา/หน่วย</th>
-                      <th className="py-2.5 px-2 text-center w-[75px] border-r border-slate-300 text-black font-black">ส่วนลด</th>
-                      <th className="py-2.5 px-2.5 text-center w-[95px] text-black font-black">จำนวนเงิน (฿)</th>
+                      <th className="py-1.5 px-2 text-center w-[36px] border-r border-slate-300 text-black font-black">#</th>
+                      <th className="py-1.5 px-3 text-center border-r border-slate-300 text-black font-black">รายการสินค้า (Description)</th>
+                      <th className="py-1.5 px-1.5 text-center w-[52px] border-r border-slate-300 text-black font-black">จำนวน</th>
+                      <th className="py-1.5 px-1.5 text-center w-[52px] border-r border-slate-300 text-black font-black">หน่วย</th>
+                      <th className="py-1.5 px-2 text-center w-[85px] border-r border-slate-300 text-black font-black">ราคา/หน่วย</th>
+                      <th className="py-1.5 px-2 text-center w-[75px] border-r border-slate-300 text-black font-black">ส่วนลด</th>
+                      <th className="py-1.5 px-2.5 text-center w-[95px] text-black font-black">จำนวนเงิน (฿)</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {/* Actual Item Rows (No horizontal divider lines, all pure black text, NO note text) */}
+                    {/* Actual Item Rows */}
                     {data.items.map((item, idx) => (
-                      <tr key={idx} className="min-h-[34px] text-black">
-                        <td className="py-2 px-2 text-center font-mono text-black font-bold border-r border-slate-300 align-top">{idx + 1}</td>
-                        <td className="py-2 px-3 border-r border-slate-300 align-top">
+                      <tr key={idx} className="min-h-[28px] text-black">
+                        <td className="py-1 px-2 text-center font-mono text-black font-bold border-r border-slate-300 align-top">{idx + 1}</td>
+                        <td className="py-1 px-3 border-r border-slate-300 align-top">
                           <div className="font-bold text-black leading-snug">{item.name}</div>
                         </td>
-                        <td className="py-2 px-1.5 text-center font-bold text-black border-r border-slate-300 font-mono align-top">{item.quantity}</td>
-                        <td className="py-2 px-1.5 text-center text-black font-medium border-r border-slate-300 align-top">{item.unitName || 'ชิ้น'}</td>
-                        <td className="py-2 px-2 text-right font-mono text-black font-bold border-r border-slate-300 align-top">{formatCurrency(item.unitPrice)}</td>
-                        <td className="py-2 px-2 text-right font-mono text-black font-bold border-r border-slate-300 align-top">
+                        <td className="py-1 px-1.5 text-center font-bold text-black border-r border-slate-300 font-mono align-top">{item.quantity}</td>
+                        <td className="py-1 px-1.5 text-center text-black font-medium border-r border-slate-300 align-top">{item.unitName || 'ชิ้น'}</td>
+                        <td className="py-1 px-2 text-right font-mono text-black font-bold border-r border-slate-300 align-top">{formatCurrency(item.unitPrice)}</td>
+                        <td className="py-1 px-2 text-right font-mono text-black font-bold border-r border-slate-300 align-top">
                           {item.discountAmount && item.discountAmount > 0 ? `-${formatCurrency(item.discountAmount)}` : '-'}
                         </td>
-                        <td className="py-2 px-2.5 text-right font-bold font-mono text-black align-top">{formatCurrency(item.lineTotal)}</td>
+                        <td className="py-1 px-2.5 text-right font-bold font-mono text-black align-top">{formatCurrency(item.lineTotal)}</td>
                       </tr>
                     ))}
 
-                    {/* Fixed Vertical Grid Empty Rows (No horizontal dividers, only vertical column dividers) */}
+                    {/* Fixed Vertical Grid Empty Rows */}
                     {Array.from({ length: emptyRowsCount }).map((_, emptyIdx) => (
-                      <tr key={`empty-${emptyIdx}`} className="h-[34px]">
-                        <td className="py-1.5 px-2 text-center border-r border-slate-300 text-transparent select-none">-</td>
-                        <td className="py-1.5 px-3 border-r border-slate-300 text-transparent select-none">-</td>
-                        <td className="py-1.5 px-1.5 text-center border-r border-slate-300 text-transparent select-none">-</td>
-                        <td className="py-1.5 px-1.5 text-center border-r border-slate-300 text-transparent select-none">-</td>
-                        <td className="py-1.5 px-2 text-right border-r border-slate-300 text-transparent select-none">-</td>
-                        <td className="py-1.5 px-2 text-right border-r border-slate-300 text-transparent select-none">-</td>
-                        <td className="py-1.5 px-2.5 text-right text-transparent select-none">-</td>
+                      <tr key={`empty-${emptyIdx}`} className="h-[26px]">
+                        <td className="py-0.5 px-2 text-center border-r border-slate-300 text-transparent select-none">-</td>
+                        <td className="py-0.5 px-3 border-r border-slate-300 text-transparent select-none">-</td>
+                        <td className="py-0.5 px-1.5 text-center border-r border-slate-300 text-transparent select-none">-</td>
+                        <td className="py-0.5 px-1.5 text-center border-r border-slate-300 text-transparent select-none">-</td>
+                        <td className="py-0.5 px-2 text-right border-r border-slate-300 text-transparent select-none">-</td>
+                        <td className="py-0.5 px-2 text-right border-r border-slate-300 text-transparent select-none">-</td>
+                        <td className="py-0.5 px-2.5 text-right text-transparent select-none">-</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
 
-              {/* 4. Financial Calculations & Summary Box */}
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 text-xs pt-1">
+              {/* 4. Financial Calculations & Summary Box (Fixed 12-cols Grid: 5 cols Left / 7 cols Right) */}
+              <div className="grid grid-cols-12 gap-3 text-xs pt-0.5 break-inside-avoid">
                 {/* Left side: Thai Baht Text & Payment Details (5 cols) */}
-                <div className="sm:col-span-5 space-y-2.5">
+                <div className="col-span-5 space-y-1.5">
                   {/* Thai Baht text banner */}
-                  <div className="bg-slate-100 p-2.5 rounded-xl border border-slate-200">
-                    <span className="text-[11px] font-bold text-slate-600 block">จำนวนเงินตัวอักษร (Amount in Words):</span>
-                    <span className="text-xs font-black text-slate-900 leading-snug">{thaiBahtText(receiptAmount)}</span>
+                  <div className="bg-slate-100 p-2 rounded-xl border border-slate-200">
+                    <span className="text-[10px] font-bold text-slate-600 block">จำนวนเงินตัวอักษร (Amount in Words):</span>
+                    <span className="text-[11.5px] font-black text-slate-900 leading-snug">{thaiBahtText(receiptAmount)}</span>
                   </div>
 
                   {/* Payment Breakdown */}
                   {data.payments && data.payments.length > 0 && (
-                    <div className="border border-slate-200 rounded-xl p-2.5 bg-slate-50 space-y-1">
-                      <span className="font-bold text-slate-800 block text-[11px]">รายละเอียดการชำระเงิน:</span>
+                    <div className="border border-slate-200 rounded-xl p-2 bg-slate-50 space-y-0.5">
+                      <span className="font-bold text-slate-800 block text-[10.5px]">รายละเอียดการชำระเงิน:</span>
                       {data.payments.map((p, i) => (
-                        <div key={i} className="flex justify-between text-[11px] text-slate-700">
+                        <div key={i} className="flex justify-between text-[10.5px] text-slate-700">
                           <span>
                             • {p.method === 'CASH' ? 'เงินสด' : p.method === 'QR_PROMPTPAY' ? 'QR พร้อมเพย์' : p.method === 'CREDIT_CARD' ? 'บัตรเครดิต' : p.method === 'CREDIT_NOTE' ? 'เงินเชื่อ' : p.method}
                             {p.referenceNo ? ` (${p.referenceNo})` : ''}
@@ -442,7 +468,7 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
 
                   {/* Member Loyalty Point info */}
                   {data.customerName && (data.customerPointsBalance !== undefined || data.customerPointsEarned !== undefined) && (
-                    <div className="border border-slate-200 bg-slate-50 p-2 rounded-xl text-[11px] text-slate-600 flex justify-between">
+                    <div className="border border-slate-200 bg-slate-50 p-1.5 rounded-xl text-[10px] text-slate-600 flex justify-between">
                       <span>🪙 ได้รับแต้ม: <b className="text-emerald-700 font-bold">+{data.customerPointsEarned ?? 0}</b></span>
                       <span>แต้มคงเหลือ: <b className="text-slate-900 font-black">{(data.customerPointsBalance ?? 0).toLocaleString()}</b> แต้ม</span>
                     </div>
@@ -450,33 +476,33 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
 
                   {/* Combined Warranty Claim Voucher Card */}
                   {data.claimInfo && (
-                    <div className="border-2 border-emerald-300 bg-emerald-50/70 p-3 rounded-xl space-y-1 text-xs shadow-2xs">
-                      <div className="flex items-center justify-between text-emerald-950 font-extrabold border-b border-emerald-200 pb-1">
+                    <div className="border-2 border-emerald-300 bg-emerald-50/70 p-2 rounded-xl space-y-0.5 text-xs shadow-2xs">
+                      <div className="flex items-center justify-between text-emerald-950 font-extrabold border-b border-emerald-200 pb-0.5">
                         <div className="flex items-center gap-1.5">
-                          <ShieldAlert className="w-4 h-4 text-emerald-700 shrink-0" />
-                          <span>ข้อมูลการเคลมสินค้า (Warranty Claim)</span>
+                          <ShieldAlert className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                          <span className="text-[10.5px]">ข้อมูลการเคลมสินค้า (Warranty Claim)</span>
                         </div>
-                        <span className="font-mono text-indigo-700 font-bold">#{data.claimInfo.claimId}</span>
+                        <span className="font-mono text-indigo-700 font-bold text-[10.5px]">#{data.claimInfo.claimId}</span>
                       </div>
-                      <div className="text-slate-800 text-[11px] pt-0.5">
-                        • สินค้าที่เคลม: <b className="text-slate-900">{data.claimInfo.productName}</b> ({data.claimInfo.quantity} {data.claimInfo.unitName})
+                      <div className="text-slate-800 text-[10px] pt-0.5">
+                        • สินค้า: <b className="text-slate-900">{data.claimInfo.productName}</b> ({data.claimInfo.quantity} {data.claimInfo.unitName})
                       </div>
                       {data.claimInfo.defectReason && (
-                        <div className="text-slate-600 text-[10.5px]">
+                        <div className="text-slate-600 text-[9.5px]">
                           • อาการเสีย: {data.claimInfo.defectReason}
                         </div>
                       )}
-                      <div className="flex justify-between items-center text-emerald-800 font-bold pt-1 border-t border-emerald-200 text-xs">
+                      <div className="flex justify-between items-center text-emerald-800 font-bold pt-0.5 border-t border-emerald-200 text-[11px]">
                         <span>ส่วนลดเคลมนำมาหักในบิลนี้:</span>
-                        <span className="font-mono font-black text-sm">-{formatCurrency(data.claimInfo.discountAmount)}</span>
+                        <span className="font-mono font-black text-xs">-{formatCurrency(data.claimInfo.discountAmount)}</span>
                       </div>
                     </div>
                   )}
                 </div>
 
                 {/* Right side: Compact Calculation Breakdown Box (7 cols) */}
-                <div className="sm:col-span-7 border-2 border-slate-300 rounded-xl p-3.5 bg-slate-50/90 space-y-1.5 text-xs">
-                  {/* CASE 1: Installment Receipt for Credit Sale (Compact & Clean layout) */}
+                <div className="col-span-7 border-2 border-slate-300 rounded-xl p-2.5 bg-slate-50/90 space-y-1 text-xs">
+                  {/* CASE 1: Installment Receipt for Credit Sale */}
                   {isInstallment ? (
                     <>
                       <div className="flex justify-between text-slate-700 text-xs">
@@ -499,40 +525,40 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
                       </div>
 
                       {/* Prominent Compact Receipt Amount Banner */}
-                      <div className="flex justify-between items-center text-slate-900 pt-2 mt-1 border-t-2 border-slate-800 bg-white p-2.5 rounded-lg border border-slate-200 shadow-2xs">
+                      <div className="flex justify-between items-center text-slate-900 pt-1.5 mt-0.5 border-t-2 border-slate-800 bg-white p-2 rounded-lg border border-slate-200 shadow-2xs">
                         <div>
-                          <span className="text-xs font-black text-indigo-950 block">ยอดรับชำระในใบเสร็จนี้ (งวดที่ {data.installmentNo})</span>
-                          <span className="text-[10px] font-bold text-slate-500 block">RECEIPT AMOUNT</span>
+                          <span className="text-[11px] font-black text-indigo-950 block">ยอดรับชำระในใบเสร็จนี้ (งวดที่ {data.installmentNo})</span>
+                          <span className="text-[9px] font-bold text-slate-500 block">RECEIPT AMOUNT</span>
                         </div>
-                        <span className="font-mono text-xl font-black text-indigo-700">
+                        <span className="font-mono text-lg font-black text-indigo-700">
                           {formatCurrency(receiptAmount)}
                         </span>
                       </div>
                     </>
                   ) : (
-                    /* CASE 2: Normal Sale or Fully Settled Credit Sale (Identical to standard customer receipt) */
+                    /* CASE 2: Normal Sale or Fully Settled Credit Sale */
                     <>
-                      <div className="flex justify-between text-slate-700 text-[13px]">
+                      <div className="flex justify-between text-slate-700 text-[11.5px]">
                         <span className="font-semibold">รวมเป็นเงิน (Subtotal):</span>
-                        <span className="font-mono font-bold text-slate-900 text-sm">{formatCurrency(data.subtotal)}</span>
+                        <span className="font-mono font-bold text-slate-900">{formatCurrency(data.subtotal)}</span>
                       </div>
 
                       {data.billDiscountAmount > 0 && (
-                        <div className="flex justify-between text-rose-600 text-[12.5px]">
+                        <div className="flex justify-between text-rose-600 text-[11px]">
                           <span>ส่วนลดท้ายบิล (Bill Discount):</span>
                           <span className="font-mono font-bold">-{formatCurrency(data.billDiscountAmount)}</span>
                         </div>
                       )}
 
                       {data.pointsDiscountAmount !== undefined && data.pointsDiscountAmount > 0 && (
-                        <div className="flex justify-between text-amber-800 text-[12.5px]">
+                        <div className="flex justify-between text-amber-800 text-[11px]">
                           <span>ส่วนลดแต้มสมาชิก ({data.pointsUsed?.toLocaleString() || 0} แต้ม):</span>
                           <span className="font-mono font-bold">-{formatCurrency(data.pointsDiscountAmount)}</span>
                         </div>
                       )}
 
                       {data.claimDiscountAmount !== undefined && data.claimDiscountAmount > 0 && (
-                        <div className="flex justify-between text-emerald-700 text-[12.5px] font-bold">
+                        <div className="flex justify-between text-emerald-700 text-[11px] font-bold">
                           <span>ส่วนลดเคลมสินค้า (Claim Discount):</span>
                           <span className="font-mono font-bold">-{formatCurrency(data.claimDiscountAmount)}</span>
                         </div>
@@ -541,12 +567,12 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
                       {/* Only show VAT calculation lines when hasVat is TRUE */}
                       {hasVat && (
                         <>
-                          <div className="flex justify-between text-slate-700 pt-1.5 border-t border-slate-200 text-[12.5px]">
+                          <div className="flex justify-between text-slate-700 pt-1 border-t border-slate-200 text-[11px]">
                             <span>มูลค่าสินค้าก่อนภาษี (Net Subtotal):</span>
                             <span className="font-mono font-bold">{formatCurrency(totalBeforeVat)}</span>
                           </div>
 
-                          <div className="flex justify-between text-slate-700 text-[12.5px]">
+                          <div className="flex justify-between text-slate-700 text-[11px]">
                             <span>ภาษีมูลค่าเพิ่ม 7% (VAT 7%):</span>
                             <span className="font-mono font-bold">{formatCurrency(data.vatAmount)}</span>
                           </div>
@@ -554,12 +580,12 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
                       )}
 
                       {/* Prominent Wide Grand Total Banner */}
-                      <div className="flex justify-between items-center text-slate-900 pt-2.5 mt-1 border-t-2 border-slate-800 bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
+                      <div className="flex justify-between items-center text-slate-900 pt-1.5 mt-0.5 border-t-2 border-slate-800 bg-white p-2.5 rounded-lg border border-slate-200 shadow-2xs">
                         <div>
-                          <span className="text-sm font-black text-indigo-950 block">จำนวนเงินรวมทั้งสิ้น</span>
-                          <span className="text-[11px] font-bold text-slate-500 block">TOTAL AMOUNT</span>
+                          <span className="text-xs font-black text-indigo-950 block">จำนวนเงินรวมทั้งสิ้น</span>
+                          <span className="text-[9.5px] font-bold text-slate-500 block">TOTAL AMOUNT</span>
                         </div>
-                        <span className="font-mono text-2xl font-black text-indigo-700">
+                        <span className="font-mono text-xl font-black text-indigo-700">
                           {formatCurrency(data.totalAmount)}
                         </span>
                       </div>
@@ -569,23 +595,23 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
               </div>
             </div>
 
-            {/* BOTTOM SECTION: Signatures & Stamp Authorization (Pinned at bottom of A4) */}
-            <div className="mt-auto pt-6 pb-2 border-t border-slate-300 grid grid-cols-2 gap-8 text-xs text-center">
+            {/* BOTTOM SECTION: Signatures & Stamp Authorization (Pinned at bottom of A4, on the exact same page) */}
+            <div className="mt-auto pt-3 pb-1 border-t border-slate-300 grid grid-cols-2 gap-8 text-xs text-center break-inside-avoid">
               {/* Customer / Receiver Signature */}
-              <div className="space-y-4">
-                <p className="text-slate-600 font-semibold">ผู้รับสินค้า / ผู้จ่ายเงิน (Customer / Receiver)</p>
-                <div className="pt-8 border-b border-slate-400 mx-auto w-3/4 border-dashed" />
-                <div className="text-[11px] text-slate-500 space-y-0.5">
+              <div className="space-y-1.5">
+                <p className="text-slate-600 font-semibold text-[10.5px]">ผู้รับสินค้า / ผู้จ่ายเงิน (Customer / Receiver)</p>
+                <div className="pt-5 border-b border-slate-400 mx-auto w-3/4 border-dashed" />
+                <div className="text-[10px] text-slate-500 space-y-0.5">
                   <p>(....................................................................)</p>
                   <p>วันที่ (Date): ......./......./............</p>
                 </div>
               </div>
 
               {/* Cashier / Authorizer Signature */}
-              <div className="space-y-4">
-                <p className="text-slate-600 font-semibold">ผู้รับเงิน / ผู้มีอำนาจลงนาม (Cashier / Authorized Signature)</p>
-                <div className="pt-8 border-b border-slate-400 mx-auto w-3/4 border-dashed" />
-                <div className="text-[11px] text-slate-500 space-y-0.5">
+              <div className="space-y-1.5">
+                <p className="text-slate-600 font-semibold text-[10.5px]">ผู้รับเงิน / ผู้มีอำนาจลงนาม (Cashier / Authorized Signature)</p>
+                <div className="pt-5 border-b border-slate-400 mx-auto w-3/4 border-dashed" />
+                <div className="text-[10px] text-slate-500 space-y-0.5">
                   <p>({data.userName || 'พนักงานขาย / ผู้รับเงิน'})</p>
                   <p>วันที่ (Date): {new Date(isInstallment && data.installmentDate ? data.installmentDate : data.createdAt).toLocaleDateString('th-TH')}</p>
                 </div>

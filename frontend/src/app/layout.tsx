@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { Inter, Sarabun } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/providers";
+import { AuthGuard } from "@/components/auth/AuthGuard";
+import { ClientDbSync } from "@/components/common/ClientDbSync";
+import { GlobalDocumentSearch } from "@/components/common/GlobalDocumentSearch";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -15,8 +18,12 @@ const sarabun = Sarabun({
 });
 
 export const metadata: Metadata = {
-  title: "Purim POS System",
-  description: "Modern POS System for retail shops",
+  title: "ระบบขายหน้าร้าน ร้านปุริม (Purim POS)",
+  description: "ระบบบริหารจัดการจุดขายหน้าร้านและคลังสินค้า ร้านปุริม",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({
@@ -29,7 +36,11 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${sarabun.variable} font-sans antialiased min-h-dvh bg-background text-foreground flex flex-col`}
       >
-        <Providers>{children}</Providers>
+        <Providers>
+          <ClientDbSync />
+          <GlobalDocumentSearch />
+          <AuthGuard>{children}</AuthGuard>
+        </Providers>
       </body>
     </html>
   );

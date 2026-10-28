@@ -1,7 +1,4 @@
-﻿/**
- * Store Settings Storage & Manager
- * Manages store profile, tax ID, address, phone, and receipt header/footer customizations
- */
+import { api } from './api';
 
 export interface StoreSettings {
   storeName: string;
@@ -13,6 +10,8 @@ export interface StoreSettings {
   receiptHeader: string;
   receiptFooter: string;
   logoUrl?: string | null;
+  qrImageUrl?: string | null;
+  qrLabel?: string;
   vatRate: number;
 }
 
@@ -46,6 +45,34 @@ export function loadStoreSettings(): StoreSettings {
   }
 }
 
+function normalizeStoreSettings(settings: Partial<StoreSettings> | null | undefined): StoreSettings {
+  return {
+    ...DEFAULT_STORE_SETTINGS,
+    ...(settings || {}),
+    vatRate: Number(settings?.vatRate ?? DEFAULT_STORE_SETTINGS.vatRate),
+  };
+}
+
+function mirrorStoreSettings(settings: StoreSettings) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  } catch (err) {
+    console.error('Failed to mirror store settings to localStorage:', err);
+  }
+}
+
+export async function loadStoreSettingsFromBackend(): Promise<StoreSettings> {
+  try {
+    const settings = normalizeStoreSettings(await api.settings.get());
+    mirrorStoreSettings(settings);
+    return settings;
+  } catch (err) {
+    console.warn('Failed to load store settings from backend:', err);
+    return loadStoreSettings();
+  }
+}
+
 export function saveStoreSettings(settings: Partial<StoreSettings>): StoreSettings {
   if (typeof window === 'undefined') return DEFAULT_STORE_SETTINGS;
   try {
@@ -56,5 +83,21 @@ export function saveStoreSettings(settings: Partial<StoreSettings>): StoreSettin
   } catch (err) {
     console.error('Failed to save store settings to localStorage:', err);
     return DEFAULT_STORE_SETTINGS;
+  }
+}
+
+export async function saveStoreSettingsToBackend(settings: Partial<StoreSettings>): Promise<StoreSettings> {
+  const updated = normalizeStoreSettings({
+    ...loadStoreSettings(),
+    ...settings,
+  });
+
+  try {
+    const saved = normalizeStoreSettings(await api.settings.update(updated));
+    mirrorStoreSettings(saved);
+    return saved;
+  } catch (err) {
+    console.error('Failed to save store settings to backend:', err);
+    throw err;
   }
 }

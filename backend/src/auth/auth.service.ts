@@ -71,10 +71,15 @@ export class AuthService {
     }
 
     const hashedPassword = await bcrypt.hash(registerDto.password, 10);
+    let hashedPin: string | undefined = undefined;
+    if (registerDto.pinCode) {
+      hashedPin = await bcrypt.hash(registerDto.pinCode, 10);
+    }
     const user = await this.prisma.user.create({
       data: {
         ...registerDto,
         password: hashedPassword,
+        pinCode: hashedPin,
       },
     });
     const { password, pinCode, ...result } = user;

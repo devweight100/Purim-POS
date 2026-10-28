@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+﻿import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -19,6 +19,9 @@ import { PayablesModule } from './payables/payables.module';
 import { SupplierReturnsModule } from './supplier-returns/supplier-returns.module';
 import { ClaimsModule } from './claims/claims.module';
 import { BankAccountsModule } from './bank-accounts/bank-accounts.module';
+import { DocumentsModule } from './documents/documents.module';
+import { EventsModule } from './events/events.module';
+import { ServerControlModule } from './server-control/server-control.module';
 
 @Module({
   imports: [
@@ -40,8 +43,12 @@ import { BankAccountsModule } from './bank-accounts/bank-accounts.module';
     SupplierReturnsModule,
     ClaimsModule,
     BankAccountsModule,
+    DocumentsModule,
+    ServerControlModule,
+    EventsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule {}
+

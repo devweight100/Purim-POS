@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { CartItem, HeldBill, Product, ProductUnit, ClaimRecord } from '../types';
+import { CartItem, HeldBill, Product, ProductUnit, ClaimRecord, PendingClaimItem } from '../types';
 import { calculateSmartRollupAndPricing } from '../cart-pricing';
 
 interface CartStore {
@@ -11,6 +11,7 @@ interface CartStore {
   pointsDiscountValue: number;
   pointsUsed: number;
   attachedClaim: ClaimRecord | null;
+  pendingClaims: PendingClaimItem[];
   note: string;
   isVatEnabled: boolean;
   heldBills: HeldBill[];
@@ -22,6 +23,7 @@ interface CartStore {
   updateQuantity: (productId: string, quantity: number, unitId?: string) => void;
   setCustomPrice: (productId: string, price: number | null, unitId?: string) => void;
   setItemDiscount: (productId: string, type: 'none' | 'baht' | 'percent', value: number, unitId?: string) => void;
+  setItemClaim: (productId: string, claimQty: number, reason?: string, unitId?: string, sourceOrderId?: string) => void;
   setItemNote: (productId: string, note: string, unitId?: string) => void;
   setItemUnit: (productId: string, unit: ProductUnit) => void;
   setBillDiscount: (type: 'none' | 'baht' | 'percent', value: number) => void;
@@ -29,6 +31,9 @@ interface CartStore {
   clearPointsDiscount: () => void;
   setAttachedClaim: (claim: ClaimRecord | null) => void;
   clearAttachedClaim: () => void;
+  addPendingClaim: (claim: PendingClaimItem) => void;
+  removePendingClaim: (id: string) => void;
+  clearPendingClaims: () => void;
   setNote: (note: string) => void;
   setVatEnabled: (enabled: boolean) => void;
   setCustomer: (id: string | null, name: string | null) => void;
@@ -60,6 +65,7 @@ export const useCartStore = create<CartStore>((set, get) => ({
   pointsDiscountValue: 0,
   pointsUsed: 0,
   attachedClaim: null,
+  pendingClaims: [],
   note: '',
   isVatEnabled: typeof window !== 'undefined' ? localStorage.getItem('pos_vat_enabled') !== 'false' : true,
   heldBills: [],
@@ -79,12 +85,32 @@ export const useCartStore = create<CartStore>((set, get) => ({
       );
       let rawUpdated: CartItem[];
       if (existing) {
-        rawUpdated = state.items.map((i) =>
-          i.productId === product.id && i.unitId === selectedUnit.id
-            ? { ...i, quantity: i.quantity + 1 }
-            : i
-        );
+        rawUpdated = state.items.map((i) => {
+          if (i.productId === product.id && i.unitId === selectedUnit.id) {
+            const newQty = i.quantity + 1;
+            const updatedBundle = i.bundleData
+              ? i.bundleData.map((b) => ({
+                  ...b,
+                  totalQuantity: b.quantityPerBundle * newQty,
+                }))
+              : undefined;
+            return { ...i, quantity: newQty, bundleData: updatedBundle };
+          }
+          return i;
+        });
       } else {
+        let bundleSnapshot: any = undefined;
+        if (product.isBundle && product.bundleItems && product.bundleItems.length > 0) {
+          bundleSnapshot = product.bundleItems.map((bi) => ({
+            productId: bi.childProductId,
+            productName: bi.childProduct?.name || 'สินค้าในชุด',
+            sku: bi.childProduct?.sku || '',
+            quantityPerBundle: bi.quantity,
+            totalQuantity: bi.quantity * 1,
+            unitPrice: Number(bi.childProduct?.basePrice || bi.childProduct?.priceLevel1 || 0),
+          }));
+        }
+
         const newItem: CartItem = {
           productId: product.id,
           name: product.name,
@@ -98,6 +124,8 @@ export const useCartStore = create<CartStore>((set, get) => ({
           discountType: 'none',
           discountValue: 0,
           hasVat: product.hasVat,
+          isBundle: product.isBundle,
+          bundleData: bundleSnapshot,
         };
         rawUpdated = [...state.items, newItem];
       }
@@ -126,7 +154,16 @@ export const useCartStore = create<CartStore>((set, get) => ({
         const match = unitId
           ? i.productId === productId && i.unitId === unitId
           : i.productId === productId;
-        return match ? { ...i, quantity } : i;
+        if (match) {
+          const updatedBundle = i.bundleData
+            ? i.bundleData.map((b) => ({
+                ...b,
+                totalQuantity: b.quantityPerBundle * quantity,
+              }))
+            : undefined;
+          return { ...i, quantity, bundleData: updatedBundle };
+        }
+        return i;
       });
       return { items: calculateSmartRollupAndPricing(rawUpdated) };
     });
@@ -150,6 +187,22 @@ export const useCartStore = create<CartStore>((set, get) => ({
           ? i.productId === productId && i.unitId === unitId
           : i.productId === productId;
         return match ? { ...i, discountType: type, discountValue: value } : i;
+      }),
+    }));
+  },
+
+  setItemClaim: (productId: string, claimQty: number, reason?: string, unitId?: string, sourceOrderId?: string) => {
+    set((state) => ({
+      items: state.items.map((i) => {
+        const match = unitId ? i.productId === productId && i.unitId === unitId : i.productId === productId;
+        if (!match) return i;
+        const validClaimQty = Math.max(0, Math.min(claimQty, i.quantity));
+        return {
+          ...i,
+          claimQuantity: validClaimQty,
+          claimDefectReason: validClaimQty > 0 ? (reason || i.claimDefectReason || 'สินค้ามีปัญหา') : undefined,
+          claimSourceOrderId: validClaimQty > 0 ? (sourceOrderId || i.claimSourceOrderId) : undefined,
+        };
       }),
     }));
   },
@@ -203,6 +256,22 @@ export const useCartStore = create<CartStore>((set, get) => ({
     set({ attachedClaim: null });
   },
 
+  addPendingClaim: (claim: PendingClaimItem) => {
+    set((state) => ({
+      pendingClaims: [...state.pendingClaims.filter((c) => c.id !== claim.id), claim],
+    }));
+  },
+
+  removePendingClaim: (id: string) => {
+    set((state) => ({
+      pendingClaims: state.pendingClaims.filter((c) => c.id !== id),
+    }));
+  },
+
+  clearPendingClaims: () => {
+    set({ pendingClaims: [] });
+  },
+
   setNote: (note: string) => {
     set({ note });
   },
@@ -230,6 +299,7 @@ export const useCartStore = create<CartStore>((set, get) => ({
       pointsDiscountValue: 0,
       pointsUsed: 0,
       attachedClaim: null,
+      pendingClaims: [],
       note: '',
       editingOrderId: null,
     });
@@ -249,6 +319,7 @@ export const useCartStore = create<CartStore>((set, get) => ({
       billDiscountValue: state.billDiscountValue,
       pointsDiscountValue: state.pointsDiscountValue,
       pointsUsed: state.pointsUsed,
+      pendingClaims: [...state.pendingClaims],
       note: state.note,
       heldAt: new Date().toISOString(),
     };
@@ -262,6 +333,8 @@ export const useCartStore = create<CartStore>((set, get) => ({
       billDiscountValue: 0,
       pointsDiscountValue: 0,
       pointsUsed: 0,
+      attachedClaim: null,
+      pendingClaims: [],
       note: '',
       editingOrderId: null,
     }));
@@ -285,6 +358,7 @@ export const useCartStore = create<CartStore>((set, get) => ({
       billDiscountValue: bill.billDiscountValue,
       pointsDiscountValue: bill.pointsDiscountValue || 0,
       pointsUsed: bill.pointsUsed || 0,
+      pendingClaims: bill.pendingClaims || [],
       note: bill.note || '',
       heldBills: s.heldBills.filter((b) => b.id !== id),
     }));
@@ -304,7 +378,8 @@ export const useCartStore = create<CartStore>((set, get) => ({
 
   getItemDiscountAmount: (item: CartItem) => {
     const price = item.customPrice ?? item.originalPrice;
-    const lineBefore = price * item.quantity;
+    const chargeableQty = Math.max(0, item.quantity - (item.claimQuantity || 0));
+    const lineBefore = price * chargeableQty;
     if (item.discountType === 'baht') return Math.min(item.discountValue, lineBefore);
     if (item.discountType === 'percent') return lineBefore * (item.discountValue / 100);
     return 0;
@@ -312,7 +387,8 @@ export const useCartStore = create<CartStore>((set, get) => ({
 
   getItemLineTotal: (item: CartItem) => {
     const price = item.customPrice ?? item.originalPrice;
-    const lineBefore = price * item.quantity;
+    const chargeableQty = Math.max(0, item.quantity - (item.claimQuantity || 0));
+    const lineBefore = price * chargeableQty;
     const discount = get().getItemDiscountAmount(item);
     return Math.max(0, lineBefore - discount);
   },
@@ -337,13 +413,23 @@ export const useCartStore = create<CartStore>((set, get) => ({
   },
 
   getClaimDiscountAmount: () => {
-    const claim = get().attachedClaim;
-    if (!claim) return 0;
+    const attachedClaim = get().attachedClaim;
+    const pendingClaims = get().pendingClaims || [];
+    const discountPendingClaims = pendingClaims.filter((c) => c.resolutionType === 'STORE_DISCOUNT');
+
+    let totalClaimVal = 0;
+    if (attachedClaim) {
+      totalClaimVal += attachedClaim.discountAmount ?? (attachedClaim.quantity * attachedClaim.unitPrice);
+    }
+    for (const c of discountPendingClaims) {
+      totalClaimVal += c.discountAmount ?? (c.quantity * c.unitPrice);
+    }
+
+    if (totalClaimVal === 0) return 0;
     const subtotal = get().getSubtotal();
     const priorDiscounts = get().getBillDiscountAmount() + get().getPointsDiscountAmount();
     const remaining = Math.max(0, subtotal - priorDiscounts);
-    const claimVal = claim.discountAmount ?? (claim.quantity * claim.unitPrice);
-    return Math.min(claimVal, remaining);
+    return Math.min(totalClaimVal, remaining);
   },
 
   getVatAmount: () => {

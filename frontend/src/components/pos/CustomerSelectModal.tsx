@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { useState, useEffect, useMemo } from 'react';
 import { Search, UserPlus, Building2, User, Coins, CreditCard, Tag, CheckCircle2 } from 'lucide-react';
 import { useCartStore } from '@/lib/store/cart-store';
-import { Customer, loadCustomers, upsertCustomer } from '@/lib/customer-service';
+import { Customer, loadCustomers, fetchCustomers, upsertCustomer } from '@/lib/customer-service';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -28,16 +28,36 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
 
   const cart = useCartStore();
 
-  const reloadData = () => {
-    setCustomers(loadCustomers());
+  const reloadData = async () => {
+    try { setCustomers(await fetchCustomers()); }
+    catch { setCustomers(loadCustomers()); toast.warning('โหลดลูกค้าจากฐานข้อมูลไม่ได้ ใช้ข้อมูลล่าสุดในเครื่อง'); }
+  };
+
+  const resetForm = () => {
+    setSearch('');
+    setIsQuickAddOpen(false);
+    setQuickName('');
+    setQuickPhone('');
+    setQuickType('INDIVIDUAL');
+    setQuickTaxId('');
+    setQuickPriceLevel(1);
   };
 
   useEffect(() => {
     if (open) {
       reloadData();
-      setIsQuickAddOpen(false);
+      resetForm();
+    } else {
+      resetForm();
     }
   }, [open]);
+
+  const handleModalClose = (isOpen: boolean) => {
+    if (!isOpen) {
+      resetForm();
+    }
+    onOpenChange(isOpen);
+  };
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -65,7 +85,7 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
     onOpenChange(false);
   };
 
-  const handleQuickAdd = () => {
+  const handleQuickAdd = async () => {
     if (!quickName.trim()) {
       toast.error('กรุณากรอกชื่อลูกค้า / ชื่อบริษัท');
       return;
@@ -75,7 +95,8 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
       return;
     }
 
-    const res = upsertCustomer({
+    try {
+    const res = await upsertCustomer({
       type: quickType,
       name: quickName.trim(),
       phone: quickPhone.trim(),
@@ -92,10 +113,11 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
       setQuickTaxId('');
       setIsQuickAddOpen(false);
     }
+    } catch (error) { toast.error('บันทึกลูกค้าไม่ได้: ' + (error instanceof Error ? error.message : String(error))); }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleModalClose}>
       <DialogContent className="bg-white text-slate-900 border-slate-200 w-[95vw] sm:max-w-lg p-0 overflow-hidden rounded-2xl shadow-2xl">
         <DialogHeader className="border-b border-slate-200 px-6 py-4.5 bg-slate-50 shrink-0">
           <DialogTitle className="text-xl font-black text-slate-900 flex items-center gap-2.5">

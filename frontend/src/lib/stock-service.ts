@@ -1,4 +1,5 @@
 import { useProductStore } from './store/product-store';
+import { apiFetch } from './api';
 
 export type StockMovementType = 
   | 'IN_PO'       // รับเข้าจากใบสั่งซื้อ PO
@@ -34,12 +35,38 @@ export function loadStockMovements(): StockMovement[] {
     const raw = localStorage.getItem(STOCK_MOVEMENTS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        // Only return movements that belong to real current products
+        const prods = useProductStore.getState().products || [];
+        if (prods.length > 0) {
+          const productIds = new Set(prods.map((p) => p.id));
+          const productSkus = new Set(prods.map((p) => p.sku).filter(Boolean));
+          return parsed.filter(
+            (m) => productIds.has(m.productId) || (m.sku && productSkus.has(m.sku))
+          );
+        }
+        return parsed;
+      }
     }
   } catch (err) {
     console.error('Failed to load stock movements from storage:', err);
   }
   return [];
+}
+
+export async function fetchStockMovements(productId?: string): Promise<StockMovement[]> {
+  try {
+    const url = productId ? `/inventory/movements?productId=${productId}` : '/inventory/movements';
+    const data = await apiFetch(url);
+    if (Array.isArray(data)) {
+      saveStockMovements(data);
+      return data;
+    }
+  } catch (err) {
+    console.warn('[StockService] Failed to fetch movements from backend, falling back to storage:', err);
+    return loadStockMovements();
+  }
+  return loadStockMovements();
 }
 
 export function saveStockMovements(movements: StockMovement[]): void {
@@ -384,13 +411,42 @@ export function recordPoRollbackStock(
 /**
  * Manual stock adjustment (Add, Subtract, Set)
  */
-export function adjustSingleProductStock(params: {
+export async function adjustSingleProductStock(params: {
   productId: string;
   type: 'ADD' | 'SUB' | 'SET';
   amount: number;
   reason: string;
   userName?: string;
-}): { success: boolean; newStock: number; previousStock: number; delta: number } {
+}): Promise<{ success: boolean; newStock: number; previousStock: number; delta: number }> {
+  // 1. Try Backend API first
+  try {
+    const res = await apiFetch('/inventory/adjust', {
+      method: 'POST',
+      body: JSON.stringify({
+        productId: params.productId,
+        type: params.type,
+        adjustmentType: params.type === 'SUB' ? 'SUBTRACT' : params.type,
+        amount: params.amount,
+        reason: params.reason,
+        userName: params.userName || 'ผู้ดูแลระบบ',
+      }),
+    });
+
+    if (res && res.success) {
+      // Refresh real product catalog from DB
+      await useProductStore.getState().fetchProducts();
+      return {
+        success: true,
+        newStock: Number(res.newStock),
+        previousStock: Number(res.previousStock),
+        delta: Number(res.delta),
+      };
+    }
+  } catch (err) {
+    console.warn('[StockService] Backend adjust failed, falling back to local:', err);
+  }
+
+  // 2. Offline / local fallback
   const products = getLocalProducts();
   const prodIndex = products.findIndex(
     (p) => p.id === params.productId || p.sku === params.productId

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import {
   CheckCircle2, AlertCircle, Sparkles, DollarSign, Wallet, Store
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { newOperationId } from '@/lib/order-sync-service';
 import { kickCashDrawer, getCashDrawerConfig } from '@/lib/cash-drawer-service';
 
 interface CashDrawerModalProps {
@@ -33,6 +34,7 @@ export function CashDrawerModal({
 }: CashDrawerModalProps) {
   const { currentShift, isShiftOpen, getExpectedCash, addCashTransaction } = useShiftStore();
 
+  const operationId = useRef<string | null>(null);
   const [mode, setMode] = useState<'in' | 'out' | 'open_only'>('in');
   const [amountStr, setAmountStr] = useState<string>('');
   const [reason, setReason] = useState<string>('');
@@ -45,6 +47,7 @@ export function CashDrawerModal({
       setReason('');
       setMode('in');
       setIsSubmitting(false);
+      useShiftStore.getState().fetchCurrentShift();
     }
   }, [open]);
 
@@ -82,20 +85,20 @@ export function CashDrawerModal({
       const res = await kickCashDrawer({
         reason: mode === 'open_only' ? 'เปิดลิ้นชักอย่างเดียว' : mode === 'in' ? 'นำเงินเข้า' : 'นำเงินออก'
       });
-      if (res.methodUsed === 'print_pulse') {
-        toast.info('⚡ ส่งสัญญาณสั่งเตะลิ้นชักผ่านเครื่องพิมพ์แล้ว');
-      } else if (res.methodUsed === 'web_serial') {
-        toast.success('⚡ สั่งเตะลิ้นชักผ่าน Web Serial สำเร็จ');
+      if (res.success) {
+        toast.success(`🔓 สั่งเปิดลิ้นชักเรียบร้อย (${res.printer || 'เครื่องพิมพ์สลิป'})`);
+      } else {
+        toast.error(`⚠️ ไม่สามารถเปิดลิ้นชักได้: ${res.error || 'ตรวจสอบเครื่องพิมพ์'}`);
       }
     } catch (err) {
       console.warn('Failed to kick drawer:', err);
+      toast.error('เกิดข้อผิดพลาดในการส่งคำสั่งเปิดลิ้นชัก');
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (mode === 'open_only') {
       triggerDrawerKick();
-      toast.success('🔓 สั่งเปิดลิ้นชักเก็บเงินเรียบร้อยแล้ว');
       onOpenChange(false);
       return;
     }
@@ -123,7 +126,9 @@ export function CashDrawerModal({
 
     setIsSubmitting(true);
     try {
-      addCashTransaction(mode, parsedAmount, reason.trim());
+      operationId.current ||= newOperationId();
+      await addCashTransaction(mode, parsedAmount, reason.trim(), operationId.current);
+      operationId.current = null;
       triggerDrawerKick();
 
       toast.success(

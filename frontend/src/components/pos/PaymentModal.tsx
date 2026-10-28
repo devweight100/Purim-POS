@@ -1,21 +1,25 @@
 'use client';
+import { newOperationId } from '@/lib/order-sync-service';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { formatCurrency } from '@/lib/utils';
-import { apiFetch } from '@/lib/api';
+import { api, apiFetch, ApiError, isRetryableError } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { CreditCard, QrCode, Banknote, Edit3, CheckCircle2, SplitSquareHorizontal, UserCheck, Building2, ArrowRight, FileText } from 'lucide-react';
+import { CreditCard, QrCode, Banknote, Edit3, CheckCircle2, SplitSquareHorizontal, UserCheck, Building2, ArrowRight, FileText, Printer, ShieldCheck } from 'lucide-react';
 import { NumpadPopup } from './NumpadPopup';
 import { ReceiptPdfModal, ReceiptData } from './ReceiptPdfModal';
+import { ThermalReceiptView, printThermalReceiptDirect } from './ThermalReceiptView';
 import { loadBankAccounts, BankAccount } from '@/lib/bank-account-storage';
+import { loadStoreSettings } from '@/lib/store-settings-storage';
+import { printDocumentIframe } from '@/lib/pdf-print-service';
 import { deductPosSaleStock } from '@/lib/stock-service';
 import { recordCustomerSale } from '@/lib/customer-service';
-import { updateClaimStatus } from '@/lib/claim-service';
+import { updateClaimStatus, processClaim } from '@/lib/claim-service';
 import { kickCashDrawer, getCashDrawerConfig } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
 
@@ -41,6 +45,10 @@ export function PaymentModal({
   const cart = useCartStore();
   const shiftStore = useShiftStore();
 
+  const operationId = useRef<string | null>(null);
+  const submitting = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingReceipt, setPendingReceipt] = useState(false);
   const [step, setStep] = useState<Step>('METHOD');
   const [method, setMethod] = useState<Method | null>(null);
   
@@ -56,6 +64,11 @@ export function PaymentModal({
   // PDF Receipt state
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   const [showReceiptPdf, setShowReceiptPdf] = useState(false);
+  const directReceiptRef = useRef<HTMLDivElement>(null);
+
+  const triggerDirectPrint = (receipt: ReceiptData) => {
+    printThermalReceiptDirect(receipt, loadStoreSettings());
+  };
 
   const total = orderToEditPayment ? (orderToEditPayment.totalAmount || 0) : cart.getTotal();
   
@@ -72,38 +85,31 @@ export function PaymentModal({
   // Auto-close countdown timer state for SUCCESS step
   const [countdown, setCountdown] = useState<number>(5);
 
-  // Force reset when opened & Auto-close timer on SUCCESS
+  // Reset all state when closed
   useEffect(() => {
-    if (open) {
-      const accs = loadBankAccounts();
-      setBankAccounts(accs);
-      const def = accs.find(a => a.isDefault) || accs[0] || null;
-      setSelectedBank(def);
-
-      if (initialMethod) {
-        setMethod(initialMethod);
-        setStep('PROCESS');
-      } else {
-        setStep('METHOD');
-        setMethod(null);
-      }
+    if (!open) {
       setCashReceived(0);
       setQrReceived(0);
       setNumpadTarget('NONE');
+      setStep('METHOD');
+      setMethod(null);
+      setShowReceiptPdf(false);
+      setReceiptData(null);
     }
-  }, [open, initialMethod]);
+  }, [open]);
 
   useEffect(() => {
     let timer: any = null;
     let interval: any = null;
 
-    if (open && step === 'SUCCESS') {
+    if (open && step === 'SUCCESS' && !showReceiptPdf) {
       setCountdown(5);
       interval = setInterval(() => {
         setCountdown((prev) => Math.max(0, prev - 1));
       }, 1000);
 
       timer = setTimeout(() => {
+        operationId.current = null;
         cart.clearCart();
         onOpenChange(false);
       }, 5000);
@@ -113,11 +119,13 @@ export function PaymentModal({
       if (timer) clearTimeout(timer);
       if (interval) clearInterval(interval);
     };
-  }, [open, step]);
+  }, [open, step, showReceiptPdf]);
 
   const handleOpenChange = (isOpen: boolean) => {
+    if (submitting.current) return;
     if (!isOpen) {
       if (step === 'SUCCESS' || orderToEditPayment) {
+        operationId.current = null;
         cart.clearCart();
       }
     }
@@ -143,6 +151,10 @@ export function PaymentModal({
   };
 
   const handleConfirmPayment = async () => {
+    if (submitting.current || step === 'SUCCESS') return;
+    submitting.current = true;
+    setIsSubmitting(true);
+    try {
     let payments = [];
     let recordedCashReceived = 0;
     let recordedChangeAmount = 0;
@@ -159,7 +171,11 @@ export function PaymentModal({
       return;
     }
     
-    if (method === 'CASH') {
+    if (total === 0) {
+      payments.push({ method: 'CASH' as const, amount: 0 });
+      recordedCashReceived = 0;
+      recordedChangeAmount = 0;
+    } else if (method === 'CASH') {
       payments.push({ method: 'CASH' as const, amount: total });
       recordedCashReceived = cashReceived;
       recordedChangeAmount = change;
@@ -184,7 +200,7 @@ export function PaymentModal({
       recordedCashReceived = cashReceived;
       recordedChangeAmount = splitChange;
     } else if (method === 'CREDIT') {
-      payments.push({ method: 'CREDIT_NOTE' as const, amount: total });
+      payments.push({ method: 'CREDIT_DEBT' as const, amount: total });
     }
 
     // Direct Payment Method Edit for existing order (without touching cart!)
@@ -193,16 +209,12 @@ export function PaymentModal({
       const oldPayments = orderToEditPayment.payments || [orderToEditPayment.paymentMethod || 'CASH'];
       const primaryNewMethod = payments.length > 1 ? 'SPLIT' : (payments[0]?.method || 'CASH');
 
-      // Update shift store sales accounting for new payments
-      shiftStore.updateOrderPaymentMethod(orderId, oldPayments, payments, total);
+      await apiFetch(`/orders/${orderToEditPayment.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ paymentMethod: primaryNewMethod, payments: payments })
+      });
 
-      // Try API update
-      try {
-        await apiFetch(`/orders/${orderToEditPayment.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ paymentMethod: primaryNewMethod, payments: payments })
-        });
-      } catch (e) {}
+      shiftStore.updateOrderPaymentMethod(orderId, oldPayments, payments, total);
 
       const completedReceipt: ReceiptData = {
         orderNumber: orderId,
@@ -228,8 +240,17 @@ export function PaymentModal({
       };
 
       setReceiptData(completedReceipt);
+      operationId.current = null;
       setStep('SUCCESS');
-      setShowReceiptPdf(true);
+      setShowReceiptPdf(false);
+      triggerDirectPrint(completedReceipt);
+
+      // Kick cash drawer ONLY if CASH is involved!
+      const hasCash = method === 'CASH' || (method === 'SPLIT' && recordedCashReceived > 0);
+      if (hasCash) {
+        kickCashDrawer({ reason: 'แก้ไขบิล - ชำระเงินสด' });
+      }
+
       onPaymentEditSuccess?.();
       toast.success(`✅ อัปเดตวิธีชำระเงินบิล #${orderId} เรียบร้อยแล้ว!`);
       return;
@@ -238,30 +259,40 @@ export function PaymentModal({
     let isSynced = false;
     let backendOrder: any = null;
     try {
-      try {
-        backendOrder = await apiFetch('/orders/checkout', {
-          method: 'POST',
-          body: JSON.stringify({
-            customerId: cart.customerId,
-            discountAmount: cart.getBillDiscountAmount(),
-            note: `Shift: ${shiftStore.currentShift?.id || 'unknown'}`,
-            items: cart.items.map(i => ({
-              productId: i.productId,
-              quantity: i.quantity,
-              unitPrice: cart.getEffectivePrice(i)
-            })),
-            payments: payments
-          })
-        });
-        isSynced = true;
-      } catch (backendError) {
-        isSynced = false;
-        console.warn('Backend server offline or unreachable, proceeding with offline POS checkout:', backendError);
-        toast.warning('⚠️ บันทึกออเดอร์ในเครื่องเรียบร้อย (รอ Sync ขึ้น Backend เมื่อออนไลน์)', { duration: 5000 });
-      }
-
-      const finalOrderNumber = backendOrder?.orderNumber || `ORD-OFFLINE-${Date.now()}`;
-      const finalOrderId = backendOrder?.id || Date.now().toString();
+      operationId.current ||= newOperationId();
+      backendOrder = await api.orders.checkout({
+        clientOrderId: operationId.current,
+        customerId: cart.customerId,
+        shiftId: shiftStore.currentShift?.id,
+        createdAt: new Date().toISOString(),
+        discountAmount: Math.min(
+          cart.getBillDiscountAmount() + cart.getPointsDiscountAmount() + claimDiscountAmt,
+          cart.getSubtotal()
+        ),
+        pointsUsed: cart.pointsUsed,
+        pointsDiscountAmount: cart.getPointsDiscountAmount(),
+        totalAmount: total,
+        note: cart.note || undefined,
+        items: cart.items.map(i => {
+          const effectivePrice = cart.getEffectivePrice(i);
+          const lineTotal = cart.getItemLineTotal(i);
+          const lineDiscount = Math.max(0, (i.quantity * effectivePrice) - lineTotal);
+          return {
+            productId: i.productId,
+            quantity: i.quantity,
+            unitPrice: effectivePrice,
+            unitId: i.unitId,
+            unitName: i.unitName,
+            conversionFactor: i.conversionFactor || 1,
+            discountAmount: lineDiscount,
+          };
+        }),
+        payments,
+      });
+      isSynced = !backendOrder.isOfflineSaved;
+      setPendingReceipt(!isSynced);
+      const finalOrderNumber = backendOrder.orderNumber;
+      const finalOrderId = backendOrder.id;
 
       const previousEditingId = cart.editingOrderId;
       if (previousEditingId) {
@@ -281,26 +312,32 @@ export function PaymentModal({
 
       shiftStore.recordSale({
         id: finalOrderId,
+        outboxVersion: 2,
         shiftId: shiftStore.currentShift?.id || 'shift_default',
         orderNumber: finalOrderNumber,
         customerId: cart.customerId,
         customerName: cart.customerName,
-        items: cart.items.map(i => ({
-          productId: i.productId,
-          name: i.name,
-          sku: i.sku,
-          quantity: i.quantity,
-          unitName: i.unitName,
-          unitId: i.unitId,
-          conversionFactor: i.conversionFactor || 1,
-          unitPrice: cart.getEffectivePrice(i),
-          originalPrice: i.originalPrice,
-          discountType: i.discountType,
-          discountValue: i.discountValue,
-          discountAmount: cart.getItemDiscountAmount(i),
-          lineTotal: cart.getItemLineTotal(i),
-          hasVat: i.hasVat
-        })),
+        items: cart.items.map(i => {
+          const effectivePrice = cart.getEffectivePrice(i);
+          const lineTotal = cart.getItemLineTotal(i);
+          const lineDiscount = Math.max(0, (i.quantity * effectivePrice) - lineTotal);
+          return {
+            productId: i.productId,
+            name: i.name,
+            sku: i.sku,
+            quantity: i.quantity,
+            unitName: i.unitName,
+            unitId: i.unitId,
+            conversionFactor: i.conversionFactor || 1,
+            unitPrice: effectivePrice,
+            originalPrice: i.originalPrice,
+            discountType: i.discountType,
+            discountValue: i.discountValue,
+            discountAmount: lineDiscount,
+            lineTotal: lineTotal,
+            hasVat: i.hasVat,
+          };
+        }),
         subtotal: cart.getSubtotal(),
         billDiscountType: cart.billDiscountType,
         billDiscountValue: cart.billDiscountValue,
@@ -330,6 +367,77 @@ export function PaymentModal({
         });
       }
 
+      // Commit pending claim items (Store Discount claims)
+      if (cart.pendingClaims && cart.pendingClaims.length > 0) {
+        for (const pending of cart.pendingClaims) {
+          try {
+            await processClaim({
+              item: {
+                orderId: pending.orderId,
+                orderNumber: pending.orderNumber,
+                orderDate: pending.orderDate,
+                customerId: pending.customerId,
+                customerName: pending.customerName,
+                customerPhone: pending.customerPhone,
+                productId: pending.productId,
+                productName: pending.productName,
+                sku: pending.sku,
+                unitName: pending.unitName,
+                boughtQuantity: pending.quantity,
+                alreadyClaimedQuantity: 0,
+                availableClaimQuantity: pending.quantity,
+                unitPrice: pending.unitPrice,
+                isReplacementWarranty: false,
+              },
+              quantity: pending.quantity,
+              defectReason: pending.defectReason,
+              resolutionType: 'STORE_DISCOUNT',
+              cashierName: shiftStore.currentShift?.userName || 'พนักงาน POS',
+              discountAmount: pending.discountAmount ?? (pending.quantity * pending.unitPrice),
+              note: `ใช้เป็นส่วนลดในบิล #${finalOrderNumber}`,
+            });
+          } catch (err) {
+            console.error('Failed to commit pending claim:', err);
+          }
+        }
+      }
+
+      // Commit in-cart replacement claims (item.claimQuantity > 0)
+      for (const it of cart.items) {
+        if (it.claimQuantity && it.claimQuantity > 0) {
+          try {
+            await processClaim({
+              item: {
+                orderId: it.claimSourceOrderId || finalOrderId,
+                orderNumber: it.claimSourceOrderId || finalOrderNumber,
+                orderDate: new Date().toISOString(),
+                customerId: cart.customerId,
+                customerName: cart.customerName || 'ลูกค้าทั่วไป',
+                productId: it.productId,
+                productName: it.name,
+                sku: it.sku,
+                unitName: it.unitName,
+                boughtQuantity: it.quantity,
+                alreadyClaimedQuantity: 0,
+                availableClaimQuantity: it.claimQuantity,
+                unitPrice: cart.getEffectivePrice(it),
+                isReplacementWarranty: false,
+              },
+              quantity: it.claimQuantity,
+              defectReason: it.claimDefectReason || 'สินค้าชำรุด/เปลี่ยนสินค้าใหม่ฟรีในบิล',
+              resolutionType: 'REPLACE_ITEM',
+              cashierName: shiftStore.currentShift?.userName || 'พนักงาน POS',
+              note: `เปลี่ยนสินค้าฟรีในบิล #${finalOrderNumber}`,
+              skipStockDeduction: true,
+              fulfilledInOrderNumber: finalOrderNumber,
+              fulfilledInOrderId: finalOrderId,
+            });
+          } catch (err) {
+            console.error('Failed to commit in-cart claim replacement:', err);
+          }
+        }
+      }
+
       // Deduct stock from inventory and log stock movement
       deductPosSaleStock(
         cart.items.map(i => ({
@@ -344,29 +452,16 @@ export function PaymentModal({
         shiftStore.currentShift?.userName || 'พนักงาน POS'
       );
 
-      // Award points, deduct redeemed points, and accumulate credit debt for member customer
-      const isCreditSale = method === 'CREDIT' || payments.some(p => p.method === 'CREDIT_NOTE');
-      const custSaleRes = recordCustomerSale(
-        cart.customerId,
-        total,
-        isCreditSale,
-        finalOrderNumber,
-        cart.pointsUsed
-      );
+      const custSaleRes = {
+        earnedPoints: isSynced ? Number(backendOrder.pointsEarned || 0) : 0,
+        pointsUsed: isSynced ? Number(backendOrder.pointsUsed || 0) : 0,
+        newTotalPoints: isSynced ? Number(backendOrder.customer?.points || 0) : 0,
+      };
 
-      if (custSaleRes.earnedPoints > 0 || custSaleRes.pointsUsed > 0) {
-        toast.success(
-          `🎉 สมาชิก ${custSaleRes.customerName} : ${custSaleRes.pointsUsed > 0 ? `ใช้ ${custSaleRes.pointsUsed.toLocaleString()} แต้ม ` : ''}${custSaleRes.earnedPoints > 0 ? `ได้รับ +${custSaleRes.earnedPoints} แต้ม ` : ''}(คงเหลือ ${custSaleRes.newTotalPoints.toLocaleString()} แต้ม)`
-        );
-      }
-
-      // Automatically kick cash drawer open if cash payment was received!
-      const hasCash = method === 'CASH' || (method === 'SPLIT' && cashReceived > 0) || recordedCashReceived > 0;
+      // Automatically kick cash drawer open if cash payment was received (and total > 0)!
+      const hasCash = ((method === 'CASH' || (method === 'SPLIT' && cashReceived > 0) || recordedCashReceived > 0)) && total > 0;
       if (hasCash) {
-        const drawerConf = getCashDrawerConfig();
-        if (drawerConf.enabled && drawerConf.openOnCashPayment) {
-          kickCashDrawer({ reason: 'รับชำระเงินสด' }).catch(() => {});
-        }
+        kickCashDrawer({ reason: 'รับชำระเงินสด' }).catch(() => {});
       }
 
       const completedReceipt: ReceiptData = {
@@ -375,15 +470,22 @@ export function PaymentModal({
         customerName: cart.customerName,
         userName: shiftStore.currentShift?.userName || 'พนักงาน POS',
         note: cart.note?.trim() || undefined,
-        items: cart.items.map(i => ({
-          name: i.name,
-          quantity: i.quantity,
-          unitName: i.unitName,
-          unitPrice: cart.getEffectivePrice(i),
-          lineTotal: cart.getItemLineTotal(i),
-          discountAmount: cart.getItemDiscountAmount(i),
-          itemNote: i.itemNote
-        })),
+        items: cart.items.map(i => {
+          const effectivePrice = cart.getEffectivePrice(i);
+          const lineTotal = cart.getItemLineTotal(i);
+          const lineDiscount = Math.max(0, (i.quantity * effectivePrice) - lineTotal);
+          return {
+            name: i.name,
+            quantity: i.quantity,
+            unitName: i.unitName,
+            unitPrice: effectivePrice,
+            lineTotal: lineTotal,
+            discountAmount: lineDiscount,
+            claimQuantity: i.claimQuantity,
+            claimDefectReason: i.claimDefectReason,
+            itemNote: i.itemNote,
+          };
+        }),
         subtotal: cart.getSubtotal(),
         billDiscountAmount: cart.getBillDiscountAmount(),
         pointsDiscountAmount: cart.getPointsDiscountAmount(),
@@ -394,21 +496,80 @@ export function PaymentModal({
         customerPointsBalance: custSaleRes.newTotalPoints,
         vatAmount: cart.getVatAmount(),
         totalAmount: total,
-        paymentMethod: method === 'CASH' ? 'เงินสด (Cash)' : method === 'QR' ? 'QR PromptPay' : method === 'SPLIT' ? 'แบ่งชำระ (Split)' : 'เงินเชื่อ (Credit)',
+        paymentMethod: total === 0
+          ? 'เคลมสินค้า / ฟรี (฿0.00)'
+          : payments.length > 1
+            ? 'แบ่งชำระ (Split Payment)'
+            : method === 'CASH'
+              ? 'เงินสด (Cash)'
+              : method === 'QR'
+                ? 'QR PromptPay'
+                : method === 'SPLIT'
+                  ? 'แบ่งชำระ (Split)'
+                  : 'เงินเชื่อ (Credit)',
         payments: payments,
         cashReceived: recordedCashReceived,
         changeAmount: recordedChangeAmount
       };
 
       setReceiptData(completedReceipt);
+      operationId.current = null;
       setStep('SUCCESS');
-      setShowReceiptPdf(true); // Automatically pop up the PDF receipt preview!
+      setShowReceiptPdf(false);
+      triggerDirectPrint(completedReceipt);
     } catch (error) {
-      toast.error('ไม่สามารถประมวลผลการชำระเงินได้');
+      if (!backendOrder && error instanceof ApiError && !isRetryableError(error)) operationId.current = null;
+      toast.error('บันทึกการชำระเงินไม่ได้: ' + (error instanceof Error ? error.message : String(error)));
     }
+    } catch (error) {
+      toast.error('บันทึกไม่ได้: ' + (error instanceof Error ? error.message : String(error)));
+    } finally { submitting.current = false; setIsSubmitting(false); }
   };
 
+  useEffect(() => {
+    if (open) {
+      if (!orderToEditPayment && cart.items.length === 0) {
+        toast.warning('ไม่มีสินค้าในตะกร้า ไม่สามารถชำระเงินได้');
+        onOpenChange(false);
+        return;
+      }
+
+      setPendingReceipt(false);
+      void api.bankAccounts.getAll().then(accs => {
+        setBankAccounts(accs);
+        setSelectedBank(accs.find((a: BankAccount) => a.isDefault) || accs[0] || null);
+      }).catch(() => toast.warning('โหลดบัญชีจากฐานข้อมูลไม่ได้ กำลังใช้ข้อมูลล่าสุดในเครื่อง'));
+      const accs = loadBankAccounts();
+      setBankAccounts(accs);
+      const def = accs.find(a => a.isDefault) || accs[0] || null;
+      setSelectedBank(def);
+
+      setCashReceived(0);
+      setQrReceived(0);
+      setNumpadTarget('NONE');
+
+      // 0-Baht checkout automation (Claims or ฿0 bill)
+      if (total === 0 && cart.items.length > 0 && !orderToEditPayment) {
+        setMethod('CASH');
+        setStep('PROCESS');
+        setTimeout(() => {
+          handleConfirmPayment();
+        }, 50);
+        return;
+      }
+
+      if (initialMethod) {
+        setMethod(initialMethod);
+        setStep('PROCESS');
+      } else {
+        setStep('METHOD');
+        setMethod(null);
+      }
+    }
+  }, [open, initialMethod, total]);
+
   const handleFinish = () => {
+    operationId.current = null;
     cart.clearCart();
     onOpenChange(false);
   };
@@ -447,17 +608,18 @@ export function PaymentModal({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="w-[85vw] max-w-6xl h-[82vh] max-h-[850px] flex flex-col p-6 sm:p-8 overflow-y-auto bg-white border-slate-200 text-slate-900 shadow-2xl rounded-3xl">
+        <DialogContent aria-busy={isSubmitting} className="w-[calc(100vw-1rem)] sm:w-[90vw] max-w-6xl h-[90dvh] max-h-[850px] flex flex-col p-3 sm:p-8 overflow-y-auto bg-white border-slate-200 text-slate-900 shadow-2xl rounded-3xl">
           <DialogHeader className="shrink-0 pb-3 border-b border-slate-100 mb-4">
             <DialogTitle className="text-2xl font-bold flex items-center gap-3">
               <CreditCard className="w-8 h-8 text-sky-500" />
               <span>
                 {step === 'METHOD' && 'เลือกช่องทางการชำระเงิน'}
-                {step === 'PROCESS' && method === 'CASH' && 'รับชำระด้วยเงินสด (Cash)'}
+                {step === 'PROCESS' && total === 0 && 'ประมวลผลบิลเคลมสินค้า / ฟรี (฿0.00)'}
+                {step === 'PROCESS' && total > 0 && method === 'CASH' && 'รับชำระด้วยเงินสด (Cash)'}
                 {step === 'PROCESS' && method === 'QR' && 'รับชำระผ่าน QR PromptPay / โอนเงิน'}
                 {step === 'PROCESS' && method === 'SPLIT' && 'รับชำระแบบแบ่งจ่าย (Split Payment)'}
                 {step === 'PROCESS' && method === 'CREDIT' && 'บันทึกเป็นเงินเชื่อ (ค้างชำระ)'}
-                {step === 'SUCCESS' && 'ทำรายการชำระเงินสำเร็จ!'}
+                {step === 'SUCCESS' && (pendingReceipt ? 'เก็บบิลในเครื่อง — รอส่งฐานข้อมูล' : 'บันทึกฐานข้อมูลสำเร็จ!')}
               </span>
             </DialogTitle>
           </DialogHeader>
@@ -546,8 +708,21 @@ export function PaymentModal({
             </div>
           )}
 
+          {/* STEP 2: PROCESS (0-Baht Auto Checkout) */}
+          {step === 'PROCESS' && total === 0 && (
+            <div className="py-20 flex-1 flex flex-col items-center justify-center text-center space-y-4">
+              <div className="w-20 h-20 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center animate-pulse shadow-inner">
+                <ShieldCheck className="w-12 h-12" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-black text-slate-800">กำลังประมวลผลบิลเคลมสินค้า / ฟรี (฿0.00)...</h3>
+                <p className="text-sm text-slate-500 mt-1">ระบบกำลังบันทึกข้อมูล ตัดสต็อก และพิมพ์สลิปให้อัตโนมัติ</p>
+              </div>
+            </div>
+          )}
+
           {/* STEP 2: PROCESS (CASH) */}
-          {step === 'PROCESS' && method === 'CASH' && (
+          {step === 'PROCESS' && total > 0 && method === 'CASH' && (
             <div className="py-2 flex-1 flex flex-col justify-between">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                 {/* Left side: Received Cash & Calculator */}
@@ -621,7 +796,7 @@ export function PaymentModal({
                 </Button>
                 <Button 
                   className="flex-1 h-14 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xl rounded-2xl shadow-lg" 
-                  disabled={!isCashSufficient}
+                  disabled={isSubmitting || !isCashSufficient}
                   onClick={handleConfirmPayment}
                 >
                   ยืนยันรับเงินสด
@@ -662,7 +837,7 @@ export function PaymentModal({
                   </Badge>
 
                   {/* XL QR Image */}
-                  <div className="w-72 h-72 border-2 border-slate-200 rounded-3xl overflow-hidden bg-white p-4 shadow-md flex items-center justify-center mb-4">
+                  <div className="w-full max-w-72 aspect-square border-2 border-slate-200 rounded-3xl overflow-hidden bg-white p-4 shadow-md flex items-center justify-center mb-4">
                     {selectedBank?.qrImageUrl ? (
                       <img src={selectedBank.qrImageUrl} alt="QR PromptPay" className="w-full h-full object-contain" />
                     ) : (
@@ -854,7 +1029,7 @@ export function PaymentModal({
                     </Button>
                     <Button 
                       className="flex-1 h-14 bg-sky-500 hover:bg-sky-600 text-white font-bold text-lg rounded-2xl shadow-lg" 
-                      disabled={!isSplitSufficient}
+                      disabled={isSubmitting || !isSplitSufficient}
                       onClick={handleConfirmPayment}
                     >
                       ยืนยันรับเงิน
@@ -882,7 +1057,7 @@ export function PaymentModal({
                 <Button variant="outline" className="w-40 h-14 text-base border-slate-300 rounded-2xl font-semibold" onClick={() => setStep('METHOD')}>
                   ย้อนกลับ
                 </Button>
-                <Button className="w-56 h-14 bg-sky-500 hover:bg-sky-600 text-white font-bold text-lg rounded-2xl shadow-lg" onClick={handleConfirmPayment}>
+                <Button className="w-56 h-14 bg-sky-500 hover:bg-sky-600 text-white font-bold text-lg rounded-2xl shadow-lg" onClick={handleConfirmPayment} disabled={isSubmitting}>
                   ยืนยันบันทึกหนี้
                 </Button>
               </div>
@@ -896,42 +1071,60 @@ export function PaymentModal({
                 <CheckCircle2 className="w-16 h-16" />
               </div>
               <div>
-                <h2 className="text-4xl font-extrabold text-slate-900">ชำระเงินสำเร็จ!</h2>
+                <h2 className="text-4xl font-extrabold text-slate-900">
+                  {total === 0 ? 'บันทึกบิลเคลม / ชำระ ฿0 สำเร็จ!' : (pendingReceipt ? 'รอส่งฐานข้อมูล' : 'ชำระเงินสำเร็จ!')}
+                </h2>
                 <p className="text-slate-500 text-base mt-1">
-                  รับชำระเงินและบันทึกออเดอร์เข้าในระบบเรียบร้อยแล้ว
+                  {pendingReceipt ? 'บิลนี้ยังไม่อยู่ในฐานข้อมูล กรุณาตรวจแถบสถานะจนส่งสำเร็จ' : 'ฐานข้อมูลยืนยันรายการเรียบร้อยแล้ว'}
                 </p>
-                <div className="pt-2">
-                  <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-300 font-extrabold text-xs px-3 py-1.5 rounded-full shadow-xs">
+                <div className="pt-2 flex flex-col items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 bg-emerald-100 text-emerald-800 border border-emerald-300 font-extrabold text-sm px-4 py-1.5 rounded-full shadow-xs">
+                    กรุณาตรวจสอบใบเสร็จจากเครื่องพิมพ์หรือหน้าต่างพิมพ์
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-300 font-extrabold text-xs px-3 py-1 rounded-full shadow-xs">
                     ⏳ หน้าต่างจะปิดอัตโนมัติและล้างตะกร้าใน {countdown} วินาที...
                   </span>
                 </div>
               </div>
 
               {method === 'CASH' && change > 0 && (
-                <div className="bg-emerald-50 border-2 border-emerald-200 rounded-3xl p-6 inline-block mx-auto min-w-72 shadow-sm">
+                <div className="bg-emerald-50 border-2 border-emerald-200 rounded-3xl p-6 inline-block mx-auto w-full max-w-sm shadow-sm">
                   <span className="text-emerald-800 text-base block font-bold">เงินทอนลูกค้า</span>
                   <span className="text-5xl font-extrabold text-emerald-600 font-mono">{formatCurrency(change)}</span>
                 </div>
               )}
 
               {method === 'SPLIT' && splitChange > 0 && (
-                <div className="bg-emerald-50 border-2 border-emerald-200 rounded-3xl p-6 inline-block mx-auto min-w-72 shadow-sm">
+                <div className="bg-emerald-50 border-2 border-emerald-200 rounded-3xl p-6 inline-block mx-auto w-full max-w-sm shadow-sm">
                   <span className="text-emerald-800 text-base block font-bold">เงินทอนลูกค้า (จากเงินสด)</span>
                   <span className="text-5xl font-extrabold text-emerald-600 font-mono">{formatCurrency(splitChange)}</span>
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center justify-center gap-4 pt-6">
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-4">
                 <Button 
-                  variant="outline"
-                  className="h-14 px-8 border-sky-400 bg-sky-50 text-sky-700 hover:bg-sky-500 hover:text-white font-bold text-lg rounded-2xl shadow-md transition-all flex items-center gap-2" 
-                  onClick={() => setShowReceiptPdf(true)}
+                  className="h-14 px-7 bg-black hover:bg-slate-800 text-white font-bold text-base rounded-2xl shadow-md transition-all flex items-center gap-2 cursor-pointer" 
+                  onClick={() => {
+                    if (receiptData) {
+                      triggerDirectPrint(receiptData);
+                      toast.success('สั่งพิมพ์ใบเสร็จซ้ำอีกครั้งแล้ว');
+                    }
+                  }}
                 >
-                  <FileText className="w-5 h-5" />
-                  ดู / พิมพ์ใบเสร็จ PDF
+                  <Printer className="w-5 h-5 text-white" />
+                  พิมพ์ใบเสร็จอีกครั้ง (Re-print)
                 </Button>
 
-                <Button className="h-14 px-8 bg-sky-600 hover:bg-sky-700 text-white font-bold text-lg rounded-2xl shadow-lg" onClick={handleFinish}>
+                <Button 
+                  variant="outline"
+                  className="h-14 px-5 border-slate-300 bg-white text-slate-700 hover:bg-slate-100 font-bold text-base rounded-2xl shadow-xs transition-all flex items-center gap-2" 
+                  onClick={() => setShowReceiptPdf(true)}
+                >
+                  <FileText className="w-5 h-5 text-slate-600" />
+                  ดูตัวอย่าง / PDF
+                </Button>
+
+                <Button className="h-14 px-8 bg-sky-600 hover:bg-sky-700 text-white font-bold text-lg rounded-2xl shadow-lg cursor-pointer" onClick={handleFinish}>
                   ปิดหน้าต่าง (เริ่มออเดอร์ใหม่)
                 </Button>
               </div>
@@ -940,11 +1133,39 @@ export function PaymentModal({
         </DialogContent>
       </Dialog>
 
-      {/* PDF Receipt Preview Modal */}
+      {/* Hidden offscreen container for direct instant Epson TM-T82 printing */}
+      <div 
+        style={{ 
+          position: 'fixed', 
+          left: '-9999px', 
+          top: '-9999px', 
+          width: '80mm', 
+          opacity: 0, 
+          pointerEvents: 'none', 
+          zIndex: -100 
+        }} 
+        aria-hidden="true"
+      >
+        {receiptData && (
+          <ThermalReceiptView
+            ref={directReceiptRef}
+            data={receiptData}
+            settings={loadStoreSettings()}
+          />
+        )}
+      </div>
+
+      {/* Optional PDF Receipt Preview Modal */}
       <ReceiptPdfModal
         open={showReceiptPdf}
-        onOpenChange={setShowReceiptPdf}
+        onOpenChange={(isOpen) => {
+          setShowReceiptPdf(isOpen);
+          if (!isOpen && step === 'SUCCESS') {
+            handleFinish();
+          }
+        }}
         data={receiptData}
+        autoPrint={false}
       />
 
       {/* Numpad Popup with Full Amount ("เต็ม") Support */}

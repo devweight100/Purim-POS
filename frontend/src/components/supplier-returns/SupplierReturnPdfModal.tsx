@@ -18,6 +18,7 @@ import { formatCurrency, thaiBahtText } from '@/lib/utils';
 import { SupplierReturnNote } from '@/lib/types';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
+import { BarcodeView } from '@/components/common/BarcodeView';
 import { toast } from 'sonner';
 
 interface SupplierReturnPdfModalProps {
@@ -133,6 +134,9 @@ export function SupplierReturnPdfModal({
                   {returnNote.linkedPoNumber && (
                     <p><b className="text-slate-700">อ้างอิงใบสั่งซื้อ:</b> <span className="font-bold text-amber-700">{returnNote.linkedPoNumber}</span></p>
                   )}
+                </div>
+                <div className="pt-1 flex justify-end">
+                  <BarcodeView value={returnNote.id} height={32} />
                 </div>
               </div>
             </div>

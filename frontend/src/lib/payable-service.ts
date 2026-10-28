@@ -1,5 +1,13 @@
-import { loadPurchaseOrders, savePurchaseOrders, loadSuppliers, loadSupplierReturnNotes, saveSupplierReturnNotes } from './supplier-return-service';
-import { SupplierReturnNote } from './types';
+import {
+  loadPurchaseOrders,
+  savePurchaseOrders,
+  loadSuppliers,
+  loadSupplierReturnNotes,
+  saveSupplierReturnNotes,
+  fetchPurchaseOrders,
+  fetchSuppliers,
+} from './supplier-return-service';
+import { apiFetch, api } from './api';
 
 export interface PayablePaymentEntry {
   id: string;
@@ -93,8 +101,74 @@ export interface PaymentVoucher {
 }
 
 const PAYMENT_VOUCHERS_KEY = 'pos_payment_vouchers';
+let lastVoucherSyncAt = 0;
+let lastBillsSyncAt = 0;
 
-export function loadPaymentVouchers(): PaymentVoucher[] {
+function normalizeVoucherRow(v: any): PaymentVoucher {
+  const bills: PaymentVoucherBillItem[] = Array.isArray(v?.bills)
+    ? v.bills
+    : Array.isArray(v?.items)
+    ? v.items.map((item: any) => ({
+        poId: item.purchaseOrderId || item.poId || item.purchaseOrder?.id || '',
+        poNumber: item.purchaseOrder?.poNumber || item.poNumber || '',
+        supplierInvoiceNo:
+          item.purchaseOrder?.supplierInvoiceNo || item.supplierInvoiceNo || '',
+        billDate:
+          item.purchaseOrder?.billDate ||
+          item.purchaseOrder?.createdAt ||
+          v.paymentDate ||
+          new Date().toISOString(),
+        totalBillAmount: Number(
+          item.purchaseOrder?.totalAmount ?? item.totalBillAmount ?? item.amountPaid ?? 0,
+        ),
+        remainingBeforePay: Number(
+          item.remainingBeforePay ?? item.purchaseOrder?.totalAmount ?? item.amountPaid ?? 0,
+        ),
+        amountPaid: Number(item.amountPaid ?? 0),
+      }))
+    : [];
+
+  const deductedNotes = Array.isArray(v?.deductedNotes)
+    ? v.deductedNotes
+    : Array.isArray(v?.debitNotes)
+    ? v.debitNotes.map((dn: any) => ({
+        returnNoteId: dn.returnNoteId || dn.returnNote?.id || '',
+        amount: Number(dn.amountDeducted ?? dn.amount ?? 0),
+      }))
+    : [];
+
+  return {
+    id: String(v?.id || v?.voucherNumber || ''),
+    voucherNumber: String(v?.voucherNumber || v?.id || ''),
+    status: v?.status === 'CANCELLED' ? 'CANCELLED' : 'ACTIVE',
+    cancelledAt: v?.cancelledAt || undefined,
+    cancelReason: v?.cancelReason || undefined,
+    supplierId: String(v?.supplierId || v?.supplier?.id || ''),
+    supplierName: String(v?.supplierName || v?.supplier?.name || 'ไม่ระบุผู้จำหน่าย'),
+    supplierContact: v?.supplierContact || v?.supplier?.contactName || undefined,
+    supplierPhone: v?.supplierPhone || v?.supplier?.phone || undefined,
+    supplierAddress: v?.supplierAddress || v?.supplier?.address || undefined,
+    paymentDate: v?.paymentDate || v?.createdAt || new Date().toISOString(),
+    bills,
+    totalBillsAmount: Number(v?.totalBillsAmount ?? 0),
+    deductedCreditAmount: Number(v?.deductedCreditAmount ?? v?.debitDeducted ?? 0),
+    deductedNotes,
+    discountAmount:
+      v?.discountAmount !== undefined && Number(v.discountAmount) > 0
+        ? Number(v.discountAmount)
+        : undefined,
+    netPaidAmount: Number(v?.netPaidAmount ?? 0),
+    paymentMethod: (v?.paymentMethod || 'CASH') as any,
+    bankAccountId: v?.bankAccountId || undefined,
+    bankAccountLabel: v?.bankAccountLabel || undefined,
+    referenceNo: v?.referenceNo || undefined,
+    note: v?.note || undefined,
+    cashierName: String(v?.cashierName || 'เจ้าหน้าที่การเงิน'),
+    createdAt: v?.createdAt || v?.paymentDate || new Date().toISOString(),
+  };
+}
+
+function readLocalVouchers(): PaymentVoucher[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(PAYMENT_VOUCHERS_KEY);
@@ -107,6 +181,31 @@ export function loadPaymentVouchers(): PaymentVoucher[] {
   }
 }
 
+export async function fetchPaymentVouchers(): Promise<PaymentVoucher[]> {
+  try {
+    const res = await apiFetch('/payables/vouchers?limit=200');
+    const list = res?.data ?? (Array.isArray(res) ? res : null);
+    if (Array.isArray(list)) {
+      lastVoucherSyncAt = Date.now();
+      const mapped = list.map((v: any) => normalizeVoucherRow(v));
+      savePaymentVouchers(mapped);
+      return mapped;
+    }
+  } catch (err) {
+    console.warn('[PayableService] Failed to fetch vouchers from backend:', err);
+  }
+  return readLocalVouchers();
+}
+
+export function loadPaymentVouchers(): PaymentVoucher[] {
+  const cached = readLocalVouchers();
+  if (typeof window !== 'undefined' && Date.now() - lastVoucherSyncAt > 10000) {
+    lastVoucherSyncAt = Date.now();
+    void fetchPaymentVouchers().catch(() => {});
+  }
+  return cached;
+}
+
 export function savePaymentVouchers(vouchers: PaymentVoucher[]): void {
   if (typeof window === 'undefined') return;
   try {
@@ -117,76 +216,132 @@ export function savePaymentVouchers(vouchers: PaymentVoucher[]): void {
 }
 
 export function getPaymentVoucherById(id: string): PaymentVoucher | undefined {
-  return loadPaymentVouchers().find((v) => v.id === id || v.voucherNumber === id);
+  return readLocalVouchers().find((v) => v.id === id || v.voucherNumber === id);
 }
 
 export function updateBillInvoiceNo(
   poId: string,
   supplierInvoiceNo: string,
-  supplierInvoiceDate?: string
+  supplierInvoiceDate?: string,
 ): { success: boolean; message: string } {
   const allPos = loadPurchaseOrders();
   const po = allPos.find((p) => p.id === poId);
   if (!po) return { success: false, message: 'ไม่พบใบสั่งซื้อ / บิลนี้' };
 
-  po.supplierInvoiceNo = supplierInvoiceNo.trim();
+  const cleanNo = supplierInvoiceNo.trim();
+  po.supplierInvoiceNo = cleanNo;
   if (supplierInvoiceDate) {
     po.supplierInvoiceDate = supplierInvoiceDate;
   }
   savePurchaseOrders(allPos);
+
+  void api.purchaseOrders
+    .update(poId, {
+      supplierInvoiceNo: cleanNo,
+      ...(supplierInvoiceDate ? { billDate: supplierInvoiceDate } : {}),
+    })
+    .catch(() => {});
+
   return { success: true, message: 'บันทึกเลขที่บิลผู้จำหน่ายเรียบร้อยแล้ว' };
 }
 
-export function loadPayableBills(): SupplierPayableBill[] {
-  const pos = loadPurchaseOrders();
-  const suppliers = loadSuppliers();
+function mapPosToPayableBills(
+  pos: any[],
+  suppliers: any[],
+  vouchers: PaymentVoucher[],
+): SupplierPayableBill[] {
+  const activeVouchers = Array.isArray(vouchers)
+    ? vouchers.filter((v) => v.status !== 'CANCELLED')
+    : [];
 
   return pos
-    .filter((po) => po.status !== 'CANCELLED' && po.status !== 'DRAFT')
-    .map((po) => {
+    .filter((po: any) => po.status !== 'CANCELLED' && po.status !== 'DRAFT')
+    .map((po: any) => {
       const totalAmount = Number(po.totalAmount || 0);
 
       const deductedReturns = Array.isArray(po.deductedReturns) ? po.deductedReturns : [];
       const alreadyDeducted = deductedReturns.reduce(
         (sum: number, r: any) => sum + Number(r.amount || 0),
-        0
+        0,
       );
 
-      const payments: PayablePaymentEntry[] = Array.isArray(po.payments) ? po.payments : [];
-      const alreadyPaid = payments.reduce(
+      let payments: PayablePaymentEntry[] = Array.isArray(po.payments) ? po.payments : [];
+      if (payments.length === 0 && activeVouchers.length > 0) {
+        const matchedVouchers = activeVouchers.filter(
+          (v) =>
+            Array.isArray(v.bills) &&
+            v.bills.some((b) => b.poId === po.id || b.poNumber === po.poNumber),
+        );
+        payments = matchedVouchers.map((v) => {
+          const billItem = v.bills.find(
+            (b) => b.poId === po.id || b.poNumber === po.poNumber,
+          );
+          return {
+            id: `PAY-${v.id}-${po.id}`,
+            voucherId: v.id,
+            voucherNumber: v.voucherNumber,
+            paymentDate: v.paymentDate,
+            paymentMethod: v.paymentMethod,
+            totalBillAmount: totalAmount,
+            deductedCreditAmount: v.deductedCreditAmount || 0,
+            discountAmount: v.discountAmount,
+            netCashOrTransferPaid: Number(billItem?.amountPaid ?? v.netPaidAmount ?? 0),
+            deductedNotes: v.deductedNotes || [],
+            bankAccountId: v.bankAccountId,
+            bankAccountLabel: v.bankAccountLabel,
+            referenceNo: v.referenceNo || v.voucherNumber,
+            note: v.note,
+            cashierName: v.cashierName || 'เจ้าหน้าที่การเงิน',
+          };
+        });
+      }
+
+      const paymentsPaidSum = payments.reduce(
         (sum: number, p: any) => sum + Number(p.netCashOrTransferPaid || 0),
-        0
+        0,
       );
+      const alreadyPaid =
+        paymentsPaidSum > 0 ? paymentsPaidSum : Number(po.paidAmount || 0);
       const alreadyDiscount = payments.reduce(
         (sum: number, p: any) => sum + Number(p.discountAmount || 0),
-        0
+        0,
       );
 
-      const remainingPayable = Math.max(
+      const computedRemaining = Math.max(
         0,
-        Math.round((totalAmount - alreadyDeducted - alreadyPaid - alreadyDiscount) * 100) / 100
+        Math.round((totalAmount - alreadyDeducted - alreadyPaid - alreadyDiscount) * 100) / 100,
       );
+      const remainingPayable =
+        po.remainingPayable !== undefined && payments.length === 0
+          ? Math.max(0, Number(po.remainingPayable))
+          : computedRemaining;
 
       let paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' = 'UNPAID';
       if (remainingPayable <= 0 && totalAmount > 0) {
         paymentStatus = 'PAID';
       } else if (alreadyDeducted > 0 || alreadyPaid > 0 || alreadyDiscount > 0) {
         paymentStatus = 'PARTIALLY_PAID';
+      } else if (po.paymentStatus === 'PAID' || po.paymentStatus === 'PARTIALLY_PAID') {
+        paymentStatus = po.paymentStatus;
       }
 
-      const supp = suppliers.find((s) => s.id === (po.supplierId || po.supplier?.id)) || po.supplier || {};
+      const supp =
+        suppliers.find((s: any) => s.id === (po.supplierId || po.supplier?.id)) ||
+        po.supplier ||
+        {};
 
       return {
         poId: po.id,
         poNumber: po.poNumber,
         supplierInvoiceNo: po.supplierInvoiceNo || po.invoiceNo || '',
         supplierInvoiceDate: po.supplierInvoiceDate || po.invoiceDate || '',
-        supplierId: po.supplierId || supp.id || 'supp_1',
+        supplierId: po.supplierId || supp.id || '',
         supplierName: po.supplierName || supp.name || 'ไม่ระบุผู้จำหน่าย',
         supplierContact: supp.contactName,
         supplierPhone: supp.phone,
         supplierAddress: supp.address,
-        billDate: po.createdAt || po.issueDate || po.issuedAt || new Date().toISOString(),
+        billDate:
+          po.billDate || po.createdAt || po.issueDate || po.issuedAt || new Date().toISOString(),
         status: po.status,
         paymentStatus,
         totalAmount,
@@ -200,6 +355,28 @@ export function loadPayableBills(): SupplierPayableBill[] {
         payments,
       };
     });
+}
+
+export async function fetchPayableBills(): Promise<SupplierPayableBill[]> {
+  lastBillsSyncAt = Date.now();
+  const [pos, suppliers, vouchers] = await Promise.all([
+    fetchPurchaseOrders(),
+    fetchSuppliers(),
+    fetchPaymentVouchers(),
+  ]);
+
+  return mapPosToPayableBills(pos, suppliers, vouchers);
+}
+
+export function loadPayableBills(): SupplierPayableBill[] {
+  if (typeof window !== 'undefined' && Date.now() - lastBillsSyncAt > 10000) {
+    lastBillsSyncAt = Date.now();
+    void fetchPayableBills().catch(() => {});
+  }
+  const pos = loadPurchaseOrders();
+  const suppliers = loadSuppliers();
+  const vouchers = readLocalVouchers();
+  return mapPosToPayableBills(pos, suppliers, vouchers);
 }
 
 export interface SettlePayableParams {
@@ -218,18 +395,50 @@ export interface SettlePayableParams {
   cashierName?: string;
 }
 
-export function settlePayableBill(params: SettlePayableParams): {
+export async function settlePayableBill(params: SettlePayableParams): Promise<{
   success: boolean;
   message: string;
   paymentEntry?: PayablePaymentEntry;
   updatedBill?: SupplierPayableBill;
   voucher?: PaymentVoucher;
-} {
+}> {
   const allPos = loadPurchaseOrders();
   const targetPo = allPos.find((p) => p.id === params.poId);
 
   if (!targetPo) {
     return { success: false, message: 'ไม่พบใบสั่งซื้อ / บิลเจ้าหนี้นี้' };
+  }
+
+  // Attempt backend settlement via POST /payables/settle-multiple so database is saved
+  let backendVoucher: any = null;
+  const supplierId = targetPo.supplierId || targetPo.supplier?.id;
+  if (supplierId) {
+    try {
+      const payload = {
+        supplierId,
+        billsToSettle: [
+          { poId: targetPo.id, amountToPay: Number(params.cashOrTransferAmount) || 0 },
+        ],
+        matchedDebitNotes: params.matchedDebitNotes?.length
+          ? params.matchedDebitNotes.map((d) => ({
+              returnNoteId: d.returnNoteId,
+              amountToDeduct: Number(d.amountToDeduct) || 0,
+            }))
+          : undefined,
+        discountAmount: Number(params.discountAmount) || 0,
+        paymentMethod: params.paymentMethod,
+        bankAccountLabel: params.bankAccountLabel,
+        referenceNo: params.referenceNo,
+        note: params.note,
+        cashierName: params.cashierName,
+      };
+      const res = await api.payables.settleMultiple(payload);
+      if (res && res.voucher) {
+        backendVoucher = res.voucher;
+      }
+    } catch (apiErr) {
+      console.warn('[PayableService] Backend settle failed, continuing local update:', apiErr);
+    }
   }
 
   const nowIso = new Date().toISOString();
@@ -249,7 +458,10 @@ export function settlePayableBill(params: SettlePayableParams): {
     const actualDeduct = Math.min(match.amountToDeduct, note.remainingCreditAmount);
     if (actualDeduct <= 0) continue;
 
-    note.remainingCreditAmount = Math.max(0, Math.round((note.remainingCreditAmount - actualDeduct) * 100) / 100);
+    note.remainingCreditAmount = Math.max(
+      0,
+      Math.round((note.remainingCreditAmount - actualDeduct) * 100) / 100,
+    );
     note.status = note.remainingCreditAmount <= 0 ? 'DEDUCTED' : 'PARTIALLY_DEDUCTED';
 
     note.deductions = [
@@ -281,11 +493,18 @@ export function settlePayableBill(params: SettlePayableParams): {
   const netPaidCashOrTransfer = Math.max(0, Number(params.cashOrTransferAmount || 0));
   const billDiscount = Math.max(0, Number(params.discountAmount || 0));
 
-  const allVouchers = loadPaymentVouchers();
-  const dateStr = new Date(nowIso).toISOString().slice(0, 10).replace(/-/g, '');
-  const voucherCountToday = allVouchers.filter((v) => v.createdAt?.slice(0, 10).replace(/-/g, '') === dateStr).length;
-  const voucherNumber = `PV-${dateStr}-${String(voucherCountToday + 1).padStart(4, '0')}`;
-  const voucherId = `voucher_${Date.now()}`;
+  const allVouchers = readLocalVouchers();
+  const dateObj = new Date(nowIso);
+  const yy = dateObj.getFullYear().toString().slice(-2);
+  const mm = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+  const prefix = `PV-${yy}${mm}`;
+  const voucherCountThisMonth = allVouchers.filter((v) =>
+    (v.voucherNumber || '').startsWith(prefix),
+  ).length;
+  const voucherNumber =
+    backendVoucher?.voucherNumber ||
+    `${prefix}${String(voucherCountThisMonth + 1).padStart(5, '0')}`;
+  const voucherId = backendVoucher?.id || `voucher_${Date.now()}`;
 
   const paymentEntry: PayablePaymentEntry = {
     id: paymentId,
@@ -312,13 +531,22 @@ export function settlePayableBill(params: SettlePayableParams): {
   targetPo.payments = [...(targetPo.payments || []), paymentEntry];
 
   const totalAmount = Number(targetPo.totalAmount || 0);
-  const totalDeducted = (targetPo.deductedReturns || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
-  const totalPaid = targetPo.payments.reduce((s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0), 0);
-  const totalDiscount = targetPo.payments.reduce((s: number, p: any) => s + Number(p.discountAmount || 0), 0);
-  
+  const totalDeducted = (targetPo.deductedReturns || []).reduce(
+    (s: number, r: any) => s + Number(r.amount || 0),
+    0,
+  );
+  const totalPaid = targetPo.payments.reduce(
+    (s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0),
+    0,
+  );
+  const totalDiscount = targetPo.payments.reduce(
+    (s: number, p: any) => s + Number(p.discountAmount || 0),
+    0,
+  );
+
   targetPo.netAmountPayable = Math.max(
     0,
-    Math.round((totalAmount - totalDeducted - totalPaid - totalDiscount) * 100) / 100
+    Math.round((totalAmount - totalDeducted - totalPaid - totalDiscount) * 100) / 100,
   );
 
   if (targetPo.netAmountPayable <= 0) {
@@ -334,7 +562,7 @@ export function settlePayableBill(params: SettlePayableParams): {
     id: voucherId,
     voucherNumber,
     status: 'ACTIVE',
-    supplierId: targetPo.supplierId || targetPo.supplier?.id || 'supp_1',
+    supplierId: targetPo.supplierId || targetPo.supplier?.id || '',
     supplierName: targetPo.supplierName || targetPo.supplier?.name || 'ไม่ระบุผู้จำหน่าย',
     supplierContact: targetPo.supplier?.contactName,
     supplierPhone: targetPo.supplier?.phone,
@@ -398,22 +626,59 @@ export interface SettleMultipleBillsParams {
   paymentDate?: string;
 }
 
-export function settleMultipleBills(params: SettleMultipleBillsParams): {
+export async function settleMultipleBills(params: SettleMultipleBillsParams): Promise<{
   success: boolean;
   message: string;
   voucher?: PaymentVoucher;
-} {
+}> {
+  let backendVoucher: any = null;
+  try {
+    const payload = {
+      supplierId: params.supplierId,
+      billsToSettle: params.billsToSettle.map((b) => ({
+        poId: b.poId,
+        amountToPay: Number(b.amountToPay) || 0,
+      })),
+      matchedDebitNotes: params.matchedDebitNotes?.length
+        ? params.matchedDebitNotes.map((d) => ({
+            returnNoteId: d.returnNoteId,
+            amountToDeduct: Number(d.amountToDeduct) || 0,
+          }))
+        : undefined,
+      discountAmount: Number(params.discountAmount) || 0,
+      paymentMethod: params.paymentMethod,
+      bankAccountLabel: params.bankAccountLabel,
+      referenceNo: params.referenceNo,
+      note: params.note,
+      cashierName: params.cashierName,
+      paymentDate: params.paymentDate,
+    };
+    const res = await api.payables.settleMultiple(payload);
+    if (res && res.voucher) {
+      backendVoucher = res.voucher;
+    }
+  } catch (apiErr) {
+    console.warn('[PayableService] Backend settle-multiple failed or offline, fallback to local:', apiErr);
+  }
+
   const allPos = loadPurchaseOrders();
   const allReturnNotes = loadSupplierReturnNotes();
-  const allVouchers = loadPaymentVouchers();
+  const allVouchers = readLocalVouchers();
   const suppliers = loadSuppliers();
   const supp = suppliers.find((s) => s.id === params.supplierId);
 
   const nowIso = params.paymentDate || new Date().toISOString();
-  const dateStr = new Date(nowIso).toISOString().slice(0, 10).replace(/-/g, '');
-  const voucherCountToday = allVouchers.filter((v) => v.createdAt?.slice(0, 10).replace(/-/g, '') === dateStr).length;
-  const voucherNumber = `PV-${dateStr}-${String(voucherCountToday + 1).padStart(4, '0')}`;
-  const voucherId = `voucher_${Date.now()}`;
+  const dateObj = new Date(nowIso);
+  const yy = dateObj.getFullYear().toString().slice(-2);
+  const mm = (dateObj.getMonth() + 1).toString().padStart(2, '0');
+  const prefix = `PV-${yy}${mm}`;
+  const voucherCountThisMonth = allVouchers.filter((v) =>
+    (v.voucherNumber || '').startsWith(prefix),
+  ).length;
+  const voucherNumber =
+    backendVoucher?.voucherNumber ||
+    `${prefix}${String(voucherCountThisMonth + 1).padStart(5, '0')}`;
+  const voucherId = backendVoucher?.id || `voucher_${Date.now()}`;
 
   // 1. Process matched Debit Notes
   let totalDebitDeducted = 0;
@@ -427,7 +692,10 @@ export function settleMultipleBills(params: SettleMultipleBillsParams): {
     const actualDeduct = Math.min(match.amountToDeduct, note.remainingCreditAmount);
     if (actualDeduct <= 0) continue;
 
-    note.remainingCreditAmount = Math.max(0, Math.round((note.remainingCreditAmount - actualDeduct) * 100) / 100);
+    note.remainingCreditAmount = Math.max(
+      0,
+      Math.round((note.remainingCreditAmount - actualDeduct) * 100) / 100,
+    );
     note.status = note.remainingCreditAmount <= 0 ? 'DEDUCTED' : 'PARTIALLY_DEDUCTED';
 
     note.deductions = [
@@ -457,10 +725,22 @@ export function settleMultipleBills(params: SettleMultipleBillsParams): {
     if (!targetPo) continue;
 
     const poTotal = Number(targetPo.totalAmount || 0);
-    const prevDeducted = (targetPo.deductedReturns || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
-    const prevPaid = (targetPo.payments || []).reduce((s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0), 0);
-    const prevDiscount = (targetPo.payments || []).reduce((s: number, p: any) => s + Number(p.discountAmount || 0), 0);
-    const remainingBefore = Math.max(0, Math.round((poTotal - prevDeducted - prevPaid - prevDiscount) * 100) / 100);
+    const prevDeducted = (targetPo.deductedReturns || []).reduce(
+      (s: number, r: any) => s + Number(r.amount || 0),
+      0,
+    );
+    const prevPaid = (targetPo.payments || []).reduce(
+      (s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0),
+      0,
+    );
+    const prevDiscount = (targetPo.payments || []).reduce(
+      (s: number, p: any) => s + Number(p.discountAmount || 0),
+      0,
+    );
+    const remainingBefore = Math.max(
+      0,
+      Math.round((poTotal - prevDeducted - prevPaid - prevDiscount) * 100) / 100,
+    );
 
     const actualPayForThisPo = Math.min(b.amountToPay, remainingBefore);
 
@@ -483,8 +763,14 @@ export function settleMultipleBills(params: SettleMultipleBillsParams): {
 
     targetPo.payments = [...(targetPo.payments || []), paymentEntry];
 
-    const updatedPaid = (targetPo.payments || []).reduce((s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0), 0);
-    targetPo.netAmountPayable = Math.max(0, Math.round((poTotal - prevDeducted - updatedPaid - prevDiscount) * 100) / 100);
+    const updatedPaid = (targetPo.payments || []).reduce(
+      (s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0),
+      0,
+    );
+    targetPo.netAmountPayable = Math.max(
+      0,
+      Math.round((poTotal - prevDeducted - updatedPaid - prevDiscount) * 100) / 100,
+    );
 
     if (targetPo.netAmountPayable <= 0) {
       targetPo.paymentStatus = 'PAID';
@@ -522,7 +808,8 @@ export function settleMultipleBills(params: SettleMultipleBillsParams): {
     totalBillsAmount: totalBillsSettledAmount,
     deductedCreditAmount: totalDebitDeducted,
     deductedNotes: deductedNotesRecord,
-    discountAmount: params.discountAmount && params.discountAmount > 0 ? params.discountAmount : undefined,
+    discountAmount:
+      params.discountAmount && params.discountAmount > 0 ? params.discountAmount : undefined,
     netPaidAmount: params.netCashOrTransferAmount,
     paymentMethod: params.paymentMethod,
     bankAccountId: params.bankAccountId,
@@ -546,7 +833,7 @@ export function settleMultipleBills(params: SettleMultipleBillsParams): {
 // ─── Rollback / Cancel Payments for a Payable Bill ───
 export function rollbackPayableBillPayment(
   poId: string,
-  paymentId?: string
+  paymentId?: string,
 ): { success: boolean; message: string } {
   const allPos = loadPurchaseOrders();
   const targetPo = allPos.find((p) => p.id === poId);
@@ -562,18 +849,27 @@ export function rollbackPayableBillPayment(
     ? payments.filter((p) => p.id === paymentId)
     : [...payments];
 
-  if (paymentsToRollback.length === 0 && (!targetPo.deductedReturns || targetPo.deductedReturns.length === 0)) {
-    return { success: false, message: 'บิลนี้ยังไม่มีประวัติการชำระเงินหรือการประกบใบลดหนี้' };
+  if (
+    paymentsToRollback.length === 0 &&
+    (!targetPo.deductedReturns || targetPo.deductedReturns.length === 0)
+  ) {
+    return {
+      success: false,
+      message: 'บิลนี้ยังไม่มีประวัติการชำระเงินหรือการประกบใบลดหนี้',
+    };
   }
 
-  // 1. Rollback matched debit notes
   for (const pay of paymentsToRollback) {
     if (Array.isArray(pay.deductedNotes)) {
       for (const dn of pay.deductedNotes) {
         const note = allReturnNotes.find((n) => n.id === dn.returnNoteId);
         if (note) {
-          note.remainingCreditAmount = Math.round((Number(note.remainingCreditAmount || 0) + Number(dn.amount)) * 100) / 100;
-          note.status = note.remainingCreditAmount >= note.totalCreditAmount ? 'PENDING_DEDUCTION' : 'PARTIALLY_DEDUCTED';
+          note.remainingCreditAmount =
+            Math.round((Number(note.remainingCreditAmount || 0) + Number(dn.amount)) * 100) / 100;
+          note.status =
+            note.remainingCreditAmount >= note.totalCreditAmount
+              ? 'PENDING_DEDUCTION'
+              : 'PARTIALLY_DEDUCTED';
           if (Array.isArray(note.deductions)) {
             note.deductions = note.deductions.filter((d) => d.billNumber !== targetPo.poNumber);
           }
@@ -582,14 +878,16 @@ export function rollbackPayableBillPayment(
     }
   }
 
-  // 2. Rollback po.deductedReturns
   if (!paymentId) {
-    // Entire bill rollback
-    for (const r of (targetPo.deductedReturns || [])) {
+    for (const r of targetPo.deductedReturns || []) {
       const note = allReturnNotes.find((n) => n.id === r.returnNoteId);
       if (note) {
-        note.remainingCreditAmount = Math.round((Number(note.remainingCreditAmount || 0) + Number(r.amount)) * 100) / 100;
-        note.status = note.remainingCreditAmount >= note.totalCreditAmount ? 'PENDING_DEDUCTION' : 'PARTIALLY_DEDUCTED';
+        note.remainingCreditAmount =
+          Math.round((Number(note.remainingCreditAmount || 0) + Number(r.amount)) * 100) / 100;
+        note.status =
+          note.remainingCreditAmount >= note.totalCreditAmount
+            ? 'PENDING_DEDUCTION'
+            : 'PARTIALLY_DEDUCTED';
         if (Array.isArray(note.deductions)) {
           note.deductions = note.deductions.filter((d) => d.billNumber !== targetPo.poNumber);
         }
@@ -600,24 +898,35 @@ export function rollbackPayableBillPayment(
   } else {
     targetPo.payments = payments.filter((p) => p.id !== paymentId);
     const rolledBackNoteIds = new Set(
-      paymentsToRollback.flatMap((p) => (p.deductedNotes || []).map((dn) => dn.returnNoteId))
+      paymentsToRollback.flatMap((p) => (p.deductedNotes || []).map((dn) => dn.returnNoteId)),
     );
     if (Array.isArray(targetPo.deductedReturns)) {
       targetPo.deductedReturns = targetPo.deductedReturns.filter(
-        (r: any) => !rolledBackNoteIds.has(r.returnNoteId)
+        (r: any) => !rolledBackNoteIds.has(r.returnNoteId),
       );
     }
   }
 
   saveSupplierReturnNotes(allReturnNotes);
 
-  // 3. Recalculate PO debt and paymentStatus
   const totalAmount = Number(targetPo.totalAmount || 0);
-  const totalDeducted = (targetPo.deductedReturns || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
-  const totalPaid = (targetPo.payments || []).reduce((s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0), 0);
-  const totalDiscount = (targetPo.payments || []).reduce((s: number, p: any) => s + Number(p.discountAmount || 0), 0);
+  const totalDeducted = (targetPo.deductedReturns || []).reduce(
+    (s: number, r: any) => s + Number(r.amount || 0),
+    0,
+  );
+  const totalPaid = (targetPo.payments || []).reduce(
+    (s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0),
+    0,
+  );
+  const totalDiscount = (targetPo.payments || []).reduce(
+    (s: number, p: any) => s + Number(p.discountAmount || 0),
+    0,
+  );
 
-  targetPo.netAmountPayable = Math.max(0, Math.round((totalAmount - totalDeducted - totalPaid - totalDiscount) * 100) / 100);
+  targetPo.netAmountPayable = Math.max(
+    0,
+    Math.round((totalAmount - totalDeducted - totalPaid - totalDiscount) * 100) / 100,
+  );
 
   if (targetPo.netAmountPayable <= 0 && totalAmount > 0) {
     targetPo.paymentStatus = 'PAID';
@@ -636,8 +945,10 @@ export function rollbackPayableBillPayment(
 }
 
 // ─── Cancel / Void Payable Bill ───
-export function cancelPayableBill(poId: string, reason?: string): { success: boolean; message: string } {
-  // First rollback any payments if present
+export function cancelPayableBill(
+  poId: string,
+  reason?: string,
+): { success: boolean; message: string } {
   rollbackPayableBillPayment(poId);
 
   const allPos = loadPurchaseOrders();
@@ -647,19 +958,32 @@ export function cancelPayableBill(poId: string, reason?: string): { success: boo
   }
 
   targetPo.status = 'CANCELLED';
-  targetPo.notes = (targetPo.notes ? targetPo.notes + ' | ' : '') + `ยกเลิกบิลเจ้าหนี้: ${reason || 'ยกเลิกโดยผู้ใช้งาน'}`;
+  targetPo.notes =
+    (targetPo.notes ? targetPo.notes + ' | ' : '') +
+    `ยกเลิกบิลเจ้าหนี้: ${reason || 'ยกเลิกโดยผู้ใช้งาน'}`;
   savePurchaseOrders(allPos);
 
   return { success: true, message: `ยกเลิกบิล ${targetPo.poNumber} เรียบร้อยแล้ว` };
 }
 
 // ─── Cancel / Void Payment Voucher ───
-export function cancelPaymentVoucher(
+export async function cancelPaymentVoucher(
   voucherId: string,
-  cancelReason?: string
-): { success: boolean; message: string } {
-  const allVouchers = loadPaymentVouchers();
-  const voucherIndex = allVouchers.findIndex((v) => v.id === voucherId || v.voucherNumber === voucherId);
+  cancelReason?: string,
+): Promise<{ success: boolean; message: string }> {
+  try {
+    await api.payables.cancelVoucher(
+      voucherId,
+      cancelReason || 'ยกเลิกใบสำคัญจ่ายโดยผู้ใช้',
+    );
+  } catch (apiErr) {
+    console.warn('[PayableService] Backend voucher cancellation failed, continuing local rollback:', apiErr);
+  }
+
+  const allVouchers = readLocalVouchers();
+  const voucherIndex = allVouchers.findIndex(
+    (v) => v.id === voucherId || v.voucherNumber === voucherId,
+  );
 
   if (voucherIndex === -1) {
     return { success: false, message: 'ไม่พบใบสำคัญจ่ายนี้' };
@@ -674,17 +998,21 @@ export function cancelPaymentVoucher(
   const allPos = loadPurchaseOrders();
   const allReturnNotes = loadSupplierReturnNotes();
 
-  // 1. Roll back debit notes deducted in this voucher
   if (Array.isArray(voucher.deductedNotes)) {
     for (const dn of voucher.deductedNotes) {
       const note = allReturnNotes.find((n) => n.id === dn.returnNoteId);
       if (note) {
-        note.remainingCreditAmount = Math.round((Number(note.remainingCreditAmount || 0) + Number(dn.amount)) * 100) / 100;
-        note.status = note.remainingCreditAmount >= note.totalCreditAmount ? 'PENDING_DEDUCTION' : 'PARTIALLY_DEDUCTED';
+        note.remainingCreditAmount =
+          Math.round((Number(note.remainingCreditAmount || 0) + Number(dn.amount)) * 100) / 100;
+        note.status =
+          note.remainingCreditAmount >= note.totalCreditAmount
+            ? 'PENDING_DEDUCTION'
+            : 'PARTIALLY_DEDUCTED';
         if (Array.isArray(note.deductions)) {
-          note.deductions = note.deductions.filter((d) => 
-            !d.note?.includes(voucher.voucherNumber) && 
-            !voucher.bills.some(b => b.poNumber === d.billNumber)
+          note.deductions = note.deductions.filter(
+            (d) =>
+              !d.note?.includes(voucher.voucherNumber) &&
+              !voucher.bills.some((b) => b.poNumber === d.billNumber),
           );
         }
       }
@@ -692,15 +1020,19 @@ export function cancelPaymentVoucher(
     saveSupplierReturnNotes(allReturnNotes);
   }
 
-  // 2. Roll back payments on all POs/bills covered by this voucher
   for (const bill of voucher.bills) {
-    const targetPo = allPos.find((p) => p.id === bill.poId || p.poNumber === bill.poNumber);
+    const targetPo = allPos.find(
+      (p) => p.id === bill.poId || p.poNumber === bill.poNumber,
+    );
     if (!targetPo) continue;
 
-    // Remove payment entries tied to this voucher
     if (Array.isArray(targetPo.payments)) {
       targetPo.payments = targetPo.payments.filter((p: any) => {
-        if (p.voucherId && (p.voucherId === voucher.id || p.voucherId === voucher.voucherNumber)) return false;
+        if (
+          p.voucherId &&
+          (p.voucherId === voucher.id || p.voucherId === voucher.voucherNumber)
+        )
+          return false;
         if (p.voucherNumber && p.voucherNumber === voucher.voucherNumber) return false;
         if (p.referenceNo && p.referenceNo === voucher.voucherNumber) return false;
         if (p.note && p.note.includes(voucher.voucherNumber)) return false;
@@ -709,19 +1041,31 @@ export function cancelPaymentVoucher(
       });
     }
 
-    // Also if targetPo had deductedReturns from this voucher
     if (Array.isArray(targetPo.deductedReturns) && Array.isArray(voucher.deductedNotes)) {
-      const dnIds = new Set(voucher.deductedNotes.map(dn => dn.returnNoteId));
-      targetPo.deductedReturns = targetPo.deductedReturns.filter((r: any) => !dnIds.has(r.returnNoteId));
+      const dnIds = new Set(voucher.deductedNotes.map((dn) => dn.returnNoteId));
+      targetPo.deductedReturns = targetPo.deductedReturns.filter(
+        (r: any) => !dnIds.has(r.returnNoteId),
+      );
     }
 
-    // Recalculate debt & status
     const poTotal = Number(targetPo.totalAmount || 0);
-    const prevDeducted = (targetPo.deductedReturns || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
-    const prevPaid = (targetPo.payments || []).reduce((s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0), 0);
-    const prevDiscount = (targetPo.payments || []).reduce((s: number, p: any) => s + Number(p.discountAmount || 0), 0);
-    
-    targetPo.netAmountPayable = Math.max(0, Math.round((poTotal - prevDeducted - prevPaid - prevDiscount) * 100) / 100);
+    const prevDeducted = (targetPo.deductedReturns || []).reduce(
+      (s: number, r: any) => s + Number(r.amount || 0),
+      0,
+    );
+    const prevPaid = (targetPo.payments || []).reduce(
+      (s: number, p: any) => s + Number(p.netCashOrTransferPaid || 0),
+      0,
+    );
+    const prevDiscount = (targetPo.payments || []).reduce(
+      (s: number, p: any) => s + Number(p.discountAmount || 0),
+      0,
+    );
+
+    targetPo.netAmountPayable = Math.max(
+      0,
+      Math.round((poTotal - prevDeducted - prevPaid - prevDiscount) * 100) / 100,
+    );
     if (targetPo.netAmountPayable <= 0) {
       targetPo.paymentStatus = 'PAID';
     } else if (targetPo.netAmountPayable < poTotal) {
@@ -733,7 +1077,6 @@ export function cancelPaymentVoucher(
 
   savePurchaseOrders(allPos);
 
-  // 3. Mark voucher as CANCELLED
   voucher.status = 'CANCELLED';
   voucher.cancelledAt = new Date().toISOString();
   voucher.cancelReason = cancelReason?.trim() || 'ยกเลิกใบสำคัญจ่ายโดยผู้ใช้';
@@ -746,4 +1089,3 @@ export function cancelPaymentVoucher(
     message: `ยกเลิกใบสำคัญจ่าย ${voucher.voucherNumber} สำเร็จ และคืนสถานะหนี้ค้างชำระเรียบร้อยแล้ว`,
   };
 }
-

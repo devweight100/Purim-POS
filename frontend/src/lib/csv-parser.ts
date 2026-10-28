@@ -2,7 +2,7 @@ export interface CSVProductRow {
   productCode: string;
   productName: string;
   cost: number;
-  price: number;
+  price?: number;
   priceLevel1?: number;
   priceLevel2?: number;
   priceLevel3?: number;
@@ -26,8 +26,8 @@ export interface FormattedProductItem {
   cost: number;
   costPrice: number;
   basePrice: number;
-  price: number;
-  priceLevel1: number;
+  price?: number | null;
+  priceLevel1?: number | null;
   priceLevel2?: number | null;
   priceLevel3?: number | null;
   priceLevel4?: number | null;
@@ -42,6 +42,45 @@ export interface FormattedProductItem {
     price: number;
     barcode: string;
   }[];
+}
+
+export function normalizeProductIdentifier(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return '';
+  const raw = String(value).trim();
+  if (!raw) return '';
+
+  const cleaned = raw
+    .replace(/^\uFEFF/, '')
+    .replace(/^['"`]+|['"`]+$/g, '')
+    .replace(/\s+/g, '');
+
+  if (!/[eE]/.test(cleaned)) return cleaned;
+
+  const match = cleaned.match(/^([+-]?)(\d+)(?:\.(\d+))?[eE]([+-]?\d+)$/);
+  if (!match) return cleaned;
+
+  const sign = match[1] === '-' ? '-' : '';
+  const intPart = match[2] || '';
+  const fracPart = match[3] || '';
+  const exponent = parseInt(match[4], 10);
+  if (!Number.isFinite(exponent)) return cleaned;
+
+  const digits = intPart + fracPart;
+  const decimalIndex = intPart.length + exponent;
+
+  if (decimalIndex <= 0) {
+    return `${sign}0.${'0'.repeat(Math.abs(decimalIndex))}${digits}`.replace(/\.?0+$/, '');
+  }
+
+  if (decimalIndex >= digits.length) {
+    return `${sign}${digits}${'0'.repeat(decimalIndex - digits.length)}`;
+  }
+
+  return `${sign}${digits.slice(0, decimalIndex)}.${digits.slice(decimalIndex)}`.replace(/\.?0+$/, '');
+}
+
+function normalizeNumericCell(value: string | undefined, fallback = '0'): string {
+  return normalizeProductIdentifier(value ?? fallback).replace(/,/g, '').trim();
 }
 
 /**
@@ -99,7 +138,7 @@ export function parseCSVLines(text: string): string[][] {
 /**
  * Parse CSV text into product rows based on header column names.
  * Supports Price Levels 1 to 5, category, stock, unit, cost, barcode.
- * Rule: If custom barcode is empty, barcodeForSelling = productCode.
+ * Product code and barcode are separate identifiers.
  */
 export function parseProductCSV(csvText: string): CSVProductRow[] {
   const lines = parseCSVLines(csvText);
@@ -133,7 +172,7 @@ export function parseProductCSV(csvText: string): CSVProductRow[] {
   const p5Idx = findPriceIdx(5, ['ราคา 5', 'ราคา5', 'ตัวแทน']);
 
   const stockIdx = header.findIndex(h => h.includes('stock') || h.includes('สต็อก') || h.includes('สต๊อก') || h.includes('จำนวน'));
-  const unitIdx = header.findIndex(h => h.includes('unit') || h.includes('หน่วย'));
+  const unitIdx = header.findIndex(h => h.includes('unit') || h.includes('หน่วยนับ') || h.includes('หน่วย'));
 
   const results: CSVProductRow[] = [];
 
@@ -141,25 +180,25 @@ export function parseProductCSV(csvText: string): CSVProductRow[] {
     const row = lines[i];
     if (!row || row.length === 0 || (row.length === 1 && !row[0].trim())) continue;
 
-    const productCode = (codeIdx >= 0 && row[codeIdx] !== undefined ? row[codeIdx] : row[0] || '').trim();
+    const productCode = normalizeProductIdentifier(codeIdx >= 0 && row[codeIdx] !== undefined ? row[codeIdx] : row[0] || '');
     const productName = (nameIdx >= 0 && row[nameIdx] !== undefined ? row[nameIdx] : row[1] || '').trim();
-    const customBarcodeId = (barcodeIdx >= 0 && row[barcodeIdx] !== undefined ? row[barcodeIdx] : '').trim();
+    const customBarcodeId = normalizeProductIdentifier(barcodeIdx >= 0 && row[barcodeIdx] !== undefined ? row[barcodeIdx] : '');
     const category = (categoryIdx >= 0 && row[categoryIdx] !== undefined ? row[categoryIdx] : '').trim();
     
-    const costStr = (costIdx >= 0 && row[costIdx] !== undefined ? row[costIdx] : '0').replace(/,/g, '').trim();
-    const p1Str = (p1Idx >= 0 && row[p1Idx] !== undefined ? row[p1Idx] : '').replace(/,/g, '').trim();
-    const p2Str = (p2Idx >= 0 && row[p2Idx] !== undefined ? row[p2Idx] : '').replace(/,/g, '').trim();
-    const p3Str = (p3Idx >= 0 && row[p3Idx] !== undefined ? row[p3Idx] : '').replace(/,/g, '').trim();
-    const p4Str = (p4Idx >= 0 && row[p4Idx] !== undefined ? row[p4Idx] : '').replace(/,/g, '').trim();
-    const p5Str = (p5Idx >= 0 && row[p5Idx] !== undefined ? row[p5Idx] : '').replace(/,/g, '').trim();
+    const costStr = normalizeNumericCell(costIdx >= 0 && row[costIdx] !== undefined ? row[costIdx] : '0');
+    const p1Str = normalizeNumericCell(p1Idx >= 0 && row[p1Idx] !== undefined ? row[p1Idx] : '', '');
+    const p2Str = normalizeNumericCell(p2Idx >= 0 && row[p2Idx] !== undefined ? row[p2Idx] : '', '');
+    const p3Str = normalizeNumericCell(p3Idx >= 0 && row[p3Idx] !== undefined ? row[p3Idx] : '', '');
+    const p4Str = normalizeNumericCell(p4Idx >= 0 && row[p4Idx] !== undefined ? row[p4Idx] : '', '');
+    const p5Str = normalizeNumericCell(p5Idx >= 0 && row[p5Idx] !== undefined ? row[p5Idx] : '', '');
 
-    const stockStr = (stockIdx >= 0 && row[stockIdx] !== undefined ? row[stockIdx] : '0').replace(/,/g, '').trim();
-    const unit = (unitIdx >= 0 && row[unitIdx] !== undefined ? row[unitIdx] : 'ชิ้น').trim() || 'ชิ้น';
+    const stockStr = normalizeNumericCell(stockIdx >= 0 && row[stockIdx] !== undefined ? row[stockIdx] : '0');
+    const unit = (unitIdx >= 0 && row[unitIdx] !== undefined ? row[unitIdx] : '').trim();
 
     if (!productCode && !productName) continue;
 
     const cost = parseFloat(costStr) || 0;
-    const price1 = p1Str ? parseFloat(p1Str) || 0 : cost;
+    const price1 = p1Str ? parseFloat(p1Str) || 0 : undefined;
     const price2 = p2Str ? parseFloat(p2Str) || undefined : undefined;
     const price3 = p3Str ? parseFloat(p3Str) || undefined : undefined;
     const price4 = p4Str ? parseFloat(p4Str) || undefined : undefined;
@@ -167,8 +206,7 @@ export function parseProductCSV(csvText: string): CSVProductRow[] {
 
     const stock = stockStr ? parseFloat(stockStr) || 0 : 0;
 
-    // Rule: ถ้าไม่มีบาร์โค้ด เวลาขายจะใช้รหัสสินค้าแทน
-    const barcodeForSelling = customBarcodeId !== '' ? customBarcodeId : productCode;
+    const barcodeForSelling = customBarcodeId;
 
     results.push({
       productCode,
@@ -198,7 +236,8 @@ export function csvRowsToProducts(rows: CSVProductRow[]): FormattedProductItem[]
   return rows.map((r, idx) => {
     const id = r.productCode || `PROD-${idx + 1}`;
     const p1 = r.priceLevel1 != null ? r.priceLevel1 : r.price;
-    const unitName = r.unit || 'ชิ้น';
+    const unitName = r.unit || '';
+    const sellingPrice = p1 ?? 0;
 
     return {
       id,
@@ -210,23 +249,23 @@ export function csvRowsToProducts(rows: CSVProductRow[]): FormattedProductItem[]
       hasVat: true,
       cost: r.cost,
       costPrice: r.cost,
-      basePrice: p1,
-      price: p1,
-      priceLevel1: p1,
+      basePrice: r.cost,
+      price: p1 ?? null,
+      priceLevel1: p1 ?? null,
       priceLevel2: r.priceLevel2 ?? null,
       priceLevel3: r.priceLevel3 ?? null,
       priceLevel4: r.priceLevel4 ?? null,
       priceLevel5: r.priceLevel5 ?? null,
       unit: unitName,
       image: null,
-      barcodes: [{ barcode: r.barcodeForSelling }],
+      barcodes: r.barcodeForSelling ? [{ barcode: r.barcodeForSelling }] : [],
       units: [
         {
           id: `u-${id}-base`,
-          unitName,
+          unitName: unitName || '',
           factor: 1,
-          price: p1,
-          barcode: r.barcodeForSelling,
+          price: sellingPrice,
+          barcode: r.barcodeForSelling || '',
         }
       ]
     };

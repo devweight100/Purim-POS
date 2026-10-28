@@ -4,13 +4,12 @@ import { loadPurchaseOrders, loadSuppliers } from './supplier-return-service';
 import { loadAllDebtRecords } from './debt-service';
 import { loadCustomers } from './customer-service';
 import { loadAllShiftSummaries } from './shift-service';
-import { orders as mockOrders } from './mock-data';
 
 export type ReportTimeRange = 'today' | 'yesterday' | '7days' | '30days' | 'thisMonth' | 'lastMonth' | 'thisYear' | 'all' | 'custom';
 
 // ─── Helper to Load Orders ───
 export function loadAllOrders(): any[] {
-  if (typeof window === 'undefined') return mockOrders || [];
+  if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem('pos_orders');
     if (raw) {
@@ -20,7 +19,7 @@ export function loadAllOrders(): any[] {
       }
     }
   } catch {}
-  return mockOrders || [];
+  return [];
 }
 
 // ─── Filter Orders by Time Range ───
@@ -91,7 +90,8 @@ export interface DailySalesProfit {
 export function calculateSalesAndProfitReport(orders: any[], productsCatalog: any[]) {
   const productCostMap = new Map<string, number>();
   productsCatalog.forEach((p) => {
-    const cost = Number(p.costPrice || p.basePrice || 0);
+    // IMPORTANT: Never fall back to p.basePrice (selling price) as cost!
+    const cost = Number(p.costPrice ?? p.cost ?? 0);
     if (p.id) productCostMap.set(p.id, cost);
     if (p.sku) productCostMap.set(p.sku, cost);
     if (p.name) productCostMap.set(p.name, cost);
@@ -105,26 +105,31 @@ export function calculateSalesAndProfitReport(orders: any[], productsCatalog: an
   let totalCogs = 0;
 
   orders.forEach((order) => {
-    if (order.status === 'VOIDED' || order.status === 'CANCELLED') return;
+    if (order.status === 'VOIDED' || order.status === 'CANCELLED' || order.status === 'REFUNDED') return;
 
     const orderDateStr = (order.createdAt || order.orderDate || new Date().toISOString()).slice(0, 10);
-    const net = Number(order.totalAmount || order.total || 0);
-    const disc = Number(order.discountAmount || order.discount || 0);
+    const net = Number(order.totalAmount ?? order.total ?? 0);
+    const disc = Number(order.discountAmount ?? order.discount ?? 0);
     const gross = net + disc;
 
     let orderCost = 0;
-    (order.items || []).forEach((item: any) => {
-      const qty = Number(item.quantity || 1);
-      let itemCost = Number(item.costPrice || 0);
-      if (itemCost <= 0) {
-        itemCost = productCostMap.get(item.productId) || productCostMap.get(item.sku) || productCostMap.get(item.productName) || 0;
-      }
-      if (itemCost <= 0) {
-        // Estimate 70% if cost is zero
-        itemCost = Number(item.unitPrice || item.price || 0) * 0.7;
-      }
-      orderCost += itemCost * qty;
-    });
+    if (order.totalCogs != null && Number(order.totalCogs) > 0) {
+      orderCost = Number(order.totalCogs);
+    } else {
+      (order.items || []).forEach((item: any) => {
+        const qty = Number(item.baseQuantity ?? item.quantity ?? 1);
+        let itemCost = Number(item.unitCost ?? item.costPrice ?? 0);
+        if (itemCost <= 0) {
+          itemCost =
+            Number(item.product?.costPrice ?? 0) ||
+            productCostMap.get(item.productId) ||
+            productCostMap.get(item.sku) ||
+            productCostMap.get(item.productName) ||
+            0;
+        }
+        orderCost += itemCost * qty;
+      });
+    }
 
     totalGrossSales += gross;
     totalDiscounts += disc;
@@ -159,7 +164,7 @@ export function calculateSalesAndProfitReport(orders: any[], productsCatalog: an
   const overallMargin = totalNetSales > 0 ? Math.round((totalGrossProfit / totalNetSales) * 1000) / 10 : 0;
 
   return {
-    totalOrders: orders.filter((o) => o.status !== 'VOIDED' && o.status !== 'CANCELLED').length,
+    totalOrders: orders.filter((o) => o.status !== 'VOIDED' && o.status !== 'CANCELLED' && o.status !== 'REFUNDED').length,
     totalGrossSales,
     totalDiscounts,
     totalNetSales,
@@ -184,6 +189,13 @@ export interface ProductPerformance {
   profitMarginPercent: number;
 }
 
+function extractCategoryName(category: any): string {
+  if (!category) return 'ทั่วไป';
+  if (typeof category === 'string') return category;
+  if (typeof category === 'object' && category.name) return String(category.name);
+  return 'ทั่วไป';
+}
+
 export function calculateBestSellingProducts(orders: any[], productsCatalog: any[]) {
   const productCostMap = new Map<string, number>();
   const productCategoryMap = new Map<string, string>();
@@ -192,11 +204,12 @@ export function calculateBestSellingProducts(orders: any[], productsCatalog: any
   const productUnitMap = new Map<string, string>();
 
   productsCatalog.forEach((p) => {
-    const cost = Number(p.costPrice || p.basePrice || 0);
-    const cat = p.category || 'ทั่วไป';
+    // IMPORTANT: Never fall back to p.basePrice (selling price) as cost!
+    const cost = Number(p.costPrice ?? p.cost ?? 0);
+    const cat = extractCategoryName(p.category);
     const name = p.name || '';
     const sku = p.sku || '-';
-    const unit = p.unitName || p.units?.[0]?.name || 'ชิ้น';
+    const unit = p.unit || p.unitName || p.units?.[0]?.unitName || p.units?.[0]?.name || 'ชิ้น';
 
     if (p.id) {
       productCostMap.set(p.id, cost);
@@ -212,15 +225,18 @@ export function calculateBestSellingProducts(orders: any[], productsCatalog: any
       productSkuMap.set(p.sku, p.sku);
       productUnitMap.set(p.sku, unit);
     }
+    if (name) {
+      productCostMap.set(name, cost);
+    }
   });
 
   const map = new Map<string, ProductPerformance>();
 
   orders.forEach((order) => {
-    if (order.status === 'VOIDED' || order.status === 'CANCELLED') return;
+    if (order.status === 'VOIDED' || order.status === 'CANCELLED' || order.status === 'REFUNDED') return;
 
     (order.items || []).forEach((item: any) => {
-      // Prioritize item.name (used in POS and mock data), item.productName, or lookup from productsCatalog
+      // Prioritize item.name, item.productName, item.product.name, or lookup from productsCatalog
       const resolvedName =
         item.name ||
         item.productName ||
@@ -239,30 +255,34 @@ export function calculateBestSellingProducts(orders: any[], productsCatalog: any
       const key = item.productId || (resolvedSku !== '-' ? resolvedSku : resolvedName);
 
       const qty = Number(item.quantity || 1);
-      const price = Number(item.unitPrice || item.price || 0);
-      const revenue = Number(item.subtotal || price * qty);
+      const baseQty = Number(item.baseQuantity ?? item.quantity ?? 1);
+      const price = Number(item.unitPrice ?? item.price ?? 0);
+      const lineDiscount = Number(item.discountAmount ?? 0);
+      const revenue = Number(item.total ?? item.subtotal ?? (price * qty - lineDiscount));
 
-      let cost = Number(item.costPrice || 0);
+      let cost = Number(item.unitCost ?? item.costPrice ?? 0);
       if (cost <= 0) {
         cost =
+          Number(item.product?.costPrice ?? 0) ||
           productCostMap.get(item.productId) ||
           productCostMap.get(resolvedSku) ||
           productCostMap.get(resolvedName) ||
           0;
       }
-      if (cost <= 0) cost = price * 0.7;
 
-      const totalItemCost = cost * qty;
+      const totalItemCost = cost * baseQty;
       const profit = revenue - totalItemCost;
-      const category =
+      const category = extractCategoryName(
         item.category ||
+        item.product?.category ||
         productCategoryMap.get(item.productId) ||
-        productCategoryMap.get(resolvedSku) ||
-        'ทั่วไป';
+        productCategoryMap.get(resolvedSku)
+      );
 
       const unitName =
         item.unitName ||
         item.unit ||
+        item.product?.unit ||
         (item.productId ? productUnitMap.get(item.productId) : undefined) ||
         'ชิ้น';
 
@@ -274,7 +294,7 @@ export function calculateBestSellingProducts(orders: any[], productsCatalog: any
           sku: resolvedSku,
           category,
           unitName,
-          quantitySold: qty,
+          quantitySold: baseQty,
           totalRevenue: revenue,
           totalCost: totalItemCost,
           totalProfit: profit,
@@ -289,7 +309,7 @@ export function calculateBestSellingProducts(orders: any[], productsCatalog: any
         if (existing.sku === '-' && resolvedSku !== '-') {
           existing.sku = resolvedSku;
         }
-        existing.quantitySold += qty;
+        existing.quantitySold += baseQty;
         existing.totalRevenue += revenue;
         existing.totalCost += totalItemCost;
         existing.totalProfit = existing.totalRevenue - existing.totalCost;
@@ -331,11 +351,15 @@ export interface InventoryValuationItem {
   isLowStock: boolean;
 }
 
-export function calculateInventoryValuationReport(products: any[], orders: any[]) {
+export function calculateInventoryValuationReport(
+  products: any[],
+  orders: any[],
+  batchValuationByProduct?: Record<string, { quantityRemaining: number; totalCostValue: number; averageUnitCost: number }>
+) {
   const lastSoldDateMap = new Map<string, number>();
 
   orders.forEach((o) => {
-    if (o.status === 'VOIDED' || o.status === 'CANCELLED') return;
+    if (o.status === 'VOIDED' || o.status === 'CANCELLED' || o.status === 'REFUNDED') return;
     const oDate = new Date(o.createdAt || o.orderDate || Date.now()).getTime();
     (o.items || []).forEach((item: any) => {
       const key = item.productId || item.sku || item.productName;
@@ -359,11 +383,35 @@ export function calculateInventoryValuationReport(products: any[], orders: any[]
   let lowStockCount = 0;
 
   const items: InventoryValuationItem[] = products.map((p) => {
-    const stock = Math.max(0, Number(p.stock || p.quantity || 0));
-    const cost = Number(p.costPrice || p.basePrice || (p.price ? p.price * 0.7 : 0));
-    const retail = Number(p.price || p.basePrice || 0);
+    const batchInfo = p.id ? batchValuationByProduct?.[p.id] : undefined;
+    const stock = Math.max(0, Number(batchInfo?.quantityRemaining ?? p.stock ?? p.quantity ?? 0));
+    // IMPORTANT: Use explicit costPrice for cost and priceLevel1/basePrice for retail price!
+    const fallbackCost = Number(p.costPrice ?? p.cost ?? 0);
+    const retail = Number(p.priceLevel1 || p.basePrice || p.price || 0);
 
-    const costVal = stock * cost;
+    let costVal = 0;
+    let cost = fallbackCost;
+
+    if (batchInfo && batchInfo.quantityRemaining > 0) {
+      costVal = batchInfo.totalCostValue > 0 ? batchInfo.totalCostValue : stock * fallbackCost;
+      cost = stock > 0 ? costVal / stock : fallbackCost;
+    } else if (Array.isArray(p.stockBatches) && p.stockBatches.length > 0 && stock > 0) {
+      const activeBatches = p.stockBatches.filter((b: any) => Number(b.quantityRemaining) > 0);
+      const batchQty = activeBatches.reduce((sum: number, b: any) => sum + Number(b.quantityRemaining || 0), 0);
+      const batchCost = activeBatches.reduce(
+        (sum: number, b: any) => sum + Number(b.quantityRemaining || 0) * Number(b.unitCost ?? fallbackCost),
+        0
+      );
+      if (batchQty > 0 && batchCost > 0) {
+        costVal = batchCost;
+        cost = batchCost / batchQty;
+      } else {
+        costVal = stock * fallbackCost;
+      }
+    } else {
+      costVal = stock * fallbackCost;
+    }
+
     const retailVal = stock * retail;
     const potentialProfit = retailVal - costVal;
 
@@ -389,10 +437,10 @@ export function calculateInventoryValuationReport(products: any[], orders: any[]
       id: p.id,
       name: p.name,
       sku: p.sku || '-',
-      category: p.category || 'ทั่วไป',
+      category: extractCategoryName(p.category),
       supplierName: p.supplierName || (typeof p.supplier === 'object' ? p.supplier?.name : p.supplier) || 'ทั่วไป',
       stock,
-      unitName: p.unitName || p.units?.[0]?.name || 'ชิ้น',
+      unitName: p.unit || p.unitName || p.units?.[0]?.unitName || p.units?.[0]?.name || 'ชิ้น',
       costPrice: cost,
       retailPrice: retail,
       totalCostValue: costVal,
@@ -435,7 +483,7 @@ export function calculatePaymentsAndShiftsReport(orders: any[], shiftsHistory: a
   const methodMap = new Map<string, { label: string; count: number; amount: number }>();
 
   methodMap.set('CASH', { label: 'เงินสด (Cash)', count: 0, amount: 0 });
-  methodMap.set('QR_PROMPTPAY', { label: 'สแกน QR PromptPay (โอน)', count: 0, amount: 0 });
+  methodMap.set('QR_PROMPTPAY', { label: 'สแกน QR PromptPay / โอนเงิน', count: 0, amount: 0 });
   methodMap.set('CREDIT_CARD', { label: 'บัตรเครดิต / เดบิต', count: 0, amount: 0 });
   methodMap.set('CREDIT', { label: 'เงินเชื่อ / ค้างชำระ (ลูกหนี้)', count: 0, amount: 0 });
   methodMap.set('OTHER', { label: 'ช่องทางอื่นๆ', count: 0, amount: 0 });
@@ -443,21 +491,25 @@ export function calculatePaymentsAndShiftsReport(orders: any[], shiftsHistory: a
   let totalCollected = 0;
 
   orders.forEach((o) => {
-    if (o.status === 'VOIDED' || o.status === 'CANCELLED') return;
+    if (o.status === 'VOIDED' || o.status === 'CANCELLED' || o.status === 'REFUNDED') return;
 
     if (Array.isArray(o.payments) && o.payments.length > 0) {
       o.payments.forEach((p: any) => {
         const amt = Number(p.amount || 0);
         totalCollected += amt;
-        const m = p.method === 'CREDIT_NOTE' ? 'CREDIT' : (p.method || 'OTHER');
+        let m = p.method || 'OTHER';
+        if (m === 'CREDIT_NOTE' || m === 'CREDIT_DEBT') m = 'CREDIT';
+        else if (m === 'TRANSFER') m = 'QR_PROMPTPAY';
         const entry = methodMap.get(m) || methodMap.get('OTHER')!;
         entry.count += 1;
         entry.amount += amt;
       });
     } else {
-      const amt = Number(o.totalAmount || o.total || 0);
+      const amt = Number(o.totalAmount ?? o.total ?? 0);
       totalCollected += amt;
-      const m = o.paymentMethod || 'CASH';
+      let m = o.paymentMethod || 'CASH';
+      if (m === 'CREDIT_NOTE' || m === 'CREDIT_DEBT') m = 'CREDIT';
+      else if (m === 'TRANSFER') m = 'QR_PROMPTPAY';
       const entry = methodMap.get(m) || methodMap.get('OTHER')!;
       entry.count += 1;
       entry.amount += amt;
@@ -486,8 +538,11 @@ export function calculatePaymentsAndShiftsReport(orders: any[], shiftsHistory: a
 
   shifts.forEach((s) => {
     const exp = Number(s.expectedCash || 0);
-    const act = Number(s.actualCash || 0);
-    const diff = act - exp;
+    const hasActual = s.actualCash !== null && s.actualCash !== undefined;
+    const act = hasActual ? Number(s.actualCash) : exp;
+    const diff = s.cashDifference !== null && s.cashDifference !== undefined
+      ? Number(s.cashDifference)
+      : act - exp;
 
     totalExpectedCash += exp;
     totalActualCash += act;
@@ -544,15 +599,16 @@ export function calculateCustomerAndDebtsReport(orders: any[], debts: any[], cus
     if (c.code) customerProfileMap.set(c.code, c);
   });
 
-  // 2. Build debt map by customer
+  // 2. Build debt map by customer (supports both remainingDebt and PostgreSQL remainingAmount)
   const debtByCustomerMap = new Map<string, number>();
   (debts || []).forEach((d) => {
-    const remaining = Number(d.remainingDebt || 0);
+    const remaining = Number(d.remainingDebt ?? d.remainingAmount ?? 0);
     if (remaining > 0 && d.status !== 'PAID') {
-      const key = d.customerId || d.customerName || 'UNKNOWN';
+      const custName = d.customerName || d.customer?.name;
+      const key = d.customerId || custName || 'UNKNOWN';
       debtByCustomerMap.set(key, (debtByCustomerMap.get(key) || 0) + remaining);
-      if (d.customerName) {
-        debtByCustomerMap.set(d.customerName, (debtByCustomerMap.get(d.customerName) || 0) + remaining);
+      if (custName && custName !== key) {
+        debtByCustomerMap.set(custName, (debtByCustomerMap.get(custName) || 0) + remaining);
       }
     }
   });
@@ -561,16 +617,16 @@ export function calculateCustomerAndDebtsReport(orders: any[], debts: any[], cus
   const customerSpendingMap = new Map<string, CustomerSpendingSummary>();
 
   orders.forEach((o) => {
-    if (o.status === 'VOIDED' || o.status === 'CANCELLED') return;
-    const cId = o.customerId || (o.customerName ? `NAME_${o.customerName}` : 'GENERAL');
-    const rawName = o.customerName || 'ลูกค้าทั่วไป';
-    const profile = o.customerId ? customerProfileMap.get(o.customerId) : customerProfileMap.get(rawName);
+    if (o.status === 'VOIDED' || o.status === 'CANCELLED' || o.status === 'REFUNDED') return;
+    const rawName = o.customerName || o.customer?.name || 'ลูกค้าทั่วไป';
+    const cId = o.customerId || o.customer?.id || (rawName !== 'ลูกค้าทั่วไป' ? `NAME_${rawName}` : 'GENERAL');
+    const profile = (o.customerId ? customerProfileMap.get(o.customerId) : undefined) || customerProfileMap.get(rawName);
 
     const cCode = profile?.code || profile?.customerCode || (o.customerId ? o.customerId.slice(-6).toUpperCase() : '-');
     const cName = profile?.name || rawName;
-    const cPhone = profile?.phone || o.customerPhone || '-';
+    const cPhone = profile?.phone || o.customerPhone || o.customer?.phone || '-';
     const cPoints = Number(profile?.points || 0);
-    const amt = Number(o.totalAmount || o.total || 0);
+    const amt = Number(o.totalAmount ?? o.total ?? 0);
     const orderDate = o.createdAt || o.orderDate || '';
 
     const existing = customerSpendingMap.get(cId);
@@ -604,7 +660,7 @@ export function calculateCustomerAndDebtsReport(orders: any[], debts: any[], cus
       if (debt > 0 || (c.totalSpent && c.totalSpent > 0)) {
         customerSpendingMap.set(c.id, {
           id: c.id,
-          code: c.code || c.customerCode || '-',
+          code: c.code || c.customerCode || c.id.slice(-6).toUpperCase(),
           name: c.name || 'สมาชิก',
           phone: c.phone || '-',
           points: Number(c.points || 0),
@@ -632,13 +688,16 @@ export function calculateCustomerAndDebtsReport(orders: any[], debts: any[], cus
     { bucketName: 'หนี้ค้างนาน / เกินกำหนด (> 60 วัน)', rangeDays: '60+', billCount: 0, totalAmount: 0 },
   ];
 
-  const unpaidDebts = debts.filter((d) => d.remainingDebt > 0 && d.status !== 'PAID');
+  const unpaidDebts = (debts || []).filter((d) => {
+    const rem = Number(d.remainingDebt ?? d.remainingAmount ?? 0);
+    return rem > 0 && d.status !== 'PAID';
+  });
 
   unpaidDebts.forEach((debt) => {
-    const remaining = Number(debt.remainingDebt || 0);
+    const remaining = Number(debt.remainingDebt ?? debt.remainingAmount ?? 0);
     totalOutstandingDebt += remaining;
 
-    const orderTime = new Date(debt.orderDate || Date.now()).getTime();
+    const orderTime = new Date(debt.orderDate || debt.order?.createdAt || debt.createdAt || Date.now()).getTime();
     const daysOld = Math.max(0, Math.floor((now - orderTime) / 86400000));
 
     if (daysOld <= 15) {
@@ -662,7 +721,9 @@ export function calculateCustomerAndDebtsReport(orders: any[], debts: any[], cus
     agingBuckets: buckets,
     allCustomers,
     topCustomers,
-    unpaidDebtsList: unpaidDebts.sort((a, b) => b.remainingDebt - a.remainingDebt),
+    unpaidDebtsList: unpaidDebts.sort(
+      (a, b) => Number(b.remainingDebt ?? b.remainingAmount ?? 0) - Number(a.remainingDebt ?? a.remainingAmount ?? 0)
+    ),
   };
 }
 
@@ -722,8 +783,8 @@ export function calculatePurchasesAndClaimsReport(purchaseOrders: any[], claims:
 
     entry.poCount += 1;
     entry.totalPurchaseAmount += total;
-    entry.remainingPayable += Number(po.remainingPayable || (total - Number(po.paidAmount || 0)));
-    entry.totalPaidAmount += Number(po.paidAmount || (total - Number(po.remainingPayable || 0)));
+    entry.remainingPayable += Number(po.remainingPayable ?? (total - Number(po.paidAmount || 0)));
+    entry.totalPaidAmount += Number(po.paidAmount ?? (total - Number(po.remainingPayable || 0)));
   });
 
   // Aggregate Claims
@@ -746,7 +807,10 @@ export function calculatePurchasesAndClaimsReport(purchaseOrders: any[], claims:
     }
 
     const qty = Number(c.baseQuantity !== undefined ? c.baseQuantity : (c.quantity || 1));
-    const cost = Number(c.totalCostValue || (c.costPrice ? c.costPrice * qty : c.totalClaimValue || 0));
+    const cost = Number(
+      c.totalCostValue ??
+        (c.costPrice ? Number(c.costPrice) * qty : c.totalClaimValue ?? 0)
+    );
 
     entry.claimsCount += 1;
     entry.claimPieces += qty;

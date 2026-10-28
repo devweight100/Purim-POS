@@ -6,6 +6,7 @@ import { ScanLine } from 'lucide-react';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useProductStore } from '@/lib/store/product-store';
 import { getProductPackagingUnits } from '@/lib/cart-pricing';
+import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
 import { toast } from 'sonner';
 
 interface BarcodeScanModalProps {
@@ -29,13 +30,18 @@ export function BarcodeScanModal({ open, onOpenChange }: BarcodeScanModalProps) 
 
   const handleScan = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!barcode.trim()) return;
+    const raw = barcode.trim();
+    if (!raw) return;
+
+    const cleanedCode = convertThaiToEnBarcode(raw).toLowerCase().trim();
 
     // Find product with this barcode (including packaging unit barcodes)
     const product = products.find(p => {
-      if (p.sku === barcode || p.units.some(u => u.barcode === barcode)) return true;
+      const matchSku = p.sku?.toLowerCase().trim() === cleanedCode;
+      const matchUnit = p.units?.some(u => u.barcode?.toLowerCase().trim() === cleanedCode);
       const pkgUnits = getProductPackagingUnits(p.id);
-      return pkgUnits.some(u => u.barcode === barcode);
+      const matchPkg = pkgUnits.some(u => u.barcode?.toLowerCase().trim() === cleanedCode);
+      return matchSku || matchUnit || matchPkg;
     });
     
     if (product) {

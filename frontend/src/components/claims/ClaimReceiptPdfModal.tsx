@@ -17,6 +17,7 @@ import {
   Building2, User, Phone, MapPin, FileText, Store, Sparkles, Hash, Mail
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { BarcodeView } from '@/components/common/BarcodeView';
 
 interface ClaimReceiptPdfModalProps {
   open: boolean;
@@ -151,133 +152,138 @@ export function ClaimReceiptPdfModal({
             ════════════════════════════════════════════════════════════════ */}
             {printFormat === '80mm' && (
               <div 
-                className="receipt-container w-[80mm] max-w-[80mm] min-h-[140mm] bg-white text-slate-900 px-3.5 py-4 shadow-2xl font-mono text-[11px] leading-snug rounded-sm space-y-2.5 box-border border-t-4 border-indigo-600 relative select-none"
-                style={{ width: '80mm', maxWidth: '80mm', boxSizing: 'border-box' }}
+                className="receipt-container w-full max-w-[78mm] sm:max-w-[80mm] print:w-full print:max-w-full min-h-[140mm] bg-white text-black px-3.5 py-4 shadow-2xl font-sans text-[11.5px] leading-snug rounded-none space-y-2 box-border border-2 border-black print:border-none print:p-0 relative select-none"
+                style={{ boxSizing: 'border-box', color: '#000000', backgroundColor: '#ffffff', margin: '0 auto' }}
               >
                 {/* Store Header */}
-                <div className="text-center space-y-0.5 pb-2.5 border-b border-dashed border-slate-400">
-                  <div className="flex items-center justify-center gap-1.5 font-bold text-sm font-sans text-slate-900">
-                    <Store className="w-4 h-4 text-indigo-600 shrink-0" />
+                <div className="text-center space-y-1 pb-2 border-b-2 border-black">
+                  <div className="flex items-center justify-center gap-1.5 font-black text-base sm:text-lg font-sans text-black">
+                    <Store className="w-5 h-5 text-black shrink-0 stroke-[2.5]" />
                     <span className="truncate">{storeSettings.storeName || 'ร้านปุริม (PURIM POS)'}</span>
                   </div>
 
                   {storeSettings.branchName && (
-                    <p className="text-[9.5px] text-slate-600 font-sans">สาขา: {storeSettings.branchName}</p>
+                    <p className="text-[11px] text-black font-bold font-sans">สาขา: {storeSettings.branchName}</p>
                   )}
 
                   {storeSettings.taxId && (
-                    <p className="text-[9.5px] text-slate-600 font-mono">เลขผู้เสียภาษี: {storeSettings.taxId}</p>
+                    <p className="text-[11px] text-black font-bold font-mono">เลขผู้เสียภาษี: {storeSettings.taxId}</p>
                   )}
 
-                  <p className="text-[9.5px] text-slate-500 font-sans leading-tight break-words">
+                  <p className="text-[10.5px] text-black font-bold font-sans leading-tight break-words">
                     {storeSettings.storeAddress}
                   </p>
 
                   {storeSettings.storePhone && (
-                    <p className="text-[9.5px] text-slate-600 font-mono">โทร: {storeSettings.storePhone}</p>
+                    <p className="text-[11px] text-black font-bold font-mono">โทร: {storeSettings.storePhone}</p>
                   )}
 
                   {storeSettings.receiptHeader && (
-                    <p className="text-[9.5px] text-indigo-900 font-sans pt-0.5 whitespace-pre-wrap">
+                    <p className="text-[10.5px] text-black font-bold font-sans pt-0.5 whitespace-pre-wrap">
                       {storeSettings.receiptHeader}
                     </p>
                   )}
 
                   <div className="pt-1">
-                    <span className="text-[11px] font-black border border-indigo-700 px-2 py-0.5 rounded font-sans inline-block text-indigo-900 uppercase">
+                    <span className="text-[13px] font-black border-2 border-black px-3 py-0.5 rounded-none font-sans inline-block text-black uppercase tracking-wider">
                       ใบรับเคลมสินค้า / สลิปเปลี่ยนของ
                     </span>
+                  </div>
+
+                  {/* ─── BARCODE OF CLAIM ID ─── */}
+                  <div className="pt-2 pb-1 flex justify-center bg-white">
+                    <BarcodeView value={claim.id} width={1.8} height={44} fontSize={12} />
                   </div>
                 </div>
 
                 {/* Claim Meta */}
-                <div className="text-[10px] space-y-0.5 pb-2 border-b border-dashed border-slate-400 font-mono">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">เลขที่ใบเคลม:</span>
-                    <span className="font-bold text-indigo-700">{claim.id}</span>
+                <div className="text-[11.5px] space-y-1 pb-2 border-b-2 border-dashed border-black font-bold text-black">
+                  <div className="flex justify-between items-center gap-1">
+                    <span className="shrink-0">เลขที่ใบเคลม:</span>
+                    <span className="font-black truncate text-right font-mono text-black text-[12px]">{claim.id}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">วันที่รับเคลม:</span>
-                    <span>{formatDate(claim.claimDate)}</span>
+                  <div className="flex justify-between items-center gap-1">
+                    <span className="shrink-0">วันที่รับเคลม:</span>
+                    <span className="font-bold truncate text-right font-mono text-[11px]">{formatDate(claim.claimDate)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">อ้างอิงบิลเดิม:</span>
-                    <span className="font-bold text-slate-800">#{claim.orderNumber}</span>
+                  <div className="flex justify-between items-center gap-1">
+                    <span className="shrink-0">อ้างอิงบิลเดิม:</span>
+                    <span className="font-black text-black truncate text-right font-mono">#{claim.orderNumber}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">ลูกค้า:</span>
-                    <span className="font-bold text-slate-900 font-sans">{claim.customerName || 'ลูกค้าทั่วไป'}</span>
+                  <div className="flex justify-between items-center gap-1">
+                    <span className="shrink-0">ลูกค้า:</span>
+                    <span className="font-black text-black truncate text-right max-w-[170px]">{claim.customerName || 'ลูกค้าทั่วไป (Walk-in)'}</span>
                   </div>
                   {claim.customerPhone && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">เบอร์โทร:</span>
-                      <span>{claim.customerPhone}</span>
+                    <div className="flex justify-between items-center gap-1">
+                      <span className="shrink-0">เบอร์โทร:</span>
+                      <span className="font-bold font-mono">{claim.customerPhone}</span>
                     </div>
                   )}
                 </div>
 
                 {/* Claimed Item */}
-                <div className="space-y-1.5 py-1 border-b border-dashed border-slate-400 text-[10.5px]">
-                  <div className="font-bold text-slate-900 break-words font-sans">
-                    {claim.productName}
+                <div className="space-y-1.5 py-1.5 border-b-2 border-dashed border-black text-[11.5px] font-bold text-black">
+                  <div className="font-black text-black break-words font-sans text-[12px]">
+                    1. {claim.productName}
                   </div>
-                  <div className="flex justify-between text-slate-600 text-[9.5px]">
+                  <div className="flex justify-between text-black text-[11px] pl-1">
                     <span>รหัส: {claim.sku}</span>
-                    <span>จำนวน: <b className="text-slate-900">{claim.quantity} {claim.unitName}</b></span>
+                    <span>จำนวน: <b className="font-black font-mono">{claim.quantity} {claim.unitName}</b></span>
                   </div>
-                  <div className="flex justify-between text-[10px] font-bold text-indigo-700">
+                  <div className="flex justify-between text-[11.5px] font-black text-black pl-1">
                     <span>มูลค่าเดิม:</span>
-                    <span>{formatCurrency(claim.totalClaimValue)}</span>
+                    <span className="font-mono">{formatCurrency(claim.totalClaimValue)}</span>
                   </div>
 
                   {/* Defect Reason */}
-                  <div className="bg-rose-50 p-1.5 rounded border border-rose-200 text-[9.5px] text-rose-950 font-sans">
+                  <div className="border-2 border-black p-1.5 text-[11px] text-black font-bold my-1">
                     <b>อาการเสีย:</b> {claim.defectReason || 'ไม่ระบุอาการ'}
                   </div>
                 </div>
 
                 {/* Resolution */}
-                <div className="py-1.5 border-b border-dashed border-slate-400 space-y-1">
-                  <div className="text-[10px] font-bold text-indigo-900 font-sans flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                    <span>{getResolutionLabel(claim.resolutionType)}</span>
+                <div className="py-1.5 border-b-2 border-dashed border-black space-y-1 text-black font-bold text-[11.5px]">
+                  <div className="text-[12px] font-black text-black flex items-center gap-1">
+                    <CheckCircle2 className="w-4 h-4 text-black shrink-0 stroke-[2.5]" />
+                    <span>ผลการพิจารณา: {getResolutionLabel(claim.resolutionType)}</span>
                   </div>
 
                   {claim.resolutionType === 'REPLACE_ITEM' && (
-                    <div className="text-[9.5px] text-slate-700 pl-1 font-sans">
+                    <div className="text-[11px] text-black pl-1">
                       เปลี่ยนเป็น: <b>{claim.replacementProductName || claim.productName}</b>
                     </div>
                   )}
 
                   {(claim.resolutionType === 'REFUND_CASH' || claim.resolutionType === 'REFUND_TRANSFER') && (
-                    <div className="flex justify-between text-[10.5px] font-bold text-rose-700 pl-1">
+                    <div className="flex justify-between text-[12px] font-black text-black pl-1 pt-1 border-t border-black">
                       <span>ยอดเงินคืน:</span>
-                      <span>{formatCurrency(claim.refundAmount || claim.totalClaimValue)}</span>
+                      <span className="font-mono text-[14px]">{formatCurrency(claim.refundAmount || claim.totalClaimValue)}</span>
                     </div>
                   )}
 
                   {claim.resolutionType === 'STORE_DISCOUNT' && (
-                    <div className="flex justify-between text-[10.5px] font-bold text-emerald-700 pl-1">
+                    <div className="flex justify-between text-[12px] font-black text-black pl-1 pt-1 border-t border-black">
                       <span>ส่วนลดบิลนี้:</span>
-                      <span>{formatCurrency(claim.discountAmount || claim.totalClaimValue)}</span>
+                      <span className="font-mono text-[14px]">{formatCurrency(claim.discountAmount || claim.totalClaimValue)}</span>
                     </div>
                   )}
                 </div>
 
                 {/* Signatures in Slip */}
-                <div className="pt-3 grid grid-cols-2 gap-2 text-center text-[9px] font-sans">
+                <div className="pt-3 grid grid-cols-2 gap-2 text-center text-[10.5px] font-bold text-black">
                   <div>
-                    <div className="pt-4 border-b border-slate-400 mx-auto w-4/5 border-dashed" />
-                    <p className="text-slate-500 mt-1">ผู้ส่งเคลม (ลูกค้า)</p>
+                    <div className="pt-4 border-b-2 border-black mx-auto w-4/5 border-dashed" />
+                    <p className="mt-1">ผู้ส่งเคลม (ลูกค้า)</p>
                   </div>
                   <div>
-                    <div className="pt-4 border-b border-slate-400 mx-auto w-4/5 border-dashed" />
-                    <p className="text-slate-800 font-bold mt-1">({claim.cashierName || 'พนักงาน'})</p>
+                    <div className="pt-4 border-b-2 border-black mx-auto w-4/5 border-dashed" />
+                    <p className="font-black mt-1">({claim.cashierName || 'พนักงาน'})</p>
                   </div>
                 </div>
 
                 {/* Slip Footer Policy */}
-                <div className="text-center pt-2 space-y-1 text-[8.5px] text-slate-500 font-sans">
+                <div className="text-center pt-2 space-y-1 text-[10.5px] text-black font-bold border-t-2 border-black mt-2">
                   {storeSettings.receiptFooter ? (
                     <p className="whitespace-pre-wrap leading-tight">{storeSettings.receiptFooter}</p>
                   ) : (

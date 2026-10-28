@@ -24,11 +24,13 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { 
-  loadPayableBills, 
+  loadPayableBills,
+  fetchPayableBills, 
   SupplierPayableBill, 
   PayablePaymentEntry,
   PaymentVoucher,
   loadPaymentVouchers,
+  fetchPaymentVouchers,
   updateBillInvoiceNo,
   rollbackPayableBillPayment,
   cancelPayableBill,
@@ -36,7 +38,9 @@ import {
 } from '@/lib/payable-service';
 import { 
   loadSuppliers, 
-  loadSupplierReturnNotes
+  fetchSuppliers,
+  loadSupplierReturnNotes,
+  fetchSupplierReturnNotes
 } from '@/lib/supplier-return-service';
 import { SupplierReturnNote } from '@/lib/types';
 import { SettlePayableModal } from '@/components/payables/SettlePayableModal';
@@ -79,19 +83,18 @@ export default function PayablesPage() {
   const [editingInvoicePoId, setEditingInvoicePoId] = useState<string | null>(null);
   const [editingInvoiceValue, setEditingInvoiceValue] = useState<string>('');
 
-  const refreshData = () => {
+  const refreshData = async () => {
     setLoading(true);
     try {
-      const allBills = loadPayableBills();
+      const [allBills, supps, notes, vouchers] = await Promise.all([
+        fetchPayableBills(),
+        fetchSuppliers(),
+        fetchSupplierReturnNotes(),
+        fetchPaymentVouchers(),
+      ]);
       setBills(allBills);
-
-      const supps = loadSuppliers();
       setSuppliers(supps);
-
-      const notes = loadSupplierReturnNotes();
       setReturnNotes(notes);
-
-      const vouchers = loadPaymentVouchers();
       setPaymentVouchers(vouchers);
     } catch (e) {
       console.error('Failed to load payables data:', e);
@@ -123,7 +126,7 @@ export default function PayablesPage() {
     setIsVoucherModalOpen(true);
   };
 
-  const handleCancelVoucher = (voucher: PaymentVoucher) => {
+  const handleCancelVoucher = async (voucher: PaymentVoucher) => {
     if (voucher.status === 'CANCELLED') {
       toast.error('ใบสำคัญจ่ายนี้ถูกยกเลิกไปแล้ว');
       return;
@@ -135,7 +138,7 @@ export default function PayablesPage() {
     const reason = prompt(`ระบุเหตุผลการยกเลิกใบสำคัญจ่าย ${voucher.voucherNumber}:`, 'ยกเลิกการชำระเงิน');
     if (reason === null) return;
 
-    const res = cancelPaymentVoucher(voucher.id, reason);
+    const res = await cancelPaymentVoucher(voucher.id, reason);
     if (res.success) {
       toast.success(res.message);
       refreshData();

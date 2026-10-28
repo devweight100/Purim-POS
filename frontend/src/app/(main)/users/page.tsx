@@ -3,9 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, UserPlus, Shield, ShieldCheck, KeyRound, Lock, 
-  Check, X, Edit2, AlertCircle, RefreshCw, Eye, EyeOff, Search
+  Check, X, Edit2, AlertCircle, RefreshCw, Eye, EyeOff, Search,
+  PackageX, DatabaseZap
 } from 'lucide-react';
 import { api, apiFetch } from '@/lib/api';
+import { clearCachedProducts } from '@/lib/offline-db';
+import { useProductStore } from '@/lib/store/product-store';
 import { toast } from 'sonner';
 
 interface UserItem {
@@ -52,6 +55,7 @@ export default function UsersManagementPage() {
   const [formPermissions, setFormPermissions] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [clearingProducts, setClearingProducts] = useState(false);
 
   const fetchUsers = async () => {
     try {
@@ -171,6 +175,50 @@ export default function UsersManagementPage() {
     }
   };
 
+  const clearLocalProductData = async () => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      localStorage.removeItem('custom_products');
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith('pkg_') || key.startsWith('img_') || key.startsWith('ws_')) {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch (err) {
+      console.warn('[Admin] Failed to clear product localStorage:', err);
+    }
+
+    await clearCachedProducts();
+    useProductStore.setState({ products: [] });
+  };
+
+  const handleClearAllProducts = async () => {
+    if (clearingProducts) return;
+
+    const confirmation = window.prompt('การล้างข้อมูลสินค้าทั้งหมดจะลบรายการสินค้า ราคา บาร์โค้ด และ cache สินค้าในเครื่อง พิมพ์ "ล้างสินค้า" เพื่อยืนยัน');
+    if (confirmation !== 'ล้างสินค้า') {
+      toast.info('ยกเลิกการล้างข้อมูลสินค้า');
+      return;
+    }
+
+    setClearingProducts(true);
+    let backendCount = 0;
+
+    try {
+      const result = await api.products.deleteAll();
+      backendCount = Number(result?.deleted || 0);
+
+      await clearLocalProductData();
+      toast.success(`ล้างข้อมูลสินค้าเรียบร้อย${backendCount > 0 ? ` ${backendCount} รายการ` : ''}`);
+    } catch (err: any) {
+      await clearLocalProductData();
+      toast.warning('ล้างข้อมูลสินค้าในเครื่องแล้ว แต่เชื่อมต่อฐานข้อมูลไม่สำเร็จ: ' + (err.message || 'Server error'));
+    } finally {
+      setClearingProducts(false);
+    }
+  };
+
   const filteredUsers = users.filter(u => 
     u.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -244,6 +292,36 @@ export default function UsersManagementPage() {
           <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
             <Shield className="w-6 h-6" />
           </div>
+        </div>
+      </div>
+
+      {/* Admin Maintenance Tools */}
+      <div className="bg-white rounded-2xl border border-rose-200 shadow-sm overflow-hidden">
+        <div className="p-5 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-rose-50/60">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-xl bg-white text-rose-600 border border-rose-200 shadow-xs">
+              <DatabaseZap className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">เครื่องมือผู้ดูแลระบบ</h2>
+              <p className="text-sm text-slate-600 mt-0.5">
+                ล้างข้อมูลสินค้า ราคา บาร์โค้ด ขนาดบรรจุ รูปสินค้า และ cache สินค้าในเครื่อง
+              </p>
+              <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-rose-700 bg-white border border-rose-200 rounded-full px-2.5 py-1">
+                <AlertCircle className="w-3.5 h-3.5" />
+                ใช้สำหรับเริ่ม import สินค้าใหม่ทั้งหมด
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleClearAllProducts}
+            disabled={clearingProducts}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-semibold shadow-sm transition-all text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {clearingProducts ? <RefreshCw className="w-4 h-4 animate-spin" /> : <PackageX className="w-4 h-4" />}
+            {clearingProducts ? 'กำลังล้างข้อมูล...' : 'ล้างข้อมูลสินค้าทั้งหมด'}
+          </button>
         </div>
       </div>
 

@@ -17,25 +17,6 @@ export interface WholesaleStepConfig {
 // ─── Helpers to load configuration ───────────────────────────────────
 
 export function getProductPackagingUnits(productId: string, fallbackUnits?: any[]): PackagingUnitConfig[] {
-  try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem(`pkg_${productId}`) : null;
-    if (raw) {
-      const units = JSON.parse(raw);
-      let cum = 1;
-      const parsed = units.map((u: any) => {
-        cum *= parseInt(u.qtyPerPrev) || 1;
-        return {
-          name: u.name || 'หน่วย',
-          qtyPerPrev: parseInt(u.qtyPerPrev) || 1,
-          multiplier: cum,
-          priceLevel1: parseFloat(u.priceLevel1) || 0,
-          barcode: u.barcode,
-        };
-      });
-      if (parsed.length > 0) return parsed;
-    }
-  } catch {}
-
   // Fallback to product units array if available
   if (fallbackUnits && fallbackUnits.length > 0) {
     return fallbackUnits
@@ -70,20 +51,11 @@ export function getProductPackagingUnits(productId: string, fallbackUnits?: any[
 }
 
 export function getProductWholesaleSteps(productId: string): WholesaleStepConfig[] {
-  try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem(`ws_${productId}`) : null;
-    if (raw) {
-      const steps = JSON.parse(raw);
-      return steps
-        .map((s: any) => ({
-          minQuantity: parseInt(s.minQuantity) || 0,
-          unitPrice: parseFloat(s.unitPrice) || 0,
-        }))
-        .filter((s: WholesaleStepConfig) => s.minQuantity > 0 && s.unitPrice > 0)
-        .sort((a: WholesaleStepConfig, b: WholesaleStepConfig) => b.minQuantity - a.minQuantity);
-    }
-  } catch {}
-  return [];
+  const product = useProductStore.getState().products.find(p => p.id === productId || p.sku === productId);
+  const steps = (product as any)?.wholesalePrices || [];
+  return steps.map((step: any) => ({ minQuantity: Number(step.minQuantity), unitPrice: Number(step.unitPrice) }))
+    .filter((step: WholesaleStepConfig) => step.minQuantity > 0 && step.unitPrice > 0)
+    .sort((a: WholesaleStepConfig, b: WholesaleStepConfig) => b.minQuantity - a.minQuantity);
 }
 
 // ─── Smart Rollup & Pricing Optimizer ───────────────────────────────────
@@ -96,8 +68,8 @@ export function calculateSmartRollupAndPricing(items: CartItem[]): CartItem[] {
   const customOverrideItems: CartItem[] = [];
 
   for (const item of items) {
-    // If cashier manually customized price or manual discount, keep it untouched
-    if (item.customPrice !== null || item.discountType !== 'none') {
+    // If cashier manually customized price or manual discount, or has claim replacement, keep it untouched
+    if (item.customPrice !== null || item.discountType !== 'none' || (item.claimQuantity && item.claimQuantity > 0)) {
       customOverrideItems.push(item);
     } else {
       if (!productGroups[item.productId]) {

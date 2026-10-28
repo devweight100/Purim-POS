@@ -26,6 +26,9 @@ export function BillDiscountPopup({ open, onOpenChange }: BillDiscountPopupProps
     if (open) {
       setDiscountType(cart.billDiscountType);
       setDiscountValue(cart.billDiscountValue > 0 ? cart.billDiscountValue.toString() : '');
+    } else {
+      setDiscountType('none');
+      setDiscountValue('');
     }
   }, [open, cart.billDiscountType, cart.billDiscountValue]);
 

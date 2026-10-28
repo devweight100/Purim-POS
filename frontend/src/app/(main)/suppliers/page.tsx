@@ -34,7 +34,7 @@ export default function SuppliersPage() {
         setSuppliers([]);
       }
     } catch (err: any) {
-      console.error("Failed to fetch suppliers:", err);
+      console.warn("Failed to fetch suppliers:", err);
       setSuppliers([]);
     } finally {
       setLoading(false);

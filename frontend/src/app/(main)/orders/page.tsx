@@ -56,15 +56,16 @@ import {
 import { useShiftStore } from "@/lib/store/shift-store";
 import { useCartStore } from "@/lib/store/cart-store";
 import { useProductStore } from "@/lib/store/product-store";
-import { orders as masterMockOrders } from "@/lib/mock-data";
 import { getCustomerById, rollbackCustomerSale } from "@/lib/customer-service";
 import { restoreVoidOrderStock } from "@/lib/stock-service";
+import { fetchAllClaimRecords } from "@/lib/claim-service";
 import { loadAllDebtRecords, getDebtRecordByOrderId } from "@/lib/debt-service";
 import { DebtRecord, DebtPaymentInstallment } from "@/lib/types";
 import { ReceiptA4PdfModal, ReceiptA4Data } from "@/components/pos/ReceiptA4PdfModal";
 import { ReceiptPdfModal, ReceiptData } from "@/components/pos/ReceiptPdfModal";
 import { DebtHistoryModal } from "@/components/debts/DebtHistoryModal";
 import { DebtReceiptPdfModal } from "@/components/debts/DebtReceiptPdfModal";
+import { syncPendingOrders } from "@/lib/order-sync-service";
 import { toast } from "sonner";
 
 export default function OrdersPage() {
@@ -77,6 +78,7 @@ export default function OrdersPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -134,11 +136,11 @@ export default function OrdersPage() {
   // Helper to detect if order is a Credit Sale
   const isOrderCredit = (order: any): boolean => {
     if (!order) return false;
-    if (Array.isArray(order.payments) && order.payments.some((p: any) => p.method === "CREDIT_NOTE" || p.method === "CREDIT")) {
+    if (Array.isArray(order.payments) && order.payments.some((p: any) => p.method === "CREDIT_DEBT" || p.method === "DEBT" || p.method === "CREDIT_NOTE" || p.method === "CREDIT")) {
       return true;
     }
     const pm = (order.paymentMethod || "").toLowerCase();
-    return pm.includes("เชื่อ") || pm.includes("credit");
+    return pm.includes("เชื่อ") || pm.includes("credit") || pm.includes("debt");
   };
 
   // Helper to check if a credit order is fully paid
@@ -156,7 +158,11 @@ export default function OrdersPage() {
       try {
         prods = await apiFetch("/products");
       } catch {
-        prods = await api.getProducts();
+        try {
+          prods = await api.getProducts();
+        } catch {
+          prods = [];
+        }
       }
 
       if (typeof window !== "undefined") {
@@ -184,6 +190,7 @@ export default function OrdersPage() {
     setLoading(true);
     try {
       let fetchedBackend: any[] = [];
+      let allClaims: any[] = [];
       try {
         let url = "/orders";
         const params = new URLSearchParams();
@@ -192,10 +199,21 @@ export default function OrdersPage() {
         if (params.toString()) {
           url += `?${params.toString()}`;
         }
-        fetchedBackend = await apiFetch(url);
+        const [ordersRes, claimsRes] = await Promise.all([
+          apiFetch(url),
+          fetchAllClaimRecords().catch(() => []),
+        ]);
+        fetchedBackend = ordersRes?.data || (Array.isArray(ordersRes) ? ordersRes : []);
+        allClaims = claimsRes || [];
       } catch (e) {
         // Fallback gracefully
       }
+
+      const claimedOrderMap = new Set<string>();
+      allClaims.forEach((c) => {
+        if (c.orderId) claimedOrderMap.add(c.orderId);
+        if (c.orderNumber) claimedOrderMap.add(c.orderNumber);
+      });
 
       // 1. Get orders completed in local shift store
       const localOrders = useShiftStore.getState().completedOrders || [];
@@ -203,16 +221,15 @@ export default function OrdersPage() {
       // Merge and deduplicate
       const combinedMap = new Map<string, any>();
 
-      // Master orders history removed - purely using real backend and completed orders
-
       // Overlay local completed orders from POS checkouts
       localOrders
-        .filter((o) => !o.orderNumber?.startsWith('ORD-2026') && !o.id?.startsWith('ORD-2026'))
         .forEach((o) => {
           const key = o.orderNumber || o.id;
+          const hasClaims = claimedOrderMap.has(key) || claimedOrderMap.has(o.id) || claimedOrderMap.has(o.orderNumber);
           if (key) {
             combinedMap.set(key, {
               ...o,
+              hasClaims,
               isSynced: o.isSynced ?? false,
             });
           }
@@ -246,6 +263,12 @@ export default function OrdersPage() {
             combinedMap.delete(matchedKey);
           }
 
+          const hasClaims =
+            (Array.isArray(bOrder.claims) && bOrder.claims.length > 0) ||
+            claimedOrderMap.has(key) ||
+            claimedOrderMap.has(bOrder.id) ||
+            claimedOrderMap.has(bOrder.orderNumber);
+
           const bItemsMapped = Array.isArray(bOrder.items)
             ? bOrder.items.map((it: any) => ({
                 ...it,
@@ -257,6 +280,8 @@ export default function OrdersPage() {
           combinedMap.set(key, {
             ...bOrder,
             ...(existingLocal || {}),
+            hasClaims,
+            claims: bOrder.claims || existingLocal?.claims || [],
             items: existingLocal?.items && existingLocal.items.length > 0 ? existingLocal.items : bItemsMapped,
             isSynced: true,
           });
@@ -277,7 +302,21 @@ export default function OrdersPage() {
 
   useEffect(() => {
     fetchOrders();
+    // Auto-sync offline orders in background
+    syncPendingOrders(true).then((res) => {
+      if (res.synced > 0) {
+        fetchOrders();
+      }
+    });
   }, [startDate, endDate]);
+
+  // Unsynced offline orders count
+  const unsyncedCount = useMemo(() => {
+    const local = shiftStore.completedOrders || [];
+    return local.filter(
+      (o) => o.isSynced === false || (o.orderNumber && o.orderNumber.startsWith("ORD-OFFLINE"))
+    ).length;
+  }, [shiftStore.completedOrders]);
 
   // Statistics Summary
   const stats = useMemo(() => {
@@ -340,30 +379,34 @@ export default function OrdersPage() {
     return {
       orderNumber: order.orderNumber || order.id,
       createdAt: order.createdAt || new Date().toISOString(),
-      customerName: order.customerName || order.customer || "ลูกค้าทั่วไป",
+      customerName: order.customerName || (typeof order.customer === "object" ? order.customer?.name : order.customer) || "ลูกค้าทั่วไป",
       customerPhone: customer?.phone || order.customerPhone,
       customerAddress: customer?.address || order.customerAddress,
       customerTaxId: customer?.taxId || order.customerTaxId,
       customerBranch: customer?.companyName ? "สำนักงานใหญ่" : undefined,
       customerCompany: customer?.companyName,
       userName: order.userName || "พนักงาน POS",
-      items: (order.items || []).map((i: any) => ({
-        sku: i.sku || i.code,
-        name: i.name || i.productName || "สินค้า",
-        quantity: i.quantity || 1,
-        unitName: i.unitName || "ชิ้น",
-        unitPrice: i.unitPrice || i.price || 0,
-        lineTotal: i.lineTotal || i.quantity * (i.unitPrice || i.price || 0),
-        discountAmount: i.discountAmount || 0,
-      })),
-      subtotal: order.subtotal || order.totalAmount || order.total || 0,
-      billDiscountAmount: order.billDiscountAmount || 0,
-      pointsDiscountAmount: order.pointsDiscountAmount || 0,
-      pointsUsed: order.pointsUsed || 0,
-      customerPointsEarned: order.customerPointsEarned,
-      customerPointsBalance: order.customerPointsBalance,
-      vatAmount: order.vatAmount || 0,
-      totalAmount: order.totalAmount || order.total || 0,
+      items: (order.items || []).map((i: any) => {
+        const qty = Number(i.quantity) || 1;
+        const uPrice = Number(i.unitPrice ?? i.price) || 0;
+        return {
+          sku: i.sku || i.code,
+          name: i.name || i.productName || "สินค้า",
+          quantity: qty,
+          unitName: i.unitName || "ชิ้น",
+          unitPrice: uPrice,
+          lineTotal: Number(i.lineTotal) || (qty * uPrice),
+          discountAmount: Number(i.discountAmount) || 0,
+        };
+      }),
+      subtotal: Number(order.subtotal ?? order.totalAmount ?? order.total) || 0,
+      billDiscountAmount: Number(order.billDiscountAmount) || 0,
+      pointsDiscountAmount: Number(order.pointsDiscountAmount) || 0,
+      pointsUsed: Number(order.pointsUsed) || 0,
+      customerPointsEarned: order.customerPointsEarned ? Number(order.customerPointsEarned) : undefined,
+      customerPointsBalance: order.customerPointsBalance ? Number(order.customerPointsBalance) : undefined,
+      vatAmount: Number(order.vatAmount) || 0,
+      totalAmount: Number(order.totalAmount ?? order.total) || 0,
       paymentMethod:
         order.payments?.length > 1
           ? "แบ่งชำระ (Split Payment)"
@@ -373,12 +416,12 @@ export default function OrdersPage() {
           ? "QR PromptPay"
           : order.payments?.[0]?.method === "CREDIT_CARD"
           ? "บัตรเครดิต"
-          : order.payments?.[0]?.method === "CREDIT_NOTE"
+          : order.payments?.[0]?.method === "CREDIT_DEBT" || order.payments?.[0]?.method === "DEBT" || order.payments?.[0]?.method === "CREDIT_NOTE" || order.payments?.[0]?.method === "CREDIT"
           ? "เงินเชื่อ (Credit)"
           : order.paymentMethod || "เงินสด",
       payments: order.payments,
-      cashReceived: order.cashReceived || order.payments?.[0]?.cashReceived,
-      changeAmount: order.changeAmount || order.payments?.[0]?.changeAmount,
+      cashReceived: Number(order.cashReceived ?? order.payments?.[0]?.cashReceived) || undefined,
+      changeAmount: Number(order.changeAmount ?? order.payments?.[0]?.changeAmount) || undefined,
     };
   };
 
@@ -387,24 +430,28 @@ export default function OrdersPage() {
     return {
       orderNumber: order.orderNumber || order.id,
       createdAt: order.createdAt || new Date().toISOString(),
-      customerName: order.customerName || order.customer || "ลูกค้าทั่วไป",
+      customerName: order.customerName || (typeof order.customer === "object" ? order.customer?.name : order.customer) || "ลูกค้าทั่วไป",
       userName: order.userName || "พนักงาน POS",
-      items: (order.items || []).map((i: any) => ({
-        name: i.name || i.productName || "สินค้า",
-        quantity: i.quantity || 1,
-        unitName: i.unitName || "ชิ้น",
-        unitPrice: i.unitPrice || i.price || 0,
-        lineTotal: i.lineTotal || i.quantity * (i.unitPrice || i.price || 0),
-        discountAmount: i.discountAmount || 0,
-      })),
-      subtotal: order.subtotal || order.totalAmount || order.total || 0,
-      billDiscountAmount: order.billDiscountAmount || 0,
-      pointsDiscountAmount: order.pointsDiscountAmount || 0,
-      pointsUsed: order.pointsUsed || 0,
-      customerPointsEarned: order.customerPointsEarned,
-      customerPointsBalance: order.customerPointsBalance,
-      vatAmount: order.vatAmount || 0,
-      totalAmount: order.totalAmount || order.total || 0,
+      items: (order.items || []).map((i: any) => {
+        const qty = Number(i.quantity) || 1;
+        const uPrice = Number(i.unitPrice ?? i.price) || 0;
+        return {
+          name: i.name || i.productName || "สินค้า",
+          quantity: qty,
+          unitName: i.unitName || "ชิ้น",
+          unitPrice: uPrice,
+          lineTotal: Number(i.lineTotal) || (qty * uPrice),
+          discountAmount: Number(i.discountAmount) || 0,
+        };
+      }),
+      subtotal: Number(order.subtotal ?? order.totalAmount ?? order.total) || 0,
+      billDiscountAmount: Number(order.billDiscountAmount) || 0,
+      pointsDiscountAmount: Number(order.pointsDiscountAmount) || 0,
+      pointsUsed: Number(order.pointsUsed) || 0,
+      customerPointsEarned: order.customerPointsEarned ? Number(order.customerPointsEarned) : undefined,
+      customerPointsBalance: order.customerPointsBalance ? Number(order.customerPointsBalance) : undefined,
+      vatAmount: Number(order.vatAmount) || 0,
+      totalAmount: Number(order.totalAmount ?? order.total) || 0,
       paymentMethod:
         order.payments?.length > 1
           ? "แบ่งชำระ (Split Payment)"
@@ -418,8 +465,8 @@ export default function OrdersPage() {
           ? "เงินเชื่อ"
           : order.paymentMethod || "เงินสด",
       payments: order.payments,
-      cashReceived: order.cashReceived || order.payments?.[0]?.cashReceived,
-      changeAmount: order.changeAmount || order.payments?.[0]?.changeAmount,
+      cashReceived: Number(order.cashReceived ?? order.payments?.[0]?.cashReceived) || undefined,
+      changeAmount: Number(order.changeAmount ?? order.payments?.[0]?.changeAmount) || undefined,
     };
   };
 
@@ -572,12 +619,10 @@ export default function OrdersPage() {
     const oldMethod = editPaymentOrder.paymentMethod || editPaymentOrder.payments?.[0]?.method || "CASH";
 
     try {
-      try {
-        await apiFetch(`/orders/${editPaymentOrder.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ paymentMethod: newPaymentMethod }),
-        });
-      } catch (err) {}
+      await apiFetch(`/orders/${editPaymentOrder.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ paymentMethod: newPaymentMethod }),
+      });
 
       shiftStore.updateOrderPaymentMethod(
         orderId,
@@ -616,12 +661,10 @@ export default function OrdersPage() {
     const orderId = editNoteOrder.orderNumber || editNoteOrder.id;
 
     try {
-      try {
-        await apiFetch(`/orders/${editNoteOrder.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ note: newNoteValue.trim() }),
-        });
-      } catch (err) {}
+      await apiFetch(`/orders/${editNoteOrder.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ note: newNoteValue.trim() }),
+      });
 
       shiftStore.updateOrderNote(orderId, newNoteValue);
 
@@ -650,12 +693,10 @@ export default function OrdersPage() {
     }
 
     try {
-      try {
-        await apiFetch(`/orders/${voidTargetOrder.id}/void`, {
-          method: "POST",
-          body: JSON.stringify({ reason: voidReason }),
-        });
-      } catch (err) {}
+      await apiFetch(`/orders/${voidTargetOrder.id}/void`, {
+        method: "POST",
+        body: JSON.stringify({ reason: voidReason }),
+      });
 
       shiftStore.voidOrder(voidTargetOrder.orderNumber || voidTargetOrder.id, voidReason);
       restoreVoidOrderStock(
@@ -725,6 +766,45 @@ export default function OrdersPage() {
           </Button>
         </div>
       </div>
+
+      {/* ─── OFFLINE UNSYNCED ORDERS BANNER ─── */}
+      {unsyncedCount > 0 && (
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300/80 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <AlertTriangle className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-amber-950 flex items-center gap-2">
+                <span>พบบิลที่ยังไม่ได้ส่งขึ้นเซิร์ฟเวอร์</span>
+                <Badge className="bg-amber-600 text-white font-mono text-xs">{unsyncedCount} บิล</Badge>
+              </p>
+              <p className="text-xs text-amber-800/90 mt-0.5">
+                บิลถูกบันทึกไว้ในเครื่องนี้อย่างปลอดภัย สามารถกดปุ่มเพื่อส่งบิลขึ้นฐานข้อมูลส่วนกลางได้ทันที
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={async () => {
+              setIsSyncingAll(true);
+              try {
+                const res = await syncPendingOrders();
+                if (res.synced > 0) {
+                  await fetchOrders();
+                }
+              } finally {
+                setIsSyncingAll(false);
+              }
+            }}
+            disabled={isSyncingAll}
+            className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs h-9 px-4 rounded-xl shadow-xs shrink-0 cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isSyncingAll ? "animate-spin" : ""}`} />
+            {isSyncingAll ? "กำลังซิงค์บิล..." : "🔄 ซิงค์ขึ้นเซิร์ฟเวอร์ทันที"}
+          </Button>
+        </div>
+      )}
 
       {/* ─── TOP STATS CARDS (Compact Height, Larger Header Font matching debts page) ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -827,14 +907,16 @@ export default function OrdersPage() {
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none shadow-2xs"
+              onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
+              className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none shadow-2xs cursor-pointer"
             />
             <span className="text-slate-400">-</span>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none shadow-2xs"
+              onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
+              className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none shadow-2xs cursor-pointer"
             />
           </div>
         </div>
@@ -919,7 +1001,14 @@ export default function OrdersPage() {
 
                       {/* 2. Order Number */}
                       <TableCell className="py-3.5 font-mono">
-                        <span className="font-bold text-indigo-600 text-[15px]">{order.orderNumber}</span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-bold text-indigo-600 text-[15px]">{order.orderNumber}</span>
+                          {order.hasClaims && (
+                            <span className="text-[10px] text-amber-700 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded font-bold font-sans">
+                              ⚠️ เคลมแล้ว
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
 
                       {/* 3. Date (แยก col. วันที่) */}
@@ -931,7 +1020,7 @@ export default function OrdersPage() {
                       <TableCell className="py-3.5">
                         <div className="font-bold text-slate-900 text-[15px] flex items-center gap-1.5">
                           <User className="w-3.5 h-3.5 text-slate-400" />
-                          <span>{order.customerName || order.customer || "ลูกค้าทั่วไป"}</span>
+                          <span>{order.customerName || (typeof order.customer === "object" ? order.customer?.name : order.customer) || "ลูกค้าทั่วไป"}</span>
                         </div>
                       </TableCell>
 
@@ -954,7 +1043,7 @@ export default function OrdersPage() {
                                 key={i}
                                 variant="outline"
                                 className={`text-[10px] font-bold px-1.5 py-0.5 ${
-                                  p.method === "CREDIT_NOTE" || p.method === "CREDIT"
+                                  p.method === "CREDIT_DEBT" || p.method === "DEBT" || p.method === "CREDIT_NOTE" || p.method === "CREDIT"
                                     ? "bg-amber-100 text-amber-900 border-amber-300"
                                     : "bg-white text-slate-800 border-slate-300"
                                 }`}
@@ -965,7 +1054,7 @@ export default function OrdersPage() {
                                   ? "📱 QR"
                                   : p.method === "CREDIT_CARD"
                                   ? "💳 บัตร"
-                                  : p.method === "CREDIT_NOTE" || p.method === "CREDIT"
+                                  : p.method === "CREDIT_DEBT" || p.method === "DEBT" || p.method === "CREDIT_NOTE" || p.method === "CREDIT"
                                   ? "👤 เงินเชื่อ"
                                   : p.method}
                               </Badge>
@@ -1299,7 +1388,7 @@ export default function OrdersPage() {
                   <span className="text-slate-500 block mb-0.5">ชื่อลูกค้า</span>
                   <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
                     <User className="w-3.5 h-3.5 text-sky-600" />
-                    {currentOrder.customerName || currentOrder.customer || "ลูกค้าทั่วไป"}
+                    {currentOrder.customerName || (typeof currentOrder.customer === "object" ? currentOrder.customer?.name : currentOrder.customer) || "ลูกค้าทั่วไป"}
                   </span>
                 </div>
                 {currentOrder.voidReason && (
