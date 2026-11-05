@@ -28,7 +28,6 @@ import { useProductStore } from '@/lib/store/product-store';
 
 import PurchaseOrderPdfModal, { PurchaseOrderData } from '@/components/pos/PurchaseOrderPdfModal';
 import { recordPoReceiveStock, recordPoRollbackStock } from '@/lib/stock-service';
-import { DeductReturnNoteModal } from '@/components/pos/DeductReturnNoteModal';
 
 function loadProductImages(productId: string): string[] {
   if (typeof window === 'undefined') return [];
@@ -187,15 +186,12 @@ export default function PurchaseOrdersPage() {
   const [isUnderReceiveModalOpen, setIsUnderReceiveModalOpen] = useState(false);
   const [underReceiveAction, setUnderReceiveAction] = useState<'ADJUST_AND_COMPLETE' | 'PARTIAL'>('ADJUST_AND_COMPLETE');
 
-  // Supplier Claim Return Deduction Modal State
-  const [isDeductReturnModalOpen, setIsDeductReturnModalOpen] = useState(false);
-  const [targetPoForDeduct, setTargetPoForDeduct] = useState<any | null>(null);
 
   const fetchPOs = async () => {
     setLoading(true);
     let list: any[] = [];
     try {
-      const data = await apiFetch("/purchase-orders");
+      const data = await apiFetch("/purchase-orders?limit=1000");
       list = Array.isArray(data) ? data : data.data;
       if (!Array.isArray(list)) throw new Error("ข้อมูลใบสั่งซื้อไม่ถูกต้อง");
       savePOsToStorage(list);
@@ -2211,7 +2207,7 @@ export default function PurchaseOrdersPage() {
                           <span>{item.name || item.product?.name}</span>
                         </TableCell>
                         <TableCell className="text-right text-slate-700 font-semibold">{item.quantity}</TableCell>
-                        <TableCell className="text-right text-emerald-600 font-bold">{item.receivedQuantity || 0}</TableCell>
+                        <TableCell className="text-right text-emerald-600 font-bold">{Number(item.receivedQty ?? item.receivedQuantity) || 0}</TableCell>
                         <TableCell className="text-right text-slate-600">{formatCurrency(item.unitCost)}</TableCell>
                         <TableCell className="text-right text-slate-900 font-bold">{formatCurrency(item.quantity * item.unitCost)}</TableCell>
                       </TableRow>
@@ -2225,46 +2221,30 @@ export default function PurchaseOrdersPage() {
                       <span className="font-mono font-bold text-slate-800">{formatCurrency(currentPo.totalAmount)}</span>
                     </div>
 
-                    {/* Deducted Returns Breakdown if any */}
-                    {currentPo.deductedReturns && currentPo.deductedReturns.length > 0 && (
-                      <div className="border-t border-slate-200 pt-1.5 space-y-1">
-                        <span className="text-[11px] font-bold text-rose-700 block">หักลดหนี้สินค้าเคลมคืนบริษัท:</span>
-                        {currentPo.deductedReturns.map((r: any, rIdx: number) => (
-                          <div key={rIdx} className="flex justify-between text-xs text-rose-600 font-medium">
-                            <span className="font-mono text-[11px]">-{r.returnNumber || r.returnNoteId}</span>
-                            <span className="font-mono font-bold">-{formatCurrency(r.amount)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
+                    {/* Paid / remaining come from the database (payment vouchers incl. credit-note deductions). */}
+                    <div className="flex justify-between text-xs text-slate-600 font-medium">
+                      <span>ชำระแล้ว (รวมหักใบลดหนี้):</span>
+                      <span className="font-mono font-bold text-emerald-700">{formatCurrency(Number(currentPo.paidAmount || 0))}</span>
+                    </div>
                     <div className="border-t border-slate-200 pt-2 flex justify-between font-black text-lg text-slate-900">
-                      <span>ยอดชำระสุทธิ:</span>
-                      <span className="text-emerald-700 font-mono font-black">
-                        {formatCurrency(
-                          Math.max(
-                            0,
-                            Number(currentPo.totalAmount || 0) -
-                              (currentPo.deductedReturns || []).reduce((s: number, r: any) => s + Number(r.amount || 0), 0)
-                          )
-                        )}
+                      <span>ยอดค้างชำระ:</span>
+                      <span className="text-rose-700 font-mono font-black">
+                        {formatCurrency(Number(currentPo.remainingPayable ?? currentPo.totalAmount ?? 0))}
                       </span>
                     </div>
 
-                    {/* Button to deduct return note */}
-                    {currentPo.status !== 'CANCELLED' && (
+                    {currentPo.status !== 'CANCELLED' && Number(currentPo.remainingPayable ?? 0) > 0 && (
                       <Button
                         type="button"
                         size="sm"
                         onClick={() => {
-                          setTargetPoForDeduct(currentPo);
-                          setIsDeductReturnModalOpen(true);
+                          window.location.href = '/payables';
                         }}
                         className="mt-2 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-9 rounded-xl shadow-xs gap-1.5"
-                        title="นำใบลดหนี้สินค้าเคลม (RTN) มาหักลบกับบิลนี้"
+                        title="ชำระเงินและหักใบลดหนี้ทำที่หน้าเจ้าหนี้การค้า เพื่อให้ยอดตรงกับฐานข้อมูล"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
-                        <span>หักลบใบลดหนี้สินค้าเคลม</span>
+                        <span>ชำระเงิน / หักใบลดหนี้ ที่หน้าเจ้าหนี้การค้า</span>
                       </Button>
                     )}
                   </div>
@@ -2692,16 +2672,6 @@ export default function PurchaseOrdersPage() {
         po={pdfPoData}
       />
 
-      {/* Supplier Return Note Deduction Modal */}
-      <DeductReturnNoteModal
-        open={isDeductReturnModalOpen}
-        onOpenChange={setIsDeductReturnModalOpen}
-        po={targetPoForDeduct}
-        onSuccess={(updatedPo) => {
-          setCurrentPo(updatedPo);
-          fetchPOs();
-        }}
-      />
     </div>
   );
 }

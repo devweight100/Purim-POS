@@ -41,10 +41,11 @@ export function loadSuppliers(): any[] {
 // ─── Purchase Orders Storage Helpers ───
 export async function fetchPurchaseOrders(): Promise<any[]> {
   try {
-    const data = await apiFetch('/purchase-orders');
-    if (Array.isArray(data)) {
-      savePurchaseOrders(data);
-      return data;
+    const data = await apiFetch('/purchase-orders?limit=1000');
+    const list = Array.isArray(data) ? data : data?.data;
+    if (Array.isArray(list)) {
+      savePurchaseOrders(list);
+      return list;
     }
   } catch (err) {
     console.warn('[SupplierReturnService] Failed to fetch POs from backend:', err);
@@ -721,52 +722,8 @@ export function createSupplierReturnNote(params: CreateReturnNoteParams): Suppli
     createdBy: params.createdBy || 'เจ้าหน้าที่ฝ่ายส่งคืน/เคลม',
   };
 
-  // If auto-deduct is requested against linked PO
-  if (params.autoDeductFromPo && params.linkedPoId && totalCredit > 0) {
-    try {
-      const allPos = loadPurchaseOrders();
-      const targetPo = allPos.find(
-        (p) => p.id === params.linkedPoId || p.poNumber === params.linkedPoNumber
-      );
-      if (targetPo) {
-        const poTotal = Number(targetPo.totalAmount || 0);
-        const alreadyDeducted = (targetPo.deductedReturns || []).reduce(
-          (sum: number, r: any) => sum + Number(r.amount || 0),
-          0
-        );
-        const curPayable = Math.max(0, poTotal - alreadyDeducted);
-        const actualDeduct = Math.min(totalCredit, curPayable);
-
-        if (actualDeduct > 0) {
-          const deductionEntry = {
-            returnNoteId: returnId,
-            returnNumber: returnId,
-            amount: actualDeduct,
-            deductedAt: nowIso,
-            note: `หักลดยอดอัตโนมัติจากใบส่งคืน ${returnId}`,
-          };
-
-          targetPo.deductedReturns = [...(targetPo.deductedReturns || []), deductionEntry];
-          targetPo.netAmountPayable = Math.max(0, curPayable - actualDeduct);
-          savePurchaseOrders(allPos);
-
-          newReturnNote.remainingCreditAmount = Math.max(0, Math.round((totalCredit - actualDeduct) * 100) / 100);
-          newReturnNote.status = newReturnNote.remainingCreditAmount <= 0 ? 'DEDUCTED' : 'PARTIALLY_DEDUCTED';
-          newReturnNote.deductions = [
-            {
-              billNumber: targetPo.poNumber || params.linkedPoNumber || 'PO',
-              deductedAmount: actualDeduct,
-              deductedAt: nowIso,
-              netPaid: targetPo.netAmountPayable,
-              note: `หักลดยอดในใบสั่งซื้อ ${targetPo.poNumber}`,
-            },
-          ];
-        }
-      }
-    } catch (e) {
-      console.error('Failed to auto-deduct PO balance:', e);
-    }
-  }
+  // Credit notes are applied to supplier bills only through payment vouchers on the
+  // payables page (backend), so PO balances and credit balances cannot drift apart.
 
   const existingNotes = loadSupplierReturnNotes();
   existingNotes.unshift(newReturnNote);
@@ -947,76 +904,6 @@ export function getAvailableReturnNotesForSupplier(supplierId: string): Supplier
   );
 }
 
-export function deductReturnNoteFromBill(
-  returnNoteId: string,
-  billNumber: string,
-  amountToDeduct: number,
-  billTotal: number,
-  note?: string
-): { success: boolean; netPayable: number; actualDeducted: number; message: string } {
-  const notes = loadSupplierReturnNotes();
-  const target = notes.find((n) => n.id === returnNoteId);
-
-  if (!target) {
-    return { success: false, netPayable: billTotal, actualDeducted: 0, message: 'ไม่พบเอกสารส่งคืนสินค้านี้' };
-  }
-
-  const actualDeduct = Math.min(amountToDeduct, target.remainingCreditAmount, billTotal);
-  target.remainingCreditAmount = Math.max(0, Math.round((target.remainingCreditAmount - actualDeduct) * 100) / 100);
-
-  if (target.remainingCreditAmount <= 0) {
-    target.status = 'DEDUCTED';
-  } else {
-    target.status = 'PARTIALLY_DEDUCTED';
-  }
-
-  const deductionEntry = {
-    billNumber,
-    deductedAmount: actualDeduct,
-    deductedAt: new Date().toISOString(),
-    netPaid: Math.max(0, billTotal - actualDeduct),
-    note,
-  };
-
-  target.deductions = [...(target.deductions || []), deductionEntry];
-  saveSupplierReturnNotes(notes);
-
-  // Also update claims linked to this return note
-  const allClaims = loadAllClaimRecords();
-  allClaims.forEach((c) => {
-    if (c.returnDocId === returnNoteId) {
-      c.settledInBillNumber = billNumber;
-      if (target.status === 'DEDUCTED') {
-        c.status = 'COMPLETED';
-        c.completedDate = new Date().toISOString();
-      }
-      void updateClaimStatus(c.id, c.status, {
-        settledInBillNumber: billNumber,
-      });
-    }
-  });
-  saveClaimRecords(allClaims);
-
-  void apiFetch(`/supplier-returns/${encodeURIComponent(returnNoteId)}/deduct`, {
-    method: 'POST',
-    body: JSON.stringify({
-      billNumber,
-      amountToDeduct: actualDeduct,
-      billTotal,
-      note,
-    }),
-  }).catch((err) => console.warn('[SupplierReturnService] Failed to sync credit deduction to backend:', err));
-
-  const netPayable = Math.max(0, Math.round((billTotal - actualDeduct) * 100) / 100);
-  return {
-    success: true,
-    netPayable,
-    actualDeducted: actualDeduct,
-    message: `หักลดยอดสินค้าเคลมคืนสำเร็จ ฿${actualDeduct.toLocaleString()} (ยอดชำระสุทธิคงเหลือ ฿${netPayable.toLocaleString()})`,
-  };
-}
-
-export const deductReturnNoteCredit = deductReturnNoteFromBill;
 
 // ─── Update Supplier Return Note (When not yet fully deducted) ───
 export function updateSupplierReturnNote(

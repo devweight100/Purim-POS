@@ -17,7 +17,7 @@ export class ReportsService {
       this.prisma.order.findMany({ where: { createdAt: { gte: startOfMonth }, status: OrderStatus.COMPLETED } }),
       this.prisma.product.findMany({
         where: { isActive: true },
-        include: { stockBatches: { where: { quantityRemaining: { gt: 0 } } } }
+        include: { stockBatches: { where: { quantityRemaining: { not: 0 } } } }
       })
     ]);
 
@@ -177,8 +177,9 @@ export class ReportsService {
           user: { select: { id: true, fullName: true } },
         },
       }),
+      // Include negative (oversold) batches so they net against positive stock.
       this.prisma.stockBatch.findMany({
-        where: { quantityRemaining: { gt: 0 } },
+        where: { quantityRemaining: { not: 0 } },
         select: {
           productId: true,
           quantityRemaining: true,
@@ -203,22 +204,29 @@ export class ReportsService {
       { quantityRemaining: number; totalCostValue: number; averageUnitCost: number }
     > = {};
 
+    const netByProduct: Record<string, { qty: number; value: number; positiveQty: number; positiveValue: number }> = {};
     for (const batch of activeBatches) {
       const qty = Number(batch.quantityRemaining || 0);
-      if (qty <= 0) continue;
+      if (!qty) continue;
       const unitCost = Number(batch.unitCost ?? 0);
-      const current = batchValuationByProduct[batch.productId] || {
-        quantityRemaining: 0,
-        totalCostValue: 0,
-        averageUnitCost: 0,
+      const row = netByProduct[batch.productId] || { qty: 0, value: 0, positiveQty: 0, positiveValue: 0 };
+      row.qty += qty;
+      row.value += qty * unitCost;
+      if (qty > 0) {
+        row.positiveQty += qty;
+        row.positiveValue += qty * unitCost;
+      }
+      netByProduct[batch.productId] = row;
+    }
+    for (const [productId, row] of Object.entries(netByProduct)) {
+      // Net on-hand = positive batches minus oversold units. Nothing on hand => no inventory value.
+      const quantityRemaining = Math.max(0, row.qty);
+      const averageUnitCost = row.positiveQty > 0 ? row.positiveValue / row.positiveQty : 0;
+      batchValuationByProduct[productId] = {
+        quantityRemaining,
+        totalCostValue: quantityRemaining > 0 ? quantityRemaining * averageUnitCost : 0,
+        averageUnitCost,
       };
-      current.quantityRemaining += qty;
-      current.totalCostValue += qty * unitCost;
-      current.averageUnitCost =
-        current.quantityRemaining > 0
-          ? current.totalCostValue / current.quantityRemaining
-          : unitCost;
-      batchValuationByProduct[batch.productId] = current;
     }
 
     let totalInventoryCostValue = 0;

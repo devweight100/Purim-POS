@@ -37,10 +37,8 @@ export class SupplierReturnsController {
     return this.returnsService.updateReturnNote(id, body);
   }
 
-  @Post(':id/deduct')
-  deductCredit(@Param('id') id: string, @Body() body: any) {
-    return this.returnsService.deductCredit(id, body);
-  }
+  // Credit notes are applied to supplier bills only through payment vouchers (/payables/settle-multiple),
+  // so the old stand-alone POST /supplier-returns/:id/deduct endpoint was removed.
 
   @Post(':id/cancel')
   cancel(@Param('id') id: string, @Body('reason') reason?: string) {

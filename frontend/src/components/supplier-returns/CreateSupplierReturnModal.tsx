@@ -142,7 +142,6 @@ export function CreateSupplierReturnModal({
 
   // Document metadata
   const [notes, setNotes] = useState('');
-  const [autoDeductPo, setAutoDeductPo] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Load suppliers on open
@@ -155,7 +154,6 @@ export function CreateSupplierReturnModal({
         setSelectedPoId(editingNote.linkedPoId || '');
         setReturnItems(editingNote.items.map((i) => ({ ...i })));
         setNotes(editingNote.notes || '');
-        setAutoDeductPo(false);
         setCustomDeductAmountStr(String(editingNote.totalCreditAmount));
         setIsCustomEdited(true);
       } else {
@@ -164,7 +162,6 @@ export function CreateSupplierReturnModal({
         setSelectedPoId(initialPoId || '');
         setReturnItems([]);
         setNotes('');
-        setAutoDeductPo(true);
         setCustomDeductAmountStr('');
         setIsCustomEdited(false);
       }
@@ -423,7 +420,7 @@ export function CreateSupplierReturnModal({
           items: returnItems,
           customCreditAmount: finalEffectiveCredit,
           notes: notes.trim() || undefined,
-          autoDeductFromPo: autoDeductPo && !!selectedPoId,
+          autoDeductFromPo: false,
         });
         toast.success(`✅ สร้างใบส่งคืน / ใบลดหนี้ ${resultNote.id} เรียบร้อยแล้ว`);
       }
@@ -551,7 +548,7 @@ export function CreateSupplierReturnModal({
                         ✓ เลือกใบสั่งซื้อ: <span className="font-mono text-amber-900">{selectedPO.poNumber}</span>
                       </p>
                       <p className="text-[11px] text-amber-800">
-                        ยอดหนี้ค้างชำระปัจจุบัน: <strong className="font-mono font-bold">{formatCurrency(selectedPO.remainingPayable)}</strong> (ยอดที่เลือกคืนด้านล่างจะนำไปลดหนี้ใบนี้)
+                        ยอดหนี้ค้างชำระปัจจุบัน: <strong className="font-mono font-bold">{formatCurrency(selectedPO.remainingPayable)}</strong> (หักใบลดหนี้ได้ตอนทำใบสำคัญจ่ายที่หน้าเจ้าหนี้)
                       </p>
                     </div>
                     <Badge className="bg-amber-600 text-white text-[11px] font-bold self-start sm:self-auto">
@@ -1191,20 +1188,9 @@ export function CreateSupplierReturnModal({
               />
 
               {selectedPO && (
-                <div className="pt-2">
-                  <label className="flex items-center gap-2 text-xs font-bold text-amber-900 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={autoDeductPo}
-                      onChange={(e) => setAutoDeductPo(e.target.checked)}
-                      className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4"
-                    />
-                    <span>หักลดยอดหนี้ในใบสั่งซื้อ {selectedPO.poNumber} ทันทีเมื่อบันทึก</span>
-                  </label>
-                  <p className="text-[11px] text-slate-500 pl-6">
-                    ยอดหนี้ของใบ PO จะถูกปรับลด {formatCurrency(Math.min(finalEffectiveCredit, selectedPO.remainingPayable))}
-                  </p>
-                </div>
+                <p className="pt-2 text-[11px] text-slate-500">
+                  ใบลดหนี้จะถูกนำไปหักกับ {selectedPO.poNumber} ตอนทำใบสำคัญจ่ายที่หน้า “เจ้าหนี้การค้า &amp; จ่ายเงิน” เพื่อให้ยอดหนี้ตรงกับฐานข้อมูล
+                </p>
               )}
             </div>
 
@@ -1274,7 +1260,7 @@ export function CreateSupplierReturnModal({
                     <span className="font-mono">{formatCurrency(selectedPO.remainingPayable)}</span>
                   </div>
                   <div className="flex justify-between font-bold text-xs">
-                    <span>ยอดหนี้สุทธิคงเหลือหลังหัก:</span>
+                    <span>ยอดหนี้สุทธิหลังหัก (เมื่อทำใบสำคัญจ่าย):</span>
                     <span className="font-mono text-emerald-700">
                       {formatCurrency(Math.max(0, selectedPO.remainingPayable - finalEffectiveCredit))}
                     </span>

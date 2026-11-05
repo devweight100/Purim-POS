@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { interval, map, merge, Observable, of } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from './events.service';
+import { getJwtSecret } from '../auth/jwt-secret';
 
 @Controller('events')
 export class EventsController {
@@ -16,7 +17,7 @@ export class EventsController {
   ) {
     // Same secret resolution as JwtStrategy.
     this.jwt = new JwtService({
-      secret: config.get<string>('JWT_SECRET') || process.env.JWT_SECRET || 'fallback_secret',
+      secret: getJwtSecret(),
     });
   }
 
@@ -35,10 +36,10 @@ export class EventsController {
       const user = payload.sub
         ? await this.prisma.user.findUnique({ where: { id: payload.sub }, select: { isActive: true } })
         : await this.prisma.user.findUnique({ where: { username: payload.username }, select: { isActive: true } });
-      if (user && !user.isActive) throw new UnauthorizedException('Account disabled');
+      if (!user || !user.isActive) throw new UnauthorizedException('Account disabled');
     } catch (e) {
       if (e instanceof UnauthorizedException) throw e;
-      /* transient DB error: trust the verified JWT, like JwtStrategy */
+      throw new UnauthorizedException('Cannot verify account');
     }
 
     return merge(

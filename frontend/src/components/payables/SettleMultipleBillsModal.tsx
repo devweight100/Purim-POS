@@ -98,6 +98,17 @@ export function SettleMultipleBillsModal({
   const [tempInvoiceNo, setTempInvoiceNo] = useState<string>('');
 
   // Close supplier dropdown on outside click
+  // One idempotency key per opened dialog: double-clicks or retries cannot create a second voucher.
+  const clientVoucherIdRef = useRef('');
+  useEffect(() => {
+    if (open) {
+      clientVoucherIdRef.current =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `pv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+    }
+  }, [open]);
+
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (supplierSearchRef.current && !supplierSearchRef.current.contains(e.target as Node)) {
@@ -329,6 +340,7 @@ export function SettleMultipleBillsModal({
         }));
 
       const res = await settleMultipleBills({
+        clientVoucherId: clientVoucherIdRef.current,
         supplierId: selectedSupplierId,
         supplierName: currentSupp?.name,
         billsToSettle,

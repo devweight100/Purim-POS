@@ -1,6 +1,6 @@
 # Purim POS Project Status
 
-Last updated: 2026-10-26
+Last updated: 2026-11-05
 
 ## Goal
 
@@ -38,6 +38,17 @@ Make the POS production-ready by using PostgreSQL/backend APIs as the source of 
 - Enforced server-side RBAC (`RolesGuard`, `@Roles`, `@RequirePermissions`) and live user active/permission verification in `JwtStrategy`.
 - Upgraded `ReportsService` (`GET /api/reports/analytics`), `ReportsView.tsx`, and `reports-service.ts` to query full PostgreSQL records without 1,000-order truncation, calculate FIFO batch inventory valuation, and never substitute `basePrice` (selling price) for `costPrice`.
 - Added PostgreSQL database backup endpoints (`GET /api/server-control/backups`, `POST /api/server-control/backup`) in `ServerControlService`.
+
+## 2026-11-05 Review Fixes (security, migrations, payables, stock/cost)
+
+- **Auth**: `POST /auth/register` and `PATCH /auth/users/*` now require `ADMIN` (`GET /auth/users` allows ADMIN/MANAGER). The last active ADMIN cannot be demoted or disabled. PINs must be 4-6 digits and unique.
+- **JWT secret**: no more `fallback_secret`. `JWT_SECRET` (>= 32 chars) is used if set; otherwise a random secret is generated once into `backend/.jwt-secret` (git-ignored). Existing tokens become invalid after upgrade (users log in again). `JwtStrategy` no longer maps unknown ADMIN tokens to another admin and no longer trusts token claims when the DB is unreachable.
+- **Login throttling**: 5 failed password attempts per IP+username, or 5 failed PIN attempts per IP, lock that key for 15 minutes (HTTP 429). In-memory, single backend instance.
+- **Migrations**: added `20260901000000_baseline` so `prisma migrate deploy` can build a new database from scratch, and `20261105000000_fix_thai_defaults` (repairs mojibake defaults/rows for `products.unit` and `store_settings.store_name`). Schema comments/defaults re-encoded as UTF-8.
+  - **Existing databases must run once:** `npx prisma migrate resolve --applied 20260901000000_baseline` (and `--applied` for any older migration not yet recorded), then `npx prisma migrate deploy`.
+- **Payables**: a PO becomes payable only when goods are received (`PARTIALLY_RECEIVED`/`RECEIVED`/`COMPLETED`); payable amount is capped at received value minus paid. `POST /payables/settle-multiple` requires `clientVoucherId` (idempotent). Frontend no longer falls back to local-only vouchers. Credit notes are applied only via payment vouchers: `DeductReturnNoteModal`, the auto-deduct on return-note creation and `POST /supplier-returns/:id/deduct` were removed.
+- **Sales/stock**: `CREDIT_DEBT` lines must be > 0 and the debt equals the sum of all credit lines. Units sold beyond stock are costed at `costPrice` or the latest purchase cost, never `basePrice`. Inventory valuation and dashboard low-stock now net negative (oversold) batches.
+- Verified on 2026-11-05: backend + frontend build; fresh DB `migrate deploy` matches schema (empty diff); upgrade path of an old DB repairs Thai defaults; API checks (security 10/10, data 12/12) and an Electron desktop run (login lock, open shift, cash sale, duplicate PIN, payables, inventory value, cashier blocked) all passed.
 
 ## Production Readiness Work In Progress
 
