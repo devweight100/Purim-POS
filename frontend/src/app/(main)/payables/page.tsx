@@ -464,7 +464,7 @@ export default function PayablesPage() {
                       <th className="py-3.5 px-3 text-left w-32">เลขที่ PO</th>
                       <th className="py-3.5 px-3 text-center w-28">วันที่บิล</th>
                       <th className="py-3.5 px-3 text-left">บริษัทผู้จำหน่าย</th>
-                      <th className="py-3.5 px-3 text-right font-bold text-sm">ยอดหนี้ตามบิล</th>
+                      <th className="py-3.5 px-3 text-right font-bold text-sm" title="มูลค่าสินค้าที่รับเข้าแล้ว (ตั้งเป็นหนี้)">ยอดหนี้ (รับของแล้ว)</th>
                       <th className="py-3.5 px-2.5 text-right font-bold text-sm">ส่วนลด</th>
                       <th className="py-3.5 px-2.5 text-right font-bold text-sm">ประกบลดหนี้</th>
                       <th className="py-3.5 px-2.5 text-right font-bold text-sm">จ่ายแล้ว</th>
@@ -535,7 +535,10 @@ export default function PayablesPage() {
                         </td>
 
                         <td className="py-3 px-3 text-right font-mono font-bold text-slate-800 text-sm sm:text-[14px]">
-                          {formatCurrency(bill.totalAmount)}
+                          {formatCurrency(bill.receivedAmount ?? bill.totalAmount)}
+                                {bill.receivedAmount !== undefined && Math.abs(bill.receivedAmount - bill.totalAmount) > 0.004 && (
+                                  <span className="block text-[11px] font-medium text-slate-400">จาก PO {formatCurrency(bill.totalAmount)}</span>
+                                )}
                         </td>
 
                         <td className="py-3 px-2.5 text-right font-mono text-sm sm:text-[14px]">

@@ -43,7 +43,8 @@ export interface SupplierPayableBill {
   billDate: string;
   status: string; // PO status: 'COMPLETED' | 'PARTIALLY_RECEIVED' | 'ISSUED'
   paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
-  totalAmount: number;
+  totalAmount: number; // full PO amount
+  receivedAmount: number; // value of goods actually received = amount owed to the supplier
   alreadyDeductedReturns: number;
   alreadyPaidAmount: number;
   alreadyDiscountAmount: number;
@@ -375,6 +376,7 @@ function mapPosToPayableBills(
         status: po.status,
         paymentStatus,
         totalAmount,
+        receivedAmount: Math.round(receivedValueOf(po) * 100) / 100,
         alreadyDeductedReturns: alreadyDeducted,
         alreadyPaidAmount: alreadyPaid,
         alreadyDiscountAmount: alreadyDiscount,

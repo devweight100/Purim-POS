@@ -110,6 +110,8 @@ function thaiBahtText(num: number): string {
 
 export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: PurchaseOrderPdfModalProps) {
   const [isExporting, setIsExporting] = useState(false);
+  // Hooks must run before any early return (React error #310 otherwise).
+  const [storeSettings] = useState(() => loadStoreSettings());
   const printRef = useRef<HTMLDivElement>(null);
 
   if (!po) return null;
@@ -177,7 +179,6 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
   const vatAmount = poData.vatAmount !== undefined && poData.vatAmount !== null ? Number(poData.vatAmount) : calculatedVat;
   const netAmount = poData.netAmount !== undefined && poData.netAmount !== null ? Number(poData.netAmount) : netBeforeVat;
 
-  const [storeSettings] = useState(() => loadStoreSettings());
 
   const handlePrint = () => {
     if (!printRef.current) return;

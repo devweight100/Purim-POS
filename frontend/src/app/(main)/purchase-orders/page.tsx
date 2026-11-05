@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { apiFetch } from '@/lib/api';
+import { useRouter } from 'next/navigation';
 import { submitPurchaseReceipt } from '@/lib/purchase-receipt-sync';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
@@ -118,6 +119,7 @@ function getProductUnits(product: any): { name: string; mult: number }[] {
 }
 
 export default function PurchaseOrdersPage() {
+  const router = useRouter();
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -773,20 +775,21 @@ export default function PurchaseOrdersPage() {
     setTargetStatusChangePo(null);
   };
 
-  const handleViewDetail = async (id: string) => {
-    // 1. Look up in local storage / current state first
-    const stored = loadPOsFromStorage();
-    let poData: any = stored.find((p: any) => p.id === id || p.poNumber === id) || 
-                      purchaseOrders.find((p: any) => p.id === id || p.poNumber === id);
+  const handleViewDetail = async (id: string, mode: 'detail' | 'pdf' = 'detail') => {
+    // 1. Database first so paid / remaining / received quantities are current
+    let poData: any = null;
+    try {
+      const resp = await apiFetch(`/purchase-orders/${id}`);
+      if (resp && typeof resp === 'object' && !Array.isArray(resp) && (resp.id || resp.poNumber)) {
+        poData = resp;
+      }
+    } catch {}
 
-    // 2. If not found in local, attempt API
+    // 2. Offline fallback: current list / cached copy
     if (!poData) {
-      try {
-        const resp = await apiFetch(`/purchase-orders/${id}`);
-        if (resp && typeof resp === 'object' && !Array.isArray(resp) && (resp.id || resp.poNumber)) {
-          poData = resp;
-        }
-      } catch (error) {}
+      const stored = loadPOsFromStorage();
+      poData = purchaseOrders.find((p: any) => p.id === id || p.poNumber === id) ||
+               stored.find((p: any) => p.id === id || p.poNumber === id);
     }
 
     if (poData) {
@@ -799,8 +802,12 @@ export default function PurchaseOrdersPage() {
         }
       }
       setCurrentPo(poData);
-      setPdfPoData(poData);
-      setIsPdfModalOpen(true);
+      if (mode === 'pdf') {
+        setPdfPoData(poData);
+        setIsPdfModalOpen(true);
+      } else {
+        setIsDetailOpen(true);
+      }
     } else {
       toast.error("ไม่พบข้อมูลใบสั่งซื้อ");
     }
@@ -1899,7 +1906,7 @@ export default function PurchaseOrdersPage() {
                           size="icon" 
                           className="h-8 w-8 text-slate-500 hover:text-sky-600 hover:bg-sky-50" 
                           title="ดู/พิมพ์ใบสั่งซื้อ PDF" 
-                          onClick={(e) => { e.stopPropagation(); handleViewDetail(po.id); }}
+                          onClick={(e) => { e.stopPropagation(); handleViewDetail(po.id, 'pdf'); }}
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
@@ -2220,6 +2227,17 @@ export default function PurchaseOrdersPage() {
                       <span>ยอดรวมบิลสั่งซื้อ:</span>
                       <span className="font-mono font-bold text-slate-800">{formatCurrency(currentPo.totalAmount)}</span>
                     </div>
+                    <div className="flex justify-between text-xs text-slate-600 font-medium">
+                      <span>มูลค่าสินค้าที่รับแล้ว (ตั้งเป็นหนี้):</span>
+                      <span className="font-mono font-bold text-indigo-700">
+                        {formatCurrency(
+                          (currentPo.items || []).reduce(
+                            (sum: number, i: { receivedQty?: number; receivedQuantity?: number; unitCost?: number }) => sum + (Number(i.receivedQty ?? i.receivedQuantity) || 0) * (Number(i.unitCost) || 0),
+                            0,
+                          )
+                        )}
+                      </span>
+                    </div>
 
                     {/* Paid / remaining come from the database (payment vouchers incl. credit-note deductions). */}
                     <div className="flex justify-between text-xs text-slate-600 font-medium">
@@ -2227,9 +2245,20 @@ export default function PurchaseOrdersPage() {
                       <span className="font-mono font-bold text-emerald-700">{formatCurrency(Number(currentPo.paidAmount || 0))}</span>
                     </div>
                     <div className="border-t border-slate-200 pt-2 flex justify-between font-black text-lg text-slate-900">
-                      <span>ยอดค้างชำระ:</span>
+                      <span>ยอดค้างชำระ (ของที่รับแล้ว):</span>
                       <span className="text-rose-700 font-mono font-black">
-                        {formatCurrency(Number(currentPo.remainingPayable ?? currentPo.totalAmount ?? 0))}
+                        {formatCurrency(
+                          Math.max(
+                            0,
+                            Math.min(
+                              Number(currentPo.remainingPayable ?? currentPo.totalAmount ?? 0),
+                              (currentPo.items || []).reduce(
+                                (sum: number, i: { receivedQty?: number; receivedQuantity?: number; unitCost?: number }) => sum + (Number(i.receivedQty ?? i.receivedQuantity) || 0) * (Number(i.unitCost) || 0),
+                                0,
+                              ) - Number(currentPo.paidAmount || 0),
+                            ),
+                          )
+                        )}
                       </span>
                     </div>
 
@@ -2238,7 +2267,8 @@ export default function PurchaseOrdersPage() {
                         type="button"
                         size="sm"
                         onClick={() => {
-                          window.location.href = '/payables';
+                          setIsDetailOpen(false);
+                          router.push('/payables');
                         }}
                         className="mt-2 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-9 rounded-xl shadow-xs gap-1.5"
                         title="ชำระเงินและหักใบลดหนี้ทำที่หน้าเจ้าหนี้การค้า เพื่อให้ยอดตรงกับฐานข้อมูล"
@@ -2279,7 +2309,12 @@ export default function PurchaseOrdersPage() {
                   </Button>
                 )}
              </div>
-             <Button variant="ghost" onClick={() => setIsDetailOpen(false)} className="text-slate-500 hover:text-slate-900 hover:bg-slate-100">ปิดหน้าต่าง</Button>
+             <div className="flex gap-2">
+               <Button variant="outline" className="font-bold" onClick={() => { if (currentPo) { setIsDetailOpen(false); openPdfModal(currentPo); } }}>
+                 <Eye className="w-4 h-4 mr-2" /> ดู/พิมพ์ PDF
+               </Button>
+               <Button variant="ghost" onClick={() => setIsDetailOpen(false)} className="text-slate-500 hover:text-slate-900 hover:bg-slate-100">ปิดหน้าต่าง</Button>
+             </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

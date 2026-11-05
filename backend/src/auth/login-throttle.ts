@@ -14,13 +14,17 @@ export const loginThrottle = {
     const now = Date.now();
     if (entry && entry.lockedUntil > now) {
       const minutes = Math.ceil((entry.lockedUntil - now) / 60000);
-      throw new HttpException(`พยายามเข้าสู่ระบบผิดหลายครั้ง กรุณารอ ${minutes} นาทีแล้วลองใหม่`, HttpStatus.TOO_MANY_REQUESTS);
+      throw new HttpException(
+        `พยายามเข้าสู่ระบบผิดหลายครั้ง กรุณารอ ${minutes} นาทีแล้วลองใหม่`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
   },
   fail(key: string) {
     const now = Date.now();
     let entry = entries.get(key);
-    if (!entry || now - entry.firstAt > WINDOW_MS) entry = { failures: 0, firstAt: now, lockedUntil: 0 };
+    if (!entry || now - entry.firstAt > WINDOW_MS)
+      entry = { failures: 0, firstAt: now, lockedUntil: 0 };
     entry.failures += 1;
     if (entry.failures >= MAX_FAILURES) {
       entry.lockedUntil = now + LOCK_MS;
@@ -29,7 +33,9 @@ export const loginThrottle = {
     }
     entries.set(key, entry);
     if (entries.size > 10000) {
-      for (const [k, v] of entries) if (v.lockedUntil < now && now - v.firstAt > WINDOW_MS) entries.delete(k);
+      for (const [k, v] of entries)
+        if (v.lockedUntil < now && now - v.firstAt > WINDOW_MS)
+          entries.delete(k);
     }
   },
   succeed(key: string) {

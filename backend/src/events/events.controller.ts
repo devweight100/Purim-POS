@@ -1,5 +1,4 @@
 ﻿import { Controller, MessageEvent, Query, Sse, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { interval, map, merge, Observable, of } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,7 +12,6 @@ export class EventsController {
   constructor(
     private readonly events: EventsService,
     private readonly prisma: PrismaService,
-    config: ConfigService,
   ) {
     // Same secret resolution as JwtStrategy.
     this.jwt = new JwtService({
