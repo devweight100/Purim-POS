@@ -66,6 +66,19 @@ Make the POS production-ready by using PostgreSQL/backend APIs as the source of 
 - Migration: `20261106000000_password_cash_category_vat`.
 - Verified: backend + frontend build; API checks 25/25; headless browser check of the forced password change flow 3/3.
 
+## 2026-11-07 Finance Phase 1 (money accounts, ledger, expenses, transfers)
+
+- New tables (migration `20261107000000_finance_ledger`): `money_accounts` (CASH_DRAWER per terminal, CASH_SAFE, BANK per `bank_accounts` row, CARD_CLEARING), append-only `money_transactions` ledger (reversal rows, never edits), `expense_categories` (10 defaults seeded), `expenses`; `payments.bank_account_id`.
+- Automatic postings (same DB transaction as the business action, `backend/src/finance/ledger.ts`):
+  - sale: cash → terminal drawer, QR/transfer → selected bank (default bank if none), card → card clearing; void / payment edit → reversal (cross-shift cash refund comes from today's drawer)
+  - shift open: float safe → drawer; shift close: over/short row, then counted cash drawer → safe
+  - POS cash in/out (`/shifts/:id/cash-movements`) → drawer; debt receipts → drawer or bank; supplier vouchers → chosen account (safe/default bank), cancel → reversal; transfer claim refunds → bank
+- `/api/finance/*` (permission `MANAGE_FINANCE`; ADMIN/MANAGER always): accounts + balances, opening balance (once per account), adjust-to-actual with reason, transfers (deposit cash, withdraw cash, exchange, card payout) with cancel, owner capital/draw, expense categories, expenses (receipt image, cancel = reversal), ledger listing, summary (balances + in/out by kind + expenses by category; transfers/openings excluded, reversals netted).
+- Moving money into/out of a drawer outside the POS also writes a cash movement on that drawer's open shift, so shift expected cash stays correct; drawers can only be used while a shift is open.
+- Frontend: `/finance` page (menu "การเงิน"), POS sends `bankAccountId` for QR payments, debt payment sends the selected bank, supplier payment modal can choose the paying account.
+- **Go-live:** set an opening balance for the safe and every bank account on the first day; existing open shifts have no float posted (close and reopen them after upgrading).
+- Verified: backend + frontend build; finance API scenario 19/19; headless /finance page check 4/4.
+
 ## Production Readiness Work In Progress
 
 ### Product Data

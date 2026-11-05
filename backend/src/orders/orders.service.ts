@@ -3,6 +3,7 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { OrderStatus, PaymentMethod, DebtStatus, ShiftStatus, CashMovementType } from '@prisma/client';
+import * as ledger from '../finance/ledger';
 
 @Injectable()
 export class OrdersService {
@@ -257,6 +258,10 @@ export class OrdersService {
       const vatRate = vatEnabled ? Number(settings?.vatRate ?? 7) : 0;
       const vatAmount = vatRate > 0 ? Math.round((totalAmount * vatRate / (100 + vatRate)) * 100) / 100 : 0;
 
+      // Bank that received each QR / transfer payment (unknown ids are ignored -> default bank)
+      const knownBankIds = new Set((await tx.bankAccount.findMany({ select: { id: true } })).map((b: { id: string }) => b.id));
+      const bankIdOf = (p: any) => (p.bankAccountId && knownBankIds.has(p.bankAccountId) ? p.bankAccountId : null);
+
       // 4. Create Order
       const order = await tx.order.create({
         data: {
@@ -284,6 +289,7 @@ export class OrdersService {
               method: p.method,
               amount: Number(p.amount) || 0,
               referenceNo: p.referenceNo || null,
+              bankAccountId: bankIdOf(p),
             })),
           },
         },
@@ -310,8 +316,29 @@ export class OrdersService {
         });
       }
 
+      // 6. Money ledger: where the money of this sale actually landed
+      await this.postOrderPayments(tx, order.id, order.orderNumber, order.payments, shift.terminalId, userId);
+
       return order;
     });
+  }
+
+  /** Post each paid amount of an order to the account that received it (drawer / bank / card). */
+  private async postOrderPayments(tx: any, orderId: string, orderNumber: string, payments: any[], terminalId: string | null, userId?: string | null) {
+    for (const p of payments) {
+      const account = await ledger.accountForPaymentMethod(tx, p.method, { terminalId, bankAccountId: p.bankAccountId });
+      if (!account) continue; // credit sale / credit note: no money received now
+      await ledger.post(tx, {
+        accountId: account.id,
+        direction: 'IN',
+        amount: Number(p.amount),
+        type: 'SALE',
+        refType: 'ORDER',
+        refId: orderId,
+        note: `ขายบิล ${orderNumber}`,
+        userId,
+      });
+    }
   }
 
   /** Lowest unit price the system itself would charge for this unit, or null when no price is configured. */
@@ -402,7 +429,19 @@ export class OrdersService {
             reason: 'คืนเงินสดยกเลิกบิลข้ามกะ #' + order.orderNumber,
           },
         });
+        // The original cash already left that drawer at shift close: pay it back from today's drawer.
+        const drawer = await ledger.drawerAccount(tx, activeShift.terminalId);
+        await ledger.post(tx, {
+          accountId: drawer.id, direction: 'OUT', amount: cashPaid, type: 'SALE_REFUND',
+          refType: 'ORDER', refId: order.id, note: 'คืนเงินสดยกเลิกบิลข้ามกะ #' + order.orderNumber, userId,
+        });
       }
+
+      // Money ledger: undo what this bill brought in (bank / card / same-shift drawer)
+      const crossShiftCash = cashPaid > 0 && order.shift?.status === ShiftStatus.CLOSED;
+      await ledger.reverseByRef(tx, 'ORDER', order.id, 'ยกเลิกบิล #' + order.orderNumber + (reason ? ' (' + reason + ')' : ''), userId, {
+        skipAccountTypes: crossShiftCash ? ['CASH_DRAWER'] : [],
+      });
 
       const actorUser = userId
         ? await tx.user.findUnique({ where: { id: userId }, select: { fullName: true, username: true } })
@@ -537,7 +576,11 @@ export class OrdersService {
           await tx.customerDebt.upsert({ where: { orderId: id }, create: { orderId: id, customerId: order.customerId!, totalDebt: credit, remainingAmount: credit, dueDate: new Date(order.createdAt.getTime() + 30 * 86400000) }, update: { totalDebt: credit, remainingAmount: credit, status: DebtStatus.PENDING } });
         } else if (order.debt) await tx.customerDebt.delete({ where: { id: order.debt.id } });
         await tx.payment.deleteMany({ where: { orderId: id } });
-        await tx.payment.createMany({ data: payments.map((p: any) => ({ orderId: id, method: p.method, amount: Number(p.amount), referenceNo: p.referenceNo || null })) });
+        await tx.payment.createMany({ data: payments.map((p: any) => ({ orderId: id, method: p.method, amount: Number(p.amount), referenceNo: p.referenceNo || null, bankAccountId: p.bankAccountId || null })) });
+        // Money ledger: undo the old payment split and post the new one
+        await ledger.reverseByRef(tx, 'ORDER', id, 'แก้ไขวิธีชำระเงินบิล #' + order.orderNumber);
+        const fresh = await tx.payment.findMany({ where: { orderId: id } });
+        await this.postOrderPayments(tx, id, order.orderNumber, fresh, order.shift?.terminalId ?? null);
       }
       return tx.order.findUnique({ where: { id }, include: { items: { include: { product: true } }, payments: true, customer: true, user: true, debt: true } });
     });

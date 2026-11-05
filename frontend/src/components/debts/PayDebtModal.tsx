@@ -113,6 +113,9 @@ export function PayDebtModal({
         paymentMethod,
         {
           accountLabel: (paymentMethod === 'TRANSFER' || paymentMethod === 'QR_PROMPTPAY') ? selectedBank : undefined,
+          bankAccountId: (paymentMethod === 'TRANSFER' || paymentMethod === 'QR_PROMPTPAY')
+            ? bankAccounts.find((b) => `${b.bankName} (${b.accountNumber})` === selectedBank)?.id
+            : undefined,
           referenceNo: referenceNo.trim() || undefined,
           note: note.trim() || undefined,
           cashierName,

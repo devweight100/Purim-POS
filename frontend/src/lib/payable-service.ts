@@ -665,6 +665,8 @@ export interface SettleMultipleBillsParams {
   netCashOrTransferAmount: number;
   /** Idempotency key: reuse the same value when retrying the same payment. */
   clientVoucherId?: string;
+  /** Finance money account the payment leaves (optional). */
+  moneyAccountId?: string;
   paymentMethod: 'CASH' | 'TRANSFER' | 'CHEQUE' | 'OTHER';
   bankAccountId?: string;
   bankAccountLabel?: string;
@@ -685,6 +687,7 @@ export async function settleMultipleBills(params: SettleMultipleBillsParams): Pr
     const payload = {
       clientVoucherId: params.clientVoucherId || newClientVoucherId(),
       supplierId: params.supplierId,
+      moneyAccountId: params.moneyAccountId,
       billsToSettle: params.billsToSettle.map((b) => ({
         poId: b.poId,
         amountToPay: Number(b.amountToPay) || 0,

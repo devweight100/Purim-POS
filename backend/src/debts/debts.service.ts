@@ -2,6 +2,7 @@ import { businessTransaction } from '../prisma/business-transaction';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DebtStatus, PaymentMethod } from '@prisma/client';
+import * as ledger from '../finance/ledger';
 
 @Injectable()
 export class DebtsService {
@@ -106,6 +107,7 @@ export class DebtsService {
     clientPaymentId?: string,
     shiftId?: string,
     userId?: string,
+    bankAccountId?: string,
   ) {
     if (!clientPaymentId || !/^[a-zA-Z0-9-]{16,80}$/.test(clientPaymentId)) throw new BadRequestException('กรุณาระบุรหัสรับชำระเพื่อป้องกันรายการซ้ำ');
     if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.00001) throw new BadRequestException('จำนวนเงินไม่ถูกต้อง');
@@ -182,6 +184,15 @@ export class DebtsService {
       });
 
       if (paymentMethod === PaymentMethod.CASH) await tx.cashMovement.create({ data: { id: 'debt-' + clientPaymentId, shiftId: shiftId!, type: 'IN', category: 'DEBT_PAYMENT', amount: payAmt, reason: 'รับชำระหนี้ ' + receiptNo } });
+      // Money ledger: cash into the receiving shift's drawer, QR / transfer into the bank
+      const shiftRow = paymentMethod === PaymentMethod.CASH && shiftId ? await tx.shift.findUnique({ where: { id: shiftId } }) : null;
+      const moneyAccount = await ledger.accountForPaymentMethod(tx, paymentMethod, { terminalId: shiftRow?.terminalId, bankAccountId });
+      if (moneyAccount) {
+        await ledger.post(tx, {
+          accountId: moneyAccount.id, direction: 'IN', amount: payAmt, type: 'DEBT_RECEIPT',
+          refType: 'DEBT_PAYMENT', refId: payment.id, note: 'รับชำระหนี้ ' + receiptNo, userId,
+        });
+      }
       const result = {
         success: true,
         message: 'บันทึกรับชำระหนี้สำเร็จ',

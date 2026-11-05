@@ -22,6 +22,7 @@ export const ROUTE_PERMISSIONS: Record<string, string | string[]> = {
   '/payables': 'MANAGE_PAYABLES',
   '/supplier-returns': ['MANAGE_CLAIMS', 'MANAGE_PURCHASES'],
   '/accounts': 'MANAGE_SETTINGS',
+  '/finance': 'MANAGE_FINANCE',
   '/settings': 'MANAGE_SETTINGS',
   '/users': 'MANAGE_USERS',
 };

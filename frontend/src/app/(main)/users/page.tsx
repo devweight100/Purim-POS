@@ -31,6 +31,7 @@ const PERMISSION_OPTIONS = [
   { key: 'MANAGE_PURCHASES', label: 'เปิดใบสั่งซื้อ (PO) & จัดซื้อ', group: 'จัดซื้อ & เจ้าหนี้' },
   { key: 'MANAGE_PAYABLES', label: 'ชำระหนี้คู่ค้า & ออกใบสำคัญจ่าย', group: 'จัดซื้อ & เจ้าหนี้' },
   { key: 'MANAGE_DEBTS', label: 'จัดการลูกหนี้ & บันทึกรับเงินเชื่อ', group: 'ลูกค้า & หนี้' },
+  { key: 'MANAGE_FINANCE', label: 'การเงิน: ยอดเงินสด/บัญชี ย้ายเงิน & บันทึกค่าใช้จ่าย', group: 'จัดซื้อ & เจ้าหนี้' },
   { key: 'MANAGE_CLAIMS', label: 'รับเรื่องเคลม & ส่งคืนคู่ค้า', group: 'ลูกค้า & หนี้' },
   { key: 'VIEW_REPORTS', label: 'ดูรายงานสรุปยอดขาย & บัญชี', group: 'ระบบ & รายงาน' },
   { key: 'MANAGE_USERS', label: 'จัดการผู้ใช้งาน & กำหนดสิทธิ์ (Admin)', group: 'ระบบ & รายงาน' },

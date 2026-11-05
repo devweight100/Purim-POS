@@ -55,8 +55,9 @@ export class DebtsController {
     @Body('note') note?: string,
     @Body('clientPaymentId') clientPaymentId?: string,
     @Body('shiftId') shiftId?: string,
+    @Body('bankAccountId') bankAccountId?: string,
   ) {
     const cashier = cashierName || req.user?.fullName || 'เจ้าหน้าที่';
-    return this.debtsService.payDebt(id, Number(amount), paymentMethod, referenceNo, cashier, note, clientPaymentId, shiftId, req.user?.id || req.user?.sub);
+    return this.debtsService.payDebt(id, Number(amount), paymentMethod, referenceNo, cashier, note, clientPaymentId, shiftId, req.user?.id || req.user?.sub, bankAccountId);
   }
 }

@@ -126,7 +126,7 @@ export async function recordDebtPayment(
   orderId: string,
   amount: number,
   paymentMethod: PaymentMethodType,
-  options?: { accountLabel?: string; referenceNo?: string; note?: string; cashierName?: string },
+  options?: { accountLabel?: string; bankAccountId?: string; referenceNo?: string; note?: string; cashierName?: string },
 ): Promise<{
   success: boolean;
   debtRecord?: DebtRecord;
@@ -146,6 +146,7 @@ export async function recordDebtPayment(
     shiftId,
   };
   const fingerprint = JSON.stringify(body);
+  const bankAccountId = paymentMethod === 'CASH' ? undefined : options?.bankAccountId;
   const key = 'purim-debt-payment-attempt:' + ownerId + ':' + orderId;
   const existing = localStorage.getItem(key);
   const attempt = existing
@@ -161,7 +162,7 @@ export async function recordDebtPayment(
   try {
     response = await apiFetch('/debts/' + orderId + '/pay', {
       method: 'POST',
-      body: JSON.stringify({ ...body, clientPaymentId: attempt.clientPaymentId }),
+      body: JSON.stringify({ ...body, bankAccountId, clientPaymentId: attempt.clientPaymentId }),
     });
   } catch (error) {
     if (!isRetryableError(error)) localStorage.removeItem(key);

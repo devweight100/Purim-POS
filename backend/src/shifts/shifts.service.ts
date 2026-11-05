@@ -2,6 +2,7 @@ import { businessTransaction } from '../prisma/business-transaction';
 import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CashMovementType, ShiftStatus, PaymentMethod } from '@prisma/client';
+import * as ledger from '../finance/ledger';
 
 const CASH_CATEGORIES = ['GENERAL', 'REFUND', 'DEBT_PAYMENT'];
 
@@ -45,6 +46,7 @@ export class ShiftsService {
           where: { id: current.shift.id },
           data: { startingCash, expectedCash: startingCash },
         });
+        await this.moveFloatIntoDrawer(tx, current.shift.id, current.shift.terminalId, startingCash, userId);
         return this.getShiftSummary(current.shift.id, tx);
       }
       return current;
@@ -75,7 +77,19 @@ export class ShiftsService {
       },
     });
 
+    await this.moveFloatIntoDrawer(tx, shift.id, terminalId, startingCash, userId);
     return this.getShiftSummary(shift.id, tx);
+    });
+  }
+
+  /** Starting cash (float) comes out of the safe into this terminal's drawer. */
+  private async moveFloatIntoDrawer(tx: any, shiftId: string, terminalId: string | null, amount: number, userId?: string) {
+    if (!(amount > 0)) return;
+    const safe = await ledger.safeAccount(tx);
+    const drawer = await ledger.drawerAccount(tx, terminalId);
+    await ledger.transfer(tx, {
+      fromAccountId: safe.id, toAccountId: drawer.id, amount,
+      note: 'เงินทอนตั้งต้นเปิดกะ', userId, refType: 'SHIFT', refId: shiftId,
     });
   }
 
@@ -182,6 +196,23 @@ export class ShiftsService {
     const expectedCash = summary.expectedCash;
     const cashDifference = actualCash - expectedCash;
 
+    // Money ledger: record shortage / overage, then hand the counted cash over to the safe
+    const drawer = await ledger.drawerAccount(tx, summary.shift.terminalId);
+    if (Math.abs(cashDifference) >= 0.01) {
+      await ledger.post(tx, {
+        accountId: drawer.id, direction: cashDifference > 0 ? 'IN' : 'OUT', amount: Math.abs(cashDifference),
+        type: 'SHIFT_OVER_SHORT', refType: 'SHIFT', refId: shiftId,
+        note: (cashDifference > 0 ? 'เงินเกินตอนปิดกะ ' : 'เงินขาดตอนปิดกะ ') + summary.shift.shiftNumber, userId: actor?.id,
+      });
+    }
+    if (actualCash > 0) {
+      const safe = await ledger.safeAccount(tx);
+      await ledger.transfer(tx, {
+        fromAccountId: drawer.id, toAccountId: safe.id, amount: actualCash,
+        note: 'ส่งเงินสดปิดกะ ' + summary.shift.shiftNumber, userId: actor?.id, refType: 'SHIFT', refId: shiftId,
+      });
+    }
+
     const closed = await tx.shift.update({
       where: { id: shiftId },
       data: {
@@ -221,7 +252,14 @@ export class ShiftsService {
       assertShiftActor(shift, actor);
       if (!Number.isFinite(amount) || amount <= 0 || !['in','out'].includes(type)) throw new BadRequestException('รายการเงินสดไม่ถูกต้อง');
       if (type === 'out' && amount > (await this.getShiftSummary(shiftId, tx)).expectedCash) throw new BadRequestException('ยอดนำออกมากกว่าเงินสดคงเหลือในฐานข้อมูล');
-      return tx.cashMovement.create({ data: { id: clientMovementId, shiftId, type: type === 'in' ? CashMovementType.IN : CashMovementType.OUT, amount, category: cat, reason: reason?.trim() || (type === 'in' ? 'เติมเงินสด' : 'นำเงินสดออก') } });
+      const movement = await tx.cashMovement.create({ data: { id: clientMovementId, shiftId, type: type === 'in' ? CashMovementType.IN : CashMovementType.OUT, amount, category: cat, reason: reason?.trim() || (type === 'in' ? 'เติมเงินสด' : 'นำเงินสดออก') } });
+      const drawer = await ledger.drawerAccount(tx, shift.terminalId);
+      await ledger.post(tx, {
+        accountId: drawer.id, direction: type === 'in' ? 'IN' : 'OUT', amount,
+        type: cat === 'REFUND' ? 'CLAIM_REFUND' : type === 'in' ? 'DRAWER_IN' : 'DRAWER_OUT',
+        refType: 'CASH_MOVEMENT', refId: movement.id, note: movement.reason, userId: actor?.id,
+      });
+      return movement;
     });
   }
 

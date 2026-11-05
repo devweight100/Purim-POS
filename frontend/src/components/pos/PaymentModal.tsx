@@ -183,7 +183,8 @@ export function PaymentModal({
       payments.push({ 
         method: 'QR_PROMPTPAY' as const, 
         amount: total, 
-        referenceNo: selectedBank ? `${selectedBank.bankName} (${selectedBank.accountNumber})` : undefined 
+        referenceNo: selectedBank ? `${selectedBank.bankName} (${selectedBank.accountNumber})` : undefined,
+        bankAccountId: selectedBank?.id 
       });
       recordedCashReceived = total;
     } else if (method === 'SPLIT') {
@@ -191,7 +192,8 @@ export function PaymentModal({
         payments.push({ 
           method: 'QR_PROMPTPAY' as const, 
           amount: qrReceived,
-          referenceNo: selectedBank ? `${selectedBank.bankName} (${selectedBank.accountNumber})` : undefined 
+          referenceNo: selectedBank ? `${selectedBank.bankName} (${selectedBank.accountNumber})` : undefined,
+        bankAccountId: selectedBank?.id 
         });
       }
       if (cashReceived > 0) {

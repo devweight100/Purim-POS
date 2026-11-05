@@ -22,6 +22,7 @@ import { BankAccountsModule } from './bank-accounts/bank-accounts.module';
 import { DocumentsModule } from './documents/documents.module';
 import { EventsModule } from './events/events.module';
 import { ServerControlModule } from './server-control/server-control.module';
+import { FinanceModule } from './finance/finance.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { ServerControlModule } from './server-control/server-control.module';
     DocumentsModule,
     ServerControlModule,
     EventsModule,
+    FinanceModule,
   ],
   controllers: [AppController],
   providers: [AppService],

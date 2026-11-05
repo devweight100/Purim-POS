@@ -1,4 +1,5 @@
 import { businessTransaction } from '../prisma/business-transaction';
+import * as ledger from '../finance/ledger';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClaimStatus, ClaimType } from '@prisma/client';
@@ -486,6 +487,15 @@ export class ClaimsService {
           metadata: { ...((claim as any).metadata || {}), accounting: { replacementCost, refundPaid, refundMethod: refundPaid > 0 ? resolvedResolutionType : null } },
         },
       });
+      // Money ledger: transfer refunds leave the bank now (cash refunds are posted from the drawer
+      // by the POS cash-movement call, so they are not posted here again).
+      if (refundPaid > 0 && resolvedResolutionType === 'REFUND_TRANSFER') {
+        const bank = await ledger.bankMoneyAccount(tx, dto.refundAccountId);
+        await ledger.post(tx, {
+          accountId: bank.id, direction: 'OUT', amount: refundPaid, type: 'CLAIM_REFUND',
+          refType: 'CLAIM', refId: claim.id, note: 'โอนคืนเงินเคลม ' + claimNumber,
+        });
+      }
 
       // Mark previous replacement warranty as claimed if this claim was for a replacement item
       if (dto.isReplacementItem && (dto.originalClaimId || dto.parentClaimId || dto.claimedWarrantyId)) {

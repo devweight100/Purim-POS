@@ -246,6 +246,8 @@ export interface OrderPayment {
   method: PaymentMethodType;
   amount: number;
   referenceNo?: string;
+  /** Bank account that received a QR / transfer payment (money ledger) */
+  bankAccountId?: string;
   cashReceived?: number;
   changeAmount?: number;
 }
