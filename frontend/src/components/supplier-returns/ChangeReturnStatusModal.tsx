@@ -39,10 +39,10 @@ export function ChangeReturnStatusModal({
 
   if (!returnNote) return null;
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     setIsSubmitting(true);
     try {
-      const res = changeSupplierReturnStatus(returnNote.id, selectedStatus);
+      const res = await changeSupplierReturnStatus(returnNote.id, selectedStatus);
       if (res.success) {
         toast.success(res.message);
         onSuccess();

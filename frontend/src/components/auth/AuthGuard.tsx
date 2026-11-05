@@ -76,9 +76,11 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   const hasValidAuth = Boolean(isHydrated && isAuthenticated && token);
   const isLoginPage = pathname === '/login';
+  const isChangePasswordPage = pathname === '/change-password';
+  const mustChangePassword = Boolean(hasValidAuth && user?.mustChangePassword);
   const isMasterControl = pathname === '/master-control' || pathname?.startsWith('/master-control');
   const isPublicRoute = isLoginPage || isMasterControl;
-  const hasRoutePermission = isPublicRoute || canAccessRoute(user, pathname);
+  const hasRoutePermission = isPublicRoute || pathname === '/change-password' || canAccessRoute(user, pathname);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -86,11 +88,23 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     if (!hasValidAuth && !isPublicRoute) {
       // Not logged in -> Redirect to login page
       router.replace('/login');
+    } else if (mustChangePassword && !isChangePasswordPage) {
+      // Default / temporary credential -> must set a new password first
+      router.replace('/change-password');
     } else if (hasValidAuth && isLoginPage) {
       // Already logged in -> Redirect to POS
       router.replace('/pos');
     }
-  }, [isHydrated, hasValidAuth, isLoginPage, isPublicRoute, router]);
+  }, [isHydrated, hasValidAuth, isLoginPage, isPublicRoute, mustChangePassword, isChangePasswordPage, router]);
+
+  useEffect(() => {
+    // The server refuses every other request until the password is changed
+    const onMustChange = () => {
+      useAuthStore.setState((s) => ({ user: s.user ? { ...s.user, mustChangePassword: true } : s.user }));
+    };
+    window.addEventListener('purim:must-change-password', onMustChange);
+    return () => window.removeEventListener('purim:must-change-password', onMustChange);
+  }, []);
 
   // Master Control can be accessed directly for remote monitoring
   if (isMasterControl) {
@@ -116,6 +130,17 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
           <span className="text-xs font-semibold text-slate-500">กรุณาเข้าสู่ระบบ กำลังนำท่านไปหน้าล็อกอิน...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (mustChangePassword && !isChangePasswordPage && !isLoginPage) {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+          <span className="text-xs font-semibold text-slate-500">กรุณาตั้งรหัสผ่านใหม่ก่อนใช้งาน กำลังนำท่านไป...</span>
         </div>
       </div>
     );

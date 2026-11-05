@@ -347,6 +347,7 @@ export function PaymentModal({
         claimDiscountAmount: claimDiscountAmt,
         claimInfo: claimInfoObj,
         vatAmount: cart.getVatAmount(),
+        vatEnabled: cart.isVatEnabled,
         totalAmount: total,
         payments: payments as any,
         cashReceived: recordedCashReceived,

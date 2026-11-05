@@ -266,6 +266,7 @@ export interface Order {
   claimDiscountAmount?: number;
   claimInfo?: any;
   vatAmount: number;
+  vatEnabled?: boolean;
   totalAmount: number;
   payments: OrderPayment[];
   cashReceived: number;

@@ -586,6 +586,8 @@ export default function PayablesPage() {
                         <td className="py-3 px-2.5 text-center">
                           {bill.paymentStatus === 'PAID' ? (
                             <Badge className="bg-emerald-600 text-white font-bold text-xs px-2.5 py-1">ชำระครบแล้ว</Badge>
+                          ) : bill.paymentStatus === 'PARTIALLY_PAID' && bill.remainingPayable <= 0 ? (
+                            <Badge className="bg-teal-600 text-white font-bold text-xs px-2.5 py-1" title="จ่ายครบตามมูลค่าที่รับแล้ว ยังมีสินค้ารอรับ">จ่ายครบตามที่รับ (รอรับของ)</Badge>
                           ) : bill.paymentStatus === 'PARTIALLY_PAID' ? (
                             <Badge className="bg-sky-600 text-white font-bold text-xs px-2.5 py-1">ชำระบางส่วน</Badge>
                           ) : (

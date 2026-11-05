@@ -287,6 +287,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
         amount,
         reason: refundReason,
         clientMovementId,
+        category: 'REFUND',
       }).catch((e) => console.warn('[ShiftStore] Failed to sync claim refund cash movement:', e));
     } catch {}
   },

@@ -6,16 +6,20 @@ import { PrismaService } from '../prisma/prisma.service';
 export class InventoryService {
   constructor(private prisma: PrismaService) {}
 
-  async addStockBatch(data: any) {
-    return this.prisma.stockBatch.create({
-      data: {
-        productId: data.productId,
-        quantityReceived: Number(data.quantity ?? data.quantityReceived) || 0,
-        quantityRemaining: Number(data.quantity ?? data.quantityRemaining ?? data.quantityReceived) || 0,
-        unitCost: Number(data.unitCost) || 0,
-        supplierId: data.supplierId || null,
-        note: data.note || null,
-      }
+  /** Add received stock as a new FIFO batch. Goes through adjustStock so it is audited. */
+  async addStockBatch(data: any, user?: { id?: string; fullName?: string; username?: string }) {
+    const quantity = Number(data.quantity ?? data.quantityReceived);
+    if (!Number.isSafeInteger(quantity) || quantity <= 0) throw new BadRequestException('จำนวนรับเข้าต้องเป็นจำนวนเต็มมากกว่า 0');
+    const unitCost = Number(data.unitCost);
+    if (!Number.isFinite(unitCost) || unitCost < 0) throw new BadRequestException('ต้นทุนต่อหน่วยไม่ถูกต้อง');
+    return this.adjustStock({
+      productId: data.productId,
+      type: 'ADD',
+      amount: quantity,
+      unitCost,
+      reason: data.note || 'รับสินค้าเข้า (stock batch)',
+      userId: user?.id,
+      userName: user?.fullName || user?.username,
     });
   }
 
@@ -153,72 +157,62 @@ export class InventoryService {
     const previousStock = product.stockBatches.reduce((sum, b) => sum + b.quantityRemaining, 0);
     const rawType = (dto.adjustmentType || dto.type || 'SET').toUpperCase();
     const normalizedType = (rawType === 'SUBTRACT' || rawType === 'SUB') ? 'SUB' : (rawType === 'ADD' ? 'ADD' : 'SET');
-    
-    let rawAmount = Number(dto.amount ?? dto.deltaQuantity ?? dto.newQuantity ?? 0);
-    const amount = Math.abs(rawAmount);
 
-    let newStock = previousStock;
+    const rawAmount = Number(dto.amount ?? dto.deltaQuantity ?? dto.newQuantity ?? 0);
+    if (!Number.isFinite(rawAmount) || !Number.isInteger(rawAmount)) throw new BadRequestException('จำนวนต้องเป็นจำนวนเต็ม');
+    const amount = Math.abs(rawAmount);
+    const fallbackCost = dto.unitCost !== undefined ? Number(dto.unitCost) : (Number(product.costPrice) || 0);
+    if (!Number.isFinite(fallbackCost) || fallbackCost < 0) throw new BadRequestException('ต้นทุนต่อหน่วยไม่ถูกต้อง');
+
+    // Positive batches in FIFO order (oldest first)
+    const fifo = product.stockBatches
+      .filter((b: any) => b.quantityRemaining > 0)
+      .sort((x: any, y: any) => new Date(x.receivedAt).getTime() - new Date(y.receivedAt).getTime() || String(x.id).localeCompare(String(y.id)));
+    const onHand = fifo.reduce((sum: number, b: any) => sum + b.quantityRemaining, 0);
+
+    const addBatch = async (qty: number, note: string) => {
+      await db.stockBatch.create({
+        data: { productId: product.id, quantityReceived: qty, quantityRemaining: qty, unitCost: fallbackCost, note },
+      });
+      return qty * fallbackCost;
+    };
+    const deductFifo = async (qty: number) => {
+      const available = Math.min(onHand, Math.max(0, previousStock)); // net of oversold (negative) batches
+      if (qty > available) throw new BadRequestException(`สต็อกคงเหลือไม่พอให้ปรับลด (มี ${available} ต้องการลด ${qty})`);
+      let left = qty;
+      let cost = 0;
+      for (const batch of fifo) {
+        if (left <= 0) break;
+        const take = Math.min(batch.quantityRemaining, left);
+        await db.stockBatch.update({ where: { id: batch.id }, data: { quantityRemaining: { decrement: take } } });
+        cost += take * Number(batch.unitCost);
+        left -= take;
+      }
+      return cost;
+    };
+
     let delta = 0;
     let movementType = 'ADJUST_SET';
+    let costValue = 0; // cost of units added (+) or written off (-)
 
     if (normalizedType === 'ADD') {
+      if (amount <= 0) throw new BadRequestException('จำนวนปรับเพิ่มต้องมากกว่า 0');
       delta = amount;
-      newStock = previousStock + delta;
       movementType = 'ADJUST_ADD';
-
-      await db.stockBatch.create({
-        data: {
-          productId: product.id,
-          quantityReceived: delta,
-          quantityRemaining: delta,
-          unitCost: dto.unitCost !== undefined ? dto.unitCost : (Number(product.costPrice) || 0),
-          note: dto.reason || 'ปรับเพิ่มสต็อก',
-        }
-      });
+      costValue = await addBatch(amount, dto.reason || 'ปรับเพิ่มสต็อก');
     } else if (normalizedType === 'SUB') {
+      if (amount <= 0) throw new BadRequestException('จำนวนปรับลดต้องมากกว่า 0');
       delta = -amount;
-      newStock = Math.max(0, previousStock - amount);
       movementType = 'ADJUST_SUB';
-
-      // Deduct from batches
-      let remainingToDeduct = amount;
-      for (const batch of product.stockBatches.filter(b => b.quantityRemaining > 0)) {
-        if (remainingToDeduct <= 0) break;
-        const deduct = Math.min(batch.quantityRemaining, remainingToDeduct);
-        await db.stockBatch.update({
-          where: { id: batch.id },
-          data: { quantityRemaining: { decrement: deduct } }
-        });
-        remainingToDeduct -= deduct;
-      }
-    } else if (normalizedType === 'SET') {
-      newStock = Math.max(0, rawAmount);
-      delta = newStock - previousStock;
+      costValue = -(await deductFifo(amount));
+    } else {
+      if (rawAmount < 0) throw new BadRequestException('ยอดตรวจนับต้องไม่ติดลบ');
+      delta = rawAmount - previousStock;
       movementType = delta >= 0 ? 'ADJUST_ADD' : 'ADJUST_SUB';
-
-      if (delta > 0) {
-        await db.stockBatch.create({
-          data: {
-            productId: product.id,
-            quantityReceived: delta,
-            quantityRemaining: delta,
-            unitCost: dto.unitCost !== undefined ? dto.unitCost : (Number(product.costPrice) || 0),
-            note: dto.reason || 'ปรับยอดคงเหลือตามตรวจนับจริง',
-          }
-        });
-      } else if (delta < 0) {
-        let remainingToDeduct = Math.abs(delta);
-        for (const batch of product.stockBatches.filter(b => b.quantityRemaining > 0)) {
-          if (remainingToDeduct <= 0) break;
-          const deduct = Math.min(batch.quantityRemaining, remainingToDeduct);
-          await db.stockBatch.update({
-            where: { id: batch.id },
-            data: { quantityRemaining: { decrement: deduct } }
-          });
-          remainingToDeduct -= deduct;
-        }
-      }
+      if (delta > 0) costValue = await addBatch(delta, dto.reason || 'ปรับยอดคงเหลือตามตรวจนับจริง');
+      else if (delta < 0) costValue = -(await deductFifo(-delta));
     }
+    const newStock = previousStock + delta;
 
     // Record AuditLog
     await db.auditLog.create({
@@ -236,6 +230,7 @@ export class InventoryService {
           quantityChange: delta,
           previousStock,
           currentStock: newStock,
+          costValue: Math.round(costValue * 100) / 100,
           reason: dto.reason || 'ปรับสต็อก',
           userName: dto.userName || 'ผู้ดูแลระบบ',
         }
@@ -250,6 +245,7 @@ export class InventoryService {
       previousStock,
       newStock,
       delta,
+      costValue: Math.round(costValue * 100) / 100,
     };
   }
 

@@ -9,6 +9,7 @@ export class DebtsService {
 
   async getAllDebts(page = 1, limit = 20, search?: string, status?: string) {
     const skip = (page - 1) * limit;
+    await this.markOverdueDebts();
 
     const where: any = {};
     if (status && status !== 'ALL') {
@@ -38,8 +39,9 @@ export class DebtsService {
       this.prisma.customerDebt.count({ where }),
     ]);
 
-    // Calculate aggregated totals
+    // Totals follow the same filters as the list
     const aggregates = await this.prisma.customerDebt.aggregate({
+      where,
       _sum: {
         totalDebt: true,
         paidAmount: true,
@@ -61,6 +63,18 @@ export class DebtsService {
         totalRemaining: Number(aggregates._sum.remainingAmount) || 0,
       },
     };
+  }
+
+  /** Debts past their due date with money still owed become OVERDUE. */
+  async markOverdueDebts() {
+    await this.prisma.customerDebt.updateMany({
+      where: {
+        dueDate: { lt: new Date() },
+        remainingAmount: { gt: 0 },
+        status: { in: [DebtStatus.PENDING, DebtStatus.PARTIALLY_PAID] },
+      },
+      data: { status: DebtStatus.OVERDUE },
+    });
   }
 
   async getDebtDetails(id: string) {
@@ -150,7 +164,8 @@ export class DebtsService {
       // 2. Update debt record
       const newPaid = Number(debt.paidAmount) + payAmt;
       const newRemaining = Math.max(0, Number(debt.totalDebt) - newPaid);
-      const newStatus = newRemaining <= 0 ? DebtStatus.PAID : DebtStatus.PARTIALLY_PAID;
+      const isPastDue = debt.dueDate ? new Date(debt.dueDate).getTime() < Date.now() : false;
+      const newStatus = newRemaining <= 0 ? DebtStatus.PAID : isPastDue ? DebtStatus.OVERDUE : DebtStatus.PARTIALLY_PAID;
 
       const updatedDebt = await tx.customerDebt.update({
         where: { id: debt.id },
@@ -166,7 +181,7 @@ export class DebtsService {
         },
       });
 
-      if (paymentMethod === PaymentMethod.CASH) await tx.cashMovement.create({ data: { id: 'debt-' + clientPaymentId, shiftId: shiftId!, type: 'IN', amount: payAmt, reason: 'รับชำระหนี้ ' + receiptNo } });
+      if (paymentMethod === PaymentMethod.CASH) await tx.cashMovement.create({ data: { id: 'debt-' + clientPaymentId, shiftId: shiftId!, type: 'IN', category: 'DEBT_PAYMENT', amount: payAmt, reason: 'รับชำระหนี้ ' + receiptNo } });
       const result = {
         success: true,
         message: 'บันทึกรับชำระหนี้สำเร็จ',

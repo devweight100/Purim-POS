@@ -51,6 +51,21 @@ Make the POS production-ready by using PostgreSQL/backend APIs as the source of 
 - Verified on 2026-11-05: backend + frontend build; fresh DB `migrate deploy` matches schema (empty diff); upgrade path of an old DB repairs Thai defaults; API checks (security 10/10, data 12/12) and an Electron desktop run (login lock, open shift, cash sale, duplicate PIN, payables, inventory value, cashier blocked) all passed.
 - Follow-up (same day): login page and the "no access" page no longer show or pre-fill default credentials; clicking a PO row now opens the (previously unreachable) PO detail dialog with received value / paid / outstanding and a PDF button; payables show the received value as the bill amount ("จาก PO ฿…" when it differs); fixed React error #310 in `PurchaseOrderPdfModal` (hook after early return) that made the PO PDF crash from every entry point. Verified in the Electron desktop app (5/5 checks).
 
+## 2026-11-06 Review Round 3 (high + medium priority items)
+
+- **Forced password change**: logging in with a known default password/PIN (e.g. `admin123`, `cashier123`, `1234`, `0000`) sets `users.must_change_password`; `JwtAuthGuard` then rejects every API except `/auth/me`, `/auth/change-password`, `/auth/default-pin` with `403 MUST_CHANGE_PASSWORD`. New page `/change-password`; `AuthGuard` redirects there. Default PINs can no longer be assigned.
+- **Permissions**: only the shift owner (or ADMIN/MANAGER) can close a shift or add cash movements. `POST /inventory/stock-batch` needs `MANAGE_INVENTORY` and goes through the audited adjustment path. `/claims` needs `MANAGE_CLAIMS` or `POS_SELL` (claim-inventory writes need `MANAGE_CLAIMS`/`MANAGE_INVENTORY`); `/supplier-returns` needs `MANAGE_CLAIMS` or `MANAGE_PURCHASES`.
+- **Price floor**: checkout rejects a unit price below the lowest configured price (price levels, packaging-unit prices, applicable wholesale steps) unless the user is ADMIN/MANAGER or has `POS_DISCOUNT`/`ALL`.
+- **Claims in profit**: exchange claims record the FIFO cost of the replacement and cash/transfer refunds in `customer_claims.metadata.accounting`; `/reports/analytics` returns `claimAccounting` (plus supplier recoveries from DEFECTIVE return-note items). Sales report shows net profit after claims.
+- **VAT**: `orders.vat_rate` / `orders.vat_amount` stored per bill (rate from store settings, VAT-inclusive). Cart uses the settings rate instead of a hard-coded 7%. Sales report shows output VAT.
+- **localStorage**: PO create/edit/issue/status are API-first (status change limited to DRAFT→ISSUED and cancel). Supplier return-note create/update/cancel/restore/status wait for the backend and roll the local cache back on failure. Debts are never derived from browser-cached bills. Removed unused `components/claims/*SupplierReturn*` modals.
+- **Stock adjustments**: FIFO order, cannot reduce below net on-hand stock, audit log records `costValue`.
+- **Shift summary**: `cash_movements.category` (`GENERAL` / `REFUND` / `DEBT_PAYMENT`, backfilled) replaces reason-text matching; `CREDIT_NOTE` payments reported separately from credit sales.
+- **Payables**: a bill paid up to the received value but still awaiting goods shows "จ่ายครบตามที่รับ (รอรับของ)" instead of PAID.
+- **Debts**: due date defaults to the customer's credit terms (30 days); past-due debts become `OVERDUE`; list totals follow the active filters.
+- Migration: `20261106000000_password_cash_category_vat`.
+- Verified: backend + frontend build; API checks 25/25; headless browser check of the forced password change flow 3/3.
+
 ## Production Readiness Work In Progress
 
 ### Product Data

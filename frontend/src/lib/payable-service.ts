@@ -348,8 +348,12 @@ function mapPosToPayableBills(
       );
 
       let paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' = 'UNPAID';
-      if (remainingPayable <= 0 && totalAmount > 0) {
+      // PAID only when the whole PO is settled. Paying everything received so far while goods are
+      // still outstanding is PARTIALLY_PAID (more will become payable when the rest arrives).
+      if (dbRemaining <= 0 && totalAmount > 0) {
         paymentStatus = 'PAID';
+      } else if (remainingPayable <= 0 && totalAmount > 0) {
+        paymentStatus = 'PARTIALLY_PAID';
       } else if (alreadyDeducted > 0 || alreadyPaid > 0 || alreadyDiscount > 0) {
         paymentStatus = 'PARTIALLY_PAID';
       } else if (po.paymentStatus === 'PAID' || po.paymentStatus === 'PARTIALLY_PAID') {

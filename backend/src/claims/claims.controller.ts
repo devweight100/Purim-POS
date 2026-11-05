@@ -1,8 +1,11 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ClaimsService } from './claims.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { RequirePermissions } from '../auth/roles.decorator';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@RequirePermissions('MANAGE_CLAIMS', 'POS_SELL')
 @Controller('claims')
 export class ClaimsController {
   constructor(private readonly claimsService: ClaimsService) {}
@@ -54,11 +57,13 @@ export class ClaimsController {
     return this.claimsService.getClaimInventory();
   }
 
+  @RequirePermissions('MANAGE_CLAIMS', 'MANAGE_INVENTORY')
   @Post('inventory')
   createClaimInventory(@Body() body: any) {
     return this.claimsService.createClaimInventory(body);
   }
 
+  @RequirePermissions('MANAGE_CLAIMS', 'MANAGE_INVENTORY')
   @Patch('inventory/:id')
   updateClaimInventory(@Param('id') id: string, @Body() body: any) {
     return this.claimsService.updateClaimInventory(id, body);

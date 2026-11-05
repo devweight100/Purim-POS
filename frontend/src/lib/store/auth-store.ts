@@ -10,6 +10,8 @@ export interface User {
   role: 'ADMIN' | 'MANAGER' | 'CASHIER' | 'WAREHOUSE';
   permissions?: string[];
   isActive?: boolean;
+  /** Server requires a new password before anything else can be used. */
+  mustChangePassword?: boolean;
 }
 
 interface AuthStore {

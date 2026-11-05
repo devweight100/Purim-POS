@@ -240,8 +240,39 @@ export class ReportsService {
       }
     }
 
+    // Claim accounting: cost of replacement goods handed out, cash/transfer refunds paid to
+    // customers, and value recovered from suppliers via credit notes for defective goods.
+    const claimDateWhere = whereClause.createdAt ? { createdAt: whereClause.createdAt } : {};
+    const [claimRows, defectiveReturnItems] = await Promise.all([
+      this.prisma.customerClaim.findMany({
+        where: claimDateWhere,
+        select: { claimNumber: true, createdAt: true, metadata: true },
+      }),
+      this.prisma.supplierReturnNoteItem.findMany({
+        where: { itemType: 'DEFECTIVE', note: { status: { not: 'CANCELLED' }, ...claimDateWhere } },
+        select: { total: true, note: { select: { returnNumber: true, createdAt: true } } },
+      }),
+    ]);
+    const claimEvents = claimRows
+      .map((c) => {
+        const acc = ((c.metadata as any) || {}).accounting || {};
+        return {
+          createdAt: c.createdAt.toISOString(),
+          claimNumber: c.claimNumber,
+          replacementCost: Number(acc.replacementCost) || 0,
+          refundPaid: Number(acc.refundPaid) || 0,
+        };
+      })
+      .filter((e) => e.replacementCost > 0 || e.refundPaid > 0);
+    const supplierRecoveries = defectiveReturnItems.map((i) => ({
+      createdAt: i.note.createdAt.toISOString(),
+      returnNumber: i.note.returnNumber,
+      amount: Number(i.total) || 0,
+    }));
+
     return {
       orders,
+      claimAccounting: { events: claimEvents, supplierRecoveries },
       stockBatchValuation: {
         byProductId: batchValuationByProduct,
         totalInventoryCostValue,

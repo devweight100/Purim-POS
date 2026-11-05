@@ -474,6 +474,19 @@ export class ClaimsService {
         },
       });
 
+      // Accounting facts for profit reports: cost of goods handed out as replacement here,
+      // and money paid back to the customer (store-discount refunds already reduce a later bill).
+      const replacementCost = Math.round(stockMovements.reduce((sum, m) => sum + m.quantity * m.unitCost, 0) * 100) / 100;
+      const refundPaid = ['REFUND_CASH', 'REFUND_TRANSFER'].includes(resolvedResolutionType) ? Number(claimMeta.refundAmount || 0) : 0;
+      await tx.customerClaim.update({
+        where: { id: claim.id },
+        data: {
+          resolutionType: resolvedResolutionType,
+          refundAmount: refundPaid > 0 ? refundPaid : null,
+          metadata: { ...((claim as any).metadata || {}), accounting: { replacementCost, refundPaid, refundMethod: refundPaid > 0 ? resolvedResolutionType : null } },
+        },
+      });
+
       // Mark previous replacement warranty as claimed if this claim was for a replacement item
       if (dto.isReplacementItem && (dto.originalClaimId || dto.parentClaimId || dto.claimedWarrantyId)) {
         const targetRef = dto.claimedWarrantyId || dto.originalClaimId || dto.parentClaimId;

@@ -106,6 +106,7 @@ model User {
   pinCode     String?   @map("pin_code")     // 4-6 digit hashed PIN for fast cashier shift unlock
   permissions Json?                          // Granular permission keys: ["POS_SELL", "POS_DISCOUNT", "POS_VOID", "VIEW_REPORTS", etc.]
   isActive    Boolean   @default(true) @map("is_active")
+  mustChangePassword Boolean @default(false) @map("must_change_password") // forced after login with a default/temporary credential
   lastLoginAt DateTime? @map("last_login_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
@@ -157,6 +158,7 @@ model CashMovement {
   shiftId   String           @map("shift_id")
   type      CashMovementType
   amount    Decimal          @db.Decimal(12, 2)
+  category  String           @default("GENERAL") // GENERAL | REFUND | DEBT_PAYMENT
   reason    String
   createdAt DateTime         @default(now()) @map("created_at")
 
@@ -651,6 +653,8 @@ model Order {
   discountAmount Decimal       @default(0) @map("discount_amount") @db.Decimal(12, 2)
   totalAmount    Decimal       @map("total_amount") @db.Decimal(12, 2)
   totalCogs      Decimal       @default(0) @map("total_cogs") @db.Decimal(12, 2)
+  vatRate        Decimal       @default(0) @map("vat_rate") @db.Decimal(5, 2)    // % used for this bill (0 = no VAT)
+  vatAmount      Decimal       @default(0) @map("vat_amount") @db.Decimal(12, 2) // VAT included in totalAmount
   pointsUsed     Int           @default(0) @map("points_used")
   pointsEarned   Int           @default(0) @map("points_earned")
   note           String?

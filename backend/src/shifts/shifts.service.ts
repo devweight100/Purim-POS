@@ -1,7 +1,16 @@
 import { businessTransaction } from '../prisma/business-transaction';
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CashMovementType, ShiftStatus, PaymentMethod } from '@prisma/client';
+
+const CASH_CATEGORIES = ['GENERAL', 'REFUND', 'DEBT_PAYMENT'];
+
+/** Only the shift owner (or ADMIN / MANAGER) may close it or move cash in/out of its drawer. */
+function assertShiftActor(shift: { userId: string }, actor?: { id?: string; role?: string }) {
+  if (!actor) return;
+  if (actor.role === 'ADMIN' || actor.role === 'MANAGER') return;
+  if (shift.userId !== actor.id) throw new ForbiddenException('ทำรายการได้เฉพาะกะของตัวเอง (หรือผู้จัดการ)');
+}
 
 @Injectable()
 export class ShiftsService {
@@ -89,6 +98,7 @@ export class ShiftsService {
     let transferSales = 0;
     let creditCardSales = 0;
     let debtSales = 0;
+    let creditNoteSales = 0; // store credit / claim credit used as payment (not a receivable)
     let totalSales = 0;
     let cashIn = 0;
     let cashOut = 0;
@@ -110,7 +120,8 @@ export class ShiftsService {
         else if (p.method === PaymentMethod.QR_PROMPTPAY) qrSales += amt;
         else if (p.method === PaymentMethod.TRANSFER) transferSales += amt;
         else if (p.method === PaymentMethod.CREDIT_CARD) creditCardSales += amt;
-        else if (p.method === PaymentMethod.CREDIT_DEBT || p.method === PaymentMethod.CREDIT_NOTE) debtSales += amt;
+        else if (p.method === PaymentMethod.CREDIT_DEBT) debtSales += amt;
+        else if (p.method === PaymentMethod.CREDIT_NOTE) creditNoteSales += amt;
         totalSales += amt;
       }
     }
@@ -123,11 +134,7 @@ export class ShiftsService {
       if (movement.type === CashMovementType.IN) {
         cashIn += amount;
       } else if (movement.type === CashMovementType.OUT) {
-        const reasonText = (movement.reason || '').trim();
-        if (
-          reasonText.startsWith('คืนเงินสดเคลมสินค้า') ||
-          reasonText.startsWith('คืนเงินสดยกเลิกบิล')
-        ) {
+        if (movement.category === 'REFUND') {
           cashRefunds += amount;
           claimRefundCount += 1;
         } else {
@@ -150,6 +157,7 @@ export class ShiftsService {
       cardSales: creditCardSales,
       debtSales,
       creditSales: debtSales,
+      creditNoteSales,
       cashIn,
       cashOut,
       cashRefunds,
@@ -161,11 +169,12 @@ export class ShiftsService {
     };
   }
 
-  async closeShift(shiftId: string, actualCash: number, note?: string) {
+  async closeShift(shiftId: string, actualCash: number, note?: string, actor?: { id?: string; role?: string }) {
     if (!Number.isFinite(actualCash) || actualCash < 0) throw new BadRequestException('ยอดนับเงินไม่ถูกต้อง');
     return businessTransaction(this.prisma, async tx => {
 
     const summary = await this.getShiftSummary(shiftId, tx);
+    assertShiftActor(summary.shift, actor);
     if (summary.shift.status === ShiftStatus.CLOSED) {
       return summary.shift;
     }
@@ -197,8 +206,10 @@ export class ShiftsService {
     });
   }
 
-  async addCashMovement(shiftId: string, type: 'in' | 'out', amount: number, reason: string, clientMovementId?: string) {
+  async addCashMovement(shiftId: string, type: 'in' | 'out', amount: number, reason: string, clientMovementId?: string, actor?: { id?: string; role?: string }, category = 'GENERAL') {
     if (!clientMovementId || clientMovementId.length > 100) throw new BadRequestException('ต้องระบุรหัสรายการเงินสด');
+    const cat = String(category || 'GENERAL').toUpperCase();
+    if (!CASH_CATEGORIES.includes(cat) || (cat === 'REFUND' && type !== 'out') || cat === 'DEBT_PAYMENT') throw new BadRequestException('ประเภทรายการเงินสดไม่ถูกต้อง');
     return businessTransaction(this.prisma, async tx => {
       const existing = await tx.cashMovement.findUnique({ where: { id: clientMovementId } });
       if (existing) {
@@ -207,9 +218,10 @@ export class ShiftsService {
       }
       const shift = await tx.shift.findUnique({ where: { id: shiftId } });
       if (!shift || shift.status !== ShiftStatus.OPEN) throw new BadRequestException('ไม่พบกะที่เปิดอยู่');
+      assertShiftActor(shift, actor);
       if (!Number.isFinite(amount) || amount <= 0 || !['in','out'].includes(type)) throw new BadRequestException('รายการเงินสดไม่ถูกต้อง');
       if (type === 'out' && amount > (await this.getShiftSummary(shiftId, tx)).expectedCash) throw new BadRequestException('ยอดนำออกมากกว่าเงินสดคงเหลือในฐานข้อมูล');
-      return tx.cashMovement.create({ data: { id: clientMovementId, shiftId, type: type === 'in' ? CashMovementType.IN : CashMovementType.OUT, amount, reason: reason?.trim() || (type === 'in' ? 'เติมเงินสด' : 'นำเงินสดออก') } });
+      return tx.cashMovement.create({ data: { id: clientMovementId, shiftId, type: type === 'in' ? CashMovementType.IN : CashMovementType.OUT, amount, category: cat, reason: reason?.trim() || (type === 'in' ? 'เติมเงินสด' : 'นำเงินสดออก') } });
     });
   }
 
@@ -247,6 +259,7 @@ export class ShiftsService {
       let qrSales = 0;
       let cardSales = 0;
       let creditSales = 0;
+      let creditNoteSales = 0;
       let otherSales = 0;
       let totalSales = 0;
       let cashInAmount = 0;
@@ -269,7 +282,8 @@ export class ShiftsService {
           else if (p.method === PaymentMethod.QR_PROMPTPAY) qrSales += amt;
           else if (p.method === PaymentMethod.TRANSFER) transferSales += amt;
           else if (p.method === PaymentMethod.CREDIT_CARD) cardSales += amt;
-          else if (p.method === PaymentMethod.CREDIT_DEBT || p.method === PaymentMethod.CREDIT_NOTE) creditSales += amt;
+          else if (p.method === PaymentMethod.CREDIT_DEBT) creditSales += amt;
+          else if (p.method === PaymentMethod.CREDIT_NOTE) creditNoteSales += amt;
           else otherSales += amt;
           totalSales += amt;
         }
@@ -282,11 +296,7 @@ export class ShiftsService {
         if (m.type === CashMovementType.IN) {
           cashInAmount += amt;
         } else if (m.type === CashMovementType.OUT) {
-          const reasonText = (m.reason || '').trim();
-          if (
-            reasonText.startsWith('คืนเงินสดเคลมสินค้า') ||
-            reasonText.startsWith('คืนเงินสดยกเลิกบิล')
-          ) {
+          if (m.category === 'REFUND') {
             cashRefundAmount += amt;
             claimRefundCount += 1;
           } else {
@@ -324,6 +334,7 @@ export class ShiftsService {
         creditCardSales: cardSales,
         creditSales,
         debtSales: creditSales,
+        creditNoteSales,
         otherSales,
         cashIn: cashInAmount,
         cashInAmount,

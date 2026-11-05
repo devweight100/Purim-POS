@@ -223,6 +223,10 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
   const [customers, setCustomers] = useState<any[]>([]);
   const [shifts, setShifts] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [claimAccounting, setClaimAccounting] = useState<{
+    events: { createdAt: string; claimNumber: string; replacementCost: number; refundPaid: number }[];
+    supplierRecoveries: { createdAt: string; returnNumber: string; amount: number }[];
+  }>({ events: [], supplierRecoveries: [] });
   const [batchValuationByProduct, setBatchValuationByProduct] = useState<
     Record<string, { quantityRemaining: number; totalCostValue: number; averageUnitCost: number }>
   >({});
@@ -287,6 +291,12 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       const realShifts = unwrap(shiftsRes, loadAllShiftSummaries);
       const realSupps = unwrap(suppsRes, loadSuppliers);
 
+      if (analyticsData?.claimAccounting) {
+        setClaimAccounting({
+          events: Array.isArray(analyticsData.claimAccounting.events) ? analyticsData.claimAccounting.events : [],
+          supplierRecoveries: Array.isArray(analyticsData.claimAccounting.supplierRecoveries) ? analyticsData.claimAccounting.supplierRecoveries : [],
+        });
+      }
       if (analyticsData?.stockBatchValuation?.byProductId) {
         setBatchValuationByProduct(analyticsData.stockBatchValuation.byProductId);
       }
@@ -347,6 +357,20 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     }
     return calculateSalesAndProfitReport(filteredOrders, products);
   }, [activeTab, filteredOrders, products]);
+
+  // Claims & VAT for the same period (net profit after claims, output VAT)
+  const claimsAndVat = useMemo(() => {
+    const events = filterOrdersByDateRange(claimAccounting.events, timeRange, customStartDate, customEndDate);
+    const recoveries = filterOrdersByDateRange(claimAccounting.supplierRecoveries, timeRange, customStartDate, customEndDate);
+    const replacementCost = events.reduce((sum: number, e: any) => sum + (Number(e.replacementCost) || 0), 0);
+    const refundsPaid = events.reduce((sum: number, e: any) => sum + (Number(e.refundPaid) || 0), 0);
+    const supplierRecovery = recoveries.reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0);
+    const claimNetCost = replacementCost + refundsPaid - supplierRecovery;
+    const completed = filteredOrders.filter((o: any) => (o.status || 'COMPLETED') === 'COMPLETED');
+    const vatAmount = completed.reduce((sum: number, o: any) => sum + (Number(o.vatAmount) || 0), 0);
+    const vatSales = completed.filter((o: any) => Number(o.vatAmount) > 0).reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0);
+    return { replacementCost, refundsPaid, supplierRecovery, claimNetCost, vatAmount, vatSales, vatBase: vatSales - vatAmount };
+  }, [claimAccounting, timeRange, customStartDate, customEndDate, filteredOrders]);
 
   // 2. Best Sellers (Lazy)
   const bestSellersReport = useMemo(() => {
@@ -725,6 +749,29 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 <span className="text-xs text-slate-500 font-sans font-bold">
                   ({salesProfitReport.totalOrders} ออเดอร์)
                 </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Net profit after claims + output VAT */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="bg-white p-3.5 rounded-xl border border-rose-200/80 shadow-2xs space-y-1.5 text-sm">
+              <p className="font-bold text-rose-900">ผลกระทบจากเคลมสินค้า (ช่วงเวลาเดียวกัน)</p>
+              <div className="flex justify-between"><span className="text-slate-600">ต้นทุนของที่เปลี่ยนให้ลูกค้า</span><span className="font-mono font-bold text-rose-700">-{formatCurrency(claimsAndVat.replacementCost)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-600">คืนเงินลูกค้า (เงินสด/โอน)</span><span className="font-mono font-bold text-rose-700">-{formatCurrency(claimsAndVat.refundsPaid)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-600">ได้คืนจากบริษัท (ใบลดหนี้ของเสีย)</span><span className="font-mono font-bold text-emerald-700">+{formatCurrency(claimsAndVat.supplierRecovery)}</span></div>
+              <div className="flex justify-between border-t border-slate-200 pt-1.5 font-black">
+                <span className="text-slate-900">กำไรสุทธิหลังหักเคลม</span>
+                <span className="font-mono text-emerald-800">{formatCurrency(salesProfitReport.totalGrossProfit - claimsAndVat.claimNetCost)}</span>
+              </div>
+            </div>
+            <div className="bg-white p-3.5 rounded-xl border border-sky-200/80 shadow-2xs space-y-1.5 text-sm">
+              <p className="font-bold text-sky-900">ภาษีขาย (VAT) จากบิลที่คิด VAT</p>
+              <div className="flex justify-between"><span className="text-slate-600">ยอดขายรวม VAT</span><span className="font-mono font-bold">{formatCurrency(claimsAndVat.vatSales)}</span></div>
+              <div className="flex justify-between"><span className="text-slate-600">ยอดขายก่อน VAT (ฐานภาษี)</span><span className="font-mono font-bold">{formatCurrency(claimsAndVat.vatBase)}</span></div>
+              <div className="flex justify-between border-t border-slate-200 pt-1.5 font-black">
+                <span className="text-slate-900">ภาษีขายที่ต้องนำส่ง</span>
+                <span className="font-mono text-sky-800">{formatCurrency(claimsAndVat.vatAmount)}</span>
               </div>
             </div>
           </div>
