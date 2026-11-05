@@ -98,6 +98,17 @@ export function SettleMultipleBillsModal({
   const [tempInvoiceNo, setTempInvoiceNo] = useState<string>('');
 
   // Close supplier dropdown on outside click
+  // One idempotency key per opened dialog: double-clicks or retries cannot create a second voucher.
+  const clientVoucherIdRef = useRef('');
+  useEffect(() => {
+    if (open) {
+      clientVoucherIdRef.current =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `pv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+    }
+  }, [open]);
+
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (supplierSearchRef.current && !supplierSearchRef.current.contains(e.target as Node)) {
@@ -329,6 +340,7 @@ export function SettleMultipleBillsModal({
         }));
 
       const res = await settleMultipleBills({
+        clientVoucherId: clientVoucherIdRef.current,
         supplierId: selectedSupplierId,
         supplierName: currentSupp?.name,
         billsToSettle,
@@ -635,7 +647,7 @@ export function SettleMultipleBillsModal({
                           <th className="py-3 px-3">เลขที่บิลผู้จำหน่าย (Invoice No.)</th>
                           <th className="py-3 px-2 text-center w-28">เลขที่ PO</th>
                           <th className="py-3 px-2 text-center w-24">วันที่ในบิล</th>
-                          <th className="py-3 px-3 text-right w-28">ยอดหนี้เต็ม</th>
+                          <th className="py-3 px-3 text-right w-28">ยอดหนี้ (รับของแล้ว)</th>
                           <th className="py-3 px-3 text-right w-28">หนี้คงเหลือ</th>
                           <th className="py-3 px-3 text-right w-40">ยอดตัดจ่ายรอบนี้ (฿)</th>
                           <th className="py-3 px-3 text-center w-40">ความคืบหน้าชำระ</th>
@@ -704,7 +716,10 @@ export function SettleMultipleBillsModal({
                                 {new Date(b.billDate).toLocaleDateString('th-TH')}
                               </td>
                               <td className="py-2.5 px-3 text-right font-mono text-slate-600">
-                                {formatCurrency(b.totalAmount)}
+                                {formatCurrency(b.receivedAmount ?? b.totalAmount)}
+                                {b.receivedAmount !== undefined && Math.abs(b.receivedAmount - b.totalAmount) > 0.004 && (
+                                  <span className="block text-[10px] text-slate-400">จาก PO {formatCurrency(b.totalAmount)}</span>
+                                )}
                               </td>
                               <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-600">
                                 {formatCurrency(b.remainingPayable)}

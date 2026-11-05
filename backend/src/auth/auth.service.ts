@@ -5,6 +5,9 @@ import * as bcrypt from 'bcryptjs';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UserRole } from '@prisma/client';
+import { loginThrottle } from './login-throttle';
+
+const PIN_PATTERN = /^\d{4,6}$/;
 
 @Injectable()
 export class AuthService {
@@ -22,11 +25,15 @@ export class AuthService {
     return null;
   }
 
-  async login(loginDto: LoginDto) {
+  async login(loginDto: LoginDto, ip = 'unknown') {
+    const throttleKey = `pwd:${ip}:${String(loginDto.username || '').toLowerCase()}`;
+    loginThrottle.assertAllowed(throttleKey);
     const user = await this.validateUser(loginDto.username, loginDto.password);
     if (!user) {
+      loginThrottle.fail(throttleKey);
       throw new UnauthorizedException('ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง หรือบัญชีถูกระงับ');
     }
+    loginThrottle.succeed(throttleKey);
 
     await this.prisma.user.update({
       where: { id: user.id },
@@ -40,13 +47,20 @@ export class AuthService {
     };
   }
 
-  async loginWithPin(pin: string) {
+  async loginWithPin(pin: string, ip = 'unknown') {
+    const throttleKey = `pin:${ip}`;
+    loginThrottle.assertAllowed(throttleKey);
+    if (typeof pin !== 'string' || !PIN_PATTERN.test(pin)) {
+      loginThrottle.fail(throttleKey);
+      throw new UnauthorizedException('รหัส PIN ไม่ถูกต้อง');
+    }
     const users = await this.prisma.user.findMany({
       where: { isActive: true, pinCode: { not: null } },
     });
 
     for (const u of users) {
       if (u.pinCode && await bcrypt.compare(pin, u.pinCode)) {
+        loginThrottle.succeed(throttleKey);
         await this.prisma.user.update({
           where: { id: u.id },
           data: { lastLoginAt: new Date() },
@@ -61,7 +75,26 @@ export class AuthService {
       }
     }
 
+    loginThrottle.fail(throttleKey);
     throw new UnauthorizedException('รหัส PIN ไม่ถูกต้อง');
+  }
+
+  /** PIN login identifies the user by PIN alone, so PINs must be valid and unique. */
+  private async assertPinUsable(pin: string, exceptUserId?: string) {
+    if (!PIN_PATTERN.test(pin)) throw new BadRequestException('PIN ต้องเป็นตัวเลข 4-6 หลัก');
+    const others = await this.prisma.user.findMany({
+      where: { pinCode: { not: null }, ...(exceptUserId ? { id: { not: exceptUserId } } : {}) },
+      select: { pinCode: true },
+    });
+    for (const o of others) {
+      if (o.pinCode && await bcrypt.compare(pin, o.pinCode)) throw new BadRequestException('PIN นี้ถูกใช้โดยพนักงานคนอื่นแล้ว กรุณาเลือก PIN อื่น');
+    }
+  }
+
+  /** Never allow the last active ADMIN to be demoted or disabled (would lock everyone out). */
+  private async assertNotLastAdmin(userId: string) {
+    const remaining = await this.prisma.user.count({ where: { role: 'ADMIN', isActive: true, id: { not: userId } } });
+    if (remaining === 0) throw new BadRequestException('ต้องมีผู้ดูแลระบบ (ADMIN) ที่ใช้งานได้อย่างน้อย 1 คน');
   }
 
   async register(registerDto: RegisterDto) {
@@ -73,6 +106,7 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(registerDto.password, 10);
     let hashedPin: string | undefined = undefined;
     if (registerDto.pinCode) {
+      await this.assertPinUsable(registerDto.pinCode);
       hashedPin = await bcrypt.hash(registerDto.pinCode, 10);
     }
     const user = await this.prisma.user.create({
@@ -119,6 +153,9 @@ export class AuthService {
     if (!user) throw new NotFoundException('ไม่พบผู้ใช้งานนี้');
 
     const updatePayload: any = {};
+    const losesAdmin = user.role === 'ADMIN' && user.isActive && ((data.role && data.role !== 'ADMIN') || data.isActive === false);
+    if (losesAdmin) await this.assertNotLastAdmin(id);
+    if (data.role && !Object.values(UserRole).includes(data.role)) throw new BadRequestException('ตำแหน่งไม่ถูกต้อง');
     if (data.fullName) updatePayload.fullName = data.fullName;
     if (data.role) updatePayload.role = data.role;
     if (data.permissions !== undefined) updatePayload.permissions = data.permissions;
@@ -128,6 +165,7 @@ export class AuthService {
       updatePayload.password = await bcrypt.hash(data.password.trim(), 10);
     }
     if (data.pinCode && data.pinCode.trim()) {
+      await this.assertPinUsable(data.pinCode.trim(), id);
       updatePayload.pinCode = await bcrypt.hash(data.pinCode.trim(), 10);
     }
 
@@ -152,6 +190,7 @@ export class AuthService {
   async toggleUserActive(id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException('ไม่พบผู้ใช้งานนี้');
+    if (user.isActive && user.role === 'ADMIN') await this.assertNotLastAdmin(id);
 
     return this.prisma.user.update({
       where: { id },

@@ -43,7 +43,8 @@ export interface SupplierPayableBill {
   billDate: string;
   status: string; // PO status: 'COMPLETED' | 'PARTIALLY_RECEIVED' | 'ISSUED'
   paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
-  totalAmount: number;
+  totalAmount: number; // full PO amount
+  receivedAmount: number; // value of goods actually received = amount owed to the supplier
   alreadyDeductedReturns: number;
   alreadyPaidAmount: number;
   alreadyDiscountAmount: number;
@@ -245,6 +246,29 @@ export function updateBillInvoiceNo(
   return { success: true, message: 'บันทึกเลขที่บิลผู้จำหน่ายเรียบร้อยแล้ว' };
 }
 
+const PAYABLE_PO_STATUSES = ['PARTIALLY_RECEIVED', 'RECEIVED', 'COMPLETED'];
+
+function receivedValueOf(po: any): number {
+  const items = Array.isArray(po.items) ? po.items : [];
+  if (!items.length) return Number(po.totalAmount || 0);
+  return items.reduce(
+    (sum: number, i: any) => sum + (Number(i.receivedQty ?? i.receivedQuantity) || 0) * (Number(i.unitCost) || 0),
+    0,
+  );
+}
+
+function newClientVoucherId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return `pv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+/** Backend only knows CASH / TRANSFER etc.; cheques and others are recorded as TRANSFER with a tag. */
+function toBackendPaymentMethod(method: string, note?: string): { paymentMethod: string; note?: string } {
+  if (method === 'CASH' || method === 'TRANSFER') return { paymentMethod: method, note };
+  const tag = method === 'CHEQUE' ? '[เช็ค]' : '[อื่นๆ]';
+  return { paymentMethod: 'TRANSFER', note: [tag, note].filter(Boolean).join(' ') };
+}
+
 function mapPosToPayableBills(
   pos: any[],
   suppliers: any[],
@@ -255,7 +279,8 @@ function mapPosToPayableBills(
     : [];
 
   return pos
-    .filter((po: any) => po.status !== 'CANCELLED' && po.status !== 'DRAFT')
+    // A supplier bill becomes payable only once goods were actually received.
+    .filter((po: any) => PAYABLE_PO_STATUSES.includes(po.status))
     .map((po: any) => {
       const totalAmount = Number(po.totalAmount || 0);
 
@@ -311,10 +336,16 @@ function mapPosToPayableBills(
         0,
         Math.round((totalAmount - alreadyDeducted - alreadyPaid - alreadyDiscount) * 100) / 100,
       );
-      const remainingPayable =
-        po.remainingPayable !== undefined && payments.length === 0
+      // The database is the source of truth: remainingPayable already reflects every
+      // voucher (cash + credit notes + discount). Cap it at the value of goods received.
+      const dbRemaining =
+        po.remainingPayable !== undefined && po.remainingPayable !== null
           ? Math.max(0, Number(po.remainingPayable))
           : computedRemaining;
+      const remainingPayable = Math.max(
+        0,
+        Math.min(dbRemaining, Math.round((receivedValueOf(po) - Number(po.paidAmount || 0)) * 100) / 100),
+      );
 
       let paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' = 'UNPAID';
       if (remainingPayable <= 0 && totalAmount > 0) {
@@ -345,6 +376,7 @@ function mapPosToPayableBills(
         status: po.status,
         paymentStatus,
         totalAmount,
+        receivedAmount: Math.round(receivedValueOf(po) * 100) / 100,
         alreadyDeductedReturns: alreadyDeducted,
         alreadyPaidAmount: alreadyPaid,
         alreadyDiscountAmount: alreadyDiscount,
@@ -387,6 +419,8 @@ export interface SettlePayableParams {
   }>;
   discountAmount?: number;
   cashOrTransferAmount: number;
+  /** Idempotency key: reuse the same value when retrying the same payment. */
+  clientVoucherId?: string;
   paymentMethod: 'CASH' | 'TRANSFER' | 'CHEQUE' | 'OTHER';
   bankAccountId?: string;
   bankAccountLabel?: string;
@@ -409,15 +443,22 @@ export async function settlePayableBill(params: SettlePayableParams): Promise<{
     return { success: false, message: 'ไม่พบใบสั่งซื้อ / บิลเจ้าหนี้นี้' };
   }
 
-  // Attempt backend settlement via POST /payables/settle-multiple so database is saved
+  // Settlement is recorded in the database first; nothing is saved locally if the backend refuses it.
   let backendVoucher: any = null;
   const supplierId = targetPo.supplierId || targetPo.supplier?.id;
-  if (supplierId) {
+  if (!supplierId) return { success: false, message: 'บิลนี้ไม่มีข้อมูลผู้จำหน่าย' };
+  {
+    const debitTotal = (params.matchedDebitNotes || []).reduce((sum, d) => sum + (Number(d.amountToDeduct) || 0), 0);
+    // The bill is cleared by cash/transfer + credit notes + discount together.
+    const grossToClear =
+      Math.round(((Number(params.cashOrTransferAmount) || 0) + debitTotal + (Number(params.discountAmount) || 0)) * 100) / 100;
+    const method = toBackendPaymentMethod(params.paymentMethod, params.note);
     try {
       const payload = {
+        clientVoucherId: params.clientVoucherId || newClientVoucherId(),
         supplierId,
         billsToSettle: [
-          { poId: targetPo.id, amountToPay: Number(params.cashOrTransferAmount) || 0 },
+          { poId: targetPo.id, amountToPay: grossToClear },
         ],
         matchedDebitNotes: params.matchedDebitNotes?.length
           ? params.matchedDebitNotes.map((d) => ({
@@ -426,19 +467,20 @@ export async function settlePayableBill(params: SettlePayableParams): Promise<{
             }))
           : undefined,
         discountAmount: Number(params.discountAmount) || 0,
-        paymentMethod: params.paymentMethod,
+        paymentMethod: method.paymentMethod,
         bankAccountLabel: params.bankAccountLabel,
         referenceNo: params.referenceNo,
-        note: params.note,
+        note: method.note,
         cashierName: params.cashierName,
       };
       const res = await api.payables.settleMultiple(payload);
       if (res && res.voucher) {
         backendVoucher = res.voucher;
       }
-    } catch (apiErr) {
-      console.warn('[PayableService] Backend settle failed, continuing local update:', apiErr);
+    } catch (apiErr: any) {
+      return { success: false, message: apiErr?.message || 'บันทึกการชำระเงินลงฐานข้อมูลไม่สำเร็จ' };
     }
+    if (!backendVoucher) return { success: false, message: 'เซิร์ฟเวอร์ไม่ได้ออกใบสำคัญจ่าย กรุณาลองใหม่' };
   }
 
   const nowIso = new Date().toISOString();
@@ -617,6 +659,8 @@ export interface SettleMultipleBillsParams {
   }>;
   discountAmount?: number;
   netCashOrTransferAmount: number;
+  /** Idempotency key: reuse the same value when retrying the same payment. */
+  clientVoucherId?: string;
   paymentMethod: 'CASH' | 'TRANSFER' | 'CHEQUE' | 'OTHER';
   bankAccountId?: string;
   bankAccountLabel?: string;
@@ -632,8 +676,10 @@ export async function settleMultipleBills(params: SettleMultipleBillsParams): Pr
   voucher?: PaymentVoucher;
 }> {
   let backendVoucher: any = null;
+  const method = toBackendPaymentMethod(params.paymentMethod, params.note);
   try {
     const payload = {
+      clientVoucherId: params.clientVoucherId || newClientVoucherId(),
       supplierId: params.supplierId,
       billsToSettle: params.billsToSettle.map((b) => ({
         poId: b.poId,
@@ -646,10 +692,10 @@ export async function settleMultipleBills(params: SettleMultipleBillsParams): Pr
           }))
         : undefined,
       discountAmount: Number(params.discountAmount) || 0,
-      paymentMethod: params.paymentMethod,
+      paymentMethod: method.paymentMethod,
       bankAccountLabel: params.bankAccountLabel,
       referenceNo: params.referenceNo,
-      note: params.note,
+      note: method.note,
       cashierName: params.cashierName,
       paymentDate: params.paymentDate,
     };
@@ -657,9 +703,11 @@ export async function settleMultipleBills(params: SettleMultipleBillsParams): Pr
     if (res && res.voucher) {
       backendVoucher = res.voucher;
     }
-  } catch (apiErr) {
-    console.warn('[PayableService] Backend settle-multiple failed or offline, fallback to local:', apiErr);
+  } catch (apiErr: any) {
+    // No local fallback: a voucher that exists only in this browser would desync payables.
+    return { success: false, message: apiErr?.message || 'บันทึกใบสำคัญจ่ายลงฐานข้อมูลไม่สำเร็จ' };
   }
+  if (!backendVoucher) return { success: false, message: 'เซิร์ฟเวอร์ไม่ได้ออกใบสำคัญจ่าย กรุณาลองใหม่' };
 
   const allPos = loadPurchaseOrders();
   const allReturnNotes = loadSupplierReturnNotes();

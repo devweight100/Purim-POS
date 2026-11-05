@@ -48,3 +48,5 @@ yarn-error.log*
 
 # Trash & Archives
 _trash/
+.jwt-secret
+backend/.jwt-secret

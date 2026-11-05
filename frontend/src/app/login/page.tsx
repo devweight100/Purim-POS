@@ -9,8 +9,8 @@ import { toast } from "sonner";
 import { ShoppingBag, Sparkles } from "lucide-react";
 
 export default function LoginPage() {
-  const [username, setUsername] = useState("admin");
-  const [password, setPassword] = useState("admin123");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuthStore();
 
@@ -58,7 +58,7 @@ export default function LoginPage() {
               <Input
                 id="username"
                 type="text"
-                placeholder="กรอกชื่อผู้ใช้ เช่น admin"
+                placeholder="กรอกชื่อผู้ใช้"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="h-11 border-slate-300 bg-white text-sm font-semibold rounded-xl focus:border-indigo-500 shadow-inner"
@@ -102,9 +102,8 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="pt-4 border-t border-slate-100 text-center text-xs text-slate-500 space-y-1">
-            <p>Admin: <span className="font-semibold text-slate-700">admin</span> / <span className="font-semibold text-slate-700">admin123</span></p>
-            <p>Cashier: <span className="font-semibold text-slate-700">cashier</span> / <span className="font-semibold text-slate-700">cashier123</span></p>
+          <div className="pt-4 border-t border-slate-100 text-center text-xs text-slate-500">
+            <p>ลืมรหัสผ่าน? ติดต่อผู้ดูแลร้าน (Admin) เพื่อตั้งรหัสใหม่</p>
           </div>
         </CardContent>
       </Card>

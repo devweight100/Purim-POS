@@ -1,22 +1,18 @@
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { getJwtSecret } from './jwt-secret';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
     private readonly prisma: PrismaService,
-    configService: ConfigService,
   ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey:
-        configService.get<string>('JWT_SECRET') ||
-        process.env.JWT_SECRET ||
-        'fallback_secret',
+      secretOrKey: getJwtSecret(),
     });
   }
 
@@ -50,14 +46,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         });
       }
 
-      // Fallback to active admin if token belongs to an ADMIN before DB reset
-      if (!user && payload.role === 'ADMIN') {
-        user = await this.prisma.user.findFirst({
-          where: { role: 'ADMIN', isActive: true },
-          select: selectFields,
-        });
-      }
-
       if (!user) {
         throw new UnauthorizedException('ไม่พบบัญชีผู้ใช้งานในระบบ กรุณาเข้าสู่ระบบใหม่');
       }
@@ -78,15 +66,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       if (err instanceof UnauthorizedException) {
         throw err;
       }
-      // If DB has a transient connection hiccup, fall back to verified JWT claims
-      return {
-        id: payload.sub,
-        username: payload.username,
-        fullName: payload.fullName || payload.username,
-        role: payload.role || 'CASHIER',
-        permissions: payload.permissions || null,
-        isActive: true,
-      };
+      // Never trust token claims without the database: a disabled or demoted user
+      // must not keep access just because the DB was briefly unreachable.
+      throw new UnauthorizedException('ไม่สามารถตรวจสอบสิทธิ์ผู้ใช้งานได้ชั่วคราว กรุณาลองใหม่');
     }
   }
 }

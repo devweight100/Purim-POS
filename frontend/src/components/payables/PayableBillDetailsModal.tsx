@@ -109,9 +109,12 @@ export function PayableBillDetailsModal({
           {/* KPI Financial Overview Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
-              <span className="text-[10.5px] text-slate-400 font-bold block">ยอดหนี้ตามบิล</span>
+              <span className="text-[10.5px] text-slate-400 font-bold block">ยอดหนี้ (รับของแล้ว)</span>
               <span className="font-mono font-bold text-sm text-slate-900">
-                {formatCurrency(bill.totalAmount)}
+                {formatCurrency(bill.receivedAmount ?? bill.totalAmount)}
+                                {bill.receivedAmount !== undefined && Math.abs(bill.receivedAmount - bill.totalAmount) > 0.004 && (
+                                  <span className="block text-[10px] font-medium text-slate-400">จาก PO {formatCurrency(bill.totalAmount)}</span>
+                                )}
               </span>
             </div>
 

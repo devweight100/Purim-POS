@@ -78,7 +78,12 @@ export class InventoryService {
 
     // 4. If remainingToDeduct > 0: Allow stock to go negative (ขายเกินสต็อกได้)
     if (remainingToDeduct > 0) {
-      const fallbackCost = Number(product.costPrice || product.basePrice || 0);
+      // Cost for units sold beyond stock: product cost, else the latest known purchase cost.
+      // Never the selling price (basePrice), which would make the sale look like zero profit.
+      const latestCostBatch = batches.slice().reverse().find(b => Number(b.unitCost) > 0);
+      const fallbackCost = Number(product.costPrice) > 0
+        ? Number(product.costPrice)
+        : Number(latestCostBatch?.unitCost || 0);
       const negativeBatch = batches.slice().reverse().find(b => b.quantityRemaining < 0);
 
       if (negativeBatch) {

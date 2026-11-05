@@ -34,6 +34,9 @@ export class OrdersService {
       if (data.payments.some((p: any) => !Object.values(PaymentMethod).includes(p.method) || !Number.isFinite(Number(p.amount)) || Number(p.amount) < 0)) {
         throw new BadRequestException('วิธีชำระเงินหรือจำนวนเงินไม่ถูกต้อง');
       }
+      if (data.payments.some((p: any) => p.method === PaymentMethod.CREDIT_DEBT && !(Number(p.amount) > 0))) {
+        throw new BadRequestException('ยอดขายเชื่อต้องมากกว่า 0 บาท');
+      }
       if (data.createdAt && (!Number.isFinite(Date.parse(data.createdAt)) || Date.parse(data.createdAt) > Date.now() + 300000)) {
         throw new BadRequestException('วันเวลาขายไม่ถูกต้อง');
       }
@@ -263,10 +266,9 @@ export class OrdersService {
         include: { items: true, payments: true, customer: true, user: true },
       });
 
-      // 5. Check for Debt payment method (CREDIT_DEBT)
-      const debtPayment = (data.payments || []).find((p: any) => p.method === PaymentMethod.CREDIT_DEBT);
-      if (debtPayment && data.customerId) {
-        const debtAmount = Number(debtPayment.amount) || totalAmount;
+      // 5. Debt = sum of every CREDIT_DEBT line (never falls back to the bill total)
+      if (creditAmount > 0 && data.customerId) {
+        const debtAmount = Math.round(creditAmount * 100) / 100;
         await tx.customerDebt.create({
           data: {
             customerId: data.customerId,
@@ -483,6 +485,7 @@ export class OrdersService {
         if (!payments.length || payments.some((p: any) => !Object.values(PaymentMethod).includes(p.method) || !Number.isFinite(Number(p.amount)) || Number(p.amount) < 0)) throw new BadRequestException('วิธีหรือยอดชำระไม่ถูกต้อง');
         const total = payments.reduce((sum: number, p: any) => sum + Number(p.amount), 0);
         if (Math.abs(total - Number(order.totalAmount)) > 0.01) throw new BadRequestException('ยอดชำระไม่ตรงกับยอดบิล');
+        if (payments.some((p: any) => p.method === PaymentMethod.CREDIT_DEBT && !(Number(p.amount) > 0))) throw new BadRequestException('ยอดขายเชื่อต้องมากกว่า 0 บาท');
         const credit = payments.filter((p: any) => p.method === PaymentMethod.CREDIT_DEBT).reduce((sum: number, p: any) => sum + Number(p.amount), 0);
         if (credit && !order.customerId) throw new BadRequestException('ขายเชื่อต้องระบุลูกค้า');
         if (order.debt && Number(order.debt.paidAmount) > 0) throw new BadRequestException('บิลมีการรับชำระหนี้แล้ว ไม่สามารถเปลี่ยนวิธีชำระได้');

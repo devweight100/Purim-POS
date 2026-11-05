@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Building2, CheckCircle2, DollarSign, Receipt, CreditCard, 
   Wallet, Banknote, ShieldAlert, ArrowDownCircle, CheckSquare, Square, X, Tag, Percent
@@ -55,6 +55,17 @@ export function SettlePayableModal({
   const [referenceNo, setReferenceNo] = useState('');
   const [note, setNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // One idempotency key per opened dialog: double-clicks or retries cannot create a second voucher.
+  const clientVoucherIdRef = useRef('');
+  useEffect(() => {
+    if (open) {
+      clientVoucherIdRef.current =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `pv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+    }
+  }, [open]);
 
   useEffect(() => {
     if (open && bill) {
@@ -134,6 +145,7 @@ export function SettlePayableModal({
       const selectedBank = bankAccounts.find((b) => b.id === selectedBankId);
 
       const res = await settlePayableBill({
+        clientVoucherId: clientVoucherIdRef.current,
         poId: bill.poId,
         matchedDebitNotes,
         discountAmount: billDiscount,
