@@ -67,7 +67,10 @@ export class ShiftsController {
     @Body('reason') reason: string,
     @Body('clientMovementId') clientMovementId?: string,
     @Body('category') category?: string,
+    @Body('purpose') purpose?: string,
+    @Body('expenseCategoryId') expenseCategoryId?: string,
+    @Body('bankAccountId') bankAccountId?: string,
   ) {
-    return this.shiftsService.addCashMovement(id, type, Number(amount) || 0, reason, clientMovementId, req.user, category);
+    return this.shiftsService.addCashMovement(id, type, Number(amount) || 0, reason, clientMovementId, req.user, category, { purpose, expenseCategoryId, bankAccountId });
   }
 }

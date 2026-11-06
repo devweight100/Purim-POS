@@ -79,6 +79,16 @@ Make the POS production-ready by using PostgreSQL/backend APIs as the source of 
 - **Go-live:** set an opening balance for the safe and every bank account on the first day; existing open shifts have no float posted (close and reopen them after upgrading).
 - Verified: backend + frontend build; finance API scenario 19/19; headless /finance page check 4/4.
 
+## 2026-11-07 Finance Phase 2 + cashier cash purposes
+
+- POS cash drawer modal: every cash in/out now has a purpose that is posted to the ledger.
+  - OUT: store expense (category required → `expenses` row paid from the drawer), cash drop to safe (transfer), deposit to bank (transfer), other
+  - IN: change float from safe (transfer), withdrawal / coin exchange from a bank (transfer), other income (`OTHER_INCOME`), other
+  - API: `POST /shifts/:id/cash-movements` accepts `purpose`, `expenseCategoryId`, `bankAccountId`; cashiers (`POS_SELL`) can read expense categories.
+- `GET /finance/overview`: supplier bills still to pay (received value, by due date: overdue / today / 7 / 30 days / later; due date = PO due date or bill date + supplier credit terms), receivables (debtor count, total, overdue, aging buckets, top debtors), 30-day cash position.
+- `GET /finance/summary` adds a `daily` in/out series. `/finance` page shows the overview sections and a daily chart.
+- Verified: phase 2 API checks (13, incl. totals matching the debts and payables pages), headless POS drawer + finance page checks 5/5.
+
 ## Production Readiness Work In Progress
 
 ### Product Data

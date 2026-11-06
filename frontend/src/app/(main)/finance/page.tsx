@@ -19,7 +19,21 @@ interface MoneyAccount {
   bank: { bankName: string; accountName: string; accountNumber: string } | null;
   openShift: { shiftNumber: string; cashier?: string } | null;
 }
+interface Overview {
+  cash: number;
+  position30: number;
+  payables: {
+    total: number; overdue: number; dueToday: number; due7: number; due30: number; later: number; billCount: number;
+    items: { poId: string; poNumber: string; invoiceNo?: string; supplierName: string; amount: number; dueDate: string; daysToDue: number; dueDateSet: boolean }[];
+  };
+  receivables: {
+    total: number; overdue: number; debtorCount: number; overdueDebtorCount: number;
+    buckets: { notDue: number; d1_30: number; d31_60: number; d61_90: number; d90plus: number };
+    topDebtors: { customerId: string; name: string; phone: string | null; total: number; overdue: number; bills: number; oldestDaysOverdue: number }[];
+  };
+}
 interface Summary {
+  daily?: { date: string; in: number; out: number; net: number }[];
   balances: { cashInDrawers: number; cashInSafe: number; bank: number; cardPending: number; total: number };
   accounts: MoneyAccount[];
   flow: { totalIn: number; totalOut: number; net: number; inByType: Record<string, number>; outByType: Record<string, number>; expenseByCategory: Record<string, number> };
@@ -62,6 +76,7 @@ const fieldCls = 'w-full h-10 rounded-xl border border-slate-300 bg-white px-3 t
 
 export default function FinancePage() {
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [overview, setOverview] = useState<Overview | null>(null);
   const [rows, setRows] = useState<LedgerRow[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -80,12 +95,14 @@ export default function FinancePage() {
     setLoading(true);
     const { from, to } = rangeDates(range);
     try {
-      const [sum, tx, exp, cats] = await Promise.all([
+      const [sum, tx, exp, cats, ov] = await Promise.all([
         apiFetch(`/finance/summary?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
         apiFetch(`/finance/transactions?limit=200&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${accountFilter ? `&accountId=${accountFilter}` : ''}`),
         apiFetch(`/finance/expenses?limit=200&includeCancelled=true&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
         apiFetch('/finance/expense-categories'),
+        apiFetch('/finance/overview'),
       ]);
+      setOverview(ov);
       setSummary(sum);
       setRows(tx.data || []);
       setExpenses(exp.data || []);
@@ -190,6 +207,91 @@ export default function FinancePage() {
         })}
       </div>
 
+      {/* Owe / owed */}
+      {overview && (
+        <div className="grid lg:grid-cols-2 gap-3">
+          <div className="rounded-2xl border border-rose-200 bg-white p-4 space-y-3">
+            <div className="flex items-baseline justify-between">
+              <h2 className="font-bold text-rose-900">ต้องจ่ายเจ้าหนี้ (ของที่รับแล้ว)</h2>
+              <span className="text-xl font-black font-mono text-rose-700">{formatCurrency(overview.payables.total)}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              {[
+                ['เกินกำหนดแล้ว', overview.payables.overdue, 'text-rose-700 bg-rose-50 border-rose-200'],
+                ['ครบวันนี้', overview.payables.dueToday, 'text-amber-800 bg-amber-50 border-amber-200'],
+                ['ภายใน 7 วัน', overview.payables.due7, 'text-slate-800 bg-slate-50 border-slate-200'],
+                ['ภายใน 30 วัน', overview.payables.due30, 'text-slate-800 bg-slate-50 border-slate-200'],
+              ].map(([l, v, cls]) => (
+                <div key={String(l)} className={`rounded-xl border p-2 ${cls}`}><div className="font-semibold">{l}</div><div className="font-mono font-black text-sm">{formatCurrency(Number(v))}</div></div>
+              ))}
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="text-slate-500"><tr><th className="text-left p-1">ครบกำหนด</th><th className="text-left p-1">ผู้จำหน่าย / บิล</th><th className="text-right p-1">ยอด</th></tr></thead>
+                <tbody>
+                  {overview.payables.items.length === 0 && <tr><td colSpan={3} className="p-3 text-center text-slate-400">ไม่มียอดค้างจ่าย</td></tr>}
+                  {overview.payables.items.map((p) => (
+                    <tr key={p.poId} className="border-t border-slate-100">
+                      <td className={`p-1 whitespace-nowrap ${p.daysToDue < 0 ? 'text-rose-600 font-bold' : p.daysToDue <= 7 ? 'text-amber-700 font-semibold' : ''}`}>
+                        {new Date(p.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                        {p.daysToDue < 0 ? ` (เกิน ${-p.daysToDue} วัน)` : p.daysToDue === 0 ? ' (วันนี้)' : ` (อีก ${p.daysToDue} วัน)`}
+                        {!p.dueDateSet && <span className="text-slate-400" title="ไม่ได้ระบุวันครบกำหนดใน PO ใช้เครดิตเทอมของผู้จำหน่าย"> *</span>}
+                      </td>
+                      <td className="p-1">{p.supplierName} <span className="text-slate-400 font-mono">{p.invoiceNo || p.poNumber}</span></td>
+                      <td className="p-1 text-right font-mono">{formatCurrency(p.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-emerald-200 bg-white p-4 space-y-3">
+            <div className="flex items-baseline justify-between">
+              <h2 className="font-bold text-emerald-900">ลูกหนี้ (ต้องได้รับ) {overview.receivables.debtorCount} คน</h2>
+              <span className="text-xl font-black font-mono text-emerald-700">{formatCurrency(overview.receivables.total)}</span>
+            </div>
+            <div className="text-xs text-slate-600">เกินกำหนด <b className="text-rose-600">{formatCurrency(overview.receivables.overdue)}</b> จาก {overview.receivables.overdueDebtorCount} คน</div>
+            <div className="grid grid-cols-5 gap-1.5 text-[11px]">
+              {[
+                ['ยังไม่ครบ', overview.receivables.buckets.notDue],
+                ['เกิน 1-30 วัน', overview.receivables.buckets.d1_30],
+                ['31-60 วัน', overview.receivables.buckets.d31_60],
+                ['61-90 วัน', overview.receivables.buckets.d61_90],
+                ['เกิน 90 วัน', overview.receivables.buckets.d90plus],
+              ].map(([l, v], i) => (
+                <div key={String(l)} className={`rounded-lg border p-1.5 ${i === 0 ? 'bg-emerald-50 border-emerald-200' : i >= 3 ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <div className="font-semibold">{l}</div><div className="font-mono font-black">{formatCurrency(Number(v))}</div>
+                </div>
+              ))}
+            </div>
+            <div className="max-h-52 overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="text-slate-500"><tr><th className="text-left p-1">ลูกค้า</th><th className="text-right p-1">บิล</th><th className="text-right p-1">เกินกำหนด</th><th className="text-right p-1">ค้างทั้งหมด</th></tr></thead>
+                <tbody>
+                  {overview.receivables.topDebtors.length === 0 && <tr><td colSpan={4} className="p-3 text-center text-slate-400">ไม่มีลูกหนี้ค้างชำระ</td></tr>}
+                  {overview.receivables.topDebtors.map((c) => (
+                    <tr key={c.customerId} className="border-t border-slate-100">
+                      <td className="p-1">{c.name} <span className="text-slate-400">{c.phone || ''}</span></td>
+                      <td className="p-1 text-right">{c.bills}</td>
+                      <td className={`p-1 text-right font-mono ${c.overdue > 0 ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>{c.overdue > 0 ? `${formatCurrency(c.overdue)} (${c.oldestDaysOverdue} วัน)` : '-'}</td>
+                      <td className="p-1 text-right font-mono">{formatCurrency(c.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="lg:col-span-2 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-3 text-sm flex flex-wrap items-center justify-between gap-2">
+            <span className="text-indigo-900">
+              ฐานะเงินภายใน 30 วัน = เงินที่มี {formatCurrency(overview.cash)} + ลูกหนี้ {formatCurrency(overview.receivables.total)} − ต้องจ่ายเจ้าหนี้ภายใน 30 วัน (รวมที่เกินกำหนด) {formatCurrency(overview.payables.overdue + overview.payables.due30)}
+            </span>
+            <b className={`font-mono text-lg ${overview.position30 < 0 ? 'text-rose-700' : 'text-indigo-800'}`}>{formatCurrency(overview.position30)}</b>
+          </div>
+        </div>
+      )}
+
       {/* Flow */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -222,6 +324,22 @@ export default function FinancePage() {
             <div className="flex justify-between border-t border-slate-200 pt-1 font-black"><span>สุทธิ (เข้า − ออก)</span><span className={`font-mono ${(summary?.flow.net ?? 0) < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{formatCurrency(summary?.flow.net ?? 0)}</span></div>
           </div>
         </div>
+        {summary?.daily && summary.daily.length > 1 && (() => {
+          const max = Math.max(1, ...summary.daily.map((d) => Math.max(d.in, d.out)));
+          return (
+            <div className="flex items-end gap-1 h-32 pt-2 overflow-x-auto" aria-label="กราฟเงินเข้า-ออกรายวัน">
+              {summary.daily.map((d) => (
+                <div key={d.date} className="flex flex-col items-center gap-0.5 min-w-[22px] flex-1" title={`${d.date}: เข้า ${formatCurrency(d.in)} / ออก ${formatCurrency(d.out)}`}>
+                  <div className="flex items-end gap-0.5 h-24">
+                    <div className="w-2 rounded-t bg-emerald-500" style={{ height: `${(d.in / max) * 100}%` }} />
+                    <div className="w-2 rounded-t bg-rose-500" style={{ height: `${(d.out / max) * 100}%` }} />
+                  </div>
+                  <span className="text-[9px] text-slate-500">{Number(d.date.slice(8))}</span>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
         <p className="text-xs text-slate-400">การย้ายเงินระหว่างบัญชีของร้าน (ฝาก / ถอน / แลกเงิน / ส่งเงินปิดกะ) ไม่นับเป็นเงินเข้าหรือออก</p>
       </div>
 

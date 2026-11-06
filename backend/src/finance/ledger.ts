@@ -194,3 +194,31 @@ export async function transfer(
   const inn = await post(tx, { ...base, accountId: input.toAccountId, direction: 'IN' });
   return { transferGroupId: groupId, out, in: inn };
 }
+
+/** Create an expense document and its ledger row (caller handles drawer/shift bookkeeping). */
+export async function recordExpense(
+  tx: Tx,
+  input: { categoryId: string; accountId: string; amount: number; description: string; vendor?: string | null; receiptImage?: string | null; paidAt?: Date; userId?: string | null },
+) {
+  const category = await tx.expenseCategory.findUnique({ where: { id: input.categoryId } });
+  if (!category || !category.isActive) throw new BadRequestException('กรุณาเลือกหมวดค่าใช้จ่าย');
+  const description = String(input.description || '').trim();
+  if (!description) throw new BadRequestException('กรุณาระบุรายละเอียดค่าใช้จ่าย');
+  const now = new Date();
+  const prefix = `EXP-${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const last = await tx.expense.findFirst({ where: { expenseNumber: { startsWith: prefix } }, orderBy: { expenseNumber: 'desc' } });
+  const expenseNumber = prefix + String((Number(last?.expenseNumber.slice(prefix.length)) || 0) + 1).padStart(5, '0');
+  const amount = round2(Number(input.amount));
+  const expense = await tx.expense.create({
+    data: {
+      expenseNumber, categoryId: category.id, accountId: input.accountId, amount, description,
+      vendor: input.vendor?.trim() || null, receiptImage: input.receiptImage || null,
+      paidAt: input.paidAt ?? now, userId: input.userId ?? null,
+    },
+  });
+  await post(tx, {
+    accountId: input.accountId, direction: 'OUT', amount, type: 'EXPENSE', categoryId: category.id,
+    refType: 'EXPENSE', refId: expense.id, note: `${category.name}: ${description}`, userId: input.userId, occurredAt: expense.paidAt,
+  });
+  return { expense, category };
+}

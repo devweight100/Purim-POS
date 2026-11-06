@@ -30,6 +30,7 @@ const TYPE_LABELS: Record<string, string> = {
   OWNER_CAPITAL: 'เจ้าของนำเงินเข้า',
   OWNER_DRAW: 'เจ้าของถอนใช้',
   DRAWER_IN: 'เติมเงินเข้าลิ้นชัก',
+  OTHER_INCOME: 'รายรับอื่น',
   DRAWER_OUT: 'นำเงินออกจากลิ้นชัก',
   SHIFT_OVER_SHORT: 'เงินขาด/เกินตอนปิดกะ',
   REVERSAL: 'รายการกลับ (ยกเลิก)',
@@ -279,29 +280,17 @@ export class FinanceService {
     if (body.receiptImage && body.receiptImage.length > 3_000_000) throw new BadRequestException('รูปใบเสร็จใหญ่เกินไป (ไม่เกินประมาณ 2MB)');
     return businessTransaction(this.prisma, (tx) =>
       this.once(tx, body.clientId, { op: 'expense', cat: body.categoryId, acc: body.accountId, amount, description }, async () => {
-        const category = await tx.expenseCategory.findUnique({ where: { id: String(body.categoryId) } });
-        if (!category || !category.isActive) throw new BadRequestException('กรุณาเลือกหมวดค่าใช้จ่าย');
         const acc = await this.account(tx, String(body.accountId));
         const bal = await ledger.balanceOf(tx, acc.id);
         if (acc.type !== 'CARD_CLEARING' && bal + 0.001 < amount) {
           throw new BadRequestException(`ยอดเงินใน ${acc.name} ไม่พอ (คงเหลือ ฿${bal.toFixed(2)}) — ถ้ายังไม่ได้ตั้งยอดยกมา ให้ตั้งก่อน`);
         }
-        const now = new Date();
-        const prefix = `EXP-${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}`;
-        const last = await tx.expense.findFirst({ where: { expenseNumber: { startsWith: prefix } }, orderBy: { expenseNumber: 'desc' } });
-        const expenseNumber = prefix + String((Number(last?.expenseNumber.slice(prefix.length)) || 0) + 1).padStart(5, '0');
-        const expense = await tx.expense.create({
-          data: {
-            expenseNumber, categoryId: category.id, accountId: acc.id, amount, description,
-            vendor: body.vendor?.trim() || null, receiptImage: body.receiptImage || null,
-            paidAt: body.paidAt ? new Date(body.paidAt) : now, userId: actor?.id ?? null,
-          },
+        const { expense } = await ledger.recordExpense(tx, {
+          categoryId: String(body.categoryId), accountId: acc.id, amount, description,
+          vendor: body.vendor, receiptImage: body.receiptImage, paidAt: body.paidAt ? new Date(body.paidAt) : undefined, userId: actor?.id,
         });
+        const expenseNumber = expense.expenseNumber;
         await this.mirrorDrawer(tx, acc, 'OUT', amount, `ค่าใช้จ่าย ${expenseNumber}: ${description}`);
-        await ledger.post(tx, {
-          accountId: acc.id, direction: 'OUT', amount, type: 'EXPENSE', categoryId: category.id,
-          refType: 'EXPENSE', refId: expense.id, note: `${category.name}: ${description}`, userId: actor?.id, occurredAt: expense.paidAt,
-        });
         return { success: true, id: expense.id, expenseNumber };
       }),
     );
@@ -358,7 +347,7 @@ export class FinanceService {
     const to = q.to ? new Date(q.to) : new Date();
     const rows = await this.prisma.moneyTransaction.findMany({
       where: { occurredAt: { gte: from, lte: to } },
-      select: { direction: true, amount: true, type: true, transferGroupId: true, reversalOfId: true, category: { select: { name: true } }, account: { select: { type: true } } },
+      select: { direction: true, amount: true, type: true, occurredAt: true, transferGroupId: true, reversalOfId: true, category: { select: { name: true } }, account: { select: { type: true } } },
     });
     const inByType: Record<string, number> = {};
     const outByType: Record<string, number> = {};
@@ -372,6 +361,9 @@ export class FinanceService {
     });
     const originalType = new Map(originals.map((o) => [o.id, o.type]));
     const add = (bucket: Record<string, number>, key: string, v: number) => { bucket[key] = round2((bucket[key] || 0) + v); };
+    const dayIn: Record<string, number> = {};
+    const dayOut: Record<string, number> = {};
+    const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     for (const r of rows) {
       const amt = Number(r.amount);
       const kind = r.type === 'REVERSAL' ? originalType.get(r.reversalOfId || '') || 'REVERSAL' : r.type;
@@ -380,13 +372,13 @@ export class FinanceService {
       const label = TYPE_LABELS[kind] || kind;
       if (r.type === 'REVERSAL') {
         // reversal of an IN takes money out again -> reduce that income line (and vice versa)
-        if (r.direction === 'OUT') { add(inByType, label, -amt); totalIn -= amt; }
-        else { add(outByType, label, -amt); totalOut -= amt; }
+        if (r.direction === 'OUT') { add(inByType, label, -amt); totalIn -= amt; add(dayIn, dayKey(r.occurredAt), -amt); }
+        else { add(outByType, label, -amt); totalOut -= amt; add(dayOut, dayKey(r.occurredAt), -amt); }
         if (kind === 'EXPENSE') add(expenseByCategory, r.category?.name || 'อื่นๆ', -amt);
         continue;
       }
-      if (r.direction === 'IN') { add(inByType, label, amt); totalIn += amt; }
-      else { add(outByType, label, amt); totalOut += amt; }
+      if (r.direction === 'IN') { add(inByType, label, amt); totalIn += amt; add(dayIn, dayKey(r.occurredAt), amt); }
+      else { add(outByType, label, amt); totalOut += amt; add(dayOut, dayKey(r.occurredAt), amt); }
       if (r.type === 'EXPENSE') add(expenseByCategory, r.category?.name || 'อื่นๆ', amt);
     }
     for (const bucket of [inByType, outByType, expenseByCategory]) {
@@ -404,6 +396,98 @@ export class FinanceService {
       },
       accounts,
       flow: { totalIn: round2(totalIn), totalOut: round2(totalOut), net: round2(totalIn - totalOut), inByType, outByType, expenseByCategory },
+      daily: (() => {
+        const days: { date: string; in: number; out: number; net: number }[] = [];
+        const d = new Date(from); d.setHours(0, 0, 0, 0);
+        while (d <= to && days.length < 92) {
+          const k = dayKey(d);
+          days.push({ date: k, in: dayIn[k] || 0, out: dayOut[k] || 0, net: round2((dayIn[k] || 0) - (dayOut[k] || 0)) });
+          d.setDate(d.getDate() + 1);
+        }
+        return days;
+      })(),
+    };
+  }
+
+  /**
+   * What the store owes (received supplier bills, by due date) and is owed (customer debts, by aging).
+   * Due date of a supplier bill: PO due date, else bill date + supplier credit terms (30 days default).
+   */
+  async overview() {
+    const DAY = 86400000;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const pos = await this.prisma.purchaseOrder.findMany({
+      where: { status: { in: ['PARTIALLY_RECEIVED', 'RECEIVED', 'COMPLETED'] }, remainingPayable: { gt: 0 } },
+      select: {
+        id: true, poNumber: true, supplierInvoiceNo: true, billDate: true, dueDate: true, totalAmount: true, paidAmount: true, remainingPayable: true,
+        supplier: { select: { id: true, name: true, creditTerms: true } },
+        items: { select: { receivedQty: true, unitCost: true } },
+      },
+    });
+    const payItems = pos
+      .map((po) => {
+        const received = po.items.reduce((sum, i) => sum + i.receivedQty * Number(i.unitCost), 0);
+        const amount = round2(Math.max(0, Math.min(Number(po.remainingPayable), received - Number(po.paidAmount))));
+        const due = po.dueDate ?? new Date(po.billDate.getTime() + (po.supplier.creditTerms ?? 30) * DAY);
+        const daysToDue = Math.floor((new Date(due).setHours(0, 0, 0, 0) - today.getTime()) / DAY);
+        return { poId: po.id, poNumber: po.poNumber, invoiceNo: po.supplierInvoiceNo, supplierId: po.supplier.id, supplierName: po.supplier.name, amount, dueDate: due.toISOString(), daysToDue, dueDateSet: !!po.dueDate };
+      })
+      .filter((p) => p.amount > 0)
+      .sort((a, b) => a.daysToDue - b.daysToDue);
+    const sumWhere = (fn: (p: (typeof payItems)[number]) => boolean) => round2(payItems.filter(fn).reduce((s, p) => s + p.amount, 0));
+    const payables = {
+      total: sumWhere(() => true),
+      overdue: sumWhere((p) => p.daysToDue < 0),
+      dueToday: sumWhere((p) => p.daysToDue === 0),
+      due7: sumWhere((p) => p.daysToDue >= 0 && p.daysToDue <= 7),
+      due30: sumWhere((p) => p.daysToDue >= 0 && p.daysToDue <= 30),
+      later: sumWhere((p) => p.daysToDue > 30),
+      billCount: payItems.length,
+      items: payItems.slice(0, 50),
+    };
+
+    const debts = await this.prisma.customerDebt.findMany({
+      where: { remainingAmount: { gt: 0 } },
+      select: { id: true, remainingAmount: true, dueDate: true, createdAt: true, customer: { select: { id: true, name: true, phone: true } }, order: { select: { orderNumber: true } } },
+    });
+    const buckets = { notDue: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90plus: 0 };
+    const byCustomer = new Map<string, { customerId: string; name: string; phone: string | null; total: number; overdue: number; bills: number; oldestDaysOverdue: number }>();
+    for (const d of debts) {
+      const amt = Number(d.remainingAmount);
+      const due = d.dueDate ?? new Date(d.createdAt.getTime() + 30 * DAY);
+      const overdueDays = Math.floor((today.getTime() - new Date(due).setHours(0, 0, 0, 0)) / DAY);
+      if (overdueDays <= 0) buckets.notDue += amt;
+      else if (overdueDays <= 30) buckets.d1_30 += amt;
+      else if (overdueDays <= 60) buckets.d31_60 += amt;
+      else if (overdueDays <= 90) buckets.d61_90 += amt;
+      else buckets.d90plus += amt;
+      const c = byCustomer.get(d.customer.id) || { customerId: d.customer.id, name: d.customer.name, phone: d.customer.phone, total: 0, overdue: 0, bills: 0, oldestDaysOverdue: 0 };
+      c.total = round2(c.total + amt);
+      if (overdueDays > 0) c.overdue = round2(c.overdue + amt);
+      c.bills += 1;
+      c.oldestDaysOverdue = Math.max(c.oldestDaysOverdue, overdueDays);
+      byCustomer.set(d.customer.id, c);
+    }
+    for (const k of Object.keys(buckets) as (keyof typeof buckets)[]) buckets[k] = round2(buckets[k]);
+    const customers = [...byCustomer.values()].sort((a, b) => b.overdue - a.overdue || b.total - a.total);
+    const receivables = {
+      total: round2(customers.reduce((s, c) => s + c.total, 0)),
+      overdue: round2(customers.reduce((s, c) => s + c.overdue, 0)),
+      debtorCount: customers.length,
+      overdueDebtorCount: customers.filter((c) => c.overdue > 0).length,
+      buckets,
+      topDebtors: customers.slice(0, 20),
+    };
+
+    const accounts = await this.listAccounts();
+    const cash = round2(accounts.filter((a) => a.isActive).reduce((s, a) => s + a.balance, 0));
+    return {
+      asOf: new Date().toISOString(),
+      cash,
+      payables,
+      receivables,
+      // money now + what customers owe - what is due to suppliers within 30 days (incl. overdue)
+      position30: round2(cash + receivables.total - payables.overdue - payables.due30),
     };
   }
 }

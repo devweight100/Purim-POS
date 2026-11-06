@@ -5,6 +5,13 @@ import { CashMovementType, ShiftStatus, PaymentMethod } from '@prisma/client';
 import * as ledger from '../finance/ledger';
 
 const CASH_CATEGORIES = ['GENERAL', 'REFUND', 'DEBT_PAYMENT'];
+/**
+ * Why cash goes in / out of a drawer (chosen by the cashier):
+ *  OUT: EXPENSE (store expense, needs a category) | TO_SAFE (cash drop) | TO_BANK (deposit) | REFUND | OTHER
+ *  IN : FROM_SAFE (change float) | FROM_BANK (withdrawal / coin exchange) | OTHER_INCOME | OTHER
+ */
+const OUT_PURPOSES = ['EXPENSE', 'TO_SAFE', 'TO_BANK', 'REFUND', 'OTHER'];
+const IN_PURPOSES = ['FROM_SAFE', 'FROM_BANK', 'OTHER_INCOME', 'OTHER'];
 
 /** Only the shift owner (or ADMIN / MANAGER) may close it or move cash in/out of its drawer. */
 function assertShiftActor(shift: { userId: string }, actor?: { id?: string; role?: string }) {
@@ -237,7 +244,11 @@ export class ShiftsService {
     });
   }
 
-  async addCashMovement(shiftId: string, type: 'in' | 'out', amount: number, reason: string, clientMovementId?: string, actor?: { id?: string; role?: string }, category = 'GENERAL') {
+  async addCashMovement(
+    shiftId: string, type: 'in' | 'out', amount: number, reason: string, clientMovementId?: string,
+    actor?: { id?: string; role?: string }, category = 'GENERAL',
+    purposeInput?: { purpose?: string; expenseCategoryId?: string; bankAccountId?: string },
+  ) {
     if (!clientMovementId || clientMovementId.length > 100) throw new BadRequestException('ต้องระบุรหัสรายการเงินสด');
     const cat = String(category || 'GENERAL').toUpperCase();
     if (!CASH_CATEGORIES.includes(cat) || (cat === 'REFUND' && type !== 'out') || cat === 'DEBT_PAYMENT') throw new BadRequestException('ประเภทรายการเงินสดไม่ถูกต้อง');
@@ -252,13 +263,46 @@ export class ShiftsService {
       assertShiftActor(shift, actor);
       if (!Number.isFinite(amount) || amount <= 0 || !['in','out'].includes(type)) throw new BadRequestException('รายการเงินสดไม่ถูกต้อง');
       if (type === 'out' && amount > (await this.getShiftSummary(shiftId, tx)).expectedCash) throw new BadRequestException('ยอดนำออกมากกว่าเงินสดคงเหลือในฐานข้อมูล');
-      const movement = await tx.cashMovement.create({ data: { id: clientMovementId, shiftId, type: type === 'in' ? CashMovementType.IN : CashMovementType.OUT, amount, category: cat, reason: reason?.trim() || (type === 'in' ? 'เติมเงินสด' : 'นำเงินสดออก') } });
+      const purpose = String(purposeInput?.purpose || (cat === 'REFUND' ? 'REFUND' : 'OTHER')).toUpperCase();
+      if (!(type === 'in' ? IN_PURPOSES : OUT_PURPOSES).includes(purpose)) throw new BadRequestException('วัตถุประสงค์ของรายการเงินสดไม่ถูกต้อง');
+      if (purpose === 'EXPENSE' && !purposeInput?.expenseCategoryId) throw new BadRequestException('กรุณาเลือกหมวดค่าใช้จ่าย');
+      const baseReason = reason?.trim() || (type === 'in' ? 'เติมเงินสด' : 'นำเงินสดออก');
+      const expenseCategory = purpose === 'EXPENSE'
+        ? await tx.expenseCategory.findUnique({ where: { id: purposeInput!.expenseCategoryId! } })
+        : null;
+      if (purpose === 'EXPENSE' && (!expenseCategory || !expenseCategory.isActive)) throw new BadRequestException('กรุณาเลือกหมวดค่าใช้จ่าย');
+      // shift record shows the category; the expense itself keeps the plain description
+      const movementReason = expenseCategory ? `${expenseCategory.name}: ${baseReason}` : baseReason;
+      const movement = await tx.cashMovement.create({ data: { id: clientMovementId, shiftId, type: type === 'in' ? CashMovementType.IN : CashMovementType.OUT, amount, category: purpose === 'REFUND' ? 'REFUND' : cat, reason: movementReason } });
       const drawer = await ledger.drawerAccount(tx, shift.terminalId);
-      await ledger.post(tx, {
-        accountId: drawer.id, direction: type === 'in' ? 'IN' : 'OUT', amount,
-        type: cat === 'REFUND' ? 'CLAIM_REFUND' : type === 'in' ? 'DRAWER_IN' : 'DRAWER_OUT',
-        refType: 'CASH_MOVEMENT', refId: movement.id, note: movement.reason, userId: actor?.id,
-      });
+      const ref = { refType: 'CASH_MOVEMENT', refId: movement.id, userId: actor?.id };
+      switch (purpose) {
+        case 'EXPENSE':
+          await ledger.recordExpense(tx, { categoryId: expenseCategory!.id, accountId: drawer.id, amount, description: baseReason, userId: actor?.id });
+          break;
+        case 'TO_SAFE':
+        case 'FROM_SAFE': {
+          const safe = await ledger.safeAccount(tx);
+          await ledger.transfer(tx, purpose === 'TO_SAFE'
+            ? { fromAccountId: drawer.id, toAccountId: safe.id, amount, note: 'นำเงินจากลิ้นชักเก็บเข้าเซฟ: ' + movement.reason, ...ref }
+            : { fromAccountId: safe.id, toAccountId: drawer.id, amount, note: 'นำเงินทอนจากเซฟเข้าลิ้นชัก: ' + movement.reason, ...ref });
+          break;
+        }
+        case 'TO_BANK':
+        case 'FROM_BANK': {
+          const bank = await ledger.bankMoneyAccount(tx, purposeInput?.bankAccountId);
+          await ledger.transfer(tx, purpose === 'TO_BANK'
+            ? { fromAccountId: drawer.id, toAccountId: bank.id, amount, note: 'นำเงินจากลิ้นชักฝากธนาคาร: ' + movement.reason, ...ref }
+            : { fromAccountId: bank.id, toAccountId: drawer.id, amount, note: 'ถอน/แลกเงินจากธนาคารเข้าลิ้นชัก: ' + movement.reason, ...ref });
+          break;
+        }
+        default:
+          await ledger.post(tx, {
+            accountId: drawer.id, direction: type === 'in' ? 'IN' : 'OUT', amount,
+            type: purpose === 'REFUND' ? 'CLAIM_REFUND' : purpose === 'OTHER_INCOME' ? 'OTHER_INCOME' : type === 'in' ? 'DRAWER_IN' : 'DRAWER_OUT',
+            note: movement.reason, ...ref,
+          });
+      }
       return movement;
     });
   }

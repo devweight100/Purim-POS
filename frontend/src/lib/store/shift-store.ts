@@ -2,6 +2,13 @@ import { create } from 'zustand';
 import { api } from '../api';
 import { Shift, CashTransaction, Order } from '../types';
 
+/** Why cash goes in/out of the drawer (posted to the finance ledger by the server). */
+export interface CashPurposeInput {
+  purpose: 'EXPENSE' | 'TO_SAFE' | 'TO_BANK' | 'OTHER' | 'FROM_SAFE' | 'FROM_BANK' | 'OTHER_INCOME';
+  expenseCategoryId?: string;
+  bankAccountId?: string;
+}
+
 interface ShiftStore {
   currentShift: Shift | null;
   cashTransactions: CashTransaction[];
@@ -11,7 +18,7 @@ interface ShiftStore {
   fetchCurrentShift: () => Promise<Shift | null>;
   openShift: (userName: string, openingCash: number) => Promise<void>;
   closeShift: (actualCash?: number) => Promise<Shift | null>;
-  addCashTransaction: (type: 'in' | 'out', amount: number, reason: string, operationId?: string) => Promise<void>;
+  addCashTransaction: (type: 'in' | 'out', amount: number, reason: string, operationId?: string, purpose?: CashPurposeInput) => Promise<void>;
   recordClaimRefund: (amount: number, claimId?: string, reason?: string) => void;
   recordSale: (order: Order) => void;
   recordVoid: () => void;
@@ -210,7 +217,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
     return closedShift;
   },
 
-  addCashTransaction: async (type: 'in' | 'out', amount: number, reason: string, operationId?: string) => {
+  addCashTransaction: async (type: 'in' | 'out', amount: number, reason: string, operationId?: string, purpose?: CashPurposeInput) => {
     const shift = get().currentShift;
     if (!shift?.isOpen) throw new Error('กรุณาเปิดกะบนฐานข้อมูลก่อนทำรายการเงินสด');
     if (!Number.isFinite(amount) || amount <= 0) throw new Error('จำนวนเงินต้องมากกว่า 0');
@@ -237,7 +244,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
       cashOut: shift.cashOut + (type === 'out' ? safeAmount : 0),
     };
     const { newOperationId } = await import('../order-sync-service');
-    const serverMovement = await api.shifts.addCashMovement(shift.id, { type, amount: safeAmount, reason, clientMovementId: operationId || newOperationId() });
+    const serverMovement = await api.shifts.addCashMovement(shift.id, { type, amount: safeAmount, reason, clientMovementId: operationId || newOperationId(), ...(purpose || {}) });
     transaction.id = serverMovement.id;
     if (get().cashTransactions.some(t => t.id === transaction.id)) return;
     saveCurrentShift(updatedShift);

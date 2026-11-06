@@ -22,6 +22,7 @@ export class FinanceController {
 
   @Post('owner') owner(@Body() body: any, @Request() req: any) { return this.finance.ownerMoney(body, req.user); }
 
+  @RequirePermissions('MANAGE_FINANCE', 'POS_SELL')
   @Get('expense-categories') categories() { return this.finance.listCategories(); }
   @Post('expense-categories') createCategory(@Body() body: any) { return this.finance.createCategory(body); }
   @Patch('expense-categories/:id') updateCategory(@Param('id') id: string, @Body() body: any) { return this.finance.updateCategory(id, body); }
@@ -33,4 +34,5 @@ export class FinanceController {
 
   @Get('transactions') transactions(@Query() q: any) { return this.finance.listTransactions(q); }
   @Get('summary') summary(@Query() q: any) { return this.finance.summary(q); }
+  @Get('overview') overview() { return this.finance.overview(); }
 }
