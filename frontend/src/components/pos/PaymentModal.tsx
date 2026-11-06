@@ -22,6 +22,8 @@ import { recordCustomerSale } from '@/lib/customer-service';
 import { updateClaimStatus, processClaim } from '@/lib/claim-service';
 import { kickCashDrawer, getCashDrawerConfig } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
+import { ApprovalDialog, ApprovalNeeded } from '@/components/approvals/ApprovalDialog';
+import { getTerminalId } from '@/lib/terminal-id';
 
 type Step = 'METHOD' | 'PROCESS' | 'SUCCESS';
 type Method = 'CASH' | 'QR' | 'CARD' | 'SPLIT' | 'CREDIT';
@@ -47,6 +49,9 @@ export function PaymentModal({
 
   const operationId = useRef<string | null>(null);
   const submitting = useRef(false);
+  // Manager approval (discount over limit / below price floor / below cost)
+  const approvalIdRef = useRef<string | null>(null);
+  const [approvalNeeded, setApprovalNeeded] = useState<ApprovalNeeded | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingReceipt, setPendingReceipt] = useState(false);
   const [step, setStep] = useState<Step>('METHOD');
@@ -264,6 +269,9 @@ export function PaymentModal({
       operationId.current ||= newOperationId();
       backendOrder = await api.orders.checkout({
         clientOrderId: operationId.current,
+        approvalId: approvalIdRef.current || undefined,
+        terminalId: getTerminalId(),
+        claimDiscountAmount: claimDiscountAmt,
         customerId: cart.customerId,
         shiftId: shiftStore.currentShift?.id,
         createdAt: new Date().toISOString(),
@@ -287,10 +295,12 @@ export function PaymentModal({
             unitName: i.unitName,
             conversionFactor: i.conversionFactor || 1,
             discountAmount: lineDiscount,
+            isClaimReplacement: (i.claimQuantity || 0) > 0,
           };
         }),
         payments,
       });
+      approvalIdRef.current = null;
       isSynced = !backendOrder.isOfflineSaved;
       setPendingReceipt(!isSynced);
       const finalOrderNumber = backendOrder.orderNumber;
@@ -521,6 +531,13 @@ export function PaymentModal({
       setShowReceiptPdf(false);
       triggerDirectPrint(completedReceipt);
     } catch (error) {
+      if (!backendOrder && error instanceof ApiError && error.data?.code === 'APPROVAL_REQUIRED') {
+        // ask a manager to approve with their PIN, then submit the same bill again
+        approvalIdRef.current = null;
+        setApprovalNeeded({ ticket: error.data.ticket, reasons: error.data.reasons || [], total });
+        return;
+      }
+      approvalIdRef.current = null;
       if (!backendOrder && error instanceof ApiError && !isRetryableError(error)) operationId.current = null;
       toast.error('บันทึกการชำระเงินไม่ได้: ' + (error instanceof Error ? error.message : String(error)));
     }
@@ -1188,6 +1205,15 @@ export function PaymentModal({
         }
         initialValue={getNumpadInitialValue()}
         fullAmount={getNumpadFullAmount()}
+      />
+      <ApprovalDialog
+        request={approvalNeeded}
+        onCancel={() => setApprovalNeeded(null)}
+        onApproved={(approvalId) => {
+          approvalIdRef.current = approvalId;
+          setApprovalNeeded(null);
+          void handleConfirmPayment();
+        }}
       />
     </>
   );

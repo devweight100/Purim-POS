@@ -4,7 +4,7 @@ import { Observable, Subject } from 'rxjs';
 export type RealtimeEntity =
   | 'product' | 'stock' | 'order' | 'shift' | 'customer' | 'debt' | 'category'
   | 'bankAccount' | 'settings' | 'supplier' | 'purchaseOrder' | 'claim'
-  | 'supplierReturn' | 'payable' | 'user';
+  | 'supplierReturn' | 'payable' | 'user' | 'approval';
 
 export interface RealtimeEvent {
   entity: RealtimeEntity;

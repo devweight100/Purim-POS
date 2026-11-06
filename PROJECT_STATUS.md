@@ -109,6 +109,16 @@ Make the POS production-ready by using PostgreSQL/backend APIs as the source of 
 - Tests: unit (`npx jest`: recurring dates, payable cap, login throttle, price floor) and e2e (`npm run test:e2e` against a NEW empty database whose name contains "test": security, sale, partial return, credit + receipt cancel, shift close, PO/return note/payment, finance totals). `.github/workflows/ci.yml` runs build + unit + e2e with a Postgres service, and frontend type check + build.
 - Verified: unit 18/18, e2e 15/15, API backup checks 7/7, headless UI checks 9/9.
 
+## 2026-11-06 Manager approval with PIN (mode 1) + remote-request structure (mode 2)
+
+- Migration `20261110000000_approvals`: `approval_requests`, `orders.approval_id`, `store_settings.approval_rules`.
+- Rules (`/approvals/rules/current`, edit ADMIN): max discount % per role (default CASHIER 10%, WAREHOUSE 0%), below-cost needs approval, below-price-floor needs approval. ADMIN and MANAGER never need approval. Discount % = line discounts + bill discount (excluding points and claim discounts) / gross; claim replacement lines are ignored.
+- Checkout: when a rule is hit the server answers `409 APPROVAL_REQUIRED` with the reasons and a server-signed ticket (HMAC, 10 min) bound to the exact bill (seller, customer, items, prices, discounts, total). This replaces the old hard block for prices below the floor.
+- Mode 1: `POST /approvals/pin { ticket, pin }` — a different user with ADMIN/MANAGER role or `APPROVE_OVERRIDES` permission types their PIN on the till; PIN attempts are throttled. Returns a single-use approval id; the bill is resubmitted with `approvalId`, consumed inside the sale transaction (rejected if the bill changed, expired or already used). The order stores `approvalId`.
+- Mode 2 (backend ready, no UI yet): `POST /approvals/requests` (PENDING), `GET /approvals/:id` (poll), `POST /approvals/:id/decide` (approver), realtime event `approval`; consumed the same way.
+- UI: PIN pad dialog in the payment screen; `/approvals` page (history + rules); permission `APPROVE_OVERRIDES`.
+- Verified: e2e 23/23 (8 approval cases), headless POS approval flow 3/3.
+
 ## Production Readiness Work In Progress
 
 ### Product Data

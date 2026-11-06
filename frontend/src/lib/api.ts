@@ -100,7 +100,7 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}): Pro
         window.dispatchEvent(new CustomEvent('purim:must-change-password'));
       }
       reportConnection(res.status >= 500);
-      throw new ApiError(Array.isArray(errBody?.message) ? errBody.message.join(', ') : errBody?.message || `HTTP ${res.status}: ${res.statusText}`, res.status);
+      throw new ApiError(Array.isArray(errBody?.message) ? errBody.message.join(', ') : errBody?.message || `HTTP ${res.status}: ${res.statusText}`, res.status, errBody);
     }
 
     reportConnection(false);

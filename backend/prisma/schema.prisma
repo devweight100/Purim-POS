@@ -671,6 +671,7 @@ model Order {
   vatRate        Decimal       @default(0) @map("vat_rate") @db.Decimal(5, 2)    // % used for this bill (0 = no VAT)
   vatAmount      Decimal       @default(0) @map("vat_amount") @db.Decimal(12, 2) // VAT included in totalAmount
   returnedAmount Decimal       @default(0) @map("returned_amount") @db.Decimal(12, 2) // refunded through partial returns
+  approvalId     String?       @map("approval_id") // manager approval used for discounts / below-cost prices
   pointsUsed     Int           @default(0) @map("points_used")
   pointsEarned   Int           @default(0) @map("points_earned")
   note           String?
@@ -842,6 +843,7 @@ model StoreSettings {
   receiptHeader String?  @map("receipt_header")
   receiptFooter String?  @map("receipt_footer")
   backupOffsiteDir String? @map("backup_offsite_dir") // folder on another disk / synced cloud folder for backup copies
+  approvalRules    Json?   @map("approval_rules") // { maxDiscountPercent: {CASHIER: 10, ...}, belowCostNeedsApproval, belowPriceFloorNeedsApproval }
   vatRate       Decimal  @default(7) @map("vat_rate") @db.Decimal(5, 2)
   pointsPerBaht Decimal  @default(0.01) @map("points_per_baht") @db.Decimal(10, 4)
   pointValue    Decimal  @default(1) @map("point_value") @db.Decimal(10, 2)
@@ -1048,4 +1050,31 @@ model OrderReturnItem {
   @@index([returnId])
   @@index([orderItemId])
   @@map("order_return_items")
+}
+
+/// Manager approval for an action beyond the requester's rights (discount, below-cost price, ...).
+/// channel PIN = approved on the spot with the approver's PIN; REMOTE = request waits for an approver
+/// on another device (status PENDING until decided).
+model ApprovalRequest {
+  id            String    @id @default(uuid())
+  type          String // SALE (more types later: VOID, RETURN, DRAWER_OUT ...)
+  status        String    @default("PENDING") // PENDING | APPROVED | REJECTED | USED | EXPIRED
+  channel       String // PIN | REMOTE
+  requestedById String    @map("requested_by_id")
+  approvedById  String?   @map("approved_by_id")
+  terminalId    String?   @map("terminal_id")
+  contextHash   String    @map("context_hash") // binds the approval to one exact bill
+  amount        Decimal   @default(0) @db.Decimal(12, 2)
+  reasons       Json // [{ code, message }]
+  summary       Json? // what the approver saw (items, totals)
+  decisionNote  String?   @map("decision_note")
+  expiresAt     DateTime  @map("expires_at")
+  decidedAt     DateTime? @map("decided_at")
+  usedAt        DateTime? @map("used_at")
+  usedRef       String?   @map("used_ref") // order id that consumed it
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([status, createdAt])
+  @@index([requestedById])
+  @@map("approval_requests")
 }

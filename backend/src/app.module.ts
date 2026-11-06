@@ -23,6 +23,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { EventsModule } from './events/events.module';
 import { ServerControlModule } from './server-control/server-control.module';
 import { FinanceModule } from './finance/finance.module';
+import { ApprovalsModule } from './approvals/approvals.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { FinanceModule } from './finance/finance.module';
     ServerControlModule,
     EventsModule,
     FinanceModule,
+    ApprovalsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

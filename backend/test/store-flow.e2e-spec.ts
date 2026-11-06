@@ -124,6 +124,58 @@ d('store flow (e2e)', () => {
     });
   });
 
+  describe('manager approval', () => {
+    const sale = (token: string, unitPrice: number, extra: any = {}, qty = 2) =>
+      api('post', '/orders/checkout', token, {
+        clientOrderId: randomUUID(), shiftId: state.shift2.id,
+        items: [{ productId: state.p.id, quantity: qty, unitPrice }],
+        payments: [{ method: 'CASH', amount: Math.round((unitPrice * qty - (extra.discountAmount || 0)) * 100) / 100 }], ...extra,
+      });
+    it('opens a second shift', async () => {
+      state.shift2 = (await api('post', '/shifts/open', C, { startingCash: 500, terminalId: 'e2e-term-2' }).expect(201)).body.shift;
+    });
+    it('a 20% bill discount by a cashier needs approval (limit 10%)', async () => {
+      const r = await sale(C, state.price, { discountAmount: Math.round(state.price * 2 * 0.2 * 100) / 100 }).expect(409);
+      expect(r.body.code).toBe('APPROVAL_REQUIRED');
+      expect(r.body.reasons.map((x: any) => x.code)).toContain('DISCOUNT_LIMIT');
+      state.ticket = r.body.ticket;
+    });
+    it('the cashier cannot approve with their own PIN; the owner can', async () => {
+      await api('post', '/approvals/pin', C, { ticket: state.ticket, pin: '8264' }).expect(403);
+      const ok = await api('post', '/approvals/pin', C, { ticket: state.ticket, pin: '7391' }).expect(201);
+      state.approvalId = ok.body.approvalId;
+    });
+    it('the approval works once, only for the same bill', async () => {
+      const disc = Math.round(state.price * 2 * 0.2 * 100) / 100;
+      await sale(C, state.price, { discountAmount: disc + 1, approvalId: state.approvalId }).expect(400); // bill changed
+      const done = await sale(C, state.price, { discountAmount: disc, approvalId: state.approvalId }).expect(201);
+      expect(done.body.id).toBeTruthy();
+      await sale(C, state.price, { discountAmount: disc, approvalId: state.approvalId }).expect(400); // already used
+    });
+    it('selling below cost needs approval even with discount rights', async () => {
+      const r = await sale(C, 0.5).expect(409);
+      expect(r.body.reasons.map((x: any) => x.code)).toContain('BELOW_COST');
+      state.ticket2 = r.body.ticket;
+    });
+    it('remote request: pending until a manager decides, then usable', async () => {
+      const req = (await api('post', '/approvals/requests', C, { ticket: state.ticket2 }).expect(201)).body;
+      expect(req.status).toBe('PENDING');
+      await sale(C, 0.5, { approvalId: req.approvalId }).expect(400); // not approved yet
+      await api('post', `/approvals/${req.approvalId}/decide`, C, { approve: true }).expect(403); // cashier cannot decide
+      await api('post', `/approvals/${req.approvalId}/decide`, A, { approve: true, note: 'ล้างสต็อก' }).expect(201);
+      expect((await api('get', `/approvals/${req.approvalId}`, C)).body.status).toBe('APPROVED');
+      await sale(C, 0.5, { approvalId: req.approvalId }).expect(201);
+    });
+    it('the owner selling with a big discount needs no approval', async () => {
+      const shiftA = (await api('post', '/shifts/open', A, { startingCash: 0, terminalId: 'e2e-term-admin' }).expect(201)).body.shift;
+      await api('post', '/orders/checkout', A, { clientOrderId: randomUUID(), shiftId: shiftA.id, items: [{ productId: state.p.id, quantity: 1, unitPrice: state.price }], payments: [{ method: 'CASH', amount: state.price / 2 }], discountAmount: state.price / 2 }).expect(201);
+    });
+    it('lists approvals with requester and approver', async () => {
+      const list = (await api('get', '/approvals', A).expect(200)).body.data;
+      expect(list.filter((x: any) => x.status === 'USED').length).toBe(2);
+    });
+  });
+
   describe('purchasing', () => {
     it('PO → receive → supplier return note → pay with the credit deducted', async () => {
       const sup = (await api('post', '/suppliers', A, { name: 'E2E Supplier', creditTerms: 30 })).body;

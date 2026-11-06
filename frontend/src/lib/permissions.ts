@@ -23,6 +23,7 @@ export const ROUTE_PERMISSIONS: Record<string, string | string[]> = {
   '/supplier-returns': ['MANAGE_CLAIMS', 'MANAGE_PURCHASES'],
   '/accounts': 'MANAGE_SETTINGS',
   '/finance': 'MANAGE_FINANCE',
+  '/approvals': ['APPROVE_OVERRIDES', 'VIEW_REPORTS'],
   '/settings': 'MANAGE_SETTINGS',
   '/users': 'MANAGE_USERS',
 };

@@ -25,6 +25,7 @@ interface UserItem {
 const PERMISSION_OPTIONS = [
   { key: 'POS_SELL', label: 'ขายสินค้าหน้าร้าน (POS)', group: 'งานขาย & แคชเชียร์' },
   { key: 'POS_DISCOUNT', label: 'ให้ส่วนลดพิเศษในบิล', group: 'งานขาย & แคชเชียร์' },
+  { key: 'APPROVE_OVERRIDES', label: 'อนุมัติส่วนลด / ขายต่ำกว่าทุน ด้วย PIN', group: 'งานขาย & แคชเชียร์' },
   { key: 'POS_VOID', label: 'ยกเลิกบิลขาย (Void Order)', group: 'งานขาย & แคชเชียร์' },
   { key: 'VIEW_COST', label: 'ดูราคาทุนและกำไรขั้นต้น', group: 'งานขาย & แคชเชียร์' },
   { key: 'MANAGE_INVENTORY', label: 'ปรับปรุงสต็อก & รับสินค้าเข้า', group: 'คลังสินค้า' },

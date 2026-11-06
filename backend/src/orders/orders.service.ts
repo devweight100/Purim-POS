@@ -3,13 +3,17 @@ import { Injectable, BadRequestException, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { OrderStatus, PaymentMethod, DebtStatus, ShiftStatus, CashMovementType } from '@prisma/client';
+import { ConflictException } from '@nestjs/common';
+import { createHash } from 'crypto';
+import { ApprovalsService, ApprovalReason } from '../approvals/approvals.service';
 import * as ledger from '../finance/ledger';
 
 @Injectable()
 export class OrdersService {
   constructor(
     private prisma: PrismaService,
-    private inventory: InventoryService
+    private inventory: InventoryService,
+    private approvals?: ApprovalsService,
   ) {}
 
   async checkout(data: any, userId: string) {
@@ -62,6 +66,11 @@ export class OrdersService {
         : null;
       const userPerms: string[] = Array.isArray(cashierUser?.permissions) ? (cashierUser!.permissions as any[]).map(String) : [];
       const canOverridePrice = cashierUser?.role === 'ADMIN' || cashierUser?.role === 'MANAGER' || userPerms.includes('ALL') || userPerms.includes('POS_DISCOUNT');
+      // Manager-approval rules (discount limit / below price floor / below cost); ADMIN & MANAGER are exempt
+      const rules = this.approvals ? await this.approvals.getRules(tx) : null;
+      const approvalExempt = !rules || cashierUser?.role === 'ADMIN' || cashierUser?.role === 'MANAGER';
+      const approvalReasons: ApprovalReason[] = [];
+      const approvalLines: { name: string; qty: number; unitPrice: number; lineDiscount: number; costPerBase: number; netPerBase: number; claim: boolean }[] = [];
       // Total base quantity per product in this bill (wholesale steps apply on the bill total)
       const billBaseQty = new Map<string, number>();
       for (const it of data.items) {
@@ -105,10 +114,12 @@ export class OrdersService {
         const baseQuantity = item.quantity * factor;
         // Price guard: the selling price may not go below the lowest price configured in the
         // system (price levels, unit prices, wholesale steps) unless the user may give discounts.
-        if (!canOverridePrice) {
+        if (!canOverridePrice && !item.isClaimReplacement) {
           const minAllowed = this.lowestAllowedUnitPrice(product, factor, item.unitId, item.unitName, billBaseQty.get(item.productId) || baseQuantity);
           if (minAllowed !== null && Number(item.unitPrice) + 0.01 < minAllowed) {
-            throw new BadRequestException(`ราคาขาย "${product.name}" ต่ำกว่าราคาในระบบ (ขั้นต่ำ ฿${minAllowed.toFixed(2)}) ต้องใช้สิทธิ์ให้ส่วนลด`);
+            const message = `ราคาขาย "${product.name}" ฿${Number(item.unitPrice).toFixed(2)} ต่ำกว่าราคาในระบบ (ขั้นต่ำ ฿${minAllowed.toFixed(2)})`;
+            if (!rules) throw new BadRequestException(message + ' ต้องใช้สิทธิ์ให้ส่วนลด');
+            if (rules.belowPriceFloorNeedsApproval) approvalReasons.push({ code: 'BELOW_PRICE_FLOOR', message });
           }
         }
         const lineDiscount = Number(item.discountAmount || 0);
@@ -204,6 +215,11 @@ export class OrdersService {
         totalCogs += itemCogs;
 
         const unitCost = baseQuantity > 0 ? itemCogs / baseQuantity : 0;
+        approvalLines.push({
+          name: product.name, qty: item.quantity, unitPrice: Number(item.unitPrice), lineDiscount,
+          costPerBase: unitCost, netPerBase: baseQuantity > 0 ? (item.quantity * Number(item.unitPrice) - lineDiscount) / baseQuantity : 0,
+          claim: !!item.isClaimReplacement,
+        });
 
         orderItems.push({
           productId: item.productId,
@@ -252,6 +268,43 @@ export class OrdersService {
       const shift = await tx.shift.findUnique({ where: { id: shiftId } });
       if (!shift || shift.userId !== userId) throw new BadRequestException('กะไม่ถูกต้องหรือเป็นของผู้ขายอื่น');
       if (shift.status !== ShiftStatus.OPEN) throw new BadRequestException('กะปิดแล้ว ต้องตรวจสอบบิลค้างก่อนบันทึก');
+
+      // Approval check: discount above the role's limit, prices below floor or below cost
+      if (rules && !approvalExempt) {
+        const sale = approvalLines.filter((l) => !l.claim);
+        if (rules.belowCostNeedsApproval) {
+          for (const l of sale) {
+            if (l.costPerBase > 0 && l.netPerBase + 0.005 < l.costPerBase) {
+              approvalReasons.push({ code: 'BELOW_COST', message: `"${l.name}" ขายต่ำกว่าทุน (ขาย ฿${l.netPerBase.toFixed(2)} / ทุน ฿${l.costPerBase.toFixed(2)} ต่อหน่วย)` });
+            }
+          }
+          if (totalAmount + 0.005 < totalCogs && !approvalReasons.some((r) => r.code === 'BELOW_COST')) {
+            approvalReasons.push({ code: 'BELOW_COST', message: `ยอดบิล ฿${totalAmount.toFixed(2)} ต่ำกว่าต้นทุนรวม ฿${totalCogs.toFixed(2)}` });
+          }
+        }
+        const gross = sale.reduce((sum, l) => sum + l.qty * l.unitPrice, 0);
+        const billDiscount = Math.max(0, discountAmount - Number(data.pointsDiscountAmount || 0) - Number(data.claimDiscountAmount || 0));
+        const discountPct = gross > 0 ? ((sale.reduce((sum, l) => sum + l.lineDiscount, 0) + billDiscount) / gross) * 100 : 0;
+        const limit = rules.maxDiscountPercent[cashierUser?.role || 'CASHIER'] ?? 0;
+        if (discountPct > limit + 0.0001) {
+          approvalReasons.push({ code: 'DISCOUNT_LIMIT', message: `ส่วนลด ${discountPct.toFixed(1)}% เกินที่ตำแหน่งนี้ให้ได้ (${limit}%)` });
+        }
+      }
+      let approvalHash: string | null = null;
+      if (approvalReasons.length) {
+        // the approval is bound to exactly this bill: who sells, to whom, which items at which prices
+        approvalHash = createHash('sha256').update(JSON.stringify({
+          u: userId, c: data.customerId || null, d: discountAmount, t: totalAmount,
+          i: data.items.map((it: any) => [it.productId, it.quantity, Number(it.unitPrice), Number(it.discountAmount || 0), it.conversionFactor || 1]),
+        })).digest('hex');
+        if (!data.approvalId) {
+          const ticket = this.approvals!.issueTicket({
+            t: 'SALE', h: approvalHash, r: approvalReasons, a: totalAmount, u: userId, term: data.terminalId || null,
+            s: { total: totalAmount, cost: Math.round(totalCogs * 100) / 100, items: approvalLines.map((l) => ({ name: l.name, qty: l.qty, unitPrice: l.unitPrice, discount: l.lineDiscount })) },
+          });
+          throw new ConflictException({ statusCode: 409, code: 'APPROVAL_REQUIRED', message: 'รายการนี้ต้องให้ผู้จัดการอนุมัติ: ' + approvalReasons.map((r) => r.message).join(' / '), reasons: approvalReasons, ticket });
+        }
+      }
 
       // VAT (prices are VAT-inclusive). The terminal says whether VAT is on; the rate comes from store settings.
       const vatEnabled = data.vatEnabled === true || (data.vatEnabled === undefined && Number(data.vatAmount) > 0);
@@ -314,6 +367,12 @@ export class OrdersService {
             note: data.debtNote || `หนี้จากการขายบิล ${orderNumber}`,
           },
         });
+      }
+
+      // 5b. Consume the manager approval for this exact bill (single use)
+      if (approvalHash && data.approvalId) {
+        await this.approvals!.consume(tx, data.approvalId, approvalHash, userId, order.id);
+        await tx.order.update({ where: { id: order.id }, data: { approvalId: data.approvalId } });
       }
 
       // 6. Money ledger: where the money of this sale actually landed
