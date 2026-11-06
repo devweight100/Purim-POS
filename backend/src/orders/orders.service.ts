@@ -390,6 +390,7 @@ export class OrdersService {
 
       if (!order) throw new NotFoundException('ไม่พบออเดอร์นี้');
       if (order.status !== OrderStatus.COMPLETED) throw new BadRequestException('สามารถยกเลิกได้เฉพาะออเดอร์ที่สำเร็จแล้วเท่านั้น');
+      if (Number(order.returnedAmount) > 0) throw new BadRequestException('บิลนี้มีการคืนสินค้าบางส่วนแล้ว ยกเลิกทั้งบิลไม่ได้ ให้ทำรายการคืนสินค้าที่เหลือแทน');
 
       if (order.debt && Number(order.debt.paidAmount) > 0) throw new BadRequestException('บิลมีการรับชำระหนี้แล้ว ต้องจัดการคืนเงินก่อนยกเลิก');
       if (order.debt) await tx.customerDebt.delete({ where: { id: order.debt.id } });
@@ -572,6 +573,7 @@ export class OrdersService {
         const credit = payments.filter((p: any) => p.method === PaymentMethod.CREDIT_DEBT).reduce((sum: number, p: any) => sum + Number(p.amount), 0);
         if (credit && !order.customerId) throw new BadRequestException('ขายเชื่อต้องระบุลูกค้า');
         if (order.debt && Number(order.debt.paidAmount) > 0) throw new BadRequestException('บิลมีการรับชำระหนี้แล้ว ไม่สามารถเปลี่ยนวิธีชำระได้');
+        if (Number(order.returnedAmount) > 0) throw new BadRequestException('บิลนี้มีการคืนสินค้าแล้ว เปลี่ยนวิธีชำระไม่ได้');
         if (credit) {
           await tx.customerDebt.upsert({ where: { orderId: id }, create: { orderId: id, customerId: order.customerId!, totalDebt: credit, remainingAmount: credit, dueDate: new Date(order.createdAt.getTime() + 30 * 86400000) }, update: { totalDebt: credit, remainingAmount: credit, status: DebtStatus.PENDING } });
         } else if (order.debt) await tx.customerDebt.delete({ where: { id: order.debt.id } });
@@ -622,6 +624,7 @@ export class OrdersService {
           customer: { select: { id: true, name: true, phone: true } },
           user: { select: { id: true, fullName: true } },
           claims: true,
+          returns: { select: { returnNumber: true, refundAmount: true, refundMethod: true, cogsReturned: true, createdAt: true } },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -658,6 +661,7 @@ export class OrdersService {
         customer: true,
         user: true,
         debt: true,
+        returns: { include: { items: true }, orderBy: { createdAt: 'asc' } },
       },
     });
     if (!order) throw new NotFoundException('ไม่พบบิลนี้');

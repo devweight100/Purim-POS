@@ -108,7 +108,11 @@ export function calculateSalesAndProfitReport(orders: any[], productsCatalog: an
     if (order.status === 'VOIDED' || order.status === 'CANCELLED' || order.status === 'REFUNDED') return;
 
     const orderDateStr = (order.createdAt || order.orderDate || new Date().toISOString()).slice(0, 10);
-    const net = Number(order.totalAmount ?? order.total ?? 0);
+    // partial returns (refunds) reduce the bill's net sales; restocked goods reduce its cost
+    const returns = Array.isArray(order.returns) ? order.returns : [];
+    const returnedAmount = returns.reduce((sum: number, r: any) => sum + Number(r.refundAmount || 0), 0);
+    const returnedCogs = returns.reduce((sum: number, r: any) => sum + Number(r.cogsReturned || 0), 0);
+    const net = Number(order.totalAmount ?? order.total ?? 0) - returnedAmount;
     const disc = Number(order.discountAmount ?? order.discount ?? 0);
     const gross = net + disc;
 
@@ -131,6 +135,7 @@ export function calculateSalesAndProfitReport(orders: any[], productsCatalog: an
       });
     }
 
+    orderCost = Math.max(0, orderCost - returnedCogs);
     totalGrossSales += gross;
     totalDiscounts += disc;
     totalNetSales += net;

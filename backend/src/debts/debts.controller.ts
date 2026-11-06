@@ -60,4 +60,11 @@ export class DebtsController {
     const cashier = cashierName || req.user?.fullName || 'เจ้าหน้าที่';
     return this.debtsService.payDebt(id, Number(amount), paymentMethod, referenceNo, cashier, note, clientPaymentId, shiftId, req.user?.id || req.user?.sub, bankAccountId);
   }
+
+  @Roles('ADMIN', 'MANAGER')
+  @RequirePermissions('MANAGE_DEBTS')
+  @Post('payments/:paymentId/cancel')
+  cancelPayment(@Param('paymentId') paymentId: string, @Body('reason') reason: string, @Request() req: any) {
+    return this.debtsService.cancelPayment(paymentId, reason, req.user);
+  }
 }

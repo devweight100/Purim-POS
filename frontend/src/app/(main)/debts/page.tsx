@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { DebtRecord, DebtPaymentInstallment, DebtStatus } from '@/lib/types';
-import { fetchDebtRecords } from '@/lib/debt-service';
+import { fetchDebtRecords, cancelDebtPayment } from '@/lib/debt-service';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -719,6 +719,18 @@ function DebtsContent() {
         onOpenChange={setHistoryModalOpen}
         debtRecord={selectedDebtForHistory}
         onSelectInstallment={handleSelectHistoryInstallment}
+        onCancelInstallment={user?.role === 'ADMIN' || user?.role === 'MANAGER' ? async (inst) => {
+          const reason = window.prompt(`ยกเลิกใบรับชำระ ${inst.receiptNo || ''} ยอด ${inst.amountPaid} บาท เพราะ?`);
+          if (!reason) return;
+          try {
+            await cancelDebtPayment(inst.id, reason);
+            toast.success('ยกเลิกใบรับชำระแล้ว ยอดหนี้กลับมาค้างชำระ');
+            setHistoryModalOpen(false);
+            void reloadData();
+          } catch (err: any) {
+            toast.error(err?.message || 'ยกเลิกไม่สำเร็จ');
+          }
+        } : undefined}
       />
 
       {/* 3. Debt Settlement Receipt Slip Modal (80mm & PDF) */}

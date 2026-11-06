@@ -56,7 +56,8 @@ function mapDebt(row: any): DebtRecord {
   const totalAmount = Number(row.totalDebt);
   const paidAmount = Number(row.paidAmount);
   let previousPaid = 0;
-  const installments: DebtPaymentInstallment[] = [...(row.payments || [])]
+  // cancelled receipts no longer count as paid
+  const installments: DebtPaymentInstallment[] = [...(row.payments || [])].filter((p: any) => !p.cancelledAt)
     .sort((a, b) => new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime())
     .map((payment, index) => {
       const amountPaid = Number(payment.amount);
@@ -250,4 +251,11 @@ export function getDebtRecordByOrderId(orderId: string): DebtRecord | null {
   if (!orderId) return null;
   const all = loadAllDebtRecords();
   return all.find((d) => d.orderId === orderId || d.orderNumber === orderId) || null;
+}
+
+/** Cancel a debt receipt recorded by mistake (ADMIN / MANAGER). The debt goes back up. */
+export async function cancelDebtPayment(paymentId: string, reason: string) {
+  const res = await apiFetch(`/debts/payments/${encodeURIComponent(paymentId)}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) });
+  try { await fetchDebtRecords(); } catch {}
+  return res;
 }

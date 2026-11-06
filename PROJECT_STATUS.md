@@ -99,6 +99,16 @@ Make the POS production-ready by using PostgreSQL/backend APIs as the source of 
 - `/finance` page has tabs: overview, recurring expenses, cash forecast, P&L, bank reconciliation.
 - Verified: phase 3 API checks 14/14, headless tab checks 5/5.
 
+## 2026-11-06 Returns, debt receipt cancel, supplier returns from PO, offsite backup, tests
+
+- Migration `20261109000000_returns_debt_cancel_backup`: `order_returns`, `order_return_items`, `orders.returned_amount`, `debt_payments.cancelled_at/cancel_reason/cancelled_by`, `store_settings.backup_offsite_dir`.
+- Partial returns (`POST /orders/:id/returns`, same rights as void): choose items/quantities, restock or not (damaged), refund by cash (from the open shift drawer), transfer (bank) or by reducing the bill's debt; refund includes the bill-discount share; points earned are taken back pro rata. Partially returned bills cannot be voided or have payments edited. P&L and the sales report subtract returns (VAT and restocked COGS too). UI: "รับคืนสินค้า" on the orders page.
+- Debt receipt cancel (`POST /debts/payments/:id/cancel`, ADMIN/MANAGER): debt goes back up; money leaves the drawer (shift still open) or the safe (shift closed) / bank. Cancelled receipts are excluded from installments. UI: "ยกเลิก" in the debt payment history.
+- Return received goods to the supplier: "คืนสินค้าให้บริษัท" on the PO detail opens the supplier return note form linked to that PO (stock is deducted, the credit note is deducted when paying the supplier).
+- Offsite backup: every backup is also copied to `store_settings.backup_offsite_dir` (or `BACKUP_OFFSITE_DIR`), keeping the newest 30 (`BACKUP_OFFSITE_KEEP`). Settings page: folder + write test, status, download button. Added the missing `GET /server-control/backup-status` and `POST /server-control/backup-verify` routes. JSON fallback snapshot now includes finance/returns tables.
+- Tests: unit (`npx jest`: recurring dates, payable cap, login throttle, price floor) and e2e (`npm run test:e2e` against a NEW empty database whose name contains "test": security, sale, partial return, credit + receipt cancel, shift close, PO/return note/payment, finance totals). `.github/workflows/ci.yml` runs build + unit + e2e with a Postgres service, and frontend type check + build.
+- Verified: unit 18/18, e2e 15/15, API backup checks 7/7, headless UI checks 9/9.
+
 ## Production Readiness Work In Progress
 
 ### Product Data

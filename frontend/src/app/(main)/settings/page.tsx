@@ -61,6 +61,8 @@ function BackupSection() {
   const [creating, setCreating] = useState(false);
   const [verifying, setVerifying] = useState<string | null>(null);
   const [verifyMsg, setVerifyMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [offsiteDir, setOffsiteDir] = useState("");
+  const [savingOffsite, setSavingOffsite] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -68,6 +70,7 @@ function BackupSection() {
       const [list, st] = await Promise.all([backupService.list(), backupService.status()]);
       setFiles(list);
       setStatus(st);
+      setOffsiteDir(st?.offsiteDir || "");
     } catch (err) {
       toast.error(describeBackupError(err));
     } finally {
@@ -146,6 +149,47 @@ function BackupSection() {
             <span className="ml-2 text-rose-600 font-bold">ครั้งล่าสุดล้มเหลว: {status.lastError}</span>
           )}
         </div>
+        <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-3 space-y-2 text-xs">
+          <div className="font-bold text-sky-900">สำรองไว้นอกเครื่อง (แนะนำ)</div>
+          <p className="text-slate-600">
+            ทุกครั้งที่สำรองข้อมูล ระบบจะคัดลอกไฟล์ไปไว้ที่โฟลเดอร์นี้ด้วย เช่น แฟลชไดรฟ์ ฮาร์ดดิสก์ลูกที่สอง หรือโฟลเดอร์ Google Drive / OneDrive
+            ที่ซิงก์ขึ้นคลาวด์ (เก็บ 30 ไฟล์ล่าสุด) — ใส่ตำแหน่งบนเครื่องแม่ เช่น <span className="font-mono">D:\PurimBackup</span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <input
+              className="flex-1 min-w-[240px] h-9 rounded-lg border border-slate-300 bg-white px-2 font-mono"
+              value={offsiteDir}
+              onChange={(e) => setOffsiteDir(e.target.value)}
+              placeholder="เช่น E:\PurimBackup หรือ C:\Users\owner\Google Drive\PurimBackup"
+              disabled={role !== "ADMIN"}
+            />
+            <Button
+              size="sm"
+              disabled={savingOffsite || role !== "ADMIN"}
+              onClick={async () => {
+                setSavingOffsite(true);
+                try {
+                  await backupService.setOffsiteDir(offsiteDir);
+                  toast.success(offsiteDir ? "บันทึกโฟลเดอร์และทดสอบเขียนไฟล์ผ่าน" : "ปิดการสำรองนอกเครื่องแล้ว");
+                  await load();
+                } catch (err: any) {
+                  toast.error(err?.message || "ใช้โฟลเดอร์นี้ไม่ได้");
+                } finally {
+                  setSavingOffsite(false);
+                }
+              }}
+            >
+              {savingOffsite ? "กำลังทดสอบ..." : "บันทึกและทดสอบ"}
+            </Button>
+          </div>
+          <div className={status?.lastOffsiteOk === false ? "text-rose-600 font-bold" : "text-slate-600"}>
+            {status?.offsiteDir
+              ? status.lastOffsiteOk === false
+                ? `คัดลอกครั้งล่าสุดล้มเหลว: ${status.lastOffsiteError}`
+                : `คัดลอกไปนอกเครื่องล่าสุด: ${fmt(status.lastOffsiteAt)}`
+              : "⚠️ ยังไม่ได้ตั้งโฟลเดอร์ ถ้าฮาร์ดดิสก์เครื่องแม่เสีย ไฟล์สำรองจะหายไปด้วย"}
+          </div>
+        </div>
         {verifyMsg && (
           <div className={`text-xs font-bold flex items-center gap-1 ${verifyMsg.ok ? "text-emerald-700" : "text-rose-600"}`}>
             <ShieldCheck className="w-4 h-4" /> {verifyMsg.text}
@@ -162,6 +206,16 @@ function BackupSection() {
                 <div className="font-mono font-bold text-slate-800 truncate">{f.fileName}</div>
                 <div className="text-slate-500">{fmt(f.createdAt)} • {formatBytes(f.sizeBytes)}</div>
               </div>
+              {role === "ADMIN" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => backupService.download(f.fileName).catch((err) => toast.error(err?.message || "ดาวน์โหลดไม่สำเร็จ"))}
+                  title="ดาวน์โหลดไฟล์มาเก็บที่เครื่องนี้"
+                >
+                  ดาวน์โหลด
+                </Button>
+              )}
               {f.fileName.endsWith(".dump") && (
                 <Button
                   variant="outline"

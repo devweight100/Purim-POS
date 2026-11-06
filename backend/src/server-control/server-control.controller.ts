@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Req, Res, Param, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { ServerControlService } from './server-control.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -26,6 +26,45 @@ export class ServerControlController {
   @Post('backup')
   createBackup() {
     return this.service.createBackup();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'MANAGER')
+  @Get('backup-status')
+  backupStatus() {
+    return this.service.getBackupStatus();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN', 'MANAGER')
+  @Post('backup-verify')
+  verifyBackup(@Query('file') file: string) {
+    return this.service.verifyBackup(file);
+  }
+
+  /** Folder on another disk / cloud-synced folder that receives a copy of every backup. */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Put('backup-settings')
+  async backupSettings(@Body('offsiteDir') offsiteDir?: string) {
+    try {
+      return await this.service.setOffsiteDir(offsiteDir);
+    } catch (err) {
+      throw new BadRequestException(`ใช้โฟลเดอร์นี้ไม่ได้: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Get('backups/:fileName/download')
+  download(@Param('fileName') fileName: string, @Res() res: any) {
+    let full: string;
+    try {
+      full = this.service.backupFilePath(fileName);
+    } catch {
+      throw new BadRequestException('ไม่พบไฟล์สำรองข้อมูล');
+    }
+    return res.download(full, fileName);
   }
 
   @Post('ping')

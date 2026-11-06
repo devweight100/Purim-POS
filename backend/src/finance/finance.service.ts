@@ -20,7 +20,7 @@ function money(value: unknown, field = 'จำนวนเงิน'): number {
 
 const TYPE_LABELS: Record<string, string> = {
   SALE: 'ขายสินค้า',
-  SALE_REFUND: 'คืนเงินยกเลิกบิล',
+  SALE_REFUND: 'คืนเงินลูกค้า (ยกเลิก/คืนสินค้า)',
   DEBT_RECEIPT: 'รับชำระหนี้ลูกค้า',
   SUPPLIER_PAYMENT: 'จ่ายเจ้าหนี้การค้า',
   CLAIM_REFUND: 'คืนเงินเคลม',

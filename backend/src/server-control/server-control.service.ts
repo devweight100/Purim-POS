@@ -79,6 +79,10 @@ export class ServerControlService {
     lastError: string | null;
     lastVerify: BackupVerifyResult | null;
     nextRunAt: string | null;
+    offsiteDir: string | null;
+    lastOffsiteAt: string | null;
+    lastOffsiteOk: boolean | null;
+    lastOffsiteError: string | null;
   } = {
     lastAutoBackupAt: null,
     lastBackupAt: null,
@@ -87,6 +91,10 @@ export class ServerControlService {
     lastError: null,
     lastVerify: null,
     nextRunAt: null,
+    offsiteDir: null,
+    lastOffsiteAt: null,
+    lastOffsiteOk: null,
+    lastOffsiteError: null,
   };
 
   setNextBackupRunAt(iso: string | null) {
@@ -178,10 +186,12 @@ export class ServerControlService {
       this.backupStatus.lastError = verify.ok ? null : verify.message || 'verify failed';
       this.backupStatus.lastVerify = verify;
       if (source === 'auto') this.backupStatus.lastAutoBackupAt = this.backupStatus.lastBackupAt;
+      // keep a copy away from this machine's disk (USB / external drive / cloud-synced folder)
+      const offsite = await this.copyOffsite(result.fileName);
       this.logger.log(
         `Backup (${source}) ${result.fileName} ${result.sizeBytes} bytes, verify=${verify.ok ? 'OK' : 'FAILED'}`,
       );
-      return { ...result, verify };
+      return { ...result, verify, offsite };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.backupStatus.lastBackupOk = false;
@@ -191,8 +201,71 @@ export class ServerControlService {
     }
   }
 
-  getBackupStatus() {
-    return { ...this.backupStatus };
+  async getBackupStatus() {
+    return { ...this.backupStatus, offsiteDir: await this.getOffsiteDir() };
+  }
+
+  /** Folder for off-machine copies: store setting first, then BACKUP_OFFSITE_DIR. */
+  private async getOffsiteDir(): Promise<string | null> {
+    try {
+      const settings = await this.prisma.storeSettings.findFirst({ select: { backupOffsiteDir: true } });
+      return settings?.backupOffsiteDir?.trim() || process.env.BACKUP_OFFSITE_DIR?.trim() || null;
+    } catch {
+      return process.env.BACKUP_OFFSITE_DIR?.trim() || null;
+    }
+  }
+
+  private async checkWritableDir(dir: string) {
+    if (!path.isAbsolute(dir)) throw new Error('ต้องเป็นตำแหน่งโฟลเดอร์เต็ม เช่น D:\\PurimBackup หรือ C:\\Users\\...\\OneDrive\\PurimBackup');
+    await fs.promises.mkdir(dir, { recursive: true });
+    const probe = path.join(dir, `.purim-write-test-${Date.now()}`);
+    await fs.promises.writeFile(probe, 'ok');
+    await fs.promises.unlink(probe);
+  }
+
+  /** Copy one backup file to the off-machine folder and keep only the newest copies there. */
+  async copyOffsite(fileName: string): Promise<{ ok: boolean; dir: string | null; message?: string }> {
+    const dir = await this.getOffsiteDir();
+    this.backupStatus.offsiteDir = dir;
+    if (!dir) return { ok: false, dir: null, message: 'ยังไม่ได้ตั้งโฟลเดอร์สำรองนอกเครื่อง' };
+    try {
+      await this.checkWritableDir(dir);
+      const src = path.join(this.getBackupsDir(), path.basename(fileName));
+      await fs.promises.copyFile(src, path.join(dir, path.basename(fileName)));
+      const keep = Math.max(1, parseInt(process.env.BACKUP_OFFSITE_KEEP || '30', 10) || 30);
+      const copies = (await fs.promises.readdir(dir)).filter((n) => /^backup-.*\.(dump|json)$/.test(n)).sort().reverse();
+      for (const old of copies.slice(keep)) await fs.promises.unlink(path.join(dir, old)).catch(() => undefined);
+      this.backupStatus.lastOffsiteAt = new Date().toISOString();
+      this.backupStatus.lastOffsiteOk = true;
+      this.backupStatus.lastOffsiteError = null;
+      return { ok: true, dir };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.backupStatus.lastOffsiteOk = false;
+      this.backupStatus.lastOffsiteError = message;
+      this.logger.error(`Offsite copy to ${dir} failed: ${message}`);
+      return { ok: false, dir, message };
+    }
+  }
+
+  /** Save (or clear) the off-machine backup folder after checking it is writable. */
+  async setOffsiteDir(dirInput?: string | null) {
+    const dir = String(dirInput || '').trim();
+    if (dir) await this.checkWritableDir(dir);
+    const settings = await this.prisma.storeSettings.findFirst();
+    if (settings) await this.prisma.storeSettings.update({ where: { id: settings.id }, data: { backupOffsiteDir: dir || null } });
+    else await this.prisma.storeSettings.create({ data: { backupOffsiteDir: dir || null } });
+    this.backupStatus.offsiteDir = dir || null;
+    return { success: true, offsiteDir: dir || null };
+  }
+
+  /** Absolute path of a backup file for download (name must be a plain backup file name). */
+  backupFilePath(fileName: string): string {
+    const safe = path.basename(fileName || '');
+    if (!safe || safe !== fileName || !/^backup-.*\.(dump|json)$/.test(safe)) throw new Error('invalid file name');
+    const full = path.join(this.getBackupsDir(), safe);
+    if (!fs.existsSync(full)) throw new Error('file not found');
+    return full;
   }
 
   /** Verify a backup file. .dump => pg_restore --list inside the DB container; .json => parse check. */
@@ -434,6 +507,21 @@ export class ServerControlService {
       this.prisma.bankAccount.findMany(),
       this.prisma.storeSettings.findMany(),
     ]);
+    // tables added later (finance, returns): exported too so a JSON fallback is complete
+    const extra = {
+      moneyAccounts: await this.prisma.moneyAccount.findMany(),
+      moneyTransactions: await this.prisma.moneyTransaction.findMany(),
+      expenseCategories: await this.prisma.expenseCategory.findMany(),
+      expenses: await this.prisma.expense.findMany(),
+      recurringExpenses: await this.prisma.recurringExpense.findMany(),
+      bankReconciliations: await this.prisma.bankReconciliation.findMany(),
+      orderReturns: await this.prisma.orderReturn.findMany(),
+      orderReturnItems: await this.prisma.orderReturnItem.findMany(),
+      paymentVoucherItems: await this.prisma.paymentVoucherItem.findMany(),
+      paymentVoucherDebits: await this.prisma.paymentVoucherDebit.findMany(),
+      supplierReturnNoteItems: await this.prisma.supplierReturnNoteItem.findMany(),
+      productSuppliers: await this.prisma.productSupplier.findMany(),
+    };
 
     const snapshot = {
       metadata: {
@@ -466,6 +554,7 @@ export class ServerControlService {
         cashMovements,
         bankAccounts,
         storeSettings,
+        ...extra,
       },
     };
 

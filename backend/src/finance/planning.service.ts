@@ -260,10 +260,14 @@ export class PlanningService {
       _sum: { totalAmount: true, vatAmount: true, totalCogs: true, discountAmount: true },
       _count: true,
     });
-    const salesInclVat = Number(orders._sum.totalAmount || 0);
-    const outputVat = Number(orders._sum.vatAmount || 0);
+    // partial returns made in this period reduce sales, VAT and (for restocked goods) COGS
+    const ret = await this.prisma.orderReturn.aggregate({ where: { createdAt: period }, _sum: { refundAmount: true, vatAmount: true, cogsReturned: true } });
+    const returnsInclVat = round2(Number(ret._sum.refundAmount || 0));
+    const returnsVat = Number(ret._sum.vatAmount || 0);
+    const salesInclVat = Number(orders._sum.totalAmount || 0) - returnsInclVat;
+    const outputVat = Number(orders._sum.vatAmount || 0) - returnsVat;
     const revenue = round2(salesInclVat - outputVat);
-    const cogs = round2(Number(orders._sum.totalCogs || 0));
+    const cogs = round2(Number(orders._sum.totalCogs || 0) - Number(ret._sum.cogsReturned || 0));
     const grossProfit = round2(revenue - cogs);
 
     const claims = await this.prisma.customerClaim.findMany({ where: { createdAt: period }, select: { metadata: true } });
@@ -312,7 +316,7 @@ export class PlanningService {
     return {
       period: { from: from.toISOString(), to: to.toISOString() },
       orderCount: orders._count,
-      salesInclVat: round2(salesInclVat), outputVat: round2(outputVat), revenue, discounts: round2(Number(orders._sum.discountAmount || 0)),
+      salesInclVat: round2(salesInclVat), outputVat: round2(outputVat), revenue, returnsInclVat, discounts: round2(Number(orders._sum.discountAmount || 0)),
       cogs, grossProfit, grossMargin: revenue > 0 ? round2((grossProfit / revenue) * 100) : 0,
       claims: { replacementCost: round2(replacementCost), refundsPaid: round2(refundsPaid), supplierRecovery: round2(supplierRecovery), net: claimCost },
       stockWriteOff,

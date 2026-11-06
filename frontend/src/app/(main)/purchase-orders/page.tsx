@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { apiFetch } from '@/lib/api';
 import { useRouter } from 'next/navigation';
+import { CreateSupplierReturnModal } from '@/components/supplier-returns/CreateSupplierReturnModal';
 import { submitPurchaseReceipt } from '@/lib/purchase-receipt-sync';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
@@ -147,6 +148,8 @@ export default function PurchaseOrdersPage() {
 
   // Detail Dialog
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  // Return received goods to the supplier (creates a credit note, deducted when paying the supplier)
+  const [returnPo, setReturnPo] = useState<any | null>(null);
   const [currentPo, setCurrentPo] = useState<any>(null);
 
   // Professional PDF / Print Dialog
@@ -2092,6 +2095,18 @@ export default function PurchaseOrdersPage() {
         </DialogContent>
       </Dialog>
 
+      <CreateSupplierReturnModal
+        open={!!returnPo}
+        onOpenChange={(o) => { if (!o) setReturnPo(null); }}
+        initialSupplierId={returnPo?.supplierId || returnPo?.supplier?.id}
+        initialPoId={returnPo?.id}
+        onSuccess={(note) => {
+          toast.success(`สร้างใบส่งคืน ${note.id} แล้ว ตัดสต็อกและนำยอดไปหักตอนจ่ายเจ้าหนี้ได้`);
+          setReturnPo(null);
+          void fetchPOs();
+        }}
+      />
+
       {/* PO Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
         <DialogContent className="bg-white border-slate-200 text-slate-900 max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -2232,6 +2247,11 @@ export default function PurchaseOrdersPage() {
                 <Button variant="outline" className="border-indigo-400 text-indigo-700 hover:bg-indigo-50 font-bold" onClick={(e) => { setIsDetailOpen(false); openStatusChangeDialog(currentPo, e); }}>
                   <RotateCcw className="w-4 h-4 mr-2" /> เปลี่ยน / ย้อนสถานะ
                 </Button>
+                {(currentPo?.status === 'PARTIALLY_RECEIVED' || currentPo?.status === 'COMPLETED' || currentPo?.status === 'RECEIVED') && (
+                  <Button variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-50 font-bold" onClick={() => { setIsDetailOpen(false); setReturnPo(currentPo); }}>
+                    <RotateCcw className="w-4 h-4 mr-2" /> คืนสินค้าให้บริษัท
+                  </Button>
+                )}
                 {currentPo?.status !== 'CANCELLED' && (
                   <Button variant="outline" className="border-rose-300 text-rose-600 hover:bg-rose-50 font-bold" onClick={() => { setIsDetailOpen(false); openCancelDialog(currentPo); }}>
                     <Ban className="w-4 h-4 mr-2" /> ยกเลิกใบสั่งซื้อ

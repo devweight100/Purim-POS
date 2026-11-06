@@ -175,6 +175,7 @@ export class ReportsService {
           payments: true,
           customer: { select: { id: true, name: true, phone: true } },
           user: { select: { id: true, fullName: true } },
+          returns: { select: { refundAmount: true, cogsReturned: true, createdAt: true } },
         },
       }),
       // Include negative (oversold) batches so they net against positive stock.

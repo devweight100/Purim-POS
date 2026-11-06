@@ -640,6 +640,9 @@ model DebtPayment {
   cashierName   String        @map("cashier_name")
   receiptNo     String?       @map("receipt_no")
   note          String?
+  cancelledAt   DateTime?     @map("cancelled_at")
+  cancelReason  String?       @map("cancel_reason")
+  cancelledBy   String?       @map("cancelled_by")
   createdAt     DateTime      @default(now()) @map("created_at")
 
   debt          CustomerDebt  @relation(fields: [debtId], references: [id], onDelete: Cascade)
@@ -667,6 +670,7 @@ model Order {
   totalCogs      Decimal       @default(0) @map("total_cogs") @db.Decimal(12, 2)
   vatRate        Decimal       @default(0) @map("vat_rate") @db.Decimal(5, 2)    // % used for this bill (0 = no VAT)
   vatAmount      Decimal       @default(0) @map("vat_amount") @db.Decimal(12, 2) // VAT included in totalAmount
+  returnedAmount Decimal       @default(0) @map("returned_amount") @db.Decimal(12, 2) // refunded through partial returns
   pointsUsed     Int           @default(0) @map("points_used")
   pointsEarned   Int           @default(0) @map("points_earned")
   note           String?
@@ -681,6 +685,7 @@ model Order {
   payments       Payment[]
   debt           CustomerDebt?
   claims         CustomerClaim[]
+  returns        OrderReturn[]
 
   @@index([createdAt, status])
   @@index([userId])
@@ -836,6 +841,7 @@ model StoreSettings {
   taxId         String?  @map("tax_id")
   receiptHeader String?  @map("receipt_header")
   receiptFooter String?  @map("receipt_footer")
+  backupOffsiteDir String? @map("backup_offsite_dir") // folder on another disk / synced cloud folder for backup copies
   vatRate       Decimal  @default(7) @map("vat_rate") @db.Decimal(5, 2)
   pointsPerBaht Decimal  @default(0.01) @map("points_per_baht") @db.Decimal(10, 4)
   pointValue    Decimal  @default(1) @map("point_value") @db.Decimal(10, 2)
@@ -1001,4 +1007,45 @@ model BankReconciliation {
 
   @@index([accountId, statementDate])
   @@map("bank_reconciliations")
+}
+
+/// Partial return of a completed bill (some items / quantities), with refund and optional restock.
+model OrderReturn {
+  id            String   @id @default(uuid())
+  returnNumber  String   @unique @map("return_number") // RET-YYMMxxxxx
+  orderId       String   @map("order_id")
+  shiftId       String?  @map("shift_id")
+  userId        String?  @map("user_id")
+  refundMethod  String   @map("refund_method") // CASH | TRANSFER | DEBT_REDUCTION
+  bankAccountId String?  @map("bank_account_id")
+  refundAmount  Decimal  @map("refund_amount") @db.Decimal(12, 2)
+  vatAmount     Decimal  @default(0) @map("vat_amount") @db.Decimal(12, 2)
+  cogsReturned  Decimal  @default(0) @map("cogs_returned") @db.Decimal(12, 2) // cost of goods put back in stock
+  reason        String
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  order Order             @relation(fields: [orderId], references: [id])
+  items OrderReturnItem[]
+
+  @@index([orderId])
+  @@index([createdAt])
+  @@map("order_returns")
+}
+
+model OrderReturnItem {
+  id           String  @id @default(uuid())
+  returnId     String  @map("return_id")
+  orderItemId  String  @map("order_item_id")
+  productId    String  @map("product_id")
+  quantity     Int // in the unit it was sold
+  baseQuantity Int     @map("base_quantity")
+  refundAmount Decimal @map("refund_amount") @db.Decimal(12, 2)
+  unitCost     Decimal @map("unit_cost") @db.Decimal(10, 2) // per base unit
+  restock      Boolean @default(true)
+
+  orderReturn OrderReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+
+  @@index([returnId])
+  @@index([orderItemId])
+  @@map("order_return_items")
 }
