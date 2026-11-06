@@ -12,6 +12,10 @@ import {
   Wallet, Landmark, Banknote, CreditCard, ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight,
   Receipt, PiggyBank, RefreshCw, Scale, Plus, Ban,
 } from 'lucide-react';
+import { RecurringPanel } from '@/components/finance/RecurringPanel';
+import { ForecastPanel } from '@/components/finance/ForecastPanel';
+import { ProfitLossPanel } from '@/components/finance/ProfitLossPanel';
+import { ReconcilePanel } from '@/components/finance/ReconcilePanel';
 
 type AccountType = 'CASH_DRAWER' | 'CASH_SAFE' | 'BANK' | 'CARD_CLEARING';
 interface MoneyAccount {
@@ -21,6 +25,7 @@ interface MoneyAccount {
 }
 interface Overview {
   cash: number;
+  recurring?: { overdue: number; due7: number; dueWithin: number; items: { id: string; name: string; category: string; amount: number; dueDate: string }[] };
   position30: number;
   payables: {
     total: number; overdue: number; dueToday: number; due7: number; due30: number; later: number; billCount: number;
@@ -77,6 +82,7 @@ const fieldCls = 'w-full h-10 rounded-xl border border-slate-300 bg-white px-3 t
 export default function FinancePage() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [view, setView] = useState<'overview' | 'recurring' | 'forecast' | 'pl' | 'reconcile'>('overview');
   const [rows, setRows] = useState<LedgerRow[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -153,6 +159,25 @@ export default function FinancePage() {
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-1 rounded-2xl border border-slate-200 bg-white p-1.5 print:hidden">
+        {([
+          ['overview', 'ภาพรวม & รายการเงิน'],
+          ['recurring', `ค่าใช้จ่ายประจำ${overview?.recurring && overview.recurring.overdue + overview.recurring.due7 > 0 ? ' •' : ''}`],
+          ['forecast', 'คาดการณ์เงินสด'],
+          ['pl', 'งบกำไรขาดทุน'],
+          ['reconcile', 'กระทบยอดธนาคาร'],
+        ] as const).map(([k, l]) => (
+          <Button key={k} size="sm" variant={view === k ? 'default' : 'ghost'} onClick={() => setView(k)}>{l}</Button>
+        ))}
+      </div>
+
+      {view === 'recurring' && <RecurringPanel accounts={accounts} categories={categories} onChanged={load} />}
+      {view === 'forecast' && <ForecastPanel />}
+      {view === 'pl' && <ProfitLossPanel />}
+      {view === 'reconcile' && <ReconcilePanel accounts={accounts} onChanged={load} />}
+
+      {view === 'overview' && (
+      <>
       {needsOpening.length > 0 && (
         <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
           ยังไม่ได้ตั้ง <b>ยอดยกมา</b> {needsOpening.length} บัญชี ({needsOpening.map((a) => a.name).join(', ')}) — กรอกยอดเงินจริงวันที่เริ่มใช้ระบบ ยอดคงเหลือจึงจะตรงความจริง
@@ -283,9 +308,15 @@ export default function FinancePage() {
             </div>
           </div>
 
+          {overview.recurring && (overview.recurring.overdue > 0 || overview.recurring.due7 > 0) && (
+            <button type="button" onClick={() => setView('recurring')} className="lg:col-span-2 text-left rounded-2xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+              ค่าใช้จ่ายประจำ: เกินกำหนด <b>{formatCurrency(overview.recurring.overdue)}</b> · ครบภายใน 7 วัน <b>{formatCurrency(overview.recurring.due7)}</b>
+              {' '}({overview.recurring.items.slice(0, 3).map((i) => i.name).join(', ')}) — กดเพื่อจ่าย
+            </button>
+          )}
           <div className="lg:col-span-2 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-3 text-sm flex flex-wrap items-center justify-between gap-2">
             <span className="text-indigo-900">
-              ฐานะเงินภายใน 30 วัน = เงินที่มี {formatCurrency(overview.cash)} + ลูกหนี้ {formatCurrency(overview.receivables.total)} − ต้องจ่ายเจ้าหนี้ภายใน 30 วัน (รวมที่เกินกำหนด) {formatCurrency(overview.payables.overdue + overview.payables.due30)}
+              ฐานะเงินภายใน 30 วัน = เงินที่มี {formatCurrency(overview.cash)} + ลูกหนี้ {formatCurrency(overview.receivables.total)} − เจ้าหนี้ {formatCurrency(overview.payables.overdue + overview.payables.due30)} − ค่าใช้จ่ายประจำ {formatCurrency((overview.recurring?.overdue || 0) + (overview.recurring?.dueWithin || 0))} (ภายใน 30 วัน รวมที่เกินกำหนด)
             </span>
             <b className={`font-mono text-lg ${overview.position30 < 0 ? 'text-rose-700' : 'text-indigo-800'}`}>{formatCurrency(overview.position30)}</b>
           </div>
@@ -422,6 +453,9 @@ export default function FinancePage() {
         )}
         {tab === 'categories' && <CategoryManager categories={categories} onChanged={load} />}
       </div>
+
+      </>
+      )}
 
       <TransferDialog mode={transferMode} accounts={accounts} onClose={() => setTransferMode(null)} onDone={load} />
       <ExpenseDialog open={expenseOpen} accounts={accounts} categories={categories.filter((c) => c.isActive)} onClose={() => setExpenseOpen(false)} onDone={load} />

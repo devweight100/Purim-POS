@@ -878,9 +878,11 @@ model MoneyAccount {
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
 
-  bankAccount  BankAccount?       @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
-  transactions MoneyTransaction[]
-  expenses     Expense[]
+  bankAccount     BankAccount?         @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  transactions    MoneyTransaction[]
+  expenses        Expense[]
+  recurring       RecurringExpense[]
+  reconciliations BankReconciliation[]
 
   @@index([type])
   @@map("money_accounts")
@@ -903,10 +905,13 @@ model MoneyTransaction {
   note            String?
   occurredAt      DateTime       @default(now()) @map("occurred_at")
   userId          String?        @map("user_id")
+  reconciledAt     DateTime?     @map("reconciled_at") // matched with a bank statement
+  reconciliationId String?       @map("reconciliation_id")
   createdAt       DateTime       @default(now()) @map("created_at")
 
-  account  MoneyAccount     @relation(fields: [accountId], references: [id])
-  category ExpenseCategory? @relation(fields: [categoryId], references: [id])
+  account        MoneyAccount        @relation(fields: [accountId], references: [id])
+  category       ExpenseCategory?    @relation(fields: [categoryId], references: [id])
+  reconciliation BankReconciliation? @relation(fields: [reconciliationId], references: [id])
 
   @@index([accountId, occurredAt])
   @@index([refType, refId])
@@ -923,6 +928,7 @@ model ExpenseCategory {
   createdAt    DateTime           @default(now()) @map("created_at")
   expenses     Expense[]
   transactions MoneyTransaction[]
+  recurring    RecurringExpense[]
 
   @@map("expense_categories")
 }
@@ -950,4 +956,49 @@ model Expense {
   @@index([paidAt])
   @@index([categoryId])
   @@map("expenses")
+}
+
+/// Expense that repeats (rent, salaries, internet). Paying it creates a normal Expense.
+model RecurringExpense {
+  id          String    @id @default(uuid())
+  name        String
+  categoryId  String    @map("category_id")
+  accountId   String?   @map("account_id") // default account to pay from
+  amount      Decimal   @db.Decimal(12, 2) // expected amount (can differ when paid)
+  frequency   String    // MONTHLY | WEEKLY | YEARLY
+  dayOfMonth  Int?      @map("day_of_month") // 1-31 (MONTHLY / YEARLY)
+  monthOfYear Int?      @map("month_of_year") // 1-12 (YEARLY)
+  dayOfWeek   Int?      @map("day_of_week") // 0=Sun..6 (WEEKLY)
+  nextDueDate DateTime  @map("next_due_date")
+  remindDays  Int       @default(3) @map("remind_days")
+  isActive    Boolean   @default(true) @map("is_active")
+  lastPaidAt  DateTime? @map("last_paid_at")
+  note        String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  category ExpenseCategory @relation(fields: [categoryId], references: [id])
+  account  MoneyAccount?   @relation(fields: [accountId], references: [id])
+
+  @@index([nextDueDate])
+  @@map("recurring_expenses")
+}
+
+/// One bank-statement check: statement balance vs ledger, with the rows that were ticked off.
+model BankReconciliation {
+  id               String   @id @default(uuid())
+  accountId        String   @map("account_id")
+  statementDate    DateTime @map("statement_date")
+  statementBalance Decimal  @map("statement_balance") @db.Decimal(12, 2)
+  ledgerBalance    Decimal  @map("ledger_balance") @db.Decimal(12, 2)
+  difference       Decimal  @db.Decimal(12, 2)
+  note             String?
+  userId           String?  @map("user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  account      MoneyAccount       @relation(fields: [accountId], references: [id])
+  transactions MoneyTransaction[]
+
+  @@index([accountId, statementDate])
+  @@map("bank_reconciliations")
 }

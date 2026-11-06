@@ -89,6 +89,16 @@ Make the POS production-ready by using PostgreSQL/backend APIs as the source of 
 - `GET /finance/summary` adds a `daily` in/out series. `/finance` page shows the overview sections and a daily chart.
 - Verified: phase 2 API checks (13, incl. totals matching the debts and payables pages), headless POS drawer + finance page checks 5/5.
 
+## 2026-11-07 Finance Phase 3 (recurring expenses, forecast, P&L, bank reconciliation)
+
+- Migration `20261108000000_finance_phase3`: `recurring_expenses`, `bank_reconciliations`, `money_transactions.reconciled_at / reconciliation_id`.
+- Recurring expenses (`/finance/recurring`): monthly / weekly / yearly rules (day 29-31 clamps to month end), reminder days, pay (creates a normal expense from safe/bank, idempotent `clientId`, advances to next occurrence), skip with reason, enable/disable. Overdue + due-soon shown on the finance overview and subtracted from the 30-day position.
+- Cash forecast (`/finance/forecast?days=30|60|90`): balances now + customer debts on their due dates − received supplier bills and recurring expenses on their due dates; overdue bills/expenses assumed paid today, overdue receivables excluded (shown separately); daily series, lowest balance, first negative day. Future sales are not projected.
+- Profit & loss (`/finance/profit-loss?from&to`): sales incl. VAT − output VAT = revenue; − FIFO COGS = gross profit; − claims (replacement cost + refunds − supplier recovery), − stock write-offs (`STOCK_ADJUST_SUB` cost value), − expenses by category = operating profit; ± other income, shift over/short, account adjustments = net profit. CSV export + print.
+- Bank reconciliation (`/finance/reconcile/:accountId`): tick ledger rows found on the statement (or upload the bank CSV for automatic matching by amount ± 3 days), compare cleared balance with the statement balance, optionally book the difference (fees / interest) as a reconciled adjustment. Ticked rows cannot be reconciled twice.
+- `/finance` page has tabs: overview, recurring expenses, cash forecast, P&L, bank reconciliation.
+- Verified: phase 3 API checks 14/14, headless tab checks 5/5.
+
 ## Production Readiness Work In Progress
 
 ### Product Data

@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { businessTransaction } from '../prisma/business-transaction';
 import * as ledger from './ledger';
+import { PlanningService } from './planning.service';
 
 type Actor = { id?: string; fullName?: string; username?: string } | undefined;
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -38,7 +39,7 @@ const TYPE_LABELS: Record<string, string> = {
 
 @Injectable()
 export class FinanceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private planning: PlanningService) {}
 
   // ─── idempotency: one client id = one money action ───
   private async once<T>(tx: any, clientId: string | undefined, fingerprint: unknown, run: () => Promise<T>): Promise<T> {
@@ -481,13 +482,15 @@ export class FinanceService {
 
     const accounts = await this.listAccounts();
     const cash = round2(accounts.filter((a) => a.isActive).reduce((s, a) => s + a.balance, 0));
+    const recurring = await this.planning.recurringDueSummary(30);
     return {
       asOf: new Date().toISOString(),
       cash,
       payables,
       receivables,
-      // money now + what customers owe - what is due to suppliers within 30 days (incl. overdue)
-      position30: round2(cash + receivables.total - payables.overdue - payables.due30),
+      recurring,
+      // money now + what customers owe - supplier bills and recurring expenses due within 30 days (incl. overdue)
+      position30: round2(cash + receivables.total - payables.overdue - payables.due30 - recurring.overdue - recurring.dueWithin),
     };
   }
 }
