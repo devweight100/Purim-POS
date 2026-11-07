@@ -61,14 +61,24 @@ function Write-Utf8NoBom($path, $text) {
   [IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding($false)))
 }
 function New-Shortcut($path, $target, $arguments, $workDir, $icon, $minimized) {
-  $shell = New-Object -ComObject WScript.Shell
-  $lnk = $shell.CreateShortcut($path)
-  $lnk.TargetPath = $target
-  $lnk.Arguments = $arguments
-  $lnk.WorkingDirectory = $workDir
-  if ($icon) { $lnk.IconLocation = $icon }
-  if ($minimized) { $lnk.WindowStyle = 7 }
-  $lnk.Save()
+  # WScript.Shell cannot save a .lnk whose name has Thai characters (ANSI code page),
+  # so save under an ASCII temp name and rename it.
+  try {
+    $dir = Split-Path $path -Parent
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $tmp = Join-Path $dir ("purim-tmp-" + [guid]::NewGuid().ToString('N') + '.lnk')
+    $shell = New-Object -ComObject WScript.Shell
+    $lnk = $shell.CreateShortcut($tmp)
+    $lnk.TargetPath = $target
+    $lnk.Arguments = $arguments
+    $lnk.WorkingDirectory = $workDir
+    if ($icon) { $lnk.IconLocation = $icon }
+    if ($minimized) { $lnk.WindowStyle = 7 }
+    $lnk.Save()
+    Move-Item -LiteralPath $tmp -Destination $path -Force -ErrorAction Stop
+  } catch {
+    Warn "สร้างทางลัดไม่ได้: $path ($($_.Exception.Message))"
+  }
 }
 
 Write-Host '=================================================================' -ForegroundColor Cyan
