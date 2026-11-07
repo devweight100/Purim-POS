@@ -51,6 +51,74 @@ Make the POS production-ready by using PostgreSQL/backend APIs as the source of 
 - Verified on 2026-11-05: backend + frontend build; fresh DB `migrate deploy` matches schema (empty diff); upgrade path of an old DB repairs Thai defaults; API checks (security 10/10, data 12/12) and an Electron desktop run (login lock, open shift, cash sale, duplicate PIN, payables, inventory value, cashier blocked) all passed.
 - Follow-up (same day): login page and the "no access" page no longer show or pre-fill default credentials; clicking a PO row now opens the (previously unreachable) PO detail dialog with received value / paid / outstanding and a PDF button; payables show the received value as the bill amount ("จาก PO ฿…" when it differs); fixed React error #310 in `PurchaseOrderPdfModal` (hook after early return) that made the PO PDF crash from every entry point. Verified in the Electron desktop app (5/5 checks).
 
+## 2026-11-06 Review Round 3 (high + medium priority items)
+
+- **Forced password change**: logging in with a known default password/PIN (e.g. `admin123`, `cashier123`, `1234`, `0000`) sets `users.must_change_password`; `JwtAuthGuard` then rejects every API except `/auth/me`, `/auth/change-password`, `/auth/default-pin` with `403 MUST_CHANGE_PASSWORD`. New page `/change-password`; `AuthGuard` redirects there. Default PINs can no longer be assigned.
+- **Permissions**: only the shift owner (or ADMIN/MANAGER) can close a shift or add cash movements. `POST /inventory/stock-batch` needs `MANAGE_INVENTORY` and goes through the audited adjustment path. `/claims` needs `MANAGE_CLAIMS` or `POS_SELL` (claim-inventory writes need `MANAGE_CLAIMS`/`MANAGE_INVENTORY`); `/supplier-returns` needs `MANAGE_CLAIMS` or `MANAGE_PURCHASES`.
+- **Price floor**: checkout rejects a unit price below the lowest configured price (price levels, packaging-unit prices, applicable wholesale steps) unless the user is ADMIN/MANAGER or has `POS_DISCOUNT`/`ALL`.
+- **Claims in profit**: exchange claims record the FIFO cost of the replacement and cash/transfer refunds in `customer_claims.metadata.accounting`; `/reports/analytics` returns `claimAccounting` (plus supplier recoveries from DEFECTIVE return-note items). Sales report shows net profit after claims.
+- **VAT**: `orders.vat_rate` / `orders.vat_amount` stored per bill (rate from store settings, VAT-inclusive). Cart uses the settings rate instead of a hard-coded 7%. Sales report shows output VAT.
+- **localStorage**: PO create/edit/issue/status are API-first (status change limited to DRAFT→ISSUED and cancel). Supplier return-note create/update/cancel/restore/status wait for the backend and roll the local cache back on failure. Debts are never derived from browser-cached bills. Removed unused `components/claims/*SupplierReturn*` modals.
+- **Stock adjustments**: FIFO order, cannot reduce below net on-hand stock, audit log records `costValue`.
+- **Shift summary**: `cash_movements.category` (`GENERAL` / `REFUND` / `DEBT_PAYMENT`, backfilled) replaces reason-text matching; `CREDIT_NOTE` payments reported separately from credit sales.
+- **Payables**: a bill paid up to the received value but still awaiting goods shows "จ่ายครบตามที่รับ (รอรับของ)" instead of PAID.
+- **Debts**: due date defaults to the customer's credit terms (30 days); past-due debts become `OVERDUE`; list totals follow the active filters.
+- Migration: `20261106000000_password_cash_category_vat`.
+- Verified: backend + frontend build; API checks 25/25; headless browser check of the forced password change flow 3/3.
+
+## 2026-11-07 Finance Phase 1 (money accounts, ledger, expenses, transfers)
+
+- New tables (migration `20261107000000_finance_ledger`): `money_accounts` (CASH_DRAWER per terminal, CASH_SAFE, BANK per `bank_accounts` row, CARD_CLEARING), append-only `money_transactions` ledger (reversal rows, never edits), `expense_categories` (10 defaults seeded), `expenses`; `payments.bank_account_id`.
+- Automatic postings (same DB transaction as the business action, `backend/src/finance/ledger.ts`):
+  - sale: cash → terminal drawer, QR/transfer → selected bank (default bank if none), card → card clearing; void / payment edit → reversal (cross-shift cash refund comes from today's drawer)
+  - shift open: float safe → drawer; shift close: over/short row, then counted cash drawer → safe
+  - POS cash in/out (`/shifts/:id/cash-movements`) → drawer; debt receipts → drawer or bank; supplier vouchers → chosen account (safe/default bank), cancel → reversal; transfer claim refunds → bank
+- `/api/finance/*` (permission `MANAGE_FINANCE`; ADMIN/MANAGER always): accounts + balances, opening balance (once per account), adjust-to-actual with reason, transfers (deposit cash, withdraw cash, exchange, card payout) with cancel, owner capital/draw, expense categories, expenses (receipt image, cancel = reversal), ledger listing, summary (balances + in/out by kind + expenses by category; transfers/openings excluded, reversals netted).
+- Moving money into/out of a drawer outside the POS also writes a cash movement on that drawer's open shift, so shift expected cash stays correct; drawers can only be used while a shift is open.
+- Frontend: `/finance` page (menu "การเงิน"), POS sends `bankAccountId` for QR payments, debt payment sends the selected bank, supplier payment modal can choose the paying account.
+- **Go-live:** set an opening balance for the safe and every bank account on the first day; existing open shifts have no float posted (close and reopen them after upgrading).
+- Verified: backend + frontend build; finance API scenario 19/19; headless /finance page check 4/4.
+
+## 2026-11-07 Finance Phase 2 + cashier cash purposes
+
+- POS cash drawer modal: every cash in/out now has a purpose that is posted to the ledger.
+  - OUT: store expense (category required → `expenses` row paid from the drawer), cash drop to safe (transfer), deposit to bank (transfer), other
+  - IN: change float from safe (transfer), withdrawal / coin exchange from a bank (transfer), other income (`OTHER_INCOME`), other
+  - API: `POST /shifts/:id/cash-movements` accepts `purpose`, `expenseCategoryId`, `bankAccountId`; cashiers (`POS_SELL`) can read expense categories.
+- `GET /finance/overview`: supplier bills still to pay (received value, by due date: overdue / today / 7 / 30 days / later; due date = PO due date or bill date + supplier credit terms), receivables (debtor count, total, overdue, aging buckets, top debtors), 30-day cash position.
+- `GET /finance/summary` adds a `daily` in/out series. `/finance` page shows the overview sections and a daily chart.
+- Verified: phase 2 API checks (13, incl. totals matching the debts and payables pages), headless POS drawer + finance page checks 5/5.
+
+## 2026-11-07 Finance Phase 3 (recurring expenses, forecast, P&L, bank reconciliation)
+
+- Migration `20261108000000_finance_phase3`: `recurring_expenses`, `bank_reconciliations`, `money_transactions.reconciled_at / reconciliation_id`.
+- Recurring expenses (`/finance/recurring`): monthly / weekly / yearly rules (day 29-31 clamps to month end), reminder days, pay (creates a normal expense from safe/bank, idempotent `clientId`, advances to next occurrence), skip with reason, enable/disable. Overdue + due-soon shown on the finance overview and subtracted from the 30-day position.
+- Cash forecast (`/finance/forecast?days=30|60|90`): balances now + customer debts on their due dates − received supplier bills and recurring expenses on their due dates; overdue bills/expenses assumed paid today, overdue receivables excluded (shown separately); daily series, lowest balance, first negative day. Future sales are not projected.
+- Profit & loss (`/finance/profit-loss?from&to`): sales incl. VAT − output VAT = revenue; − FIFO COGS = gross profit; − claims (replacement cost + refunds − supplier recovery), − stock write-offs (`STOCK_ADJUST_SUB` cost value), − expenses by category = operating profit; ± other income, shift over/short, account adjustments = net profit. CSV export + print.
+- Bank reconciliation (`/finance/reconcile/:accountId`): tick ledger rows found on the statement (or upload the bank CSV for automatic matching by amount ± 3 days), compare cleared balance with the statement balance, optionally book the difference (fees / interest) as a reconciled adjustment. Ticked rows cannot be reconciled twice.
+- `/finance` page has tabs: overview, recurring expenses, cash forecast, P&L, bank reconciliation.
+- Verified: phase 3 API checks 14/14, headless tab checks 5/5.
+
+## 2026-11-06 Returns, debt receipt cancel, supplier returns from PO, offsite backup, tests
+
+- Migration `20261109000000_returns_debt_cancel_backup`: `order_returns`, `order_return_items`, `orders.returned_amount`, `debt_payments.cancelled_at/cancel_reason/cancelled_by`, `store_settings.backup_offsite_dir`.
+- Partial returns (`POST /orders/:id/returns`, same rights as void): choose items/quantities, restock or not (damaged), refund by cash (from the open shift drawer), transfer (bank) or by reducing the bill's debt; refund includes the bill-discount share; points earned are taken back pro rata. Partially returned bills cannot be voided or have payments edited. P&L and the sales report subtract returns (VAT and restocked COGS too). UI: "รับคืนสินค้า" on the orders page.
+- Debt receipt cancel (`POST /debts/payments/:id/cancel`, ADMIN/MANAGER): debt goes back up; money leaves the drawer (shift still open) or the safe (shift closed) / bank. Cancelled receipts are excluded from installments. UI: "ยกเลิก" in the debt payment history.
+- Return received goods to the supplier: "คืนสินค้าให้บริษัท" on the PO detail opens the supplier return note form linked to that PO (stock is deducted, the credit note is deducted when paying the supplier).
+- Offsite backup: every backup is also copied to `store_settings.backup_offsite_dir` (or `BACKUP_OFFSITE_DIR`), keeping the newest 30 (`BACKUP_OFFSITE_KEEP`). Settings page: folder + write test, status, download button. Added the missing `GET /server-control/backup-status` and `POST /server-control/backup-verify` routes. JSON fallback snapshot now includes finance/returns tables.
+- Tests: unit (`npx jest`: recurring dates, payable cap, login throttle, price floor) and e2e (`npm run test:e2e` against a NEW empty database whose name contains "test": security, sale, partial return, credit + receipt cancel, shift close, PO/return note/payment, finance totals). `.github/workflows/ci.yml` runs build + unit + e2e with a Postgres service, and frontend type check + build.
+- Verified: unit 18/18, e2e 15/15, API backup checks 7/7, headless UI checks 9/9.
+
+## 2026-11-06 Manager approval with PIN (mode 1) + remote-request structure (mode 2)
+
+- Migration `20261110000000_approvals`: `approval_requests`, `orders.approval_id`, `store_settings.approval_rules`.
+- Rules (`/approvals/rules/current`, edit ADMIN): max discount % per role (default CASHIER 10%, WAREHOUSE 0%), below-cost needs approval, below-price-floor needs approval. ADMIN and MANAGER never need approval. Discount % = line discounts + bill discount (excluding points and claim discounts) / gross; claim replacement lines are ignored.
+- Checkout: when a rule is hit the server answers `409 APPROVAL_REQUIRED` with the reasons and a server-signed ticket (HMAC, 10 min) bound to the exact bill (seller, customer, items, prices, discounts, total). This replaces the old hard block for prices below the floor.
+- Mode 1: `POST /approvals/pin { ticket, pin }` — a different user with ADMIN/MANAGER role or `APPROVE_OVERRIDES` permission types their PIN on the till; PIN attempts are throttled. Returns a single-use approval id; the bill is resubmitted with `approvalId`, consumed inside the sale transaction (rejected if the bill changed, expired or already used). The order stores `approvalId`.
+- Mode 2 (backend ready, no UI yet): `POST /approvals/requests` (PENDING), `GET /approvals/:id` (poll), `POST /approvals/:id/decide` (approver), realtime event `approval`; consumed the same way.
+- UI: PIN pad dialog in the payment screen; `/approvals` page (history + rules); permission `APPROVE_OVERRIDES`.
+- Verified: e2e 23/23 (8 approval cases), headless POS approval flow 3/3.
+
 ## Production Readiness Work In Progress
 
 ### Product Data
@@ -131,3 +199,4 @@ Some corresponding database tables already exist. The remaining work is to remov
 - 2026-09-02: `backend` and `frontend` `npm run build` passed after settings and cash movement persistence changes.
 - 2026-09-02: Backend dev server restarted successfully and mapped `POST /api/shifts/:id/cash-movements`.
 - 2026-10-26: Completed multi-agent production readiness upgrade across Shift/Cash integrity, Stock Movement DB audit logs, Customer Claims & Replacement Warranties, Supplier Return Notes, Server-side RBAC (`RolesGuard`), `ClientDbSync` 15s multi-terminal real-time sync, Executive Reports backend analytics (`GET /api/reports/analytics`), and Database Backup APIs (`POST /api/server-control/backup`). Both `backend` (`npm run build`) and `frontend` (`npm run build` - 32 routes) passed with zero TypeScript errors.
+- 2026-11-07: Installers rebuilt as one file per machine. `Installer/Server/Purim-POS-Server-Setup.exe` (NSIS, built by `Installer/build-installers.sh server`): copies the source code to `C:\PurimPOS` and runs `Installer/Server/setup/install-server.ps1`. That script installs Node.js 22 and Docker Desktop if they are missing, reuses the existing `pos-purim-db` container (copying `.env`, `.jwt-secret`, uploads and backups from the old checkout), runs `pg_dump` before any change, then runs `npm ci` and `backend/scripts/prepare-database.js`. prepare-database.js clears failed migrations, baselines databases that have no migration history, runs `migrate deploy`, seeds a database that has no users, and reports drift. The script then builds the backend and frontend, opens TCP 3000 in the firewall to the LAN subnet only, adds a Startup shortcut, desktop and Start-menu shortcuts and a "repair" shortcut, and starts `Installer/Server/setup/purim-server.js`, a production launcher that restarts the backend and frontend if they crash and writes logs to `logs/`. `Installer/Client/Purim-POS-Client-Setup.exe` is the Electron 1.1.0 NSIS installer, per machine. The old dev-mode ServerManager, bat files and portable exe were removed from `Installer/`. Verified on Linux: prepare-database ran correctly for an existing database, a fresh one, a legacy one without history and a failed-P3009 one. A clean install from the payload passed npm ci, the database step, both builds and the launcher (login OK). Both installers also extracted and installed silently under wine, and the uninstaller kept the data. The PowerShell steps have not been run on real Windows.

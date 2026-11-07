@@ -348,8 +348,12 @@ function mapPosToPayableBills(
       );
 
       let paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' = 'UNPAID';
-      if (remainingPayable <= 0 && totalAmount > 0) {
+      // PAID only when the whole PO is settled. Paying everything received so far while goods are
+      // still outstanding is PARTIALLY_PAID (more will become payable when the rest arrives).
+      if (dbRemaining <= 0 && totalAmount > 0) {
         paymentStatus = 'PAID';
+      } else if (remainingPayable <= 0 && totalAmount > 0) {
+        paymentStatus = 'PARTIALLY_PAID';
       } else if (alreadyDeducted > 0 || alreadyPaid > 0 || alreadyDiscount > 0) {
         paymentStatus = 'PARTIALLY_PAID';
       } else if (po.paymentStatus === 'PAID' || po.paymentStatus === 'PARTIALLY_PAID') {
@@ -661,6 +665,8 @@ export interface SettleMultipleBillsParams {
   netCashOrTransferAmount: number;
   /** Idempotency key: reuse the same value when retrying the same payment. */
   clientVoucherId?: string;
+  /** Finance money account the payment leaves (optional). */
+  moneyAccountId?: string;
   paymentMethod: 'CASH' | 'TRANSFER' | 'CHEQUE' | 'OTHER';
   bankAccountId?: string;
   bankAccountLabel?: string;
@@ -681,6 +687,7 @@ export async function settleMultipleBills(params: SettleMultipleBillsParams): Pr
     const payload = {
       clientVoucherId: params.clientVoucherId || newClientVoucherId(),
       supplierId: params.supplierId,
+      moneyAccountId: params.moneyAccountId,
       billsToSettle: params.billsToSettle.map((b) => ({
         poId: b.poId,
         amountToPay: Number(b.amountToPay) || 0,

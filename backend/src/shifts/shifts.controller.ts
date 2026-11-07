@@ -49,22 +49,28 @@ export class ShiftsController {
   @RequirePermissions('POS_SELL')
   @Post(':id/close')
   closeShift(
+    @Request() req: any,
     @Param('id') id: string,
     @Body('actualCash') actualCash: number,
     @Body('note') note?: string,
   ) {
-    return this.shiftsService.closeShift(id, Number(actualCash) || 0, note);
+    return this.shiftsService.closeShift(id, Number(actualCash) || 0, note, req.user);
   }
 
   @RequirePermissions('POS_SELL')
   @Post(':id/cash-movements')
   addCashMovement(
+    @Request() req: any,
     @Param('id') id: string,
     @Body('type') type: 'in' | 'out',
     @Body('amount') amount: number,
     @Body('reason') reason: string,
     @Body('clientMovementId') clientMovementId?: string,
+    @Body('category') category?: string,
+    @Body('purpose') purpose?: string,
+    @Body('expenseCategoryId') expenseCategoryId?: string,
+    @Body('bankAccountId') bankAccountId?: string,
   ) {
-    return this.shiftsService.addCashMovement(id, type, Number(amount) || 0, reason, clientMovementId);
+    return this.shiftsService.addCashMovement(id, type, Number(amount) || 0, reason, clientMovementId, req.user, category, { purpose, expenseCategoryId, bankAccountId });
   }
 }

@@ -381,7 +381,7 @@ export function CreateSupplierReturnModal({
   };
 
   // Submit and create return note
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!currentSupplier) {
       toast.error('กรุณาเลือกผู้จำหน่าย');
       return;
@@ -395,7 +395,7 @@ export function CreateSupplierReturnModal({
     try {
       let resultNote: SupplierReturnNote;
       if (editingNote) {
-        resultNote = updateSupplierReturnNote(editingNote.id, {
+        resultNote = await updateSupplierReturnNote(editingNote.id, {
           supplierId: currentSupplier.id,
           supplierName: currentSupplier.name,
           supplierContact: currentSupplier.contactName,
@@ -409,7 +409,7 @@ export function CreateSupplierReturnModal({
         });
         toast.success(`✅ อัปเดตเอกสารส่งคืน ${resultNote.id} เรียบร้อยแล้ว`);
       } else {
-        resultNote = createSupplierReturnNote({
+        resultNote = await createSupplierReturnNote({
           supplierId: currentSupplier.id,
           supplierName: currentSupplier.name,
           supplierContact: currentSupplier.contactName,

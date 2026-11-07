@@ -22,6 +22,8 @@ import { BankAccountsModule } from './bank-accounts/bank-accounts.module';
 import { DocumentsModule } from './documents/documents.module';
 import { EventsModule } from './events/events.module';
 import { ServerControlModule } from './server-control/server-control.module';
+import { FinanceModule } from './finance/finance.module';
+import { ApprovalsModule } from './approvals/approvals.module';
 
 @Module({
   imports: [
@@ -46,6 +48,8 @@ import { ServerControlModule } from './server-control/server-control.module';
     DocumentsModule,
     ServerControlModule,
     EventsModule,
+    FinanceModule,
+    ApprovalsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

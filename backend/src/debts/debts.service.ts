@@ -2,6 +2,7 @@ import { businessTransaction } from '../prisma/business-transaction';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DebtStatus, PaymentMethod } from '@prisma/client';
+import * as ledger from '../finance/ledger';
 
 @Injectable()
 export class DebtsService {
@@ -9,6 +10,7 @@ export class DebtsService {
 
   async getAllDebts(page = 1, limit = 20, search?: string, status?: string) {
     const skip = (page - 1) * limit;
+    await this.markOverdueDebts();
 
     const where: any = {};
     if (status && status !== 'ALL') {
@@ -38,8 +40,9 @@ export class DebtsService {
       this.prisma.customerDebt.count({ where }),
     ]);
 
-    // Calculate aggregated totals
+    // Totals follow the same filters as the list
     const aggregates = await this.prisma.customerDebt.aggregate({
+      where,
       _sum: {
         totalDebt: true,
         paidAmount: true,
@@ -61,6 +64,18 @@ export class DebtsService {
         totalRemaining: Number(aggregates._sum.remainingAmount) || 0,
       },
     };
+  }
+
+  /** Debts past their due date with money still owed become OVERDUE. */
+  async markOverdueDebts() {
+    await this.prisma.customerDebt.updateMany({
+      where: {
+        dueDate: { lt: new Date() },
+        remainingAmount: { gt: 0 },
+        status: { in: [DebtStatus.PENDING, DebtStatus.PARTIALLY_PAID] },
+      },
+      data: { status: DebtStatus.OVERDUE },
+    });
   }
 
   async getDebtDetails(id: string) {
@@ -92,6 +107,7 @@ export class DebtsService {
     clientPaymentId?: string,
     shiftId?: string,
     userId?: string,
+    bankAccountId?: string,
   ) {
     if (!clientPaymentId || !/^[a-zA-Z0-9-]{16,80}$/.test(clientPaymentId)) throw new BadRequestException('กรุณาระบุรหัสรับชำระเพื่อป้องกันรายการซ้ำ');
     if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.00001) throw new BadRequestException('จำนวนเงินไม่ถูกต้อง');
@@ -150,7 +166,8 @@ export class DebtsService {
       // 2. Update debt record
       const newPaid = Number(debt.paidAmount) + payAmt;
       const newRemaining = Math.max(0, Number(debt.totalDebt) - newPaid);
-      const newStatus = newRemaining <= 0 ? DebtStatus.PAID : DebtStatus.PARTIALLY_PAID;
+      const isPastDue = debt.dueDate ? new Date(debt.dueDate).getTime() < Date.now() : false;
+      const newStatus = newRemaining <= 0 ? DebtStatus.PAID : isPastDue ? DebtStatus.OVERDUE : DebtStatus.PARTIALLY_PAID;
 
       const updatedDebt = await tx.customerDebt.update({
         where: { id: debt.id },
@@ -166,7 +183,16 @@ export class DebtsService {
         },
       });
 
-      if (paymentMethod === PaymentMethod.CASH) await tx.cashMovement.create({ data: { id: 'debt-' + clientPaymentId, shiftId: shiftId!, type: 'IN', amount: payAmt, reason: 'รับชำระหนี้ ' + receiptNo } });
+      if (paymentMethod === PaymentMethod.CASH) await tx.cashMovement.create({ data: { id: 'debt-' + clientPaymentId, shiftId: shiftId!, type: 'IN', category: 'DEBT_PAYMENT', amount: payAmt, reason: 'รับชำระหนี้ ' + receiptNo } });
+      // Money ledger: cash into the receiving shift's drawer, QR / transfer into the bank
+      const shiftRow = paymentMethod === PaymentMethod.CASH && shiftId ? await tx.shift.findUnique({ where: { id: shiftId } }) : null;
+      const moneyAccount = await ledger.accountForPaymentMethod(tx, paymentMethod, { terminalId: shiftRow?.terminalId, bankAccountId });
+      if (moneyAccount) {
+        await ledger.post(tx, {
+          accountId: moneyAccount.id, direction: 'IN', amount: payAmt, type: 'DEBT_RECEIPT',
+          refType: 'DEBT_PAYMENT', refId: payment.id, note: 'รับชำระหนี้ ' + receiptNo, userId,
+        });
+      }
       const result = {
         success: true,
         message: 'บันทึกรับชำระหนี้สำเร็จ',
@@ -175,6 +201,60 @@ export class DebtsService {
       };
       await tx.auditLog.create({data:{id:receiptId,action:'PAY_DEBT',entity:'CustomerDebt',entityId:debt.id,userId,details:{fingerprint,result:JSON.parse(JSON.stringify(result))}}});
       return result;
+    });
+  }
+
+  /**
+   * Cancel a debt receipt recorded by mistake: the debt goes back up and the money leaves the
+   * account it went into (cash from the same drawer if that shift is still open, otherwise from
+   * the safe where the drawer was emptied at shift close).
+   */
+  async cancelPayment(paymentId: string, reason: string, actor?: { id?: string; fullName?: string; username?: string }) {
+    const why = String(reason || '').trim();
+    if (!why) throw new BadRequestException('กรุณาระบุเหตุผลการยกเลิก');
+    return businessTransaction(this.prisma, async (tx) => {
+      const payment = await tx.debtPayment.findUnique({ where: { id: paymentId }, include: { debt: true } });
+      if (!payment) throw new NotFoundException('ไม่พบใบรับชำระนี้');
+      if (payment.cancelledAt) throw new BadRequestException('ใบรับชำระนี้ถูกยกเลิกไปแล้ว');
+      const amount = Number(payment.amount);
+      const debt = payment.debt;
+      const newPaid = Math.max(0, Math.round((Number(debt.paidAmount) - amount) * 100) / 100);
+      const remaining = Math.round((Number(debt.totalDebt) - newPaid) * 100) / 100;
+      const pastDue = debt.dueDate ? new Date(debt.dueDate).getTime() < Date.now() : false;
+      const status = remaining <= 0 ? DebtStatus.PAID : pastDue ? DebtStatus.OVERDUE : newPaid > 0 ? DebtStatus.PARTIALLY_PAID : DebtStatus.PENDING;
+      const note = `ยกเลิกรับชำระหนี้ ${payment.receiptNo || ''}: ${why}`.trim();
+
+      if (payment.paymentMethod === PaymentMethod.CASH) {
+        const movement = await tx.cashMovement.findUnique({ where: { id: 'debt-' + payment.id }, include: { shift: true } });
+        if (movement?.shift?.status === 'OPEN') {
+          // still in the drawer: take it out of the same shift
+          await tx.cashMovement.create({ data: { shiftId: movement.shiftId, type: 'OUT', category: 'GENERAL', amount, reason: note } });
+          await ledger.reverseByRef(tx, 'DEBT_PAYMENT', payment.id, note, actor?.id);
+        } else {
+          // shift closed: the cash was handed to the safe
+          await ledger.reverseByRef(tx, 'DEBT_PAYMENT', payment.id, note, actor?.id, { skipAccountTypes: ['CASH_DRAWER'] });
+          const safe = await ledger.safeAccount(tx);
+          const original = await tx.moneyTransaction.findFirst({ where: { refType: 'DEBT_PAYMENT', refId: payment.id, type: 'DEBT_RECEIPT' } });
+          // linked to the original receipt row so reports net it out, but taken from the safe
+          await tx.moneyTransaction.create({
+            data: { accountId: safe.id, direction: 'OUT', amount, type: 'REVERSAL', refType: 'DEBT_PAYMENT', refId: payment.id, reversalOfId: original?.id ?? null, note, userId: actor?.id ?? null },
+          });
+        }
+      } else {
+        await ledger.reverseByRef(tx, 'DEBT_PAYMENT', payment.id, note, actor?.id);
+      }
+
+      await tx.debtPayment.update({
+        where: { id: payment.id },
+        data: { cancelledAt: new Date(), cancelReason: why, cancelledBy: actor?.fullName || actor?.username || actor?.id || null },
+      });
+      const updated = await tx.customerDebt.update({
+        where: { id: debt.id },
+        data: { paidAmount: newPaid, remainingAmount: remaining, status },
+        include: { customer: true, order: true, payments: { orderBy: { paymentDate: 'desc' } } },
+      });
+      await tx.auditLog.create({ data: { action: 'CANCEL_DEBT_PAYMENT', entity: 'DebtPayment', entityId: payment.id, userId: actor?.id ?? null, details: { amount, reason: why, receiptNo: payment.receiptNo } } });
+      return { success: true, message: 'ยกเลิกใบรับชำระแล้ว ยอดหนี้กลับมาค้างชำระ', debt: updated };
     });
   }
 

@@ -580,7 +580,7 @@ export interface CreateReturnNoteParams {
   autoDeductFromPo?: boolean;
 }
 
-export function createSupplierReturnNote(params: CreateReturnNoteParams): SupplierReturnNote {
+function createSupplierReturnNoteLocal(params: CreateReturnNoteParams): SupplierReturnNote {
   const returnId = generateReturnDocNumber();
   const nowIso = new Date().toISOString();
   const allClaims = loadAllClaimRecords();
@@ -731,7 +731,7 @@ export function createSupplierReturnNote(params: CreateReturnNoteParams): Suppli
 
   // Sync full payload to backend API so PostgreSQL is the Single Source of Truth (and backend deducts overstock FIFO stock)
   if (params.supplierId) {
-    api.supplierReturns
+    track(api.supplierReturns
       .create({
         returnNumber: returnId,
         noteNumber: returnId,
@@ -775,14 +775,14 @@ export function createSupplierReturnNote(params: CreateReturnNoteParams): Suppli
           window.dispatchEvent(new Event('pos-data-synced'));
         }
       })
-      .catch((err) => console.warn('[SupplierReturnService] Failed to sync return note to backend:', err));
+      .catch((err) => { console.warn('[SupplierReturnService] Failed to sync return note to backend:', err); throw err; }));
   }
 
   return newReturnNote;
 }
 
 // ─── Cancel Supplier Return Note & Rollback ───
-export function cancelSupplierReturnNote(noteId: string): { success: boolean; message: string } {
+function cancelSupplierReturnNoteLocal(noteId: string): { success: boolean; message: string } {
   const notes = loadSupplierReturnNotes();
   const note = notes.find((n) => n.id === noteId);
   if (!note) {
@@ -829,7 +829,7 @@ export function cancelSupplierReturnNote(noteId: string): { success: boolean; me
   saveSupplierReturnNotes(notes);
 
   // Sync cancellation to backend (which also restores overstock stockBatch & claim statuses)
-  void apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}/cancel`, {
+  track(apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}/cancel`, {
     method: 'POST',
     body: JSON.stringify({ reason: 'ยกเลิกเอกสารส่งคืน' }),
   })
@@ -839,13 +839,13 @@ export function cancelSupplierReturnNote(noteId: string): { success: boolean; me
         window.dispatchEvent(new Event('pos-data-synced'));
       }
     })
-    .catch((err) => console.warn('[SupplierReturnService] Failed to sync cancel return note to backend:', err));
+    .catch((err) => { console.warn('[SupplierReturnService] Failed to sync cancel return note to backend:', err); throw err; }));
 
   return { success: true, message: `ย้ายเอกสารส่งคืน ${noteId} ไปที่ถังขยะ และคืนยอดสต็อก/สถานะเรียบร้อยแล้ว` };
 }
 
 // ─── Restore Cancelled Return Note from Trash ───
-export function restoreSupplierReturnNote(noteId: string): { success: boolean; message: string } {
+function restoreSupplierReturnNoteLocal(noteId: string): { success: boolean; message: string } {
   const notes = loadSupplierReturnNotes();
   const note = notes.find((n) => n.id === noteId);
   if (!note) return { success: false, message: 'ไม่พบเอกสารส่งคืน' };
@@ -882,13 +882,13 @@ export function restoreSupplierReturnNote(noteId: string): { success: boolean; m
 
   saveSupplierReturnNotes(notes);
 
-  void apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, {
+  track(apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, {
     method: 'PATCH',
     body: JSON.stringify({
       status: 'PENDING_DEDUCTION',
       remainingCreditAmount: note.totalCreditAmount,
     }),
-  }).catch((err) => console.warn('[SupplierReturnService] Failed to sync restore return note to backend:', err));
+  }).catch((err) => { console.warn('[SupplierReturnService] Failed to sync restore return note to backend:', err); throw err; }));
 
   return { success: true, message: `กู้คืนเอกสารส่งคืน ${noteId} กลับมาใช้งานเรียบร้อยแล้ว` };
 }
@@ -906,7 +906,7 @@ export function getAvailableReturnNotesForSupplier(supplierId: string): Supplier
 
 
 // ─── Update Supplier Return Note (When not yet fully deducted) ───
-export function updateSupplierReturnNote(
+function updateSupplierReturnNoteLocal(
   noteId: string,
   params: CreateReturnNoteParams
 ): SupplierReturnNote {
@@ -1010,7 +1010,7 @@ export function updateSupplierReturnNote(
   notes[existingIndex] = updatedNote;
   saveSupplierReturnNotes(notes);
 
-  void apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, {
+  track(apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, {
     method: 'PATCH',
     body: JSON.stringify(updatedNote),
   })
@@ -1020,13 +1020,13 @@ export function updateSupplierReturnNote(
         window.dispatchEvent(new Event('pos-data-synced'));
       }
     })
-    .catch((err) => console.warn('[SupplierReturnService] Failed to sync updated return note to backend:', err));
+    .catch((err) => { console.warn('[SupplierReturnService] Failed to sync updated return note to backend:', err); throw err; }));
 
   return updatedNote;
 }
 
 // ─── Change / Revert Supplier Return Note Status ───
-export function changeSupplierReturnStatus(
+function changeSupplierReturnStatusLocal(
   noteId: string,
   newStatus: SupplierReturnNote['status'],
   options?: { rollbackPo?: boolean }
@@ -1068,7 +1068,7 @@ export function changeSupplierReturnStatus(
     note.status = 'PENDING_DEDUCTION';
   } else if (newStatus === 'CANCELLED') {
     // 2. If cancelling
-    return cancelSupplierReturnNote(noteId);
+    return cancelSupplierReturnNoteLocal(noteId);
   } else if (oldStatus === 'CANCELLED' && newStatus === 'PENDING_DEDUCTION') {
     // 3. If reviving from CANCELLED
     // Re-link defective claims
@@ -1096,7 +1096,7 @@ export function changeSupplierReturnStatus(
 
   saveSupplierReturnNotes(notes);
 
-  void apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, {
+  track(apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, {
     method: 'PATCH',
     body: JSON.stringify({
       status: note.status,
@@ -1110,10 +1110,89 @@ export function changeSupplierReturnStatus(
         window.dispatchEvent(new Event('pos-data-synced'));
       }
     })
-    .catch((err) => console.warn('[SupplierReturnService] Failed to sync status change to backend:', err));
+    .catch((err) => { console.warn('[SupplierReturnService] Failed to sync status change to backend:', err); throw err; }));
 
   return { success: true, message: `เปลี่ยนสถานะเอกสาร ${noteId} เป็น "${newStatus}" เรียบร้อยแล้ว`, updatedNote: note };
 }
 
 export const updateSupplierReturnStatus = changeSupplierReturnStatus;
 
+// ─── Backend-first wrappers ───
+// Each mutation below still updates the local cache (used for instant UI), but the backend
+// write is awaited: if PostgreSQL rejects it, the local cache is restored and an error is returned.
+let pendingBackendWrites: Promise<unknown>[] = [];
+function track<T>(p: Promise<T>): Promise<T> {
+  pendingBackendWrites.push(p);
+  return p;
+}
+const LOCAL_KEYS = [STORAGE_KEY_RETURNS, STORAGE_KEY_POS, STORAGE_KEY_PRODUCTS, 'pos_product_claims'];
+async function backendFirst<T>(run: () => T): Promise<T> {
+  const snapshot = typeof window === 'undefined' ? {} : Object.fromEntries(LOCAL_KEYS.map((k) => [k, localStorage.getItem(k)]));
+  pendingBackendWrites = [];
+  let result: T;
+  try {
+    result = run();
+  } finally {
+    // collected synchronously by run()
+  }
+  const writes = pendingBackendWrites;
+  pendingBackendWrites = [];
+  try {
+    await Promise.all(writes);
+  } catch (err) {
+    if (typeof window !== 'undefined') {
+      for (const [k, v] of Object.entries(snapshot)) {
+        if (v === null) localStorage.removeItem(k);
+        else localStorage.setItem(k, v as string);
+      }
+    }
+    throw err;
+  }
+  return result;
+}
+const failMessage = (err: any, fallback: string) => (err && err.message) ? `${fallback}: ${err.message}` : fallback;
+
+export async function createSupplierReturnNote(params: CreateReturnNoteParams): Promise<SupplierReturnNote> {
+  if (!params.supplierId) throw new Error('กรุณาเลือกผู้จำหน่าย');
+  try {
+    return await backendFirst(() => createSupplierReturnNoteLocal(params));
+  } catch (err) {
+    throw new Error(failMessage(err, 'บันทึกเอกสารส่งคืนลงฐานข้อมูลไม่สำเร็จ'));
+  }
+}
+
+export async function updateSupplierReturnNote(noteId: string, params: CreateReturnNoteParams): Promise<SupplierReturnNote> {
+  try {
+    return await backendFirst(() => updateSupplierReturnNoteLocal(noteId, params));
+  } catch (err) {
+    throw new Error(failMessage(err, 'บันทึกการแก้ไขเอกสารส่งคืนไม่สำเร็จ'));
+  }
+}
+
+export async function cancelSupplierReturnNote(noteId: string): Promise<{ success: boolean; message: string }> {
+  try {
+    return await backendFirst(() => cancelSupplierReturnNoteLocal(noteId));
+  } catch (err) {
+    return { success: false, message: failMessage(err, 'ยกเลิกเอกสารในฐานข้อมูลไม่สำเร็จ') };
+  }
+}
+
+export async function restoreSupplierReturnNote(noteId: string): Promise<{ success: boolean; message: string }> {
+  try {
+    return await backendFirst(() => restoreSupplierReturnNoteLocal(noteId));
+  } catch (err) {
+    return { success: false, message: failMessage(err, 'กู้คืนเอกสารในฐานข้อมูลไม่สำเร็จ') };
+  }
+}
+
+export async function changeSupplierReturnStatus(
+  noteId: string,
+  newStatus: SupplierReturnNote['status'],
+  options?: { rollbackPo?: boolean },
+): Promise<{ success: boolean; message: string; updatedNote?: SupplierReturnNote }> {
+  try {
+    return await backendFirst(() => changeSupplierReturnStatusLocal(noteId, newStatus, options));
+  } catch (err) {
+    return { success: false, message: failMessage(err, 'เปลี่ยนสถานะในฐานข้อมูลไม่สำเร็จ') };
+  }
+}

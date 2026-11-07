@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { apiFetch } from '@/lib/api';
 import { 
   Building2, CheckCircle2, DollarSign, FileText, 
   Receipt, ShieldAlert, Sparkles, Tag, Wallet, ArrowRight,
@@ -86,6 +87,17 @@ export function SettleMultipleBillsModal({
   // Discount & Payment details
   const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'TRANSFER' | 'CHEQUE' | 'OTHER'>('TRANSFER');
+  // Money account the payment leaves (finance ledger). Empty = server default (safe for cash, default bank).
+  const [moneyAccounts, setMoneyAccounts] = useState<{ id: string; name: string; type: string; balance: number }[]>([]);
+  const [moneyAccountId, setMoneyAccountId] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    apiFetch('/finance/accounts')
+      .then((rows: any[]) => setMoneyAccounts((rows || []).filter((a) => a.isActive && a.type !== 'CASH_DRAWER')))
+      .catch(() => setMoneyAccounts([])); // no finance permission: server picks the account
+    setMoneyAccountId('');
+  }, [open]);
+  const accountChoices = moneyAccounts.filter((a) => (paymentMethod === 'CASH' ? a.type === 'CASH_SAFE' : a.type === 'BANK'));
   const [bankAccountLabel, setBankAccountLabel] = useState<string>('กสิกรไทย (KBANK) - 123-4-56789-0 (บัญชีหลักร้านค้า)');
   const [referenceNo, setReferenceNo] = useState<string>('');
   const [paymentDate, setPaymentDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
@@ -341,6 +353,7 @@ export function SettleMultipleBillsModal({
 
       const res = await settleMultipleBills({
         clientVoucherId: clientVoucherIdRef.current,
+        moneyAccountId: moneyAccountId || undefined,
         supplierId: selectedSupplierId,
         supplierName: currentSupp?.name,
         billsToSettle,
@@ -903,6 +916,22 @@ export function SettleMultipleBillsModal({
                       <span>เช็ค / อื่นๆ</span>
                     </button>
                   </div>
+
+                  {accountChoices.length > 0 && (
+                    <div className="pt-1">
+                      <label className="text-[11px] font-bold text-slate-600 block mb-1">จ่ายเงินออกจากบัญชี (ตัดยอดในระบบการเงิน):</label>
+                      <select
+                        value={moneyAccountId}
+                        onChange={(e) => setMoneyAccountId(e.target.value)}
+                        className="w-full h-8.5 text-xs bg-slate-50 border border-slate-300 rounded-xl px-2"
+                      >
+                        <option value="">อัตโนมัติ ({paymentMethod === 'CASH' ? 'เงินสดในเซฟ' : 'บัญชีธนาคารหลัก'})</option>
+                        {accountChoices.map((a) => (
+                          <option key={a.id} value={a.id}>{a.name} (คงเหลือ ฿{a.balance.toLocaleString()})</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   {paymentMethod === 'TRANSFER' && (
                     <div className="space-y-2 pt-1">

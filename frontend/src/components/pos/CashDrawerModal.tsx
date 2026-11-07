@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useShiftStore } from '@/lib/store/shift-store';
+import { useShiftStore, CashPurposeInput } from '@/lib/store/shift-store';
+import { apiFetch, api } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +40,12 @@ export function CashDrawerModal({
   const [amountStr, setAmountStr] = useState<string>('');
   const [reason, setReason] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Purpose of the cash movement (goes to the store's finance ledger)
+  const [purpose, setPurpose] = useState<CashPurposeInput['purpose']>('FROM_SAFE');
+  const [expenseCategoryId, setExpenseCategoryId] = useState('');
+  const [bankAccountId, setBankAccountId] = useState('');
+  const [expenseCategories, setExpenseCategories] = useState<{ id: string; name: string; isActive: boolean }[]>([]);
+  const [banks, setBanks] = useState<{ id: string; bankName: string; accountNumber: string; isDefault?: boolean }[]>([]);
 
   // Reset state when opening
   useEffect(() => {
@@ -46,7 +53,21 @@ export function CashDrawerModal({
       setAmountStr('');
       setReason('');
       setMode('in');
+      setPurpose('FROM_SAFE');
+      setExpenseCategoryId(''); // cashier must pick the category every time
       setIsSubmitting(false);
+      apiFetch('/finance/expense-categories')
+        .then((rows: { id: string; name: string; isActive: boolean }[]) => {
+          const active = (rows || []).filter((c) => c.isActive);
+          setExpenseCategories(active);
+        })
+        .catch(() => setExpenseCategories([]));
+      api.bankAccounts.getAll()
+        .then((rows: { id: string; bankName: string; accountNumber: string; isDefault?: boolean }[]) => {
+          setBanks(rows || []);
+          setBankAccountId((cur) => cur || rows?.find((b) => b.isDefault)?.id || rows?.[0]?.id || '');
+        })
+        .catch(() => setBanks([]));
       useShiftStore.getState().fetchCurrentShift();
     }
   }, [open]);
@@ -62,6 +83,21 @@ export function CashDrawerModal({
   } else if (mode === 'out') {
     newExpectedCash = Math.max(0, currentExpectedCash - parsedAmount);
   }
+
+  const IN_PURPOSES: { value: CashPurposeInput['purpose']; label: string; hint: string }[] = [
+    { value: 'FROM_SAFE', label: 'เงินทอนจากเซฟ', hint: 'ย้ายเงินสดจากเซฟมาใส่ลิ้นชัก' },
+    { value: 'FROM_BANK', label: 'ถอน/แลกเงินจากธนาคาร', hint: 'เช่น แลกเหรียญ ถอนเงินมาใส่ลิ้นชัก' },
+    { value: 'OTHER_INCOME', label: 'รายรับอื่น', hint: 'เช่น ขายลังกระดาษ ค่าบริการ' },
+    { value: 'OTHER', label: 'อื่นๆ', hint: 'ระบุในหมายเหตุ' },
+  ];
+  const OUT_PURPOSES: { value: CashPurposeInput['purpose']; label: string; hint: string }[] = [
+    { value: 'EXPENSE', label: 'จ่ายค่าใช้จ่ายร้าน', hint: 'เลือกหมวด เช่น ค่าส่ง ค่าน้ำแข็ง' },
+    { value: 'TO_SAFE', label: 'เก็บเงินเข้าเซฟ', hint: 'ดึงเงินออกเก็บก่อนปิดกะ (ไม่ใช่ค่าใช้จ่าย)' },
+    { value: 'TO_BANK', label: 'นำฝากธนาคาร', hint: 'นำเงินสดไปฝากเข้าบัญชีร้าน' },
+    { value: 'OTHER', label: 'อื่นๆ', hint: 'ระบุในหมายเหตุ' },
+  ];
+  const purposeList = mode === 'in' ? IN_PURPOSES : OUT_PURPOSES;
+  const purposeLabel = purposeList.find((p) => p.value === purpose)?.label || '';
 
   // Presets
   const amountPresets = [50, 100, 200, 500, 1000, 2000];
@@ -119,15 +155,30 @@ export function CashDrawerModal({
       }
     }
 
-    if (!reason.trim()) {
-      toast.error('กรุณาระบุหมายเหตุหรือเหตุผลในการนำเงินเข้า/ออก');
+    if (purpose === 'EXPENSE' && !expenseCategoryId) {
+      toast.error('กรุณาเลือกหมวดค่าใช้จ่าย');
       return;
     }
+    if ((purpose === 'OTHER' || purpose === 'OTHER_INCOME' || purpose === 'EXPENSE') && !reason.trim()) {
+      toast.error('กรุณาระบุรายละเอียดในหมายเหตุ');
+      return;
+    }
+    const finalReason = reason.trim() || purposeLabel;
 
     setIsSubmitting(true);
     try {
       operationId.current ||= newOperationId();
-      await addCashTransaction(mode, parsedAmount, reason.trim(), operationId.current);
+      await addCashTransaction(
+        mode,
+        parsedAmount,
+        finalReason, // the server prefixes the expense category in the shift record
+        operationId.current,
+        {
+          purpose,
+          expenseCategoryId: purpose === 'EXPENSE' ? expenseCategoryId : undefined,
+          bankAccountId: purpose === 'TO_BANK' || purpose === 'FROM_BANK' ? bankAccountId || undefined : undefined,
+        },
+      );
       operationId.current = null;
       triggerDrawerKick();
 
@@ -140,7 +191,7 @@ export function CashDrawerModal({
       onOpenChange(false);
     } catch (err) {
       console.error('Failed to add cash transaction:', err);
-      toast.error('เกิดข้อผิดพลาดในการบันทึกรายการ');
+      toast.error((err as Error)?.message || 'เกิดข้อผิดพลาดในการบันทึกรายการ');
     } finally {
       setIsSubmitting(false);
     }
@@ -199,7 +250,7 @@ export function CashDrawerModal({
               {/* Option 1: Cash In */}
               <button
                 type="button"
-                onClick={() => setMode('in')}
+                onClick={() => { setMode('in'); setPurpose('FROM_SAFE'); }}
                 className={`p-3 rounded-2xl border flex flex-col items-center justify-center gap-1.5 transition-all ${
                   mode === 'in'
                     ? 'border-emerald-500 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-400/30 shadow-xs font-black'
@@ -213,7 +264,7 @@ export function CashDrawerModal({
               {/* Option 2: Cash Out */}
               <button
                 type="button"
-                onClick={() => setMode('out')}
+                onClick={() => { setMode('out'); setPurpose('EXPENSE'); }}
                 className={`p-3 rounded-2xl border flex flex-col items-center justify-center gap-1.5 transition-all ${
                   mode === 'out'
                     ? 'border-rose-500 bg-rose-50 text-rose-900 ring-2 ring-rose-400/30 shadow-xs font-black'
@@ -302,6 +353,50 @@ export function CashDrawerModal({
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Purpose */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 block">
+                  {mode === 'in' ? 'เงินที่นำเข้ามาจาก:' : 'นำเงินออกไปเพื่อ:'}
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {purposeList.map((p) => (
+                    <button
+                      key={p.value}
+                      type="button"
+                      onClick={() => setPurpose(p.value)}
+                      className={`text-left p-2.5 rounded-xl border transition-all ${
+                        purpose === p.value
+                          ? mode === 'in' ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-400/30' : 'border-rose-500 bg-rose-50 ring-2 ring-rose-400/30'
+                          : 'border-slate-200 bg-white hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="text-xs font-black text-slate-900">{p.label}</div>
+                      <div className="text-[10.5px] text-slate-500 leading-tight">{p.hint}</div>
+                    </button>
+                  ))}
+                </div>
+                {purpose === 'EXPENSE' && (
+                  <select
+                    value={expenseCategoryId}
+                    onChange={(e) => setExpenseCategoryId(e.target.value)}
+                    className="w-full h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold"
+                  >
+                    <option value="">{expenseCategories.length ? '— เลือกหมวดค่าใช้จ่าย —' : '— ไม่มีหมวดค่าใช้จ่าย —'}</option>
+                    {expenseCategories.map((c) => <option key={c.id} value={c.id}>หมวด: {c.name}</option>)}
+                  </select>
+                )}
+                {(purpose === 'TO_BANK' || purpose === 'FROM_BANK') && (
+                  <select
+                    value={bankAccountId}
+                    onChange={(e) => setBankAccountId(e.target.value)}
+                    className="w-full h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold"
+                  >
+                    {banks.length === 0 && <option value="">บัญชีธนาคารหลัก</option>}
+                    {banks.map((b) => <option key={b.id} value={b.id}>{b.bankName} {b.accountNumber}</option>)}
+                  </select>
+                )}
               </div>
 
               {/* Reason / Note Input */}

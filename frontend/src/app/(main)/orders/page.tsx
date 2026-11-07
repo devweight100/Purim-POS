@@ -54,6 +54,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { useShiftStore } from "@/lib/store/shift-store";
+import { ReturnItemsDialog } from "@/components/orders/ReturnItemsDialog";
 import { useCartStore } from "@/lib/store/cart-store";
 import { useProductStore } from "@/lib/store/product-store";
 import { getCustomerById, rollbackCustomerSale } from "@/lib/customer-service";
@@ -116,6 +117,7 @@ export default function OrdersPage() {
 
   // 7. Void Order State
   const [voidTargetOrder, setVoidTargetOrder] = useState<any | null>(null);
+  const [returnOrderId, setReturnOrderId] = useState<string | null>(null);
   const [voidReason, setVoidReason] = useState("");
   const [isVoidOpen, setIsVoidOpen] = useState(false);
 
@@ -1212,6 +1214,14 @@ export default function OrdersPage() {
                                   <DropdownMenuSeparator className="my-1" />
 
                                   <DropdownMenuItem
+                                    onClick={(e) => { (e as any)?.stopPropagation?.(); setReturnOrderId(order.id); }}
+                                    className="font-bold text-amber-700 py-2 rounded-xl cursor-pointer hover:bg-amber-50"
+                                  >
+                                    <RotateCcw className="w-4 h-4 mr-2" />
+                                    รับคืนสินค้าบางรายการ
+                                  </DropdownMenuItem>
+
+                                  <DropdownMenuItem
                                     onClick={(e) => handleStartVoid(order, e as any)}
                                     className="font-bold text-rose-600 py-2 rounded-xl cursor-pointer hover:bg-rose-50"
                                   >
@@ -1519,6 +1529,16 @@ export default function OrdersPage() {
                       <Button
                         size="sm"
                         variant="outline"
+                        onClick={() => setReturnOrderId(currentOrder.id)}
+                        className="border-amber-300 text-amber-700 hover:bg-amber-50 font-bold text-xs h-9 px-3 rounded-xl"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                        รับคืนสินค้า
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
                         onClick={(e) => handleStartVoid(currentOrder, e)}
                         className="border-rose-200 text-rose-600 hover:bg-rose-50 font-bold text-xs h-9 px-3 rounded-xl"
                       >
@@ -1724,6 +1744,7 @@ export default function OrdersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ReturnItemsDialog orderId={returnOrderId} onClose={() => setReturnOrderId(null)} onDone={() => { void fetchOrders?.(); }} />
     </div>
   );
 }

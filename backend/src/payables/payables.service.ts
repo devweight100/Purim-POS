@@ -2,6 +2,7 @@ import { businessTransaction } from '../prisma/business-transaction';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentStatus, VoucherStatus, PaymentMethod, ReturnNoteStatus, POStatus } from '@prisma/client';
+import * as ledger from '../finance/ledger';
 
 /** A supplier bill becomes a payable only after goods were received (accrual on receipt). */
 export const PAYABLE_PO_STATUSES: POStatus[] = [POStatus.PARTIALLY_RECEIVED, POStatus.RECEIVED, POStatus.COMPLETED];
@@ -83,6 +84,11 @@ export class SettleMultipleBillsDto {
   @IsString()
   @IsOptional()
   paymentDate?: string;
+
+  /** Money account the supplier is paid from (default: safe for cash, default bank otherwise). */
+  @IsString()
+  @IsOptional()
+  moneyAccountId?: string;
 }
 
 @Injectable()
@@ -356,6 +362,18 @@ export class PayablesService {
         },
       });
 
+      // Money ledger: the net amount actually paid leaves the chosen account
+      if (netPaidAmount > 0) {
+        let account = dto.moneyAccountId ? await tx.moneyAccount.findUnique({ where: { id: dto.moneyAccountId } }) : null;
+        if (dto.moneyAccountId && !account) throw new BadRequestException('ไม่พบบัญชีเงินที่เลือกจ่าย');
+        if (!account) account = await ledger.accountForPaymentMethod(tx, paymentMethod, { cashTo: 'SAFE' });
+        if (!account) account = await ledger.safeAccount(tx);
+        await ledger.post(tx, {
+          accountId: account!.id, direction: 'OUT', amount: netPaidAmount, type: 'SUPPLIER_PAYMENT',
+          refType: 'VOUCHER', refId: voucher.id, note: `จ่ายเจ้าหนี้ ${voucherNumber}`,
+        });
+      }
+
       await tx.auditLog.create({
         data: { id: receiptId, action: 'SETTLE_PAYABLES', entity: 'PaymentVoucher', entityId: voucher.id, details: { fingerprint, voucherId: voucher.id } },
       });
@@ -480,6 +498,7 @@ export class PayablesService {
       }
 
       // 3. Mark voucher as CANCELLED
+      await ledger.reverseByRef(tx, 'VOUCHER', voucherId, 'ยกเลิกใบสำคัญจ่าย ' + (voucher.voucherNumber || ''));
       const cancelledVoucher = await tx.paymentVoucher.update({
         where: { id: voucherId },
         data: {

@@ -27,6 +27,8 @@ export interface OfflineOrder {
   note?: string;
   pointsUsed?: number;
   pointsDiscountAmount?: number;
+  vatAmount?: number;
+  vatEnabled?: boolean;
   payloadVersion?: number;
   clientOrderId: string; // UUID Idempotency Key
   orderNumber: string;

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { CartItem, HeldBill, Product, ProductUnit, ClaimRecord, PendingClaimItem } from '../types';
 import { calculateSmartRollupAndPricing } from '../cart-pricing';
+import { loadStoreSettings } from '../store-settings-storage';
 
 interface CartStore {
   items: CartItem[];
@@ -441,13 +442,15 @@ export const useCartStore = create<CartStore>((set, get) => ({
     const totalDiscounts = get().getBillDiscountAmount() + get().getPointsDiscountAmount() + get().getClaimDiscountAmount();
     const discountRate = totalDiscounts / subtotal;
 
+    // VAT-inclusive prices: vat = amount × rate / (100 + rate), rate from store settings
+    const rate = Number(loadStoreSettings().vatRate);
+    const vatRate = Number.isFinite(rate) && rate >= 0 ? rate : 7;
     let vatTotal = 0;
     for (const item of items) {
       if (item.hasVat) {
         const lineTotal = get().getItemLineTotal(item);
         const afterDiscount = lineTotal * (1 - discountRate);
-        // VAT included: vat = amount × 7/107
-        vatTotal += afterDiscount * (7 / 107);
+        vatTotal += afterDiscount * (vatRate / (100 + vatRate));
       }
     }
     return vatTotal;

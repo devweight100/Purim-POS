@@ -8,6 +8,9 @@ import { UserRole } from '@prisma/client';
 import { loginThrottle } from './login-throttle';
 
 const PIN_PATTERN = /^\d{4,6}$/;
+/** Credentials shipped by the seed / printed in old docs. Logging in with one forces a change. */
+const DEFAULT_PASSWORDS = new Set(['admin123', 'cashier123', 'admin', 'password', '123456', '12345678']);
+const DEFAULT_PINS = new Set(['0000', '1234', '1111', '123456', '000000']);
 
 @Injectable()
 export class AuthService {
@@ -34,6 +37,10 @@ export class AuthService {
       throw new UnauthorizedException('ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง หรือบัญชีถูกระงับ');
     }
     loginThrottle.succeed(throttleKey);
+    if (DEFAULT_PASSWORDS.has(loginDto.password) && !user.mustChangePassword) {
+      await this.prisma.user.update({ where: { id: user.id }, data: { mustChangePassword: true } });
+      user.mustChangePassword = true;
+    }
 
     await this.prisma.user.update({
       where: { id: user.id },
@@ -61,6 +68,10 @@ export class AuthService {
     for (const u of users) {
       if (u.pinCode && await bcrypt.compare(pin, u.pinCode)) {
         loginThrottle.succeed(throttleKey);
+        if (DEFAULT_PINS.has(pin) && !u.mustChangePassword) {
+          await this.prisma.user.update({ where: { id: u.id }, data: { mustChangePassword: true } });
+          u.mustChangePassword = true;
+        }
         await this.prisma.user.update({
           where: { id: u.id },
           data: { lastLoginAt: new Date() },
@@ -82,6 +93,7 @@ export class AuthService {
   /** PIN login identifies the user by PIN alone, so PINs must be valid and unique. */
   private async assertPinUsable(pin: string, exceptUserId?: string) {
     if (!PIN_PATTERN.test(pin)) throw new BadRequestException('PIN ต้องเป็นตัวเลข 4-6 หลัก');
+    if (DEFAULT_PINS.has(pin)) throw new BadRequestException('PIN นี้เดาง่ายเกินไป กรุณาใช้ PIN อื่น');
     const others = await this.prisma.user.findMany({
       where: { pinCode: { not: null }, ...(exceptUserId ? { id: { not: exceptUserId } } : {}) },
       select: { pinCode: true },
@@ -95,6 +107,42 @@ export class AuthService {
   private async assertNotLastAdmin(userId: string) {
     const remaining = await this.prisma.user.count({ where: { role: 'ADMIN', isActive: true, id: { not: userId } } });
     if (remaining === 0) throw new BadRequestException('ต้องมีผู้ดูแลระบบ (ADMIN) ที่ใช้งานได้อย่างน้อย 1 คน');
+  }
+
+  /** Self-service change of password (and optionally PIN). Clears the forced-change flag. */
+  async changeOwnCredentials(userId: string, body: { currentPassword?: string; newPassword?: string; newPin?: string }) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.isActive) throw new UnauthorizedException();
+    const current = String(body.currentPassword || '');
+    if (!current || !(await bcrypt.compare(current, user.password))) throw new BadRequestException('รหัสผ่านปัจจุบันไม่ถูกต้อง');
+    const next = String(body.newPassword || '').trim();
+    if (next.length < 8) throw new BadRequestException('รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร');
+    if (DEFAULT_PASSWORDS.has(next) || next.toLowerCase() === user.username.toLowerCase() || next === current) {
+      throw new BadRequestException('รหัสผ่านใหม่เดาง่ายเกินไปหรือซ้ำกับรหัสเดิม');
+    }
+    const data: any = { password: await bcrypt.hash(next, 10), mustChangePassword: false };
+    const newPin = String(body.newPin || '').trim();
+    let pinIsDefault = false;
+    if (user.pinCode) {
+      for (const d of DEFAULT_PINS) {
+        if (await bcrypt.compare(d, user.pinCode)) { pinIsDefault = true; break; }
+      }
+    }
+    if (pinIsDefault && !newPin) throw new BadRequestException('PIN ปัจจุบันเป็นค่าเริ่มต้น กรุณาตั้ง PIN ใหม่ด้วย');
+    if (newPin) {
+      await this.assertPinUsable(newPin, user.id);
+      data.pinCode = await bcrypt.hash(newPin, 10);
+    }
+    await this.prisma.user.update({ where: { id: user.id }, data });
+    return { success: true, message: 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว' };
+  }
+
+  /** Whether this user's PIN is one of the well-known defaults (UI asks for a new one). */
+  async hasDefaultPin(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { pinCode: true } });
+    if (!user?.pinCode) return false;
+    for (const d of DEFAULT_PINS) if (await bcrypt.compare(d, user.pinCode)) return true;
+    return false;
   }
 
   async register(registerDto: RegisterDto) {
@@ -114,6 +162,7 @@ export class AuthService {
         ...registerDto,
         password: hashedPassword,
         pinCode: hashedPin,
+        mustChangePassword: DEFAULT_PASSWORDS.has(registerDto.password),
       },
     });
     const { password, pinCode, ...result } = user;
@@ -163,6 +212,7 @@ export class AuthService {
 
     if (data.password && data.password.trim()) {
       updatePayload.password = await bcrypt.hash(data.password.trim(), 10);
+      updatePayload.mustChangePassword = DEFAULT_PASSWORDS.has(data.password.trim());
     }
     if (data.pinCode && data.pinCode.trim()) {
       await this.assertPinUsable(data.pinCode.trim(), id);

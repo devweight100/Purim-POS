@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { apiFetch } from '@/lib/api';
 import { useRouter } from 'next/navigation';
+import { CreateSupplierReturnModal } from '@/components/supplier-returns/CreateSupplierReturnModal';
 import { submitPurchaseReceipt } from '@/lib/purchase-receipt-sync';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import {
@@ -28,7 +29,6 @@ import { toast } from 'sonner';
 import { useProductStore } from '@/lib/store/product-store';
 
 import PurchaseOrderPdfModal, { PurchaseOrderData } from '@/components/pos/PurchaseOrderPdfModal';
-import { recordPoReceiveStock, recordPoRollbackStock } from '@/lib/stock-service';
 
 function loadProductImages(productId: string): string[] {
   if (typeof window === 'undefined') return [];
@@ -148,6 +148,8 @@ export default function PurchaseOrdersPage() {
 
   // Detail Dialog
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  // Return received goods to the supplier (creates a credit note, deducted when paying the supplier)
+  const [returnPo, setReturnPo] = useState<any | null>(null);
   const [currentPo, setCurrentPo] = useState<any>(null);
 
   // Professional PDF / Print Dialog
@@ -175,7 +177,6 @@ export default function PurchaseOrdersPage() {
   const [isStatusChangeModalOpen, setIsStatusChangeModalOpen] = useState(false);
   const [targetStatusChangePo, setTargetStatusChangePo] = useState<any | null>(null);
   const [newSelectedStatus, setNewSelectedStatus] = useState<string>('DRAFT');
-  const [rollbackStock, setRollbackStock] = useState<boolean>(true);
   const [statusChangeNote, setStatusChangeNote] = useState<string>('');
 
   // Receive Dialog
@@ -530,17 +531,21 @@ export default function PurchaseOrdersPage() {
         })),
       };
 
-      const existingPOs = loadPOsFromStorage();
-      const updatedPOs = existingPOs.map((p) => p.id === editingPo.id ? updatedPO : p);
-      savePOsToStorage(updatedPOs);
-      setPurchaseOrders(updatedPOs);
-
+      // Database first: the backend accepts only these fields (status/payment changes have their own endpoints)
       try {
         await apiFetch(`/purchase-orders/${editingPo.id}`, {
           method: "PATCH",
-          body: JSON.stringify(updatedPO),
+          body: JSON.stringify({
+            supplierId: updatedPO.supplierId,
+            notes: updatedPO.notes,
+            items: cartItems.map((i: any) => ({ productId: i.productId, quantity: Number(i.quantity), unitCost: Number(i.unitCost) })),
+          }),
         });
-      } catch (error) {}
+      } catch (error: any) {
+        toast.error(`บันทึกการแก้ไขไม่สำเร็จ: ${error?.message || 'เชื่อมต่อฐานข้อมูลไม่ได้'}`);
+        return;
+      }
+      void fetchPOs();
 
       toast.success(`บันทึกการแก้ไขใบสั่งซื้อ ${editingPo.poNumber} สำเร็จ`);
       setEditingPo(null);
@@ -613,8 +618,10 @@ export default function PurchaseOrdersPage() {
             : newPO.items
         };
       }
-    } catch (error) {
-      console.warn("Backend PO creation failed or offline, fallback to local:", error);
+    } catch (error: any) {
+      // No local-only purchase orders: they would never reach payables / receiving
+      toast.error(`สร้างใบสั่งซื้อไม่สำเร็จ: ${error?.message || 'เชื่อมต่อฐานข้อมูลไม่ได้'}`);
+      return;
     }
 
     const existingPOs = loadPOsFromStorage();
@@ -638,14 +645,13 @@ export default function PurchaseOrdersPage() {
   const handleConfirmIssue = async () => {
     if (!targetIssuePo) return;
     const id = targetIssuePo.id;
-    const existingPOs = loadPOsFromStorage();
-    const updatedPOs = existingPOs.map(po => po.id === id ? { ...po, status: "ISSUED", issuedAt: new Date().toISOString() } : po);
-    savePOsToStorage(updatedPOs);
-    setPurchaseOrders(updatedPOs);
-
     try {
       await apiFetch(`/purchase-orders/${id}/issue`, { method: "POST" });
-    } catch (error) {}
+    } catch (error: any) {
+      toast.error(`ออกใบสั่งซื้อไม่สำเร็จ: ${error?.message || 'เชื่อมต่อฐานข้อมูลไม่ได้'}`);
+      return;
+    }
+    void fetchPOs();
 
     toast.success(`ออกใบสั่งซื้อ ${targetIssuePo.poNumber} สำเร็จ สถานะเปลี่ยนเป็น ISSUED`);
     if (isDetailOpen && currentPo?.id === id) {
@@ -659,7 +665,6 @@ export default function PurchaseOrdersPage() {
     if (e) e.stopPropagation();
     setTargetStatusChangePo(po);
     setNewSelectedStatus(po.status);
-    setRollbackStock(true);
     setStatusChangeNote('');
     setIsStatusChangeModalOpen(true);
   };
@@ -674,102 +679,29 @@ export default function PurchaseOrdersPage() {
       return;
     }
 
-    // Check if moving from a received status (COMPLETED, PARTIALLY_RECEIVED) backwards to non-received (DRAFT, ISSUED, CANCELLED)
-    const isRollingBackFromReceived = (oldStatus === 'COMPLETED' || oldStatus === 'PARTIALLY_RECEIVED') &&
-      (newStatus === 'DRAFT' || newStatus === 'ISSUED' || newStatus === 'CANCELLED');
-
-    let rollbackProductsCount = 0;
-    if (isRollingBackFromReceived && rollbackStock) {
-      // Deduct previously received stock from inventory
-      if (typeof window !== 'undefined') {
-        try {
-          let storedProds: any[] = [];
-          const raw = localStorage.getItem('custom_products');
-          if (raw) storedProds = JSON.parse(raw);
-          else storedProds = useProductStore.getState().products;
-
-          if (Array.isArray(storedProds) && storedProds.length > 0) {
-            const updatedProds = storedProds.map((prod: any) => {
-              const pId = prod.id || prod.sku;
-              const poItem = (targetStatusChangePo.items || []).find((item: any) => (
-                item.productId === pId || item.productId === prod.id || item.productId === prod.sku || item.sku === prod.sku
-              ));
-              if (poItem && Number(poItem.receivedQuantity) > 0) {
-                const mult = Number(poItem.multiplier) || 1;
-                const deductBaseQty = Number(poItem.receivedQuantity) * mult;
-                const curStock = Number(prod.stock !== undefined && prod.stock !== null ? prod.stock : 0);
-                rollbackProductsCount++;
-                return {
-                  ...prod,
-                  stock: Math.max(0, curStock - deductBaseQty),
-                };
-              }
-              return prod;
-            });
-
-            localStorage.setItem('custom_products', JSON.stringify(updatedProds));
-            useProductStore.getState().fetchProducts();
-            recordPoRollbackStock(targetStatusChangePo.items || [], targetStatusChangePo.poNumber);
-          }
-        } catch (err) {
-          console.error('Failed to rollback inventory stock:', err);
-        }
-      }
-    }
-
-    // Update PO in storage
-    const existingPOs = loadPOsFromStorage();
-    const updatedPOs = existingPOs.map((po: any) => {
-      if (po.id === targetStatusChangePo.id) {
-        let updatedItems = po.items || [];
-        if (newStatus === 'DRAFT' || newStatus === 'ISSUED' || newStatus === 'CANCELLED') {
-          if (rollbackStock) {
-            updatedItems = updatedItems.map((i: any) => ({ ...i, receivedQuantity: 0 }));
-          }
-        } else if (newStatus === 'COMPLETED') {
-          updatedItems = updatedItems.map((i: any) => ({ ...i, receivedQuantity: i.quantity }));
-        }
-
-        const historyEntry = {
-          from: oldStatus,
-          to: newStatus,
-          changedAt: new Date().toISOString(),
-          note: statusChangeNote.trim() || 'เปลี่ยนสถานะผ่านระบบจัดการสถานะ',
-          rolledBackStock: isRollingBackFromReceived && rollbackStock,
-        };
-
-        return {
-          ...po,
-          status: newStatus,
-          items: updatedItems,
-          statusHistory: [...(po.statusHistory || []), historyEntry],
-          updatedAt: new Date().toISOString(),
-        };
-      }
-      return po;
-    });
-
-    savePOsToStorage(updatedPOs);
-    setPurchaseOrders(updatedPOs);
-
-    const updatedCurrentPo = updatedPOs.find(p => p.id === targetStatusChangePo.id);
-    if (isDetailOpen && currentPo?.id === targetStatusChangePo.id && updatedCurrentPo) {
-      setCurrentPo(updatedCurrentPo);
-      setPdfPoData(updatedCurrentPo);
-    }
-
+    // Status changes go through the backend only. Receiving has its own dialog (GRN); rolling back
+    // goods that were already received is not supported (it would need a supplier return document).
     try {
-      await apiFetch(`/purchase-orders/${targetStatusChangePo.id}`, {
-        method: "PATCH",
-        body: JSON.stringify(updatedCurrentPo),
-      });
-    } catch (error) {}
-
-    toast.success(
-      rollbackProductsCount > 0
-        ? `เปลี่ยนสถานะเป็น ${newStatus} สำเร็จ และคืนยอดสต็อกสินค้า ${rollbackProductsCount} รายการ`
-        : `เปลี่ยนสถานะใบสั่งซื้อ ${targetStatusChangePo.poNumber} เป็น ${newStatus} สำเร็จ`
-    );
+      if (newStatus === 'ISSUED' && oldStatus === 'DRAFT') {
+        await apiFetch(`/purchase-orders/${targetStatusChangePo.id}/issue`, { method: "POST" });
+      } else if (newStatus === 'CANCELLED') {
+        await apiFetch(`/purchase-orders/${targetStatusChangePo.id}/cancel`, {
+          method: "POST",
+          body: JSON.stringify({ reason: statusChangeNote.trim() || 'เปลี่ยนสถานะเป็นยกเลิก' }),
+        });
+      } else {
+        toast.error('เปลี่ยนสถานะนี้ไม่ได้: รับสินค้าใช้ปุ่ม "รับสินค้า (GRN)" ส่วนสินค้าที่รับแล้วต้องทำเอกสารส่งคืนบริษัท');
+        return;
+      }
+    } catch (error: any) {
+      toast.error(`เปลี่ยนสถานะไม่สำเร็จ: ${error?.message || 'เชื่อมต่อฐานข้อมูลไม่ได้'}`);
+      return;
+    }
+    await fetchPOs();
+    if (isDetailOpen && currentPo?.id === targetStatusChangePo.id) {
+      setIsDetailOpen(false);
+    }
+    toast.success(`เปลี่ยนสถานะใบสั่งซื้อ ${targetStatusChangePo.poNumber} เป็น ${newStatus} สำเร็จ`);
 
     setIsStatusChangeModalOpen(false);
     setTargetStatusChangePo(null);
@@ -2163,6 +2095,18 @@ export default function PurchaseOrdersPage() {
         </DialogContent>
       </Dialog>
 
+      <CreateSupplierReturnModal
+        open={!!returnPo}
+        onOpenChange={(o) => { if (!o) setReturnPo(null); }}
+        initialSupplierId={returnPo?.supplierId || returnPo?.supplier?.id}
+        initialPoId={returnPo?.id}
+        onSuccess={(note) => {
+          toast.success(`สร้างใบส่งคืน ${note.id} แล้ว ตัดสต็อกและนำยอดไปหักตอนจ่ายเจ้าหนี้ได้`);
+          setReturnPo(null);
+          void fetchPOs();
+        }}
+      />
+
       {/* PO Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
         <DialogContent className="bg-white border-slate-200 text-slate-900 max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -2303,6 +2247,11 @@ export default function PurchaseOrdersPage() {
                 <Button variant="outline" className="border-indigo-400 text-indigo-700 hover:bg-indigo-50 font-bold" onClick={(e) => { setIsDetailOpen(false); openStatusChangeDialog(currentPo, e); }}>
                   <RotateCcw className="w-4 h-4 mr-2" /> เปลี่ยน / ย้อนสถานะ
                 </Button>
+                {(currentPo?.status === 'PARTIALLY_RECEIVED' || currentPo?.status === 'COMPLETED' || currentPo?.status === 'RECEIVED') && (
+                  <Button variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-50 font-bold" onClick={() => { setIsDetailOpen(false); setReturnPo(currentPo); }}>
+                    <RotateCcw className="w-4 h-4 mr-2" /> คืนสินค้าให้บริษัท
+                  </Button>
+                )}
                 {currentPo?.status !== 'CANCELLED' && (
                   <Button variant="outline" className="border-rose-300 text-rose-600 hover:bg-rose-50 font-bold" onClick={() => { setIsDetailOpen(false); openCancelDialog(currentPo); }}>
                     <Ban className="w-4 h-4 mr-2" /> ยกเลิกใบสั่งซื้อ
@@ -2407,7 +2356,10 @@ export default function PurchaseOrdersPage() {
                     desc: 'ยกเลิกใบสั่งซื้อนี้ ไม่สามารถรับของเข้าคลังได้',
                     color: 'text-rose-700',
                   },
-                ].map((st) => (
+                ]
+                  // Only transitions the backend supports: DRAFT -> ISSUED, and cancel (nothing received / paid)
+                  .filter((st) => st.value === targetStatusChangePo?.status || st.value === 'CANCELLED' || (st.value === 'ISSUED' && targetStatusChangePo?.status === 'DRAFT'))
+                  .map((st) => (
                   <label
                     key={st.value}
                     className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all cursor-pointer ${
@@ -2433,26 +2385,10 @@ export default function PurchaseOrdersPage() {
               </div>
             </div>
 
-            {/* Rollback Stock Option Warning */}
-            {((targetStatusChangePo?.status === 'COMPLETED' || targetStatusChangePo?.status === 'PARTIALLY_RECEIVED') &&
-              (newSelectedStatus === 'DRAFT' || newSelectedStatus === 'ISSUED' || newSelectedStatus === 'CANCELLED')) && (
-              <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-xs space-y-2.5">
-                <div className="font-bold text-amber-900 flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                  ตรวจพบการย้อนสถานะจากขั้นตอนที่เคยรับของเข้าคลัง
-                </div>
-                <p className="text-amber-800 leading-relaxed">
-                  ใบสั่งซื้อนี้เคยมีการรับสินค้าเข้าสต็อกแล้ว หากย้อนสถานะกลับเป็น <b>{newSelectedStatus}</b> ท่านต้องการให้ระบบปรับสต็อกสินค้าคืนหรือไม่?
-                </p>
-                <label className="flex items-center gap-2.5 pt-1 font-bold text-amber-950 cursor-pointer bg-white p-3 rounded-lg border border-amber-200 shadow-2xs">
-                  <input
-                    type="checkbox"
-                    checked={rollbackStock}
-                    onChange={(e) => setRollbackStock(e.target.checked)}
-                    className="h-4 w-4 rounded accent-indigo-600"
-                  />
-                  <span>✓ ปรับลดสต็อกสินค้าในคลังคืนอัตโนมัติ (หักจำนวนที่เคยรับเข้าออกจากคลัง)</span>
-                </label>
+            {(targetStatusChangePo?.status === 'COMPLETED' || targetStatusChangePo?.status === 'PARTIALLY_RECEIVED') && (
+              <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-xs text-amber-900 flex gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>ใบสั่งซื้อนี้รับสินค้าเข้าคลังแล้ว จึงย้อนสถานะไม่ได้ หากต้องคืนสินค้าให้บริษัท ให้ทำเอกสารที่เมนู “ส่งเคลม &amp; ใบลดหนี้บริษัท”</span>
               </div>
             )}
 

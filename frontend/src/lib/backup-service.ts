@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api';
+import { apiFetch, getApiBaseUrl, getAuthToken } from '@/lib/api';
 
 export interface BackupFile {
   fileName: string;
@@ -22,6 +22,10 @@ export interface BackupStatus {
   lastError: string | null;
   lastVerify: BackupVerifyResult | null;
   nextRunAt: string | null;
+  offsiteDir?: string | null;
+  lastOffsiteAt?: string | null;
+  lastOffsiteOk?: boolean | null;
+  lastOffsiteError?: string | null;
 }
 
 export interface CreateBackupResult {
@@ -65,6 +69,25 @@ export const backupService = {
     } catch {
       return null;
     }
+  },
+
+  /** Set the folder (another disk / USB / cloud-synced folder) that receives a copy of every backup. */
+  async setOffsiteDir(offsiteDir: string): Promise<{ success: boolean; offsiteDir: string | null }> {
+    return apiFetch('/server-control/backup-settings', { method: 'PUT', body: JSON.stringify({ offsiteDir }) });
+  },
+
+  /** Download a backup file to this computer. */
+  async download(fileName: string): Promise<void> {
+    const res = await fetch(`${getApiBaseUrl()}/server-control/backups/${encodeURIComponent(fileName)}/download`, {
+      headers: { Authorization: `Bearer ${getAuthToken() || ''}` },
+    });
+    if (!res.ok) throw new Error(`ดาวน์โหลดไม่สำเร็จ (HTTP ${res.status})`);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fileName;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   },
 
   /** Optional endpoint (needs a controller route); returns null when unavailable. */

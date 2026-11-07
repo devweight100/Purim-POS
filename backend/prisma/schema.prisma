@@ -93,6 +93,18 @@ enum CashMovementType {
   OUT
 }
 
+enum MoneyAccountType {
+  CASH_DRAWER   // cash drawer of one POS terminal
+  CASH_SAFE     // store / office cash (where drawers are emptied at shift close)
+  BANK          // bank account (linked to BankAccount used for QR / transfer)
+  CARD_CLEARING // card sales waiting for the card company to pay out
+}
+
+enum MoneyDirection {
+  IN
+  OUT
+}
+
 // ──────────────────────────────────────────────
 // 1. USERS & ACCESS CONTROL (ADMIN PANEL READY)
 // ──────────────────────────────────────────────
@@ -106,6 +118,7 @@ model User {
   pinCode     String?   @map("pin_code")     // 4-6 digit hashed PIN for fast cashier shift unlock
   permissions Json?                          // Granular permission keys: ["POS_SELL", "POS_DISCOUNT", "POS_VOID", "VIEW_REPORTS", etc.]
   isActive    Boolean   @default(true) @map("is_active")
+  mustChangePassword Boolean @default(false) @map("must_change_password") // forced after login with a default/temporary credential
   lastLoginAt DateTime? @map("last_login_at")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
@@ -157,6 +170,7 @@ model CashMovement {
   shiftId   String           @map("shift_id")
   type      CashMovementType
   amount    Decimal          @db.Decimal(12, 2)
+  category  String           @default("GENERAL") // GENERAL | REFUND | DEBT_PAYMENT
   reason    String
   createdAt DateTime         @default(now()) @map("created_at")
 
@@ -626,6 +640,9 @@ model DebtPayment {
   cashierName   String        @map("cashier_name")
   receiptNo     String?       @map("receipt_no")
   note          String?
+  cancelledAt   DateTime?     @map("cancelled_at")
+  cancelReason  String?       @map("cancel_reason")
+  cancelledBy   String?       @map("cancelled_by")
   createdAt     DateTime      @default(now()) @map("created_at")
 
   debt          CustomerDebt  @relation(fields: [debtId], references: [id], onDelete: Cascade)
@@ -651,6 +668,10 @@ model Order {
   discountAmount Decimal       @default(0) @map("discount_amount") @db.Decimal(12, 2)
   totalAmount    Decimal       @map("total_amount") @db.Decimal(12, 2)
   totalCogs      Decimal       @default(0) @map("total_cogs") @db.Decimal(12, 2)
+  vatRate        Decimal       @default(0) @map("vat_rate") @db.Decimal(5, 2)    // % used for this bill (0 = no VAT)
+  vatAmount      Decimal       @default(0) @map("vat_amount") @db.Decimal(12, 2) // VAT included in totalAmount
+  returnedAmount Decimal       @default(0) @map("returned_amount") @db.Decimal(12, 2) // refunded through partial returns
+  approvalId     String?       @map("approval_id") // manager approval used for discounts / below-cost prices
   pointsUsed     Int           @default(0) @map("points_used")
   pointsEarned   Int           @default(0) @map("points_earned")
   note           String?
@@ -665,6 +686,7 @@ model Order {
   payments       Payment[]
   debt           CustomerDebt?
   claims         CustomerClaim[]
+  returns        OrderReturn[]
 
   @@index([createdAt, status])
   @@index([userId])
@@ -700,6 +722,7 @@ model Payment {
   method      PaymentMethod
   amount      Decimal       @db.Decimal(12, 2)
   referenceNo String?       @map("reference_no")
+  bankAccountId String?     @map("bank_account_id") // bank that received a QR / transfer payment
   createdAt   DateTime      @default(now()) @map("created_at")
 
   order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
@@ -800,6 +823,7 @@ model BankAccount {
   isDefault     Boolean  @default(false) @map("is_default")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
+  moneyAccount  MoneyAccount?
 
   @@map("bank_accounts")
 }
@@ -818,6 +842,8 @@ model StoreSettings {
   taxId         String?  @map("tax_id")
   receiptHeader String?  @map("receipt_header")
   receiptFooter String?  @map("receipt_footer")
+  backupOffsiteDir String? @map("backup_offsite_dir") // folder on another disk / synced cloud folder for backup copies
+  approvalRules    Json?   @map("approval_rules") // { maxDiscountPercent: {CASHIER: 10, ...}, belowCostNeedsApproval, belowPriceFloorNeedsApproval }
   vatRate       Decimal  @default(7) @map("vat_rate") @db.Decimal(5, 2)
   pointsPerBaht Decimal  @default(0.01) @map("points_per_baht") @db.Decimal(10, 4)
   pointValue    Decimal  @default(1) @map("point_value") @db.Decimal(10, 2)
@@ -842,4 +868,213 @@ model AuditLog {
   @@index([userId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────
+// FINANCE: money accounts, ledger, expenses
+// ─────────────────────────────────────────────
+
+/// A place where the store's money is kept. Balance = sum of its transactions.
+model MoneyAccount {
+  id            String           @id @default(uuid())
+  name          String
+  type          MoneyAccountType
+  bankAccountId String?          @unique @map("bank_account_id")
+  terminalId    String?          @unique @map("terminal_id")
+  isActive      Boolean          @default(true) @map("is_active")
+  sortOrder     Int              @default(0) @map("sort_order")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  bankAccount     BankAccount?         @relation(fields: [bankAccountId], references: [id], onDelete: SetNull)
+  transactions    MoneyTransaction[]
+  expenses        Expense[]
+  recurring       RecurringExpense[]
+  reconciliations BankReconciliation[]
+
+  @@index([type])
+  @@map("money_accounts")
+}
+
+/// Append-only money ledger. Mistakes are fixed with a reversal row, never by editing.
+model MoneyTransaction {
+  id              String         @id @default(uuid())
+  accountId       String         @map("account_id")
+  direction       MoneyDirection
+  amount          Decimal        @db.Decimal(12, 2) // always > 0
+  // SALE | SALE_REFUND | DEBT_RECEIPT | SUPPLIER_PAYMENT | CLAIM_REFUND | EXPENSE | TRANSFER
+  // | OPENING | ADJUSTMENT | OWNER_CAPITAL | OWNER_DRAW | DRAWER_IN | DRAWER_OUT | SHIFT_OVER_SHORT | REVERSAL
+  type            String
+  categoryId      String?        @map("category_id")
+  refType         String?        @map("ref_type") // ORDER | DEBT_PAYMENT | VOUCHER | EXPENSE | SHIFT | CASH_MOVEMENT | CLAIM
+  refId           String?        @map("ref_id")
+  transferGroupId String?        @map("transfer_group_id")
+  reversalOfId    String?        @unique @map("reversal_of_id")
+  note            String?
+  occurredAt      DateTime       @default(now()) @map("occurred_at")
+  userId          String?        @map("user_id")
+  reconciledAt     DateTime?     @map("reconciled_at") // matched with a bank statement
+  reconciliationId String?       @map("reconciliation_id")
+  createdAt       DateTime       @default(now()) @map("created_at")
+
+  account        MoneyAccount        @relation(fields: [accountId], references: [id])
+  category       ExpenseCategory?    @relation(fields: [categoryId], references: [id])
+  reconciliation BankReconciliation? @relation(fields: [reconciliationId], references: [id])
+
+  @@index([accountId, occurredAt])
+  @@index([refType, refId])
+  @@index([transferGroupId])
+  @@index([type, occurredAt])
+  @@map("money_transactions")
+}
+
+model ExpenseCategory {
+  id           String             @id @default(uuid())
+  name         String             @unique
+  isActive     Boolean            @default(true) @map("is_active")
+  sortOrder    Int                @default(0) @map("sort_order")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  expenses     Expense[]
+  transactions MoneyTransaction[]
+  recurring    RecurringExpense[]
+
+  @@map("expense_categories")
+}
+
+model Expense {
+  id            String    @id @default(uuid())
+  expenseNumber String    @unique @map("expense_number") // EXP-YYMMxxxxx
+  categoryId    String    @map("category_id")
+  accountId     String    @map("account_id")
+  amount        Decimal   @db.Decimal(12, 2)
+  paidAt        DateTime  @default(now()) @map("paid_at")
+  description   String
+  vendor        String?
+  receiptImage  String?   @map("receipt_image") @db.Text
+  status        String    @default("ACTIVE") // ACTIVE | CANCELLED
+  cancelledAt   DateTime? @map("cancelled_at")
+  cancelReason  String?   @map("cancel_reason")
+  userId        String?   @map("user_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  category ExpenseCategory @relation(fields: [categoryId], references: [id])
+  account  MoneyAccount    @relation(fields: [accountId], references: [id])
+
+  @@index([paidAt])
+  @@index([categoryId])
+  @@map("expenses")
+}
+
+/// Expense that repeats (rent, salaries, internet). Paying it creates a normal Expense.
+model RecurringExpense {
+  id          String    @id @default(uuid())
+  name        String
+  categoryId  String    @map("category_id")
+  accountId   String?   @map("account_id") // default account to pay from
+  amount      Decimal   @db.Decimal(12, 2) // expected amount (can differ when paid)
+  frequency   String    // MONTHLY | WEEKLY | YEARLY
+  dayOfMonth  Int?      @map("day_of_month") // 1-31 (MONTHLY / YEARLY)
+  monthOfYear Int?      @map("month_of_year") // 1-12 (YEARLY)
+  dayOfWeek   Int?      @map("day_of_week") // 0=Sun..6 (WEEKLY)
+  nextDueDate DateTime  @map("next_due_date")
+  remindDays  Int       @default(3) @map("remind_days")
+  isActive    Boolean   @default(true) @map("is_active")
+  lastPaidAt  DateTime? @map("last_paid_at")
+  note        String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  category ExpenseCategory @relation(fields: [categoryId], references: [id])
+  account  MoneyAccount?   @relation(fields: [accountId], references: [id])
+
+  @@index([nextDueDate])
+  @@map("recurring_expenses")
+}
+
+/// One bank-statement check: statement balance vs ledger, with the rows that were ticked off.
+model BankReconciliation {
+  id               String   @id @default(uuid())
+  accountId        String   @map("account_id")
+  statementDate    DateTime @map("statement_date")
+  statementBalance Decimal  @map("statement_balance") @db.Decimal(12, 2)
+  ledgerBalance    Decimal  @map("ledger_balance") @db.Decimal(12, 2)
+  difference       Decimal  @db.Decimal(12, 2)
+  note             String?
+  userId           String?  @map("user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  account      MoneyAccount       @relation(fields: [accountId], references: [id])
+  transactions MoneyTransaction[]
+
+  @@index([accountId, statementDate])
+  @@map("bank_reconciliations")
+}
+
+/// Partial return of a completed bill (some items / quantities), with refund and optional restock.
+model OrderReturn {
+  id            String   @id @default(uuid())
+  returnNumber  String   @unique @map("return_number") // RET-YYMMxxxxx
+  orderId       String   @map("order_id")
+  shiftId       String?  @map("shift_id")
+  userId        String?  @map("user_id")
+  refundMethod  String   @map("refund_method") // CASH | TRANSFER | DEBT_REDUCTION
+  bankAccountId String?  @map("bank_account_id")
+  refundAmount  Decimal  @map("refund_amount") @db.Decimal(12, 2)
+  vatAmount     Decimal  @default(0) @map("vat_amount") @db.Decimal(12, 2)
+  cogsReturned  Decimal  @default(0) @map("cogs_returned") @db.Decimal(12, 2) // cost of goods put back in stock
+  reason        String
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  order Order             @relation(fields: [orderId], references: [id])
+  items OrderReturnItem[]
+
+  @@index([orderId])
+  @@index([createdAt])
+  @@map("order_returns")
+}
+
+model OrderReturnItem {
+  id           String  @id @default(uuid())
+  returnId     String  @map("return_id")
+  orderItemId  String  @map("order_item_id")
+  productId    String  @map("product_id")
+  quantity     Int // in the unit it was sold
+  baseQuantity Int     @map("base_quantity")
+  refundAmount Decimal @map("refund_amount") @db.Decimal(12, 2)
+  unitCost     Decimal @map("unit_cost") @db.Decimal(10, 2) // per base unit
+  restock      Boolean @default(true)
+
+  orderReturn OrderReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
+
+  @@index([returnId])
+  @@index([orderItemId])
+  @@map("order_return_items")
+}
+
+/// Manager approval for an action beyond the requester's rights (discount, below-cost price, ...).
+/// channel PIN = approved on the spot with the approver's PIN; REMOTE = request waits for an approver
+/// on another device (status PENDING until decided).
+model ApprovalRequest {
+  id            String    @id @default(uuid())
+  type          String // SALE (more types later: VOID, RETURN, DRAWER_OUT ...)
+  status        String    @default("PENDING") // PENDING | APPROVED | REJECTED | USED | EXPIRED
+  channel       String // PIN | REMOTE
+  requestedById String    @map("requested_by_id")
+  approvedById  String?   @map("approved_by_id")
+  terminalId    String?   @map("terminal_id")
+  contextHash   String    @map("context_hash") // binds the approval to one exact bill
+  amount        Decimal   @default(0) @db.Decimal(12, 2)
+  reasons       Json // [{ code, message }]
+  summary       Json? // what the approver saw (items, totals)
+  decisionNote  String?   @map("decision_note")
+  expiresAt     DateTime  @map("expires_at")
+  decidedAt     DateTime? @map("decided_at")
+  usedAt        DateTime? @map("used_at")
+  usedRef       String?   @map("used_ref") // order id that consumed it
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([status, createdAt])
+  @@index([requestedById])
+  @@map("approval_requests")
 }

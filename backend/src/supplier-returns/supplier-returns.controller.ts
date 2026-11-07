@@ -1,8 +1,11 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { SupplierReturnsService } from './supplier-returns.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { RequirePermissions } from '../auth/roles.decorator';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@RequirePermissions('MANAGE_CLAIMS', 'MANAGE_PURCHASES')
 @Controller('supplier-returns')
 export class SupplierReturnsController {
   constructor(private readonly returnsService: SupplierReturnsService) {}

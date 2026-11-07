@@ -8,7 +8,8 @@ import {
   Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, 
   FolderTree, Building2, Receipt, ShieldAlert, ArrowLeftRight, HandCoins,
   ChevronDown, History, PackageX, TrendingUp, Sparkles, Coins, Boxes, UserCog,
-  ScanLine, Radio
+  ScanLine, Radio,
+  Wallet, ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/lib/store/auth-store';
@@ -92,6 +93,8 @@ const navGroups: NavGroup[] = [
     title: 'การเงิน & การตั้งค่า',
     icon: Settings,
     items: [
+      { href: '/finance', label: 'การเงิน: เงินสด / บัญชี / ค่าใช้จ่าย', icon: Wallet },
+      { href: '/approvals', label: 'การอนุมัติ (ส่วนลด / ต่ำกว่าทุน)', icon: ShieldCheck },
       { href: '/accounts', label: 'บัญชีธนาคาร & QR Code', icon: Building2 },
       { href: '/users', label: 'จัดการพนักงาน & สิทธิ์ (Admin)', icon: UserCog },
       { href: '/settings', label: 'ตั้งค่าร้านค้า & ระบบ', icon: Settings },

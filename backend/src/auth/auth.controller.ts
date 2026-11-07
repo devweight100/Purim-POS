@@ -45,6 +45,18 @@ export class AuthController {
     return this.authService.getProfile(req.user.id);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  changePassword(@Request() req: any, @Body() body: { currentPassword?: string; newPassword?: string; newPin?: string }) {
+    return this.authService.changeOwnCredentials(req.user.id, body);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('default-pin')
+  async defaultPin(@Request() req: any) {
+    return { hasDefaultPin: await this.authService.hasDefaultPin(req.user.id) };
+  }
+
   // Admin User Management Endpoints
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'MANAGER')

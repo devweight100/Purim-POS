@@ -47,107 +47,17 @@ export function loadAllDebtRecords(): DebtRecord[] {
     }
   } catch {}
 
-  const customers = loadCustomers();
-  const customerMap = new Map<string, Customer>();
-  customers.forEach((c) => customerMap.set(c.id, c));
-
-  const storedInstallmentsMap = getStoredInstallments();
-
-  // 1. Gather all credit orders from pos_completed_orders (offline fallback only)
-  let completedOrders: Order[] = [];
-  try {
-    const rawOrders = localStorage.getItem('pos_completed_orders');
-    if (rawOrders) completedOrders = JSON.parse(rawOrders);
-  } catch {}
-
-  const creditOrdersFromPOS: DebtRecord[] = [];
-
-  completedOrders.forEach((order) => {
-    if (order.status === 'VOIDED' || order.status === 'REFUNDED') return;
-
-    let creditAmount = 0;
-    let nonCreditPaid = 0;
-
-    if (Array.isArray(order.payments) && order.payments.length > 0) {
-      order.payments.forEach((p) => {
-        if (
-          p.method === ('CREDIT_NOTE' as any) ||
-          p.method === ('CREDIT_DEBT' as any) ||
-          p.method === ('CREDIT' as any)
-        ) {
-          creditAmount += p.amount;
-        } else {
-          nonCreditPaid += p.amount;
-        }
-      });
-    } else {
-      const pm = (order as any).paymentMethod || '';
-      if (pm.includes('เชื่อ') || pm.includes('เครดิต') || pm === 'CREDIT') {
-        creditAmount = order.totalAmount;
-      }
-    }
-
-    if (creditAmount > 0) {
-      const cust = order.customerId ? customerMap.get(order.customerId) : null;
-      const initialPaid = nonCreditPaid;
-      const totalAmount = order.totalAmount;
-
-      const termsDays = cust?.creditTerms || 30;
-      const createdTime = new Date(order.createdAt).getTime();
-      const dueTime = new Date(createdTime + termsDays * 24 * 60 * 60 * 1000).toISOString();
-
-      const installments =
-        storedInstallmentsMap[order.id] || storedInstallmentsMap[order.orderNumber] || [];
-      const installmentPaidTotal = installments.reduce((sum, inst) => sum + inst.amountPaid, 0);
-
-      const totalPaid = Math.min(totalAmount, initialPaid + installmentPaidTotal);
-      const remaining = Math.max(0, totalAmount - totalPaid);
-      const progressPercent =
-        totalAmount > 0 ? Math.min(100, Math.round((totalPaid / totalAmount) * 100)) : 100;
-
-      const status: DebtStatus =
-        remaining <= 0 ? 'PAID' : totalPaid > 0 ? 'PARTIAL' : 'UNPAID';
-      const lastPayment =
-        installments.length > 0
-          ? installments[installments.length - 1].paymentDate
-          : order.createdAt;
-
-      creditOrdersFromPOS.push({
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        orderDate: order.createdAt,
-        dueDate: dueTime,
-        customerId: cust?.id || order.customerId || 'unknown',
-        customerCode: cust?.code || 'CUST-TEMP',
-        customerName: cust?.name || order.customerName || 'ลูกค้าทั่วไป',
-        customerPhone: cust?.phone || '',
-        customerType: cust?.type || 'INDIVIDUAL',
-        companyName: cust?.companyName || (cust?.type === 'COMPANY' ? cust.name : ''),
-        taxId: cust?.taxId || '',
-        taxAddress: cust?.taxAddress || cust?.address || '',
-        totalAmount,
-        paidAmount: totalPaid,
-        remainingDebt: remaining,
-        progressPercent,
-        status,
-        installments,
-        lastPaymentDate: lastPayment,
-      });
-    }
-  });
-
-  creditOrdersFromPOS.sort(
-    (a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime(),
-  );
-
-  return creditOrdersFromPOS;
+  // Debts exist only in the database. Never derive "debts" from bills cached in this browser
+  // (they could be voided / unsynced and would show phantom balances).
+  return [];
 }
 
 function mapDebt(row: any): DebtRecord {
   const totalAmount = Number(row.totalDebt);
   const paidAmount = Number(row.paidAmount);
   let previousPaid = 0;
-  const installments: DebtPaymentInstallment[] = [...(row.payments || [])]
+  // cancelled receipts no longer count as paid
+  const installments: DebtPaymentInstallment[] = [...(row.payments || [])].filter((p: any) => !p.cancelledAt)
     .sort((a, b) => new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime())
     .map((payment, index) => {
       const amountPaid = Number(payment.amount);
@@ -217,7 +127,7 @@ export async function recordDebtPayment(
   orderId: string,
   amount: number,
   paymentMethod: PaymentMethodType,
-  options?: { accountLabel?: string; referenceNo?: string; note?: string; cashierName?: string },
+  options?: { accountLabel?: string; bankAccountId?: string; referenceNo?: string; note?: string; cashierName?: string },
 ): Promise<{
   success: boolean;
   debtRecord?: DebtRecord;
@@ -237,6 +147,7 @@ export async function recordDebtPayment(
     shiftId,
   };
   const fingerprint = JSON.stringify(body);
+  const bankAccountId = paymentMethod === 'CASH' ? undefined : options?.bankAccountId;
   const key = 'purim-debt-payment-attempt:' + ownerId + ':' + orderId;
   const existing = localStorage.getItem(key);
   const attempt = existing
@@ -252,7 +163,7 @@ export async function recordDebtPayment(
   try {
     response = await apiFetch('/debts/' + orderId + '/pay', {
       method: 'POST',
-      body: JSON.stringify({ ...body, clientPaymentId: attempt.clientPaymentId }),
+      body: JSON.stringify({ ...body, bankAccountId, clientPaymentId: attempt.clientPaymentId }),
     });
   } catch (error) {
     if (!isRetryableError(error)) localStorage.removeItem(key);
@@ -340,4 +251,11 @@ export function getDebtRecordByOrderId(orderId: string): DebtRecord | null {
   if (!orderId) return null;
   const all = loadAllDebtRecords();
   return all.find((d) => d.orderId === orderId || d.orderNumber === orderId) || null;
+}
+
+/** Cancel a debt receipt recorded by mistake (ADMIN / MANAGER). The debt goes back up. */
+export async function cancelDebtPayment(paymentId: string, reason: string) {
+  const res = await apiFetch(`/debts/payments/${encodeURIComponent(paymentId)}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) });
+  try { await fetchDebtRecords(); } catch {}
+  return res;
 }

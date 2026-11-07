@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { OrdersService } from './orders.service';
+import { ReturnsService } from './returns.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
@@ -7,7 +8,21 @@ import { Roles, RequirePermissions } from '../auth/roles.decorator';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(private readonly ordersService: OrdersService, private readonly returnsService: ReturnsService) {}
+
+  /** Partial return: some items / quantities of a completed bill. Same permission as voiding. */
+  @Roles('MANAGER')
+  @RequirePermissions('POS_VOID')
+  @Post(':id/returns')
+  createReturn(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+    return this.returnsService.createReturn(id, body, req.user);
+  }
+
+  @RequirePermissions('POS_SELL', 'VIEW_REPORTS')
+  @Get(':id/returns')
+  listReturns(@Param('id') id: string) {
+    return this.returnsService.listForOrder(id);
+  }
 
   @RequirePermissions('POS_SELL')
   @Post('checkout')

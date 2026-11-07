@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, UseGuards, Request } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -24,15 +24,17 @@ export class InventoryController {
     }));
   }
 
+  // Adds stock through the audited adjustment path (STOCK_ADJUST_ADD log entry).
+  @RequirePermissions('MANAGE_INVENTORY')
   @Post('stock-batch')
-  addStockBatch(@Body() data: any) {
-    return this.inventoryService.addStockBatch(data);
+  addStockBatch(@Body() data: any, @Request() req: any) {
+    return this.inventoryService.addStockBatch(data, req.user);
   }
 
   @RequirePermissions('MANAGE_INVENTORY')
   @Post('adjust')
-  adjustStock(@Body() data: any) {
-    return this.inventoryService.adjustStock(data);
+  adjustStock(@Body() data: any, @Request() req: any) {
+    return this.inventoryService.adjustStock({ ...data, userId: req.user?.id, userName: data.userName || req.user?.fullName || req.user?.username });
   }
 
   @RequirePermissions('MANAGE_INVENTORY', 'VIEW_REPORTS')

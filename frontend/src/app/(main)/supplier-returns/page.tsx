@@ -111,12 +111,12 @@ export default function SupplierReturnsPage() {
   };
 
   // Cancel return note
-  const handleCancelNote = (note: SupplierReturnNote) => {
+  const handleCancelNote = async (note: SupplierReturnNote) => {
     if (!confirm(`คุณต้องการยกเลิกเอกสารส่งคืน ${note.id} หรือไม่?\n(ระบบจะคืนสต็อกสินค้าปกติและคืนสถานะรายการเคลมให้)`)) {
       return;
     }
 
-    const res = cancelSupplierReturnNote(note.id);
+    const res = await cancelSupplierReturnNote(note.id);
     if (res.success) {
       toast.success(res.message);
       refreshData();
@@ -126,12 +126,12 @@ export default function SupplierReturnsPage() {
   };
 
   // Restore return note from trash
-  const handleRestoreNote = (note: SupplierReturnNote) => {
+  const handleRestoreNote = async (note: SupplierReturnNote) => {
     if (!confirm(`คุณต้องการกู้คืนเอกสารส่งคืน ${note.id} ออกจากถังขยะหรือไม่?`)) {
       return;
     }
 
-    const res = restoreSupplierReturnNote(note.id);
+    const res = await restoreSupplierReturnNote(note.id);
     if (res.success) {
       toast.success(res.message);
       refreshData();

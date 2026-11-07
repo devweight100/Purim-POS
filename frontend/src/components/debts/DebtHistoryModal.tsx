@@ -21,6 +21,7 @@ interface DebtHistoryModalProps {
   onSelectInstallment?: (inst: DebtPaymentInstallment) => void; // 80mm slip
   onSelectInstallmentA4?: (inst: DebtPaymentInstallment) => void; // A4 receipt
   onPrintFullA4?: () => void; // Full settled A4 receipt
+  onCancelInstallment?: (inst: DebtPaymentInstallment) => void; // cancel a receipt recorded by mistake
 }
 
 export function DebtHistoryModal({
@@ -30,6 +31,7 @@ export function DebtHistoryModal({
   onSelectInstallment,
   onSelectInstallmentA4,
   onPrintFullA4,
+  onCancelInstallment,
 }: DebtHistoryModalProps) {
   if (!debtRecord) return null;
 
@@ -179,6 +181,18 @@ export function DebtHistoryModal({
                       >
                         <FileText className="w-3.5 h-3.5" />
                         <span>พิมพ์ A4</span>
+                      </Button>
+                    )}
+
+                    {onCancelInstallment && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onCancelInstallment(inst)}
+                        className="h-8 px-2 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 rounded-xl font-semibold"
+                        title="ยกเลิกใบรับชำระนี้ (บันทึกผิด) ยอดหนี้จะกลับมาค้างชำระ"
+                      >
+                        ยกเลิก
                       </Button>
                     )}
 

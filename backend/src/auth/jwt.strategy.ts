@@ -29,6 +29,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         role: true,
         permissions: true,
         isActive: true,
+        mustChangePassword: true,
       };
 
       let user = payload.sub
@@ -61,6 +62,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         role: user.role,
         permissions: user.permissions,
         isActive: user.isActive,
+        mustChangePassword: user.mustChangePassword,
       };
     } catch (err) {
       if (err instanceof UnauthorizedException) {
