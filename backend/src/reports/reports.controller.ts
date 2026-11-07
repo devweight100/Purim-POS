@@ -10,9 +10,14 @@ import { ReportsService } from './reports.service';
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
+  /** ?range=today|7days|30days|month|all (default today) or startDate/endDate (YYYY-MM-DD = Bangkok day) */
   @Get('dashboard')
-  async getDashboard() {
-    return this.reportsService.getDashboard();
+  async getDashboard(
+    @Query('range') range?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.reportsService.getDashboard({ range, startDate, endDate });
   }
 
   @Get('sales-summary')
