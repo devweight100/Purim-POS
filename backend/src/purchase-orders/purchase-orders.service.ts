@@ -1,9 +1,25 @@
 import { businessTransaction } from '../prisma/business-transaction';
 import { calculatePurchaseBill, stockCostPerUnit } from './po-calc';
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { clampInt, rethrowPrismaError } from '../products/prisma-errors';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { POStatus, PaymentStatus } from '@prisma/client';
+
+/** Sanity limits (PO unit cost column is Decimal(10,2), totals Decimal(12,2), quantities Int). */
+const MAX_PO_UNIT_COST = 10_000_000;
+const MAX_PO_QTY = 1_000_000;
+const MAX_PO_TOTAL = 9_999_999_999;
+const EDITABLE_PO_STATUSES: POStatus[] = [POStatus.DRAFT, POStatus.ISSUED, POStatus.ORDERED, POStatus.PARTIALLY_RECEIVED];
+
+function parseOptionalDate(value: unknown, label: string): Date | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  const d = new Date(value as any);
+  if (typeof value !== 'string' && !(value instanceof Date)) throw new BadRequestException(`${label}ไม่ถูกต้อง`);
+  if (Number.isNaN(d.getTime()) || d.getFullYear() < 2000 || d.getFullYear() > 2200) throw new BadRequestException(`${label}ไม่ถูกต้อง`);
+  return d;
+}
 
 @Injectable()
 export class PurchaseOrdersService {
@@ -13,12 +29,18 @@ export class PurchaseOrdersService {
   ) {}
 
   async findAll(query?: any) {
-    const page = query?.page ? parseInt(query.page, 10) : 1;
-    const limit = query?.limit ? parseInt(query.limit, 10) : 50;
+    const page = clampInt(query?.page, 1, 1, 1_000_000);
+    const limit = clampInt(query?.limit, 50, 1, 500);
     const skip = (page - 1) * limit;
 
     const where: any = {};
-    if (query?.status && query.status !== 'ALL') where.status = query.status as POStatus;
+    if (query?.status && query.status !== 'ALL') {
+      const status = String(query.status).toUpperCase();
+      if (!(Object.values(POStatus) as string[]).includes(status)) throw new BadRequestException('สถานะใบสั่งซื้อที่ค้นหาไม่ถูกต้อง');
+      where.status = status as POStatus;
+    }
+    if (query?.search !== undefined && typeof query.search !== 'string') throw new BadRequestException('คำค้นหาไม่ถูกต้อง');
+    if (query?.supplierId !== undefined && typeof query.supplierId !== 'string') throw new BadRequestException('ผู้จำหน่ายที่ค้นหาไม่ถูกต้อง');
     if (query?.supplierId && query.supplierId !== 'ALL') where.supplierId = query.supplierId;
     if (query?.search && query.search.trim()) {
       where.OR = [
@@ -71,6 +93,16 @@ export class PurchaseOrdersService {
     return businessTransaction(this.prisma, async (tx) => {
     this.validateItems(data.items);
     if (data.status && ![POStatus.DRAFT, POStatus.ISSUED, POStatus.ORDERED].includes(data.status)) throw new BadRequestException('สถานะเริ่มต้นไม่ถูกต้อง');
+    await this.assertSupplier(tx, data.supplierId);
+    await this.assertProducts(tx, data.items);
+    const billDate = parseOptionalDate(data.billDate, 'วันที่บิล');
+    const dueDate = parseOptionalDate(data.dueDate, 'วันครบกำหนดชำระ');
+    if (data.poNumber !== undefined && data.poNumber !== null && data.poNumber !== '') {
+      if (typeof data.poNumber !== 'string' || !data.poNumber.trim() || data.poNumber.trim().length > 50) throw new BadRequestException('เลขที่ใบสั่งซื้อไม่ถูกต้อง');
+      data.poNumber = data.poNumber.trim();
+      const dup = await tx.purchaseOrder.findUnique({ where: { poNumber: data.poNumber }, select: { id: true } });
+      if (dup) throw new ConflictException(`เลขที่ใบสั่งซื้อ "${data.poNumber}" ถูกใช้แล้ว`);
+    }
     const now = new Date();
     const yy = now.getFullYear().toString().slice(-2);
     const mm = (now.getMonth() + 1).toString().padStart(2, '0');
@@ -87,8 +119,8 @@ export class PurchaseOrdersService {
         poNumber,
         supplierId: data.supplierId,
         supplierInvoiceNo: data.supplierInvoiceNo || null,
-        billDate: data.billDate ? new Date(data.billDate) : new Date(),
-        dueDate: data.dueDate ? new Date(data.dueDate) : null,
+        billDate: billDate || new Date(),
+        dueDate: dueDate || null,
         status: data.status || POStatus.DRAFT,
         paymentStatus: PaymentStatus.UNPAID,
         ...bill.header,
@@ -99,7 +131,21 @@ export class PurchaseOrdersService {
       },
       include: { items: { include: { product: true } }, supplier: true },
     });
-    });
+    }).catch((err) => rethrowPrismaError(err, { conflict: 'เลขที่ใบสั่งซื้อซ้ำ กรุณาลองใหม่', badRef: 'ผู้จำหน่ายหรือสินค้าที่อ้างอิงไม่ถูกต้อง' }));
+  }
+
+  private async assertSupplier(tx: any, supplierId: unknown) {
+    if (typeof supplierId !== 'string' || !supplierId.trim()) throw new BadRequestException('กรุณาเลือกผู้จำหน่าย');
+    const supplier = await tx.supplier.findUnique({ where: { id: supplierId }, select: { id: true } });
+    if (!supplier) throw new BadRequestException('ไม่พบผู้จำหน่ายที่เลือก');
+  }
+
+  private async assertProducts(tx: any, items: any[]) {
+    const ids = Array.from(new Set(items.map((i) => String(i.productId))));
+    const found = await tx.product.findMany({ where: { id: { in: ids } }, select: { id: true } });
+    const ok = new Set(found.map((p: any) => p.id));
+    const missing = ids.filter((id) => !ok.has(id));
+    if (missing.length) throw new BadRequestException(`ไม่พบสินค้าในรายการสั่งซื้อ: ${missing.join(', ')}`);
   }
 
   async update(id: string, data: any) {
@@ -107,12 +153,27 @@ export class PurchaseOrdersService {
     const po = await tx.purchaseOrder.findUnique({ where: { id }, include: { items: true } });
     if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อนี้');
 
+    if (!data || typeof data !== 'object') throw new BadRequestException('ข้อมูลไม่ถูกต้อง');
     if (Object.keys(data).some(key => !['items', 'supplierId', 'supplierInvoiceNo', 'billDate', 'dueDate', 'notes', 'billDiscountType', 'billDiscountValue'].includes(key))) throw new BadRequestException('ไม่สามารถแก้สถานะหรือยอดชำระผ่านการแก้ไขใบสั่งซื้อ');
+    if (!EDITABLE_PO_STATUSES.includes(po.status)) throw new BadRequestException('ไม่สามารถแก้ไขใบสั่งซื้อที่ยกเลิกหรือเสร็จสิ้นแล้ว');
+    if (data.supplierId !== undefined) {
+      await this.assertSupplier(tx, data.supplierId);
+      if (data.supplierId !== po.supplierId && (po.items.some((i) => i.receivedQty > 0) || Number(po.paidAmount) > 0)) throw new BadRequestException('ไม่สามารถเปลี่ยนผู้จำหน่ายของใบสั่งซื้อที่รับสินค้าหรือชำระเงินแล้ว');
+    }
+    if (data.billDate !== undefined) {
+      const d = parseOptionalDate(data.billDate, 'วันที่บิล');
+      if (!d) throw new BadRequestException('วันที่บิลไม่ถูกต้อง');
+      data.billDate = d;
+    }
+    if (data.dueDate !== undefined) data.dueDate = parseOptionalDate(data.dueDate, 'วันครบกำหนดชำระ');
+    if (data.notes !== undefined && data.notes !== null && typeof data.notes !== 'string') throw new BadRequestException('หมายเหตุไม่ถูกต้อง');
+    if (data.supplierInvoiceNo !== undefined && data.supplierInvoiceNo !== null && typeof data.supplierInvoiceNo !== 'string') throw new BadRequestException('เลขที่ใบแจ้งหนี้ไม่ถูกต้อง');
     const repricing = data.items || data.billDiscountType !== undefined || data.billDiscountValue !== undefined;
     if (data.items) this.validateItems(data.items);
     if (po.status !== POStatus.DRAFT && repricing) {
       throw new BadRequestException('ไม่สามารถแก้ไขรายการ ส่วนลด หรือ VAT ของ PO ที่ไม่อยู่ในสถานะ DRAFT');
     }
+    if (data.items) await this.assertProducts(tx, data.items);
 
     if (repricing) {
       const lines = data.items || po.items.map((i) => ({ productId: i.productId, quantity: i.quantity, unitCost: Number(i.unitCost), discountType: i.discountType, discountValue: Number(i.discountValue), vatType: i.vatType, vatRate: Number(i.vatRate) }));
@@ -138,7 +199,7 @@ export class PurchaseOrdersService {
       data,
       include: { items: { include: { product: true } }, supplier: true },
     });
-    });
+    }).catch((err) => rethrowPrismaError(err, { notFound: 'ไม่พบใบสั่งซื้อนี้', badRef: 'ผู้จำหน่ายหรือสินค้าที่อ้างอิงไม่ถูกต้อง' }));
   }
 
   async issue(id: string) {
@@ -182,6 +243,11 @@ export class PurchaseOrdersService {
       throw new BadRequestException('รายการสินค้า จำนวน หรือต้นทุนไม่ถูกต้อง');
     }
     for (const item of items) {
+      if (typeof item.productId !== 'string') throw new BadRequestException('รายการสินค้าไม่ถูกต้อง');
+      if (Number(item.quantity) > MAX_PO_QTY) throw new BadRequestException(`จำนวนสั่งซื้อต้องไม่เกิน ${MAX_PO_QTY.toLocaleString('en-US')}`);
+      if (Number(item.unitCost) > MAX_PO_UNIT_COST) throw new BadRequestException(`ต้นทุนต่อหน่วยต้องไม่เกิน ${MAX_PO_UNIT_COST.toLocaleString('en-US')} บาท`);
+      if (item.discountType !== undefined && item.discountType !== null && !['baht', 'percent'].includes(String(item.discountType))) throw new BadRequestException('ประเภทส่วนลดรายการไม่ถูกต้อง');
+      if (item.discountType === 'percent' && Number(item.discountValue) > 100) throw new BadRequestException('ส่วนลดรายการต้องไม่เกิน 100%');
       if (item.vatType !== undefined && !['NONE', 'INCLUDED', 'EXCLUDED', 'none', 'include', 'exclude'].includes(String(item.vatType))) throw new BadRequestException('ประเภท VAT ของรายการไม่ถูกต้อง');
       if (item.vatRate !== undefined && (!Number.isFinite(Number(item.vatRate)) || Number(item.vatRate) < 0 || Number(item.vatRate) > 30)) throw new BadRequestException('อัตรา VAT ต้องอยู่ระหว่าง 0-30%');
       if (item.discountValue !== undefined && (!Number.isFinite(Number(item.discountValue)) || Number(item.discountValue) < 0)) throw new BadRequestException('ส่วนลดรายการไม่ถูกต้อง');
@@ -189,12 +255,19 @@ export class PurchaseOrdersService {
   }
 
   /** Server-side pricing of a purchase bill: discounts, VAT per line, totals. */
-  private priceBill(items: any[], billDiscountType?: unknown, billDiscountValue?: unknown) {
+  private priceBill(items: any[], billDiscountType?: unknown, billDiscountValue?: unknown, strict = true) {
     const totals = calculatePurchaseBill(
       (items || []).map((i: any) => ({ quantity: Number(i.quantity), unitCost: Number(i.unitCost), discountType: i.discountType, discountValue: i.discountValue, vatType: i.vatType, vatRate: i.vatRate })),
       { type: billDiscountType as string, value: billDiscountValue as number },
     );
-    if (billDiscountValue !== undefined && (!Number.isFinite(Number(billDiscountValue)) || Number(billDiscountValue) < 0)) throw new BadRequestException('ส่วนลดท้ายบิลไม่ถูกต้อง');
+    if (billDiscountValue !== undefined && billDiscountValue !== null && (!Number.isFinite(Number(billDiscountValue)) || Number(billDiscountValue) < 0)) throw new BadRequestException('ส่วนลดท้ายบิลไม่ถูกต้อง');
+    if (billDiscountType !== undefined && billDiscountType !== null && !['baht', 'percent'].includes(String(billDiscountType))) throw new BadRequestException('ประเภทส่วนลดท้ายบิลไม่ถูกต้อง');
+    const bdValue = Number(billDiscountValue) || 0;
+    const afterLineDiscounts = Math.round((totals.baseAmount - totals.lineDiscountAmount) * 100) / 100;
+    if (strict && (billDiscountType === 'percent' ? bdValue > 100 : bdValue > afterLineDiscounts + 0.001)) {
+      throw new BadRequestException(`ส่วนลดท้ายบิลมากกว่ายอดรวม (${afterLineDiscounts.toLocaleString('en-US', { minimumFractionDigits: 2 })} บาท)`);
+    }
+    if (totals.totalAmount > MAX_PO_TOTAL) throw new BadRequestException('ยอดรวมใบสั่งซื้อสูงเกินกว่าที่ระบบรองรับ');
     const items2 = (items || []).map((item: any, idx: number) => {
       const l = totals.lines[idx];
       return {
@@ -287,6 +360,7 @@ export class PurchaseOrdersService {
           items.map((i) => ({ productId: i.productId, quantity: i.receivedQty, unitCost: Number(i.unitCost), discountType: i.discountType, discountValue: Number(i.discountValue), vatType: i.vatType, vatRate: Number(i.vatRate) })),
           po.billDiscountType,
           Number(po.billDiscountValue),
+          false, // re-pricing what was delivered: the bill discount is capped, never rejected
         );
         for (let k = 0; k < items.length; k++) {
           const { productId, ...line } = bill.items[k];

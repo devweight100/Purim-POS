@@ -2,6 +2,9 @@ import { businessTransaction } from '../prisma/business-transaction';
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
+/** Largest quantity accepted by a manual stock adjustment (stock columns are 32-bit ints). */
+export const MAX_ADJUST_QTY = 10_000_000;
+
 @Injectable()
 export class InventoryService {
   constructor(private prisma: PrismaService) {}
@@ -151,29 +154,53 @@ export class InventoryService {
     });
 
     if (!product) {
-      throw new NotFoundException(`Product with ID/SKU "${dto.productId}" not found`);
+      throw new NotFoundException(`ไม่พบสินค้า "${dto.productId}"`);
     }
 
     const previousStock = product.stockBatches.reduce((sum, b) => sum + b.quantityRemaining, 0);
-    const rawType = (dto.adjustmentType || dto.type || 'SET').toUpperCase();
-    const normalizedType = (rawType === 'SUBTRACT' || rawType === 'SUB') ? 'SUB' : (rawType === 'ADD' ? 'ADD' : 'SET');
+    const rawType = String(dto.adjustmentType || dto.type || '').trim().toUpperCase();
+    const normalizedType = rawType === 'SUBTRACT' || rawType === 'SUB' ? 'SUB' : rawType === 'ADD' || rawType === 'SET' ? rawType : null;
+    if (!normalizedType) throw new BadRequestException('ประเภทการปรับสต็อกต้องเป็น ADD, SUB หรือ SET');
 
-    const rawAmount = Number(dto.amount ?? dto.deltaQuantity ?? dto.newQuantity ?? 0);
+    const amountInput = dto.amount ?? dto.deltaQuantity ?? dto.newQuantity;
+    if (amountInput === undefined || amountInput === null || String(amountInput).trim() === '') {
+      throw new BadRequestException('กรุณาระบุจำนวน');
+    }
+    const rawAmount = Number(amountInput);
     if (!Number.isFinite(rawAmount) || !Number.isInteger(rawAmount)) throw new BadRequestException('จำนวนต้องเป็นจำนวนเต็ม');
-    const amount = Math.abs(rawAmount);
-    const fallbackCost = dto.unitCost !== undefined ? Number(dto.unitCost) : (Number(product.costPrice) || 0);
-    if (!Number.isFinite(fallbackCost) || fallbackCost < 0) throw new BadRequestException('ต้นทุนต่อหน่วยไม่ถูกต้อง');
+    if (Math.abs(rawAmount) > MAX_ADJUST_QTY) throw new BadRequestException(`จำนวนต้องไม่เกิน ${MAX_ADJUST_QTY.toLocaleString('en-US')}`);
+    if (normalizedType !== 'SET' && rawAmount <= 0) {
+      throw new BadRequestException(normalizedType === 'ADD' ? 'จำนวนปรับเพิ่มต้องมากกว่า 0' : 'จำนวนปรับลดต้องมากกว่า 0');
+    }
+    const amount = rawAmount;
+    const fallbackCost = dto.unitCost !== undefined && dto.unitCost !== null ? Number(dto.unitCost) : (Number(product.costPrice) || 0);
+    if (!Number.isFinite(fallbackCost) || fallbackCost < 0 || fallbackCost > 10_000_000) throw new BadRequestException('ต้นทุนต่อหน่วยไม่ถูกต้อง');
 
     // Positive batches in FIFO order (oldest first)
     const fifo = product.stockBatches
       .filter((b: any) => b.quantityRemaining > 0)
       .sort((x: any, y: any) => new Date(x.receivedAt).getTime() - new Date(y.receivedAt).getTime() || String(x.id).localeCompare(String(y.id)));
     const onHand = fifo.reduce((sum: number, b: any) => sum + b.quantityRemaining, 0);
+    // Oversold (negative) batches, oldest first: stock coming in settles these before a new batch is opened
+    const overdraft = product.stockBatches
+      .filter((b: any) => b.quantityRemaining < 0)
+      .sort((x: any, y: any) => new Date(x.receivedAt).getTime() - new Date(y.receivedAt).getTime() || String(x.id).localeCompare(String(y.id)));
 
     const addBatch = async (qty: number, note: string) => {
-      await db.stockBatch.create({
-        data: { productId: product.id, quantityReceived: qty, quantityRemaining: qty, unitCost: fallbackCost, note },
-      });
+      let left = qty;
+      for (const batch of overdraft) {
+        if (left <= 0) break;
+        const fill = Math.min(-batch.quantityRemaining, left);
+        if (fill <= 0) continue;
+        await db.stockBatch.update({ where: { id: batch.id }, data: { quantityRemaining: { increment: fill } } });
+        batch.quantityRemaining += fill;
+        left -= fill;
+      }
+      if (left > 0) {
+        await db.stockBatch.create({
+          data: { productId: product.id, quantityReceived: left, quantityRemaining: left, unitCost: fallbackCost, note },
+        });
+      }
       return qty * fallbackCost;
     };
     const deductFifo = async (qty: number) => {
@@ -196,12 +223,10 @@ export class InventoryService {
     let costValue = 0; // cost of units added (+) or written off (-)
 
     if (normalizedType === 'ADD') {
-      if (amount <= 0) throw new BadRequestException('จำนวนปรับเพิ่มต้องมากกว่า 0');
       delta = amount;
       movementType = 'ADJUST_ADD';
       costValue = await addBatch(amount, dto.reason || 'ปรับเพิ่มสต็อก');
     } else if (normalizedType === 'SUB') {
-      if (amount <= 0) throw new BadRequestException('จำนวนปรับลดต้องมากกว่า 0');
       delta = -amount;
       movementType = 'ADJUST_SUB';
       costValue = -(await deductFifo(amount));

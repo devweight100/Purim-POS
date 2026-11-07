@@ -1,12 +1,119 @@
 import { businessTransaction } from '../prisma/business-transaction';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { InventoryService } from '../inventory/inventory.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { rethrowPrismaError } from './prisma-errors';
+
+/** Highest price / cost accepted for a product (columns are Decimal(10,2)). */
+export const MAX_PRODUCT_PRICE = 10_000_000;
+/** Highest stock quantity accepted from an import (stock columns are 32-bit ints). */
+export const MAX_IMPORT_STOCK = 10_000_000;
+const MAX_QTY_PER_PREV = 100_000;
+
+const PRICE_LABELS: Record<string, string> = {
+  basePrice: 'ราคาขาย',
+  costPrice: 'ราคาทุน',
+  priceLevel1: 'ราคาระดับ 1',
+  priceLevel2: 'ราคาระดับ 2',
+  priceLevel3: 'ราคาระดับ 3',
+  priceLevel4: 'ราคาระดับ 4',
+  priceLevel5: 'ราคาระดับ 5',
+};
+
+const isBlank = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+
+/** Money value 0..MAX_PRODUCT_PRICE or a Thai 400. */
+export function parsePrice(value: unknown, label: string): number {
+  const n = typeof value === 'string' ? Number(value.replace(/,/g, '').trim()) : Number(value);
+  if (!Number.isFinite(n) || n < 0 || n > MAX_PRODUCT_PRICE) {
+    throw new BadRequestException(`${label}ต้องเป็นตัวเลขตั้งแต่ 0 ถึง ${MAX_PRODUCT_PRICE.toLocaleString('en-US')}`);
+  }
+  return Math.round(n * 100) / 100;
+}
+
+/** Packaging "qty per previous unit": integer >= 1 (0, negative or decimal would break sale conversion). */
+export function parseQtyPerPrev(value: unknown, unitName: string): number {
+  if (isBlank(value)) return 1;
+  const n = Number(value);
+  if (!Number.isSafeInteger(n) || n < 1 || n > MAX_QTY_PER_PREV) {
+    throw new BadRequestException(`จำนวนต่อหน่วยของหน่วยบรรจุ "${unitName}" ต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป`);
+  }
+  return n;
+}
 
 @Injectable()
 export class ProductsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private inventoryService: InventoryService) {}
+
+  /** Trim / validate the scalar product fields in place. `partial` = PATCH (absent fields stay absent). */
+  private normalizeProductInput(data: any, partial: boolean) {
+    if (!partial || data.name !== undefined) {
+      const name = typeof data.name === 'string' ? data.name.trim() : '';
+      if (!name) throw new BadRequestException('กรุณาระบุชื่อสินค้า');
+      data.name = name;
+    }
+    if (!partial || data.sku !== undefined) {
+      const sku = typeof data.sku === 'string' ? data.sku.trim() : '';
+      if (!sku) throw new BadRequestException('กรุณาระบุรหัสสินค้า (SKU)');
+      if (sku.length > 64) throw new BadRequestException('รหัสสินค้า (SKU) ยาวเกิน 64 ตัวอักษร');
+      data.sku = sku;
+    }
+    for (const key of Object.keys(PRICE_LABELS)) {
+      if (data[key] === undefined) continue;
+      if (data[key] === null && key.startsWith('priceLevel')) continue;
+      if (data[key] === null && key === 'costPrice') { data[key] = 0; continue; }
+      data[key] = parsePrice(data[key], PRICE_LABELS[key]);
+    }
+    if (data.categoryId === '') data.categoryId = null;
+    if (typeof data.categoryId === 'string') data.categoryId = data.categoryId.trim() || null;
+  }
+
+  /** SKU and barcodes must be unique across products, and a SKU may not equal another product's barcode (scans would be ambiguous). */
+  private async assertIdentifiersFree(tx: any, productId: string | null, sku: string | undefined, barcodes: string[] | undefined) {
+    if (sku) {
+      const other = await tx.product.findUnique({ where: { sku }, select: { id: true, name: true } });
+      if (other && other.id !== productId) throw new ConflictException(`รหัสสินค้า (SKU) "${sku}" ซ้ำกับสินค้า "${other.name}"`);
+      const bc = await tx.productBarcode.findUnique({ where: { barcode: sku }, include: { product: { select: { id: true, name: true } } } });
+      if (bc && bc.productId !== productId) throw new ConflictException(`รหัสสินค้า (SKU) "${sku}" ซ้ำกับบาร์โค้ดของสินค้า "${bc.product?.name || ''}"`);
+    }
+    for (const code of barcodes || []) {
+      const bc = await tx.productBarcode.findUnique({ where: { barcode: code }, include: { product: { select: { id: true, name: true } } } });
+      if (bc && bc.productId !== productId) throw new ConflictException(`บาร์โค้ด "${code}" ถูกใช้แล้วกับสินค้า "${bc.product?.name || ''}"`);
+      const bySku = await tx.product.findUnique({ where: { sku: code }, select: { id: true, name: true } });
+      if (bySku && bySku.id !== productId) throw new ConflictException(`บาร์โค้ด "${code}" ซ้ำกับรหัสสินค้า (SKU) ของสินค้า "${bySku.name}"`);
+    }
+  }
+
+  private async assertCategory(tx: any, categoryId: string | null | undefined) {
+    if (!categoryId) return;
+    const cat = await tx.category.findUnique({ where: { id: categoryId }, select: { id: true } });
+    if (!cat) throw new BadRequestException('ไม่พบหมวดหมู่สินค้าที่เลือก');
+  }
+
+  private async assertBundleChildren(tx: any, productId: string | null, items: any[] | undefined) {
+    if (!Array.isArray(items) || items.length === 0) return;
+    const ids: string[] = [];
+    for (const item of items) {
+      const id = item?.childProductId ? String(item.childProductId).trim() : '';
+      const qty = Number(item?.quantity);
+      if (!id) throw new BadRequestException('กรุณาเลือกสินค้าในชุดสินค้า (bundle)');
+      if (!Number.isSafeInteger(qty) || qty < 1) throw new BadRequestException('จำนวนสินค้าในชุดต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป');
+      if (productId && id === productId) throw new BadRequestException('ชุดสินค้าไม่สามารถมีตัวเองเป็นส่วนประกอบได้');
+      ids.push(id);
+    }
+    const found = await tx.product.findMany({ where: { id: { in: ids } }, select: { id: true } });
+    const ok = new Set(found.map((p: any) => p.id));
+    const missing = ids.filter((id) => !ok.has(id));
+    if (missing.length) throw new BadRequestException(`ไม่พบสินค้าในชุดสินค้า (bundle): ${missing.join(', ')}`);
+  }
+
+  private barcodeCodes(barcodes: any[] | undefined): string[] | undefined {
+    if (!Array.isArray(barcodes)) return undefined;
+    return this.buildBarcodeCreates(barcodes).map((b) => b.barcode);
+  }
 
   private readonly productInclude = {
     barcodes: true,
@@ -110,19 +217,24 @@ export class ProductsService {
   }
 
   private buildPackagingUnitCreates(units: any[] = []) {
+    const level = (unit: any, key: string, name: string) =>
+      isBlank(unit[key]) ? null : parsePrice(unit[key], `${PRICE_LABELS[key]}ของหน่วย "${name}" `);
     return units
-      .filter((unit) => unit?.name)
-      .map((unit, index) => ({
-        name: String(unit.name).trim(),
-        qtyPerPrev: Number(unit.qtyPerPrev) || 1,
-        barcode: unit.barcode ? String(unit.barcode).trim() : null,
-        priceLevel1: unit.priceLevel1 !== undefined && unit.priceLevel1 !== null && unit.priceLevel1 !== '' ? Number(unit.priceLevel1) : null,
-        priceLevel2: unit.priceLevel2 !== undefined && unit.priceLevel2 !== null && unit.priceLevel2 !== '' ? Number(unit.priceLevel2) : null,
-        priceLevel3: unit.priceLevel3 !== undefined && unit.priceLevel3 !== null && unit.priceLevel3 !== '' ? Number(unit.priceLevel3) : null,
-        priceLevel4: unit.priceLevel4 !== undefined && unit.priceLevel4 !== null && unit.priceLevel4 !== '' ? Number(unit.priceLevel4) : null,
-        priceLevel5: unit.priceLevel5 !== undefined && unit.priceLevel5 !== null && unit.priceLevel5 !== '' ? Number(unit.priceLevel5) : null,
-        sortOrder: index,
-      }));
+      .filter((unit) => unit?.name && String(unit.name).trim())
+      .map((unit, index) => {
+        const name = String(unit.name).trim();
+        return {
+          name,
+          qtyPerPrev: parseQtyPerPrev(unit.qtyPerPrev, name),
+          barcode: unit.barcode ? String(unit.barcode).trim() : null,
+          priceLevel1: level(unit, 'priceLevel1', name),
+          priceLevel2: level(unit, 'priceLevel2', name),
+          priceLevel3: level(unit, 'priceLevel3', name),
+          priceLevel4: level(unit, 'priceLevel4', name),
+          priceLevel5: level(unit, 'priceLevel5', name),
+          sortOrder: index,
+        };
+      });
   }
 
   private buildImageCreates(images: any[] = []) {
@@ -141,7 +253,7 @@ export class ProductsService {
       .filter((price) => Number(price?.minQuantity) > 0 && Number(price?.unitPrice) > 0)
       .map((price, index) => ({
         minQuantity: Number(price.minQuantity),
-        unitPrice: Number(price.unitPrice),
+        unitPrice: parsePrice(price.unitPrice, 'ราคาขายส่ง'),
         sortOrder: index,
       }));
   }
@@ -156,6 +268,8 @@ export class ProductsService {
       barcodes?: any[];
       costPrice?: number | null;
     },
+    /** caller cannot see costs: keep the stored supplier costs instead of what was sent */
+    preserveCosts = false,
   ) {
     const hasExplicitSuppliers =
       payload.supplierEntries !== undefined ||
@@ -210,7 +324,7 @@ export class ProductsService {
           ? Number(payload.costPrice)
           : null;
 
-      const unitCost = rawCost !== null && Number.isFinite(rawCost) ? rawCost : null;
+      const unitCost = rawCost !== null && Number.isFinite(rawCost) ? parsePrice(rawCost, 'ต้นทุนจากผู้จำหน่าย') : null;
       const supplierSku =
         entry?.supplierSku !== undefined && entry?.supplierSku !== null && String(entry.supplierSku).trim()
           ? String(entry.supplierSku).trim()
@@ -225,6 +339,15 @@ export class ProductsService {
         isPreferred: entry?.isPreferred !== undefined ? Boolean(entry.isPreferred) : index === 0,
       });
     });
+
+    if (preserveCosts) {
+      const prev = await tx.productSupplier.findMany({ where: { productId }, select: { supplierId: true, unitCost: true } });
+      const prevCost = new Map<string, number | null>(prev.map((p: any) => [p.supplierId, p.unitCost === null ? null : Number(p.unitCost)]));
+      const prod = await tx.product.findUnique({ where: { id: productId }, select: { costPrice: true } });
+      for (const item of deduped.values()) {
+        item.unitCost = prevCost.has(item.supplierId) ? prevCost.get(item.supplierId)! : prod ? Number(prod.costPrice) : null;
+      }
+    }
 
     await tx.productSupplier.deleteMany({ where: { productId } });
 
@@ -267,8 +390,12 @@ export class ProductsService {
       supplierId,
       ...data
     } = createProductDto as any;
+    this.normalizeProductInput(data, false);
 
     const product = await businessTransaction(this.prisma, async (tx) => {
+      await this.assertIdentifiersFree(tx, null, data.sku, this.barcodeCodes(barcodes));
+      await this.assertCategory(tx, data.categoryId);
+      await this.assertBundleChildren(tx, null, bundleItems);
       const created = await tx.product.create({
         data: {
           ...data,
@@ -312,7 +439,7 @@ export class ProductsService {
         where: { id: created.id },
         include: this.productInclude,
       });
-    });
+    }).catch((err) => rethrowPrismaError(err, { conflict: 'รหัสสินค้าหรือบาร์โค้ดซ้ำกับสินค้าที่มีอยู่แล้ว', badRef: 'หมวดหมู่หรือสินค้าที่อ้างอิงไม่ถูกต้อง' }));
 
     return this.mapProductWithStock(product);
   }
@@ -340,7 +467,7 @@ export class ProductsService {
       where: { id },
       include: this.productInclude,
     });
-    if (!product) throw new NotFoundException('Product not found');
+    if (!product) throw new NotFoundException('ไม่พบสินค้านี้');
     return this.mapProductWithStock(product);
   }
 
@@ -349,11 +476,15 @@ export class ProductsService {
       where: { barcode },
       include: { product: { include: this.productInclude } },
     });
-    if (!pBarcode) throw new NotFoundException('Product not found for barcode');
-    return this.mapProductWithStock(pBarcode.product);
+    if (pBarcode) return this.mapProductWithStock(pBarcode.product);
+    // a scanned label may carry the product code (SKU) instead of a registered barcode
+    const bySku = await this.prisma.product.findUnique({ where: { sku: barcode }, include: this.productInclude });
+    if (!bySku) throw new NotFoundException('ไม่พบสินค้าสำหรับบาร์โค้ดนี้');
+    return this.mapProductWithStock(bySku);
   }
 
-  async update(id: string, updateProductDto: UpdateProductDto) {
+  /** `opts.canViewCost=false`: the caller never saw the costs, so cost fields it sends are ignored. */
+  async update(id: string, updateProductDto: UpdateProductDto, opts: { canViewCost?: boolean } = {}) {
     const {
       barcodes,
       packagingUnits,
@@ -365,8 +496,17 @@ export class ProductsService {
       supplierId,
       ...data
     } = updateProductDto as any;
+    const preserveCosts = opts.canViewCost === false;
+    if (preserveCosts) delete data.costPrice;
+    this.normalizeProductInput(data, true);
 
     const product = await businessTransaction(this.prisma, async (tx) => {
+      const current = await tx.product.findUnique({ where: { id }, select: { id: true } });
+      if (!current) throw new NotFoundException('ไม่พบสินค้านี้');
+      await this.assertIdentifiersFree(tx, id, data.sku, this.barcodeCodes(barcodes));
+      await this.assertCategory(tx, data.categoryId);
+      await this.assertBundleChildren(tx, id, bundleItems);
+
       if (barcodes) {
         await tx.productBarcode.deleteMany({ where: { productId: id } });
       }
@@ -389,7 +529,7 @@ export class ProductsService {
         supplierId,
         barcodes,
         costPrice: data.costPrice,
-      });
+      }, preserveCosts);
 
       return tx.product.update({
         where: { id },
@@ -407,12 +547,31 @@ export class ProductsService {
         },
         include: this.productInclude,
       });
-    });
+    }).catch((err) => rethrowPrismaError(err, { conflict: 'รหัสสินค้าหรือบาร์โค้ดซ้ำกับสินค้าที่มีอยู่แล้ว', notFound: 'ไม่พบสินค้านี้', badRef: 'หมวดหมู่หรือสินค้าที่อ้างอิงไม่ถูกต้อง' }));
     return this.mapProductWithStock(product);
   }
 
+  /** Products with sales, stock, purchase or claim history cannot be deleted (409): deactivate them instead. */
   async remove(id: string) {
-    return this.prisma.product.delete({ where: { id } });
+    const product = await this.prisma.product.findUnique({ where: { id }, select: { id: true, name: true } });
+    if (!product) throw new NotFoundException('ไม่พบสินค้านี้');
+    const inUse = `สินค้า "${product.name}" มีประวัติการขาย สต็อก หรือการสั่งซื้อแล้ว จึงลบไม่ได้ กรุณาปิดการใช้งานสินค้า (ตั้งเป็น "ไม่ใช้งาน") แทน`;
+    const [batches, orderItems, poItems, claims, claimInv, bundles] = await Promise.all([
+      this.prisma.stockBatch.count({ where: { productId: id } }),
+      this.prisma.orderItem.count({ where: { productId: id } }),
+      this.prisma.purchaseOrderItem.count({ where: { productId: id } }),
+      this.prisma.customerClaim.count({ where: { productId: id } }),
+      this.prisma.claimInventory.count({ where: { productId: id } }),
+      this.prisma.productBundleItem.count({ where: { childProductId: id } }),
+    ]);
+    if (batches + orderItems + poItems + claims + claimInv > 0) throw new ConflictException(inUse);
+    if (bundles > 0) throw new ConflictException(`สินค้า "${product.name}" เป็นส่วนประกอบของชุดสินค้าอื่น กรุณานำออกจากชุดสินค้าก่อน หรือปิดการใช้งานแทน`);
+    try {
+      return await this.prisma.product.delete({ where: { id } });
+    } catch (err: any) {
+      if (err?.code === 'P2003') throw new ConflictException(inUse);
+      rethrowPrismaError(err, { notFound: 'ไม่พบสินค้านี้' });
+    }
   }
 
   async removeAll() {
@@ -437,178 +596,206 @@ export class ProductsService {
     });
   }
 
-  async bulkUpsert(items: any[]) {
-    let created = 0;
-    let updated = 0;
-
-    for (const item of items) {
-      const sku = item.sku ? String(item.sku).trim() : null;
-      const name = item.name ? String(item.name).trim() : 'สินค้าไม่มีชื่อ';
-      if (!sku && !item.id && !item.barcode) continue;
-
-      let existing: any = null;
-      if (item.id) {
-        existing = await this.prisma.product.findUnique({ where: { id: item.id } });
+  /**
+   * Validate one import row (no DB access). Only the fields present in the row end up in `fields`,
+   * so an update never wipes prices / unit / description that the file did not contain.
+   */
+  private normalizeImportRow(item: any, rowNo: number) {
+    const rowErr = (msg: string) => new BadRequestException(`แถวที่ ${rowNo}: ${msg}`);
+    if (!item || typeof item !== 'object') throw rowErr('ข้อมูลไม่ถูกต้อง');
+    const str = (v: unknown) => (isBlank(v) ? undefined : String(v).trim());
+    const price = (v: unknown, key: string) => {
+      try {
+        return parsePrice(v, PRICE_LABELS[key]);
+      } catch (e: any) {
+        throw rowErr(e?.message || 'ราคาไม่ถูกต้อง');
       }
-      if (!existing && sku) {
-        existing = await this.prisma.product.findUnique({ where: { sku } });
-      }
-      if (!existing && item.barcode) {
-        const pbc = await this.prisma.productBarcode.findUnique({
-          where: { barcode: String(item.barcode).trim() },
-          include: { product: true },
-        });
-        if (pbc?.product) existing = pbc.product;
-      }
+    };
 
-      // Handle category lookup/creation if category name string provided
-      let categoryId = item.categoryId || null;
-      if (item.categoryName && !categoryId) {
-        const catName = String(item.categoryName).trim();
-        let cat = await this.prisma.category.findUnique({ where: { name: catName } });
-        if (!cat) {
-          cat = await this.prisma.category.create({ data: { name: catName } });
-        }
-        categoryId = cat.id;
-      }
+    const id = str(item.id);
+    const sku = str(item.sku);
+    const barcode = str(item.barcode);
+    if (sku && sku.length > 64) throw rowErr('รหัสสินค้า (SKU) ยาวเกิน 64 ตัวอักษร');
 
-      const costPrice = item.costPrice !== undefined ? Number(item.costPrice) : item.cost !== undefined ? Number(item.cost) : 0;
-      const priceLevel1 = item.priceLevel1 !== undefined && item.priceLevel1 !== null && item.priceLevel1 !== ''
-        ? Number(item.priceLevel1)
-        : item.retailPrice !== undefined ? Number(item.retailPrice) : null;
-      const basePrice = priceLevel1 !== null ? priceLevel1 : (item.retailPrice !== undefined ? Number(item.retailPrice) : (item.basePrice !== undefined ? Number(item.basePrice) : 0));
-      const priceLevel2 = item.priceLevel2 !== undefined && item.priceLevel2 !== null && item.priceLevel2 !== '' ? Number(item.priceLevel2) : null;
-      const priceLevel3 = item.priceLevel3 !== undefined && item.priceLevel3 !== null && item.priceLevel3 !== '' ? Number(item.priceLevel3) : null;
-      const priceLevel4 = item.priceLevel4 !== undefined && item.priceLevel4 !== null && item.priceLevel4 !== '' ? Number(item.priceLevel4) : null;
-      const priceLevel5 = item.priceLevel5 !== undefined && item.priceLevel5 !== null && item.priceLevel5 !== '' ? Number(item.priceLevel5) : null;
-      const unit = item.unit ? String(item.unit).trim() : 'ชิ้น';
-      const description = item.description ? String(item.description).trim() : null;
+    const fields: Record<string, any> = {};
+    const name = str(item.name);
+    if (name) fields.name = name;
 
-      if (existing) {
-        // Update product
-        await this.prisma.product.update({
-          where: { id: existing.id },
-          data: {
-            name: name || existing.name,
-            sku: sku || existing.sku,
-            basePrice,
-            costPrice,
-            priceLevel1,
-            priceLevel2,
-            priceLevel3,
-            priceLevel4,
-            priceLevel5,
-            unit,
-            description,
-            ...(categoryId && { categoryId }),
-          },
-        });
+    const level1 = !isBlank(item.priceLevel1) ? price(item.priceLevel1, 'priceLevel1') : undefined;
+    const retail = !isBlank(item.retailPrice) ? price(item.retailPrice, 'basePrice') : undefined;
+    const base = !isBlank(item.basePrice) ? price(item.basePrice, 'basePrice') : !isBlank(item.price) ? price(item.price, 'basePrice') : undefined;
+    const sell = level1 ?? retail ?? base;
+    if (sell !== undefined) fields.basePrice = sell;
+    if (level1 !== undefined || retail !== undefined) fields.priceLevel1 = level1 ?? retail;
 
-        await this.syncProductSuppliers(this.prisma, existing.id, {
-          supplierEntries: item.supplierEntries,
-          suppliers: item.suppliers,
-          supplierId: item.supplierId,
-          costPrice,
-        });
+    const costRaw = !isBlank(item.costPrice) ? item.costPrice : item.cost;
+    if (!isBlank(costRaw)) fields.costPrice = price(costRaw, 'costPrice');
+    for (const key of ['priceLevel2', 'priceLevel3', 'priceLevel4', 'priceLevel5']) {
+      if (!isBlank(item[key])) fields[key] = price(item[key], key);
+    }
+    const unit = str(item.unit);
+    if (unit) fields.unit = unit;
+    const description = str(item.description);
+    if (description) fields.description = description;
 
-        // Handle barcode upsert if provided
-        if (item.barcode) {
-          const bcode = String(item.barcode).trim();
-          try {
-            await this.prisma.productBarcode.upsert({
-              where: { barcode: bcode },
-              update: { productId: existing.id },
-              create: { productId: existing.id, barcode: bcode },
-            });
-          } catch {}
-        }
-
-        // Handle stock update via StockBatch if stock number provided
-        if (item.stock !== undefined && item.stock !== null && item.stock !== '') {
-          const targetStock = Number(item.stock) || 0;
-          const currentBatches = await this.prisma.stockBatch.findMany({ where: { productId: existing.id } });
-          const currentTotal = currentBatches.reduce((s, b) => s + b.quantityRemaining, 0);
-          const diff = targetStock - currentTotal;
-          if (diff !== 0) {
-            if (currentBatches.length > 0) {
-              const primary = currentBatches[0];
-              await this.prisma.stockBatch.update({
-                where: { id: primary.id },
-                data: {
-                  quantityRemaining: Math.max(0, primary.quantityRemaining + diff),
-                  quantityReceived: Math.max(primary.quantityReceived, primary.quantityRemaining + diff),
-                },
-              });
-            } else if (targetStock > 0) {
-              await this.prisma.stockBatch.create({
-                data: {
-                  productId: existing.id,
-                  quantityReceived: targetStock,
-                  quantityRemaining: targetStock,
-                  unitCost: costPrice,
-                  note: 'EXCEL-INIT',
-                },
-              });
-            }
-          }
-        }
-
-        updated++;
-      } else {
-        // Create new product
-        const finalSku = sku || `SKU-${Date.now().toString().slice(-6)}`;
-        const newProd = await this.prisma.product.create({
-          data: {
-            name,
-            sku: finalSku,
-            basePrice,
-            costPrice,
-            priceLevel1,
-            priceLevel2,
-            priceLevel3,
-            priceLevel4,
-            priceLevel5,
-            unit,
-            description,
-            categoryId,
-          },
-        });
-
-        await this.syncProductSuppliers(this.prisma, newProd.id, {
-          supplierEntries: item.supplierEntries,
-          suppliers: item.suppliers,
-          supplierId: item.supplierId,
-          costPrice,
-        });
-
-        // Add barcode if provided
-        if (item.barcode) {
-          const bcode = String(item.barcode).trim();
-          try {
-            await this.prisma.productBarcode.create({
-              data: { productId: newProd.id, barcode: bcode },
-            });
-          } catch {}
-        }
-
-        // Add initial stock batch if stock provided
-        const initStock = Number(item.stock) || 0;
-        if (initStock > 0) {
-          await this.prisma.stockBatch.create({
-            data: {
-              productId: newProd.id,
-              quantityReceived: initStock,
-              quantityRemaining: initStock,
-              unitCost: costPrice,
-              note: 'EXCEL-INIT',
-            },
-          });
-        }
-
-        created++;
-      }
+    let stock: number | undefined;
+    if (!isBlank(item.stock)) {
+      const n = typeof item.stock === 'string' ? Number(item.stock.replace(/,/g, '').trim()) : Number(item.stock);
+      if (!Number.isSafeInteger(n) || n < 0 || n > MAX_IMPORT_STOCK) throw rowErr('จำนวนสต็อกต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป');
+      stock = n;
     }
 
-    return { success: true, created, updated, total: created + updated };
+    return {
+      rowNo,
+      id,
+      sku,
+      barcode,
+      fields,
+      stock,
+      categoryId: str(item.categoryId),
+      categoryName: str(item.categoryName),
+      supplierEntries: item.supplierEntries,
+      suppliers: item.suppliers,
+      supplierId: item.supplierId,
+    };
+  }
+
+  /** A SKU for an imported row without one; unique against product SKUs and barcodes. */
+  private async generateSku(tx: any, seq: { n: number; base: string }) {
+    for (;;) {
+      seq.n += 1;
+      const candidate = `${seq.base}-${String(seq.n).padStart(4, '0')}`;
+      const [p, bc] = await Promise.all([
+        tx.product.findUnique({ where: { sku: candidate }, select: { id: true } }),
+        tx.productBarcode.findUnique({ where: { barcode: candidate }, select: { id: true } }),
+      ]);
+      if (!p && !bc) return candidate;
+    }
+  }
+
+  /**
+   * CSV / Excel import. All rows are validated first, then written in ONE transaction: any bad row
+   * rejects the whole file (400/409 naming the row) and nothing is saved. Stock targets go through
+   * the audited inventory SET path (same batches / movement log as /inventory/adjust).
+   */
+  async bulkUpsert(items: any[], user?: { id?: string; fullName?: string; username?: string }) {
+    if (!Array.isArray(items)) throw new BadRequestException('รูปแบบข้อมูลนำเข้าไม่ถูกต้อง');
+    if (items.length > 20000) throw new BadRequestException('นำเข้าได้ครั้งละไม่เกิน 20,000 แถว');
+    const rows = items.map((item, idx) => this.normalizeImportRow(item, idx + 1));
+    const userName = user?.fullName || user?.username;
+
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    const seq = { n: 0, base: `AUTO-${Date.now().toString(36).toUpperCase()}` };
+
+    await this.prisma
+      .$transaction(
+        async (tx) => {
+          // same lock as businessTransaction: sales / adjustments wait while the import runs
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(742091, 1)`;
+          for (const row of rows) {
+            const rowErr = (e: any) => {
+              if (e?.response && typeof e.getStatus === 'function') {
+                const msg = e.response?.message ?? e.message;
+                const text = Array.isArray(msg) ? msg.join(', ') : String(msg);
+                if (text.startsWith('แถวที่')) return e;
+                const Ctor = e.constructor;
+                return new Ctor(`แถวที่ ${row.rowNo}: ${text}`);
+              }
+              return e;
+            };
+            try {
+              if (!row.sku && !row.id && !row.barcode) {
+                skipped++;
+                continue;
+              }
+
+              let existing: any = null;
+              if (row.id) existing = await tx.product.findUnique({ where: { id: row.id } });
+              if (!existing && row.sku) existing = await tx.product.findUnique({ where: { sku: row.sku } });
+              let barcodeOwner: string | null = null;
+              if (row.barcode) {
+                const pbc = await tx.productBarcode.findUnique({ where: { barcode: row.barcode }, include: { product: true } });
+                if (pbc?.product) {
+                  barcodeOwner = pbc.productId;
+                  if (!existing) existing = pbc.product;
+                  else if (pbc.productId !== existing.id) {
+                    throw new ConflictException(`บาร์โค้ด "${row.barcode}" ถูกใช้แล้วกับสินค้า "${pbc.product.name}"`);
+                  }
+                }
+              }
+
+              let categoryId: string | undefined;
+              if (row.categoryId) {
+                await this.assertCategory(tx, row.categoryId);
+                categoryId = row.categoryId;
+              } else if (row.categoryName) {
+                let cat = await tx.category.findUnique({ where: { name: row.categoryName } });
+                if (!cat) cat = await tx.category.create({ data: { name: row.categoryName } });
+                categoryId = cat.id;
+              }
+
+              const data: Record<string, any> = { ...row.fields, ...(categoryId ? { categoryId } : {}) };
+              let productId: string;
+
+              if (existing) {
+                productId = existing.id;
+                if (row.sku && row.sku !== existing.sku) data.sku = row.sku;
+                await this.assertIdentifiersFree(tx, productId, data.sku, row.barcode && barcodeOwner !== productId ? [row.barcode] : undefined);
+                if (Object.keys(data).length > 0) await tx.product.update({ where: { id: productId }, data });
+                updated++;
+              } else {
+                const sku = row.sku || (await this.generateSku(tx, seq));
+                await this.assertIdentifiersFree(tx, null, sku, row.barcode ? [row.barcode] : undefined);
+                const newProd = await tx.product.create({
+                  data: {
+                    name: 'สินค้าไม่มีชื่อ',
+                    basePrice: 0,
+                    costPrice: 0,
+                    unit: 'ชิ้น',
+                    ...data,
+                    sku,
+                  } as any,
+                });
+                productId = newProd.id;
+                created++;
+              }
+
+              await this.syncProductSuppliers(tx, productId, {
+                supplierEntries: row.supplierEntries,
+                suppliers: row.suppliers,
+                supplierId: row.supplierId,
+                costPrice: row.fields.costPrice,
+              });
+
+              if (row.barcode && barcodeOwner !== productId) {
+                await tx.productBarcode.create({ data: { productId, barcode: row.barcode } });
+              }
+
+              if (row.stock !== undefined && (existing || row.stock > 0)) {
+                await this.inventoryService.adjustStock(
+                  {
+                    productId,
+                    type: 'SET',
+                    amount: row.stock,
+                    ...(row.fields.costPrice !== undefined ? { unitCost: row.fields.costPrice } : {}),
+                    reason: existing ? 'นำเข้าไฟล์สินค้า: ตั้งยอดสต็อกตามไฟล์' : 'นำเข้าไฟล์สินค้า: สต็อกเริ่มต้น',
+                    userId: user?.id,
+                    userName,
+                  },
+                  tx,
+                );
+              }
+            } catch (e) {
+              throw rowErr(e);
+            }
+          }
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: 10000, timeout: 600000 },
+      )
+      .catch((err) => rethrowPrismaError(err, { conflict: 'รหัสสินค้าหรือบาร์โค้ดในไฟล์ซ้ำกับสินค้าที่มีอยู่แล้ว', badRef: 'ข้อมูลอ้างอิงในไฟล์ไม่ถูกต้อง' }));
+
+    return { success: true, created, updated, skipped, total: created + updated };
   }
 }
