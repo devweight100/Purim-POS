@@ -58,12 +58,14 @@ function Get-Installed {
   return $null
 }
 function Save-Token($plain) {
-  $plain | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString | Set-Content $TokenFile
+  $enc = $plain | ConvertTo-SecureString -AsPlainText -Force | ConvertFrom-SecureString
+  Set-Content -Path $TokenFile -Value $enc -NoNewline
 }
 function Read-Token {
   if (Test-Path $TokenFile) {
     try {
-      $sec = Get-Content $TokenFile -Raw | ConvertTo-SecureString -ErrorAction Stop
+      # Trim: Set-Content adds a trailing newline, which ConvertTo-SecureString rejects
+      $sec = (Get-Content $TokenFile -Raw).Trim() | ConvertTo-SecureString -ErrorAction Stop
       return [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
     } catch {}
   }
@@ -116,6 +118,20 @@ if (-not $latest.ok) {
 }
 if ($Interactive) { Save-Token $token }
 $upToDate = [bool]($installed -and $installed.commit -eq $latest.sha)
+# An installer is built from a code commit and then committed itself ("build: installer ..."),
+# so the newest commit is often only the rebuilt .exe. Up to date when no newer commit touches program code.
+if (-not $upToDate -and $installed -and $installed.commit -and -not $installed.modified) {
+  try {
+    $cmp = Invoke-RestMethod "$ApiBase/repos/$Repo/compare/$($installed.commit)...$($latest.sha)" -Headers $latest.headers -UseBasicParsing -ErrorAction Stop
+    $files = @($cmp.files | ForEach-Object { $_.filename })
+    if ($cmp.status -eq 'ahead' -and $files.Count -gt 0 -and $files.Count -lt 300) {
+      $codeChanged = @($files | Where-Object {
+        ($_ -match '^(backend|frontend|desktop)/' -or $_ -eq 'docker-compose.yml' -or $_ -match '^Installer/Server/setup/') -and $_ -notmatch '\.nsi$'
+      })
+      if ($codeChanged.Count -eq 0) { $upToDate = $true }
+    }
+  } catch {}
+}
 $latestInfo = [ordered]@{ commit = $latest.sha; short = $latest.short; message = $latest.message; committedAt = $latest.date }
 
 # ---------------------------------------------------------------- check
