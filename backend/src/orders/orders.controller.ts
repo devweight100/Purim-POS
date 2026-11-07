@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request, BadRequestException } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { ReturnsService } from './returns.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
@@ -33,14 +33,19 @@ export class OrdersController {
   @RequirePermissions('POS_SELL')
   @Post('sync-offline')
   syncOffline(@Body('orders') orders: any[], @Request() req: any) {
-    return this.ordersService.syncOfflineOrders(orders || [], req.user.id);
+    if (!Array.isArray(orders)) throw new BadRequestException('ข้อมูลบิลออฟไลน์ต้องเป็นรายการ (orders: [])');
+    if (orders.length > 500) throw new BadRequestException('ส่งบิลออฟไลน์ได้ครั้งละไม่เกิน 500 บิล');
+    return this.ordersService.syncOfflineOrders(orders, req.user.id);
   }
 
   @Roles('MANAGER')
   @RequirePermissions('POS_VOID')
   @Post(':id/void')
   voidOrder(@Param('id') id: string, @Body() data: { reason: string }, @Request() req: any) {
-    return this.ordersService.voidOrder(id, data.reason, req.user?.id);
+    const reason = typeof data?.reason === 'string' ? data.reason.trim() : '';
+    if (!reason) throw new BadRequestException('กรุณาระบุเหตุผลการยกเลิกบิล');
+    if (reason.length > 500) throw new BadRequestException('เหตุผลการยกเลิกบิลยาวเกินไป');
+    return this.ordersService.voidOrder(id, reason, req.user?.id);
   }
 
   @Roles('MANAGER')

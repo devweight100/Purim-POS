@@ -47,7 +47,7 @@ export class ReturnsService {
 
       const order = await tx.order.findUnique({
         where: { id: orderId },
-        include: { items: { include: { product: true } }, debt: true, returns: { include: { items: true } } },
+        include: { items: { include: { product: true } }, debt: true, payments: true, returns: { include: { items: true } } },
       });
       if (!order) throw new NotFoundException('ไม่พบบิลนี้');
       if (order.status !== 'COMPLETED') throw new BadRequestException('คืนสินค้าได้เฉพาะบิลที่สำเร็จแล้ว');
@@ -99,8 +99,34 @@ export class ReturnsService {
         }
         itemRows.push({ orderItemId: item.id, productId: item.productId, quantity: qty, baseQuantity: baseQty, refundAmount: lineRefund, unitCost, restock });
       }
-      refund = round2(Math.min(refund, Number(order.totalAmount) - Number(order.returnedAmount)));
+      const remainingRefundable = round2(Number(order.totalAmount) - Number(order.returnedAmount));
+      // the last return of a bill refunds exactly what is left (no rounding residue)
+      const fullyReturned = order.items.every((i) => {
+        const now = itemRows.find((r) => r.orderItemId === i.id)?.quantity || 0;
+        return (returnedQty.get(i.id) || 0) + now >= i.quantity;
+      });
+      if (fullyReturned && itemRows.length) {
+        const diff = round2(remainingRefundable - refund);
+        refund = remainingRefundable;
+        const last = itemRows[itemRows.length - 1];
+        last.refundAmount = Math.max(0, round2(last.refundAmount + diff));
+      }
+      refund = round2(Math.min(refund, remainingRefundable));
       if (refund <= 0) throw new BadRequestException('ยอดคืนเงินไม่ถูกต้อง');
+
+      // Money can only go back the way it came in: cash / transfer up to what the customer actually
+      // paid (at the till or later against the debt), the unpaid credit part only by reducing the debt.
+      if (method === 'CASH' || method === 'TRANSFER') {
+        const paidAtSale = order.payments.filter((p) => p.method !== 'CREDIT_DEBT').reduce((s, p) => s + Number(p.amount), 0);
+        const paidOnDebt = order.debt ? Number(order.debt.paidAmount) : 0;
+        const refundedMoney = order.returns.filter((r) => r.refundMethod === 'CASH' || r.refundMethod === 'TRANSFER').reduce((s, r) => s + Number(r.refundAmount), 0);
+        const maxMoney = round2(paidAtSale + paidOnDebt - refundedMoney);
+        if (refund > maxMoney + 0.001) {
+          throw new BadRequestException(maxMoney > 0
+            ? `คืนเป็นเงินสด/โอนได้ไม่เกินยอดที่ลูกค้าจ่ายจริง ฿${maxMoney.toFixed(2)} ส่วนที่ค้างชำระต้องคืนโดยหักจากหนี้`
+            : 'บิลนี้ลูกค้ายังไม่ได้จ่ายเงิน ต้องคืนโดยหักจากหนี้เท่านั้น');
+        }
+      }
       const vatAmount = Number(order.vatRate) > 0 ? round2(refund * Number(order.vatRate) / (100 + Number(order.vatRate))) : 0;
 
       const created = await tx.orderReturn.create({
@@ -137,15 +163,33 @@ export class ReturnsService {
         });
       }
 
-      // take back points earned on the returned part
-      if (order.customerId && order.pointsEarned > 0 && Number(order.totalAmount) > 0) {
+      // points, pro rata to the refunded share of the bill (all of them once the whole bill is back):
+      // earned points are taken back, redeemed points are given back
+      let pointsBack = 0;
+      let pointsRestored = 0;
+      if (order.customerId && (order.pointsEarned > 0 || order.pointsUsed > 0) && Number(order.totalAmount) > 0) {
+        const earlier = await tx.auditLog.findMany({ where: { action: 'ORDER_RETURN', entityId: orderId } });
+        const share = (amount: number) => amount / Number(order.totalAmount);
+        let backBefore = 0;
+        let restoredBefore = 0;
+        for (const log of earlier) {
+          const r = (log.details as any)?.result || {};
+          backBefore += r.pointsBack ?? Math.floor(order.pointsEarned * share(Number(r.refundAmount) || 0));
+          restoredBefore += r.pointsRestored ?? 0;
+        }
+        const cumulative = Number(order.returnedAmount) + refund;
+        const full = fullyReturned || cumulative >= Number(order.totalAmount) - 0.001;
+        const backTarget = full ? order.pointsEarned : Math.floor(order.pointsEarned * share(cumulative));
+        const restoreTarget = full ? order.pointsUsed : Math.floor(order.pointsUsed * share(cumulative));
         const customer = await tx.customer.findUnique({ where: { id: order.customerId } });
-        const back = Math.min(customer?.points || 0, Math.floor(order.pointsEarned * refund / Number(order.totalAmount)));
-        if (back > 0) await tx.customer.update({ where: { id: order.customerId }, data: { points: { decrement: back } } });
+        pointsRestored = Math.max(0, restoreTarget - restoredBefore);
+        pointsBack = Math.min((customer?.points || 0) + pointsRestored, Math.max(0, backTarget - backBefore));
+        const delta = pointsRestored - pointsBack;
+        if (delta !== 0) await tx.customer.update({ where: { id: order.customerId }, data: { points: { increment: delta } } });
       }
 
       await tx.order.update({ where: { id: orderId }, data: { returnedAmount: { increment: refund } } });
-      const result = { success: true, returnNumber, refundAmount: refund, refundMethod: method, vatAmount, cogsReturned: round2(cogsReturned), id: created.id };
+      const result = { success: true, returnNumber, refundAmount: refund, refundMethod: method, vatAmount, cogsReturned: round2(cogsReturned), id: created.id, pointsBack, pointsRestored };
       await tx.auditLog.create({ data: { id: key, action: 'ORDER_RETURN', entity: 'Order', entityId: orderId, userId: actor?.id ?? null, details: { result } } });
       return result;
     });

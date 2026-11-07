@@ -1,5 +1,7 @@
 import { businessTransaction } from '../prisma/business-transaction';
-import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ForbiddenException, ConflictException, Optional } from '@nestjs/common';
+import { createHash } from 'crypto';
+import { ApprovalsService } from '../approvals/approvals.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CashMovementType, ShiftStatus, PaymentMethod } from '@prisma/client';
 import * as ledger from '../finance/ledger';
@@ -20,9 +22,107 @@ function assertShiftActor(shift: { userId: string }, actor?: { id?: string; role
   if (shift.userId !== actor.id) throw new ForbiddenException('ทำรายการได้เฉพาะกะของตัวเอง (หรือผู้จัดการ)');
 }
 
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+const SHIFT_ORDER_INCLUDE = {
+  payments: true,
+  items: { select: { discountAmount: true } },
+  returns: { select: { refundAmount: true, refundMethod: true } },
+} as const;
+
+/** Kind of a REFUND drawer movement, from the text the system writes on it. */
+export function refundKind(reason: string): 'RETURN' | 'VOID' | 'CLAIM' {
+  const r = String(reason || '');
+  if (r.startsWith('คืนเงินสดคืนสินค้า')) return 'RETURN';
+  if (r.includes('ยกเลิกบิล')) return 'VOID';
+  return 'CLAIM';
+}
+
+/**
+ * Figures of one shift, shared by the live summary and the history list / slip.
+ * Sales count completed bills (and bills voided after the shift closed, whose money was counted then).
+ * Returns of those bills are subtracted in netSales whatever the refund method; the drawer only
+ * moves for cash refunds, which are split into return / void / claim refunds.
+ */
+export function shiftFigures(shift: any) {
+  let cashSales = 0, qrSales = 0, transferSales = 0, cardSales = 0, creditSales = 0, creditNoteSales = 0, otherSales = 0, totalSales = 0;
+  let orderCount = 0, itemDiscountTotal = 0, billDiscountTotal = 0;
+  let returnsTotal = 0, returnCount = 0, returnsCash = 0, returnsTransfer = 0, returnsDebt = 0;
+  for (const order of shift.orders || []) {
+    const voidedAfterClose =
+      shift.status === ShiftStatus.CLOSED && shift.closedAt && order.status === 'VOIDED' &&
+      order.updatedAt && new Date(order.updatedAt) >= new Date(shift.closedAt);
+    if (order.status !== 'COMPLETED' && !voidedAfterClose) continue;
+    orderCount += 1;
+    billDiscountTotal += Number(order.discountAmount) || 0;
+    for (const it of order.items || []) itemDiscountTotal += Number(it.discountAmount) || 0;
+    for (const p of order.payments || []) {
+      const amt = Number(p.amount) || 0;
+      if (p.method === PaymentMethod.CASH) cashSales += amt;
+      else if (p.method === PaymentMethod.QR_PROMPTPAY) qrSales += amt;
+      else if (p.method === PaymentMethod.TRANSFER) transferSales += amt;
+      else if (p.method === PaymentMethod.CREDIT_CARD) cardSales += amt;
+      else if (p.method === PaymentMethod.CREDIT_DEBT) creditSales += amt;
+      else if (p.method === PaymentMethod.CREDIT_NOTE) creditNoteSales += amt;
+      else otherSales += amt;
+      totalSales += amt;
+    }
+    for (const r of order.returns || []) {
+      const amt = Number(r.refundAmount) || 0;
+      returnsTotal += amt;
+      returnCount += 1;
+      if (r.refundMethod === 'CASH') returnsCash += amt;
+      else if (r.refundMethod === 'TRANSFER') returnsTransfer += amt;
+      else returnsDebt += amt;
+    }
+  }
+  const voidCount = (shift.orders || []).filter((o: any) => o.status === 'VOIDED').length;
+
+  let cashIn = 0, cashOut = 0, debtCollections = 0, debtCollectionCount = 0;
+  let cashRefunds = 0, returnRefundAmount = 0, returnRefundCount = 0, voidRefundAmount = 0, voidRefundCount = 0, claimRefundAmount = 0, claimRefundCount = 0;
+  for (const m of shift.cashMovements || []) {
+    const amt = Number(m.amount) || 0;
+    if (m.type === CashMovementType.IN) {
+      if (m.category === 'DEBT_PAYMENT') { debtCollections += amt; debtCollectionCount += 1; }
+      else cashIn += amt;
+    } else if (m.type === CashMovementType.OUT) {
+      if (m.category === 'REFUND') {
+        cashRefunds += amt;
+        const kind = refundKind(m.reason);
+        if (kind === 'RETURN') { returnRefundAmount += amt; returnRefundCount += 1; }
+        else if (kind === 'VOID') { voidRefundAmount += amt; voidRefundCount += 1; }
+        else { claimRefundAmount += amt; claimRefundCount += 1; }
+      } else cashOut += amt;
+    }
+  }
+  const startingCash = Number(shift.startingCash) || 0;
+  const expectedCash = round2(startingCash + cashSales + cashIn + debtCollections - cashOut - cashRefunds);
+  const discountTotal = round2(itemDiscountTotal + billDiscountTotal);
+  return {
+    startingCash,
+    cashSales: round2(cashSales), qrSales: round2(qrSales), transferSales: round2(transferSales),
+    promptpaySales: round2(qrSales + transferSales), creditCardSales: round2(cardSales), cardSales: round2(cardSales),
+    debtSales: round2(creditSales), creditSales: round2(creditSales), creditNoteSales: round2(creditNoteSales), otherSales: round2(otherSales),
+    totalSales: round2(totalSales),
+    // net of every return of this shift's bills (cash, transfer and debt reduction)
+    returnsTotal: round2(returnsTotal), returnCount, returnsCash: round2(returnsCash), returnsTransfer: round2(returnsTransfer), returnsDebt: round2(returnsDebt),
+    netSales: round2(totalSales - returnsTotal),
+    discountTotal, totalDiscount: discountTotal, itemDiscountTotal: round2(itemDiscountTotal), billDiscountTotal: round2(billDiscountTotal),
+    // cashIn = every cash put in the drawer (kept for older screens); otherCashIn excludes debt collections,
+    // which are listed on their own (debtCollectionCash / debtCollectionCount)
+    cashIn: round2(cashIn + debtCollections), otherCashIn: round2(cashIn), cashOut: round2(cashOut),
+    debtCollectionCash: round2(debtCollections), debtCollectionCount, debtCollectionQrTransfer: 0, debtCollectionTotal: round2(debtCollections),
+    cashRefunds: round2(cashRefunds),
+    returnRefundAmount: round2(returnRefundAmount), returnRefundCount,
+    voidRefundAmount: round2(voidRefundAmount), voidRefundCount,
+    claimRefundAmount: round2(claimRefundAmount), claimRefundCount,
+    expectedCash,
+    orderCount, completedOrderCount: orderCount, voidCount,
+  };
+}
+
 @Injectable()
 export class ShiftsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, @Optional() private approvals?: ApprovalsService) {}
 
   async getCurrentShift(userId?: string, terminalId?: string, db: any = this.prisma) {
     if (db === this.prisma && terminalId) return businessTransaction(this.prisma, tx => this.getCurrentShift(userId, terminalId, tx));
@@ -105,88 +205,41 @@ export class ShiftsService {
       where: { id: shiftId },
       include: {
         user: { select: { id: true, fullName: true } },
-        orders: {
-          include: { payments: true },
-        },
+        orders: { include: SHIFT_ORDER_INCLUDE },
         cashMovements: true,
       },
     });
 
     if (!shift) throw new NotFoundException('ไม่พบข้อมูลกะนี้');
 
-    let cashSales = 0;
-    let qrSales = 0;
-    let transferSales = 0;
-    let creditCardSales = 0;
-    let debtSales = 0;
-    let creditNoteSales = 0; // store credit / claim credit used as payment (not a receivable)
-    let totalSales = 0;
-    let cashIn = 0;
-    let cashOut = 0;
-    let cashRefunds = 0;
-    let claimRefundCount = 0;
-
-    for (const order of shift.orders) {
-      const wasCompletedAtShiftClose =
-        shift.status === ShiftStatus.CLOSED &&
-        shift.closedAt &&
-        order.status === 'VOIDED' &&
-        order.updatedAt &&
-        new Date(order.updatedAt) >= new Date(shift.closedAt);
-
-      if (order.status !== 'COMPLETED' && !wasCompletedAtShiftClose) continue;
-      for (const p of order.payments) {
-        const amt = Number(p.amount) || 0;
-        if (p.method === PaymentMethod.CASH) cashSales += amt;
-        else if (p.method === PaymentMethod.QR_PROMPTPAY) qrSales += amt;
-        else if (p.method === PaymentMethod.TRANSFER) transferSales += amt;
-        else if (p.method === PaymentMethod.CREDIT_CARD) creditCardSales += amt;
-        else if (p.method === PaymentMethod.CREDIT_DEBT) debtSales += amt;
-        else if (p.method === PaymentMethod.CREDIT_NOTE) creditNoteSales += amt;
-        totalSales += amt;
-      }
-    }
-
-    const promptpaySales = qrSales + transferSales;
-    const voidCount = shift.orders.filter((o: any) => o.status === 'VOIDED').length;
-
-    for (const movement of shift.cashMovements) {
-      const amount = Number(movement.amount) || 0;
-      if (movement.type === CashMovementType.IN) {
-        cashIn += amount;
-      } else if (movement.type === CashMovementType.OUT) {
-        if (movement.category === 'REFUND') {
-          cashRefunds += amount;
-          claimRefundCount += 1;
-        } else {
-          cashOut += amount;
-        }
-      }
-    }
-
-    const startingCash = Number(shift.startingCash) || 0;
-    const expectedCash = startingCash + cashSales + cashIn - cashOut - cashRefunds;
-
+    const f = { ...shiftFigures(shift), ...(await this.nonCashDebtCollections(db, shift, shiftFigures(shift))) };
     return {
       shift,
-      startingCash,
-      cashSales,
-      qrSales,
-      transferSales,
-      promptpaySales,
-      creditCardSales,
-      cardSales: creditCardSales,
-      debtSales,
-      creditSales: debtSales,
-      creditNoteSales,
-      cashIn,
-      cashOut,
-      cashRefunds,
-      claimRefundCount,
-      totalSales,
-      expectedCash,
-      orderCount: shift.orders.length,
-      voidCount,
+      shiftCode: shift.shiftNumber,
+      ...f,
+    };
+  }
+
+  /** QR / transfer debt receipts taken by the shift's cashier while the shift was open (not reversed). */
+  private async nonCashDebtCollections(db: any, shift: any, f: { debtCollectionCash: number; debtCollectionCount: number }) {
+    const rows: { id: string; amount: any }[] = await db.moneyTransaction.findMany({
+      where: {
+        type: 'DEBT_RECEIPT', userId: shift.userId,
+        occurredAt: { gte: shift.openedAt, ...(shift.closedAt ? { lte: shift.closedAt } : {}) },
+        account: { type: { not: 'CASH_DRAWER' } },
+      },
+      select: { id: true, amount: true },
+    });
+    let qr = 0;
+    let count = 0;
+    if (rows.length) {
+      const reversed = new Set((await db.moneyTransaction.findMany({ where: { reversalOfId: { in: rows.map((r) => r.id) } }, select: { reversalOfId: true } })).map((r: any) => r.reversalOfId));
+      for (const r of rows) if (!reversed.has(r.id)) { qr += Number(r.amount) || 0; count += 1; }
+    }
+    return {
+      debtCollectionQrTransfer: round2(qr),
+      debtCollectionCount: f.debtCollectionCount + count,
+      debtCollectionTotal: round2(f.debtCollectionCash + qr),
     };
   }
 
@@ -247,21 +300,32 @@ export class ShiftsService {
   async addCashMovement(
     shiftId: string, type: 'in' | 'out', amount: number, reason: string, clientMovementId?: string,
     actor?: { id?: string; role?: string }, category = 'GENERAL',
-    purposeInput?: { purpose?: string; expenseCategoryId?: string; bankAccountId?: string },
+    purposeInput?: { purpose?: string; expenseCategoryId?: string; bankAccountId?: string; approvalId?: string },
   ) {
-    if (!clientMovementId || clientMovementId.length > 100) throw new BadRequestException('ต้องระบุรหัสรายการเงินสด');
+    if (!clientMovementId || typeof clientMovementId !== 'string' || clientMovementId.length > 100) throw new BadRequestException('ต้องระบุรหัสรายการเงินสด');
+    if (!['in', 'out'].includes(type)) throw new BadRequestException('ประเภทรายการเงินสดต้องเป็น in หรือ out');
+    amount = Math.round(Number(amount) * 100) / 100;
+    if (!Number.isFinite(amount) || amount < 0.01) throw new BadRequestException('จำนวนเงินต้องไม่น้อยกว่า 0.01 บาท');
+    if (amount > 1_000_000_000) throw new BadRequestException('จำนวนเงินสูงเกินกว่าที่ระบบรองรับ');
+    if (reason !== undefined && reason !== null && typeof reason !== 'string') throw new BadRequestException('เหตุผลไม่ถูกต้อง');
     const cat = String(category || 'GENERAL').toUpperCase();
     if (!CASH_CATEGORIES.includes(cat) || (cat === 'REFUND' && type !== 'out') || cat === 'DEBT_PAYMENT') throw new BadRequestException('ประเภทรายการเงินสดไม่ถูกต้อง');
     return businessTransaction(this.prisma, async tx => {
       const existing = await tx.cashMovement.findUnique({ where: { id: clientMovementId } });
       if (existing) {
+        // a replay returns the movement only to the person who recorded it
+        const log = await tx.auditLog.findFirst({ where: { action: 'CASH_MOVEMENT', entityId: existing.id }, select: { userId: true } });
+        const ledgerRow = log ? null : await tx.moneyTransaction.findFirst({ where: { refType: 'CASH_MOVEMENT', refId: existing.id }, select: { userId: true } });
+        const creator = log?.userId ?? ledgerRow?.userId ?? null;
+        if (creator ? creator !== actor?.id : !!actor && (await tx.shift.findUnique({ where: { id: existing.shiftId } }))?.userId !== actor.id) {
+          throw new ForbiddenException('รหัสรายการเงินสดนี้เป็นของผู้ใช้อื่น');
+        }
         if (existing.shiftId !== shiftId || Number(existing.amount) !== amount || existing.type !== (type === 'in' ? CashMovementType.IN : CashMovementType.OUT)) throw new BadRequestException('รายการนี้ถูกบันทึกแล้วด้วยข้อมูลต่างกัน กรุณาตรวจประวัติก่อนทำรายการใหม่');
         return existing;
       }
       const shift = await tx.shift.findUnique({ where: { id: shiftId } });
       if (!shift || shift.status !== ShiftStatus.OPEN) throw new BadRequestException('ไม่พบกะที่เปิดอยู่');
       assertShiftActor(shift, actor);
-      if (!Number.isFinite(amount) || amount <= 0 || !['in','out'].includes(type)) throw new BadRequestException('รายการเงินสดไม่ถูกต้อง');
       if (type === 'out' && amount > (await this.getShiftSummary(shiftId, tx)).expectedCash) throw new BadRequestException('ยอดนำออกมากกว่าเงินสดคงเหลือในฐานข้อมูล');
       const purpose = String(purposeInput?.purpose || (cat === 'REFUND' ? 'REFUND' : 'OTHER')).toUpperCase();
       if (!(type === 'in' ? IN_PURPOSES : OUT_PURPOSES).includes(purpose)) throw new BadRequestException('วัตถุประสงค์ของรายการเงินสดไม่ถูกต้อง');
@@ -273,7 +337,15 @@ export class ShiftsService {
       if (purpose === 'EXPENSE' && (!expenseCategory || !expenseCategory.isActive)) throw new BadRequestException('กรุณาเลือกหมวดค่าใช้จ่าย');
       // shift record shows the category; the expense itself keeps the plain description
       const movementReason = expenseCategory ? `${expenseCategory.name}: ${baseReason}` : baseReason;
+
+      // Manager approval (PIN) for drawer cash in / out above the store limit (0 = every movement)
+      const approval = await this.cashApprovalCheck(tx, { shiftId, type, amount, purpose, reason: movementReason, clientMovementId, terminalId: shift.terminalId, actor, approvalId: purposeInput?.approvalId });
+
       const movement = await tx.cashMovement.create({ data: { id: clientMovementId, shiftId, type: type === 'in' ? CashMovementType.IN : CashMovementType.OUT, amount, category: purpose === 'REFUND' ? 'REFUND' : cat, reason: movementReason } });
+      if (approval) await this.approvals!.consume(tx, approval.approvalId, approval.hash, actor!.id!, movement.id);
+      await tx.auditLog.create({
+        data: { userId: actor?.id ?? null, action: 'CASH_MOVEMENT', entity: 'CashMovement', entityId: movement.id, details: { shiftId, type, amount, purpose, reason: movementReason, approvalId: approval?.approvalId ?? null } },
+      });
       const drawer = await ledger.drawerAccount(tx, shift.terminalId);
       const ref = { refType: 'CASH_MOVEMENT', refId: movement.id, userId: actor?.id };
       switch (purpose) {
@@ -307,6 +379,31 @@ export class ShiftsService {
     });
   }
 
+  /**
+   * Returns null when no approval is needed (or the actor may approve themselves: ADMIN / MANAGER).
+   * Without an approvalId it throws 409 APPROVAL_REQUIRED with a signed ticket for the PIN dialog;
+   * with one, it returns what must be consumed together with the movement.
+   */
+  private async cashApprovalCheck(tx: any, p: { shiftId: string; type: string; amount: number; purpose: string; reason: string; clientMovementId: string; terminalId: string | null; actor?: { id?: string; role?: string }; approvalId?: string }) {
+    if (!this.approvals || !p.actor?.id) return null;
+    if (p.actor.role === 'ADMIN' || p.actor.role === 'MANAGER') return null;
+    const settings = await tx.storeSettings.findFirst({ select: { cashMovementApprovalLimit: true } });
+    const limit = settings ? Number(settings.cashMovementApprovalLimit) : 1000;
+    if (limit > 0 && p.amount <= limit) return null;
+    const hash = createHash('sha256').update(JSON.stringify({ k: 'CASH', u: p.actor.id, s: p.shiftId, t: p.type, a: p.amount, p: p.purpose, m: p.clientMovementId })).digest('hex');
+    if (p.approvalId && typeof p.approvalId === 'string') return { approvalId: p.approvalId, hash };
+    const label = p.type === 'in' ? 'นำเงินเข้าลิ้นชัก' : 'นำเงินออกจากลิ้นชัก';
+    const message = limit > 0
+      ? `${label} ฿${p.amount.toFixed(2)} เกินวงเงิน ฿${limit.toFixed(2)} ต้องให้ผู้จัดการอนุมัติ`
+      : `${label} ต้องให้ผู้จัดการอนุมัติทุกครั้ง`;
+    const reasons = [{ code: 'CASH_MOVEMENT_LIMIT', message }];
+    const ticket = this.approvals.issueTicket({
+      t: 'CASH_MOVEMENT', h: hash, r: reasons, a: p.amount, u: p.actor.id, term: p.terminalId,
+      s: { total: p.amount, type: p.type, purpose: p.purpose, reason: p.reason, items: [{ name: `${label}: ${p.reason}`, qty: 1, unitPrice: p.amount, discount: 0 }] },
+    });
+    throw new ConflictException({ statusCode: 409, code: 'APPROVAL_REQUIRED', message: 'รายการนี้ต้องให้ผู้จัดการอนุมัติ: ' + message, reasons, ticket });
+  }
+
   async getShiftHistory(page = 1, limit = 20, search?: string) {
     const skip = (page - 1) * limit;
 
@@ -326,109 +423,45 @@ export class ShiftsService {
         orderBy: { openedAt: 'desc' },
         include: {
           user: { select: { id: true, fullName: true, role: true } },
-          orders: {
-            include: { payments: true },
-          },
+          orders: { include: SHIFT_ORDER_INCLUDE },
           cashMovements: true,
         },
       }),
       this.prisma.shift.count({ where }),
     ]);
 
-    const formatted = shifts.map((shift) => {
-      let cashSales = 0;
-      let transferSales = 0;
-      let qrSales = 0;
-      let cardSales = 0;
-      let creditSales = 0;
-      let creditNoteSales = 0;
-      let otherSales = 0;
-      let totalSales = 0;
-      let cashInAmount = 0;
-      let cashOutAmount = 0;
-      let cashRefundAmount = 0;
-      let claimRefundCount = 0;
-
-      for (const order of shift.orders) {
-        const wasCompletedAtShiftClose =
-          shift.status === ShiftStatus.CLOSED &&
-          shift.closedAt &&
-          order.status === 'VOIDED' &&
-          order.updatedAt &&
-          new Date(order.updatedAt) >= new Date(shift.closedAt);
-
-        if (order.status !== 'COMPLETED' && !wasCompletedAtShiftClose) continue;
-        for (const p of order.payments) {
-          const amt = Number(p.amount) || 0;
-          if (p.method === PaymentMethod.CASH) cashSales += amt;
-          else if (p.method === PaymentMethod.QR_PROMPTPAY) qrSales += amt;
-          else if (p.method === PaymentMethod.TRANSFER) transferSales += amt;
-          else if (p.method === PaymentMethod.CREDIT_CARD) cardSales += amt;
-          else if (p.method === PaymentMethod.CREDIT_DEBT) creditSales += amt;
-          else if (p.method === PaymentMethod.CREDIT_NOTE) creditNoteSales += amt;
-          else otherSales += amt;
-          totalSales += amt;
-        }
-      }
-
-      const voidCount = shift.orders.filter((o: any) => o.status === 'VOIDED').length;
-
-      for (const m of shift.cashMovements) {
-        const amt = Number(m.amount) || 0;
-        if (m.type === CashMovementType.IN) {
-          cashInAmount += amt;
-        } else if (m.type === CashMovementType.OUT) {
-          if (m.category === 'REFUND') {
-            cashRefundAmount += amt;
-            claimRefundCount += 1;
-          } else {
-            cashOutAmount += amt;
-          }
-        }
-      }
-
-      const startingCash = Number(shift.startingCash) || 0;
-      const expectedCash = startingCash + cashSales + cashInAmount - cashOutAmount - cashRefundAmount;
-      const actualCash = shift.actualCash !== null ? Number(shift.actualCash) : expectedCash;
-      const difference = actualCash - expectedCash;
-
+    const formatted = await Promise.all(shifts.map(async (shift) => {
+      const base = shiftFigures(shift);
+      const f = { ...base, ...(await this.nonCashDebtCollections(this.prisma, shift, base)) };
+      const isOpen = shift.status === ShiftStatus.OPEN;
+      // an open shift has not been counted yet: no closing time, no counted cash, no difference
+      const actualCash = !isOpen && shift.actualCash !== null ? Number(shift.actualCash) : null;
+      const difference = actualCash === null ? null : round2(actualCash - f.expectedCash);
       return {
         id: shift.id,
         shiftNumber: shift.shiftNumber,
+        shiftCode: shift.shiftNumber,
         shiftId: shift.shiftNumber || shift.id,
         userId: shift.userId,
         openedAt: shift.openedAt.toISOString(),
-        closedAt: shift.closedAt ? shift.closedAt.toISOString() : new Date().toISOString(),
+        closedAt: shift.closedAt ? shift.closedAt.toISOString() : null,
+        isOpen,
+        shiftStatus: shift.status,
         userName: shift.user?.fullName || (shift.user as any)?.username || 'พนักงาน',
-        startingCash,
-        openingCash: startingCash,
+        openingCash: f.startingCash,
+        ...f,
         actualCash,
-        expectedCash,
         difference,
-        ordersCount: shift.orders.length,
-        orderCount: shift.orders.length,
-        voidCount,
-        totalSales,
-        cashSales,
-        transferSales,
-        qrSales,
-        cardSales,
-        creditCardSales: cardSales,
-        creditSales,
-        debtSales: creditSales,
-        creditNoteSales,
-        otherSales,
-        cashIn: cashInAmount,
-        cashInAmount,
-        cashOut: cashOutAmount,
-        cashOutAmount,
-        cashRefunds: cashRefundAmount,
-        cashRefundAmount,
-        claimRefundCount,
-        status: difference === 0 ? 'BALANCED' : difference < 0 ? 'SHORT' : 'OVER',
+        ordersCount: f.orderCount,
+        creditCardSales: f.cardSales,
+        debtSales: f.creditSales,
+        cashInAmount: f.cashIn,
+        cashOutAmount: f.cashOut,
+        cashRefundAmount: f.cashRefunds,
+        status: isOpen ? 'OPEN' : difference === 0 || difference === null ? 'BALANCED' : difference < 0 ? 'SHORT' : 'OVER',
         note: shift.note || '',
       };
-    });
+    }));
 
     return {
       data: formatted,
