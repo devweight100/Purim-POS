@@ -319,6 +319,9 @@ export default function PosNeoPage() {
   useEffect(() => {
     let timeout: NodeJS.Timeout | null = null;
     const sendState = async () => {
+      // Latest cart snapshot (the effect re-runs on cart.items; reading the whole store object as a
+      // dependency would re-run it on every cart change, including unrelated fields)
+      const cart = useCartStore.getState();
       try {
         const terminalId = getTerminalId();
         const storedName = localStorage.getItem('purim_terminal_custom_name') || `จุดขาย #${terminalId.slice(0, 6).toUpperCase()}`;
@@ -420,8 +423,9 @@ export default function PosNeoPage() {
   // Shift check
   useEffect(() => {
     if (mounted) {
-      shiftStore.fetchCurrentShift().then((serverShift) => {
-        const isShiftOpen = serverShift?.isOpen === true || shiftStore.currentShift?.isOpen === true;
+      // Read the store imperatively: this runs once per mount, not on every shift-store change
+      useShiftStore.getState().fetchCurrentShift().then((serverShift) => {
+        const isShiftOpen = serverShift?.isOpen === true || useShiftStore.getState().currentShift?.isOpen === true;
         const todayStr = new Date().toISOString().split('T')[0];
         let skippedDate: string | null = null;
         try {
