@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { CartItem, HeldBill, Product, ProductUnit, ClaimRecord, PendingClaimItem } from '../types';
 import { calculateSmartRollupAndPricing } from '../cart-pricing';
 import { loadStoreSettings } from '../store-settings-storage';
@@ -57,7 +58,51 @@ interface CartStore {
   getItemCount: () => number;
 }
 
-export const useCartStore = create<CartStore>((set, get) => ({
+/** localStorage key of the persisted cart (per device / browser profile). */
+export const CART_STORAGE_KEY = 'purim-pos-cart';
+const CART_STORAGE_VERSION = 1;
+
+type PersistedCart = Pick<CartStore,
+  'items' | 'customerId' | 'customerName' | 'billDiscountType' | 'billDiscountValue' | 'pointsDiscountValue' |
+  'pointsUsed' | 'attachedClaim' | 'pendingClaims' | 'note' | 'heldBills' | 'editingOrderId'>;
+
+const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+const discType = (v: unknown): 'none' | 'baht' | 'percent' => (v === 'baht' || v === 'percent' ? v : 'none');
+const isCartItem = (i: unknown): i is CartItem => {
+  const it = i as CartItem;
+  return !!it && typeof it === 'object' && typeof it.productId === 'string' && typeof it.name === 'string' &&
+    Number.isFinite(Number(it.quantity)) && Number(it.quantity) > 0 && Number.isFinite(Number(it.originalPrice));
+};
+
+/** Defensive restore: anything malformed (old schema, manual edits, partial writes) is dropped, never crashes the POS. */
+export function sanitizePersistedCart(raw: unknown): Partial<PersistedCart> {
+  if (!raw || typeof raw !== 'object') return {};
+  const r = raw as Record<string, unknown>;
+  const items = Array.isArray(r.items) ? r.items.filter(isCartItem) : [];
+  const heldBills = Array.isArray(r.heldBills)
+    ? (r.heldBills as HeldBill[]).filter((b) => b && typeof b === 'object' && typeof b.id === 'string' && Array.isArray(b.items))
+        .map((b) => ({ ...b, items: b.items.filter(isCartItem) }))
+        .filter((b) => b.items.length > 0)
+    : [];
+  return {
+    items,
+    customerId: typeof r.customerId === 'string' ? r.customerId : null,
+    customerName: typeof r.customerName === 'string' ? r.customerName : null,
+    billDiscountType: discType(r.billDiscountType),
+    billDiscountValue: num(r.billDiscountValue),
+    pointsDiscountValue: num(r.pointsDiscountValue),
+    pointsUsed: num(r.pointsUsed),
+    attachedClaim: r.attachedClaim && typeof r.attachedClaim === 'object' ? (r.attachedClaim as ClaimRecord) : null,
+    pendingClaims: Array.isArray(r.pendingClaims) ? (r.pendingClaims as PendingClaimItem[]) : [],
+    note: typeof r.note === 'string' ? r.note : '',
+    heldBills,
+    editingOrderId: typeof r.editingOrderId === 'string' ? r.editingOrderId : null,
+  };
+}
+
+// The cart and held (parked) bills are persisted on this device so a reload, crash or app restart does not
+// lose them. Checkout calls clearCart(), which also clears the persisted cart (held bills stay).
+export const useCartStore = create<CartStore>()(persist((set, get) => ({
   items: [],
   customerId: null,
   customerName: null,
@@ -464,6 +509,29 @@ export const useCartStore = create<CartStore>((set, get) => ({
   getItemCount: () => {
     return get().items.reduce((sum, i) => sum + i.quantity, 0);
   },
+}), {
+  name: CART_STORAGE_KEY,
+  version: CART_STORAGE_VERSION,
+  // On the server (SSR / prerender) localStorage does not exist; createJSONStorage then yields no storage
+  // and the store simply starts empty. Pages using the cart render only after AuthGuard has mounted.
+  storage: createJSONStorage(() => localStorage),
+  partialize: (s): PersistedCart => ({
+    items: s.items,
+    customerId: s.customerId,
+    customerName: s.customerName,
+    billDiscountType: s.billDiscountType,
+    billDiscountValue: s.billDiscountValue,
+    pointsDiscountValue: s.pointsDiscountValue,
+    pointsUsed: s.pointsUsed,
+    attachedClaim: s.attachedClaim,
+    pendingClaims: s.pendingClaims,
+    note: s.note,
+    heldBills: s.heldBills,
+    editingOrderId: s.editingOrderId,
+  }),
+  // Unknown/older versions: keep whatever still validates instead of throwing away parked bills
+  migrate: (persisted) => sanitizePersistedCart(persisted) as unknown as CartStore,
+  merge: (persisted, current) => ({ ...current, ...sanitizePersistedCart(persisted) }),
 }));
 
 // Follow the store's VAT setting whenever settings are (re)loaded from the server
@@ -471,5 +539,9 @@ if (typeof window !== 'undefined') {
   window.addEventListener('purim:store-settings', (e) => {
     const enabled = (e as CustomEvent<{ vatEnabled?: boolean }>).detail?.vatEnabled === true;
     if (useCartStore.getState().isVatEnabled !== enabled) useCartStore.setState({ isVatEnabled: enabled });
+  });
+  // Another tab/window on this device changed the cart or held bills: pick up its version
+  window.addEventListener('storage', (e) => {
+    if (e.key === CART_STORAGE_KEY) void useCartStore.persist.rehydrate();
   });
 }
