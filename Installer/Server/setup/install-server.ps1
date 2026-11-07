@@ -61,14 +61,24 @@ function Write-Utf8NoBom($path, $text) {
   [IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding($false)))
 }
 function New-Shortcut($path, $target, $arguments, $workDir, $icon, $minimized) {
-  $shell = New-Object -ComObject WScript.Shell
-  $lnk = $shell.CreateShortcut($path)
-  $lnk.TargetPath = $target
-  $lnk.Arguments = $arguments
-  $lnk.WorkingDirectory = $workDir
-  if ($icon) { $lnk.IconLocation = $icon }
-  if ($minimized) { $lnk.WindowStyle = 7 }
-  $lnk.Save()
+  # WScript.Shell cannot save a .lnk whose name has Thai characters (ANSI code page),
+  # so save under an ASCII temp name and rename it.
+  try {
+    $dir = Split-Path $path -Parent
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    $tmp = Join-Path $dir ("purim-tmp-" + [guid]::NewGuid().ToString('N') + '.lnk')
+    $shell = New-Object -ComObject WScript.Shell
+    $lnk = $shell.CreateShortcut($tmp)
+    $lnk.TargetPath = $target
+    $lnk.Arguments = $arguments
+    $lnk.WorkingDirectory = $workDir
+    if ($icon) { $lnk.IconLocation = $icon }
+    if ($minimized) { $lnk.WindowStyle = 7 }
+    $lnk.Save()
+    Move-Item -LiteralPath $tmp -Destination $path -Force -ErrorAction Stop
+  } catch {
+    Warn "สร้างทางลัดไม่ได้: $path ($($_.Exception.Message))"
+  }
 }
 
 Write-Host '=================================================================' -ForegroundColor Cyan
@@ -256,6 +266,9 @@ New-Shortcut (Join-Path $Desktop 'หยุดเซิร์ฟเวอร์ 
 New-Shortcut (Join-Path $StartMenu 'เปิดเซิร์ฟเวอร์ Purim POS.lnk') $StartCmd '' $SetupDir $null $true
 New-Shortcut (Join-Path $StartMenu 'หยุดเซิร์ฟเวอร์ Purim POS.lnk') $StopCmd '' $SetupDir $null $false
 New-Shortcut (Join-Path $StartMenu 'โฟลเดอร์ Log และไฟล์สำรอง.lnk') $InstallDir '' $InstallDir $null $false
+$UpdateArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$SetupDir\update-from-github.ps1`" -InstallDir `"$InstallDir`""
+New-Shortcut (Join-Path $Desktop 'อัปเดต Purim POS จาก GitHub.lnk') $PsExe $UpdateArgs $SetupDir $null $false
+New-Shortcut (Join-Path $StartMenu 'อัปเดต Purim POS จาก GitHub.lnk') $PsExe $UpdateArgs $SetupDir $null $false
 $UrlFile = Join-Path $Desktop 'หน้าร้าน Purim POS.url'
 Write-Utf8NoBom $UrlFile "[InternetShortcut]`r`nURL=http://localhost:3000/pos`r`n"
 Ok 'สร้างทางลัดบนหน้าจอ และตั้งให้เปิดเองเมื่อเข้าสู่ Windows'

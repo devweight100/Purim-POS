@@ -23,6 +23,9 @@ build_server() {
         cp "$f" "$stage/$f"
       done
   cp "Installer/Server/คู่มือติดตั้งเครื่องแม่ (Server).txt" "$stage/" 2>/dev/null || true
+  # Commit this installer was built from (read by update-from-github.ps1)
+  node -e "const [sha,date,msg]=process.argv.slice(1);require('fs').writeFileSync(process.argv[4],JSON.stringify({commit:sha,branch:'installer',message:msg,committedAt:date,installedAt:'',source:'installer'},null,2))" \
+    "$(git rev-parse HEAD)" "$(git log -1 --format=%cd --date=format:'%d/%m/%Y %H:%M')" "$(git log -1 --format=%s)" "$stage/VERSION.json"
   echo "payload: $(find "$stage" -type f | wc -l) files, $(du -sh "$stage" | cut -f1)"
   makensis -V2 -DVERSION="$VERSION" -DPAYLOAD="$stage" \
     -DOUTFILE="$ROOT/Installer/Server/Purim-POS-Server-Setup.exe" \

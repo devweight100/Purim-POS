@@ -35,6 +35,17 @@
   • ถ้าโปรแกรมหลังบ้าน/หน้าจอค้าง ระบบจะเริ่มใหม่ให้เอง
   • Docker Desktop ต้องเปิดอยู่เสมอ (ฐานข้อมูลอยู่ในนั้น) — ตั้งค่า Start when you sign in ไว้แล้ว
 
+อัปเดตจาก GitHub (ไม่ต้องดาวน์โหลดไฟล์ติดตั้งใหม่)
+  • ดับเบิลคลิกทางลัด "อัปเดต Purim POS จาก GitHub" บนหน้าจอ
+  • ครั้งแรกจะขอ GitHub token แบบอ่านอย่างเดียว (ใส่ครั้งเดียว เก็บเข้ารหัสในเครื่อง):
+      github.com > Settings > Developer settings > Fine-grained tokens > Generate new token
+      Repository access: Only select repositories > devweight100/Purim-POS
+      Permissions > Contents: Read-only > Generate แล้ว copy มาวาง
+  • ระบบจะบอกเวอร์ชันล่าสุด ถ้าเป็นล่าสุดอยู่แล้วจะไม่ทำอะไร ถ้ามีใหม่จะถามก่อนอัปเดต (ตอบ y)
+  • อัปเดต = สำรองข้อมูล > อัปเดตฐานข้อมูล > build > เปิดเซิร์ฟเวอร์ใหม่ (เครื่องขายใช้ไม่ได้ 5-10 นาที)
+    ควรอัปเดตตอนร้านปิด
+  • token หมดอายุ/ใช้ไม่ได้: ระบบจะลบ token เก่าและขอใหม่ในการกดครั้งถัดไป
+
 มีปัญหา
   • Start > Purim POS Server > "ติดตั้งหรือซ่อมระบบ Purim POS"  (รันซ้ำได้เสมอ ปลอดภัยต่อข้อมูล)
   • บันทึกการทำงาน:  C:\PurimPOS\logs  (launcher.log, backend.log, frontend.log, install-*.log)
