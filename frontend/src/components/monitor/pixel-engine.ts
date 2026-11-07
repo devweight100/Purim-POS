@@ -19,6 +19,8 @@ export interface SceneTerminal {
   hasShift: boolean;
   itemCount: number;
   seed: number;
+  /** today's sales of this terminal (shown on the counter while it is online) */
+  sales: number;
 }
 
 export interface Slot {
@@ -288,7 +290,7 @@ function drawCounter(ctx: CanvasRenderingContext2D, s: Slot, term: SceneTerminal
   rect(ctx, s.x, s.y, s.w, 4, PAL.woodTop);
   rect(ctx, s.x, s.y + 4, s.w, s.h - 4, PAL.woodFront);
   rect(ctx, s.x, s.y + s.h - 2, s.w, 2, PAL.woodDark);
-  for (let x = s.x + 4; x < s.x + s.w - 2; x += 8) rect(ctx, x, s.y + 7, 1, s.h - 10, PAL.woodDark);
+  for (let x = s.x + 4; x < s.x + s.w - 2; x += 8) rect(ctx, x, s.y + 5, 1, offline ? s.h - 8 : 5, PAL.woodDark);
 
   // monitor
   const mx = s.x + 6;
@@ -304,13 +306,22 @@ function drawCounter(ctx: CanvasRenderingContext2D, s: Slot, term: SceneTerminal
   rect(ctx, mx + 6, my + 10, 2, 1, PAL.metalDark);
 
   // cash drawer slides out on DRAWER / PAYMENT
-  const drawerOut = !offline && (term.action === 'DRAWER' || term.action === 'PAYMENT') ? 3 : 0;
-  rect(ctx, s.x + 24, s.y + 8 + drawerOut, 14, 5, PAL.metalDark);
-  rect(ctx, s.x + 24, s.y + 8 + drawerOut, 14, 1, PAL.metal);
-  if (drawerOut) {
-    rect(ctx, s.x + 26, s.y + 9 + drawerOut, 3, 2, '#22c55e');
-    rect(ctx, s.x + 30, s.y + 9 + drawerOut, 3, 2, '#3b82f6');
-    rect(ctx, s.x + 34, s.y + 9 + drawerOut, 2, 2, PAL.yellow);
+  const drawerOpen = !offline && (term.action === 'DRAWER' || term.action === 'PAYMENT');
+  rect(ctx, s.x + 24, s.y + 5, 14, 5, drawerOpen ? PAL.metal : PAL.metalDark);
+  rect(ctx, s.x + 24, s.y + 5, 14, 1, drawerOpen ? PAL.white : PAL.metal);
+  if (drawerOpen) {
+    rect(ctx, s.x + 26, s.y + 7, 3, 2, '#22c55e');
+    rect(ctx, s.x + 30, s.y + 7, 3, 2, '#3b82f6');
+    rect(ctx, s.x + 34, s.y + 7, 2, 2, PAL.yellow);
+  }
+
+  // today's sales on a display plate across the counter front (online machines only)
+  if (!offline) {
+    const amount = Math.round(term.sales || 0);
+    let label = '฿' + amount.toLocaleString('en-US');
+    if (textWidth(label) > s.w - 6) label = '฿' + (amount / 1000).toFixed(amount >= 100000 ? 0 : 1) + 'K';
+    rect(ctx, s.x + 2, s.y + 11, s.w - 4, 7, PAL.ink);
+    pixelText(ctx, label, Math.round(s.x + s.w / 2 - textWidth(label) / 2), s.y + 12, PAL.yellow, false);
   }
 
   // customer in front while there is a cart / payment
@@ -355,9 +366,6 @@ function drawCounter(ctx: CanvasRenderingContext2D, s: Slot, term: SceneTerminal
       rect(ctx, iconX, iconY, 3, 5, PAL.red);
       rect(ctx, iconX, iconY + 6, 3, 1, PAL.red);
     }
-  } else if (offline) {
-    const z = Math.floor(t / 500) % 3;
-    pixelText(ctx, 'Z', s.x + 32 + z, s.y - 14 - z * 3, term.hasShift ? PAL.orange : PAL.metal);
   } else if (term.status === 'IDLE') {
     pixelText(ctx, '...', iconX - 3, iconY + 4, PAL.metal);
   }
