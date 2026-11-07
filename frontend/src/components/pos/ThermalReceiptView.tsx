@@ -283,7 +283,7 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
           {/* ยอดรวมสุทธิ - ตัวหนาใหญ่พิเศษ สีดำสนิท พร้อมเส้นคู่ชัดเจน */}
           <div className="flex justify-between items-center text-[15px] font-black text-black pt-1.5 pb-1.5 border-t-2 border-b-2 border-black my-1.5">
             <span>ยอดรวมสุทธิ:</span>
-            <span className="shrink-0 text-[17px] font-mono font-black">{formatCurrency(data.totalAmount)} ฿</span>
+            <span className="shrink-0 text-[17px] font-mono font-black">{formatCurrency(data.totalAmount)}</span>
           </div>
         </div>
 
@@ -410,7 +410,8 @@ export function printThermalReceiptDirect(data: ReceiptData, settings: StoreSett
   root.render(<ThermalReceiptView data={data} settings={settings} />);
 
   setTimeout(() => {
-    printDocumentIframe(container, `พิมพ์ใบเสร็จ - ${data.orderNumber}`, '80mm');
+    const receipt = (container.firstElementChild as HTMLElement | null) || container;
+    printDocumentIframe(receipt, `พิมพ์ใบเสร็จ - ${data.orderNumber}`, '80mm');
     setTimeout(() => {
       try {
         root.unmount();

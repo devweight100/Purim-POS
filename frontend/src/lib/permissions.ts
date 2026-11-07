@@ -5,6 +5,7 @@ export interface PermissionUser {
 
 export const ROUTE_PERMISSIONS: Record<string, string | string[]> = {
   '/master-control': 'VIEW_REPORTS',
+  '/monitor': 'VIEW_REPORTS',
   '/pos': 'POS_SELL',
   '/dashboard': 'VIEW_REPORTS',
   '/reports': 'VIEW_REPORTS',

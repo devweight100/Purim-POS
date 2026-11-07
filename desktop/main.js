@@ -141,7 +141,8 @@ function createWindow() {
     minHeight: 700,
     title: 'ร้านปุริม POS',
     backgroundColor: '#0f172a',
-    autoHideMenuBar: false,
+    // No menu bar on screen; its shortcuts (F11, Ctrl+R, Ctrl+Shift+S ...) still work, Alt shows it
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -317,6 +318,7 @@ function setupAppMenu() {
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+  if (mainWindow) mainWindow.setMenuBarVisibility(false);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -711,11 +713,10 @@ body { margin: 0; padding: 0; font-family: 'Control', 'FontControl', sans-serif;
 }
 
 // Hardware: 100% Silent Direct Print to Epson TM-T82 without any popup dialog
-ipcMain.handle('print-silent', async (event, { html, printerName }) => {
+function printViaDriver(html, printerName, isA4) {
   return new Promise(async (resolve) => {
     let printWin = null;
     try {
-      const isA4 = html.includes('a4') || html.includes('A4') || html.includes('210mm');
       // 302px exactly equals 80mm at 96 DPI, preventing thermal roll shrinkage
       const winWidth = isA4 ? 794 : 302;
 
@@ -731,7 +732,7 @@ ipcMain.handle('print-silent', async (event, { html, printerName }) => {
       });
 
       const config = loadConfig();
-      const serverBase = config.serverUrl ? config.serverUrl.replace(/\/+$/, '') : 'http://192.168.1.131:3000';
+      const serverBase = config.serverUrl ? config.serverUrl.replace(/\/+$/, '') : 'http://localhost:3000';
       const targetPrinter = await resolvePrinterDevice(printerName || config.printerName);
 
       printWin.webContents.on('did-finish-load', () => {
@@ -773,6 +774,44 @@ ipcMain.handle('print-silent', async (event, { html, printerName }) => {
       resolve({ success: false, failureReason: err.message });
     }
   });
+}
+
+const { printHtmlAsRaster } = require('./escpos-raster');
+
+function guessPaperDots(printerName) {
+  const n = String(printerName || '').toLowerCase();
+  return /58\s*mm|\b58\b|-58|58-|pt-?210|xp-?58/.test(n) ? 384 : 576;
+}
+
+// Print a document without any dialog.
+// Receipts (80mm/58mm) are printed as an ESC/POS raster image + paper cut, so Thai prints
+// correctly on thermal printers whose drivers substitute device fonts (-> "????").
+// Set receiptPrintMode = "driver" in the app config to use the Windows driver instead.
+ipcMain.handle('print-silent', async (event, { html, printerName, format, mode, cut }) => {
+  // Never let the document call window.print() itself (that opens Chromium's print preview)
+  const cleanHtml = String(html || '').replace(/<script[\s\S]*?<\/script>/gi, '');
+  const config = loadConfig();
+  const isA4 = format ? format === 'a4' : (cleanHtml.includes('size: A4') || cleanHtml.includes('210mm'));
+  const receiptMode = mode || config.receiptPrintMode || 'raster';
+  const targetPrinter = await resolvePrinterDevice(printerName || config.printerName);
+
+  if (!isA4 && receiptMode !== 'driver') {
+    try {
+      const serverBase = (config.serverUrl || 'http://localhost:3000').replace(/\/+$/, '');
+      const res = await printHtmlAsRaster(cleanHtml, {
+        printerName: targetPrinter,
+        dots: Number(config.paperDots) || guessPaperDots(targetPrinter),
+        baseURL: `${serverBase}/`,
+        cut: cut !== false && config.autoCut !== false,
+      });
+      console.log(`[RasterPrint] ${targetPrinter}: ${JSON.stringify({ ...res, output: undefined })}`);
+      if (res.success) return { success: true, printer: targetPrinter, mode: 'raster' };
+      console.warn('[RasterPrint] failed, falling back to driver:', res.error);
+    } catch (err) {
+      console.warn('[RasterPrint] error, falling back to driver:', err);
+    }
+  }
+  return printViaDriver(cleanHtml, targetPrinter, isA4);
 });
 
 // Hardware: Cash Drawer Kick pulse supporting Auto (Dual ESC/POS + Epson APD Font), ESC/POS only, or APD Font only

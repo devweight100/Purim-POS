@@ -389,7 +389,18 @@ export function PosListLayout({
       )}
 
       {/* ─── 1. TOP CONTROL & DIGITAL LED DISPLAY BAR ─── */}
-      <div className="bg-white p-3 sm:p-4 border-b border-slate-200 grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-center shrink-0 shadow-sm">
+      <div className="bg-white p-3 sm:p-4 border-b border-slate-200 flex items-start gap-3 shrink-0 shadow-sm">
+        {/* Program logo = back to main menu */}
+        <Link
+          href="/dashboard"
+          className="shrink-0 block w-13 h-13 rounded-xl overflow-hidden shadow-sm ring-1 ring-slate-200 hover:ring-2 hover:ring-indigo-400 transition-all"
+          title="กลับไปเมนูหลัก"
+          aria-label="กลับไปเมนูหลัก"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icon.svg" alt="" className="w-full h-full" draggable={false} />
+        </Link>
+      <div className="flex-1 min-w-0 grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-center">
         
         {/* Left Search & Note Input Area (4 cols) */}
         <div className="lg:col-span-4 flex flex-col gap-2.5">
@@ -591,6 +602,7 @@ export function PosListLayout({
           </div>
         </div>
       </div>
+      </div>
 
       {/* ─── 2. MAIN TABLE CONTENT AREA ─── */}
       <div className="flex-1 overflow-y-auto bg-white p-3 sm:p-4">
@@ -784,32 +796,32 @@ export function PosListLayout({
       </div>
 
       {/* ─── 3. BOTTOM ACTION SHORTCUTS BAR ─── */}
-      <div className="bg-white border-t border-slate-200 px-3 sm:px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm shrink-0 shadow-lg">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="bg-white border-t border-slate-200 px-3 sm:px-4 py-2 flex flex-nowrap items-center gap-2 text-xs sm:text-sm shrink-0 shadow-lg overflow-x-auto">
+        <div className="flex flex-nowrap items-center gap-2 shrink-0">
           <button 
             type="button"
             onClick={onOpenHistory} 
-            className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold px-3.5 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm"
+            className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
           >
             <Clock className="w-4 h-4" />
             <span>ประวัติ</span>
-            <span className="text-xs opacity-80 font-normal">(Ctrl+H)</span>
+            <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(Ctrl+H)</span>
           </button>
           
           <button 
             type="button"
             onClick={onSelectCustomer} 
-            className="flex items-center gap-1.5 bg-sky-500 hover:bg-sky-600 text-white font-extrabold px-3.5 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm"
+            className="flex items-center gap-1.5 bg-sky-500 hover:bg-sky-600 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
           >
             <User className="w-4 h-4" />
             <span>ลูกค้า</span>
-            <span className="text-xs opacity-80 font-normal">(Ctrl+M)</span>
+            <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(Ctrl+M)</span>
           </button>
 
           <button 
             type="button"
             onClick={onOpenCustomerStock} 
-            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-3.5 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm"
+            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
             title="เปิดคลังสินค้าลูกค้า & สิทธิ์เคลม"
           >
             <Package className="w-4 h-4" />
@@ -819,11 +831,11 @@ export function PosListLayout({
           <button 
             type="button"
             onClick={() => cart.clearCart()} 
-            className="flex items-center gap-1.5 bg-rose-500 hover:bg-rose-600 text-white font-extrabold px-3.5 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm"
+            className="flex items-center gap-1.5 bg-rose-500 hover:bg-rose-600 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
           >
             <Trash2 className="w-4 h-4" />
             <span>เคลียร์</span>
-            <span className="text-xs opacity-80 font-normal">(Ctrl+E)</span>
+            <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(Ctrl+E)</span>
           </button>
 
           <button 
@@ -836,47 +848,40 @@ export function PosListLayout({
                 onOpenHoldBills();
               }
             }} 
-            className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white font-extrabold px-3.5 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm"
+            className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
           >
             <ShoppingBag className="w-4 h-4" />
             <span>พักบิล</span>
-            <span className="text-xs opacity-80 font-normal">(Ctrl+P)</span>
+            <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(Ctrl+P)</span>
           </button>
 
           <button 
             type="button"
             onClick={onOpenHoldBills} 
-            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-3.5 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm"
+            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
           >
             <Clock className="w-4 h-4" />
             <span>ดูบิลพัก</span>
-            <span className="text-xs opacity-80 font-normal">(F10)</span>
+            <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(F10)</span>
           </button>
 
           <button 
             type="button"
             onClick={onOpenCashDrawer} 
-            className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold px-3.5 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm"
+            className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
             title="เปิดลิ้นชัก / บันทึกเงินเข้า-ออก (F9)"
           >
             <Coins className="w-4 h-4" />
             <span>เปิดลิ้นชัก</span>
-            <span className="text-xs opacity-80 font-normal">(F9)</span>
+            <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(F9)</span>
           </button>
         </div>
 
         {/* Option Selector for Sales Screen View & Exit to Dashboard */}
-        <div className="flex items-center gap-2 ml-auto">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-800 text-white font-extrabold px-3 py-2 rounded-lg shadow-sm transition-all text-xs sm:text-sm shrink-0"
-            title="กลับไปหน้าแดชบอร์ด / เมนูหลัก"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>เมนูหลัก</span>
-          </Link>
-          <span className="text-xs sm:text-sm text-slate-700 font-extrabold hidden sm:inline">รูปแบบหน้าจอขาย:</span>
-          <select 
+        <div className="flex items-center gap-2 ml-auto shrink-0">
+          <select
+            aria-label="รูปแบบหน้าจอขาย"
+            title="รูปแบบหน้าจอขาย" 
             value={viewMode}
             onChange={(e) => onViewModeChange(e.target.value as 'touch_screen' | 'list_view')}
             className="bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 text-xs sm:text-sm font-bold rounded-lg px-3 py-2 outline-none shadow-sm cursor-pointer transition-all"

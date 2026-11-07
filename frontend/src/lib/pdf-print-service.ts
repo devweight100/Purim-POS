@@ -7,6 +7,19 @@ import { getCashDrawerConfig } from './cash-drawer-service';
  * Guarantees 100% WYSIWYG matching between screen preview and physical print/PDF.
  */
 
+/**
+ * Markup of the element to print, without the inline styles that keep an off-screen
+ * render container hidden (position:fixed; left:-9999px; opacity:0 ...). Copying those
+ * made the printed page blank.
+ */
+function printableMarkup(element: HTMLElement): string {
+  const clone = element.cloneNode(true) as HTMLElement;
+  for (const prop of ['position', 'left', 'top', 'right', 'bottom', 'opacity', 'z-index', 'visibility', 'pointer-events', 'transform']) {
+    clone.style.removeProperty(prop);
+  }
+  return clone.outerHTML || clone.innerHTML;
+}
+
 export function printDocumentIframe(
   element: HTMLElement,
   title: string,
@@ -29,6 +42,32 @@ export function printDocumentIframe(
   const pageSize = isSlip ? '80mm auto' : 'A4 portrait';
   const containerMaxWidth = isSlip ? '100%' : '210mm';
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+
+  // Only the browser iframe path prints itself; the desktop app prints silently (no preview).
+  const autoPrintScript = `
+        <script>
+          (function() {
+            function triggerPrint() {
+              try {
+                window.focus();
+                window.print();
+              } catch (e) {}
+            }
+            if (document.fonts && document.fonts.ready) {
+              document.fonts.ready.then(function() {
+                setTimeout(triggerPrint, 150);
+              });
+            } else if (document.readyState === 'complete') {
+              setTimeout(triggerPrint, 200);
+            } else {
+              window.addEventListener('load', function() {
+                setTimeout(triggerPrint, 200);
+              });
+              setTimeout(triggerPrint, 500);
+            }
+          })();
+        </script>
+`;
 
   const fullHtml = `
     <!DOCTYPE html>
@@ -197,31 +236,9 @@ export function printDocumentIframe(
       </head>
       <body>
         <div class="print-wrapper">
-          ${element.outerHTML || element.innerHTML}
+          ${printableMarkup(element)}
         </div>
-        <script>
-          (function() {
-            function triggerPrint() {
-              try {
-                window.focus();
-                window.print();
-              } catch (e) {}
-            }
-            if (document.fonts && document.fonts.ready) {
-              document.fonts.ready.then(function() {
-                setTimeout(triggerPrint, 150);
-              });
-            } else if (document.readyState === 'complete') {
-              setTimeout(triggerPrint, 200);
-            } else {
-              window.addEventListener('load', function() {
-                setTimeout(triggerPrint, 200);
-              });
-              setTimeout(triggerPrint, 500);
-            }
-          })();
-        </script>
-      </body>
+${autoPrintScript}      </body>
     </html>
   `;
 
@@ -236,8 +253,9 @@ export function printDocumentIframe(
     } catch (e) {}
 
     (window as any).electronAPI.printSilent({
-      html: fullHtml,
-      printerName: targetPrinter || undefined
+      html: fullHtml.replace(autoPrintScript, ''),
+      printerName: targetPrinter || undefined,
+      format,
     }).catch((err: any) => console.error('Electron silent print failed:', err));
     return;
   }
