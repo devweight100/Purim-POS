@@ -36,6 +36,8 @@ interface PosListLayoutProps {
   onOpenCashDrawer?: () => void;
   onOpenCustomerStock?: () => void;
   onOpenItemClaim?: (item: CartItem) => void;
+  selectedCartIndex?: number;
+  onSelectCartIndex?: (index: number) => void;
 }
 
 export function PosListLayout({
@@ -53,7 +55,9 @@ export function PosListLayout({
   onOpenDebtPay,
   onOpenCashDrawer,
   onOpenCustomerStock,
-  onOpenItemClaim
+  onOpenItemClaim,
+  selectedCartIndex,
+  onSelectCartIndex
 }: PosListLayoutProps) {
   const cart = useCartStore();
   const { products } = useProductStore();
@@ -180,19 +184,27 @@ export function PosListLayout({
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedIndex(prev => {
-        const next = (prev + 1) % Math.max(1, filteredProducts.length);
-        setSelectedUnitIndex(0);
-        return next;
-      });
+      if (isSearchOpen && filteredProducts.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.nativeEvent?.stopImmediatePropagation?.();
+        setSelectedIndex(prev => {
+          const next = (prev + 1) % filteredProducts.length;
+          setSelectedUnitIndex(0);
+          return next;
+        });
+      }
     } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedIndex(prev => {
-        const next = (prev - 1 + filteredProducts.length) % Math.max(1, filteredProducts.length);
-        setSelectedUnitIndex(0);
-        return next;
-      });
+      if (isSearchOpen && filteredProducts.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.nativeEvent?.stopImmediatePropagation?.();
+        setSelectedIndex(prev => {
+          const next = (prev - 1 + filteredProducts.length) % filteredProducts.length;
+          setSelectedUnitIndex(0);
+          return next;
+        });
+      }
     } else if (e.key === 'ArrowRight') {
       if (filteredProducts.length > 0) {
         e.preventDefault();
@@ -688,13 +700,25 @@ export function PosListLayout({
                   const lineTotal = cart.getItemLineTotal(item);
                   const effectivePrice = cart.getEffectivePrice(item);
                   const itemDiscount = cart.getItemDiscountAmount(item);
+                  const isSelected = idx === selectedCartIndex;
 
                   return (
-                    <tr key={`${item.productId}-${item.unitId}`} className="hover:bg-slate-50/80 transition-colors">
+                    <tr 
+                      key={`${item.productId}-${item.unitId}`} 
+                      id={`classic-list-cart-item-${idx}`}
+                      onClick={() => onSelectCartIndex?.(idx)}
+                      className={`transition-colors cursor-pointer ${
+                        isSelected 
+                          ? 'bg-sky-100/80 font-bold border-l-4 border-l-sky-600 shadow-2xs' 
+                          : 'hover:bg-slate-50/80'
+                      }`}
+                    >
                       <td className="py-4 px-4 text-slate-900">
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2">
-                            <span className="text-slate-400 font-bold text-base min-w-[24px]">{idx + 1}.</span>
+                            <span className="text-slate-500 font-bold text-base min-w-[24px]">
+                              {isSelected ? <span className="text-sky-600 text-lg">👉</span> : `${idx + 1}.`}
+                            </span>
                             <span className="text-base sm:text-lg font-bold text-slate-900 leading-snug">{item.name}</span>
                           </div>
                           {item.claimQuantity !== undefined && item.claimQuantity > 0 && (
@@ -711,7 +735,7 @@ export function PosListLayout({
                         </div>
                       </td>
                       <td className="py-4 px-4 text-right font-bold text-slate-800 text-base sm:text-lg">
-                        <div className="flex items-center justify-end gap-1.5 cursor-pointer hover:text-sky-600" onClick={() => setPriceEditItem(item)} title="คลิกเพื่อแก้ไขราคาต่อหน่วย (Numpad)">
+                        <div className="flex items-center justify-end gap-1.5 cursor-pointer hover:text-sky-600" onClick={() => setPriceEditItem(item)} title="คลิกเพื่อแก้ไขราคาต่อหน่วย (F4)">
                           <span>{formatCurrency(effectivePrice)}</span>
                           <Edit3 className="w-4 h-4 text-slate-400 hover:text-sky-600" />
                         </div>
@@ -720,7 +744,7 @@ export function PosListLayout({
                         <div 
                           onClick={() => onOpenNumpadQty?.(item)}
                           className="inline-flex items-center border border-slate-300 rounded-lg bg-white overflow-hidden shadow-sm h-10 w-24 cursor-pointer hover:border-sky-500 hover:bg-sky-50 transition-all"
-                          title="คลิกเพื่อแก้ไขจำนวนด้วย Numpad"
+                          title="คลิกเพื่อแก้ไขจำนวนด้วย Numpad (F2)"
                         >
                           <span className="w-full text-center font-extrabold text-slate-900 text-base">{item.quantity}</span>
                           <span className="px-2 text-xs font-semibold text-slate-600 border-l border-slate-300 h-full flex items-center bg-slate-50 whitespace-nowrap">{item.unitName}</span>
@@ -731,7 +755,7 @@ export function PosListLayout({
                           <span 
                             onClick={() => setDiscountEditItem(item)}
                             className="flex-1 text-sm font-extrabold text-slate-900 text-right pr-2 cursor-pointer hover:text-sky-600 truncate h-full flex items-center justify-end"
-                            title="คลิกเพื่อระบุส่วนลดด้วย Numpad"
+                            title="คลิกเพื่อระบุส่วนลดด้วย Numpad (F3)"
                           >
                             {item.discountValue > 0 ? formatNumber(item.discountValue) : '0'}
                           </span>
@@ -778,7 +802,7 @@ export function PosListLayout({
                             type="button"
                             onClick={() => cart.removeItem(item.productId, item.unitId)} 
                             className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="ลบรายการ"
+                            title="ลบรายการ (Del)"
                           >
                             <Trash2 className="w-5 h-5" />
                           </button>
@@ -789,6 +813,31 @@ export function PosListLayout({
                 })}
               </tbody>
             </table>
+            
+            {/* Keyboard Shortcuts Helper Strip */}
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-slate-100 border-t border-slate-200 text-xs font-semibold text-slate-700">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="bg-sky-600 text-white px-2 py-0.5 rounded text-[10px] font-bold">
+                  ⌨️ คีย์ลัดรายการ
+                </span>
+                <span>[↑ / ↓] เลือกแถว</span>
+                <span>•</span>
+                <span className="bg-white px-1.5 py-0.5 rounded border border-slate-300 font-bold">[F2] แก้ไขจำนวน</span>
+                <span>•</span>
+                <span className="bg-white px-1.5 py-0.5 rounded border border-slate-300 font-bold">[F3] แก้ไขส่วนลด</span>
+                <span>•</span>
+                <span className="bg-white px-1.5 py-0.5 rounded border border-slate-300 font-bold">[F4] แก้ไขราคา</span>
+                <span>•</span>
+                <span>[+ / -] ปรับจำนวน</span>
+                <span>•</span>
+                <span>[Del] ลบ</span>
+              </div>
+              {cart.items.length > 0 && (
+                <div className="font-mono text-xs bg-white px-2.5 py-0.5 rounded border border-slate-300 font-bold">
+                  รายการที่ {(selectedCartIndex ?? 0) + 1} จาก {cart.items.length}
+                </div>
+              )}
+            </div>
             <div ref={cartBottomRef} />
           </div>
           </div>

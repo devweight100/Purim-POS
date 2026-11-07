@@ -155,6 +155,8 @@ export default function POSPage() {
   const [showPayment, setShowPayment] = useState(false);
   const [editItem, setEditItem] = useState<CartItem | null>(null);
   const [qtyEditItem, setQtyEditItem] = useState<CartItem | null>(null);
+  const [priceEditItem, setPriceEditItem] = useState<CartItem | null>(null);
+  const [selectedCartIndex, setSelectedCartIndex] = useState<number>(0);
   const [showBillDiscount, setShowBillDiscount] = useState(false);
   const [showOpenShift, setShowOpenShift] = useState(false);
   const [showCloseShift, setShowCloseShift] = useState(false);
@@ -212,6 +214,21 @@ export default function POSPage() {
       cartBottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [cart.items.length, cart.items]);
+
+  // Auto-select latest item when new item added to cart
+  const prevItemsLength = useRef<number>(cart.items.length);
+  useEffect(() => {
+    if (cart.items.length > prevItemsLength.current) {
+      setSelectedCartIndex(cart.items.length - 1);
+      setTimeout(() => {
+        const elem = document.getElementById(`classic-cart-item-${cart.items.length - 1}`) || document.getElementById(`classic-list-cart-item-${cart.items.length - 1}`);
+        if (elem) elem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 50);
+    } else if (selectedCartIndex >= cart.items.length) {
+      setSelectedCartIndex(Math.max(0, cart.items.length - 1));
+    }
+    prevItemsLength.current = cart.items.length;
+  }, [cart.items.length, selectedCartIndex]);
 
   const handleOpenNormalPayment = () => {
     if (cart.items.length === 0) {
@@ -470,21 +487,144 @@ export default function POSPage() {
     processBarcodeScan(scannedBarcode);
   }, mounted);
 
-  // POS Global Keyboard Shortcuts (F12, F10, Ctrl+H, Ctrl+M, Ctrl+E, Ctrl+P) - Supports Toggle & Thai/English OS layouts
+  // POS Global Keyboard Shortcuts (F2, F3, F4, Arrow keys, +/-, Delete, F12, F10, Ctrl+H, Ctrl+M, Ctrl+E, Ctrl+P)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const code = e.code;
       const keyLower = e.key ? e.key.toLowerCase() : '';
+      const activeEl = document.activeElement as HTMLElement | null;
 
+      // Identify if the active element is a background scanner input (tabindex=-1 or sr-only)
+      const isHiddenScanner = !!activeEl && (
+        activeEl === scannerInputRef.current ||
+        activeEl.classList?.contains('sr-only') ||
+        activeEl.getAttribute('tabindex') === '-1' ||
+        activeEl.getAttribute('aria-hidden') === 'true'
+      );
+
+      // Check if user is inside a real editable text field (search bar, note input, etc.)
+      const isRealTextInput = !isHiddenScanner && !!activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+
+      // Check the actual text value currently typed into this input
+      const activeInputValue = (isRealTextInput && (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement))
+        ? activeEl.value.trim()
+        : '';
+
+      // User is actively searching/typing if focused on an input and there is text in it
+      const isSearching = isRealTextInput && activeInputValue.length > 0;
+
+      // Check if modal or dialog is currently open - if so, let dialog handle its own keys
+      const isModalOpen = showPayment || showOpenShift || showCloseShift || !!editItem || showCustomerSelect || showHeldBills || !!qtyEditItem || !!priceEditItem || showDebtCollectModal || showCashDrawerModal || showClaimModal || showUnitModal || showRedeemModal || showBarcodeScan || showOrderHistoryModal || showCustomerStockModal || !!claimTargetItem;
+      if (isModalOpen) return;
+
+      // Helper to scroll to selected item
+      const scrollToItem = (idx: number) => {
+        setTimeout(() => {
+          const elem = document.getElementById(`classic-cart-item-${idx}`) || document.getElementById(`classic-list-cart-item-${idx}`);
+          if (elem) elem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 15);
+      };
+
+      // F2 -> Edit Quantity of selected/latest cart item
+      if (code === 'F2' || keyLower === 'f2') {
+        e.preventDefault();
+        const items = useCartStore.getState().items;
+        if (items.length === 0) {
+          toast.warning('ยังไม่มีสินค้าในตะกร้า');
+          return;
+        }
+        const idx = Math.min(items.length - 1, Math.max(0, selectedCartIndex));
+        setQtyEditItem(items[idx]);
+      }
+      // F3 -> Edit Discount & Details of selected/latest cart item
+      else if (code === 'F3' || keyLower === 'f3') {
+        e.preventDefault();
+        const items = useCartStore.getState().items;
+        if (items.length === 0) {
+          toast.warning('ยังไม่มีสินค้าในตะกร้า');
+          return;
+        }
+        const idx = Math.min(items.length - 1, Math.max(0, selectedCartIndex));
+        setEditItem(items[idx]);
+      }
+      // F4 -> Edit Selling Price of selected/latest cart item
+      else if (code === 'F4' || keyLower === 'f4') {
+        e.preventDefault();
+        const items = useCartStore.getState().items;
+        if (items.length === 0) {
+          toast.warning('ยังไม่มีสินค้าในตะกร้า');
+          return;
+        }
+        const idx = Math.min(items.length - 1, Math.max(0, selectedCartIndex));
+        setPriceEditItem(items[idx]);
+      }
+      // Arrow Up / Down -> Navigate selection through cart items
+      // ONLY when NOT actively searching/typing query in an input
+      else if ((code === 'ArrowDown' || keyLower === 'arrowdown' || code === 'ArrowUp' || keyLower === 'arrowup') && !isSearching) {
+        const items = useCartStore.getState().items;
+        if (items.length > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          const isDown = code === 'ArrowDown' || keyLower === 'arrowdown';
+          setSelectedCartIndex((prev) => {
+            const next = isDown
+              ? Math.min(items.length - 1, prev + 1)
+              : Math.max(0, prev - 1);
+            scrollToItem(next);
+            return next;
+          });
+        }
+      }
+      // Delete -> Remove selected cart item (only when not typing in a real text input)
+      else if ((code === 'Delete' || keyLower === 'delete') && !isRealTextInput) {
+        const items = useCartStore.getState().items;
+        if (items.length > 0) {
+          e.preventDefault();
+          const idx = Math.min(items.length - 1, Math.max(0, selectedCartIndex));
+          const target = items[idx];
+          if (target) {
+            useCartStore.getState().removeItem(target.productId, target.unitId);
+            toast.info(`ลบ "${target.name}" ออกจากตะกร้าแล้ว`);
+          }
+        }
+      }
+      // + / - keys -> Increase / Decrease quantity of selected item (only when not typing in a real text input)
+      else if ((code === 'NumpadAdd' || keyLower === '+') && !isRealTextInput) {
+        const items = useCartStore.getState().items;
+        if (items.length > 0) {
+          e.preventDefault();
+          const idx = Math.min(items.length - 1, Math.max(0, selectedCartIndex));
+          const target = items[idx];
+          if (target) {
+            useCartStore.getState().updateQuantity(target.productId, target.quantity + 1, target.unitId);
+          }
+        }
+      } else if ((code === 'NumpadSubtract' || keyLower === '-') && !isRealTextInput) {
+        const items = useCartStore.getState().items;
+        if (items.length > 0) {
+          e.preventDefault();
+          const idx = Math.min(items.length - 1, Math.max(0, selectedCartIndex));
+          const target = items[idx];
+          if (target) {
+            useCartStore.getState().updateQuantity(target.productId, target.quantity - 1, target.unitId);
+          }
+        }
+      }
       // F9 -> Toggle Cash Drawer Modal (Cash In / Out)
-      if (code === 'F9' || keyLower === 'f9') {
+      else if (code === 'F9' || keyLower === 'f9') {
         e.preventDefault();
         setShowCashDrawerModal(prev => !prev);
       }
       // F10 (or Ctrl+Shift+P) -> Toggle Held Bills Sheet
       else if (code === 'F10' || keyLower === 'f10' || (e.ctrlKey && e.shiftKey && (code === 'KeyP' || keyLower === 'p'))) {
         e.preventDefault();
-        setShowHeldBills(prev => !prev);
+        const currentCart = useCartStore.getState();
+        if (currentCart.items.length > 0) {
+          currentCart.holdBill();
+          toast.success(`📌 พักบิลเรียบร้อยแล้ว (มีบิลพักค้างไว้ ${useCartStore.getState().heldBills.length} ใบ)`);
+        } else {
+          setShowHeldBills(prev => !prev);
+        }
       }
       // F12 -> Toggle Payment Modal
       else if (code === 'F12' || keyLower === 'f12') {
@@ -516,22 +656,40 @@ export default function POSPage() {
       // Ctrl + P -> Hold Bill or Toggle Held Bills Sheet
       else if (e.ctrlKey && (code === 'KeyP' || keyLower === 'p')) {
         e.preventDefault();
-        setShowHeldBills(prev => {
-          if (prev) return false; // If held bills sheet is open, close it!
-          const currentCart = useCartStore.getState();
-          if (currentCart.items.length > 0) {
-            currentCart.holdBill();
-            toast.success('📌 พักบิลปัจจุบันเรียบร้อยแล้ว');
-            return false;
-          }
-          return true; // Open held bills sheet
-        });
+        const currentCart = useCartStore.getState();
+        if (currentCart.items.length > 0) {
+          currentCart.holdBill();
+          toast.success(`📌 พักบิลเรียบร้อยแล้ว (มีบิลพักค้างไว้ ${useCartStore.getState().heldBills.length} ใบ)`);
+        } else {
+          setShowHeldBills(prev => !prev);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [router]);
+  }, [
+    router, 
+    selectedCartIndex, 
+    searchQuery,
+    showPayment, 
+    showOpenShift, 
+    showCloseShift, 
+    editItem, 
+    showCustomerSelect, 
+    showHeldBills, 
+    qtyEditItem, 
+    priceEditItem, 
+    showDebtCollectModal, 
+    showCashDrawerModal, 
+    showClaimModal, 
+    showUnitModal, 
+    showRedeemModal, 
+    showBarcodeScan, 
+    showOrderHistoryModal, 
+    showCustomerStockModal, 
+    claimTargetItem
+  ]);
 
   // Filter products in memory (takes ~1ms in JS)
   const filteredProducts = useMemo(() => {
@@ -606,6 +764,8 @@ export default function POSPage() {
           onOpenCashDrawer={() => setShowCashDrawerModal(true)}
           onOpenCustomerStock={() => setShowCustomerStockModal(true)}
           onOpenItemClaim={(item) => setClaimTargetItem(item)}
+          selectedCartIndex={selectedCartIndex}
+          onSelectCartIndex={setSelectedCartIndex}
         />
       ) : (
       <div className="flex flex-1 flex-col overflow-visible lg:flex-row lg:overflow-hidden">
@@ -948,30 +1108,70 @@ export default function POSPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {cart.items.map((item) => {
+                {/* Keyboard Shortcuts Helper Strip */}
+                <div className="flex flex-wrap items-center justify-between gap-1.5 px-3 py-1.5 bg-slate-100 rounded-lg text-xs font-semibold text-slate-700 border border-slate-200">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="bg-sky-600 text-white px-1.5 py-0.2 rounded text-[10px] font-bold">
+                      ⌨️ คีย์ลัด
+                    </span>
+                    <span>[↑/↓] เลือกแถว</span>
+                    <span>•</span>
+                    <span className="bg-white px-1 py-0.2 rounded border border-slate-300 font-bold">[F2] จำนวน</span>
+                    <span>•</span>
+                    <span className="bg-white px-1 py-0.2 rounded border border-slate-300 font-bold">[F3] ส่วนลด</span>
+                    <span>•</span>
+                    <span className="bg-white px-1 py-0.2 rounded border border-slate-300 font-bold">[F4] ราคา</span>
+                    <span>•</span>
+                    <span>[+/-] ปรับ</span>
+                    <span>•</span>
+                    <span>[Del] ลบ</span>
+                  </div>
+                  <span className="font-mono text-[11px] bg-white px-2 py-0.5 rounded border border-slate-300 font-bold text-slate-700">
+                    {selectedCartIndex + 1}/{cart.items.length}
+                  </span>
+                </div>
+
+                {cart.items.map((item, idx) => {
                   const lineTotal = cart.getItemLineTotal(item);
                   const effectivePrice = cart.getEffectivePrice(item);
                   const product = products.find(p => p.id === item.productId);
+                  const isSelected = idx === selectedCartIndex;
 
                   return (
                     <div 
                       key={`${item.productId}-${item.unitId}`}
-                      className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm hover:border-slate-300"
+                      id={`classic-cart-item-${idx}`}
+                      onClick={() => setSelectedCartIndex(idx)}
+                      className={`flex flex-col gap-2 rounded-xl border p-3.5 shadow-sm transition-all cursor-pointer ${
+                        isSelected
+                          ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-400 shadow-md'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5 font-bold text-slate-900">
-                            <span>{item.name}</span>
+                            {isSelected && (
+                              <span className="text-[10px] bg-sky-600 text-white px-2 py-0.5 rounded-md font-bold shadow-2xs shrink-0">
+                                ⚡ เลือกอยู่ [F2/F3/F4]
+                              </span>
+                            )}
+                            <span className="truncate">{item.name}</span>
                             {item.isBundle && (
                               <span className="text-[10px] text-purple-700 bg-purple-50 border border-purple-200 px-1 py-0.2 rounded font-bold shrink-0">
                                 🎁 ชุด
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 text-xs text-slate-500">
-                            <span>{item.sku}</span>
+                          <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                            <span className="font-mono">{item.sku}</span>
                             <span>·</span>
                             <span className="font-semibold text-slate-700">{item.unitName}</span>
+                            {item.discountValue > 0 && (
+                              <span className="text-xs text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded font-bold">
+                                🏷️ ลด {item.discountValue}{item.discountType === 'percent' ? '%' : '฿'}
+                              </span>
+                            )}
                           </div>
                           {item.bundleData && item.bundleData.length > 0 && (
                             <div className="mt-1 text-[11px] text-purple-800 bg-purple-50/80 rounded px-2 py-0.5 border border-purple-100">
@@ -988,7 +1188,11 @@ export default function POSPage() {
                         <Button 
                           variant="ghost" size="icon" 
                           className="h-6 w-6 text-slate-400 hover:bg-red-50 hover:text-red-600 shrink-0"
-                          onClick={() => cart.removeItem(item.productId, item.unitId)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            cart.removeItem(item.productId, item.unitId);
+                          }}
+                          title="ลบรายการนี้ (Del)"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
@@ -1016,12 +1220,33 @@ export default function POSPage() {
                           <Button 
                             variant="ghost" 
                             size="sm" 
-                            className="h-7 px-2 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                            onClick={() => setEditItem(item)}
+                            className="h-7 px-2 text-xs text-amber-800 hover:bg-amber-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedCartIndex(idx);
+                              setEditItem(item);
+                            }}
+                            title="แก้ไขส่วนลด / รายละเอียดสินค้า (F3)"
                           >
-                            <Tag className="w-3.5 h-3.5 mr-1" />
-                            <span>แก้ไขราคา</span>
+                            <Percent className="w-3.5 h-3.5 mr-1 text-amber-600" />
+                            <span>ส่วนลด (F3)</span>
                           </Button>
+
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="h-7 px-2 text-xs text-slate-700 hover:bg-slate-100"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedCartIndex(idx);
+                              setPriceEditItem(item);
+                            }}
+                            title="แก้ไขราคาขาย (F4)"
+                          >
+                            <Tag className="w-3.5 h-3.5 mr-1 text-slate-500" />
+                            <span>ราคา (F4)</span>
+                          </Button>
+
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1030,31 +1255,47 @@ export default function POSPage() {
                                 ? 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200'
                                 : 'text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700'
                             }`}
-                            onClick={() => setClaimTargetItem(item)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedCartIndex(idx);
+                              setClaimTargetItem(item);
+                            }}
                             title="ระบุจำนวนสินค้าเคลมฟรีในรายการนี้"
                           >
                             <ShieldCheck className="w-3.5 h-3.5 mr-1 text-indigo-600" />
-                            <span>{item.claimQuantity && item.claimQuantity > 0 ? `เคลมฟรี ${item.claimQuantity}` : 'สินค้าเคลม'}</span>
+                            <span>{item.claimQuantity && item.claimQuantity > 0 ? `เคลมฟรี ${item.claimQuantity}` : 'เคลม'}</span>
                           </Button>
                         </div>
                         <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-1">
                           <Button 
                             variant="ghost" size="icon" className="h-9 w-9 text-slate-600 hover:bg-white hover:text-slate-900 shadow-sm"
-                            onClick={() => cart.updateQuantity(item.productId, item.quantity - 1, item.unitId)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedCartIndex(idx);
+                              cart.updateQuantity(item.productId, item.quantity - 1, item.unitId);
+                            }}
                           >
                             <Minus className="w-4 h-4" />
                           </Button>
                           <button
                             type="button"
-                            onClick={() => setQtyEditItem(item)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedCartIndex(idx);
+                              setQtyEditItem(item);
+                            }}
                             className="w-12 h-9 text-center text-sm font-bold bg-white border border-slate-200 rounded hover:border-sky-400 hover:bg-sky-50 transition-all cursor-pointer flex items-center justify-center text-slate-800 shadow-xs"
-                            title="คลิกเพื่อแก้ไขจำนวนด้วย Numpad"
+                            title="คลิกเพื่อแก้ไขจำนวนด้วย Numpad (F2)"
                           >
                             {item.quantity}
                           </button>
                           <Button 
                             variant="ghost" size="icon" className="h-9 w-9 text-slate-600 hover:bg-white hover:text-slate-900 shadow-sm"
-                            onClick={() => cart.updateQuantity(item.productId, item.quantity + 1, item.unitId)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedCartIndex(idx);
+                              cart.updateQuantity(item.productId, item.quantity + 1, item.unitId);
+                            }}
                           >
                             <Plus className="w-4 h-4" />
                           </Button>
@@ -1314,6 +1555,28 @@ export default function POSPage() {
             toast.success(`อัปเดตจำนวนเป็น ${Math.floor(val)} ${qtyEditItem.unitName}`);
           }
           setQtyEditItem(null);
+          setTimeout(() => scannerInputRef.current?.focus(), 20);
+        }}
+      />
+
+      <NumpadPopup
+        open={!!priceEditItem}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPriceEditItem(null);
+            setTimeout(() => scannerInputRef.current?.focus(), 20);
+          }
+        }}
+        title={`แก้ไขราคาขาย: ${priceEditItem?.name || ''}`}
+        subtitle="ระบุราคาขายใหม่ต่อหน่วย (บาท)"
+        initialValue={priceEditItem ? cart.getEffectivePrice(priceEditItem) : 0}
+        allowDecimals={true}
+        onConfirm={(val) => {
+          if (priceEditItem && val >= 0) {
+            cart.setCustomPrice(priceEditItem.productId, val, priceEditItem.unitId);
+            toast.success(`แก้ไขราคาขาย "${priceEditItem.name}" เป็น ${formatCurrency(val)}`);
+          }
+          setPriceEditItem(null);
           setTimeout(() => scannerInputRef.current?.focus(), 20);
         }}
       />
