@@ -342,9 +342,35 @@ export default function SettingsPage() {
     }
   };
 
+  // Store-wide operational limits stored on StoreSettings (not part of the receipt-header type)
+  const opSettings = settings as StoreSettings & { lowStockThreshold?: number | string | null; cashMovementApprovalLimit?: number | string | null };
+  const lowStockInput = opSettings.lowStockThreshold ?? 5;
+  const cashLimitInput = opSettings.cashMovementApprovalLimit ?? 1000;
+  const storeFieldErrors = (() => {
+    const errors: { storeName?: string; lowStockThreshold?: string; cashMovementApprovalLimit?: string } = {};
+    if (!String(settings.storeName ?? '').trim()) errors.storeName = 'กรุณาระบุชื่อร้านค้า (จะพิมพ์บนหัวใบเสร็จ)';
+    const lowStr = String(lowStockInput).trim();
+    const low = Number(lowStr);
+    if (lowStr === '' || !Number.isInteger(low) || low < 0) errors.lowStockThreshold = 'ต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป';
+    const limStr = String(cashLimitInput).trim();
+    const lim = Number(limStr);
+    if (limStr === '' || !Number.isFinite(lim) || lim < 0) errors.cashMovementApprovalLimit = 'ต้องเป็นจำนวนเงินตั้งแต่ 0 ขึ้นไป';
+    return errors;
+  })();
+
   const handleSaveStore = async () => {
+    const firstError = storeFieldErrors.storeName || storeFieldErrors.lowStockThreshold || storeFieldErrors.cashMovementApprovalLimit;
+    if (firstError) {
+      toast.error('ยังบันทึกไม่ได้: ' + firstError);
+      return;
+    }
     try {
-      const saved = await saveStoreSettingsToBackend(settings);
+      const saved = await saveStoreSettingsToBackend({
+        ...settings,
+        storeName: settings.storeName.trim(),
+        lowStockThreshold: Number(lowStockInput),
+        cashMovementApprovalLimit: Number(cashLimitInput),
+      } as StoreSettings);
       setSettings(saved);
       toast.success("บันทึกข้อมูลร้านค้าและข้อความใบเสร็จลงฐานข้อมูลแล้ว");
     } catch (error) {
@@ -471,12 +497,17 @@ export default function SettingsPage() {
                     <Store className="w-3.5 h-3.5 text-slate-500" />
                     <span>ชื่อร้านค้า / บริษัท <span className="text-rose-500">*</span></span>
                   </label>
-                  <Input 
+                  <Input
                     value={settings.storeName || ''}
                     onChange={e => setSettings({...settings, storeName: e.target.value})}
                     placeholder="เช่น ร้านปุริม ซุปเปอร์มาร์เก็ต"
-                    className="bg-white border-slate-300 font-bold text-slate-900"
+                    required
+                    aria-invalid={!!storeFieldErrors.storeName}
+                    className={`bg-white font-bold text-slate-900 ${storeFieldErrors.storeName ? 'border-rose-400' : 'border-slate-300'}`}
                   />
+                  {storeFieldErrors.storeName && (
+                    <p role="alert" className="text-[11px] font-bold text-rose-600">{storeFieldErrors.storeName}</p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -527,6 +558,47 @@ export default function SettingsPage() {
                   </div>
                 )}
                 <p className="text-[11px] text-slate-500 pl-8">มีผลกับบิลขายใหม่ทุกเครื่องทันทีหลังกดบันทึก (บิลเก่าไม่เปลี่ยน) · ภาษีฝั่งซื้อแยกตามบิลซื้อ ไม่เกี่ยวกับตัวเลือกนี้</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label htmlFor="low-stock-threshold" className="text-xs font-bold text-slate-700">
+                    เกณฑ์สินค้าใกล้หมด (ชิ้น)
+                  </label>
+                  <Input
+                    id="low-stock-threshold"
+                    type="number"
+                    min={0}
+                    step={1}
+                    inputMode="numeric"
+                    value={String(lowStockInput)}
+                    onChange={e => setSettings({ ...settings, lowStockThreshold: e.target.value } as StoreSettings)}
+                    aria-invalid={!!storeFieldErrors.lowStockThreshold}
+                    className={`bg-white font-mono font-bold text-slate-900 ${storeFieldErrors.lowStockThreshold ? 'border-rose-400' : 'border-slate-300'}`}
+                  />
+                  {storeFieldErrors.lowStockThreshold
+                    ? <p role="alert" className="text-[11px] font-bold text-rose-600">{storeFieldErrors.lowStockThreshold}</p>
+                    : <p className="text-[11px] text-slate-500">สินค้าที่คงเหลือเท่านี้หรือน้อยกว่าจะถือว่าใกล้หมด ใช้ทุกหน้าและรายงาน</p>}
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="cash-movement-approval-limit" className="text-xs font-bold text-slate-700">
+                    วงเงินนำเงินเข้า/ออกลิ้นชักที่ต้องให้ผู้จัดการอนุมัติ (0 = ทุกครั้ง)
+                  </label>
+                  <Input
+                    id="cash-movement-approval-limit"
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    inputMode="decimal"
+                    value={String(cashLimitInput)}
+                    onChange={e => setSettings({ ...settings, cashMovementApprovalLimit: e.target.value } as StoreSettings)}
+                    aria-invalid={!!storeFieldErrors.cashMovementApprovalLimit}
+                    className={`bg-white font-mono font-bold text-slate-900 ${storeFieldErrors.cashMovementApprovalLimit ? 'border-rose-400' : 'border-slate-300'}`}
+                  />
+                  {storeFieldErrors.cashMovementApprovalLimit
+                    ? <p role="alert" className="text-[11px] font-bold text-rose-600">{storeFieldErrors.cashMovementApprovalLimit}</p>
+                    : <p className="text-[11px] text-slate-500">นำเงินเข้า/ออกเกินยอดนี้ (บาท) ต้องใช้ PIN ผู้จัดการ</p>}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
