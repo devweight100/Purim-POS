@@ -68,7 +68,8 @@ export const useCartStore = create<CartStore>((set, get) => ({
   attachedClaim: null,
   pendingClaims: [],
   note: '',
-  isVatEnabled: typeof window !== 'undefined' ? localStorage.getItem('pos_vat_enabled') !== 'false' : true,
+  // VAT on sales is a store-wide setting (Settings > ข้อมูลร้าน), not a per-terminal toggle
+  isVatEnabled: loadStoreSettings().vatEnabled === true,
   heldBills: [],
   editingOrderId: null,
 
@@ -278,7 +279,6 @@ export const useCartStore = create<CartStore>((set, get) => ({
   },
 
   setVatEnabled: (enabled: boolean) => {
-    try { localStorage.setItem('pos_vat_enabled', enabled ? 'true' : 'false'); } catch {}
     set({ isVatEnabled: enabled });
   },
 
@@ -434,7 +434,7 @@ export const useCartStore = create<CartStore>((set, get) => ({
   },
 
   getVatAmount: () => {
-    if (!get().isVatEnabled) return 0;
+    if (!get().isVatEnabled || !loadStoreSettings().vatEnabled) return 0;
     const items = get().items;
     const subtotal = get().getSubtotal();
     if (subtotal === 0) return 0;
@@ -465,3 +465,11 @@ export const useCartStore = create<CartStore>((set, get) => ({
     return get().items.reduce((sum, i) => sum + i.quantity, 0);
   },
 }));
+
+// Follow the store's VAT setting whenever settings are (re)loaded from the server
+if (typeof window !== 'undefined') {
+  window.addEventListener('purim:store-settings', (e) => {
+    const enabled = (e as CustomEvent<{ vatEnabled?: boolean }>).detail?.vatEnabled === true;
+    if (useCartStore.getState().isVatEnabled !== enabled) useCartStore.setState({ isVatEnabled: enabled });
+  });
+}

@@ -1167,22 +1167,13 @@ export default function POSPage() {
               </div>
             )}
 
-            {/* VAT 7% Display & Toggle */}
-            <div className="flex justify-between items-center text-xs text-slate-500">
-              <div className="flex items-center gap-1.5">
-                <span>ภาษี VAT 7%</span>
-                <Badge
-                  variant="outline"
-                  className={`cursor-pointer text-[10px] px-1.5 py-0.5 font-bold ${cart.isVatEnabled ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}
-                  onClick={() => cart.setVatEnabled(!cart.isVatEnabled)}
-                >
-                  {cart.isVatEnabled ? 'ถอด VAT 7%' : 'ไม่มี VAT'}
-                </Badge>
+            {/* VAT (only when the store charges VAT: Settings > ข้อมูลร้าน) */}
+            {cart.isVatEnabled && (
+              <div className="flex justify-between items-center text-xs text-slate-500">
+                <span>ภาษีมูลค่าเพิ่ม (รวมในราคา)</span>
+                <span className="font-semibold text-slate-700">{formatCurrency(cart.getVatAmount())}</span>
               </div>
-              <span className="font-semibold text-slate-700">
-                {cart.isVatEnabled ? formatCurrency(cart.getVatAmount()) : 'ไม่มี VAT (฿0.00)'}
-              </span>
-            </div>
+            )}
 
             <div className="flex items-end justify-between border-t border-slate-200 pt-3">
               <span className="text-lg font-bold text-slate-800">ยอดสุทธิ</span>

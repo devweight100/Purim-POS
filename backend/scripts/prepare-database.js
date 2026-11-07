@@ -156,6 +156,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('[db] FAILED:', err.message || err);
+  console.error('[db] FAILED:', (err && (err.message || err.code)) || String(err));
   process.exit(1);
 });

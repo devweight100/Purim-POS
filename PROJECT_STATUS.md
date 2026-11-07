@@ -215,3 +215,9 @@ Some corresponding database tables already exist. The remaining work is to remov
   - "Update from GitHub" moved to the monitor page: an ADMIN-only `UpdatePanel` calls `/api/server-control/update/{status,check,token,run}` (`ServerUpdateService`).
   - The backend starts `update-from-github.ps1 -Mode run` through `cmd /c start`, so the updater survives the server stop. Progress goes to `logs/update-status.json`. `install-server.ps1 -NoElevate` skips the admin-only steps.
   - The PowerShell flows have not been run on Windows.
+- 2026-11-07: VAT on sales is a store-wide setting: `store_settings.vat_enabled`, migration `20261111000000_store_vat_enabled`, default off. The setting is on Settings > ข้อมูลร้าน.
+  - Checkout uses the store setting and ignores the terminal's flag.
+  - The per-terminal "ถอด VAT 7%" toggle is gone. The cart follows the setting through the `purim:store-settings` event.
+  - When VAT is off, the POS, payment card and receipts show no VAT section at all.
+  - Purchases have no VAT logic and are unaffected.
+  - New e2e test (24/24).

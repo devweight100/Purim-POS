@@ -13,6 +13,8 @@ export interface StoreSettings {
   qrImageUrl?: string | null;
   qrLabel?: string;
   vatRate: number;
+  /** the shop charges VAT on sales (prices VAT-inclusive); off = no VAT on bills/receipts */
+  vatEnabled: boolean;
 }
 
 const STORAGE_KEY = 'pos_store_settings_v2';
@@ -28,6 +30,7 @@ export const DEFAULT_STORE_SETTINGS: StoreSettings = {
   receiptFooter: 'ขอบคุณที่ใช้บริการ / Thank you\nสินค้าเปลี่ยนได้ภายใน 7 วันพร้อมใบเสร็จ\nสอบถามเพิ่มเติม Line: @purimpos',
   logoUrl: null,
   vatRate: 7,
+  vatEnabled: false,
 };
 
 export function loadStoreSettings(): StoreSettings {
@@ -50,6 +53,7 @@ function normalizeStoreSettings(settings: Partial<StoreSettings> | null | undefi
     ...DEFAULT_STORE_SETTINGS,
     ...(settings || {}),
     vatRate: Number(settings?.vatRate ?? DEFAULT_STORE_SETTINGS.vatRate),
+    vatEnabled: settings?.vatEnabled === true,
   };
 }
 
@@ -57,6 +61,7 @@ function mirrorStoreSettings(settings: StoreSettings) {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    window.dispatchEvent(new CustomEvent('purim:store-settings', { detail: settings }));
   } catch (err) {
     console.error('Failed to mirror store settings to localStorage:', err);
   }

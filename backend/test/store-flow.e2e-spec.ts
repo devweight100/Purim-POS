@@ -93,6 +93,17 @@ d('store flow (e2e)', () => {
       expect(await stock()).toBe(before - 3);
       state.order = r.body;
     });
+    it('VAT on sales follows the store setting, not the terminal', async () => {
+      const sell = async () => (await api('post', '/orders/checkout', C, { clientOrderId: randomUUID(), shiftId: state.shift.id, vatEnabled: true, items: [{ productId: state.p.id, quantity: 1, unitPrice: state.price }], payments: [{ method: 'CASH', amount: state.price }] }).expect(201)).body;
+      const off = await sell();
+      expect(Number(off.vatAmount)).toBe(0);
+      expect(Number(off.vatRate)).toBe(0);
+      await api('patch', '/settings', A, { vatEnabled: true }).expect(200);
+      const on = await sell();
+      expect(Number(on.vatRate)).toBe(7);
+      expect(Number(on.vatAmount)).toBeCloseTo(Math.round((state.price * 7 / 107) * 100) / 100, 2);
+      await api('patch', '/settings', A, { vatEnabled: false }).expect(200);
+    });
     it('rejects a 0-baht credit line', async () => {
       await api('post', '/orders/checkout', C, { clientOrderId: randomUUID(), shiftId: state.shift.id, items: [{ productId: state.p.id, quantity: 1, unitPrice: state.price }], payments: [{ method: 'CASH', amount: state.price }, { method: 'CREDIT_DEBT', amount: 0 }] }).expect(400);
     });
