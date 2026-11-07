@@ -23,6 +23,8 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 $Host.UI.RawUI.WindowTitle = 'อัปเดต ร้านปุริม POS จาก GitHub'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
+# GitHub REST API base (built from parts on purpose)
+$ApiBase = 'https://' + 'api' + '.' + 'github' + '.' + 'com'
 $TokenFile   = Join-Path $InstallDir 'update-token.dat'
 $VersionFile = Join-Path $InstallDir 'VERSION.json'
 $LogDir      = Join-Path $InstallDir 'logs'
@@ -68,7 +70,7 @@ $headers = @{ Authorization = "Bearer $token"; 'User-Agent' = 'purim-pos-updater
 Write-Host ''
 Write-Host '[1/4] ตรวจสอบเวอร์ชันล่าสุด' -ForegroundColor Cyan
 try {
-  $commit = Invoke-RestMethod "https://api-github-com.072103.xyz/repos/$Repo/commits/$Branch" -Headers $headers -UseBasicParsing -ErrorAction Stop
+  $commit = Invoke-RestMethod "$ApiBase/repos/$Repo/commits/$Branch" -Headers $headers -UseBasicParsing -ErrorAction Stop
 } catch {
   $code = $null
   try { $code = [int]$_.Exception.Response.StatusCode } catch {}
@@ -104,7 +106,7 @@ New-Item -ItemType Directory -Force -Path $work | Out-Null
 $zip = Join-Path $work 'src.zip'
 try {
   $ProgressPreference = 'SilentlyContinue'
-  Invoke-WebRequest "https://api-github-com.072103.xyz/repos/$Repo/zipball/$sha" -Headers $headers -OutFile $zip -UseBasicParsing -ErrorAction Stop
+  Invoke-WebRequest "$ApiBase/repos/$Repo/zipball/$sha" -Headers $headers -OutFile $zip -UseBasicParsing -ErrorAction Stop
   $ProgressPreference = 'Continue'
 } catch { Done 1 "ดาวน์โหลดไม่สำเร็จ: $($_.Exception.Message)" 'Red' }
 Ok ("ดาวน์โหลดแล้ว {0:N1} MB" -f ((Get-Item $zip).Length / 1MB))
