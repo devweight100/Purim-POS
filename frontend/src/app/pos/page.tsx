@@ -762,6 +762,9 @@ export default function POSPage() {
           }}
           onOpenNumpadQty={(item) => setQtyEditItem(item)}
           onOpenCashDrawer={() => setShowCashDrawerModal(true)}
+          shiftOpen={shiftStore.isShiftOpen()}
+          onOpenShift={() => setShowOpenShift(true)}
+          onCloseShift={() => setShowCloseShift(true)}
           onOpenCustomerStock={() => setShowCustomerStockModal(true)}
           onOpenItemClaim={(item) => setClaimTargetItem(item)}
           selectedCartIndex={selectedCartIndex}

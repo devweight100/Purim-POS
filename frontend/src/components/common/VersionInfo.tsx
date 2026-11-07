@@ -33,14 +33,30 @@ export function webBuildInfo(): BuildInfo {
   }
 }
 
-type DesktopInfo = { kind: 'browser' } | { kind: 'app'; version: string } | { kind: 'old-app' };
+type DesktopInfo = { kind: 'browser' } | { kind: 'app'; version: string; canSelfUpdate: boolean } | { kind: 'old-app' };
+
+type ElectronVersionApi = {
+  getAppVersion?: () => Promise<string>;
+  installAppUpdate?: () => Promise<{ started?: boolean; error?: string }>;
+  checkAppUpdate?: () => Promise<unknown>;
+};
+
+function compareVersions(a: string, b: string) {
+  const pa = String(a || '0').split(/[.-]/).map((n) => parseInt(n, 10) || 0);
+  const pb = String(b || '0').split(/[.-]/).map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d !== 0) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
 
 async function desktopInfo(): Promise<DesktopInfo> {
-  const api = typeof window !== 'undefined' ? (window as unknown as { electronAPI?: { getAppVersion?: () => Promise<string> } }).electronAPI : undefined;
+  const api = typeof window !== 'undefined' ? (window as unknown as { electronAPI?: ElectronVersionApi }).electronAPI : undefined;
   if (!api) return { kind: 'browser' };
   if (!api.getAppVersion) return { kind: 'old-app' };
   try {
-    return { kind: 'app', version: await api.getAppVersion() };
+    return { kind: 'app', version: await api.getAppVersion(), canSelfUpdate: typeof api.installAppUpdate === 'function' };
   } catch {
     return { kind: 'old-app' };
   }
@@ -58,6 +74,7 @@ function useVersionState() {
   const [server, setServer] = useState<ServerVersion | null>(null);
   const [desktop, setDesktop] = useState<DesktopInfo | null>(null);
   const [failed, setFailed] = useState(false);
+  const [latestApp, setLatestApp] = useState<string | null>(null);
   const web = webBuildInfo();
 
   const load = useCallback(async () => {
@@ -68,6 +85,12 @@ function useVersionState() {
       setFailed(true);
     }
     setDesktop(await desktopInfo());
+    try {
+      const latest = (await apiFetch('/client-app/latest')) as { version?: string };
+      setLatestApp(latest?.version || null);
+    } catch {
+      setLatestApp(null);
+    }
   }, []);
 
   useEffect(() => {
@@ -88,14 +111,20 @@ function useVersionState() {
       text: `หน้าจอนี้เป็นรุ่น ${web.label} แต่ระบบหลังบ้านเป็นรุ่น ${server.running.label} — กด Ctrl+R เพื่อโหลดใหม่ ถ้ายังไม่หายให้ build หน้าเว็บใหม่`,
     });
   }
-  if (desktop?.kind === 'old-app') {
-    issues.push({ level: 'warn', text: 'แอป Purim POS ในเครื่องนี้เป็นรุ่นเก่า — ติดตั้ง Purim-POS-Client-Setup.exe ตัวล่าสุด' });
+  const appUpdate =
+    desktop?.kind === 'old-app' ||
+    (desktop?.kind === 'app' && latestApp !== null && compareVersions(latestApp, desktop.version) > 0);
+  if (appUpdate) {
+    issues.push({
+      level: 'warn',
+      text: `มีแอป Purim POS เวอร์ชันใหม่${latestApp ? ` (v${latestApp})` : ''} — เครื่องนี้ใช้${desktop?.kind === 'app' ? ` v${desktop.version}` : 'รุ่นเก่า'}`,
+    });
   }
   if (server?.source?.modified) {
     issues.push({ level: 'info', text: 'โค้ดในเครื่องแม่มีไฟล์ที่ถูกแก้ไขและยังไม่ได้ commit' });
   }
   const label = server?.running?.label || web.label;
-  return { server, desktop, web, failed, issues, label, reload: load };
+  return { server, desktop, web, failed, issues, label, reload: load, appUpdate, latestApp };
 }
 
 function Row({ name, value, sub }: { name: string; value: React.ReactNode; sub?: React.ReactNode }) {
@@ -111,8 +140,16 @@ function Row({ name, value, sub }: { name: string; value: React.ReactNode; sub?:
 }
 
 export function VersionDetails() {
-  const { server, desktop, web, failed, issues, reload } = useVersionState();
+  const { server, desktop, web, failed, issues, reload, appUpdate, latestApp } = useVersionState();
   const running = server?.running;
+  const [updating, setUpdating] = useState<string | null>(null);
+  const installUpdate = async () => {
+    const api = (window as unknown as { electronAPI?: ElectronVersionApi }).electronAPI;
+    if (!api?.installAppUpdate) return;
+    setUpdating('กำลังดาวน์โหลดและติดตั้ง… แอปจะปิดแล้วเปิดใหม่เอง (Windows อาจถามสิทธิ์ผู้ดูแล)');
+    const res = await api.installAppUpdate();
+    if (!res?.started) setUpdating(res?.error ? `อัปเดตไม่สำเร็จ: ${res.error}` : null);
+  };
   return (
     <div className="space-y-3">
       {issues.filter((i) => i.level === 'warn').length === 0 && !failed && server && (
@@ -130,6 +167,25 @@ export function VersionDetails() {
         </div>
       ))}
       {failed && <div className="rounded-lg px-3 py-2 text-sm font-bold border bg-rose-50 border-rose-200 text-rose-800">เชื่อมต่อเซิร์ฟเวอร์ไม่ได้</div>}
+      {appUpdate && (
+        <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2.5 space-y-2">
+          {desktop?.kind === 'app' && desktop.canSelfUpdate ? (
+            <button
+              type="button"
+              disabled={!!updating}
+              onClick={() => void installUpdate()}
+              className="w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 px-3 py-2 text-sm font-extrabold text-white cursor-pointer"
+            >
+              ⬆ อัปเดตแอปเครื่องนี้{latestApp ? ` เป็น v${latestApp}` : ''}
+            </button>
+          ) : (
+            <a href="/api/client-app/download" className="block w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 px-3 py-2 text-center text-sm font-extrabold text-white">
+              ⬇ ดาวน์โหลดตัวติดตั้งแอปเวอร์ชันใหม่ (ติดตั้งทับได้เลย)
+            </a>
+          )}
+          {updating && <p className="text-xs font-bold text-indigo-800">{updating}</p>}
+        </div>
+      )}
 
       <div className="rounded-xl border border-slate-200 px-3">
         <Row

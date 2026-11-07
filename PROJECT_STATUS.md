@@ -252,3 +252,15 @@ Some corresponding database tables already exist. The remaining work is to remov
     - Removed the duplicate CSV, unused Next boilerplate SVGs, one-off scripts (`apply-reliability-migration.cjs`, `backup-db.ps1`) and the boilerplate READMEs.
     - Replaced the 1x1 placeholder PWA icons with real 192/512 renders of icon.svg.
     - Added a Thai root `README.md` (layout + daily use).
+- 2026-11-07: Shop fixes and client-app updates (desktop 1.3.0).
+  - Client startup:
+    - Shows a splash, then tries the last server (4 s timeout, 3 attempts), localhost, this machine's IPs, then an automatic LAN scan. The search screen appears only if all of these fail.
+    - The probe is `/login` and accepts any status below 500.
+    - `did-fail-load` ignores sub-frames and ERR_ABORTED, which used to throw the app back to the search screen.
+  - Closing a shift: the shift summary could not be dismissed. CloseShiftModal's `[open]` effect hid the summary in the same tick it was opened, leaving the dialog stuck while closing. Fixed; the summary is also rendered only while it is shown.
+  - The list-mode POS bottom bar now has เปิดกะ / ปิดกะ buttons (they existed only in touch mode).
+  - Client-app updates:
+    - The server serves `Installer/Client/Purim-POS-Client-Setup.exe` with `client-version.json` (version, sha256, size; written by build-installers.sh) at public `GET /api/client-app/latest` and `/api/client-app/download`.
+    - `desktop/app-updater.js` checks, downloads, verifies the SHA-256 and runs the installer with `/S` through `start /wait` (UAC), then relaunches.
+    - The app offers the update about 5 s after the shop screen loads. The version dialog shows "อัปเดตแอปเครื่องนี้"; older apps get a download link instead.
+    - The server installer and the updater also carry `client-version.json`.

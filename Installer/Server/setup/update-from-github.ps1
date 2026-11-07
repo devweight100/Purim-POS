@@ -187,7 +187,7 @@ if (Test-Path $controlSrc) {
 }
 $clientSrc = Join-Path $src 'Installer\Client'
 if (Test-Path $clientSrc) {
-  & robocopy $clientSrc (Join-Path $InstallDir 'Installer\Client') 'Purim-POS-Client-Setup.exe' /NFL /NDL /NJH /NJS /NP | Out-Null
+  & robocopy $clientSrc (Join-Path $InstallDir 'Installer\Client') 'Purim-POS-Client-Setup.exe' 'client-version.json' /NFL /NDL /NJH /NJS /NP | Out-Null
 }
 Copy-Item (Join-Path $src 'docker-compose.yml') $InstallDir -Force
 Get-ChildItem (Join-Path $src 'Installer\Server') -Filter '*.txt' -File | Copy-Item -Destination $InstallDir -Force

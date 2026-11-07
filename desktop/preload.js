@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   isDesktop: true,
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  checkAppUpdate: () => ipcRenderer.invoke('app-update-check'),
+  installAppUpdate: () => ipcRenderer.invoke('app-update-install'),
 
   // Hardware Printer & Cash Drawer APIs
   getPrinters: () => ipcRenderer.invoke('get-printers'),

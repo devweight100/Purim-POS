@@ -9,7 +9,7 @@ import { getProductAvailableUnits, getDefaultSelectedUnit } from '@/lib/product-
 import { 
   Grid, Calculator, ChevronDown, Edit3, Trash2, 
   Clock, User, ShoppingBag, ScanLine, StickyNote, Coins,
-  ShieldCheck, ShieldAlert, Package, ArrowLeft
+  ShieldCheck, ShieldAlert, Package, ArrowLeft, LogIn, LogOut
 } from 'lucide-react';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { NumpadPopup } from './NumpadPopup';
@@ -34,6 +34,10 @@ interface PosListLayoutProps {
   onOpenBarcodeScan: () => void;
   onOpenDebtPay?: (customer?: Customer | null) => void;
   onOpenCashDrawer?: () => void;
+  /** shift controls (open when none is open, close otherwise) */
+  shiftOpen?: boolean;
+  onOpenShift?: () => void;
+  onCloseShift?: () => void;
   onOpenCustomerStock?: () => void;
   onOpenItemClaim?: (item: CartItem) => void;
   selectedCartIndex?: number;
@@ -54,6 +58,9 @@ export function PosListLayout({
   onOpenBarcodeScan,
   onOpenDebtPay,
   onOpenCashDrawer,
+  shiftOpen,
+  onOpenShift,
+  onCloseShift,
   onOpenCustomerStock,
   onOpenItemClaim,
   selectedCartIndex,
@@ -924,6 +931,29 @@ export function PosListLayout({
             <span>เปิดลิ้นชัก</span>
             <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(F9)</span>
           </button>
+
+          {shiftOpen === false && onOpenShift && (
+            <button
+              type="button"
+              onClick={onOpenShift}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
+              title="เปิดกะการขาย"
+            >
+              <LogIn className="w-4 h-4" />
+              <span>เปิดกะ</span>
+            </button>
+          )}
+          {shiftOpen && onCloseShift && (
+            <button
+              type="button"
+              onClick={onCloseShift}
+              className="flex items-center gap-1.5 bg-white hover:bg-rose-50 text-rose-700 border-2 border-rose-300 font-extrabold px-3 py-2 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
+              title="ปิดกะ / นับเงินและพิมพ์ใบสรุปปิดกะ"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>ปิดกะ</span>
+            </button>
+          )}
         </div>
 
         {/* Option Selector for Sales Screen View & Exit to Dashboard */}

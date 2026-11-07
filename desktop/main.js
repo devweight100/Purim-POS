@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, net, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, net, Menu, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -55,12 +55,13 @@ function checkServerPos(url, timeoutMs = 1200) {
       const req = http.request({
         hostname: parsed.hostname,
         port: parsed.port || 80,
-        path: '/pos',
+        path: '/login',
         method: 'GET',
         timeout: timeoutMs
       }, (res) => {
+        res.resume();
         resolve({
-          ok: res.statusCode === 200 || res.statusCode === 307 || res.statusCode === 308,
+          ok: res.statusCode > 0 && res.statusCode < 500,
           status: res.statusCode
         });
       });
@@ -153,13 +154,23 @@ function createWindow() {
 
   mainWindow.maximize();
 
-  // Load connection screen immediately as splash / auto-detect
-  loadConnectScreen();
+  // Short "connecting" splash; the server-search screen only appears when no server is found
+  mainWindow.loadFile(path.join(__dirname, 'splash.html'));
   autoConnectOrShowScreen();
 
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+  // once the shop screen is up, offer a newer app version if the server has one
+  mainWindow.webContents.on('did-finish-load', () => {
+    const url = mainWindow && mainWindow.webContents.getURL();
+    if (url && url.startsWith('http')) setTimeout(() => promptAppUpdateIfAny().catch(() => undefined), 5000);
+  });
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    // Only a failed main page means the server is unreachable. Sub-frames (printing, previews)
+    // and aborted navigations (-3) must not throw the cashier back to the search screen.
+    if (!isMainFrame || errorCode === -3) return;
+    if (String(validatedURL || '').startsWith('file:')) return;
     console.warn(`Page load failed (${errorCode}: ${errorDescription}), falling back to connect screen...`);
-    loadConnectScreen();
+    showConnectScreen();
   });
 
   mainWindow.on('closed', () => {
@@ -167,47 +178,59 @@ function createWindow() {
   });
 }
 
-// Probing candidate servers on startup without hanging
+// Startup: last server that worked first (generous timeout + retries: the server may still be
+// starting), then this machine, then an automatic LAN scan. Only if all fail: search screen.
 async function autoConnectOrShowScreen() {
   if (!mainWindow) return;
-
   const config = loadConfig();
-  const candidateUrls = [];
+  const tried = new Set();
+  const tryUrl = async (url, timeoutMs) => {
+    if (!url) return false;
+    const clean = url.replace(/\/+$/, '');
+    const res = await checkServerPos(clean, timeoutMs);
+    tried.add(clean);
+    if (res.ok) {
+      console.log(`[AutoConnect] server found at: ${clean}`);
+      saveConfig({ serverUrl: clean });
+      loadPosScreen(clean);
+      return true;
+    }
+    return false;
+  };
 
-  // Priority 1: localhost (fastest, for single-PC setups)
-  candidateUrls.push('http://localhost:3000');
-
-  // Priority 2: configured serverUrl (if not localhost)
-  if (config.serverUrl && !candidateUrls.includes(config.serverUrl)) {
-    candidateUrls.push(config.serverUrl);
+  if (config.serverUrl) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (await tryUrl(config.serverUrl, 4000)) return;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
   }
-
-  // Priority 3: machine's own LAN IPs
+  if (!tried.has('http://localhost:3000') && (await tryUrl('http://localhost:3000', 1500))) return;
   for (const ip of getLocalIps()) {
     const u = `http://${ip}:3000`;
-    if (!candidateUrls.includes(u)) {
-      candidateUrls.push(u);
-    }
+    if (!tried.has(u) && (await tryUrl(u, 1500))) return;
   }
+  try {
+    const found = await scanSubnetForServer(3000);
+    if (found && found.length > 0 && (await tryUrl(found[0], 4000))) return;
+  } catch (err) {
+    console.warn('[AutoConnect] scan failed:', err);
+  }
+  showConnectScreen();
+}
 
-  // Test candidates sequentially with quick timeout
-  for (const url of candidateUrls) {
-    const res = await checkServerPos(url, 1000);
-    if (res.ok) {
-      console.log(`[AutoConnect] Active server found at: ${url}`);
-      saveConfig({ serverUrl: url });
-      loadPosScreen(url);
-      return;
+/** Server-search screen, with the reason it is shown. */
+function showConnectScreen() {
+  if (!mainWindow) return;
+  const config = loadConfig();
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.send('connection-failed', {
+        localIps: getLocalIps(),
+        lastUrl: config.serverUrl || 'http://localhost:3000'
+      });
     }
-  }
-
-  // If no immediate candidate is up, notify connection screen to show manual/scan form
-  if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.send('connection-failed', {
-      localIps: getLocalIps(),
-      lastUrl: config.serverUrl || 'http://localhost:3000'
-    });
-  }
+  });
+  loadConnectScreen();
 }
 
 function loadPosScreen(customUrl) {
@@ -216,8 +239,10 @@ function loadPosScreen(customUrl) {
   let base = (customUrl || config.serverUrl || 'http://localhost:3000').replace(/\/+$/, '');
   const posUrl = `${base}/pos`;
   console.log(`Navigating to POS: ${posUrl}`);
-  mainWindow.loadURL(posUrl).catch(() => {
-    loadConnectScreen();
+  mainWindow.loadURL(posUrl).catch((err) => {
+    // an interrupted navigation (ERR_ABORTED) is not a dead server
+    if (err && (err.code === 'ERR_ABORTED' || err.errno === -3)) return;
+    showConnectScreen();
   });
 }
 
@@ -227,8 +252,10 @@ function loadRouteScreen(route) {
   let base = (config.serverUrl || 'http://localhost:3000').replace(/\/+$/, '');
   const targetUrl = `${base}${route.startsWith('/') ? route : '/' + route}`;
   console.log(`Navigating to route: ${targetUrl}`);
-  mainWindow.loadURL(targetUrl).catch(() => {
-    loadConnectScreen();
+  mainWindow.loadURL(targetUrl).catch((err) => {
+    // an interrupted navigation (ERR_ABORTED) is not a dead server
+    if (err && (err.code === 'ERR_ABORTED' || err.errno === -3)) return;
+    showConnectScreen();
   });
 }
 
@@ -326,6 +353,47 @@ function setupAppMenu() {
 // ─────────────────────────────────────────────────────────────
 
 ipcMain.handle('get-app-version', () => app.getVersion());
+
+// ---- App update from the server (Installer/Client on the server machine) ----
+const { checkForUpdate, downloadAndInstall } = require('./app-updater');
+let updatePrompted = false;
+let updating = false;
+
+async function runAppUpdate() {
+  if (updating) return { started: false, error: 'กำลังอัปเดตอยู่แล้ว' };
+  updating = true;
+  try {
+    const res = await downloadAndInstall(loadConfig().serverUrl, {
+      onProgress: (p) => { if (mainWindow) mainWindow.setProgressBar(p); },
+    });
+    return res;
+  } catch (err) {
+    updating = false;
+    if (mainWindow) mainWindow.setProgressBar(-1);
+    if (mainWindow) dialog.showMessageBox(mainWindow, { type: 'error', title: 'อัปเดตแอปไม่สำเร็จ', message: String(err && err.message || err) });
+    return { started: false, error: String(err && err.message || err) };
+  }
+}
+
+async function promptAppUpdateIfAny() {
+  if (updatePrompted || !mainWindow) return;
+  updatePrompted = true;
+  const res = await checkForUpdate(loadConfig().serverUrl);
+  if (!res.available || !mainWindow) return;
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    buttons: ['อัปเดตเลย', 'ภายหลัง'],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'มีแอปเวอร์ชันใหม่',
+    message: `มีแอป ร้านปุริม POS เวอร์ชันใหม่ ${res.latest.version}`,
+    detail: `เครื่องนี้ใช้เวอร์ชัน ${res.current}\nใช้เวลาประมาณ 1 นาที แอปจะปิดแล้วเปิดใหม่เอง (Windows อาจถามสิทธิ์ผู้ดูแล)\nอัปเดตภายหลังได้ที่ เมนูเวอร์ชัน (มุมล่างซ้าย) > อัปเดตแอปเครื่องนี้`,
+  });
+  if (response === 0) runAppUpdate();
+}
+
+ipcMain.handle('app-update-check', () => checkForUpdate(loadConfig().serverUrl));
+ipcMain.handle('app-update-install', () => runAppUpdate());
 
 ipcMain.handle('get-server-url', () => {
   const config = loadConfig();

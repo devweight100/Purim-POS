@@ -27,7 +27,7 @@ build_server() {
   trap 'rm -rf "$stage"' RETURN
   cd "$ROOT"
   # Tracked + new (not git-ignored) source files only: no node_modules, .env, builds or backups.
-  git ls-files -co --exclude-standard -- backend frontend docker-compose.yml Installer/Server/setup Installer/Server/control Installer/Client/Purim-POS-Client-Setup.exe \
+  git ls-files -co --exclude-standard -- backend frontend docker-compose.yml Installer/Server/setup Installer/Server/control Installer/Client/Purim-POS-Client-Setup.exe Installer/Client/client-version.json \
     | grep -v -E '^Installer/Server/setup/.*\.nsi$' \
     | while IFS= read -r f; do
         [ -f "$f" ] || continue
@@ -58,6 +58,9 @@ build_client() {
   rm -rf release-bin
   WINEDEBUG=-all npx electron-builder --win nsis --x64 --publish never
   cp "release-bin/Purim-POS-Client-Setup.exe" "$ROOT/Installer/Client/Purim-POS-Client-Setup.exe"
+  # version info served to client machines by the server (GET /api/client-app/latest)
+  node -e "const f=process.argv[1];const b=require('fs').readFileSync(f);require('fs').writeFileSync(process.argv[2],JSON.stringify({version:process.argv[3],file:'Purim-POS-Client-Setup.exe',size:b.length,sha256:require('crypto').createHash('sha256').update(b).digest('hex')},null,2))" \
+    "$ROOT/Installer/Client/Purim-POS-Client-Setup.exe" "$ROOT/Installer/Client/client-version.json" "$VERSION"
   ls -la "$ROOT/Installer/Client/Purim-POS-Client-Setup.exe"
 }
 

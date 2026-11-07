@@ -41,8 +41,8 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
       setShowCountCashModal(false);
       useShiftStore.getState().fetchCurrentShift();
     } else {
+      // NOTE: do not hide the shift summary here: closing this dialog is exactly when it is shown
       setActualCash(null);
-      setShowSummaryPdf(false);
       setShowCountCashModal(false);
     }
   }, [open]);
@@ -339,7 +339,9 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
       />
 
       {/* PDF Shift Summary Slip Preview Modal */}
-      {summaryData && (
+      {/* Rendered only while shown: removing it at once on close avoids the dialog staying stuck
+          in its closing state on top of the POS screen (could not be closed after a shift ended). */}
+      {summaryData && showSummaryPdf && (
         <ShiftSummaryPdfModal
           open={showSummaryPdf}
           onOpenChange={(isOpen) => {
