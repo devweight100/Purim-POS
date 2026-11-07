@@ -241,3 +241,14 @@ Some corresponding database tables already exist. The remaining work is to remov
   - payableNow, the finance overview and the forecast use each line's gross per unit.
   - UI: per-line VAT select and rate; "ตั้ง VAT ทุกรายการ" applies one setting to all lines; the summary shows the amount before VAT and the purchase VAT. The detail dialog and the PDF show VAT per line.
   - Tests: unit 25/25 (new po-calc spec) and e2e 25/25 (new purchase VAT test).
+- 2026-11-07: Server control panel and project cleanup.
+  - Added "Purim POS Server.exe" (C# WinForms, .NET Framework 4.x). Source: `Installer/Server/control/ServerControl.cs`; build with `Installer/build-installers.sh control` (needs mono-mcs).
+    - Shows status (launcher, backend+DB, frontend), start/stop/restart, the LAN addresses for client machines, the log tail, and buttons for the app, the monitor, logs and repair.
+    - Minimizes to the tray; single instance.
+    - `--autostart` runs at Windows logon (Startup shortcut) and starts the server hidden.
+    - install-server.ps1, the NSIS installer and the updater put the exe at the install root. The Start menu entry "Purim POS Server" replaces the old start/stop shortcuts; the desktop still shows only the app icon.
+  - Cleanup:
+    - Moved the root dev launchers to `tools/dev/` (start-dev / stop-dev).
+    - Removed the duplicate CSV, unused Next boilerplate SVGs, one-off scripts (`apply-reliability-migration.cjs`, `backup-db.ps1`) and the boilerplate READMEs.
+    - Replaced the 1x1 placeholder PWA icons with real 192/512 renders of icon.svg.
+    - Added a Thai root `README.md` (layout + daily use).

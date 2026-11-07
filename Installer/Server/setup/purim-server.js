@@ -282,7 +282,7 @@ async function main() {
   say('✅ เซิร์ฟเวอร์พร้อมใช้งาน');
   say(`   เครื่องนี้:      http://localhost:${FRONT_PORT}/pos`);
   for (const ip of lanIps()) say(`   เครื่องลูก (LAN): http://${ip}:${FRONT_PORT}`);
-  say('   ปิดหน้าต่างนี้ = หยุดเซิร์ฟเวอร์ (ให้ย่อหน้าต่างไว้)');
+  say('   เปิด/หยุด/ดูสถานะ: โปรแกรม "Purim POS Server" (ไอคอนมุมขวาล่าง หรือเมนู Start)');
 }
 
 main().catch((err) => {

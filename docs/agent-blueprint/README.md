@@ -15,7 +15,7 @@
 | [**`05_HARDWARE_PERIPHERALS_INTEGRATION.md`**](file:///d:/โปรเจค%20POS%20ร้านปุริม/docs/agent-blueprint/05_HARDWARE_PERIPHERALS_INTEGRATION.md) | การเชื่อมต่ออุปกรณ์ฮาร์ดแวร์ | เครื่องพิมพ์สลิปความร้อน (ESC/POS Thermal), คำสั่งเตะลิ้นชักเก็บเงินผ่าน `winspool.Drv` Win32 API / C# Helper / PowerShell, ตัวแปลงคีย์บอร์ดไทยเกษมณีสำหรับเครื่องสแกนบาร์โค้ด |
 | [**`06_CORE_BUSINESS_LOGIC.md`**](file:///d:/โปรเจค%20POS%20ร้านปุริม/docs/agent-blueprint/06_CORE_BUSINESS_LOGIC.md) | ตรรกะทางธุรกิจ & อัลกอริทึม | Smart Rollup หน่วยบรรจุภัณฑ์, ขั้นบันไดราคาขายส่ง (Tiered Pricing), ระบบตัดสต็อก FIFO Batch, วงจรชีวิตรอบกะ (Shift) และสูตรคำนวณเงินสดคาดหวัง, ระบบเคลมและส่งคืนคู่ค้า |
 | [**`07_OFFLINE_SYNC_AND_DATA_INTEGRITY.md`**](file:///d:/โปรเจค%20POS%20ร้านปุริม/docs/agent-blueprint/07_OFFLINE_SYNC_AND_DATA_INTEGRITY.md) | กลยุทธ์ Offline Cache & Sync | โครงสร้าง IndexedDB, Offline Outbox Queue, การทำงานเมื่อเน็ตหลุด/เซิร์ฟเวอร์ล่ม, กฎเหล็ก "Backend First" และการตัดภาระ LocalStorage |
-| [**`08_DEVOPS_DEPLOYMENT_PACKAGING.md`**](file:///d:/โปรเจค%20POS%20ร้านปุริม/docs/agent-blueprint/08_DEVOPS_DEPLOYMENT_PACKAGING.md) | การติดตั้ง, Packaging & รันระบบ | Docker Compose (Postgres, Redis, pgAdmin), สคริปต์รันเซิร์ฟเวอร์ LAN อัตโนมัติ (`start-server.js`), Desktop Electron Packaging (NSIS + Portable), GUI ServerManager (.NET C#) |
+| [**`08_DEVOPS_DEPLOYMENT_PACKAGING.md`**](file:///d:/โปรเจค%20POS%20ร้านปุริม/docs/agent-blueprint/08_DEVOPS_DEPLOYMENT_PACKAGING.md) | การติดตั้ง, Packaging & รันระบบ | Docker Compose (Postgres, Redis, pgAdmin), สคริปต์รันเซิร์ฟเวอร์ LAN อัตโนมัติ (`tools/dev/start-dev.js`), Desktop Electron Packaging (NSIS + Portable), GUI ServerManager (.NET C#) |
 
 ---
 

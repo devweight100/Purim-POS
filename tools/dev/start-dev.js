@@ -1,3 +1,4 @@
+// Development mode (hot reload) for programmers. The shop uses "Purim POS Server.exe" instead.
 const { spawn, exec } = require('child_process');
 const os = require('os');
 const path = require('path');
@@ -28,7 +29,8 @@ function getLanIp() {
 }
 
 const lanIp = getLanIp();
-const rootDir = __dirname;
+// tools/dev -> project root
+const rootDir = path.resolve(__dirname, '..', '..');
 const backendDir = path.join(rootDir, 'backend');
 const frontendDir = path.join(rootDir, 'frontend');
 
@@ -40,7 +42,7 @@ console.log('\x1b[36m%s\x1b[0m', '==============================================
 const { execSync } = require('child_process');
 try {
   console.log('\x1b[32m%s\x1b[0m', '[0/2] กำลังตรวจสอบฐานข้อมูล Docker Database (PostgreSQL)...');
-  execSync('docker compose up -d postgres redis', { cwd: rootDir, stdio: 'ignore' });
+  execSync('docker compose up -d postgres', { cwd: rootDir, stdio: 'ignore' });
   console.log('\x1b[32m%s\x1b[0m', '✅ ฐานข้อมูล PostgreSQL พร้อมทำงานแล้ว\n');
 } catch (e) {
   console.log('\x1b[33m%s\x1b[0m', '⚠️ ไม่สามารถสั่ง docker compose ได้อัตโนมัติ (กรุณาตรวจสอบว่าเปิด Docker Desktop แล้วหรือยัง)\n');

@@ -181,6 +181,10 @@ foreach ($d in @('backend\src', 'backend\prisma', 'backend\scripts', 'backend\te
 & robocopy (Join-Path $src 'backend') (Join-Path $InstallDir 'backend') /E /NFL /NDL /NJH /NJS /NP | Out-Null
 & robocopy (Join-Path $src 'frontend') (Join-Path $InstallDir 'frontend') /E /NFL /NDL /NJH /NJS /NP | Out-Null
 & robocopy (Join-Path $src 'Installer\Server\setup') (Join-Path $InstallDir 'Installer\Server\setup') /E /NFL /NDL /NJH /NJS /NP | Out-Null
+$controlSrc = Join-Path $src 'Installer\Server\control'
+if (Test-Path $controlSrc) {
+  & robocopy $controlSrc (Join-Path $InstallDir 'Installer\Server\control') /E /NFL /NDL /NJH /NJS /NP | Out-Null
+}
 $clientSrc = Join-Path $src 'Installer\Client'
 if (Test-Path $clientSrc) {
   & robocopy $clientSrc (Join-Path $InstallDir 'Installer\Client') 'Purim-POS-Client-Setup.exe' /NFL /NDL /NJH /NJS /NP | Out-Null

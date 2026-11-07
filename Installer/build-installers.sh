@@ -2,20 +2,32 @@
 # Build the two Windows installers (run on Linux with makensis + wine, or in Git Bash/WSL):
 #   Installer/Server/Purim-POS-Server-Setup.exe  - server machine (database + backend + frontend)
 #   Installer/Client/Purim-POS-Client-Setup.exe  - cashier machines (desktop app)
-# Usage: Installer/build-installers.sh [server|client|all]
+# Usage: Installer/build-installers.sh [server|client|control|all]
 set -euo pipefail
 export LC_ALL=C.UTF-8   # makensis crashes on Thai file names under the C locale
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WHAT="${1:-all}"
 VERSION="$(node -p "require('$ROOT/desktop/package.json').version")"
 
+# "Purim POS Server.exe": the server control panel (C# WinForms, .NET Framework 4.x).
+# Committed next to its source so the GitHub updater can deliver it too.
+build_control() {
+  command -v mcs >/dev/null || { echo "mcs not found (apt-get install mono-mcs mono-devel)"; exit 1; }
+  local dir="$ROOT/Installer/Server/control"
+  mcs -target:winexe -sdk:4.5 -optimize+ -nowarn:219,414 \
+    -r:System.Windows.Forms.dll -r:System.Drawing.dll \
+    -win32icon:"$dir/server.ico" -out:"$dir/Purim POS Server.exe" "$dir/ServerControl.cs"
+  ls -la "$dir/Purim POS Server.exe"
+}
+
 build_server() {
+  build_control
   command -v makensis >/dev/null || { echo "makensis not found (apt-get install nsis)"; exit 1; }
   local stage; stage="$(mktemp -d)"
   trap 'rm -rf "$stage"' RETURN
   cd "$ROOT"
   # Tracked + new (not git-ignored) source files only: no node_modules, .env, builds or backups.
-  git ls-files -co --exclude-standard -- backend frontend docker-compose.yml Installer/Server/setup Installer/Client/Purim-POS-Client-Setup.exe \
+  git ls-files -co --exclude-standard -- backend frontend docker-compose.yml Installer/Server/setup Installer/Server/control Installer/Client/Purim-POS-Client-Setup.exe \
     | grep -v -E '^Installer/Server/setup/.*\.nsi$' \
     | while IFS= read -r f; do
         [ -f "$f" ] || continue
@@ -23,6 +35,7 @@ build_server() {
         cp "$f" "$stage/$f"
       done
   cp "Installer/Server/คู่มือติดตั้งเครื่องแม่ (Server).txt" "$stage/" 2>/dev/null || true
+  cp "Installer/Server/control/Purim POS Server.exe" "$stage/Purim POS Server.exe"
   # Version of the code inside this installer (read by the version screen and the updater).
   # Commit the code first, then build: a clean tree makes "commit" match the code exactly.
   local modified=false
@@ -51,6 +64,7 @@ build_client() {
 case "$WHAT" in
   server) build_server ;;
   client) build_client ;;
+  control) build_control ;;
   all) build_client; build_server ;;
-  *) echo "usage: $0 [server|client|all]"; exit 1 ;;
+  *) echo "usage: $0 [server|client|control|all]"; exit 1 ;;
 esac

@@ -238,7 +238,15 @@ if ("$hasData".Trim() -eq 't') {
 
 # ---------------------------------------------------------------- 5. Stop a running server (old dev servers included)
 Step '5/8' 'หยุดเซิร์ฟเวอร์ที่ทำงานอยู่'
+# the control panel holds its exe open: close it so it can be replaced (it is started again at the end)
+Get-Process -Name 'Purim POS Server' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 & $NodeExe (Join-Path $SetupDir 'purim-server.js') --stop
+$ControlExe = Join-Path $InstallDir 'Purim POS Server.exe'
+$ControlSrc = Join-Path $InstallDir 'Installer\Server\control\Purim POS Server.exe'
+if (Test-Path $ControlSrc) {
+  Start-Sleep -Milliseconds 500
+  Copy-Item -LiteralPath $ControlSrc -Destination $ControlExe -Force -ErrorAction SilentlyContinue
+}
 Ok 'หยุดแล้ว'
 
 # ---------------------------------------------------------------- 6. Install packages + database migration
@@ -271,16 +279,25 @@ Write-Utf8NoBom $StopCmd  ("@echo off`r`nchcp 65001 >nul`r`n`"$NodeExe`" `"$Setu
 
 if ($isAdmin) {
   $Startup = [Environment]::GetFolderPath('CommonStartup')
-  New-Shortcut (Join-Path $Startup 'Purim POS Server.lnk') $StartCmd '' $SetupDir $null $true
-  New-Shortcut (Join-Path $StartMenu 'เปิดเซิร์ฟเวอร์ Purim POS.lnk') $StartCmd '' $SetupDir $null $true
-  New-Shortcut (Join-Path $StartMenu 'หยุดเซิร์ฟเวอร์ Purim POS.lnk') $StopCmd '' $SetupDir $null $false
+  if (Test-Path $ControlExe) {
+    # Windows logon: control panel starts the server hidden and sits in the tray
+    New-Shortcut (Join-Path $Startup 'Purim POS Server.lnk') $ControlExe '--autostart' $InstallDir $null $false
+    New-Shortcut (Join-Path $StartMenu 'Purim POS Server.lnk') $ControlExe '' $InstallDir $null $false
+    foreach ($old in @('เปิดเซิร์ฟเวอร์ Purim POS.lnk', 'หยุดเซิร์ฟเวอร์ Purim POS.lnk')) {
+      Remove-Item -LiteralPath (Join-Path $StartMenu $old) -Force -ErrorAction SilentlyContinue
+    }
+  } else {
+    New-Shortcut (Join-Path $Startup 'Purim POS Server.lnk') $StartCmd '' $SetupDir $null $true
+    New-Shortcut (Join-Path $StartMenu 'เปิดเซิร์ฟเวอร์ Purim POS.lnk') $StartCmd '' $SetupDir $null $true
+    New-Shortcut (Join-Path $StartMenu 'หยุดเซิร์ฟเวอร์ Purim POS.lnk') $StopCmd '' $SetupDir $null $false
+  }
   New-Shortcut (Join-Path $StartMenu 'โฟลเดอร์ Log และไฟล์สำรอง.lnk') $InstallDir '' $InstallDir $null $false
   # Desktop keeps only the Purim POS app icon: remove the icons older versions created
   foreach ($old in @('เปิดเซิร์ฟเวอร์ Purim POS.lnk', 'หยุดเซิร์ฟเวอร์ Purim POS.lnk', 'อัปเดต Purim POS จาก GitHub.lnk', 'หน้าร้าน Purim POS.url', 'มอนิเตอร์ร้าน Purim POS.url')) {
     Remove-Item -LiteralPath (Join-Path $Desktop $old) -Force -ErrorAction SilentlyContinue
   }
   Remove-Item -LiteralPath (Join-Path $StartMenu 'อัปเดต Purim POS จาก GitHub.lnk') -Force -ErrorAction SilentlyContinue
-  Ok 'ตั้งให้เซิร์ฟเวอร์เปิดเองเมื่อเข้าสู่ Windows (ปุ่มเปิด/หยุดอยู่ในเมนู Start > Purim POS Server)'
+  Ok 'ตั้งให้เซิร์ฟเวอร์เปิดเองเมื่อเข้าสู่ Windows (หน้าควบคุม: ไอคอนมุมขวาล่าง หรือเมนู Start > Purim POS Server)'
 }
 
 # Purim POS desktop app on this machine too (silent install; again only when the setup file changed)
@@ -314,7 +331,12 @@ try {
 } catch { Warn 'ตั้งค่า Docker ให้เปิดอัตโนมัติไม่ได้ — เปิด Docker Desktop > Settings > ติ๊ก Start Docker Desktop when you sign in' }
 
 if (-not $NoStart) {
-  Start-Process -FilePath $StartCmd -WorkingDirectory $SetupDir -WindowStyle Minimized
+  if (Test-Path $ControlExe) {
+    # control panel in the tray; it starts the server (hidden) because none is running
+    Start-Process -FilePath $ControlExe -ArgumentList '--autostart' -WorkingDirectory $InstallDir
+  } else {
+    Start-Process -FilePath $StartCmd -WorkingDirectory $SetupDir -WindowStyle Minimized
+  }
   Write-Host '    กำลังเปิดเซิร์ฟเวอร์ ...'
   $up = $false
   for ($i = 0; $i -lt 60; $i++) {

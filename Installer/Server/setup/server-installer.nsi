@@ -93,6 +93,9 @@ Section "Install"
   RMDir /r "$INSTDIR\frontend\.next"
   RMDir /r "$INSTDIR\Installer"
 
+  ; the control panel keeps its exe open
+  nsExec::Exec 'taskkill /F /IM "Purim POS Server.exe"'
+  Sleep 500
   File /r "${PAYLOAD}\*.*"
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -122,6 +125,7 @@ SectionEnd
 
 Section "Uninstall"
   SetShellVarContext all
+  nsExec::Exec 'taskkill /F /IM "Purim POS Server.exe"'
   nsExec::Exec '"$INSTDIR\Installer\Server\setup\stop-server.cmd"'
   Call un.FindPowerShell
   nsExec::Exec '"$PsExe" -NoProfile -Command "Get-NetFirewallRule -DisplayName ''Purim POS Server*'' -ErrorAction SilentlyContinue | Remove-NetFirewallRule"'
@@ -149,6 +153,7 @@ Section "Uninstall"
   Delete "$INSTDIR\backend\.prettierrc"
   Delete "$INSTDIR\docker-compose.yml"
   Delete "$INSTDIR\*.txt"
+  Delete "$INSTDIR\Purim POS Server.exe"
   Delete "$INSTDIR\VERSION.json"
   Delete "$INSTDIR\update-token.dat"
   Delete "$INSTDIR\Uninstall.exe"

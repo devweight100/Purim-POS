@@ -30,8 +30,8 @@ if %errorlevel% neq 0 (
 
 :docker_ready
 echo [2/3] กำลังเปิดคอนเทนเนอร์ฐานข้อมูล PostgreSQL (พอร์ต 5433)...
-docker compose up -d postgres redis
+docker compose -f ..\..\docker-compose.yml up -d postgres
 
 echo [3/3] กำลังเริ่มต้นระบบเซิร์ฟเวอร์ Backend และ Frontend...
-node start-server.js
+node start-dev.js
 pause

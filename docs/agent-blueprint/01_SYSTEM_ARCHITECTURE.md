@@ -100,8 +100,8 @@ d:\โปรเจค POS ร้านปุริม/
 │   └── Server/                   # ติดตั้งบนเครื่องแม่ (ServerManager GUI, Docker configs)
 │
 ├── docker-compose.yml            # PostgreSQL 16 + Redis 7 + pgAdmin 4
-├── start-server.js               # สคริปต์ตรวจจับ IP LAN และสตาร์ททั้ง Backend + Frontend
-└── START_SERVER.bat              # Batch file คลิกเดียวเปิดระบบสำหรับผู้ใช้ทั่วไป
+├── tools/dev/start-dev.js               # สคริปต์ตรวจจับ IP LAN และสตาร์ททั้ง Backend + Frontend
+└── tools/dev/start-dev.bat              # Batch file คลิกเดียวเปิดระบบสำหรับผู้ใช้ทั่วไป
 ```
 
 ---
@@ -134,7 +134,7 @@ d:\โปรเจค POS ร้านปุริม/
 
 หนึ่งในจุดแข็งของระบบนี้คือ **เครื่องลูก (Client) สามารถค้นหาเครื่องแม่ (Server) ได้เองโดยไม่ต้องจำ IP**:
 
-1. เมื่อเปิด `start-server.js` บนเครื่องแม่:
+1. เมื่อเปิด `tools/dev/start-dev.js` บนเครื่องแม่:
    - สคริปต์จะค้นหา IPv4 การ์ดแลนจริง (ตัด WSL, VirtualBox, Bluetooth Adapter ทิ้ง)
    - สตาร์ท Backend บนพอร์ต `3001` และ Frontend บนพอร์ต `3000` โดย Bind IP `0.0.0.0`
 2. เมื่อเปิด Electron บนเครื่องลูก:

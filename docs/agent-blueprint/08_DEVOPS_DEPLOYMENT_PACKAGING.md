@@ -64,7 +64,7 @@ volumes:
 
 ## 2. การเริ่มต้นระบบเซิร์ฟเวอร์เครื่องแม่ (Server Startup Pipeline)
 
-### 2.1 สคริปต์ตรวจจับ IP อัจฉริยะ (`start-server.js`)
+### 2.1 สคริปต์ตรวจจับ IP อัจฉริยะ (`tools/dev/start-dev.js`)
 สคริปต์นี้จะทำหน้าที่:
 1. กรองเอาเฉพาะ **IPv4 ของการ์ดแลนจริง (Physical Wi-Fi / Ethernet)** โดยตัดการ์ดเสมือน (VirtualBox, WSL, vEthernet, Hyper-V, Bluetooth) ทิ้ง
 2. สั่งเปิด Docker Database (`docker compose up -d postgres redis`)
