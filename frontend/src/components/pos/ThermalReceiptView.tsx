@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
 import { Store } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { StoreSettings } from '@/lib/store-settings-storage';
@@ -407,7 +408,10 @@ export function printThermalReceiptDirect(data: ReceiptData, settings: StoreSett
   document.body.appendChild(container);
 
   const root = createRoot(container);
-  root.render(<ThermalReceiptView data={data} settings={settings} />);
+  // render synchronously so printing can start right away (no fixed delay)
+  flushSync(() => {
+    root.render(<ThermalReceiptView data={data} settings={settings} />);
+  });
 
   setTimeout(() => {
     const receipt = (container.firstElementChild as HTMLElement | null) || container;
@@ -418,5 +422,5 @@ export function printThermalReceiptDirect(data: ReceiptData, settings: StoreSett
         container.remove();
       } catch (e) {}
     }, 4000);
-  }, 120);
+  }, 16);
 }

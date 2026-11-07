@@ -221,3 +221,9 @@ Some corresponding database tables already exist. The remaining work is to remov
   - When VAT is off, the POS, payment card and receipts show no VAT section at all.
   - Purchases have no VAT logic and are unaffected.
   - New e2e test (24/24).
+- 2026-11-07: Receipt printing speed (desktop app 1.2.2).
+  - The winspool helper used to be a new PowerShell process compiling C# for every receipt, which took about 2-4 s. It is now a long-running helper (`RawPrintHost`) started 3 s after app launch, which takes one stdin line per job. If the helper is unavailable, printing falls back to the old one-shot path.
+  - The offscreen render window is reused, and the fixed sleeps were replaced by waiting two animation frames.
+  - The frontend renders the receipt with `flushSync` instead of a 120 ms delay.
+  - Measured under xvfb, render + encode: first receipt about 0.8 s, then about 70 ms. Output is identical across runs.
+  - Per-print timings are written to `%APPDATA%/purim-pos-desktop/print-log.txt`.
