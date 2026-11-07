@@ -1,10 +1,10 @@
-// Run: node --experimental-strip-types --test scripts/test-doc-format.mts   (from frontend/)
+// Run: node --experimental-strip-types --test scripts/test-doc-format.mjs   (from frontend/)
 // Checks the shared document helpers: Thai baht text and the document date format.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { thaiBahtText, formatDocDate, formatDocDateTime } from '../src/lib/utils.ts';
 
-const bahtCases: Array<[number | string | null, string]> = [
+const bahtCases = [
   [0, 'ศูนย์บาทถ้วน'],
   [null, 'ศูนย์บาทถ้วน'],
   [0.01, 'หนึ่งสตางค์'],

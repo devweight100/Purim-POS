@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { CreditCard, QrCode, Banknote, Edit3, CheckCircle2, SplitSquareHorizontal, UserCheck, Building2, ArrowRight, FileText, Printer, ShieldCheck } from 'lucide-react';
 import { NumpadPopup } from './NumpadPopup';
 import { ReceiptPdfModal, ReceiptData } from './ReceiptPdfModal';
+import { orderToReceiptData, summarizePaymentMethods, isCreditMethod } from '@/lib/receipt-mapper';
 import { ThermalReceiptView, printThermalReceiptDirect } from './ThermalReceiptView';
 import { loadBankAccounts, BankAccount } from '@/lib/bank-account-storage';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
@@ -51,6 +52,11 @@ export function PaymentModal({
   const submitting = useRef(false);
   // Manager approval (discount over limit / below price floor / below cost)
   const approvalIdRef = useRef<string | null>(null);
+  // latest callback for timers/effects (avoids stale closures without re-running the effects)
+  const onOpenChangeRef = useRef(onOpenChange);
+  useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  }, [onOpenChange]);
   const [approvalNeeded, setApprovalNeeded] = useState<ApprovalNeeded | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingReceipt, setPendingReceipt] = useState(false);
@@ -115,8 +121,8 @@ export function PaymentModal({
 
       timer = setTimeout(() => {
         operationId.current = null;
-        cart.clearCart();
-        onOpenChange(false);
+        useCartStore.getState().clearCart();
+        onOpenChangeRef.current(false);
       }, 5000);
     }
 
@@ -223,28 +229,16 @@ export function PaymentModal({
 
       shiftStore.updateOrderPaymentMethod(orderId, oldPayments, payments, total);
 
-      const completedReceipt: ReceiptData = {
-        orderNumber: orderId,
-        createdAt: orderToEditPayment.createdAt || new Date().toISOString(),
-        customerName: orderToEditPayment.customerName || 'ลูกค้าทั่วไป',
-        userName: orderToEditPayment.userName || shiftStore.currentShift?.userName || 'พนักงาน POS',
-        items: (orderToEditPayment.items || []).map((i: any) => ({
-          name: i.name || i.productName || 'สินค้า',
-          quantity: i.quantity || 1,
-          unitName: i.unitName || 'ชิ้น',
-          unitPrice: i.unitPrice || i.price || 0,
-          lineTotal: i.lineTotal || (i.quantity * (i.unitPrice || i.price || 0)),
-          itemNote: i.itemNote || i.note
-        })),
-        subtotal: orderToEditPayment.subtotal || total,
-        billDiscountAmount: orderToEditPayment.billDiscountAmount || 0,
-        vatAmount: orderToEditPayment.vatAmount || 0,
-        totalAmount: total,
-        paymentMethod: payments.length > 1 ? 'แบ่งชำระ (Split Payment)' : (method === 'CASH' ? 'เงินสด (Cash)' : method === 'QR' ? 'QR PromptPay' : method === 'CARD' ? 'บัตรเครดิต' : 'โอนเงิน'),
-        payments: payments,
-        cashReceived: recordedCashReceived,
-        changeAmount: recordedChangeAmount
-      };
+      // same mapping as every other reprint; only the payments changed
+      const completedReceipt: ReceiptData = orderToReceiptData(
+        { ...orderToEditPayment, orderNumber: orderId, userName: orderToEditPayment.userName || shiftStore.currentShift?.userName },
+        {
+          isReprint: true,
+          payments: payments.map((p: any) => ({ method: p.method, amount: Number(p.amount) || 0, referenceNo: p.referenceNo })),
+          cashReceived: recordedCashReceived || undefined,
+          changeAmount: recordedChangeAmount || undefined,
+        },
+      );
 
       setReceiptData(completedReceipt);
       operationId.current = null;
@@ -509,17 +503,10 @@ export function PaymentModal({
         customerPointsBalance: custSaleRes.newTotalPoints,
         vatAmount: cart.getVatAmount(),
         totalAmount: total,
-        paymentMethod: total === 0
-          ? 'เคลมสินค้า / ฟรี (฿0.00)'
-          : payments.length > 1
-            ? 'แบ่งชำระ (Split Payment)'
-            : method === 'CASH'
-              ? 'เงินสด (Cash)'
-              : method === 'QR'
-                ? 'QR PromptPay'
-                : method === 'SPLIT'
-                  ? 'แบ่งชำระ (Split)'
-                  : 'เงินเชื่อ (Credit)',
+        paymentMethod: total === 0 ? 'เคลมสินค้า / ฟรี (฿0.00)' : summarizePaymentMethods(payments),
+        outstandingAmount: payments
+          .filter((p: any) => isCreditMethod(p.method))
+          .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0) || undefined,
         payments: payments,
         cashReceived: recordedCashReceived,
         changeAmount: recordedChangeAmount
@@ -548,9 +535,10 @@ export function PaymentModal({
 
   useEffect(() => {
     if (open) {
-      if (!orderToEditPayment && cart.items.length === 0) {
+      const cartItemCount = useCartStore.getState().items.length;
+      if (!orderToEditPayment && cartItemCount === 0) {
         toast.warning('ไม่มีสินค้าในตะกร้า ไม่สามารถชำระเงินได้');
-        onOpenChange(false);
+        onOpenChangeRef.current(false);
         return;
       }
 
@@ -568,13 +556,11 @@ export function PaymentModal({
       setQrReceived(0);
       setNumpadTarget('NONE');
 
-      // 0-Baht checkout automation (Claims or ฿0 bill)
-      if (total === 0 && cart.items.length > 0 && !orderToEditPayment) {
+      // ฿0 bill (claim replacement / 100% discount): never saved automatically - the
+      // cashier must confirm it explicitly on the next screen.
+      if (total === 0 && cartItemCount > 0 && !orderToEditPayment) {
         setMethod('CASH');
         setStep('PROCESS');
-        setTimeout(() => {
-          handleConfirmPayment();
-        }, 50);
         return;
       }
 
@@ -586,7 +572,7 @@ export function PaymentModal({
         setMethod(null);
       }
     }
-  }, [open, initialMethod, total]);
+  }, [open, initialMethod, total, orderToEditPayment]);
 
   const handleFinish = () => {
     operationId.current = null;
@@ -731,12 +717,33 @@ export function PaymentModal({
           {/* STEP 2: PROCESS (0-Baht Auto Checkout) */}
           {step === 'PROCESS' && total === 0 && (
             <div className="py-20 flex-1 flex flex-col items-center justify-center text-center space-y-4">
-              <div className="w-20 h-20 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center animate-pulse shadow-inner">
+              <div className="w-20 h-20 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-inner">
                 <ShieldCheck className="w-12 h-12" />
               </div>
               <div>
-                <h3 className="text-2xl font-black text-slate-800">กำลังประมวลผลบิลเคลมสินค้า / ฟรี (฿0.00)...</h3>
-                <p className="text-sm text-slate-500 mt-1">ระบบกำลังบันทึกข้อมูล ตัดสต็อก และพิมพ์สลิปให้อัตโนมัติ</p>
+                <h3 className="text-2xl font-black text-slate-800">ยอดชำระบิลนี้ ฿0.00</h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  บิลเคลมสินค้า / ส่วนลดเต็มจำนวน — ตรวจสอบรายการก่อน แล้วกดยืนยันเพื่อบันทึกบิล ตัดสต็อก และพิมพ์สลิป
+                </p>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isSubmitting}
+                  onClick={() => handleOpenChange(false)}
+                  className="h-12 px-6 rounded-2xl font-bold"
+                >
+                  ยกเลิก
+                </Button>
+                <Button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => void handleConfirmPayment()}
+                  className="h-12 px-6 rounded-2xl font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {isSubmitting ? 'กำลังบันทึก...' : 'ยืนยันบันทึกบิล ฿0.00'}
+                </Button>
               </div>
             </div>
           )}

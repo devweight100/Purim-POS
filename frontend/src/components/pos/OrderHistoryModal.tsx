@@ -8,6 +8,7 @@ import { rollbackCustomerSale } from '@/lib/customer-service';
 import { restoreVoidOrderStock } from '@/lib/stock-service';
 import { fetchAllClaimRecords } from '@/lib/claim-service';
 import { ReceiptPdfModal, ReceiptData } from './ReceiptPdfModal';
+import { orderToReceiptData } from '@/lib/receipt-mapper';
 import { PaymentModal } from './PaymentModal';
 import {
   Dialog,
@@ -218,33 +219,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
 
   // Handle viewing receipt PDF
   const handleViewReceipt = (order: any) => {
-    const receiptData: ReceiptData = {
-      orderNumber: order.orderNumber || order.id,
-      createdAt: order.createdAt,
-      customerName: order.customerName || 'ลูกค้าทั่วไป',
-      userName: order.userName || 'พนักงาน POS',
-      items: (order.items || []).map((i: any) => ({
-        name: i.name || i.productName || 'สินค้า',
-        quantity: i.quantity || 1,
-        unitName: i.unitName || 'ชิ้น',
-        unitPrice: i.unitPrice || i.price || 0,
-        lineTotal: i.lineTotal || (i.quantity * (i.unitPrice || i.price || 0)),
-        itemNote: i.itemNote || i.note
-      })),
-      subtotal: order.subtotal || order.totalAmount || 0,
-      billDiscountAmount: order.billDiscountAmount || 0,
-      vatAmount: order.vatAmount || 0,
-      totalAmount: order.totalAmount || 0,
-      paymentMethod: order.payments?.length > 1 ? 'แบ่งชำระ (Split Payment)' : 
-                    order.payments?.[0]?.method === 'CASH' ? 'เงินสด' : 
-                    order.payments?.[0]?.method === 'QR_PROMPTPAY' ? 'คิวอาร์ (พร้อมเพย์)' : 
-                    order.payments?.[0]?.method === 'CREDIT_CARD' ? 'บัตรเครดิต' : 
-                    order.paymentMethod || 'โอน',
-      payments: order.payments,
-      cashReceived: order.payments?.[0]?.cashReceived || order.cashReceived,
-      changeAmount: order.payments?.[0]?.changeAmount || order.changeAmount,
-      note: order.note || order.remarks || undefined
-    };
+    const receiptData: ReceiptData = orderToReceiptData(order, { isReprint: true });
 
     setSelectedReceipt(receiptData);
     setIsReceiptOpen(true);
