@@ -266,6 +266,9 @@ New-Shortcut (Join-Path $Desktop 'หยุดเซิร์ฟเวอร์ 
 New-Shortcut (Join-Path $StartMenu 'เปิดเซิร์ฟเวอร์ Purim POS.lnk') $StartCmd '' $SetupDir $null $true
 New-Shortcut (Join-Path $StartMenu 'หยุดเซิร์ฟเวอร์ Purim POS.lnk') $StopCmd '' $SetupDir $null $false
 New-Shortcut (Join-Path $StartMenu 'โฟลเดอร์ Log และไฟล์สำรอง.lnk') $InstallDir '' $InstallDir $null $false
+$UpdateArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$SetupDir\update-from-github.ps1`" -InstallDir `"$InstallDir`""
+New-Shortcut (Join-Path $Desktop 'อัปเดต Purim POS จาก GitHub.lnk') $PsExe $UpdateArgs $SetupDir $null $false
+New-Shortcut (Join-Path $StartMenu 'อัปเดต Purim POS จาก GitHub.lnk') $PsExe $UpdateArgs $SetupDir $null $false
 $UrlFile = Join-Path $Desktop 'หน้าร้าน Purim POS.url'
 Write-Utf8NoBom $UrlFile "[InternetShortcut]`r`nURL=http://localhost:3000/pos`r`n"
 Ok 'สร้างทางลัดบนหน้าจอ และตั้งให้เปิดเองเมื่อเข้าสู่ Windows'
