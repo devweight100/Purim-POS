@@ -1,12 +1,45 @@
 import { Controller, Get, Post, Put, Body, Req, Res, Param, Query, UseGuards, BadRequestException } from '@nestjs/common';
 import { ServerControlService } from './server-control.service';
+import { ServerUpdateService } from './server-update.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
 
 @Controller('server-control')
 export class ServerControlController {
-  constructor(private readonly service: ServerControlService) {}
+  constructor(
+    private readonly service: ServerControlService,
+    private readonly updater: ServerUpdateService,
+  ) {}
+
+  // ---- Update the server from GitHub (store monitor page, ADMIN only) ----
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Get('update/status')
+  updateStatus() {
+    return this.updater.status();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Post('update/check')
+  updateCheck() {
+    return this.updater.check();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Post('update/token')
+  updateToken(@Body('token') token: string) {
+    return this.updater.setToken(token);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @Post('update/run')
+  updateRun(@Req() req: any) {
+    return this.updater.start(req.user?.username || req.user?.sub || 'admin');
+  }
 
   // Sales, carts and terminals of the whole store: staff with report access only.
   @UseGuards(JwtAuthGuard, RolesGuard)

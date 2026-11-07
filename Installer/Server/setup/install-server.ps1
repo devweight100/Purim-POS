@@ -4,12 +4,14 @@
 param(
   [string]$InstallDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path,
   [switch]$NoStart,
-  [switch]$Pause
+  [switch]$Pause,
+  # used by the update button on the monitor page: runs as the signed-in user, skips admin-only steps
+  [switch]$NoElevate
 )
 
 # Relaunch elevated when started without Administrator rights (e.g. from the Start menu shortcut)
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
+if (-not $isAdmin -and -not $NoElevate) {
   $argsList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-InstallDir', "`"$InstallDir`"", '-Pause')
   if ($NoStart) { $argsList += '-NoStart' }
   Start-Process powershell.exe -Verb RunAs -ArgumentList $argsList
@@ -20,7 +22,7 @@ if ($env:ProgramW6432) { $env:ProgramFiles = $env:ProgramW6432 }
 # 'Continue': in Windows PowerShell 5.1 stderr from native tools (docker/npm) would otherwise abort the script
 $ErrorActionPreference = 'Continue'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
-$Host.UI.RawUI.WindowTitle = 'ติดตั้งเซิร์ฟเวอร์ ร้านปุริม POS'
+try { $Host.UI.RawUI.WindowTitle = 'ติดตั้งเซิร์ฟเวอร์ ร้านปุริม POS' } catch {}
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $Backend   = Join-Path $InstallDir 'backend'
@@ -91,10 +93,16 @@ Write-Host '=================================================================' -
 $NodeExeGuess = Join-Path $env:ProgramFiles 'nodejs\node.exe'
 $Desktop = [Environment]::GetFolderPath('CommonDesktopDirectory')
 $StartMenu = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'Purim POS Server'
-New-Item -ItemType Directory -Force -Path $StartMenu | Out-Null
 $PsExe = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
-$RepairArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$SetupDir\install-server.ps1`" -InstallDir `"$InstallDir`" -Pause"
-New-Shortcut (Join-Path $StartMenu 'ติดตั้งหรือซ่อมระบบ Purim POS.lnk') $PsExe $RepairArgs $SetupDir $null $false
+if ($isAdmin) {
+  New-Item -ItemType Directory -Force -Path $StartMenu | Out-Null
+  $RepairArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$SetupDir\install-server.ps1`" -InstallDir `"$InstallDir`" -Pause"
+  New-Shortcut (Join-Path $StartMenu 'ติดตั้งหรือซ่อมระบบ Purim POS.lnk') $PsExe $RepairArgs $SetupDir $null $false
+  # the server account (no admin) must be able to update the program files from the monitor page
+  & icacls $InstallDir /grant '*S-1-5-32-545:(OI)(CI)M' /Q | Out-Null
+} else {
+  Warn 'โหมดอัปเดต (ไม่มีสิทธิ์ Administrator): ข้ามการตั้งค่า Firewall/ทางลัด'
+}
 
 # ---------------------------------------------------------------- 1. Node.js
 Step '1/8' 'ตรวจสอบ Node.js'
@@ -249,30 +257,51 @@ Run 'npm.cmd' @('run', 'build') $Frontend 'build frontend'
 Ok 'frontend พร้อม'
 
 # ---------------------------------------------------------------- 8. Firewall, auto start, shortcuts
-Step '8/8' 'ตั้งค่า Firewall, เปิดอัตโนมัติ และทางลัด'
-Get-NetFirewallRule -DisplayName 'Purim POS Server*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-New-NetFirewallRule -DisplayName 'Purim POS Server (TCP 3000)' -Direction Inbound -Protocol TCP -LocalPort 3000 -Action Allow -Profile Any -RemoteAddress LocalSubnet | Out-Null
-Ok 'เปิดพอร์ต 3000 ให้เครื่องลูกในวง LAN'
+Step '8/8' 'ตั้งค่า Firewall, เปิดอัตโนมัติ, แอปหน้าร้าน'
+if ($isAdmin) {
+  Get-NetFirewallRule -DisplayName 'Purim POS Server*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+  New-NetFirewallRule -DisplayName 'Purim POS Server (TCP 3000)' -Direction Inbound -Protocol TCP -LocalPort 3000 -Action Allow -Profile Any -RemoteAddress LocalSubnet | Out-Null
+  Ok 'เปิดพอร์ต 3000 ให้เครื่องลูกในวง LAN'
+}
 
 $StartCmd = Join-Path $SetupDir 'start-server.cmd'
 $StopCmd  = Join-Path $SetupDir 'stop-server.cmd'
 Write-Utf8NoBom $StartCmd ("@echo off`r`nchcp 65001 >nul`r`ntitle Purim POS Server`r`n`"$NodeExe`" `"$SetupDir\purim-server.js`"`r`n")
 Write-Utf8NoBom $StopCmd  ("@echo off`r`nchcp 65001 >nul`r`n`"$NodeExe`" `"$SetupDir\purim-server.js`" --stop`r`ntimeout /t 3 >nul`r`n")
 
-$Startup = [Environment]::GetFolderPath('CommonStartup')
-New-Shortcut (Join-Path $Startup 'Purim POS Server.lnk') $StartCmd '' $SetupDir $null $true
-New-Shortcut (Join-Path $Desktop 'เปิดเซิร์ฟเวอร์ Purim POS.lnk') $StartCmd '' $SetupDir $null $true
-New-Shortcut (Join-Path $Desktop 'หยุดเซิร์ฟเวอร์ Purim POS.lnk') $StopCmd '' $SetupDir $null $false
-New-Shortcut (Join-Path $StartMenu 'เปิดเซิร์ฟเวอร์ Purim POS.lnk') $StartCmd '' $SetupDir $null $true
-New-Shortcut (Join-Path $StartMenu 'หยุดเซิร์ฟเวอร์ Purim POS.lnk') $StopCmd '' $SetupDir $null $false
-New-Shortcut (Join-Path $StartMenu 'โฟลเดอร์ Log และไฟล์สำรอง.lnk') $InstallDir '' $InstallDir $null $false
-$UpdateArgs = "-NoProfile -ExecutionPolicy Bypass -File `"$SetupDir\update-from-github.ps1`" -InstallDir `"$InstallDir`""
-New-Shortcut (Join-Path $Desktop 'อัปเดต Purim POS จาก GitHub.lnk') $PsExe $UpdateArgs $SetupDir $null $false
-New-Shortcut (Join-Path $StartMenu 'อัปเดต Purim POS จาก GitHub.lnk') $PsExe $UpdateArgs $SetupDir $null $false
-$UrlFile = Join-Path $Desktop 'หน้าร้าน Purim POS.url'
-Write-Utf8NoBom $UrlFile "[InternetShortcut]`r`nURL=http://localhost:3000/pos`r`n"
-Write-Utf8NoBom (Join-Path $Desktop 'มอนิเตอร์ร้าน Purim POS.url') "[InternetShortcut]`r`nURL=http://localhost:3000/monitor`r`n"
-Ok 'สร้างทางลัดบนหน้าจอ และตั้งให้เปิดเองเมื่อเข้าสู่ Windows'
+if ($isAdmin) {
+  $Startup = [Environment]::GetFolderPath('CommonStartup')
+  New-Shortcut (Join-Path $Startup 'Purim POS Server.lnk') $StartCmd '' $SetupDir $null $true
+  New-Shortcut (Join-Path $StartMenu 'เปิดเซิร์ฟเวอร์ Purim POS.lnk') $StartCmd '' $SetupDir $null $true
+  New-Shortcut (Join-Path $StartMenu 'หยุดเซิร์ฟเวอร์ Purim POS.lnk') $StopCmd '' $SetupDir $null $false
+  New-Shortcut (Join-Path $StartMenu 'โฟลเดอร์ Log และไฟล์สำรอง.lnk') $InstallDir '' $InstallDir $null $false
+  # Desktop keeps only the Purim POS app icon: remove the icons older versions created
+  foreach ($old in @('เปิดเซิร์ฟเวอร์ Purim POS.lnk', 'หยุดเซิร์ฟเวอร์ Purim POS.lnk', 'อัปเดต Purim POS จาก GitHub.lnk', 'หน้าร้าน Purim POS.url', 'มอนิเตอร์ร้าน Purim POS.url')) {
+    Remove-Item -LiteralPath (Join-Path $Desktop $old) -Force -ErrorAction SilentlyContinue
+  }
+  Remove-Item -LiteralPath (Join-Path $StartMenu 'อัปเดต Purim POS จาก GitHub.lnk') -Force -ErrorAction SilentlyContinue
+  Ok 'ตั้งให้เซิร์ฟเวอร์เปิดเองเมื่อเข้าสู่ Windows (ปุ่มเปิด/หยุดอยู่ในเมนู Start > Purim POS Server)'
+}
+
+# Purim POS desktop app on this machine too (silent install; again only when the setup file changed)
+$ClientSetup = Join-Path $InstallDir 'Installer\Client\Purim-POS-Client-Setup.exe'
+if (Test-Path $ClientSetup) {
+  $hash = (Get-FileHash $ClientSetup -Algorithm SHA256).Hash
+  $marker = Join-Path $LogDir 'client-app.sha256'
+  $installedHash = if (Test-Path $marker) { (Get-Content $marker -Raw).Trim() } else { '' }
+  $appExe = Join-Path $env:ProgramFiles 'Purim POS\Purim POS.exe'
+  if ($installedHash -ne $hash -or -not (Test-Path $appExe)) {
+    if ($isAdmin) {
+      Write-Host '    กำลังติดตั้งแอป Purim POS บนเครื่องนี้ ...'
+      $p = Start-Process $ClientSetup -ArgumentList '/S' -Wait -PassThru
+      if ($p.ExitCode -eq 0) { Set-Content $marker $hash; Ok 'ติดตั้งแอป Purim POS แล้ว (ไอคอนบนหน้าจอ)' } else { Warn "ติดตั้งแอปไม่สำเร็จ (รหัส $($p.ExitCode))" }
+    } else {
+      Warn 'มีแอปหน้าร้านเวอร์ชันใหม่ — เปิด Start > Purim POS Server > ติดตั้งหรือซ่อมระบบ เพื่อติดตั้ง'
+    }
+  } else {
+    Ok 'แอป Purim POS เป็นเวอร์ชันล่าสุดแล้ว'
+  }
+}
 
 # Docker Desktop must also start with Windows (database lives there)
 try {

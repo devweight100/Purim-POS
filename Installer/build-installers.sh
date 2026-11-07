@@ -15,7 +15,7 @@ build_server() {
   trap 'rm -rf "$stage"' RETURN
   cd "$ROOT"
   # Tracked + new (not git-ignored) source files only: no node_modules, .env, builds or backups.
-  git ls-files -co --exclude-standard -- backend frontend docker-compose.yml Installer/Server/setup \
+  git ls-files -co --exclude-standard -- backend frontend docker-compose.yml Installer/Server/setup Installer/Client/Purim-POS-Client-Setup.exe \
     | grep -v -E '^Installer/Server/setup/.*\.nsi$' \
     | while IFS= read -r f; do
         [ -f "$f" ] || continue
@@ -45,6 +45,6 @@ build_client() {
 case "$WHAT" in
   server) build_server ;;
   client) build_client ;;
-  all) build_server; build_client ;;
+  all) build_client; build_server ;;
   *) echo "usage: $0 [server|client|all]"; exit 1 ;;
 esac

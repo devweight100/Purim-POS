@@ -208,3 +208,10 @@ Some corresponding database tables already exist. The remaining work is to remov
   - Receipts printed from the hidden off-screen container used to print blank because the hiding inline styles were copied. Fixed in `printableMarkup`.
   - Verified by capturing the real receipt HTML from a cash sale and decoding the ESC/POS output back to an image under xvfb. The raw spooler step has not been run on a real Windows printer.
 - 2026-11-07: The POS list layout has the program logo at top-left (links to the dashboard) and its bottom buttons on one row. The desktop window menu bar is hidden; its shortcuts still work and Alt shows it.
+- 2026-11-07: Server installer changes.
+  - The server installer now carries and silently installs the Purim POS desktop app. It reinstalls the app only when the setup file's SHA-256 changes.
+  - The desktop keeps only the app icon: the old server/shop/monitor/update icons are removed. Start/stop/repair live in Start > Purim POS Server.
+  - The installer grants Users Modify on the install folder so the server can update itself.
+  - "Update from GitHub" moved to the monitor page: an ADMIN-only `UpdatePanel` calls `/api/server-control/update/{status,check,token,run}` (`ServerUpdateService`).
+  - The backend starts `update-from-github.ps1 -Mode run` through `cmd /c start`, so the updater survives the server stop. Progress goes to `logs/update-status.json`. `install-server.ps1 -NoElevate` skips the admin-only steps.
+  - The PowerShell flows have not been run on Windows.

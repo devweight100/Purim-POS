@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { ApiError } from '@/lib/api-error';
+import { useAuthStore } from '@/lib/store/auth-store';
+import { UpdatePanel } from '@/components/monitor/UpdatePanel';
 import {
   W,
   drawScene,
@@ -170,6 +172,7 @@ function Stat({ icon, label, value, color }: { icon: string; label: string; valu
 
 export default function MonitorPage() {
   const router = useRouter();
+  const isAdmin = useAuthStore((st) => st.user?.role === 'ADMIN');
   const [data, setData] = useState<Telemetry | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState<LogLine[]>([]);
@@ -559,6 +562,12 @@ export default function MonitorPage() {
                   )}
                 </div>
               </div>
+            </Panel>
+          )}
+
+          {isAdmin && (
+            <Panel title="อัปเดตระบบ (GitHub)">
+              <UpdatePanel />
             </Panel>
           )}
 
