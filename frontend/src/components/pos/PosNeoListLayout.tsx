@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useCartStore } from '@/lib/store/cart-store';
+import { useCartStore, validateDiscount } from '@/lib/store/cart-store';
 import { useProductStore } from '@/lib/store/product-store';
 import { Product, CartItem, ProductUnit } from '@/lib/types';
 import { getProductAvailableUnits, getDefaultSelectedUnit } from '@/lib/product-unit-helpers';
@@ -914,6 +914,11 @@ export function PosNeoListLayout({
           onConfirm={(val) => {
             if (val >= 0) {
               const currentType = discountEditItem.discountType === 'none' ? 'baht' : discountEditItem.discountType;
+              const discountError = validateDiscount(currentType, val, cart.getEffectivePrice(discountEditItem) * Math.max(0, discountEditItem.quantity - (discountEditItem.claimQuantity || 0)));
+              if (discountError) {
+                toast.error(discountError);
+                return;
+              }
               cart.setItemDiscount(discountEditItem.productId, currentType, val, discountEditItem.unitId);
               toast.success(`อัปเดตส่วนลดเป็น ${val} ${currentType === 'percent' ? '%' : 'บาท'}`);
             }

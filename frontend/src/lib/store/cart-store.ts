@@ -58,6 +58,24 @@ interface CartStore {
   getItemCount: () => number;
 }
 
+/**
+ * Discount rules shared by every discount input (item popup, numpad, bill discount):
+ * percent within 0-100, baht between 0 and the line/bill amount. Returns a Thai message or null when valid.
+ */
+export function validateDiscount(type: 'none' | 'baht' | 'percent', value: number, maxBaht: number): string | null {
+  if (type === 'none') return null;
+  if (!Number.isFinite(value) || value < 0) return 'ส่วนลดต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป';
+  if (type === 'percent' && value > 100) return 'ส่วนลดเปอร์เซ็นต์ต้องอยู่ระหว่าง 0 - 100%';
+  if (type === 'baht' && value > maxBaht + 1e-9) return `ส่วนลดต้องไม่เกินยอด ${maxBaht.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`;
+  return null;
+}
+
+/** Last line of defence for stored discounts: never negative, percent never above 100. */
+const clampDiscountValue = (type: 'none' | 'baht' | 'percent', value: number) => {
+  const v = Number.isFinite(value) ? Math.max(0, value) : 0;
+  return type === 'percent' ? Math.min(100, v) : v;
+};
+
 /** localStorage key of the persisted cart (per device / browser profile). */
 export const CART_STORAGE_KEY = 'purim-pos-cart';
 const CART_STORAGE_VERSION = 1;
@@ -233,7 +251,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
         const match = unitId
           ? i.productId === productId && i.unitId === unitId
           : i.productId === productId;
-        return match ? { ...i, discountType: type, discountValue: value } : i;
+        return match ? { ...i, discountType: type, discountValue: clampDiscountValue(type, value) } : i;
       }),
     }));
   },
@@ -284,7 +302,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
   },
 
   setBillDiscount: (type: 'none' | 'baht' | 'percent', value: number) => {
-    set({ billDiscountType: type, billDiscountValue: value });
+    set({ billDiscountType: type, billDiscountValue: clampDiscountValue(type, value) });
   },
 
   setPointsDiscount: (discountBaht: number, pointsUsed: number) => {
