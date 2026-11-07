@@ -98,6 +98,9 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}): Pro
       const errBody = await res.json().catch(() => null);
       if (res.status === 403 && errBody?.code === 'MUST_CHANGE_PASSWORD' && typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('purim:must-change-password'));
+      } else if (res.status === 403 && typeof window !== 'undefined') {
+        // Shown by (main)/layout so a page never silently stays empty when an API refuses this user
+        window.dispatchEvent(new CustomEvent('purim:forbidden', { detail: { endpoint: cleanEndpoint, message: errBody?.message } }));
       }
       reportConnection(res.status >= 500);
       throw new ApiError(Array.isArray(errBody?.message) ? errBody.message.join(', ') : errBody?.message || `HTTP ${res.status}: ${res.statusText}`, res.status, errBody);
