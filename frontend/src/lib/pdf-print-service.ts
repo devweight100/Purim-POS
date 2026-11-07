@@ -20,12 +20,81 @@ function printableMarkup(element: HTMLElement): string {
   return clone.outerHTML || clone.innerHTML;
 }
 
-export function printDocumentIframe(
-  element: HTMLElement,
-  title: string,
-  format: '80mm' | 'a4' = 'a4'
-) {
+/** true when the document is laid out as explicit A4 sheets (`.a4-page`, one per printed page) */
+function isPagedA4(element: HTMLElement): boolean {
+  return element.classList.contains('a4-page') || !!element.querySelector('.a4-page');
+}
+
+/** Electron: thermal docs go to the receipt printer, A4 docs to the A4 printer (or the system dialog). */
+export function electronPrintTarget(format: '80mm' | 'a4'): { printerName?: string; showDialog: boolean } {
+  let cfg: ReturnType<typeof getCashDrawerConfig> | null = null;
+  try {
+    cfg = getCashDrawerConfig();
+  } catch {
+    cfg = null;
+  }
+  if (format === 'a4') {
+    const a4 = (cfg?.selectedA4Printer || '').trim();
+    return a4 ? { printerName: a4, showDialog: false } : { printerName: undefined, showDialog: true };
+  }
+  return { printerName: cfg?.selectedPrinter || undefined, showDialog: false };
+}
+
+/**
+ * Baseline for slips when the app stylesheet is not available (e.g. the desktop raster printer):
+ * borders are off unless a utility turns them on, so `border-dashed` never draws a box.
+ */
+const THERMAL_FALLBACK_CSS = `
+          *, *::before, *::after { border-width: 0; border-style: solid; }
+          .flex { display: flex !important; }
+          .flex-col { flex-direction: column !important; }
+          .justify-between { justify-content: space-between !important; }
+          .justify-center { justify-content: center !important; }
+          .items-center { align-items: center !important; }
+          .items-start { align-items: flex-start !important; }
+          .text-center { text-align: center !important; }
+          .text-right { text-align: right !important; }
+          .text-left { text-align: left !important; }
+          .font-bold { font-weight: 700 !important; }
+          .font-black, .font-extrabold { font-weight: 900 !important; }
+          .font-semibold { font-weight: 600 !important; }
+          .border { border-width: 1px; }
+          .border-2 { border-width: 2px; }
+          .border-b { border-bottom-width: 1px; }
+          .border-b-2 { border-bottom-width: 2px; }
+          .border-t { border-top-width: 1px; }
+          .border-t-2 { border-top-width: 2px; }
+          .border-l-2 { border-left-width: 2px; }
+          .border-dashed { border-style: dashed; }
+          .border-black { border-color: #000000 !important; }
+          .w-full { width: 100% !important; }
+          .w-1\\/2 { width: 50% !important; }
+          .w-1\\/4 { width: 25% !important; }
+          .w-3\\/4 { width: 75% !important; }
+          .shrink-0 { flex-shrink: 0 !important; }
+          .min-w-0 { min-width: 0 !important; }
+          .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .break-words { word-break: break-word; overflow-wrap: anywhere; }
+          .whitespace-pre-wrap { white-space: pre-wrap !important; }
+          .space-y-0\\.5 > * + * { margin-top: 2px !important; }
+          .space-y-1 > * + * { margin-top: 4px !important; }
+          .space-y-1\\.5 > * + * { margin-top: 6px !important; }
+          .space-y-2 > * + * { margin-top: 8px !important; }
+          .py-1 { padding-top: 4px !important; padding-bottom: 4px !important; }
+          .pb-1 { padding-bottom: 4px !important; }
+          .pt-1 { padding-top: 4px !important; }
+          .pl-1 { padding-left: 4px !important; }
+          .px-2\\.5 { padding-left: 10px !important; padding-right: 10px !important; }
+          .py-0\\.5 { padding-top: 2px !important; padding-bottom: 2px !important; }
+          .leading-tight { line-height: 1.25 !important; }
+          .tracking-wider { letter-spacing: 0.05em !important; }
+          .uppercase { text-transform: uppercase !important; }
+          .inline-block { display: inline-block !important; }
+`;
+
+export function buildPrintHtml(element: HTMLElement, title: string, format: '80mm' | 'a4' = 'a4'): string {
   const isSlip = format === '80mm';
+  const paged = !isSlip && isPagedA4(element);
 
   // Clone all application stylesheets and <style> tags from parent document with absolute URLs
   const headStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
@@ -38,38 +107,72 @@ export function printDocumentIframe(
     })
     .join('\n');
 
-  const pageMargin = isSlip ? '0mm' : '8mm';
   const pageSize = isSlip ? '80mm auto' : 'A4 portrait';
   const containerMaxWidth = isSlip ? '100%' : '210mm';
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
 
-  // Only the browser iframe path prints itself; the desktop app prints silently (no preview).
-  const autoPrintScript = `
-        <script>
-          (function() {
-            function triggerPrint() {
-              try {
-                window.focus();
-                window.print();
-              } catch (e) {}
-            }
-            if (document.fonts && document.fonts.ready) {
-              document.fonts.ready.then(function() {
-                setTimeout(triggerPrint, 150);
-              });
-            } else if (document.readyState === 'complete') {
-              setTimeout(triggerPrint, 200);
-            } else {
-              window.addEventListener('load', function() {
-                setTimeout(triggerPrint, 200);
-              });
-              setTimeout(triggerPrint, 500);
-            }
-          })();
-        </script>
-`;
+  const slipCss = `
+          ${THERMAL_FALLBACK_CSS}
+          @media print {
+            @page { size: 80mm auto; margin: 0mm !important; }
+            html, body { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
+            .print-wrapper { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 1.5mm !important; }
+            .print-wrapper > div { width: 100% !important; max-width: 100% !important; margin: 0 !important; border: none !important; }
+            * { color: #000000 !important; border-color: #000000 !important; text-shadow: none !important; }
+          }
+          * { color: #000000 !important; border-color: #000000 !important; }
+  `;
 
-  const fullHtml = `
+  // A4: content flows over as many pages as needed - nothing is clipped. Documents built from
+  // explicit `.a4-page` sheets get one sheet per printed page; other documents paginate
+  // naturally with the table header repeated on every page.
+  const a4Css = `
+          thead { display: table-header-group; }
+          tfoot { display: table-footer-group; }
+          tr, .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; }
+          @media print {
+            @page { size: A4 portrait; margin: ${paged ? '0' : '10mm 0'}; }
+            html, body {
+              width: 210mm !important;
+              height: auto !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              overflow: visible !important;
+              background: #ffffff !important;
+            }
+            .print-wrapper { width: 210mm !important; max-width: 210mm !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; }
+            .a4-preview-stack { display: block !important; gap: 0 !important; padding: 0 !important; margin: 0 !important; background: #ffffff !important; }
+            .a4-page {
+              width: 210mm !important;
+              min-height: 296mm !important;
+              height: auto !important;
+              max-height: none !important;
+              margin: 0 !important;
+              border: none !important;
+              box-shadow: none !important;
+              border-radius: 0 !important;
+              overflow: visible !important;
+              page-break-after: always;
+              break-after: page;
+            }
+            .a4-page:last-child { page-break-after: auto; break-after: auto; }
+            .a4-container:not(.a4-page) {
+              width: 210mm !important;
+              max-width: 210mm !important;
+              height: auto !important;
+              min-height: 0 !important;
+              max-height: none !important;
+              margin: 0 !important;
+              padding: 0 10mm !important;
+              border: none !important;
+              box-shadow: none !important;
+              overflow: visible !important;
+            }
+            .no-print-preview { display: none !important; }
+          }
+  `;
+
+  return `
     <!DOCTYPE html>
     <html>
       <head>
@@ -80,7 +183,7 @@ export function printDocumentIframe(
         <style>
           @page {
             size: ${pageSize};
-            margin: 0mm !important;
+            margin: 0mm;
           }
           *, *::before, *::after {
             box-sizing: border-box !important;
@@ -92,8 +195,6 @@ export function printDocumentIframe(
             padding: 0 !important;
             background: #ffffff !important;
             color: #000000 !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
             font-family: 'Prompt', 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif !important;
             ${isSlip ? `width: 100% !important; max-width: 100% !important;` : `width: 210mm !important; max-width: 210mm !important;`}
           }
@@ -108,196 +209,159 @@ export function printDocumentIframe(
             background: #ffffff !important;
             box-sizing: border-box !important;
           }
-
-          ${isSlip ? `
-          /* Standalone Thermal Receipt Layout Fallback CSS */
-          .flex { display: flex !important; }
-          .flex-col { flex-direction: column !important; }
-          .justify-between { justify-content: space-between !important; }
-          .justify-center { justify-content: center !important; }
-          .items-center { align-items: center !important; }
-          .items-start { align-items: flex-start !important; }
-          .text-center { text-align: center !important; }
-          .text-right { text-align: right !important; }
-          .text-left { text-align: left !important; }
-          .font-bold { font-weight: 700 !important; }
-          .font-black, .font-extrabold { font-weight: 900 !important; }
-          .font-semibold { font-weight: 600 !important; }
-          .border-b { border-bottom: 1px solid #000000 !important; }
-          .border-b-2 { border-bottom: 2px solid #000000 !important; }
-          .border-t { border-top: 1px solid #000000 !important; }
-          .border-t-2 { border-top: 2px solid #000000 !important; }
-          .border-dashed { border-style: dashed !important; }
-          .border-black { border-color: #000000 !important; }
-          .border-2 { border: 2px solid #000000 !important; }
-          .w-full { width: 100% !important; }
-          .w-1\\/2 { width: 50% !important; }
-          .w-1\\/4 { width: 25% !important; }
-          .w-3\\/4 { width: 75% !important; }
-          .shrink-0 { flex-shrink: 0 !important; }
-          .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-          .break-words { word-break: break-word; overflow-wrap: break-word; }
-          .whitespace-pre-wrap { white-space: pre-wrap !important; }
-          .space-y-0\\.5 > * + * { margin-top: 2px !important; }
-          .space-y-1 > * + * { margin-top: 4px !important; }
-          .space-y-1\\.5 > * + * { margin-top: 6px !important; }
-          .space-y-2 > * + * { margin-top: 8px !important; }
-          .py-1 { padding-top: 4px !important; padding-bottom: 4px !important; }
-          .pb-1 { padding-bottom: 4px !important; }
-          .pt-1 { padding-top: 4px !important; }
-          .px-2\\.5 { padding-left: 10px !important; padding-right: 10px !important; }
-          .py-0\\.5 { padding-top: 2px !important; padding-bottom: 2px !important; }
-          .leading-tight { line-height: 1.25 !important; }
-          .tracking-wider { letter-spacing: 0.05em !important; }
-          .uppercase { text-transform: uppercase !important; }
-          .inline-block { display: inline-block !important; }
-
-          @media print {
-            @page {
-              size: 80mm auto;
-              margin: 0mm !important;
-            }
-            html, body {
-              width: 100% !important;
-              max-width: 100% !important;
-              margin: 0 !important;
-              padding: 0 !important;
-            }
-            .print-wrapper {
-              width: 100% !important;
-              max-width: 100% !important;
-              margin: 0 !important;
-              padding: 0 1.5mm !important;
-            }
-            .print-wrapper > div {
-              width: 100% !important;
-              max-width: 100% !important;
-              margin: 0 !important;
-              border: none !important;
-            }
-            * {
-              color: #000000 !important;
-              border-color: #000000 !important;
-              text-shadow: none !important;
-            }
-          }
-          * {
-            color: #000000 !important;
-            border-color: #000000 !important;
-          }
-          ` : `
-          @media print {
-            @page {
-              size: A4 portrait;
-              margin: 0mm !important;
-            }
-            html, body {
-              width: 210mm !important;
-              height: 297mm !important;
-              max-height: 297mm !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              overflow: hidden !important;
-              background: #ffffff !important;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-            }
-            .print-wrapper {
-              width: 210mm !important;
-              max-width: 210mm !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              overflow: hidden !important;
-            }
-            .a4-container {
-              width: 210mm !important;
-              max-width: 210mm !important;
-              height: 297mm !important;
-              max-height: 297mm !important;
-              margin: 0 !important;
-              padding: 8mm 10mm !important;
-              border: none !important;
-              box-shadow: none !important;
-              page-break-inside: avoid !important;
-              page-break-after: avoid !important;
-              break-inside: avoid !important;
-              overflow: hidden !important;
-              display: flex !important;
-              flex-direction: column !important;
-              justify-content: space-between !important;
-            }
-            .break-inside-avoid {
-              page-break-inside: avoid !important;
-              break-inside: avoid !important;
-            }
-          }
-          `}
+          ${isSlip ? slipCss : a4Css}
         </style>
       </head>
       <body>
         <div class="print-wrapper">
           ${printableMarkup(element)}
         </div>
-${autoPrintScript}      </body>
+      </body>
     </html>
   `;
+}
 
-  // 1. If running in Electron Native Desktop App -> 100% Silent Direct Print (0 dialogs!)
+export function printDocumentIframe(
+  element: HTMLElement,
+  title: string,
+  format: '80mm' | 'a4' = 'a4'
+) {
+  const isSlip = format === '80mm';
+  const fullHtml = buildPrintHtml(element, title, format);
+
+  // 1. Desktop app: print without the browser preview. Thermal -> receipt printer;
+  //    A4 -> A4 printer from settings, or the system print dialog when none is set.
   if (typeof window !== 'undefined' && (window as any).electronAPI?.printSilent) {
-    let targetPrinter = '';
-    try {
-      const drawerCfg = getCashDrawerConfig();
-      if (drawerCfg?.selectedPrinter) {
-        targetPrinter = drawerCfg.selectedPrinter;
-      }
-    } catch (e) {}
-
+    const target = electronPrintTarget(format);
     (window as any).electronAPI.printSilent({
-      html: fullHtml.replace(autoPrintScript, ''),
-      printerName: targetPrinter || undefined,
+      html: fullHtml,
+      printerName: target.printerName,
+      showDialog: target.showDialog,
       format,
     }).catch((err: any) => console.error('Electron silent print failed:', err));
     return;
   }
 
+  // 2. Browser: hidden iframe; print() is called exactly ONCE (after styles and fonts load).
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
   iframe.style.left = '-9999px';
   iframe.style.top = '0';
   iframe.style.width = isSlip ? '80mm' : '210mm';
-  iframe.style.height = isSlip ? '297mm' : '297mm';
+  iframe.style.height = '297mm';
   iframe.style.border = '0';
   iframe.style.visibility = 'hidden';
   document.body.appendChild(iframe);
 
-  const doc = iframe.contentWindow?.document;
-  if (!doc) {
+  const win = iframe.contentWindow;
+  const doc = win?.document;
+  if (!win || !doc) {
     document.body.removeChild(iframe);
     window.print();
     return;
   }
 
-  doc.open();
-  doc.write(fullHtml);
-  doc.close();
-
-  // Failsafe direct call from parent window
-  setTimeout(() => {
+  let printed = false;
+  const printOnce = () => {
+    if (printed) return;
+    printed = true;
     try {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
+      win.focus();
+      win.print();
     } catch (e) {
       console.warn('Iframe print error', e);
     }
     // Clean up iframe after print dialog completes
     setTimeout(() => {
       try {
-        if (iframe.parentNode) {
-          iframe.parentNode.removeChild(iframe);
-        }
-      } catch (e) {}
+        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+      } catch {
+        /* ignore */
+      }
     }, 3000);
-  }, 200);
+  };
+
+  let started = false;
+  const start = () => {
+    if (started) return;
+    started = true;
+    const fonts = (doc as Document & { fonts?: FontFaceSet }).fonts;
+    const fontsReady = fonts?.ready ? fonts.ready.then(() => undefined, () => undefined) : Promise.resolve();
+    Promise.race([fontsReady, new Promise((r) => setTimeout(r, 1500))]).then(() => setTimeout(printOnce, 100));
+  };
+  iframe.addEventListener('load', start, { once: true });
+
+  doc.open();
+  doc.write(fullHtml);
+  doc.close();
+
+  if (doc.readyState === 'complete') start();
+  // a stylesheet that never finishes loading must not block printing
+  setTimeout(start, 2500);
+}
+
+/** Render a canvas onto A4 pages, slicing it vertically when taller than one page. */
+function addCanvasPaged(pdf: jsPDF, canvas: HTMLCanvasElement, margin: number, firstPage: boolean): void {
+  const pageW = 210;
+  const pageH = 297;
+  const printW = pageW - margin * 2;
+  const printH = pageH - margin * 2;
+  const pxPerMm = canvas.width / printW;
+  const slicePx = Math.floor(printH * pxPerMm);
+  // tolerate a few px of rounding on full-height sheets
+  const tolerance = Math.ceil(pxPerMm * 1.5);
+  let offset = 0;
+  let first = firstPage;
+  while (offset < canvas.height) {
+    let h = Math.min(slicePx, canvas.height - offset);
+    if (canvas.height - offset - h <= tolerance) h = canvas.height - offset;
+    const slice = document.createElement('canvas');
+    slice.width = canvas.width;
+    slice.height = h;
+    const ctx = slice.getContext('2d');
+    if (!ctx) break;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, slice.width, slice.height);
+    ctx.drawImage(canvas, 0, offset, canvas.width, h, 0, 0, canvas.width, h);
+    if (!first) pdf.addPage();
+    first = false;
+    pdf.addImage(slice.toDataURL('image/jpeg', 0.95), 'JPEG', margin, margin, printW, Math.min(printH, h / pxPerMm));
+    offset += h;
+  }
+}
+
+function captureElement(element: HTMLElement): Promise<HTMLCanvasElement> {
+  return html2canvas(element, {
+    scale: 2.5,
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: '#ffffff',
+    logging: false,
+    scrollX: 0,
+    scrollY: -window.scrollY,
+    windowWidth: document.documentElement.offsetWidth,
+  });
+}
+
+/**
+ * Build a multi-page A4 PDF of a document. `.a4-page` sheets become one PDF page each;
+ * any other document is sliced over as many pages as it needs (nothing is cut off).
+ */
+export async function buildA4Pdf(element: HTMLElement): Promise<jsPDF> {
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const sheets = element.classList.contains('a4-page')
+    ? [element]
+    : (Array.from(element.querySelectorAll('.a4-page')) as HTMLElement[]);
+  if (sheets.length > 0) {
+    for (let i = 0; i < sheets.length; i++) {
+      const canvas = await captureElement(sheets[i]);
+      addCanvasPaged(pdf, canvas, 0, i === 0);
+    }
+  } else {
+    const canvas = await captureElement(element);
+    addCanvasPaged(pdf, canvas, 8, true);
+  }
+  return pdf;
 }
 
 export async function exportElementToPdf(
@@ -306,23 +370,10 @@ export async function exportElementToPdf(
   format: '80mm' | 'a4' = 'a4'
 ): Promise<boolean> {
   try {
-    const isSlip = format === '80mm';
-
-    // Capture the target element with high DPI and zero scroll offset distortion
-    const canvas = await html2canvas(element, {
-      scale: 2.5,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-      scrollX: 0,
-      scrollY: -window.scrollY,
-      windowWidth: document.documentElement.offsetWidth,
-    });
-
-    const imgData = canvas.toDataURL('image/jpeg', 0.98);
-
-    if (isSlip) {
+    const name = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
+    if (format === '80mm') {
+      const canvas = await captureElement(element);
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
       const mmWidth = 80;
       const mmHeight = (canvas.height * mmWidth) / canvas.width;
       const pdf = new jsPDF({
@@ -331,33 +382,10 @@ export async function exportElementToPdf(
         format: [mmWidth, Math.max(120, mmHeight + 6)],
       });
       pdf.addImage(imgData, 'JPEG', 0, 2, mmWidth, mmHeight);
-      pdf.save(filename.endsWith('.pdf') ? filename : `${filename}.pdf`);
+      pdf.save(name);
     } else {
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = 210;
-      const pdfHeight = 297;
-      const margin = 8;
-      const printWidth = pdfWidth - margin * 2;
-      const printHeight = (canvas.height * printWidth) / canvas.width;
-
-      if (printHeight <= pdfHeight - margin * 2) {
-        // Fits comfortably on 1 single page
-        pdf.addImage(imgData, 'JPEG', margin, margin, printWidth, printHeight);
-      } else {
-        // Multi-page document handling
-        let heightLeft = printHeight;
-        let position = margin;
-        pdf.addImage(imgData, 'JPEG', margin, position, printWidth, printHeight);
-        heightLeft -= (pdfHeight - margin * 2);
-
-        while (heightLeft > 0) {
-          position = heightLeft - printHeight + margin;
-          pdf.addPage();
-          pdf.addImage(imgData, 'JPEG', margin, position, printWidth, printHeight);
-          heightLeft -= (pdfHeight - margin * 2);
-        }
-      }
-      pdf.save(filename.endsWith('.pdf') ? filename : `${filename}.pdf`);
+      const pdf = await buildA4Pdf(element);
+      pdf.save(name);
     }
     return true;
   } catch (err) {
