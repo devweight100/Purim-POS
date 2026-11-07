@@ -183,6 +183,7 @@ Some corresponding database tables already exist. The remaining work is to remov
 - IndexedDB is acceptable only for offline cache/outbox behavior and must sync from/to backend.
 - Be careful with product `basePrice`: in backend schema it is the selling/base price, while the product page has historically used `basePrice` as display cost. Prefer explicit `costPrice` for cost and `priceLevel1`/`basePrice` for selling price.
 - Product code/SKU and barcode are separate identifiers. Never copy SKU into barcode just because barcode is blank.
+- **Git workflow (owner's instruction, 2026-11-07)**: work directly on `main` and push to `origin/main` when done (no feature branches or pull requests). Commit code first, then rebuild the installers and commit them separately, so the version recorded in the installers matches the code.
 - **Desktop Application Policy (Installer Folder Only)**: All desktop application executables, scripts, and deployment files for both **Server** (`Installer/Server/`) and **Client** (`Installer/Client/`) must be updated and maintained strictly in the `Installer` directory only. Never scatter or distribute installers outside the `Installer` directory.
 
 ## Verification Log
