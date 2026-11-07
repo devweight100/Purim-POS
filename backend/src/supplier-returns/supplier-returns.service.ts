@@ -69,7 +69,7 @@ export class SupplierReturnsService {
             where: { OR: [...(item.productId ? [{ id: String(item.productId) }, { sku: String(item.productId) }] : []), ...(item.sku ? [{ sku: String(item.sku) }] : [])] },
           })
         : null;
-      if (!prod) throw new BadRequestException(`ไม่พบสินค้า${item.productName ? ' "' + item.productName + '"' : ''} ในระบบ`);
+      if (!prod) throw new BadRequestException(item.productName ? `ไม่พบสินค้า "${item.productName}" ในระบบ` : 'ไม่พบสินค้าที่ส่งคืนในระบบ');
       const itemType = item.itemType === 'OVERSTOCK' ? 'OVERSTOCK' : 'DEFECTIVE';
       const total = round2(qty * unitCost);
       out.push({ ...item, productId: prod.id, sku: item.sku || prod.sku, productName: item.productName || prod.name, unitName: item.unitName || prod.unit || 'ชิ้น', itemType, quantity: qty, unitCost, totalCost: total, total });
