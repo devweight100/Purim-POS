@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
+import { calculatePurchaseBill } from '@/lib/po-calc';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Printer, Download, FileText, CheckCircle2, Store, Building2, Calendar, FileCheck } from 'lucide-react';
@@ -138,46 +139,29 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
   const rawItems = poData.items || poData.orderItems || poData.purchaseOrderItems || [];
   const items = Array.isArray(rawItems) ? rawItems : [];
 
-  const subtotalBeforeDiscount = items.reduce((sum: number, item: any) => {
-    const qty = Number(item.quantity) || Number(item.qty) || 0;
-    const cost = Number(item.unitCost) || Number(item.cost) || Number(item.price) || 0;
-    const gross = qty * cost;
-    const discVal = Number(item.discountValue) || 0;
-    const disc = item.discountType === 'percent' ? gross * Math.min(discVal, 100) / 100 : discVal;
-    return sum + Math.max(0, gross - disc);
-  }, 0);
-
-  const billDiscVal = Number(poData.discountValue) || 0;
-  const billDiscountAmount = Math.min(
-    subtotalBeforeDiscount,
-    poData.discountType === 'percent'
-      ? subtotalBeforeDiscount * Math.min(billDiscVal, 100) / 100
-      : billDiscVal
+  // Same arithmetic as the server (lib/po-calc.ts): per-line discount, bill discount, per-line VAT.
+  // Old local-only POs had one VAT setting for the whole bill.
+  const legacyVat = poData.vatType || (poData.hasVat ? 'include' : 'none');
+  const calc = calculatePurchaseBill(
+    items.map((item: any) => ({
+      quantity: Number(item.quantity) || Number(item.qty) || 0,
+      unitCost: Number(item.unitCost) || Number(item.cost) || Number(item.price) || 0,
+      discountType: item.discountType,
+      discountValue: item.discountValue,
+      vatType: item.vatType ?? legacyVat,
+      vatRate: item.vatRate ?? 7,
+    })),
+    { type: poData.billDiscountType ?? poData.discountType, value: poData.billDiscountValue ?? poData.discountValue },
   );
-
-  const amountAfterBillDiscount = Math.max(0, subtotalBeforeDiscount - billDiscountAmount);
-  const vatType = poData.vatType || (poData.hasVat ? 'include' : 'none');
-
-  let calculatedVat = 0;
-  let netBeforeVat = amountAfterBillDiscount;
-  let finalTotal = amountAfterBillDiscount;
-
-  if (vatType === 'include') {
-    calculatedVat = amountAfterBillDiscount * 7 / 107;
-    netBeforeVat = amountAfterBillDiscount - calculatedVat;
-    finalTotal = Number(poData.totalAmount) || amountAfterBillDiscount;
-  } else if (vatType === 'exclude') {
-    calculatedVat = amountAfterBillDiscount * 0.07;
-    netBeforeVat = amountAfterBillDiscount;
-    finalTotal = Number(poData.totalAmount) || (amountAfterBillDiscount + calculatedVat);
-  } else {
-    calculatedVat = 0;
-    netBeforeVat = amountAfterBillDiscount;
-    finalTotal = Number(poData.totalAmount) || amountAfterBillDiscount;
-  }
-
-  const vatAmount = poData.vatAmount !== undefined && poData.vatAmount !== null ? Number(poData.vatAmount) : calculatedVat;
-  const netAmount = poData.netAmount !== undefined && poData.netAmount !== null ? Number(poData.netAmount) : netBeforeVat;
+  const subtotalBeforeDiscount = Math.round((calc.baseAmount - calc.lineDiscountAmount) * 100) / 100;
+  const billDiscountAmount = calc.billDiscountAmount;
+  const vatAmount = calc.vatAmount;
+  const netAmount = calc.subtotalAmount;
+  const finalTotal = calc.totalAmount;
+  const usedVatTypes = new Set(calc.lines.filter((l) => l.baseAmount > 0 && l.vatType !== 'NONE').map((l) => l.vatType));
+  const vatType: 'none' | 'include' | 'exclude' | 'mixed' =
+    usedVatTypes.size === 0 ? 'none' : usedVatTypes.size > 1 || calc.lines.some((l) => l.baseAmount > 0 && l.vatType === 'NONE') ? 'mixed' : usedVatTypes.has('INCLUDED') ? 'include' : 'exclude';
+  const vatRates = Array.from(new Set(calc.lines.filter((l) => l.vatType !== 'NONE').map((l) => l.vatRate))).join('/');
 
 
   const handlePrint = () => {
@@ -367,6 +351,8 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                             <td className="p-2.5 border-r border-slate-200 font-bold text-slate-900">
                               <span>{name}</span>
                               {unitBadge && <span className="ml-1.5 text-[10px] text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.2 rounded font-normal">[{unitBadge}]</span>}
+                              {calc.lines[idx]?.vatType === 'INCLUDED' && <span className="ml-1.5 text-[10px] text-emerald-700 font-normal">(ราคารวม VAT {calc.lines[idx].vatRate}%)</span>}
+                              {calc.lines[idx]?.vatType === 'EXCLUDED' && <span className="ml-1.5 text-[10px] text-amber-700 font-normal">(+VAT {calc.lines[idx].vatRate}%)</span>}
                             </td>
                             <td className="p-2.5 text-right font-bold text-slate-900 border-r border-slate-200">{qty.toLocaleString()}</td>
                             <td className="p-2.5 text-right text-slate-700 border-r border-slate-200">{formatCurrency(cost)}</td>
@@ -406,7 +392,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                       <span className="font-bold">-{formatCurrency(billDiscountAmount)}</span>
                     </div>
                   )}
-                  {vatType === 'include' && (
+                  {vatType !== 'none' && (
                     <div className="flex justify-between py-1 border-b border-slate-100 text-slate-600">
                       <span className="font-medium">มูลค่าก่อนภาษี (NET BEFORE VAT)</span>
                       <span className="font-semibold text-slate-800">{formatCurrency(netAmount)}</span>
@@ -414,14 +400,16 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                   )}
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span className="text-slate-600 font-semibold">
-                      ภาษีมูลค่าเพิ่ม ({vatType === 'none' ? 'Non-VAT' : 'VAT 7%'})
+                      ภาษีมูลค่าเพิ่ม ({vatType === 'none' ? 'Non-VAT' : `VAT ${vatRates}%${vatType === 'mixed' ? ' บางรายการ' : ''}`})
                     </span>
                     <span className={`font-bold ${vatType === 'none' ? 'text-slate-400' : 'text-slate-900'}`}>
                       {vatType === 'none'
                         ? 'ไม่มี VAT (0%)'
                         : vatType === 'include'
                         ? `${formatCurrency(vatAmount)} (รวมในยอด)`
-                        : `+${formatCurrency(vatAmount)}`}
+                        : vatType === 'exclude'
+                        ? `+${formatCurrency(vatAmount)}`
+                        : formatCurrency(vatAmount)}
                     </span>
                   </div>
                   <div className="flex justify-between py-2 border-t-2 border-slate-800 text-slate-900 font-black text-sm bg-slate-50 px-2 rounded">

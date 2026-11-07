@@ -1,4 +1,5 @@
 import { businessTransaction } from '../prisma/business-transaction';
+import { grossPerUnit } from '../purchase-orders/po-calc';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentStatus, VoucherStatus, PaymentMethod, ReturnNoteStatus, POStatus } from '@prisma/client';
@@ -8,10 +9,14 @@ import * as ledger from '../finance/ledger';
 export const PAYABLE_PO_STATUSES: POStatus[] = [POStatus.PARTIALLY_RECEIVED, POStatus.RECEIVED, POStatus.COMPLETED];
 
 /** Amount that can still be paid now: never more than the value of goods actually received. */
-export function payableNow(po: { totalAmount: any; paidAmount: any; remainingPayable: any; items?: { receivedQty: number; unitCost: any }[] }): number {
+export function payableNow(po: { totalAmount: any; paidAmount: any; remainingPayable: any; items?: { receivedQty: number; unitCost: any; quantity?: number; total?: any }[] }): number {
   const remaining = Number(po.remainingPayable) || 0;
   if (!po.items) return Math.max(0, remaining);
-  const receivedValue = po.items.reduce((sum, i) => sum + i.receivedQty * Number(i.unitCost), 0);
+  // value of goods received so far, incl. discounts and VAT of each line
+  const receivedValue = po.items.reduce(
+    (sum, i) => sum + i.receivedQty * (i.quantity && i.total !== undefined ? grossPerUnit({ quantity: i.quantity, total: i.total, unitCost: i.unitCost }) : Number(i.unitCost)),
+    0,
+  );
   const cap = Math.round((receivedValue - Number(po.paidAmount || 0)) * 100) / 100;
   return Math.max(0, Math.min(remaining, cap));
 }
@@ -135,7 +140,7 @@ export class PayablesService {
     // Aggregate summary (received bills only; outstanding capped at received value)
     const summaryRows = await this.prisma.purchaseOrder.findMany({
       where: { status: { in: PAYABLE_PO_STATUSES } },
-      select: { totalAmount: true, paidAmount: true, remainingPayable: true, items: { select: { receivedQty: true, unitCost: true } } },
+      select: { totalAmount: true, paidAmount: true, remainingPayable: true, items: { select: { receivedQty: true, unitCost: true, quantity: true, total: true } } },
     });
     const summaryAgg = {
       _sum: {
@@ -167,7 +172,7 @@ export class PayablesService {
       include: {
         purchaseOrders: {
           where: { status: { in: PAYABLE_PO_STATUSES }, remainingPayable: { gt: 0 } },
-          select: { id: true, totalAmount: true, paidAmount: true, remainingPayable: true, items: { select: { receivedQty: true, unitCost: true } } },
+          select: { id: true, totalAmount: true, paidAmount: true, remainingPayable: true, items: { select: { receivedQty: true, unitCost: true, quantity: true, total: true } } },
         },
         returnNotes: {
           where: { status: { not: 'CANCELLED' }, remainingCreditAmount: { gt: 0 } },
@@ -236,7 +241,7 @@ export class PayablesService {
       if (!Array.isArray(billsToSettle) || !Array.isArray(matchedDebitNotes) || billsToSettle.some(item => !validMoney(item.amountToPay)) || matchedDebitNotes.some(item => !validMoney(item.amountToDeduct)) || !validMoney(discountAmount, false)) throw new BadRequestException('จำนวนเงินต้องถูกต้องและมีทศนิยมไม่เกินสองตำแหน่ง');
       if (new Set(billsToSettle.map(item => item.poId)).size !== billsToSettle.length || new Set(matchedDebitNotes.map(item => item.returnNoteId)).size !== matchedDebitNotes.length) throw new BadRequestException('มีบิลหรือใบลดหนี้ซ้ำในรายการ');
       for (const item of billsToSettle) {
-        const po = await tx.purchaseOrder.findUnique({ where: { id: item.poId }, include: { items: { select: { receivedQty: true, unitCost: true } } } });
+        const po = await tx.purchaseOrder.findUnique({ where: { id: item.poId }, include: { items: { select: { receivedQty: true, unitCost: true, quantity: true, total: true } } } });
         if (!po || po.supplierId !== supplierId || !PAYABLE_PO_STATUSES.includes(po.status)) throw new BadRequestException('บิลไม่ถูกต้อง ไม่ใช่ผู้จำหน่ายรายนี้ หรือยังไม่ได้รับสินค้า (ตั้งหนี้เมื่อรับของแล้วเท่านั้น)');
         if (item.amountToPay > payableNow(po) + 0.001) throw new BadRequestException(`ยอดชำระเกินยอดค้างของบิล ${po.poNumber} (ชำระได้ไม่เกินมูลค่าสินค้าที่รับแล้ว) กรุณาโหลดข้อมูลล่าสุด`);
       }

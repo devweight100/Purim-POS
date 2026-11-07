@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { grossPerUnit } from '../purchase-orders/po-calc';
 import { PrismaService } from '../prisma/prisma.service';
 import { businessTransaction } from '../prisma/business-transaction';
 import * as ledger from './ledger';
@@ -207,10 +208,10 @@ export class PlanningService {
 
     const pos = await this.prisma.purchaseOrder.findMany({
       where: { status: { in: ['PARTIALLY_RECEIVED', 'RECEIVED', 'COMPLETED'] }, remainingPayable: { gt: 0 } },
-      select: { poNumber: true, billDate: true, dueDate: true, paidAmount: true, remainingPayable: true, supplier: { select: { name: true, creditTerms: true } }, items: { select: { receivedQty: true, unitCost: true } } },
+      select: { poNumber: true, billDate: true, dueDate: true, paidAmount: true, remainingPayable: true, supplier: { select: { name: true, creditTerms: true } }, items: { select: { receivedQty: true, unitCost: true, quantity: true, total: true } } },
     });
     for (const po of pos) {
-      const received = po.items.reduce((s, i) => s + i.receivedQty * Number(i.unitCost), 0);
+      const received = po.items.reduce((s, i) => s + i.receivedQty * grossPerUnit(i), 0);
       const amount = round2(Math.max(0, Math.min(Number(po.remainingPayable), received - Number(po.paidAmount))));
       if (amount <= 0) continue;
       const due = po.dueDate ?? new Date(po.billDate.getTime() + (po.supplier.creditTerms ?? 30) * DAY);

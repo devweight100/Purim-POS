@@ -200,6 +200,34 @@ d('store flow (e2e)', () => {
       const v = await api('post', '/payables/settle-multiple', A, { clientVoucherId: randomUUID(), supplierId: sup.id, billsToSettle: [{ poId: po.id, amountToPay: 50 }], matchedDebitNotes: [{ returnNoteId: noteId, amountToDeduct: 10 }], paymentMethod: 'TRANSFER', moneyAccountId: state.bank.id }).expect(201);
       expect(Number(v.body.voucher.netPaidAmount)).toBe(40);
     });
+
+    it('purchase VAT per line: totals, stock cost incl. VAT, amount owed', async () => {
+      const sup = (await api('post', '/suppliers', A, { name: 'E2E VAT Supplier', creditTerms: 30 })).body;
+      const po = (await api('post', '/purchase-orders', A, {
+        supplierId: sup.id,
+        status: 'ISSUED',
+        billDiscountType: 'baht',
+        billDiscountValue: 10,
+        items: [
+          { productId: state.p.id, quantity: 10, unitCost: 10, vatType: 'EXCLUDED', vatRate: 7 }, // 100 (-5 bill disc) +VAT
+          { productId: state.p.id, quantity: 10, unitCost: 10, vatType: 'NONE' }, // 100 (-5)
+        ],
+      }).expect(201)).body;
+      expect(Number(po.subtotalAmount)).toBe(190);
+      expect(Number(po.vatAmount)).toBe(6.65);
+      expect(Number(po.totalAmount)).toBe(196.65);
+      await api('post', `/purchase-orders/${po.id}/receive`, A, {
+        clientReceiptId: randomUUID(),
+        items: po.items.map((i: any) => ({ purchaseOrderItemId: i.id, receivedQty: 10, unitCost: 10 })),
+      }).expect(201);
+      const detail = (await api('get', `/purchase-orders/${po.id}`, A)).body;
+      const costs = detail.stockBatches.map((b: any) => Number(b.unitCost)).sort((a: number, b: number) => a - b);
+      // shop is not VAT-registered: VAT is part of the stock cost; bill discount lowers it
+      expect(costs).toEqual([9.5, 10.165]);
+      const bills = (await api('get', `/payables/bills?supplierId=${sup.id}`, A)).body;
+      const bill = (bills.data || bills).find((b: any) => b.id === po.id);
+      expect(Number(bill.remainingPayable)).toBe(196.65);
+    });
   });
 
   describe('finance', () => {

@@ -330,7 +330,7 @@ model StockBatch {
   productId         String         @map("product_id")
   quantityReceived  Int            @map("quantity_received")
   quantityRemaining Int            @map("quantity_remaining")
-  unitCost          Decimal        @map("unit_cost") @db.Decimal(10, 2)
+  unitCost          Decimal        @map("unit_cost") @db.Decimal(14, 4)
   receivedAt        DateTime       @default(now()) @map("received_at")
   supplierId        String?        @map("supplier_id")
   purchaseOrderId   String?        @map("purchase_order_id")
@@ -396,7 +396,12 @@ model PurchaseOrder {
   dueDate           DateTime?     @map("due_date")
   status            POStatus      @default(DRAFT)
   paymentStatus     PaymentStatus @default(UNPAID) @map("payment_status")
-  totalAmount       Decimal       @default(0) @map("total_amount") @db.Decimal(12, 2)
+  billDiscountType  String        @default("baht") @map("bill_discount_type")
+  billDiscountValue Decimal       @default(0) @map("bill_discount_value") @db.Decimal(12, 2)
+  discountAmount    Decimal       @default(0) @map("discount_amount") @db.Decimal(12, 2) // line + bill discounts
+  subtotalAmount    Decimal       @default(0) @map("subtotal_amount") @db.Decimal(12, 2) // before VAT, after discounts
+  vatAmount         Decimal       @default(0) @map("vat_amount") @db.Decimal(12, 2)      // purchase (input) VAT
+  totalAmount       Decimal       @default(0) @map("total_amount") @db.Decimal(12, 2)    // owed to the supplier (incl. VAT)
   paidAmount        Decimal       @default(0) @map("paid_amount") @db.Decimal(12, 2)
   remainingPayable  Decimal       @default(0) @map("remaining_payable") @db.Decimal(12, 2)
   notes             String?
@@ -422,7 +427,14 @@ model PurchaseOrderItem {
   quantity        Int
   unitCost        Decimal       @map("unit_cost") @db.Decimal(10, 2)
   receivedQty     Int           @default(0) @map("received_qty")
-  total           Decimal       @default(0) @map("total") @db.Decimal(12, 2)
+  discountType    String        @default("baht") @map("discount_type")
+  discountValue   Decimal       @default(0) @map("discount_value") @db.Decimal(12, 2)
+  discountAmount  Decimal       @default(0) @map("discount_amount") @db.Decimal(12, 2) // line + share of bill discount
+  vatType         String        @default("NONE") @map("vat_type") // NONE | INCLUDED | EXCLUDED
+  vatRate         Decimal       @default(0) @map("vat_rate") @db.Decimal(5, 2)
+  netAmount       Decimal       @default(0) @map("net_amount") @db.Decimal(12, 2)
+  vatAmount       Decimal       @default(0) @map("vat_amount") @db.Decimal(12, 2)
+  total           Decimal       @default(0) @map("total") @db.Decimal(12, 2) // owed for this line (incl. VAT)
 
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   product         Product       @relation(fields: [productId], references: [id])

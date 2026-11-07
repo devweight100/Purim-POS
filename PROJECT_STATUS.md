@@ -233,3 +233,11 @@ Some corresponding database tables already exist. The remaining work is to remov
   - Public `GET /api/version` returns the running build, the source on disk and whether they match.
   - The UI shows "เวอร์ชัน YYYY.MM.DD · sha" in the sidebar footer and on the login page, with a details dialog, and a "เวอร์ชันระบบ" card in Settings. It warns when the code on disk is newer than the running build (git pull without rebuild/restart), when the web page differs from the backend, and when the desktop app is too old (no `getAppVersion`, app 1.2.3).
   - Installer process: commit the code first, then build the installers, so the commit recorded in `VERSION.json` matches the code.
+- 2026-11-07: Purchase VAT per line. Migration `20261112000000_purchase_vat`.
+  - Each PO line stores `vatType` (NONE, INCLUDED or EXCLUDED), `vatRate`, line discount, discount amount, net, VAT and total. Each PO stores its bill discount, discount amount, subtotal (before VAT), VAT and total (owed).
+  - The server prices bills with `backend/src/purchase-orders/po-calc.ts`: line discount, then the bill discount spread by line value, then VAT per line. `frontend/src/lib/po-calc.ts` is a copy of it.
+  - This fixes an old bug: the server used to ignore the discounts and VAT entered on screen, so the payable total and stock cost were wrong.
+  - Stock cost per unit is the gross (VAT included), or the net when the shop is VAT-registered. `stock_batches.unit_cost` is now DECIMAL(14,4).
+  - payableNow, the finance overview and the forecast use each line's gross per unit.
+  - UI: per-line VAT select and rate; "ตั้ง VAT ทุกรายการ" applies one setting to all lines; the summary shows the amount before VAT and the purchase VAT. The detail dialog and the PDF show VAT per line.
+  - Tests: unit 25/25 (new po-calc spec) and e2e 25/25 (new purchase VAT test).

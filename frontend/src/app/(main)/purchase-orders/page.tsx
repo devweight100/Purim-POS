@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useMemo } from 'react';
+import { calculatePurchaseBill, normVatType, type PoVatType } from '@/lib/po-calc';
 import { apiFetch } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { CreateSupplierReturnModal } from '@/components/supplier-returns/CreateSupplierReturnModal';
@@ -312,15 +313,21 @@ export default function PurchaseOrdersPage() {
         receivedQuantity: Number(i.receivedQuantity) || 0,
         discountType: (i.discountType as 'baht' | 'percent') || 'baht',
         discountValue: Number(i.discountValue) || 0,
+        // per-line VAT from the server; very old local POs had one VAT setting for the whole bill
+        vatType: normVatType(i.vatType ?? po.vatType) as PoVatType,
+        vatRate: i.vatType && normVatType(i.vatType) !== 'NONE' ? Number(i.vatRate) || 7 : 7,
         imageUrl: i.imageUrl || null,
       };
     });
 
     setEditingPo(po);
     setCartItems(mappedCartItems);
-    setBillDiscountType((po.discountType as 'baht' | 'percent') || 'baht');
-    setBillDiscountValue(Number(po.discountValue) || 0);
-    setVatType((po.vatType as 'none' | 'include' | 'exclude') || 'none');
+    setBillDiscountType(((po.billDiscountType ?? po.discountType) as 'baht' | 'percent') || 'baht');
+    setBillDiscountValue(Number(po.billDiscountValue ?? po.discountValue) || 0);
+    {
+      const first = mappedCartItems[0]?.vatType;
+      setVatType(first === 'INCLUDED' ? 'include' : first === 'EXCLUDED' ? 'exclude' : 'none');
+    }
     setSearchProduct('');
     setHighlightIndex(0);
     setCreateStep('items');
@@ -414,6 +421,8 @@ export default function PurchaseOrdersPage() {
     quantity,
     discountType: 'baht' as 'baht' | 'percent',
     discountValue: 0,
+    vatType: normVatType(vatType) as PoVatType,
+    vatRate: 7,
     imageUrl: product.imageUrl || null,
   });
 
@@ -470,37 +479,21 @@ export default function PurchaseOrdersPage() {
       return;
     }
 
-    const totalBeforeDiscount = cartItems.reduce((sum, item) => {
-      const lineTotal = item.quantity * item.unitCost;
-      const discount = item.discountType === 'percent' 
-        ? lineTotal * (item.discountValue / 100)
-        : item.discountValue;
-      return sum + Math.max(0, lineTotal - discount);
-    }, 0);
-
-    const billDiscount = billDiscountType === 'percent'
-      ? totalBeforeDiscount * (billDiscountValue / 100)
-      : billDiscountValue;
-    
-    const amountAfterBillDiscount = Math.max(0, totalBeforeDiscount - billDiscount);
-
-    let calculatedVat = 0;
-    let netAmount = amountAfterBillDiscount;
-    let finalTotal = amountAfterBillDiscount;
-
-    if (vatType === 'include') {
-      calculatedVat = amountAfterBillDiscount * 7 / 107;
-      netAmount = amountAfterBillDiscount - calculatedVat;
-      finalTotal = amountAfterBillDiscount;
-    } else if (vatType === 'exclude') {
-      calculatedVat = amountAfterBillDiscount * 0.07;
-      netAmount = amountAfterBillDiscount;
-      finalTotal = amountAfterBillDiscount + calculatedVat;
-    } else {
-      calculatedVat = 0;
-      netAmount = amountAfterBillDiscount;
-      finalTotal = amountAfterBillDiscount;
-    }
+    // same arithmetic as the server (lib/po-calc.ts); the server recalculates and stores the result
+    const bill = calculatePurchaseBill(cartItems, { type: billDiscountType, value: billDiscountValue });
+    const totalBeforeDiscount = Math.round((bill.baseAmount - bill.lineDiscountAmount) * 100) / 100;
+    const calculatedVat = bill.vatAmount;
+    const netAmount = bill.subtotalAmount;
+    const finalTotal = bill.totalAmount;
+    const apiItems = cartItems.map((i: any) => ({
+      productId: i.productId,
+      quantity: Number(i.quantity),
+      unitCost: Number(i.unitCost),
+      discountType: i.discountType || 'baht',
+      discountValue: Number(i.discountValue) || 0,
+      vatType: normVatType(i.vatType),
+      vatRate: Number(i.vatRate) || 7,
+    }));
 
     if (editingPo) {
       const updatedPO = {
@@ -528,6 +521,8 @@ export default function PurchaseOrdersPage() {
           multiplier: i.multiplier || 1,
           discountType: i.discountType || 'baht',
           discountValue: Number(i.discountValue) || 0,
+          vatType: normVatType(i.vatType),
+          vatRate: Number(i.vatRate) || 7,
         })),
       };
 
@@ -538,7 +533,9 @@ export default function PurchaseOrdersPage() {
           body: JSON.stringify({
             supplierId: updatedPO.supplierId,
             notes: updatedPO.notes,
-            items: cartItems.map((i: any) => ({ productId: i.productId, quantity: Number(i.quantity), unitCost: Number(i.unitCost) })),
+            billDiscountType,
+            billDiscountValue,
+            items: apiItems,
           }),
         });
       } catch (error: any) {
@@ -585,6 +582,8 @@ export default function PurchaseOrdersPage() {
         multiplier: i.multiplier || 1,
         discountType: i.discountType || 'baht',
         discountValue: Number(i.discountValue) || 0,
+        vatType: normVatType(i.vatType),
+        vatRate: Number(i.vatRate) || 7,
       })),
     };
 
@@ -594,11 +593,9 @@ export default function PurchaseOrdersPage() {
         method: "POST",
         body: JSON.stringify({
           supplierId: selectedSupplier.id,
-          items: cartItems.map((i: any) => ({
-            productId: i.productId,
-            quantity: Number(i.quantity),
-            unitCost: Number(i.unitCost)
-          }))
+          billDiscountType,
+          billDiscountValue,
+          items: apiItems,
         })
       });
       if (serverRes && serverRes.id) {
@@ -904,6 +901,8 @@ export default function PurchaseOrdersPage() {
         quantity: deltaQty,
         discountType: 'baht' as 'baht' | 'percent',
         discountValue: 0,
+        vatType: normVatType(vatType) as PoVatType,
+        vatRate: 7,
         imageUrl: product.imageUrl || null,
       };
       return [...prev, newItem];
@@ -982,45 +981,32 @@ export default function PurchaseOrdersPage() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [viewMode, createStep]);
 
-  const getItemGross = (item: any) => item.quantity * item.unitCost;
-
-  const getItemDiscountAmount = (item: any) => {
-    const gross = getItemGross(item);
-    const value = Math.max(0, Number(item.discountValue) || 0);
-    const discount = item.discountType === 'percent' ? gross * Math.min(value, 100) / 100 : value;
-    return Math.min(gross, discount);
+  // Live totals with the same arithmetic as the server (lib/po-calc.ts)
+  const liveBill = calculatePurchaseBill(cartItems, { type: billDiscountType, value: billDiscountValue });
+  // per-row amount: after the line discount, incl. that line's VAT (bill discount shown separately)
+  const rowBill = calculatePurchaseBill(cartItems);
+  const getItemTotal = (item: any) => rowBill.lines[cartItems.indexOf(item)]?.total ?? 0;
+  const subtotalBeforeDiscount = liveBill.baseAmount;
+  const itemDiscountTotal = liveBill.lineDiscountAmount;
+  const billDiscountAmount = liveBill.billDiscountAmount;
+  const vatAmount = liveBill.vatAmount;
+  const netBeforeVat = liveBill.subtotalAmount;
+  const cartTotal = liveBill.totalAmount;
+  // value of goods received so far, incl. each line's discounts and VAT (what the supplier can bill)
+  const receivedValue = (po: any) =>
+    Math.round(
+      (po?.items || []).reduce((sum: number, i: any) => {
+        const qty = Number(i.quantity) || 0;
+        const perUnit = qty > 0 && i.total !== undefined && i.total !== null ? Number(i.total) / qty : Number(i.unitCost) || 0;
+        return sum + (Number(i.receivedQty ?? i.receivedQuantity) || 0) * perUnit;
+      }, 0) * 100,
+    ) / 100;
+  const updateItemVat = (productId: string, patch: { vatType?: PoVatType; vatRate?: number }) =>
+    setCartItems((prev) => prev.map((it) => (it.productId === productId ? { ...it, ...patch } : it)));
+  const applyVatToAll = (t: 'none' | 'include' | 'exclude') => {
+    setVatType(t);
+    setCartItems((prev) => prev.map((it) => ({ ...it, vatType: normVatType(t) })));
   };
-
-  const getItemTotal = (item: any) => Math.max(0, getItemGross(item) - getItemDiscountAmount(item));
-
-  const subtotalBeforeDiscount = cartItems.reduce((sum, item) => sum + getItemGross(item), 0);
-  const itemDiscountTotal = cartItems.reduce((sum, item) => sum + getItemDiscountAmount(item), 0);
-  const subtotalAfterItemDiscount = Math.max(0, subtotalBeforeDiscount - itemDiscountTotal);
-  const billDiscountAmount = Math.min(
-    subtotalAfterItemDiscount,
-    billDiscountType === 'percent'
-      ? subtotalAfterItemDiscount * Math.min(Math.max(0, billDiscountValue), 100) / 100
-      : Math.max(0, billDiscountValue || 0)
-  );
-  const amountAfterBillDiscount = Math.max(0, subtotalAfterItemDiscount - billDiscountAmount);
-
-  let vatAmount = 0;
-  let netBeforeVat = amountAfterBillDiscount;
-  let cartTotal = amountAfterBillDiscount;
-
-  if (vatType === 'include') {
-    vatAmount = amountAfterBillDiscount * 7 / 107;
-    netBeforeVat = amountAfterBillDiscount - vatAmount;
-    cartTotal = amountAfterBillDiscount;
-  } else if (vatType === 'exclude') {
-    vatAmount = amountAfterBillDiscount * 0.07;
-    netBeforeVat = amountAfterBillDiscount;
-    cartTotal = amountAfterBillDiscount + vatAmount;
-  } else {
-    vatAmount = 0;
-    netBeforeVat = amountAfterBillDiscount;
-    cartTotal = amountAfterBillDiscount;
-  }
 
   if (viewMode === 'create') {
     return (
@@ -1275,14 +1261,15 @@ export default function PurchaseOrdersPage() {
 
                 {/* Table */}
                 <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <div className="hidden grid-cols-[48px_minmax(0,1.6fr)_90px_96px_88px_150px_112px_44px] items-center gap-3 border-b border-slate-200 bg-slate-100 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600 lg:grid">
-                    <div className="text-center">ลำดับ</div>
+                  <div className="hidden grid-cols-[40px_minmax(0,1.6fr)_70px_96px_80px_140px_150px_112px_44px] items-center gap-3 border-b border-slate-200 bg-slate-100 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600 lg:grid">
+                    <div className="text-center">#</div>
                     <div>สินค้า</div>
                     <div className="text-right">คงเหลือ</div>
                     <div className="text-right">ต้นทุน/หน่วย</div>
                     <div className="text-right">จำนวน</div>
                     <div>ส่วนลดรายการ</div>
-                    <div className="text-right">รวมสุทธิ</div>
+                    <div>VAT / อัตรา %</div>
+                    <div className="text-right">รวม (รวม VAT)</div>
                     <div className="text-center">ลบ</div>
                   </div>
 
@@ -1305,7 +1292,7 @@ export default function PurchaseOrdersPage() {
                         return (
                           <div
                             key={item.productId}
-                            className="grid grid-cols-1 gap-3 px-4 py-3 transition-colors hover:bg-sky-50/30 lg:grid-cols-[48px_minmax(0,1.6fr)_90px_96px_88px_150px_112px_44px] lg:items-center"
+                            className="grid grid-cols-1 gap-3 px-4 py-3 transition-colors hover:bg-sky-50/30 lg:grid-cols-[40px_minmax(0,1.6fr)_70px_96px_80px_140px_150px_112px_44px] lg:items-center"
                           >
                             {/* Col 1: ลำดับ */}
                             <div className="hidden lg:block text-center font-semibold text-slate-400 text-sm">
@@ -1393,6 +1380,34 @@ export default function PurchaseOrdersPage() {
                               </div>
                             </div>
 
+                            {/* Col 6b: VAT ของรายการนี้ */}
+                            <div className="grid grid-cols-[84px_1fr] items-center gap-2 lg:block">
+                              <span className="text-xs font-medium text-slate-500 lg:hidden">VAT</span>
+                              <div className="grid grid-cols-[1fr_46px] gap-1.5">
+                                <select
+                                  value={normVatType(item.vatType)}
+                                  onChange={(e) => updateItemVat(item.productId, { vatType: e.target.value as PoVatType })}
+                                  className={`h-9 rounded-lg border px-1.5 text-xs font-bold outline-none focus:border-sky-500 ${normVatType(item.vatType) === 'NONE' ? 'border-slate-300 bg-white text-slate-600' : normVatType(item.vatType) === 'INCLUDED' ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-amber-300 bg-amber-50 text-amber-800'}`}
+                                  title="VAT ของรายการนี้ตามบิลผู้จำหน่าย"
+                                >
+                                  <option value="NONE">ไม่มี VAT</option>
+                                  <option value="INCLUDED">รวม VAT แล้ว</option>
+                                  <option value="EXCLUDED">+VAT แยก</option>
+                                </select>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max="30"
+                                  step="0.01"
+                                  disabled={normVatType(item.vatType) === 'NONE'}
+                                  value={normVatType(item.vatType) === 'NONE' ? '' : (item.vatRate ?? 7)}
+                                  onChange={(e) => updateItemVat(item.productId, { vatRate: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })}
+                                  className="h-9 bg-white text-right text-xs border-slate-300 px-1.5"
+                                  title="อัตรา VAT (%)"
+                                />
+                              </div>
+                            </div>
+
                             {/* Col 7: รวมสุทธิ */}
                             <div className="flex items-center justify-between text-base font-bold text-slate-900 lg:block lg:text-right">
                               <span className="text-xs font-medium text-slate-500 lg:hidden">รวม</span>
@@ -1463,15 +1478,13 @@ export default function PurchaseOrdersPage() {
                     {/* VAT Configuration Toggle */}
                     <div className="space-y-1.5 pt-1.5 border-t border-slate-100">
                       <div className="flex items-center justify-between text-xs text-slate-600">
-                        <span className="font-semibold text-slate-700">ภาษีมูลค่าเพิ่ม (VAT):</span>
-                        <span className="text-[11px] text-slate-500 font-medium">
-                          {vatType === 'none' ? 'ไม่คิด VAT (Non-VAT)' : vatType === 'include' ? 'ราคารวม VAT 7% แล้ว' : 'คิด VAT 7% เพิ่มจากยอด'}
-                        </span>
+                        <span className="font-semibold text-slate-700">ตั้ง VAT ทุกรายการ:</span>
+                        <span className="text-[11px] text-slate-500 font-medium">แก้รายตัวได้ที่ช่อง VAT ของแต่ละรายการ</span>
                       </div>
                       <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
                         <button
                           type="button"
-                          onClick={() => setVatType('none')}
+                          onClick={() => applyVatToAll('none')}
                           className={`py-1.5 px-2 rounded-md font-semibold text-center transition-all ${
                             vatType === 'none'
                               ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
@@ -1482,7 +1495,7 @@ export default function PurchaseOrdersPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setVatType('include')}
+                          onClick={() => applyVatToAll('include')}
                           className={`py-1.5 px-2 rounded-md font-semibold text-center transition-all ${
                             vatType === 'include'
                               ? 'bg-sky-600 text-white shadow-sm'
@@ -1493,7 +1506,7 @@ export default function PurchaseOrdersPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setVatType('exclude')}
+                          onClick={() => applyVatToAll('exclude')}
                           className={`py-1.5 px-2 rounded-md font-semibold text-center transition-all ${
                             vatType === 'exclude'
                               ? 'bg-sky-600 text-white shadow-sm'
@@ -1505,19 +1518,19 @@ export default function PurchaseOrdersPage() {
                       </div>
                     </div>
 
-                    {vatType === 'include' && (
-                      <div className="flex items-center justify-between text-xs text-slate-500">
-                        <span>มูลค่าก่อนภาษี</span>
-                        <span className="font-medium text-slate-700">{formatCurrency(netBeforeVat)}</span>
-                      </div>
-                    )}
-                    {vatType !== 'none' && (
-                      <div className="flex items-center justify-between text-xs text-slate-700">
-                        <span>ภาษีมูลค่าเพิ่ม (VAT 7%)</span>
-                        <span className="font-bold text-sky-700">
-                          {vatType === 'exclude' ? `+${formatCurrency(vatAmount)}` : formatCurrency(vatAmount)}
-                        </span>
-                      </div>
+                    {vatAmount > 0 && (
+                      <>
+                        <div className="flex items-center justify-between text-xs text-slate-500">
+                          <span>มูลค่าก่อนภาษี</span>
+                          <span className="font-medium text-slate-700">{formatCurrency(netBeforeVat)}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-slate-700">
+                          <span>
+                            ภาษีซื้อ (VAT) {liveBill.lines.filter((l) => l.vatType !== 'NONE' && l.baseAmount > 0).length}/{cartItems.length} รายการ
+                          </span>
+                          <span className="font-bold text-sky-700">{formatCurrency(vatAmount)}</span>
+                        </div>
+                      </>
                     )}
 
                     <div className="flex items-end justify-between border-t border-slate-200 pt-2">
@@ -2139,7 +2152,7 @@ export default function PurchaseOrdersPage() {
                       <TableHead className="text-right text-slate-500 font-bold">สั่ง (ชิ้น)</TableHead>
                       <TableHead className="text-right text-slate-500 font-bold">รับแล้ว (ชิ้น)</TableHead>
                       <TableHead className="text-right text-slate-500 font-bold">ต้นทุน/หน่วย</TableHead>
-                      <TableHead className="text-right text-slate-500 font-bold">รวมสุทธิ</TableHead>
+                      <TableHead className="text-right text-slate-500 font-bold">รวม (รวม VAT)</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -2160,13 +2173,38 @@ export default function PurchaseOrdersPage() {
                         <TableCell className="text-right text-slate-700 font-semibold">{item.quantity}</TableCell>
                         <TableCell className="text-right text-emerald-600 font-bold">{Number(item.receivedQty ?? item.receivedQuantity) || 0}</TableCell>
                         <TableCell className="text-right text-slate-600">{formatCurrency(item.unitCost)}</TableCell>
-                        <TableCell className="text-right text-slate-900 font-bold">{formatCurrency(item.quantity * item.unitCost)}</TableCell>
+                        <TableCell className="text-right text-slate-900 font-bold">
+                          {formatCurrency(item.total !== undefined && item.total !== null ? Number(item.total) : item.quantity * item.unitCost)}
+                          {normVatType(item.vatType) !== 'NONE' && (
+                            <span className={`block text-[10px] font-semibold ${normVatType(item.vatType) === 'INCLUDED' ? 'text-emerald-700' : 'text-amber-700'}`}>
+                              {normVatType(item.vatType) === 'INCLUDED' ? 'รวม' : '+'}VAT {Number(item.vatRate) || 7}% ({formatCurrency(Number(item.vatAmount) || 0)})
+                            </span>
+                          )}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
                 <div className="text-right mt-4 pt-4 border-t border-slate-200 flex justify-end">
                   <div className="w-80 bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 text-left">
+                    {Number(currentPo.discountAmount) > 0 && (
+                      <div className="flex justify-between text-xs text-slate-600 font-medium">
+                        <span>ส่วนลดรวม:</span>
+                        <span className="font-mono font-bold text-rose-600">-{formatCurrency(Number(currentPo.discountAmount))}</span>
+                      </div>
+                    )}
+                    {Number(currentPo.vatAmount) > 0 && (
+                      <>
+                        <div className="flex justify-between text-xs text-slate-600 font-medium">
+                          <span>มูลค่าก่อนภาษี:</span>
+                          <span className="font-mono font-bold text-slate-800">{formatCurrency(Number(currentPo.subtotalAmount))}</span>
+                        </div>
+                        <div className="flex justify-between text-xs text-slate-600 font-medium">
+                          <span>ภาษีซื้อ (VAT):</span>
+                          <span className="font-mono font-bold text-sky-700">{formatCurrency(Number(currentPo.vatAmount))}</span>
+                        </div>
+                      </>
+                    )}
                     <div className="flex justify-between text-xs text-slate-600 font-medium">
                       <span>ยอดรวมบิลสั่งซื้อ:</span>
                       <span className="font-mono font-bold text-slate-800">{formatCurrency(currentPo.totalAmount)}</span>
@@ -2175,10 +2213,7 @@ export default function PurchaseOrdersPage() {
                       <span>มูลค่าสินค้าที่รับแล้ว (ตั้งเป็นหนี้):</span>
                       <span className="font-mono font-bold text-indigo-700">
                         {formatCurrency(
-                          (currentPo.items || []).reduce(
-                            (sum: number, i: { receivedQty?: number; receivedQuantity?: number; unitCost?: number }) => sum + (Number(i.receivedQty ?? i.receivedQuantity) || 0) * (Number(i.unitCost) || 0),
-                            0,
-                          )
+                          receivedValue(currentPo)
                         )}
                       </span>
                     </div>
@@ -2196,10 +2231,7 @@ export default function PurchaseOrdersPage() {
                             0,
                             Math.min(
                               Number(currentPo.remainingPayable ?? currentPo.totalAmount ?? 0),
-                              (currentPo.items || []).reduce(
-                                (sum: number, i: { receivedQty?: number; receivedQuantity?: number; unitCost?: number }) => sum + (Number(i.receivedQty ?? i.receivedQuantity) || 0) * (Number(i.unitCost) || 0),
-                                0,
-                              ) - Number(currentPo.paidAmount || 0),
+                              receivedValue(currentPo) - Number(currentPo.paidAmount || 0),
                             ),
                           )
                         )}

@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { grossPerUnit } from '../purchase-orders/po-calc';
 import { MoneyAccountType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -422,12 +423,12 @@ export class FinanceService {
       select: {
         id: true, poNumber: true, supplierInvoiceNo: true, billDate: true, dueDate: true, totalAmount: true, paidAmount: true, remainingPayable: true,
         supplier: { select: { id: true, name: true, creditTerms: true } },
-        items: { select: { receivedQty: true, unitCost: true } },
+        items: { select: { receivedQty: true, unitCost: true, quantity: true, total: true } },
       },
     });
     const payItems = pos
       .map((po) => {
-        const received = po.items.reduce((sum, i) => sum + i.receivedQty * Number(i.unitCost), 0);
+        const received = po.items.reduce((sum, i) => sum + i.receivedQty * grossPerUnit(i), 0);
         const amount = round2(Math.max(0, Math.min(Number(po.remainingPayable), received - Number(po.paidAmount))));
         const due = po.dueDate ?? new Date(po.billDate.getTime() + (po.supplier.creditTerms ?? 30) * DAY);
         const daysToDue = Math.floor((new Date(due).setHours(0, 0, 0, 0) - today.getTime()) / DAY);

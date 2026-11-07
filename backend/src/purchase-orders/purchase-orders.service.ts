@@ -1,4 +1,5 @@
 import { businessTransaction } from '../prisma/business-transaction';
+import { calculatePurchaseBill, stockCostPerUnit } from './po-calc';
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
@@ -78,10 +79,8 @@ export class PurchaseOrdersService {
     const poCount = lastPo ? Number(lastPo.poNumber.slice(prefix.length)) : 0;
     const poNumber = data.poNumber || `${prefix}${String(poCount + 1).padStart(5, '0')}`;
 
-    const totalAmount = (data.items || []).reduce(
-      (sum: number, item: any) => sum + (Number(item.quantity) * Number(item.unitCost)),
-      0,
-    );
+    const bill = this.priceBill(data.items, data.billDiscountType, data.billDiscountValue);
+    const totalAmount = bill.totals.totalAmount;
 
     return tx.purchaseOrder.create({
       data: {
@@ -92,18 +91,11 @@ export class PurchaseOrdersService {
         dueDate: data.dueDate ? new Date(data.dueDate) : null,
         status: data.status || POStatus.DRAFT,
         paymentStatus: PaymentStatus.UNPAID,
-        totalAmount,
+        ...bill.header,
         paidAmount: 0,
         remainingPayable: totalAmount,
         notes: data.notes || null,
-        items: {
-          create: (data.items || []).map((item: any) => ({
-            productId: item.productId,
-            quantity: Number(item.quantity),
-            unitCost: Number(item.unitCost),
-            total: Number(item.quantity) * Number(item.unitCost),
-          })),
-        },
+        items: { create: bill.items },
       },
       include: { items: { include: { product: true } }, supplier: true },
     });
@@ -115,36 +107,27 @@ export class PurchaseOrdersService {
     const po = await tx.purchaseOrder.findUnique({ where: { id }, include: { items: true } });
     if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อนี้');
 
-    if (Object.keys(data).some(key => !['items', 'supplierId', 'supplierInvoiceNo', 'billDate', 'dueDate', 'notes'].includes(key))) throw new BadRequestException('ไม่สามารถแก้สถานะหรือยอดชำระผ่านการแก้ไขใบสั่งซื้อ');
+    if (Object.keys(data).some(key => !['items', 'supplierId', 'supplierInvoiceNo', 'billDate', 'dueDate', 'notes', 'billDiscountType', 'billDiscountValue'].includes(key))) throw new BadRequestException('ไม่สามารถแก้สถานะหรือยอดชำระผ่านการแก้ไขใบสั่งซื้อ');
+    const repricing = data.items || data.billDiscountType !== undefined || data.billDiscountValue !== undefined;
     if (data.items) this.validateItems(data.items);
-    if (po.status !== POStatus.DRAFT && data.items) {
-      throw new BadRequestException('ไม่สามารถแก้ไขรายการของ PO ที่ไม่อยู่ในสถานะ DRAFT');
+    if (po.status !== POStatus.DRAFT && repricing) {
+      throw new BadRequestException('ไม่สามารถแก้ไขรายการ ส่วนลด หรือ VAT ของ PO ที่ไม่อยู่ในสถานะ DRAFT');
     }
 
-    if (data.items) {
+    if (repricing) {
+      const lines = data.items || po.items.map((i) => ({ productId: i.productId, quantity: i.quantity, unitCost: Number(i.unitCost), discountType: i.discountType, discountValue: Number(i.discountValue), vatType: i.vatType, vatRate: Number(i.vatRate) }));
+      const bill = this.priceBill(lines, data.billDiscountType ?? po.billDiscountType, data.billDiscountValue ?? Number(po.billDiscountValue));
       await tx.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: id } });
-      const totalAmount = data.items.reduce(
-        (sum: number, item: any) => sum + (Number(item.quantity) * Number(item.unitCost)),
-        0,
-      );
-
-      const { items, ...restData } = data;
-      const remainingPayable = Math.max(0, totalAmount - Number(po.paidAmount));
+      const { items, billDiscountType, billDiscountValue, ...restData } = data;
+      const remainingPayable = Math.max(0, bill.totals.totalAmount - Number(po.paidAmount));
 
       return tx.purchaseOrder.update({
         where: { id },
         data: {
           ...restData,
-          totalAmount,
+          ...bill.header,
           remainingPayable,
-          items: {
-            create: data.items.map((item: any) => ({
-              productId: item.productId,
-              quantity: Number(item.quantity),
-              unitCost: Number(item.unitCost),
-              total: Number(item.quantity) * Number(item.unitCost),
-            })),
-          },
+          items: { create: bill.items },
         },
         include: { items: { include: { product: true } }, supplier: true },
       });
@@ -198,6 +181,45 @@ export class PurchaseOrdersService {
     if (!Array.isArray(items) || !items.length || items.some(item => !item.productId || !Number.isSafeInteger(Number(item.quantity)) || Number(item.quantity) <= 0 || !Number.isFinite(Number(item.unitCost)) || Number(item.unitCost) < 0)) {
       throw new BadRequestException('รายการสินค้า จำนวน หรือต้นทุนไม่ถูกต้อง');
     }
+    for (const item of items) {
+      if (item.vatType !== undefined && !['NONE', 'INCLUDED', 'EXCLUDED', 'none', 'include', 'exclude'].includes(String(item.vatType))) throw new BadRequestException('ประเภท VAT ของรายการไม่ถูกต้อง');
+      if (item.vatRate !== undefined && (!Number.isFinite(Number(item.vatRate)) || Number(item.vatRate) < 0 || Number(item.vatRate) > 30)) throw new BadRequestException('อัตรา VAT ต้องอยู่ระหว่าง 0-30%');
+      if (item.discountValue !== undefined && (!Number.isFinite(Number(item.discountValue)) || Number(item.discountValue) < 0)) throw new BadRequestException('ส่วนลดรายการไม่ถูกต้อง');
+    }
+  }
+
+  /** Server-side pricing of a purchase bill: discounts, VAT per line, totals. */
+  private priceBill(items: any[], billDiscountType?: unknown, billDiscountValue?: unknown) {
+    const totals = calculatePurchaseBill(
+      (items || []).map((i: any) => ({ quantity: Number(i.quantity), unitCost: Number(i.unitCost), discountType: i.discountType, discountValue: i.discountValue, vatType: i.vatType, vatRate: i.vatRate })),
+      { type: billDiscountType as string, value: billDiscountValue as number },
+    );
+    if (billDiscountValue !== undefined && (!Number.isFinite(Number(billDiscountValue)) || Number(billDiscountValue) < 0)) throw new BadRequestException('ส่วนลดท้ายบิลไม่ถูกต้อง');
+    const items2 = (items || []).map((item: any, idx: number) => {
+      const l = totals.lines[idx];
+      return {
+        productId: item.productId,
+        quantity: l.quantity,
+        unitCost: l.unitCost,
+        discountType: l.discountType,
+        discountValue: l.discountValue,
+        discountAmount: l.discountAmount,
+        vatType: l.vatType,
+        vatRate: l.vatRate,
+        netAmount: l.netAmount,
+        vatAmount: l.vatAmount,
+        total: l.total,
+      };
+    });
+    const header = {
+      billDiscountType: billDiscountType === 'percent' ? 'percent' : 'baht',
+      billDiscountValue: Math.max(0, Number(billDiscountValue) || 0),
+      discountAmount: totals.discountAmount,
+      subtotalAmount: totals.subtotalAmount,
+      vatAmount: totals.vatAmount,
+      totalAmount: totals.totalAmount,
+    };
+    return { totals, items: items2, header };
   }
 
   async receive(id: string, data: { clientReceiptId?: string; adjustAndComplete?: boolean; supplierInvoiceNo?: string; items: { purchaseOrderItemId: string; receivedQty: number; unitCost: number }[] }) {
@@ -222,15 +244,18 @@ export class PurchaseOrdersService {
         if (!original || original.receivedQty + item.receivedQty > original.quantity) throw new BadRequestException('รายการรับไม่อยู่ในใบสั่งซื้อหรือจำนวนรับเกินยอดคงเหลือ');
         if (Math.abs(item.unitCost - Number(original.unitCost)) > 0.001) throw new BadRequestException('ต้นทุนรับไม่ตรงกับใบสั่งซื้อ กรุณาตรวจสอบเอกสาร');
       }
+      // VAT paid on purchases is part of the stock cost unless the shop is VAT-registered (claims it back)
+      const shopVatRegistered = (await tx.storeSettings.findFirst())?.vatEnabled === true;
       for (const item of data.items) {
         const original = po.items.find(row => row.id === item.purchaseOrderItemId)!;
+        const costPerUnit = stockCostPerUnit({ quantity: original.quantity, total: original.total, netAmount: original.netAmount, unitCost: original.unitCost }, shopVatRegistered);
         const prevStockAgg = await tx.stockBatch.aggregate({
           where: { productId: original.productId },
           _sum: { quantityRemaining: true },
         });
         const previousStock = Number(prevStockAgg._sum.quantityRemaining || 0);
         const product = (original as any).product || (await tx.product.findUnique({ where: { id: original.productId }, select: { sku: true, name: true, unit: true } }));
-        await tx.stockBatch.create({ data: { productId: original.productId, quantityReceived: item.receivedQty, quantityRemaining: item.receivedQty, unitCost: item.unitCost, supplierId: po.supplierId, purchaseOrderId: id, note: 'รับเข้าจาก PO ' + po.poNumber } });
+        await tx.stockBatch.create({ data: { productId: original.productId, quantityReceived: item.receivedQty, quantityRemaining: item.receivedQty, unitCost: costPerUnit, supplierId: po.supplierId, purchaseOrderId: id, note: 'รับเข้าจาก PO ' + po.poNumber } });
         await tx.purchaseOrderItem.update({ where: { id: original.id }, data: { receivedQty: { increment: item.receivedQty } } });
         await tx.auditLog.create({
           data: {
@@ -255,18 +280,24 @@ export class PurchaseOrdersService {
         });
       }
       const items = await tx.purchaseOrderItem.findMany({ where: { purchaseOrderId: id } });
-      let totalAmount = Number(po.totalAmount);
+      let adjusted: Record<string, number | string> | null = null;
       if (data.adjustAndComplete) {
-        totalAmount = 0;
-        for (const item of items) {
-          const total = item.receivedQty * Number(item.unitCost);
-          totalAmount += total;
-          await tx.purchaseOrderItem.update({ where: { id: item.id }, data: { quantity: item.receivedQty, total } });
+        // re-price the bill for what was actually delivered (same discounts and VAT settings)
+        const bill = this.priceBill(
+          items.map((i) => ({ productId: i.productId, quantity: i.receivedQty, unitCost: Number(i.unitCost), discountType: i.discountType, discountValue: Number(i.discountValue), vatType: i.vatType, vatRate: Number(i.vatRate) })),
+          po.billDiscountType,
+          Number(po.billDiscountValue),
+        );
+        for (let k = 0; k < items.length; k++) {
+          const { productId, ...line } = bill.items[k];
+          void productId;
+          await tx.purchaseOrderItem.update({ where: { id: items[k].id }, data: line });
         }
+        adjusted = { ...bill.header, remainingPayable: bill.totals.totalAmount };
       }
       const result = await tx.purchaseOrder.update({ where: { id }, data: {
         status: data.adjustAndComplete || items.every(item => item.receivedQty === item.quantity) ? POStatus.COMPLETED : POStatus.PARTIALLY_RECEIVED,
-        ...(data.adjustAndComplete ? { totalAmount, remainingPayable: totalAmount } : {}),
+        ...(adjusted || {}),
         ...(data.supplierInvoiceNo ? { supplierInvoiceNo: data.supplierInvoiceNo.trim() } : {}),
       }, include: { items: { include: { product: true } }, supplier: true } });
       await tx.auditLog.create({ data: { id: receiptId, action: 'RECEIVE', entity: 'PurchaseOrder', entityId: id, details: { fingerprint, result: JSON.parse(JSON.stringify(result)) } } });
