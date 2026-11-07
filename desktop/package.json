@@ -1,6 +1,6 @@
 {
   "name": "purim-pos-desktop",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Purim POS Native Desktop Client for Windows",
   "main": "main.js",
   "scripts": {
@@ -26,6 +26,7 @@
     "productName": "Purim POS",
     "files": [
       "main.js",
+      "escpos-raster.js",
       "preload.js",
       "connect-server.html",
       "kick-drawer.exe",
