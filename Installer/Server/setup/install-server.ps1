@@ -271,6 +271,7 @@ New-Shortcut (Join-Path $Desktop 'อัปเดต Purim POS จาก GitHub.
 New-Shortcut (Join-Path $StartMenu 'อัปเดต Purim POS จาก GitHub.lnk') $PsExe $UpdateArgs $SetupDir $null $false
 $UrlFile = Join-Path $Desktop 'หน้าร้าน Purim POS.url'
 Write-Utf8NoBom $UrlFile "[InternetShortcut]`r`nURL=http://localhost:3000/pos`r`n"
+Write-Utf8NoBom (Join-Path $Desktop 'มอนิเตอร์ร้าน Purim POS.url') "[InternetShortcut]`r`nURL=http://localhost:3000/monitor`r`n"
 Ok 'สร้างทางลัดบนหน้าจอ และตั้งให้เปิดเองเมื่อเข้าสู่ Windows'
 
 # Docker Desktop must also start with Windows (database lives there)

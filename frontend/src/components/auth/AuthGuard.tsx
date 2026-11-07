@@ -78,8 +78,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const isLoginPage = pathname === '/login';
   const isChangePasswordPage = pathname === '/change-password';
   const mustChangePassword = Boolean(hasValidAuth && user?.mustChangePassword);
-  const isMasterControl = pathname === '/master-control' || pathname?.startsWith('/master-control');
-  const isPublicRoute = isLoginPage || isMasterControl;
+  // Store-wide monitoring pages show sales and carts: login + VIEW_REPORTS required.
+  const isPublicRoute = isLoginPage;
   const hasRoutePermission = isPublicRoute || pathname === '/change-password' || canAccessRoute(user, pathname);
 
   useEffect(() => {
@@ -105,11 +105,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     window.addEventListener('purim:must-change-password', onMustChange);
     return () => window.removeEventListener('purim:must-change-password', onMustChange);
   }, []);
-
-  // Master Control can be accessed directly for remote monitoring
-  if (isMasterControl) {
-    return <>{children}</>;
-  }
 
   // While checking auth status
   if (!isHydrated) {

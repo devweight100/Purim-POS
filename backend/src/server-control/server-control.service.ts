@@ -40,6 +40,8 @@ export interface TerminalTelemetry {
   todayBills: number;
   lastOrderTime?: string;
   liveState?: TerminalLiveState;
+  /** Open shift on this terminal (who is responsible for the drawer). */
+  shift?: { userName: string; openedAt: string } | null;
 }
 
 export interface ActivityLogItem {
@@ -50,6 +52,8 @@ export interface ActivityLogItem {
   description: string;
   amount?: number;
   badgeColor?: string;
+  terminalId?: string;
+  userName?: string;
 }
 
 export interface BackupFileInfo {
@@ -670,9 +674,32 @@ export class ServerControlService {
       },
       include: {
         payments: true,
+        shift: { select: { terminalId: true } },
+        user: { select: { fullName: true, username: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    const openShifts = await this.prisma.shift.findMany({
+      where: { status: 'OPEN' },
+      select: { terminalId: true, openedAt: true, user: { select: { fullName: true, username: true } } },
+    });
+    const shiftByTerminal = new Map<string, { userName: string; openedAt: string }>();
+    for (const sh of openShifts) {
+      if (!sh.terminalId) continue;
+      shiftByTerminal.set(sh.terminalId, {
+        userName: sh.user?.fullName || sh.user?.username || '-',
+        openedAt: sh.openedAt.toISOString(),
+      });
+    }
+    let pendingApprovals = 0;
+    try {
+      pendingApprovals = await this.prisma.approvalRequest.count({
+        where: { status: 'PENDING', expiresAt: { gt: new Date() } },
+      });
+    } catch {
+      pendingApprovals = 0;
+    }
 
     let totalRevenue = 0;
     let cashRevenue = 0;
@@ -686,7 +713,7 @@ export class ServerControlService {
       totalRevenue += orderAmt;
 
       // Group by Terminal ID or Cashier
-      const termKey = (order as any).terminalId || (order as any).shiftId || 'MAIN_POS';
+      const termKey = order.shift?.terminalId || 'UNASSIGNED';
       const cur = ordersByTerminal.get(termKey) || { sales: 0, bills: 0, lastOrder: order.createdAt.toISOString() };
       cur.sales += orderAmt;
       cur.bills += 1;
@@ -705,55 +732,71 @@ export class ServerControlService {
     const nowMs = Date.now();
     const terminals: TerminalTelemetry[] = [];
 
-    // Ensure at least default Main Terminal is shown if none pinged
-    if (this.activePings.size === 0) {
+    // Forget terminals that have not been seen for 12 hours
+    this.activePings.forEach((val, id) => {
+      if (nowMs - val.lastPingAt > 12 * 3600_000) {
+        this.activePings.delete(id);
+        this.terminalLiveStates.delete(id);
+      }
+    });
+    this.activePings.forEach((val, id) => {
+      const diffMs = nowMs - val.lastPingAt;
+      let status: 'ONLINE' | 'ACTIVE' | 'IDLE' | 'OFFLINE' = 'OFFLINE';
+      if (diffMs < 30000) status = 'ACTIVE';
+      else if (diffMs < 90000) status = 'ONLINE';
+      else if (diffMs < 300000) status = 'IDLE';
+
+      const stats = ordersByTerminal.get(id) || { sales: 0, bills: 0 };
+
       terminals.push({
-        terminalId: 'SERVER-POS-01',
-        terminalName: 'เครื่องแม่ (Main Terminal)',
-        ipAddress: localIp,
-        userName: 'Admin / แคชเชียร์หลัก',
-        status: 'ONLINE',
-        lastPingAt: new Date().toISOString(),
-        latencyMs: 1,
-        todaySales: totalRevenue,
-        todayBills: todayOrders.length,
-        lastOrderTime: todayOrders[0]?.createdAt.toISOString(),
-        liveState: this.terminalLiveStates.get('SERVER-POS-01'),
+        terminalId: id,
+        terminalName: val.terminalName,
+        ipAddress: val.ipAddress,
+        userName: val.userName,
+        status,
+        lastPingAt: new Date(val.lastPingAt).toISOString(),
+        latencyMs: val.latencyMs,
+        todaySales: stats.sales,
+        todayBills: stats.bills,
+        lastOrderTime: stats.lastOrder,
+        liveState: this.terminalLiveStates.get(id),
+        shift: shiftByTerminal.get(id) || null,
       });
-    } else {
-      this.activePings.forEach((val, id) => {
-        const diffMs = nowMs - val.lastPingAt;
-        let status: 'ONLINE' | 'ACTIVE' | 'IDLE' | 'OFFLINE' = 'OFFLINE';
-        if (diffMs < 30000) status = 'ACTIVE';
-        else if (diffMs < 90000) status = 'ONLINE';
-        else if (diffMs < 300000) status = 'IDLE';
-
-        const stats = ordersByTerminal.get(id) || { sales: 0, bills: 0 };
-
-        terminals.push({
-          terminalId: id,
-          terminalName: val.terminalName,
-          ipAddress: val.ipAddress,
-          userName: val.userName,
-          status,
-          lastPingAt: new Date(val.lastPingAt).toISOString(),
-          latencyMs: val.latencyMs,
-          todaySales: stats.sales,
-          todayBills: stats.bills,
-          lastOrderTime: stats.lastOrder,
-          liveState: this.terminalLiveStates.get(id),
-        });
+    });
+    // Terminals with an open shift that have not pinged since the server started
+    shiftByTerminal.forEach((sh, id) => {
+      if (this.activePings.has(id)) return;
+      const stats = ordersByTerminal.get(id) || { sales: 0, bills: 0 };
+      terminals.push({
+        terminalId: id,
+        terminalName: `จุดขาย #${id.slice(0, 6).toUpperCase()}`,
+        ipAddress: '-',
+        userName: sh.userName,
+        status: 'OFFLINE',
+        lastPingAt: sh.openedAt,
+        latencyMs: 0,
+        todaySales: stats.sales,
+        todayBills: stats.bills,
+        lastOrderTime: stats.lastOrder,
+        shift: sh,
       });
-    }
+    });
+    // Machines that are in use first, then by name (stable positions on the monitor)
+    const rank = { ACTIVE: 0, ONLINE: 0, IDLE: 1, OFFLINE: 2 } as const;
+    terminals.sort((a, b) => rank[a.status] - rank[b.status] || a.terminalName.localeCompare(b.terminalName, 'th'));
 
     // 6. Recent Activity Feed
     const recentActivity: ActivityLogItem[] = todayOrders.slice(0, 15).map((o) => {
       const amt = Number(o.totalAmount || 0);
       const isClaimFree = amt === 0;
+      const tId = o.shift?.terminalId;
+      const tName = tId ? this.activePings.get(tId)?.terminalName : undefined;
       return {
         id: o.id,
         timestamp: o.createdAt.toISOString(),
-        terminalName: (o as any).terminalId ? `เครื่อง [${(o as any).terminalId.slice(0, 6)}]` : 'เครื่องแคชเชียร์',
+        terminalName: tName || (tId ? `จุดขาย #${tId.slice(0, 6).toUpperCase()}` : 'เครื่องแคชเชียร์'),
+        terminalId: tId || undefined,
+        userName: o.user?.fullName || o.user?.username || undefined,
         type: isClaimFree ? 'CLAIM' : 'SALE',
         description: isClaimFree
           ? `บิล #${o.orderNumber}: เคลมสินค้า/ฟรี ฿0.00`
@@ -794,6 +837,8 @@ export class ServerControlService {
         creditRevenue,
       },
       terminals,
+      openShifts: openShifts.length,
+      pendingApprovals,
       recentActivity,
     };
   }

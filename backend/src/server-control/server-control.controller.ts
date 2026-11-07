@@ -8,6 +8,9 @@ import { Roles, RequirePermissions } from '../auth/roles.decorator';
 export class ServerControlController {
   constructor(private readonly service: ServerControlService) {}
 
+  // Sales, carts and terminals of the whole store: staff with report access only.
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @RequirePermissions('VIEW_REPORTS')
   @Get('telemetry')
   getTelemetry() {
     return this.service.getTelemetry();

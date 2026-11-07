@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import React, { useState, useEffect, useRef } from 'react';
-import { 
+import { Gamepad2, 
   ShoppingCart, ClipboardList, Users, LayoutDashboard, Package, 
   Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, 
   FolderTree, Building2, Receipt, ShieldAlert, ArrowLeftRight, HandCoins,
@@ -38,6 +38,7 @@ const navGroups: NavGroup[] = [
     icon: BarChart3,
     items: [
       { href: '/master-control', label: '🚀 แผงควบคุมเครื่องแม่ (Master Command)', icon: Radio },
+      { href: '/monitor', label: '🕹️ มอนิเตอร์ร้าน (Pixel View)', icon: Gamepad2 },
       { href: '/dashboard', label: 'แดชบอร์ดสรุปภาพรวม', icon: LayoutDashboard },
       { 
         href: '/reports', 
