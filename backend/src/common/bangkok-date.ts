@@ -51,7 +51,7 @@ export function dateRangeFilter(from?: string | null, to?: string | null): { gte
     if (DATE_ONLY.test(to.trim())) out.lt = addDays(bangkokDayStart(to.trim()), 1);
     else out.lte = parseDateParam(to, 'end');
   }
-  if (out.gte && (out.lt ?? out.lte) && out.gte.getTime() > (out.lt ?? out.lte)!.getTime()) {
+  if (out.gte && ((out.lt && out.gte >= out.lt) || (out.lte && out.gte > out.lte))) {
     throw new BadRequestException('วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด');
   }
   return out.gte || out.lt || out.lte ? out : undefined;
