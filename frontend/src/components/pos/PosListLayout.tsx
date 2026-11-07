@@ -113,15 +113,9 @@ export function PosListLayout({
     }
   }, []);
 
-  // Process barcode scan for PosListLayout (converts Thai Kedmanee to English/Numeric)
-  const processBarcodeScan = (scannedBarcode: string) => {
-    const raw = scannedBarcode.trim();
-    if (!raw) return;
-
-    const convertedCode = convertThaiToEnBarcode(raw).trim();
-    const code = convertedCode.toLowerCase();
-
-    const matchedProduct = products.find(p => {
+  const findProductByExactCode = (code: string): Product | undefined => {
+    if (!code) return undefined;
+    return products.find(p => {
       const matchSku = p.sku?.toLowerCase().trim() === code;
       const matchUnitBarcode = p.units?.some(u => u.barcode?.toLowerCase().trim() === code);
       const matchProductBarcodes = (p as any).barcodes?.some((b: any) => b.barcode?.toLowerCase().trim() === code);
@@ -129,6 +123,21 @@ export function PosListLayout({
       const matchAvailBarcode = availableUnits.some(u => u.barcode?.toLowerCase().trim() === code);
       return matchSku || matchUnitBarcode || matchProductBarcodes || matchAvailBarcode;
     });
+  };
+
+  // Process barcode scan for PosListLayout (converts Thai Kedmanee to English/Numeric)
+  const processBarcodeScan = (scannedBarcode: string) => {
+    const raw = scannedBarcode.trim();
+    if (!raw) return;
+
+    // Raw code first (ASCII SKUs like "RICE-JAS-5KG" stay intact), Thai-keyboard conversion only as fallback
+    const convertedCode = convertThaiToEnBarcode(raw).trim();
+    let code = raw.toLowerCase();
+    let matchedProduct: Product | undefined;
+    for (const candidate of [raw.toLowerCase(), convertedCode.toLowerCase()]) {
+      matchedProduct = findProductByExactCode(candidate);
+      if (matchedProduct) { code = candidate; break; }
+    }
 
     if (matchedProduct) {
       const availableUnits = getProductAvailableUnits(matchedProduct);
@@ -137,8 +146,8 @@ export function PosListLayout({
       setSearchQuery('');
       setIsSearchOpen(false);
     } else {
-      const thaiHint = convertedCode !== raw ? ` (แปลงจากภาษาไทย: "${raw}")` : '';
-      toast.error(`❌ ไม่พบสินค้าบาร์โค้ด: "${convertedCode}"${thaiHint}`);
+      const thaiHint = convertedCode !== raw ? ` (ลองแปลงจากแป้นไทยเป็น "${convertedCode}" แล้ว)` : '';
+      toast.error(`❌ ไม่พบสินค้าบาร์โค้ด: "${raw}"${thaiHint}`);
     }
 
     setScannerInputValue('');
@@ -229,15 +238,7 @@ export function PosListLayout({
       const raw = searchQuery.trim();
       if (!raw) return;
 
-      const converted = convertThaiToEnBarcode(raw).toLowerCase().trim();
-      const matchedBarcode = products.find(p => {
-        const matchSku = p.sku?.toLowerCase().trim() === converted;
-        const matchUnitBarcode = p.units?.some(u => u.barcode?.toLowerCase().trim() === converted);
-        const matchProductBarcodes = (p as any).barcodes?.some((b: any) => b.barcode?.toLowerCase().trim() === converted);
-        const availableUnits = getProductAvailableUnits(p);
-        const matchAvailBarcode = availableUnits.some(u => u.barcode?.toLowerCase().trim() === converted);
-        return matchSku || matchUnitBarcode || matchProductBarcodes || matchAvailBarcode;
-      });
+      const matchedBarcode = findProductByExactCode(raw.toLowerCase()) || findProductByExactCode(convertThaiToEnBarcode(raw).toLowerCase().trim());
 
       if (matchedBarcode) {
         processBarcodeScan(raw);

@@ -7,7 +7,7 @@ import { useProductStore } from '@/lib/store/product-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useRouter } from 'next/navigation';
 import { formatCurrency } from '@/lib/utils';
-import { useGlobalBarcodeScanner } from '@/lib/use-scanner';
+import { useGlobalBarcodeScanner, findProductByScannedCode, canUseCartCharShortcut, msSincePreviousPrintableKey } from '@/lib/use-scanner';
 import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
 import { getProductPackagingUnits } from '@/lib/cart-pricing';
 import { 
@@ -447,17 +447,11 @@ export default function PosNeoPage() {
     const raw = scannedBarcode.trim();
     if (!raw) return;
 
+    // Try the raw code first (ASCII SKUs like "RICE-JAS-5KG" stay intact), then the Thai-keyboard conversion
     const convertedCode = convertThaiToEnBarcode(raw).trim();
-    const code = convertedCode.toLowerCase();
-
-    const matchedProduct = products.find(p => {
-      const matchSku = p.sku?.toLowerCase().trim() === code;
-      const matchUnitBarcode = p.units?.some(u => u.barcode?.toLowerCase().trim() === code);
-      const matchProductBarcodes = (p as any).barcodes?.some((b: any) => b.barcode?.toLowerCase().trim() === code);
-      const pkgUnits = getProductPackagingUnits(p.id);
-      const matchPkgBarcode = pkgUnits.some(u => u.barcode?.toLowerCase().trim() === code);
-      return matchSku || matchUnitBarcode || matchProductBarcodes || matchPkgBarcode;
-    });
+    const match = findProductByScannedCode(products, raw);
+    const matchedProduct = match?.product;
+    const code = match ? match.code : (raw.toLowerCase());
 
     if (matchedProduct) {
       const pkgUnits = getProductPackagingUnits(matchedProduct.id);
@@ -489,13 +483,13 @@ export default function PosNeoPage() {
       }
     } else {
       const docPrefixes = ['ord-', 'clm-', 'shf-', 'po-', 'dn-', 'pv-', 'debt-'];
-      const isDocCode = docPrefixes.some(p => code.startsWith(p));
-      if (isDocCode) {
-        toast.info(`🔍 ตรวจพบบาร์โค้ดเอกสาร: ${convertedCode.toUpperCase()} เปิดหน้าค้นหาทันที...`);
-        useDocumentSearchStore.getState().openSearch(convertedCode.toUpperCase());
+      const docCode = [raw, convertedCode].find(c => docPrefixes.some(p => c.toLowerCase().startsWith(p)));
+      if (docCode) {
+        toast.info(`🔍 ตรวจพบบาร์โค้ดเอกสาร: ${docCode.toUpperCase()} เปิดหน้าค้นหาทันที...`);
+        useDocumentSearchStore.getState().openSearch(docCode.toUpperCase());
       } else {
-        const thaiHint = convertedCode !== raw ? ` (แปลงจากแป้นไทย: "${raw}")` : '';
-        toast.error(`❌ ไม่พบสินค้าบาร์โค้ด: "${convertedCode}"${thaiHint}`);
+        const thaiHint = convertedCode !== raw ? ` (ลองแปลงจากแป้นไทยเป็น "${convertedCode}" แล้ว)` : '';
+        toast.error(`❌ ไม่พบสินค้าบาร์โค้ด: "${raw}"${thaiHint}`);
       }
     }
 
@@ -513,6 +507,8 @@ export default function PosNeoPage() {
       const code = e.code;
       const keyLower = e.key ? e.key.toLowerCase() : '';
       const activeEl = document.activeElement as HTMLElement | null;
+      // Track key timing for every key so scanner bursts are recognised
+      const sincePrevKey = msSincePreviousPrintableKey(e);
 
       // Identify if the active element is a background scanner input (tabindex=-1 or sr-only)
       const isHiddenScanner = !!activeEl && (
@@ -535,7 +531,7 @@ export default function PosNeoPage() {
 
       // Check if modal or dialog is currently open - if so, let dialog handle its own keys
       const isModalOpen = showPayment || showOpenShift || showCloseShift || !!editItem || showCustomerSelect || showHeldBills || !!qtyEditItem || !!priceEditItem || showDebtCollectModal || showCashDrawerModal || showClaimModal || showUnitModal || showRedeemModal || showBarcodeScan || showOrderHistoryModal || showCustomerStockModal || !!claimTargetItem;
-      if (isModalOpen) return;
+      if (isModalOpen || useDocumentSearchStore.getState().isOpen) return;
 
       // Helper to scroll to selected item
       const scrollToItem = (idx: number) => {
@@ -556,14 +552,13 @@ export default function PosNeoPage() {
         const idx = Math.min(items.length - 1, Math.max(0, selectedCartIndex));
         setQtyEditItem(items[idx]);
       }
-      // F3 -> Edit Discount & Details of selected/latest cart item
+      // F3 -> Edit Discount & Details of selected/latest cart item.
+      // F3 has one owner: with items in the cart it is the item discount popup (preventDefault tells the
+      // global document search to ignore it); with an empty cart it is left to the global document search.
       else if (code === 'F3' || keyLower === 'f3') {
-        e.preventDefault();
         const items = useCartStore.getState().items;
-        if (items.length === 0) {
-          toast.warning('ยังไม่มีสินค้าในตะกร้า');
-          return;
-        }
+        if (items.length === 0) return;
+        e.preventDefault();
         const idx = Math.min(items.length - 1, Math.max(0, selectedCartIndex));
         setEditItem(items[idx]);
       }
@@ -609,7 +604,7 @@ export default function PosNeoPage() {
         }
       }
       // + / - keys -> Increase / Decrease quantity of selected item (only when not typing in a real text input)
-      else if ((code === 'NumpadAdd' || keyLower === '+') && !isRealTextInput) {
+      else if ((code === 'NumpadAdd' || keyLower === '+') && canUseCartCharShortcut(activeEl, isHiddenScanner ? (activeEl as HTMLInputElement) : scannerInputRef.current, sincePrevKey)) {
         const items = useCartStore.getState().items;
         if (items.length > 0) {
           e.preventDefault();
@@ -619,7 +614,7 @@ export default function PosNeoPage() {
             useCartStore.getState().updateQuantity(target.productId, target.quantity + 1, target.unitId);
           }
         }
-      } else if ((code === 'NumpadSubtract' || keyLower === '-') && !isRealTextInput) {
+      } else if ((code === 'NumpadSubtract' || keyLower === '-') && canUseCartCharShortcut(activeEl, isHiddenScanner ? (activeEl as HTMLInputElement) : scannerInputRef.current, sincePrevKey)) {
         const items = useCartStore.getState().items;
         if (items.length > 0) {
           e.preventDefault();
@@ -678,8 +673,10 @@ export default function PosNeoPage() {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    // Registered on document (bubble phase) so it always runs before window-level listeners such as the
+    // global F3 document search, which checks e.defaultPrevented.
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, [
     router, 
     selectedCartIndex, 
@@ -894,7 +891,7 @@ export default function PosNeoPage() {
               type="button"
               onClick={() => useDocumentSearchStore.getState().openSearch()}
               className="hidden sm:flex h-10 items-center gap-1.5 rounded-xl border-2 border-black bg-[#E0E7FF] px-2.5 text-xs font-black text-black shadow-[2px_2px_0px_#000] hover:bg-[#C7D2FE] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
-              title="ค้นหาเอกสารทั้งหมด / สแกนบาร์โค้ดใบเสร็จ (F3)"
+              title="ค้นหาเอกสารทั้งหมด / สแกนบาร์โค้ดใบเสร็จ (F3 เมื่อตะกร้าว่าง; มีสินค้าในตะกร้า F3 = ส่วนลดรายการ)"
             >
               <Receipt className="w-3.5 h-3.5" />
               <span>ค้นหาเอกสาร</span>
