@@ -706,6 +706,21 @@ export default function SettingsPage() {
                       ))}
                     </select>
                   </div>
+                  <label className="text-xs font-bold text-slate-900 block pt-1">เครื่องพิมพ์เอกสาร A4 (ใบกำกับภาษี / ใบสั่งซื้อ)</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={drawerConfig.selectedA4Printer || ''}
+                      onChange={(e) => handleUpdateDrawerConfig({ selectedA4Printer: e.target.value })}
+                      className="flex-1 h-9 px-3 text-xs bg-white border border-sky-300 rounded-xl font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
+                    >
+                      <option value="">-- ไม่ระบุ (แสดงหน้าต่างเลือกเครื่องพิมพ์ของ Windows) --</option>
+                      {installedPrinters.map((p: any) => (
+                        <option key={p.name} value={p.name}>
+                          {p.name} {p.isDefault ? '⭐ (เครื่องเริ่มต้น Windows)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <p className="text-[11px] text-sky-700/80">
                     💡 หากต่อเครื่องพิมพ์ Epson TM-T82 ไว้ สามารถเลือกชื่อเครื่องพิมพ์โดยตรง หรือปล่อยให้ระบบตรวจหาอัตโนมัติได้
                   </p>

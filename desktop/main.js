@@ -783,7 +783,7 @@ body { margin: 0; padding: 0; font-family: 'Control', 'FontControl', sans-serif;
 }
 
 // Hardware: 100% Silent Direct Print to Epson TM-T82 without any popup dialog
-function printViaDriver(html, printerName, isA4) {
+function printViaDriver(html, printerName, isA4, showDialog = false) {
   return new Promise(async (resolve) => {
     let printWin = null;
     try {
@@ -803,17 +803,18 @@ function printViaDriver(html, printerName, isA4) {
 
       const config = loadConfig();
       const serverBase = config.serverUrl ? config.serverUrl.replace(/\/+$/, '') : 'http://localhost:3000';
-      const targetPrinter = await resolvePrinterDevice(printerName || config.printerName);
+      // A4 with no A4 printer configured -> let the user pick in the system print dialog
+      const targetPrinter = showDialog ? '' : await resolvePrinterDevice(printerName || config.printerName);
 
       printWin.webContents.on('did-finish-load', () => {
         const printOptions = {
-          silent: true,
+          silent: !showDialog,
           printBackground: true,
-          deviceName: targetPrinter,
           margins: {
             marginType: 'none'
           }
         };
+        if (targetPrinter) printOptions.deviceName = targetPrinter;
 
         // Explicit 80mm thermal roll sizing for receipt printers
         if (!isA4) {
@@ -857,11 +858,23 @@ function guessPaperDots(printerName) {
 // Receipts (80mm/58mm) are printed as an ESC/POS raster image + paper cut, so Thai prints
 // correctly on thermal printers whose drivers substitute device fonts (-> "????").
 // Set receiptPrintMode = "driver" in the app config to use the Windows driver instead.
-ipcMain.handle('print-silent', async (event, { html, printerName, format, mode, cut }) => {
+ipcMain.handle('print-silent', async (event, { html, printerName, format, mode, cut, showDialog }) => {
   // Never let the document call window.print() itself (that opens Chromium's print preview)
   const cleanHtml = String(html || '').replace(/<script[\s\S]*?<\/script>/gi, '');
   const config = loadConfig();
   const isA4 = format ? format === 'a4' : (cleanHtml.includes('size: A4') || cleanHtml.includes('210mm'));
+
+  // A4 documents never go to the receipt (thermal) printer: they use the A4 printer chosen in
+  // settings (printerName) or, when none is set, the Windows print dialog.
+  if (isA4) {
+    const a4Name = String(printerName || '').trim();
+    if (!a4Name || showDialog) return printViaDriver(cleanHtml, '', true, true);
+    let printers = [];
+    try { printers = mainWindow ? await mainWindow.webContents.getPrintersAsync() : []; } catch (e) { printers = []; }
+    const found = printers.find(p => p.name.toLowerCase() === a4Name.toLowerCase());
+    if (printers.length > 0 && !found) return printViaDriver(cleanHtml, '', true, true);
+    return printViaDriver(cleanHtml, found ? found.name : a4Name, true, false);
+  }
   const receiptMode = mode || config.receiptPrintMode || 'raster';
   const targetPrinter = await resolvePrinterDevice(printerName || config.printerName);
 
