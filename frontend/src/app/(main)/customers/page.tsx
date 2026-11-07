@@ -56,8 +56,12 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useAuthStore } from '@/lib/store/auth-store';
 
 export default function CustomersPage() {
+  const authUser = useAuthStore((st) => st.user);
+  // credit limit / terms / block may only be changed by debt managers (enforced by the server too)
+  const canEditCredit = !authUser || authUser.role === 'ADMIN' || authUser.role === 'MANAGER' || (Array.isArray(authUser.permissions) && (authUser.permissions.includes('ALL') || authUser.permissions.includes('MANAGE_DEBTS')));
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'INDIVIDUAL' | 'COMPANY' | 'credit' | 'hasDebt'>('all');
@@ -231,17 +235,40 @@ export default function CustomersPage() {
       toast.error('กรุณากรอกเบอร์โทรศัพท์');
       return;
     }
+    if (!/^[0-9+\-\s()]{3,20}$/.test(formData.phone.trim())) {
+      toast.error('เบอร์โทรศัพท์ไม่ถูกต้อง (ใช้ได้เฉพาะตัวเลข - + และช่องว่าง)');
+      return;
+    }
+    if (formData.contactPhone?.trim() && !/^[0-9+\-\s()]{3,20}$/.test(formData.contactPhone.trim())) {
+      toast.error('เบอร์ผู้ประสานงานไม่ถูกต้อง (ใช้ได้เฉพาะตัวเลข - + และช่องว่าง)');
+      return;
+    }
+    if (formData.email?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
+      toast.error('รูปแบบอีเมลไม่ถูกต้อง');
+      return;
+    }
+    const creditLimitNum = Number(formData.creditLimit ?? 0);
+    const creditTermsNum = Number(formData.creditTerms ?? 0);
+    if (!Number.isFinite(creditLimitNum) || creditLimitNum < 0) {
+      toast.error('วงเงินเครดิตต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป');
+      return;
+    }
+    if (!Number.isInteger(creditTermsNum) || creditTermsNum < 0) {
+      toast.error('เครดิตเทอมต้องเป็นจำนวนวันเต็ม ตั้งแต่ 0 ขึ้นไป');
+      return;
+    }
 
     try {
       const payload: any = {
         name: formData.name.trim(),
         phone: formData.phone.trim(),
-        email: formData.email?.trim() || undefined,
-        address: formData.address?.trim() || undefined,
+        email: formData.email?.trim() || null,
+        address: formData.address?.trim() || null,
         type: formData.type || 'INDIVIDUAL',
         priceLevel: formData.priceLevel || 1,
-        creditLimit: Number(formData.creditLimit || 0),
-        creditTerms: Number(formData.creditTerms || 0),
+        creditLimit: creditLimitNum,
+        creditTerms: creditTermsNum,
+        isCreditBlocked: Boolean(formData.isCreditBlocked),
         companyName: formData.companyName?.trim() || undefined,
         taxId: formData.taxId?.trim() || undefined,
         branchType: formData.branchType || 'HEAD_OFFICE',
@@ -268,7 +295,7 @@ export default function CustomersPage() {
       setIsFormOpen(false);
       reloadData();
     } catch (err: any) {
-      toast.error('เกิดข้อผิดพลาด: ' + (err.message || 'ไม่สามารถบันทึกได้'));
+      toast.error(err?.message || 'บันทึกข้อมูลลูกค้าไม่สำเร็จ');
     }
   };
 
@@ -280,7 +307,7 @@ export default function CustomersPage() {
         toast.success(`ลบสมาชิก "${cust.name}" เรียบร้อยแล้ว`);
         reloadData();
       } catch (err: any) {
-        toast.error('เกิดข้อผิดพลาดในการลบ: ' + err.message);
+        toast.error(err?.message || 'ลบลูกค้าไม่สำเร็จ');
       }
     }
   };
@@ -907,6 +934,8 @@ export default function CustomersPage() {
                       <Input
                         type="number"
                         min="0"
+                        step="0.01"
+                        disabled={!canEditCredit}
                         value={formData.creditLimit ?? 0}
                         onChange={(e) => setFormData({ ...formData, creditLimit: Number(e.target.value) })}
                         placeholder="0 = ไม่ให้เชื่อ"
@@ -920,6 +949,8 @@ export default function CustomersPage() {
                       <Input
                         type="number"
                         min="0"
+                        step="1"
+                        disabled={!canEditCredit}
                         value={formData.creditTerms ?? 30}
                         onChange={(e) => setFormData({ ...formData, creditTerms: Number(e.target.value) })}
                         placeholder="เช่น 30 วัน"
@@ -944,6 +975,7 @@ export default function CustomersPage() {
                       <input
                         type="checkbox"
                         checked={Boolean(formData.isCreditBlocked)}
+                        disabled={!canEditCredit}
                         onChange={(e) => setFormData({ ...formData, isCreditBlocked: e.target.checked })}
                         className="accent-rose-600"
                       />

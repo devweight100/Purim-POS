@@ -54,7 +54,9 @@ export function PayDebtModal({
       setReferenceNo('');
       setNote('');
       if (bankAccounts.length > 0) {
-        setSelectedBank(`${bankAccounts[0].bankName} (${bankAccounts[0].accountNumber})`);
+        // preselect the store's default bank account (the server rejects unknown accounts)
+        const def = bankAccounts.find((b) => b.isDefault) || bankAccounts[0];
+        setSelectedBank(`${def.bankName} (${def.accountNumber})`);
       }
     } else {
       setPayMode('FULL');
