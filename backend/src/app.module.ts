@@ -22,6 +22,7 @@ import { BankAccountsModule } from './bank-accounts/bank-accounts.module';
 import { DocumentsModule } from './documents/documents.module';
 import { EventsModule } from './events/events.module';
 import { ServerControlModule } from './server-control/server-control.module';
+import { VersionModule } from './version/version.module';
 import { FinanceModule } from './finance/finance.module';
 import { ApprovalsModule } from './approvals/approvals.module';
 
@@ -47,6 +48,7 @@ import { ApprovalsModule } from './approvals/approvals.module';
     BankAccountsModule,
     DocumentsModule,
     ServerControlModule,
+    VersionModule,
     EventsModule,
     FinanceModule,
     ApprovalsModule,

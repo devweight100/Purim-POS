@@ -325,6 +325,8 @@ function setupAppMenu() {
 // IPC Handlers
 // ─────────────────────────────────────────────────────────────
 
+ipcMain.handle('get-app-version', () => app.getVersion());
+
 ipcMain.handle('get-server-url', () => {
   const config = loadConfig();
   return config.serverUrl || 'http://localhost:3000';

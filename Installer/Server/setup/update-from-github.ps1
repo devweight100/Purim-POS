@@ -81,7 +81,8 @@ function Get-Latest($token) {
   try {
     $c = Invoke-RestMethod "$ApiBase/repos/$Repo/commits/$Branch" -Headers $headers -UseBasicParsing -ErrorAction Stop
     return @{ ok = $true; headers = $headers; sha = $c.sha; short = $c.sha.Substring(0, 7);
-      message = (($c.commit.message -split "`n")[0]); date = ([datetime]$c.commit.committer.date).ToLocalTime().ToString('dd/MM/yyyy HH:mm') }
+      message = (($c.commit.message -split "`n")[0]); date = ([datetime]$c.commit.committer.date).ToLocalTime().ToString('dd/MM/yyyy HH:mm');
+      iso = ([datetime]$c.commit.committer.date).ToUniversalTime().ToString('o') }
   } catch {
     $code = $null
     try { $code = [int]$_.Exception.Response.StatusCode } catch {}
@@ -179,7 +180,7 @@ $ps = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
 & $ps -NoProfile -ExecutionPolicy Bypass -File (Join-Path $InstallDir 'Installer\Server\setup\install-server.ps1') -InstallDir $InstallDir -NoElevate
 $rc = $LASTEXITCODE
 if ($rc -eq 0) {
-  $info = [ordered]@{ commit = $latest.sha; branch = $Branch; message = $latest.message; committedAt = $latest.date; installedAt = (Get-Date -Format 'dd/MM/yyyy HH:mm'); source = 'github' }
+  $info = [ordered]@{ commit = $latest.sha; branch = $Branch; message = $latest.message; committedAt = $latest.date; committedAtIso = $latest.iso; modified = $false; installedAt = (Get-Date -Format 'dd/MM/yyyy HH:mm'); source = 'github' }
   Write-Json $VersionFile $info
   Done 0 "อัปเดตเป็นเวอร์ชัน $($latest.short) เรียบร้อย" 'Green' @{ installed = $info }
 }

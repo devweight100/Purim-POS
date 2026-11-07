@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { VersionBadge } from '@/components/common/VersionInfo';
 import { usePathname, useRouter } from 'next/navigation';
 import React, { useState, useEffect, useRef } from 'react';
 import { Gamepad2, 
@@ -447,6 +448,7 @@ export function Sidebar() {
             <p className="text-[10px] text-slate-400 truncate">{user?.role || 'เจ้าของร้าน'}</p>
           </div>
         </div>
+        <VersionBadge className="px-2 mb-1.5" />
         {user ? (
           <button
             onClick={handleLogout}
