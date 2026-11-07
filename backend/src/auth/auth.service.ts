@@ -6,11 +6,13 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { UserRole } from '@prisma/client';
 import { loginThrottle } from './login-throttle';
+import { MIN_PASSWORD_LENGTH, normalizePermissions } from './permissions';
 
 const PIN_PATTERN = /^\d{4,6}$/;
 /** Credentials shipped by the seed / printed in old docs. Logging in with one forces a change. */
 const DEFAULT_PASSWORDS = new Set(['admin123', 'cashier123', 'admin', 'password', '123456', '12345678']);
 const DEFAULT_PINS = new Set(['0000', '1234', '1111', '123456', '000000']);
+const PIN_UNUSABLE_MESSAGE = 'PIN นี้ใช้ไม่ได้ (เดาง่ายหรือไม่ปลอดภัย) กรุณาเลือก PIN อื่น';
 
 @Injectable()
 export class AuthService {
@@ -47,11 +49,15 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
-    const payload = { username: user.username, sub: user.id, role: user.role };
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token: this.signFor(user),
       user,
     };
+  }
+
+  /** JWT carries the user's tokenVersion: bumping it (password/PIN/role change, deactivation) revokes old tokens. */
+  signFor(user: { id: string; username: string; role: any; tokenVersion?: number | null }) {
+    return this.jwtService.sign({ username: user.username, sub: user.id, role: user.role, tv: user.tokenVersion ?? 0 });
   }
 
   async loginWithPin(pin: string, ip = 'unknown') {
@@ -67,7 +73,8 @@ export class AuthService {
 
     for (const u of users) {
       if (u.pinCode && await bcrypt.compare(pin, u.pinCode)) {
-        loginThrottle.succeed(throttleKey);
+        // A PIN is identified by itself alone (no username), so a success must NOT clear the
+        // failures counted for this IP: otherwise "4 wrong guesses + own PIN" repeats forever.
         if (DEFAULT_PINS.has(pin) && !u.mustChangePassword) {
           await this.prisma.user.update({ where: { id: u.id }, data: { mustChangePassword: true } });
           u.mustChangePassword = true;
@@ -78,9 +85,8 @@ export class AuthService {
         });
 
         const { password, pinCode, ...user } = u;
-        const payload = { username: u.username, sub: u.id, role: u.role };
         return {
-          access_token: this.jwtService.sign(payload),
+          access_token: this.signFor(u),
           user,
         };
       }
@@ -91,15 +97,19 @@ export class AuthService {
   }
 
   /** PIN login identifies the user by PIN alone, so PINs must be valid and unique. */
-  private async assertPinUsable(pin: string, exceptUserId?: string) {
+  private async assertPinUsable(pin: string, exceptUserId?: string, onTaken?: () => void) {
     if (!PIN_PATTERN.test(pin)) throw new BadRequestException('PIN ต้องเป็นตัวเลข 4-6 หลัก');
-    if (DEFAULT_PINS.has(pin)) throw new BadRequestException('PIN นี้เดาง่ายเกินไป กรุณาใช้ PIN อื่น');
+    if (DEFAULT_PINS.has(pin)) throw new BadRequestException(PIN_UNUSABLE_MESSAGE);
     const others = await this.prisma.user.findMany({
       where: { pinCode: { not: null }, ...(exceptUserId ? { id: { not: exceptUserId } } : {}) },
       select: { pinCode: true },
     });
     for (const o of others) {
-      if (o.pinCode && await bcrypt.compare(pin, o.pinCode)) throw new BadRequestException('PIN นี้ถูกใช้โดยพนักงานคนอื่นแล้ว กรุณาเลือก PIN อื่น');
+      if (o.pinCode && await bcrypt.compare(pin, o.pinCode)) {
+        onTaken?.();
+        // Same message as a guessable PIN, so the answer does not reveal that a colleague uses it.
+        throw new BadRequestException(PIN_UNUSABLE_MESSAGE);
+      }
     }
   }
 
@@ -110,17 +120,24 @@ export class AuthService {
   }
 
   /** Self-service change of password (and optionally PIN). Clears the forced-change flag. */
-  async changeOwnCredentials(userId: string, body: { currentPassword?: string; newPassword?: string; newPin?: string }) {
+  async changeOwnCredentials(userId: string, body: { currentPassword?: string; newPassword?: string; newPin?: string }, ip = 'unknown') {
+    // Throttled like PIN login: a wrong current password or a PIN that is already taken counts as
+    // a failure (per user and per IP), so the endpoint cannot be used to enumerate staff PINs.
+    const userKey = `cred-change:${userId}`;
+    const ipKey = `cred-change-ip:${ip}`;
+    loginThrottle.assertAllowed(userKey);
+    loginThrottle.assertAllowed(ipKey);
+    const failed = () => { loginThrottle.fail(userKey); loginThrottle.fail(ipKey); };
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.isActive) throw new UnauthorizedException();
     const current = String(body.currentPassword || '');
-    if (!current || !(await bcrypt.compare(current, user.password))) throw new BadRequestException('รหัสผ่านปัจจุบันไม่ถูกต้อง');
+    if (!current || !(await bcrypt.compare(current, user.password))) { failed(); throw new BadRequestException('รหัสผ่านปัจจุบันไม่ถูกต้อง'); }
     const next = String(body.newPassword || '').trim();
     if (next.length < 8) throw new BadRequestException('รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร');
     if (DEFAULT_PASSWORDS.has(next) || next.toLowerCase() === user.username.toLowerCase() || next === current) {
       throw new BadRequestException('รหัสผ่านใหม่เดาง่ายเกินไปหรือซ้ำกับรหัสเดิม');
     }
-    const data: any = { password: await bcrypt.hash(next, 10), mustChangePassword: false };
+    const data: any = { password: await bcrypt.hash(next, 10), mustChangePassword: false, tokenVersion: { increment: 1 } };
     const newPin = String(body.newPin || '').trim();
     let pinIsDefault = false;
     if (user.pinCode) {
@@ -130,11 +147,12 @@ export class AuthService {
     }
     if (pinIsDefault && !newPin) throw new BadRequestException('PIN ปัจจุบันเป็นค่าเริ่มต้น กรุณาตั้ง PIN ใหม่ด้วย');
     if (newPin) {
-      await this.assertPinUsable(newPin, user.id);
+      await this.assertPinUsable(newPin, user.id, failed);
       data.pinCode = await bcrypt.hash(newPin, 10);
     }
-    await this.prisma.user.update({ where: { id: user.id }, data });
-    return { success: true, message: 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว' };
+    const updated = await this.prisma.user.update({ where: { id: user.id }, data });
+    // Old tokens are revoked (tokenVersion bumped); hand the caller a fresh one.
+    return { success: true, message: 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว', access_token: this.signFor(updated) };
   }
 
   /** Whether this user's PIN is one of the well-known defaults (UI asks for a new one). */
@@ -151,6 +169,10 @@ export class AuthService {
       throw new BadRequestException('ชื่อผู้ใช้นี้มีอยู่ในระบบแล้ว');
     }
 
+    if (typeof registerDto.password !== 'string' || registerDto.password.trim().length < MIN_PASSWORD_LENGTH) {
+      throw new BadRequestException(`รหัสผ่านต้องยาวอย่างน้อย ${MIN_PASSWORD_LENGTH} ตัวอักษร`);
+    }
+    const permissions = registerDto.permissions === undefined ? undefined : normalizePermissions(registerDto.permissions);
     const hashedPassword = await bcrypt.hash(registerDto.password, 10);
     let hashedPin: string | undefined = undefined;
     if (registerDto.pinCode) {
@@ -160,6 +182,7 @@ export class AuthService {
     const user = await this.prisma.user.create({
       data: {
         ...registerDto,
+        ...(permissions !== undefined ? { permissions } : {}),
         password: hashedPassword,
         pinCode: hashedPin,
         mustChangePassword: DEFAULT_PASSWORDS.has(registerDto.password),
@@ -207,10 +230,17 @@ export class AuthService {
     if (data.role && !Object.values(UserRole).includes(data.role)) throw new BadRequestException('ตำแหน่งไม่ถูกต้อง');
     if (data.fullName) updatePayload.fullName = data.fullName;
     if (data.role) updatePayload.role = data.role;
-    if (data.permissions !== undefined) updatePayload.permissions = data.permissions;
-    if (data.isActive !== undefined) updatePayload.isActive = data.isActive;
+    if (data.permissions !== undefined) updatePayload.permissions = normalizePermissions(data.permissions);
+    if (data.isActive !== undefined) {
+      if (typeof data.isActive !== 'boolean') throw new BadRequestException('สถานะการใช้งานไม่ถูกต้อง');
+      updatePayload.isActive = data.isActive;
+    }
+    if (data.password !== undefined && data.password !== null && typeof data.password !== 'string') throw new BadRequestException('รหัสผ่านไม่ถูกต้อง');
+    if (data.pinCode !== undefined && data.pinCode !== null && typeof data.pinCode !== 'string') throw new BadRequestException('PIN ต้องเป็นตัวเลข 4-6 หลัก');
+    if (data.fullName !== undefined && typeof data.fullName !== 'string') throw new BadRequestException('ชื่อไม่ถูกต้อง');
 
     if (data.password && data.password.trim()) {
+      if (data.password.trim().length < MIN_PASSWORD_LENGTH) throw new BadRequestException(`รหัสผ่านต้องยาวอย่างน้อย ${MIN_PASSWORD_LENGTH} ตัวอักษร`);
       updatePayload.password = await bcrypt.hash(data.password.trim(), 10);
       updatePayload.mustChangePassword = DEFAULT_PASSWORDS.has(data.password.trim());
     }
@@ -218,6 +248,9 @@ export class AuthService {
       await this.assertPinUsable(data.pinCode.trim(), id);
       updatePayload.pinCode = await bcrypt.hash(data.pinCode.trim(), 10);
     }
+    // Revoke existing sessions when credentials, role, permissions or active state change.
+    const sensitive = ['password', 'pinCode', 'role', 'permissions', 'isActive'].some((k) => k in updatePayload);
+    if (sensitive) updatePayload.tokenVersion = { increment: 1 };
 
     const updated = await this.prisma.user.update({
       where: { id },
@@ -244,7 +277,7 @@ export class AuthService {
 
     return this.prisma.user.update({
       where: { id },
-      data: { isActive: !user.isActive },
+      data: { isActive: !user.isActive, tokenVersion: { increment: 1 } },
       select: {
         id: true,
         username: true,

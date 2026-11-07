@@ -36,10 +36,12 @@ export default function ChangePasswordPage() {
     if (newPin && !/^\d{4,6}$/.test(newPin)) return toast.error("PIN ต้องเป็นตัวเลข 4-6 หลัก");
     setSaving(true);
     try {
-      await apiFetch("/auth/change-password", {
+      const res = await apiFetch("/auth/change-password", {
         method: "POST",
         body: JSON.stringify({ currentPassword, newPassword: newPassword.trim(), newPin: newPin || undefined }),
       });
+      // The server revokes tokens issued before the change and returns a fresh one.
+      if (res?.access_token) useAuthStore.getState().setToken(res.access_token);
       useAuthStore.setState((s) => ({ user: s.user ? { ...s.user, mustChangePassword: false } : s.user }));
       toast.success("เปลี่ยนรหัสผ่านเรียบร้อยแล้ว");
       router.replace("/pos");

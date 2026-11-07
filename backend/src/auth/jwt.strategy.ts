@@ -30,6 +30,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         permissions: true,
         isActive: true,
         mustChangePassword: true,
+        tokenVersion: true,
       };
 
       let user = payload.sub
@@ -53,6 +54,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
       if (!user.isActive) {
         throw new UnauthorizedException('บัญชีผู้ใช้งานถูกระงับ');
+      }
+
+      // Tokens issued before a password/PIN/role/permission change or deactivation are revoked.
+      if (Number(payload.tv ?? 0) !== Number(user.tokenVersion ?? 0)) {
+        throw new UnauthorizedException('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
       }
 
       return {

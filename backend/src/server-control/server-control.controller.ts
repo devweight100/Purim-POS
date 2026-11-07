@@ -4,6 +4,7 @@ import { ServerUpdateService } from './server-update.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
+import { parseLatency, parseLiveState, parseTerminalId, parseTerminalName, telemetryClientIp } from './telemetry-input';
 
 @Controller('server-control')
 export class ServerControlController {
@@ -103,31 +104,38 @@ export class ServerControlController {
     return res.download(full, fileName);
   }
 
+  /**
+   * Heartbeat + live cart of a POS terminal. Requires a logged-in user (every POS screen sends
+   * its JWT through apiFetch); input is whitelisted and size-capped, the user name comes from
+   * the token, and the IP from the socket (X-Forwarded-For only behind a local proxy).
+   */
+  @UseGuards(JwtAuthGuard)
   @Post('ping')
   ping(
     @Req() req: any,
-    @Body('terminalId') terminalId: string,
-    @Body('terminalName') terminalName: string,
-    @Body('userName') userName: string,
-    @Body('latencyMs') latencyMs?: number,
-    @Body('liveState') liveState?: any,
+    @Body('terminalId') terminalId: unknown,
+    @Body('terminalName') terminalName: unknown,
+    @Body('latencyMs') latencyMs?: unknown,
+    @Body('liveState') liveState?: unknown,
   ) {
-    const rawIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
-    const clientIp = typeof rawIp === 'string' ? rawIp.replace('::ffff:', '') : '127.0.0.1';
-    this.service.recordPing(terminalId || 'UNKNOWN', terminalName, userName, clientIp, latencyMs || 5, liveState);
+    const id = parseTerminalId(terminalId);
+    const state = parseLiveState(liveState);
+    const userName = req.user?.fullName || req.user?.username || 'แคชเชียร์';
+    this.service.recordPing(id, parseTerminalName(terminalName) as string, userName, telemetryClientIp(req), parseLatency(latencyMs), state);
     return { ok: true, timestamp: new Date().toISOString() };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('sync-live-state')
   syncLiveState(
     @Req() req: any,
-    @Body('terminalId') terminalId: string,
-    @Body('liveState') liveState: any,
+    @Body('terminalId') terminalId: unknown,
+    @Body('liveState') liveState: unknown,
   ) {
-    const rawIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1';
-    const clientIp = typeof rawIp === 'string' ? rawIp.replace('::ffff:', '') : '127.0.0.1';
-    if (terminalId && liveState) {
-      this.service.recordLiveState(terminalId, liveState, clientIp);
+    const id = parseTerminalId(terminalId);
+    const state = parseLiveState(liveState);
+    if (state) {
+      this.service.recordLiveState(id, state, telemetryClientIp(req), req.user?.fullName || req.user?.username);
     }
     return { ok: true, timestamp: new Date().toISOString() };
   }

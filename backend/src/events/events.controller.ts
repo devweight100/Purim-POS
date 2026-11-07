@@ -32,9 +32,10 @@ export class EventsController {
     if (!payload?.sub && !payload?.username) throw new UnauthorizedException('Invalid token');
     try {
       const user = payload.sub
-        ? await this.prisma.user.findUnique({ where: { id: payload.sub }, select: { isActive: true } })
-        : await this.prisma.user.findUnique({ where: { username: payload.username }, select: { isActive: true } });
+        ? await this.prisma.user.findUnique({ where: { id: payload.sub }, select: { isActive: true, tokenVersion: true } })
+        : await this.prisma.user.findUnique({ where: { username: payload.username }, select: { isActive: true, tokenVersion: true } });
       if (!user || !user.isActive) throw new UnauthorizedException('Account disabled');
+      if (Number(payload.tv ?? 0) !== Number(user.tokenVersion ?? 0)) throw new UnauthorizedException('Token revoked');
     } catch (e) {
       if (e instanceof UnauthorizedException) throw e;
       throw new UnauthorizedException('Cannot verify account');

@@ -62,8 +62,11 @@ async function desktopInfo(): Promise<DesktopInfo> {
   }
 }
 
+// Non-admins get no commit hash from /api/version, so fall back to the version label.
 const sameBuild = (a?: BuildInfo | null, b?: BuildInfo | null) =>
-  Boolean(a?.commit && b?.commit && a.commit === b.commit && Boolean(a.modified) === Boolean(b.modified));
+  a?.commit && b?.commit
+    ? a.commit === b.commit && Boolean(a.modified) === Boolean(b.modified)
+    : Boolean(a?.label && b?.label && a.label === b.label && Boolean(a.modified) === Boolean(b.modified));
 
 const fmt = (iso?: string | null) =>
   iso && !isNaN(Date.parse(iso))

@@ -20,4 +20,11 @@ describe('loginThrottle', () => {
     loginThrottle.fail('c');
     expect(() => loginThrottle.assertAllowed('c')).not.toThrow();
   });
+  it('PIN-style keys are never cleared by a success: 5 failures lock even with successes in between', () => {
+    // callers for PIN login/approval never call succeed(); simulate interleaving
+    for (let round = 0; round < 2; round++) {
+      for (let i = 0; i < 4 && round * 4 + i < 5; i++) loginThrottle.fail('pin:ip');
+    }
+    expect(() => loginThrottle.assertAllowed('pin:ip')).toThrow(HttpException);
+  });
 });
