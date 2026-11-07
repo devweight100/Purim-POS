@@ -134,7 +134,7 @@ export function VersionDetails() {
       <div className="rounded-xl border border-slate-200 px-3">
         <Row
           name="ระบบที่กำลังรัน (เครื่องแม่)"
-          value={running?.label ?? '-'}
+          value={running ? `${running.label}${running.modified ? ' +แก้ไข' : ''}` : '-'}
           sub={
             running ? (
               <>
