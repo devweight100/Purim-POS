@@ -145,13 +145,49 @@ export default function MasterControlPage() {
     return `${days > 0 ? `${days}d ` : ''}${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const copyServerUrl = () => {
+  const copyServerUrl = async () => {
     if (!data?.serverIp) return;
     const url = `http://${data.serverIp}:${data.frontendPort || 3000}`;
-    navigator.clipboard.writeText(url);
-    setCopiedIp(true);
-    toast.success(`คัดลอก Server URL: ${url} แล้ว`);
-    setTimeout(() => setCopiedIp(false), 2000);
+
+    // navigator.clipboard only exists on secure origins (https/localhost); on http://192.168.x.x it is
+    // undefined, and it can also be denied. Fall back to a hidden textarea + execCommand('copy').
+    const copyWithTextarea = () => {
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-9999px';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      try {
+        ta.select();
+        ta.setSelectionRange(0, url.length);
+        return document.execCommand('copy');
+      } catch {
+        return false;
+      } finally {
+        document.body.removeChild(ta);
+      }
+    };
+
+    let copied = false;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        copied = true;
+      }
+    } catch {
+      copied = false;
+    }
+    if (!copied) copied = copyWithTextarea();
+
+    if (copied) {
+      setCopiedIp(true);
+      toast.success(`คัดลอก Server URL: ${url} แล้ว`);
+      setTimeout(() => setCopiedIp(false), 2000);
+    } else {
+      toast.error(`คัดลอกอัตโนมัติไม่ได้ กรุณาคัดลอกเอง: ${url}`, { duration: 10000 });
+    }
   };
 
   const handleInstantBackup = async () => {
