@@ -51,6 +51,7 @@ import {
 } from "@/lib/store-settings-storage";
 import { ThermalReceiptView, SAMPLE_RECEIPT_DATA } from "@/components/pos/ThermalReceiptView";
 import { formatCurrency } from "@/lib/utils";
+import { VersionDetails } from "@/components/common/VersionInfo";
 
 function BackupSection() {
   const role = useAuthStore((s) => s.user?.role);
@@ -880,6 +881,16 @@ export default function SettingsPage() {
 
       {/* ─── DANGER ZONE: SYSTEM & DATABASE RESET (Clean Light Theme with Rose Accent) ─── */}
       <BackupSection />
+
+      <Card className="bg-white border-slate-200 shadow-2xs mt-6">
+        <CardHeader className="pb-3 border-b border-slate-100">
+          <CardTitle className="text-lg text-slate-900 font-bold">เวอร์ชันระบบ</CardTitle>
+          <CardDescription className="text-slate-500 text-xs">รุ่นที่กำลังใช้งานจริง และตรวจว่าหลัง git pull / อัปเดต ได้ build และเปิดเซิร์ฟเวอร์ใหม่แล้วหรือยัง</CardDescription>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <VersionDetails />
+        </CardContent>
+      </Card>
 
       <Card className="bg-white border border-rose-200 shadow-2xs rounded-2xl overflow-hidden mt-6">
         <CardHeader className="pb-3 border-b border-rose-100 bg-rose-50/40">

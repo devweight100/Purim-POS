@@ -227,3 +227,8 @@ Some corresponding database tables already exist. The remaining work is to remov
   - The frontend renders the receipt with `flushSync` instead of a 120 ms delay.
   - Measured under xvfb, render + encode: first receipt about 0.8 s, then about 70 ms. Output is identical across runs.
   - Per-print timings are written to `%APPDATA%/purim-pos-desktop/print-log.txt`.
+- 2026-11-07: Version visibility.
+  - Builds are stamped with the source version: `backend/scripts/version-info.js` writes `dist/build-info.json` after `nest build`, and `next.config.ts` sets `NEXT_PUBLIC_BUILD_INFO`. The source version is the git HEAD plus a modified flag, or `VERSION.json` in installed copies.
+  - Public `GET /api/version` returns the running build, the source on disk and whether they match.
+  - The UI shows "เวอร์ชัน YYYY.MM.DD · sha" in the sidebar footer and on the login page, with a details dialog, and a "เวอร์ชันระบบ" card in Settings. It warns when the code on disk is newer than the running build (git pull without rebuild/restart), when the web page differs from the backend, and when the desktop app is too old (no `getAppVersion`, app 1.2.3).
+  - Installer process: commit the code first, then build the installers, so the commit recorded in `VERSION.json` matches the code.

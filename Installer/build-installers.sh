@@ -23,9 +23,15 @@ build_server() {
         cp "$f" "$stage/$f"
       done
   cp "Installer/Server/คู่มือติดตั้งเครื่องแม่ (Server).txt" "$stage/" 2>/dev/null || true
-  # Commit this installer was built from (read by update-from-github.ps1)
-  node -e "const [sha,date,msg]=process.argv.slice(1);require('fs').writeFileSync(process.argv[4],JSON.stringify({commit:sha,branch:'installer',message:msg,committedAt:date,installedAt:'',source:'installer'},null,2))" \
-    "$(git rev-parse HEAD)" "$(git log -1 --format=%cd --date=format:'%d/%m/%Y %H:%M')" "$(git log -1 --format=%s)" "$stage/VERSION.json"
+  # Version of the code inside this installer (read by the version screen and the updater).
+  # Commit the code first, then build: a clean tree makes "commit" match the code exactly.
+  local modified=false
+  if [ -n "$(git status --porcelain --untracked-files=no -- backend frontend desktop Installer/Server/setup)" ]; then
+    modified=true
+    echo "WARNING: uncommitted changes are included; the version will show as modified"
+  fi
+  node -e "const [sha,iso,msg,mod,out]=process.argv.slice(1);const d=new Date(iso);const p=n=>String(n).padStart(2,'0');require('fs').writeFileSync(out,JSON.stringify({commit:sha,branch:'installer',message:msg,committedAt:[p(d.getDate()),p(d.getMonth()+1),d.getFullYear()].join(String.fromCharCode(47))+' '+p(d.getHours())+':'+p(d.getMinutes()),committedAtIso:d.toISOString(),modified:mod==='true',installedAt:'',source:'installer'},null,2))" \
+    "$(git rev-parse HEAD)" "$(git log -1 --format=%cI)" "$(git log -1 --format=%s)" "$modified" "$stage/VERSION.json"
   echo "payload: $(find "$stage" -type f | wc -l) files, $(du -sh "$stage" | cut -f1)"
   makensis -V2 -DVERSION="$VERSION" -DPAYLOAD="$stage" \
     -DOUTFILE="$ROOT/Installer/Server/Purim-POS-Server-Setup.exe" \

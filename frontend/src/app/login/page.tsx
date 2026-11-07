@@ -1,4 +1,5 @@
 "use client";
+import { VersionBadge } from '@/components/common/VersionInfo';
 
 import { useState } from "react";
 import { useAuthStore } from "@/lib/store/auth-store";
@@ -104,6 +105,7 @@ export default function LoginPage() {
 
           <div className="pt-4 border-t border-slate-100 text-center text-xs text-slate-500">
             <p>ลืมรหัสผ่าน? ติดต่อผู้ดูแลร้าน (Admin) เพื่อตั้งรหัสใหม่</p>
+            <VersionBadge className="mx-auto mt-2" />
           </div>
         </CardContent>
       </Card>
