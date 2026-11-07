@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { ApiError } from '@/lib/api-error';
+import { useAuthStore } from '@/lib/store/auth-store';
+import { UpdatePanel } from '@/components/monitor/UpdatePanel';
 import {
   W,
   drawScene,
@@ -170,6 +172,7 @@ function Stat({ icon, label, value, color }: { icon: string; label: string; valu
 
 export default function MonitorPage() {
   const router = useRouter();
+  const isAdmin = useAuthStore((st) => st.user?.role === 'ADMIN');
   const [data, setData] = useState<Telemetry | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [log, setLog] = useState<LogLine[]>([]);
@@ -295,6 +298,7 @@ export default function MonitorPage() {
         alert: term.liveState?.alertLevel === 'ALERT' || term.liveState?.alertLevel === 'WARNING',
         hasShift: Boolean(term.shift),
         itemCount: term.liveState?.itemCount ?? 0,
+        sales: term.todaySales,
         seed: hashSeed(term.userName + term.terminalId),
       })),
       dbOnline: (data?.database.status ?? 'ONLINE') === 'ONLINE',
@@ -425,16 +429,17 @@ export default function MonitorPage() {
                       height: `${((s.h + 50) / sceneH) * 100}%`,
                     }}
                     aria-label={`${term.terminalName} ${term.userName}`}
+                    title={term.terminalName}
                   >
                     <span
                       className="absolute left-1/2 -translate-x-1/2 bottom-0 max-w-full truncate whitespace-nowrap px-1.5 py-0.5 text-[10px] sm:text-xs font-bold leading-tight"
                       style={{
                         background: offline ? '#334155' : '#0f0a16',
                         color: offline ? '#94a3b8' : '#f8fafc',
-                        boxShadow: `0 0 0 2px ${offline ? '#475569' : term.liveState?.alertLevel && term.liveState.alertLevel !== 'NORMAL' ? '#ef4444' : '#4ade80'}`,
+                        boxShadow: `0 0 0 2px ${offline ? (term.shift ? '#fb923c' : '#475569') : term.liveState?.alertLevel && term.liveState.alertLevel !== 'NORMAL' ? '#ef4444' : '#4ade80'}`,
                       }}
                     >
-                      {term.terminalName.replace(/\s*\(.*\)$/, '')}
+                      {term.userName || term.shift?.userName || term.terminalName}
                     </span>
                   </button>
                 );
@@ -519,8 +524,12 @@ export default function MonitorPage() {
                   </span>
                   <span>IP</span>
                   <span className="text-slate-100 font-mono">{selected.ipAddress}</span>
-                  <span>สัญญาณล่าสุด</span>
-                  <span className="text-slate-100">{Math.max(0, Math.round((now - new Date(selected.lastPingAt).getTime()) / 1000))} วินาทีที่แล้ว</span>
+                  {selected.status !== 'OFFLINE' && (
+                    <>
+                      <span>สัญญาณล่าสุด</span>
+                      <span className="text-slate-100">{Math.max(0, Math.round((now - new Date(selected.lastPingAt).getTime()) / 1000))} วินาทีที่แล้ว</span>
+                    </>
+                  )}
                   <span>ยอดวันนี้</span>
                   <span className="text-[#fde047] font-bold">
                     {money(selected.todaySales)} ({selected.todayBills} บิล)
@@ -559,6 +568,12 @@ export default function MonitorPage() {
                   )}
                 </div>
               </div>
+            </Panel>
+          )}
+
+          {isAdmin && (
+            <Panel title="อัปเดตระบบ (GitHub)">
+              <UpdatePanel />
             </Panel>
           )}
 
@@ -615,8 +630,9 @@ export default function MonitorPage() {
               <li><span className="inline-block w-2.5 h-2.5 mr-1.5 bg-[#fb923c]" />จอส้ม = เปิดลิ้นชัก</li>
               <li><span className="inline-block w-2.5 h-2.5 mr-1.5 bg-[#c084fc]" />จอม่วง = เคลม</li>
               <li><span className="inline-block w-2.5 h-2.5 mr-1.5 bg-[#ef4444]" />! แดง = ลบสินค้า/เตือน</li>
-              <li><span className="inline-block w-2.5 h-2.5 mr-1.5 bg-[#64748b]" />Z = ออฟไลน์</li>
-              <li><span className="inline-block w-2.5 h-2.5 mr-1.5 bg-[#fb923c]" />Z ส้ม = กะค้าง</li>
+              <li><span className="inline-block w-2.5 h-2.5 mr-1.5 bg-[#1f2933]" />จอดำ = ออฟไลน์</li>
+              <li><span className="inline-block w-2.5 h-2.5 mr-1.5 bg-[#fb923c]" />ป้ายชื่อส้ม = กะค้าง</li>
+              <li className="col-span-2"><span className="inline-block w-2.5 h-2.5 mr-1.5 bg-[#facc15]" />ตัวเลขบนโต๊ะ = ยอดขายวันนี้ของเครื่องนั้น</li>
             </ul>
           </Panel>
         </div>

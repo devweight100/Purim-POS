@@ -306,8 +306,8 @@ export class OrdersService {
         }
       }
 
-      // VAT (prices are VAT-inclusive). The terminal says whether VAT is on; the rate comes from store settings.
-      const vatEnabled = data.vatEnabled === true || (data.vatEnabled === undefined && Number(data.vatAmount) > 0);
+      // VAT (prices are VAT-inclusive). Store settings decide whether the shop charges VAT at all.
+      const vatEnabled = (settings as { vatEnabled?: boolean } | null)?.vatEnabled === true;
       const vatRate = vatEnabled ? Number(settings?.vatRate ?? 7) : 0;
       const vatAmount = vatRate > 0 ? Math.round((totalAmount * vatRate / (100 + vatRate)) * 100) / 100 : 0;
 

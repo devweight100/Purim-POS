@@ -845,6 +845,7 @@ model StoreSettings {
   backupOffsiteDir String? @map("backup_offsite_dir") // folder on another disk / synced cloud folder for backup copies
   approvalRules    Json?   @map("approval_rules") // { maxDiscountPercent: {CASHIER: 10, ...}, belowCostNeedsApproval, belowPriceFloorNeedsApproval }
   vatRate       Decimal  @default(7) @map("vat_rate") @db.Decimal(5, 2)
+  vatEnabled    Boolean  @default(false) @map("vat_enabled") // store charges VAT on sales (off = no VAT anywhere on bills)
   pointsPerBaht Decimal  @default(0.01) @map("points_per_baht") @db.Decimal(10, 4)
   pointValue    Decimal  @default(1) @map("point_value") @db.Decimal(10, 2)
   createdAt     DateTime @default(now()) @map("created_at")

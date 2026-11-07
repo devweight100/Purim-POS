@@ -208,3 +208,22 @@ Some corresponding database tables already exist. The remaining work is to remov
   - Receipts printed from the hidden off-screen container used to print blank because the hiding inline styles were copied. Fixed in `printableMarkup`.
   - Verified by capturing the real receipt HTML from a cash sale and decoding the ESC/POS output back to an image under xvfb. The raw spooler step has not been run on a real Windows printer.
 - 2026-11-07: The POS list layout has the program logo at top-left (links to the dashboard) and its bottom buttons on one row. The desktop window menu bar is hidden; its shortcuts still work and Alt shows it.
+- 2026-11-07: Server installer changes.
+  - The server installer now carries and silently installs the Purim POS desktop app. It reinstalls the app only when the setup file's SHA-256 changes.
+  - The desktop keeps only the app icon: the old server/shop/monitor/update icons are removed. Start/stop/repair live in Start > Purim POS Server.
+  - The installer grants Users Modify on the install folder so the server can update itself.
+  - "Update from GitHub" moved to the monitor page: an ADMIN-only `UpdatePanel` calls `/api/server-control/update/{status,check,token,run}` (`ServerUpdateService`).
+  - The backend starts `update-from-github.ps1 -Mode run` through `cmd /c start`, so the updater survives the server stop. Progress goes to `logs/update-status.json`. `install-server.ps1 -NoElevate` skips the admin-only steps.
+  - The PowerShell flows have not been run on Windows.
+- 2026-11-07: VAT on sales is a store-wide setting: `store_settings.vat_enabled`, migration `20261111000000_store_vat_enabled`, default off. The setting is on Settings > ข้อมูลร้าน.
+  - Checkout uses the store setting and ignores the terminal's flag.
+  - The per-terminal "ถอด VAT 7%" toggle is gone. The cart follows the setting through the `purim:store-settings` event.
+  - When VAT is off, the POS, payment card and receipts show no VAT section at all.
+  - Purchases have no VAT logic and are unaffected.
+  - New e2e test (24/24).
+- 2026-11-07: Receipt printing speed (desktop app 1.2.2).
+  - The winspool helper used to be a new PowerShell process compiling C# for every receipt, which took about 2-4 s. It is now a long-running helper (`RawPrintHost`) started 3 s after app launch, which takes one stdin line per job. If the helper is unavailable, printing falls back to the old one-shot path.
+  - The offscreen render window is reused, and the fixed sleeps were replaced by waiting two animation frames.
+  - The frontend renders the receipt with `flushSync` instead of a 120 ms delay.
+  - Measured under xvfb, render + encode: first receipt about 0.8 s, then about 70 ms. Output is identical across runs.
+  - Per-print timings are written to `%APPDATA%/purim-pos-desktop/print-log.txt`.

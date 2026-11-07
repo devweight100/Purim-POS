@@ -34,9 +34,9 @@ VIAddVersionKey /LANG=0 "LegalCopyright" "Purim POS"
 !define MUI_WELCOMEPAGE_TITLE "ติดตั้งเซิร์ฟเวอร์ ร้านปุริม POS"
 !define MUI_WELCOMEPAGE_TEXT "ตัวติดตั้งนี้ใช้กับ $\"เครื่องแม่$\" (เครื่องที่เก็บฐานข้อมูล) เพียงเครื่องเดียว$\r$\n$\r$\nจะติดตั้งให้อัตโนมัติ:$\r$\n  • Node.js (ถ้ายังไม่มี)$\r$\n  • Docker Desktop + ฐานข้อมูล PostgreSQL (ถ้ายังไม่มี)$\r$\n  • ระบบหลังบ้านและหน้าจอขาย (โหมดใช้งานจริง)$\r$\n  • เปิดเซิร์ฟเวอร์อัตโนมัติเมื่อเปิดเครื่อง + เปิด Firewall พอร์ต 3000$\r$\n$\r$\nถ้าเคยติดตั้งแล้ว ข้อมูลร้านเดิมจะถูกเก็บไว้ และสำรองข้อมูลให้ก่อนอัปเดตทุกครั้ง$\r$\n$\r$\nต้องต่ออินเทอร์เน็ตระหว่างติดตั้ง (ประมาณ 10-20 นาที)"
 !define MUI_FINISHPAGE_TITLE "ติดตั้งเสร็จแล้ว"
-!define MUI_FINISHPAGE_TEXT "เซิร์ฟเวอร์จะเปิดเองทุกครั้งที่เข้าสู่ Windows$\r$\n$\r$\nทางลัดบนหน้าจอ:$\r$\n  • เปิดเซิร์ฟเวอร์ Purim POS$\r$\n  • หยุดเซิร์ฟเวอร์ Purim POS$\r$\n  • หน้าร้าน Purim POS$\r$\n  • มอนิเตอร์ร้าน Purim POS (ดูเครื่องลูกทุกเครื่องแบบเรียลไทม์)$\r$\n$\r$\nเครื่องลูก: ติดตั้ง Purim-POS-Client-Setup.exe แล้วแอปจะค้นหาเครื่องแม่ให้อัตโนมัติ"
+!define MUI_FINISHPAGE_TEXT "เซิร์ฟเวอร์จะเปิดเองทุกครั้งที่เข้าสู่ Windows$\r$\n$\r$\nบนหน้าจอมีไอคอนแอป $\"ร้านปุริม POS$\" อย่างเดียว$\r$\nปุ่มเปิด/หยุดเซิร์ฟเวอร์อยู่ในเมนู Start > Purim POS Server$\r$\nอัปเดตระบบ: เมนู มอนิเตอร์ร้าน (Pixel View) > อัปเดตระบบ$\r$\n$\r$\nเครื่องลูก: ติดตั้ง Purim-POS-Client-Setup.exe แล้วแอปจะค้นหาเครื่องแม่ให้อัตโนมัติ"
 !define MUI_FINISHPAGE_RUN
-!define MUI_FINISHPAGE_RUN_TEXT "เปิดหน้าร้านในเบราว์เซอร์"
+!define MUI_FINISHPAGE_RUN_TEXT "เปิดแอป ร้านปุริม POS"
 !define MUI_FINISHPAGE_RUN_FUNCTION OpenPos
 
 !insertmacro MUI_PAGE_WELCOME
@@ -62,7 +62,11 @@ Function un.onInit
 FunctionEnd
 
 Function OpenPos
-  ExecShell "open" "http://localhost:3000/pos"
+  ${If} ${FileExists} "$PROGRAMFILES64\Purim POS\Purim POS.exe"
+    Exec '"$PROGRAMFILES64\Purim POS\Purim POS.exe"'
+  ${Else}
+    ExecShell "open" "http://localhost:3000/pos"
+  ${EndIf}
 FunctionEnd
 
 Function FindPowerShell

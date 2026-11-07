@@ -492,6 +492,42 @@ export default function SettingsPage() {
                 </div>
               </div>
 
+              {/* VAT on sales (store-wide). Purchases are separate and not affected. */}
+              <div className={`rounded-xl border p-3.5 space-y-2.5 ${settings.vatEnabled ? 'border-emerald-300 bg-emerald-50/60' : 'border-slate-200 bg-slate-50'}`}>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.vatEnabled === true}
+                    onChange={(e) => setSettings({ ...settings, vatEnabled: e.target.checked })}
+                    className="mt-0.5 w-5 h-5 rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="space-y-0.5">
+                    <span className="block text-sm font-extrabold text-slate-900">ร้านคิดภาษีมูลค่าเพิ่ม (VAT) จากการขาย</span>
+                    <span className="block text-xs text-slate-600 leading-relaxed">
+                      {settings.vatEnabled
+                        ? `เปิดอยู่: ราคาขายถือว่ารวม VAT ${settings.vatRate}% แล้ว ระบบถอดยอด VAT แสดงในบิล ใบเสร็จ และรายงานภาษีขาย`
+                        : 'ปิดอยู่: ไม่คิด VAT — หน้าขาย บิล และใบเสร็จจะไม่แสดงส่วนภาษีเลย (เหมาะกับร้านที่ไม่ได้จดทะเบียน VAT)'}
+                    </span>
+                  </span>
+                </label>
+                {settings.vatEnabled && (
+                  <div className="flex items-center gap-2 pl-8">
+                    <span className="text-xs font-bold text-slate-700">อัตรา VAT</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={30}
+                      step={0.01}
+                      value={settings.vatRate}
+                      onChange={(e) => setSettings({ ...settings, vatRate: Number(e.target.value) })}
+                      className="w-24 h-8 bg-white border-slate-300 font-mono font-bold"
+                    />
+                    <span className="text-xs font-bold text-slate-700">%</span>
+                  </div>
+                )}
+                <p className="text-[11px] text-slate-500 pl-8">มีผลกับบิลขายใหม่ทุกเครื่องทันทีหลังกดบันทึก (บิลเก่าไม่เปลี่ยน) · ภาษีฝั่งซื้อแยกตามบิลซื้อ ไม่เกี่ยวกับตัวเลือกนี้</p>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
@@ -833,7 +869,7 @@ export default function SettingsPage() {
 
           <div className="bg-slate-200/70 p-4 sm:p-5 rounded-2xl border border-slate-300 flex justify-center shadow-inner overflow-x-auto">
             {/* The EXACT SAME Thermal Receipt View component as used in POS sales modal */}
-            <ThermalReceiptView data={SAMPLE_RECEIPT_DATA} settings={settings} />
+            <ThermalReceiptView data={{ ...SAMPLE_RECEIPT_DATA, vatAmount: settings.vatEnabled ? SAMPLE_RECEIPT_DATA.vatAmount : 0 }} settings={settings} />
           </div>
 
           <p className="text-[11px] text-center text-slate-500 font-sans">

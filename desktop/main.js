@@ -776,7 +776,7 @@ function printViaDriver(html, printerName, isA4) {
   });
 }
 
-const { printHtmlAsRaster } = require('./escpos-raster');
+const { printHtmlAsRaster, warmUp: warmUpPrinting, shutdown: shutdownPrinting } = require('./escpos-raster');
 
 function guessPaperDots(printerName) {
   const n = String(printerName || '').toLowerCase();
@@ -899,6 +899,16 @@ app.whenReady().then(() => {
   setupAppMenu();
   createWindow();
 
+  // The receipt render window is hidden and must not keep the app alive
+  if (mainWindow) mainWindow.on('closed', () => app.quit());
+
+  // Prepare the receipt printer path in the background so the first receipt prints instantly
+  setTimeout(() => {
+    resolvePrinterDevice(loadConfig().printerName)
+      .then((printer) => warmUpPrinting({ dots: Number(loadConfig().paperDots) || guessPaperDots(printer) }))
+      .catch(() => warmUpPrinting({}));
+  }, 3000);
+
   // Register Global Shortcuts:
   // F1 -> Go to POS screen
   globalShortcut.register('F1', () => {
@@ -931,6 +941,7 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  shutdownPrinting();
 });
 
 app.on('window-all-closed', () => {
