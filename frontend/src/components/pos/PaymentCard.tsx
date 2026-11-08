@@ -4,7 +4,7 @@ import { forwardRef, useEffect, useState } from 'react';
 import { useCartStore } from '@/lib/store/cart-store';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import html2canvas from 'html2canvas';
+import { capturePrintable as html2canvas } from '@/lib/pdf-print-service';
 
 export const PaymentCard = forwardRef<HTMLDivElement, {}>((props, ref) => {
   const cart = useCartStore();

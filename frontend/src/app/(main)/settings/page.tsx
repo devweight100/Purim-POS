@@ -572,7 +572,7 @@ export default function SettingsPage() {
                     step={1}
                     inputMode="numeric"
                     value={String(lowStockInput)}
-                    onChange={e => setSettings({ ...settings, lowStockThreshold: e.target.value } as StoreSettings)}
+                    onChange={e => setSettings({ ...settings, lowStockThreshold: e.target.value } as unknown as StoreSettings)}
                     aria-invalid={!!storeFieldErrors.lowStockThreshold}
                     className={`bg-white font-mono font-bold text-slate-900 ${storeFieldErrors.lowStockThreshold ? 'border-rose-400' : 'border-slate-300'}`}
                   />
@@ -591,7 +591,7 @@ export default function SettingsPage() {
                     step={0.01}
                     inputMode="decimal"
                     value={String(cashLimitInput)}
-                    onChange={e => setSettings({ ...settings, cashMovementApprovalLimit: e.target.value } as StoreSettings)}
+                    onChange={e => setSettings({ ...settings, cashMovementApprovalLimit: e.target.value } as unknown as StoreSettings)}
                     aria-invalid={!!storeFieldErrors.cashMovementApprovalLimit}
                     className={`bg-white font-mono font-bold text-slate-900 ${storeFieldErrors.cashMovementApprovalLimit ? 'border-rose-400' : 'border-slate-300'}`}
                   />

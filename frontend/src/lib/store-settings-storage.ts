@@ -15,6 +15,10 @@ export interface StoreSettings {
   vatRate: number;
   /** the shop charges VAT on sales (prices VAT-inclusive); off = no VAT on bills/receipts */
   vatEnabled: boolean;
+  /** one "low stock" level for every page (StoreSettings.lowStockThreshold, default 5) */
+  lowStockThreshold?: number;
+  /** drawer cash in/out above this needs a manager PIN (0 = always) */
+  cashMovementApprovalLimit?: number;
 }
 
 const STORAGE_KEY = 'pos_store_settings_v2';
@@ -32,6 +36,7 @@ export const DEFAULT_STORE_SETTINGS: StoreSettings = {
   logoUrl: null,
   vatRate: 7,
   vatEnabled: false,
+  lowStockThreshold: 5,
 };
 
 export function loadStoreSettings(): StoreSettings {
@@ -55,6 +60,7 @@ function normalizeStoreSettings(settings: Partial<StoreSettings> | null | undefi
     ...(settings || {}),
     vatRate: Number(settings?.vatRate ?? DEFAULT_STORE_SETTINGS.vatRate),
     vatEnabled: settings?.vatEnabled === true,
+    lowStockThreshold: Number.isFinite(Number(settings?.lowStockThreshold)) ? Number(settings?.lowStockThreshold) : 5,
   };
 }
 
@@ -106,4 +112,10 @@ export async function saveStoreSettingsToBackend(settings: Partial<StoreSettings
     console.error('Failed to save store settings to backend:', err);
     throw err;
   }
+}
+
+/** The store-wide low-stock level (products at or below it are "ใกล้หมด"). */
+export function getLowStockThreshold(): number {
+  const n = Number(loadStoreSettings().lowStockThreshold);
+  return Number.isFinite(n) && n >= 0 ? n : 5;
 }

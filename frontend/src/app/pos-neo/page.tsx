@@ -1,5 +1,6 @@
 'use client';
 
+import { getLowStockThreshold } from '@/lib/store-settings-storage';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useShiftStore } from '@/lib/store/shift-store';
@@ -68,7 +69,7 @@ function PosNeoProductCard({
   }, [defaultUnit]);
 
   const activeUnit = units.find(u => u.id === activeUnitId || u.unitName === activeUnitId) || defaultUnit;
-  const isLowStock = product.stock <= (product.minStockAlert !== undefined && product.minStockAlert !== null ? Number(product.minStockAlert) : 10);
+  const isLowStock = product.stock <= (product.minStockAlert !== undefined && product.minStockAlert !== null ? Number(product.minStockAlert) : getLowStockThreshold());
 
   return (
     <div 

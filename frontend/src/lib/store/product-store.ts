@@ -1,3 +1,4 @@
+import { getLowStockThreshold } from '@/lib/store-settings-storage';
 import { create } from 'zustand';
 import { api, apiFetch } from '../api';
 import { Product, Category, ProductUnit } from '../types';
@@ -182,7 +183,7 @@ export const useProductStore = create<ProductStore>((set, get) => ({
           minStockAlert:
             p.minStockAlert !== undefined && p.minStockAlert !== null
               ? Number(p.minStockAlert)
-              : 10,
+              : getLowStockThreshold(),
         } as any;
       });
 

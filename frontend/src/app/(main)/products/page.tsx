@@ -1,5 +1,6 @@
 "use client";
 
+import { getLowStockThreshold } from '@/lib/store-settings-storage';
 import { useEffect, useState, useMemo, useRef, useCallback, Fragment } from "react";
 import { api, apiFetch } from "@/lib/api";
 import Link from "next/link";
@@ -347,7 +348,7 @@ const makeInitialForm = () => ({
   categoryId: "",
   stock: "0",              // จำนวนสต๊อกคงเหลือปัจจุบัน
   basePrice: "",           // ต้นทุนอ้างอิง (ถัวเฉลี่ยหรือค่าล่าสุด)
-  minStockAlert: "10",     // จำนวนสต๊อกเตือนใกล้หมด
+  minStockAlert: "",       // จำนวนสต๊อกเตือนใกล้หมด
   priceLevel1: "", priceLevel2: "", priceLevel3: "", priceLevel4: "", priceLevel5: "",
   barcodes: [{ barcode: "", supplierId: "", label: "" }] as ProductBarcode[],
   supplierEntries: [] as ProductSupplierEntry[],
@@ -420,7 +421,7 @@ export default function ProductsPage() {
         "ราคาขาย 4 (Price Level 4)": Number(p.priceLevel4 || 0),
         "ราคาขาย 5 (Price Level 5)": Number(p.priceLevel5 || 0),
         "จำนวนสต็อก (Stock)": Number(p.stock || 0),
-        "จุดแจ้งเตือนสต็อกต่ำ (Min Stock)": Number(p.minStockAlert ?? 10),
+        "จุดแจ้งเตือนสต็อกต่ำ (Min Stock)": Number(p.minStockAlert ?? getLowStockThreshold()),
         "รายละเอียดสินค้า (Description)": p.description || "",
         "รหัสระบบ (System ID - ห้ามแก้ไข)": p.id || "",
       };
@@ -603,7 +604,7 @@ export default function ProductsPage() {
             const priceLevel4 = optionalNumberCell(row["ราคาขาย 4 (Price Level 4)"] ?? row["ราคาขาย 4 (Price 4)"] ?? row["ระดับราคา 4 (Price Level 4)"] ?? row["ระดับราคา 4"] ?? row["ราคาขาย 4"] ?? row["ราคา 4"] ?? row["priceLevel4"]);
             const priceLevel5 = optionalNumberCell(row["ราคาขาย 5 (Price Level 5)"] ?? row["ราคาขาย 5 (Price 5)"] ?? row["ระดับราคา 5 (Price Level 5)"] ?? row["ระดับราคา 5"] ?? row["ราคาขาย 5"] ?? row["ราคา 5"] ?? row["priceLevel5"]);
             const stock = optionalNumberCell(row["จำนวนสต็อก (Stock)"] ?? row["จำนวนสต็อก"] ?? row["สต็อก"] ?? row["Stock"] ?? row["stock"]);
-            const minStockAlert = Number(row["จุดแจ้งเตือนสต็อกต่ำ (Min Stock)"] ?? row["จุดแจ้งเตือน"] ?? row["minStockAlert"] ?? 10);
+            const minStockAlert = Number(row["จุดแจ้งเตือนสต็อกต่ำ (Min Stock)"] ?? row["จุดแจ้งเตือน"] ?? row["minStockAlert"] ?? getLowStockThreshold());
             const description = String(row["รายละเอียดสินค้า (Description)"] ?? row["รายละเอียด"] ?? row["Description"] ?? row["description"] ?? "").trim();
 
             // Find matching product in existing catalog
@@ -925,7 +926,7 @@ export default function ProductsPage() {
       const matchSize = sizeFilter === "all" || p.size === sizeFilter;
       const matchColor = colorFilter === "all" || p.color === colorFilter;
       const stock = p.stock ?? 0;
-      const lowThreshold = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : 10;
+      const lowThreshold = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
       const matchStock = stockFilter === "all" ? true : stockFilter === "out" ? stock === 0 : stock > 0 && stock <= lowThreshold;
       return matchSearch && matchCat && matchSupplier && matchSize && matchColor && matchStock;
     });
@@ -1077,7 +1078,7 @@ export default function ProductsPage() {
       stock: (p.stock !== undefined && p.stock !== null ? p.stock : 0).toString(),
       // reference cost field (see handleSave): the product's cost, blank when the user cannot see costs
       basePrice: p.costPrice != null ? String(p.costPrice) : p.cost != null ? String(p.cost) : "",
-      minStockAlert: p.minStockAlert !== undefined && p.minStockAlert !== null ? p.minStockAlert.toString() : "10",
+      minStockAlert: p.minStockAlert !== undefined && p.minStockAlert !== null ? p.minStockAlert.toString() : String(getLowStockThreshold()),
       priceLevel1: p.priceLevel1?.toString() || "", priceLevel2: p.priceLevel2?.toString() || "",
       priceLevel3: p.priceLevel3?.toString() || "", priceLevel4: p.priceLevel4?.toString() || "",
       priceLevel5: p.priceLevel5?.toString() || "",
@@ -1148,7 +1149,7 @@ export default function ProductsPage() {
       // the "ต้นทุนอ้างอิง" field (form.basePrice) is the reference COST; selling price = ราคา 1
       basePrice: form.priceLevel1 ? parseFloat(form.priceLevel1) : null,
       costPrice: form.basePrice !== "" && form.basePrice != null ? parseFloat(form.basePrice) : undefined,
-      minStockAlert: form.minStockAlert ? parseInt(form.minStockAlert) : 10,
+      minStockAlert: form.minStockAlert ? parseInt(form.minStockAlert) : getLowStockThreshold(),
       priceLevel1: form.priceLevel1 ? parseFloat(form.priceLevel1) : null,
       priceLevel2: form.priceLevel2 ? parseFloat(form.priceLevel2) : null,
       priceLevel3: form.priceLevel3 ? parseFloat(form.priceLevel3) : null,
@@ -2025,7 +2026,7 @@ export default function ProductsPage() {
                 <TableRow><TableCell colSpan={15} className="text-center h-40 text-slate-400">ไม่พบสินค้าที่ตรงกับเงื่อนไข</TableCell></TableRow>
               ) : paginatedList.map((p: any) => {
                 const stock = p.stock ?? 0;
-                const lowThreshold = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : 10;
+                const lowThreshold = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
                 const isNegativeStock = stock < 0;
                 const isLowStock = stock > 0 && stock <= lowThreshold;
                 const stockClass = isNegativeStock

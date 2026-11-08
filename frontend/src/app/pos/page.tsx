@@ -1,5 +1,6 @@
 'use client';
 
+import { getLowStockThreshold } from '@/lib/store-settings-storage';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useShiftStore } from '@/lib/store/shift-store';
@@ -81,7 +82,7 @@ function PosProductCardItem({
         </Badge>
       )}
 
-      {product.stock <= (product.minStockAlert !== undefined && product.minStockAlert !== null ? Number(product.minStockAlert) : 10) && (
+      {product.stock <= (product.minStockAlert !== undefined && product.minStockAlert !== null ? Number(product.minStockAlert) : getLowStockThreshold()) && (
         <Badge variant="destructive" className="absolute top-2 right-2 bg-red-50 text-xs text-red-600 border-red-200 z-10 font-bold">
           เหลือ {product.stock}
         </Badge>

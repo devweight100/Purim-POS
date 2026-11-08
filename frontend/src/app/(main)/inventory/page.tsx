@@ -1,5 +1,6 @@
 'use client';
 
+import { getLowStockThreshold } from '@/lib/store-settings-storage';
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useProductStore } from '@/lib/store/product-store';
@@ -179,7 +180,7 @@ export default function InventoryPage() {
     products.forEach((p: any) => {
       const stock = Number(p.stock !== undefined && p.stock !== null ? p.stock : 0);
       const cost = Number(p.basePrice || p.cost || p.price || 0);
-      const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : 10;
+      const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
 
       totalBaseUnits += stock;
       totalValuation += Math.max(0, stock) * cost;
@@ -214,7 +215,7 @@ export default function InventoryPage() {
       const matchCategory = activeCategory === 'all' || p.categoryId === activeCategory;
 
       const stock = Number(p.stock !== undefined && p.stock !== null ? p.stock : 0);
-      const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : 10;
+      const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
 
       let matchStatus = true;
       if (stockStatusFilter === 'negative') matchStatus = stock < 0;
@@ -599,7 +600,7 @@ export default function InventoryPage() {
                 ) : (
                   paginatedProducts.map((p: any) => {
                     const stock = Number(p.stock !== undefined && p.stock !== null ? p.stock : 0);
-                    const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : 10;
+                    const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
                     const isNegative = stock < 0;
                     const isLow = stock > 0 && stock <= minAlert;
                     const isOut = stock === 0;
@@ -1024,12 +1025,12 @@ export default function InventoryPage() {
                 {products
                   .filter((p: any) => {
                     const stock = Number(p.stock !== undefined && p.stock !== null ? p.stock : 0);
-                    const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : 10;
+                    const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
                     return stock <= minAlert;
                   })
                   .map((p: any) => {
                     const stock = Number(p.stock !== undefined && p.stock !== null ? p.stock : 0);
-                    const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : 10;
+                    const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
                     const isNegative = stock < 0;
                     const isOut = stock === 0;
 
