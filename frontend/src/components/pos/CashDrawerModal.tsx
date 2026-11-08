@@ -200,9 +200,9 @@ export function CashDrawerModal({
 
       onOpenChange(false);
     } catch (err) {
-      if (err instanceof ApiError && (err as any).data?.code === 'APPROVAL_REQUIRED') {
+      if (err instanceof ApiError && err.data?.code === 'APPROVAL_REQUIRED') {
         // same movement id: the approval is bound to exactly this movement
-        setApprovalNeeded({ ticket: (err as any).data.ticket, reasons: (err as any).data.reasons || [], total: parsedAmount });
+        setApprovalNeeded({ ticket: err.data.ticket, reasons: err.data.reasons || [], total: parsedAmount });
         return;
       }
       console.error('Failed to add cash transaction:', err);
