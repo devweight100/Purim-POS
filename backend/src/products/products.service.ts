@@ -681,7 +681,10 @@ export class ProductsService {
   async bulkUpsert(items: any[], user?: { id?: string; fullName?: string; username?: string }) {
     if (!Array.isArray(items)) throw new BadRequestException('รูปแบบข้อมูลนำเข้าไม่ถูกต้อง');
     if (items.length > 20000) throw new BadRequestException('นำเข้าได้ครั้งละไม่เกิน 20,000 แถว');
-    const rows = items.map((item, idx) => this.normalizeImportRow(item, idx + 1));
+    // rowNo: spreadsheet row sent by the client (for error messages), else the position in this request
+    const rows = items.map((item, idx) =>
+      this.normalizeImportRow(item, Number.isSafeInteger(item?.rowNo) && item.rowNo > 0 ? item.rowNo : idx + 1),
+    );
     const userName = user?.fullName || user?.username;
 
     let created = 0;
