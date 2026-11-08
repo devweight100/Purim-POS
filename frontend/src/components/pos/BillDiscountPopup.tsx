@@ -32,7 +32,22 @@ export function BillDiscountPopup({ open, onOpenChange }: BillDiscountPopupProps
     }
   }, [open, cart.billDiscountType, cart.billDiscountValue]);
 
+  const subtotal = cart.getSubtotal();
+  // Validation: percent within 0-100; baht discount not above the bill amount
+  const parsedDiscount = parseFloat(discountValue);
+  let validationError: string | null = null;
+  if (discountType !== 'none' && discountValue.trim() !== '') {
+    if (isNaN(parsedDiscount) || parsedDiscount < 0) {
+      validationError = 'ส่วนลดต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป';
+    } else if (discountType === 'percent' && parsedDiscount > 100) {
+      validationError = 'ส่วนลดเปอร์เซ็นต์ต้องอยู่ระหว่าง 0 - 100%';
+    } else if (discountType === 'baht' && parsedDiscount > subtotal + 1e-9) {
+      validationError = `ส่วนลดต้องไม่เกินยอดบิล (${formatCurrency(subtotal)})`;
+    }
+  }
+
   const handleConfirm = () => {
+    if (validationError) return;
     const newDiscVal = parseFloat(discountValue);
     if (!isNaN(newDiscVal) && newDiscVal > 0 && discountType !== 'none') {
       cart.setBillDiscount(discountType, newDiscVal);
@@ -46,8 +61,6 @@ export function BillDiscountPopup({ open, onOpenChange }: BillDiscountPopupProps
     setDiscountType('none');
     setDiscountValue('');
   };
-
-  const subtotal = cart.getSubtotal();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -105,7 +118,14 @@ export function BillDiscountPopup({ open, onOpenChange }: BillDiscountPopupProps
                 className="bg-slate-50 border-slate-300 h-12 text-lg text-slate-900"
                 placeholder={discountType === 'baht' ? 'ระบุจำนวนเงิน (บาท)' : 'ระบุเปอร์เซ็นต์ (%)'}
                 autoFocus
+                min={0}
+                max={discountType === 'percent' ? 100 : subtotal}
+                aria-invalid={!!validationError}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleConfirm(); } }}
               />
+            )}
+            {validationError && (
+              <p role="alert" className="text-xs font-bold text-red-600">{validationError}</p>
             )}
           </div>
         </div>
@@ -114,7 +134,7 @@ export function BillDiscountPopup({ open, onOpenChange }: BillDiscountPopupProps
           <Button variant="outline" className="flex-1 h-12 border-slate-300 text-slate-700" onClick={() => onOpenChange(false)}>
             ยกเลิก
           </Button>
-          <Button className="flex-1 h-12 bg-primary hover:bg-primary/90 text-white" onClick={handleConfirm}>
+          <Button className="flex-1 h-12 bg-primary hover:bg-primary/90 text-white" onClick={handleConfirm} disabled={!!validationError}>
             บันทึกส่วนลด
           </Button>
         </div>

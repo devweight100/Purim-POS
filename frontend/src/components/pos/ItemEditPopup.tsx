@@ -40,23 +40,43 @@ export function ItemEditPopup({ item, open, onOpenChange }: ItemEditPopupProps) 
     }
   }, [item, open]);
 
+  // Validation: price >= 0; percent discount within 0-100; baht discount not above the line amount
+  const parsedPrice = parseFloat(customPrice);
+  const effectivePrice = item ? (!isNaN(parsedPrice) ? parsedPrice : item.originalPrice) : 0;
+  const chargeableQty = item ? Math.max(0, item.quantity - (item.claimQuantity || 0)) : 0;
+  const lineAmount = Math.max(0, effectivePrice * chargeableQty);
+  const parsedDiscount = parseFloat(discountValue);
+  let validationError: string | null = null;
+  if (customPrice.trim() !== '' && (isNaN(parsedPrice) || parsedPrice < 0)) {
+    validationError = 'ราคาขายต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป';
+  } else if (discountType !== 'none' && discountValue.trim() !== '') {
+    if (isNaN(parsedDiscount) || parsedDiscount < 0) {
+      validationError = 'ส่วนลดต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป';
+    } else if (discountType === 'percent' && parsedDiscount > 100) {
+      validationError = 'ส่วนลดเปอร์เซ็นต์ต้องอยู่ระหว่าง 0 - 100%';
+    } else if (discountType === 'baht' && parsedDiscount > lineAmount + 1e-9) {
+      validationError = `ส่วนลดต้องไม่เกินยอดรายการ (${formatCurrency(lineAmount)})`;
+    }
+  }
+
   const handleConfirm = () => {
     if (!item) return;
+    if (validationError) return;
 
     // Save Price
     const newPrice = parseFloat(customPrice);
-    if (!isNaN(newPrice) && newPrice !== item.originalPrice) {
-      cart.setCustomPrice(item.productId, newPrice);
+    if (!isNaN(newPrice) && newPrice >= 0 && newPrice !== item.originalPrice) {
+      cart.setCustomPrice(item.productId, newPrice, item.unitId);
     } else {
-      cart.setCustomPrice(item.productId, null); // reset to original
+      cart.setCustomPrice(item.productId, null, item.unitId); // reset to original
     }
 
     // Save Discount
     const newDiscVal = parseFloat(discountValue);
     if (!isNaN(newDiscVal) && newDiscVal > 0 && discountType !== 'none') {
-      cart.setItemDiscount(item.productId, discountType, newDiscVal);
+      cart.setItemDiscount(item.productId, discountType, newDiscVal, item.unitId);
     } else {
-      cart.setItemDiscount(item.productId, 'none', 0);
+      cart.setItemDiscount(item.productId, 'none', 0, item.unitId);
     }
 
     // Save Item Note
@@ -154,7 +174,14 @@ export function ItemEditPopup({ item, open, onOpenChange }: ItemEditPopupProps) 
                 className="bg-slate-50 border-slate-300 h-12 text-lg text-slate-900"
                 placeholder={discountType === 'baht' ? 'ระบุจำนวนเงิน (บาท)' : 'ระบุเปอร์เซ็นต์ (%)'}
                 autoFocus
+                min={0}
+                max={discountType === 'percent' ? 100 : lineAmount}
+                aria-invalid={!!validationError}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleConfirm(); } }}
               />
+            )}
+            {validationError && (
+              <p role="alert" className="text-xs font-bold text-red-600">{validationError}</p>
             )}
           </div>
 
@@ -178,7 +205,7 @@ export function ItemEditPopup({ item, open, onOpenChange }: ItemEditPopupProps) 
           <Button variant="outline" className="flex-1 h-12 border-slate-300 text-slate-700" onClick={() => onOpenChange(false)}>
             ยกเลิก
           </Button>
-          <Button className="flex-1 h-12 bg-primary hover:bg-primary/90 text-white" onClick={handleConfirm}>
+          <Button className="flex-1 h-12 bg-primary hover:bg-primary/90 text-white" onClick={handleConfirm} disabled={!!validationError}>
             บันทึก
           </Button>
         </div>

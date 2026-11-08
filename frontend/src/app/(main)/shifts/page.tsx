@@ -16,6 +16,7 @@ import { useShiftStore } from '@/lib/store/shift-store';
 import { ShiftSummaryData, ShiftSummaryPdfModal } from '@/components/pos/ShiftSummaryPdfModal';
 import { loadAllShiftSummaries } from '@/lib/shift-service';
 import { apiFetch } from '@/lib/api';
+import { useAuthStore } from '@/lib/store/auth-store';
 
 export default function ShiftsHistoryPage() {
   const [shifts, setShifts] = useState<ShiftSummaryData[]>([]);
@@ -57,11 +58,16 @@ export default function ShiftsHistoryPage() {
   useEffect(() => {
     fetchShifts();
     useShiftStore.getState().fetchCurrentShift();
-    apiFetch('/auth/users')
-      .then((data) => {
-        if (Array.isArray(data)) setUsersList(data);
-      })
-      .catch(() => {});
+    // The staff list (GET /auth/users) is limited to ADMIN/MANAGER; for others the cashier filter is built from the names stored on
+    // each shift (see uniqueCashiers) instead of firing a request that can only return 403.
+    const role = useAuthStore.getState().user?.role;
+    if (role === 'ADMIN' || role === 'MANAGER') {
+      apiFetch('/auth/users')
+        .then((data) => {
+          if (Array.isArray(data)) setUsersList(data);
+        })
+        .catch(() => {});
+    }
   }, []);
 
   // Unique cashiers extracted from users and shifts

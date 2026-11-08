@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useCartStore } from '@/lib/store/cart-store';
+import { useCartStore, validateDiscount } from '@/lib/store/cart-store';
 import { useProductStore } from '@/lib/store/product-store';
 import { Product, CartItem, ProductUnit } from '@/lib/types';
 import { getProductAvailableUnits, getDefaultSelectedUnit } from '@/lib/product-unit-helpers';
@@ -105,14 +105,9 @@ export function PosNeoListLayout({
     }
   }, []);
 
-  const processBarcodeScan = (scannedBarcode: string) => {
-    const raw = scannedBarcode.trim();
-    if (!raw) return;
-
-    const convertedCode = convertThaiToEnBarcode(raw).trim();
-    const code = convertedCode.toLowerCase();
-
-    const matchedProduct = products.find(p => {
+  const findProductByExactCode = (code: string): Product | undefined => {
+    if (!code) return undefined;
+    return products.find(p => {
       const matchSku = p.sku?.toLowerCase().trim() === code;
       const matchUnitBarcode = p.units?.some(u => u.barcode?.toLowerCase().trim() === code);
       const matchProductBarcodes = (p as any).barcodes?.some((b: any) => b.barcode?.toLowerCase().trim() === code);
@@ -120,6 +115,20 @@ export function PosNeoListLayout({
       const matchAvailBarcode = availableUnits.some(u => u.barcode?.toLowerCase().trim() === code);
       return matchSku || matchUnitBarcode || matchProductBarcodes || matchAvailBarcode;
     });
+  };
+
+  const processBarcodeScan = (scannedBarcode: string) => {
+    const raw = scannedBarcode.trim();
+    if (!raw) return;
+
+    // Raw code first (ASCII SKUs like "RICE-JAS-5KG" stay intact), Thai-keyboard conversion only as fallback
+    const convertedCode = convertThaiToEnBarcode(raw).trim();
+    let code = raw.toLowerCase();
+    let matchedProduct: Product | undefined;
+    for (const candidate of [raw.toLowerCase(), convertedCode.toLowerCase()]) {
+      matchedProduct = findProductByExactCode(candidate);
+      if (matchedProduct) { code = candidate; break; }
+    }
 
     if (matchedProduct) {
       const availableUnits = getProductAvailableUnits(matchedProduct);
@@ -128,8 +137,8 @@ export function PosNeoListLayout({
       setSearchQuery('');
       setIsSearchOpen(false);
     } else {
-      const thaiHint = convertedCode !== raw ? ` (แปลงจากแป้นพิมพ์ไทย: "${raw}")` : '';
-      toast.error(`❌ ไม่พบสินค้าบาร์โค้ด: "${convertedCode}"${thaiHint}`);
+      const thaiHint = convertedCode !== raw ? ` (ลองแปลงจากแป้นไทยเป็น "${convertedCode}" แล้ว)` : '';
+      toast.error(`❌ ไม่พบสินค้าบาร์โค้ด: "${raw}"${thaiHint}`);
     }
 
     setScannerInputValue('');
@@ -220,15 +229,7 @@ export function PosNeoListLayout({
       const raw = searchQuery.trim();
       if (!raw) return;
 
-      const converted = convertThaiToEnBarcode(raw).toLowerCase().trim();
-      const matchedBarcode = products.find(p => {
-        const matchSku = p.sku?.toLowerCase().trim() === converted;
-        const matchUnitBarcode = p.units?.some(u => u.barcode?.toLowerCase().trim() === converted);
-        const matchProductBarcodes = (p as any).barcodes?.some((b: any) => b.barcode?.toLowerCase().trim() === converted);
-        const availableUnits = getProductAvailableUnits(p);
-        const matchAvailBarcode = availableUnits.some(u => u.barcode?.toLowerCase().trim() === converted);
-        return matchSku || matchUnitBarcode || matchProductBarcodes || matchAvailBarcode;
-      });
+      const matchedBarcode = findProductByExactCode(raw.toLowerCase()) || findProductByExactCode(convertThaiToEnBarcode(raw).toLowerCase().trim());
 
       if (matchedBarcode) {
         processBarcodeScan(raw);
@@ -913,6 +914,11 @@ export function PosNeoListLayout({
           onConfirm={(val) => {
             if (val >= 0) {
               const currentType = discountEditItem.discountType === 'none' ? 'baht' : discountEditItem.discountType;
+              const discountError = validateDiscount(currentType, val, cart.getEffectivePrice(discountEditItem) * Math.max(0, discountEditItem.quantity - (discountEditItem.claimQuantity || 0)));
+              if (discountError) {
+                toast.error(discountError);
+                return;
+              }
               cart.setItemDiscount(discountEditItem.productId, currentType, val, discountEditItem.unitId);
               toast.success(`อัปเดตส่วนลดเป็น ${val} ${currentType === 'percent' ? '%' : 'บาท'}`);
             }

@@ -86,7 +86,9 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
   // Global F3 shortcut listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F3') {
+      // F3 has a single owner: if another handler (e.g. POS item discount, which runs first on
+      // document) already handled it, it calls preventDefault and the document search stays closed.
+      if (e.key === 'F3' && !e.defaultPrevented) {
         e.preventDefault();
         setOpen(true);
       }

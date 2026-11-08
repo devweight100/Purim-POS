@@ -10,6 +10,7 @@ import { api, apiFetch } from '@/lib/api';
 import { clearCachedProducts } from '@/lib/offline-db';
 import { useProductStore } from '@/lib/store/product-store';
 import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 interface UserItem {
   id: string;
@@ -164,6 +165,16 @@ export default function UsersManagementPage() {
       toast.error('เกิดข้อผิดพลาด: ' + (err.message || 'ไม่สามารถบันทึกได้'));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Deactivating locks the employee out, so it needs an explicit confirmation; re-activating does not.
+  const [confirmDeactivateUser, setConfirmDeactivateUser] = useState<UserItem | null>(null);
+  const requestToggleActive = (u: UserItem) => {
+    if (u.isActive) {
+      setConfirmDeactivateUser(u);
+    } else {
+      void handleToggleActive(u);
     }
   };
 
@@ -410,13 +421,13 @@ export default function UsersManagementPage() {
                       </td>
                       <td className="py-4 px-4 text-center">
                         <button
-                          onClick={() => handleToggleActive(u)}
+                          onClick={() => requestToggleActive(u)}
                           className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
                             u.isActive
                               ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
                               : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
                           }`}
-                          title="คลิกเพื่อเปลี่ยนสถานะ"
+                          title={u.isActive ? 'คลิกเพื่อระงับบัญชี (มีหน้าต่างยืนยัน)' : 'คลิกเพื่อเปิดใช้งานบัญชี'}
                         >
                           <span className={`w-1.5 h-1.5 rounded-full ${u.isActive ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                           {u.isActive ? 'ใช้งาน' : 'ระงับ'}
@@ -444,9 +455,11 @@ export default function UsersManagementPage() {
       </div>
 
       {/* Edit / Create User Modal */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+      <Dialog open={modalOpen} onOpenChange={(open) => { if (!submitting) setModalOpen(open); }}>
+          <DialogContent
+            showCloseButton={false}
+            className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-0 gap-0"
+          >
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-indigo-50/40">
               <div className="flex items-center gap-2.5">
@@ -454,10 +467,10 @@ export default function UsersManagementPage() {
                   {editingUser ? <Edit2 className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-800">
+                  <DialogTitle className="text-base font-bold text-slate-800">
                     {editingUser ? `แก้ไขข้อมูล: ${editingUser.fullName}` : 'เพิ่มพนักงานใหม่'}
-                  </h3>
-                  <p className="text-xs text-slate-500">กรอกข้อมูล กำหนดรหัส PIN และสิทธิ์การใช้งานของระบบ</p>
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-slate-500">กรอกข้อมูล กำหนดรหัส PIN และสิทธิ์การใช้งานของระบบ</DialogDescription>
                 </div>
               </div>
               <button 
@@ -621,9 +634,39 @@ export default function UsersManagementPage() {
                 </button>
               </div>
             </form>
+          </DialogContent>
+      </Dialog>
+
+      {/* Confirm deactivation (status badge click) */}
+      <Dialog open={!!confirmDeactivateUser} onOpenChange={(open) => { if (!open) setConfirmDeactivateUser(null); }}>
+        <DialogContent className="bg-white sm:max-w-md">
+          <DialogTitle className="text-base font-bold text-slate-900">ยืนยันการระงับบัญชีพนักงาน</DialogTitle>
+          <DialogDescription className="text-sm text-slate-600">
+            ระงับบัญชี <b>{confirmDeactivateUser?.fullName || confirmDeactivateUser?.username}</b> ใช่หรือไม่?
+            พนักงานคนนี้จะเข้าสู่ระบบและใช้งานจุดขายไม่ได้จนกว่าจะเปิดใช้งานอีกครั้ง
+          </DialogDescription>
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setConfirmDeactivateUser(null)}
+              className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+            >
+              ยกเลิก
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const target = confirmDeactivateUser;
+                setConfirmDeactivateUser(null);
+                if (target) void handleToggleActive(target);
+              }}
+              className="px-4 py-2 text-sm bg-rose-600 hover:bg-rose-700 text-white font-medium rounded-xl shadow-sm transition-colors"
+            >
+              ระงับบัญชี
+            </button>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
