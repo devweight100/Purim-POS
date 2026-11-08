@@ -3,6 +3,8 @@ import { grossPerUnit } from '../purchase-orders/po-calc';
 import { PrismaService } from '../prisma/prisma.service';
 import { businessTransaction } from '../prisma/business-transaction';
 import * as ledger from './ledger';
+import { bangkokDayKey, bangkokStartOfMonth, dateRangeFilter, parseDateParam } from '../common/bangkok-date';
+import { salesTotals } from '../reports/sales-math';
 
 type Actor = { id?: string } | undefined;
 const DAY = 86400000;
@@ -252,24 +254,24 @@ export class PlanningService {
 
   // ─── profit & loss ───
   async profitAndLoss(q: { from?: string; to?: string }) {
-    const to = q.to ? new Date(q.to) : new Date();
-    const from = q.from ? new Date(q.from) : new Date(to.getFullYear(), to.getMonth(), 1);
-    const period = { gte: from, lte: to };
+    // YYYY-MM-DD = whole Bangkok day (from=to=same day works); ISO timestamps used as given
+    const range = dateRangeFilter(q.from, q.to) || {};
+    const period: { gte: Date; lt?: Date; lte?: Date } = {
+      gte: range.gte ?? bangkokStartOfMonth(range.lt ? new Date(range.lt.getTime() - 1) : range.lte ?? new Date()),
+      ...(range.lt ? { lt: range.lt } : { lte: range.lte ?? new Date() }),
+    };
+    const from = period.gte;
+    const to = period.lt ? new Date(period.lt.getTime() - 1) : period.lte!;
 
-    const orders = await this.prisma.order.aggregate({
-      where: { status: 'COMPLETED', createdAt: period },
-      _sum: { totalAmount: true, vatAmount: true, totalCogs: true, discountAmount: true },
-      _count: true,
-    });
-    // partial returns made in this period reduce sales, VAT and (for restocked goods) COGS
-    const ret = await this.prisma.orderReturn.aggregate({ where: { createdAt: period }, _sum: { refundAmount: true, vatAmount: true, cogsReturned: true } });
-    const returnsInclVat = round2(Number(ret._sum.refundAmount || 0));
-    const returnsVat = Number(ret._sum.vatAmount || 0);
-    const salesInclVat = Number(orders._sum.totalAmount || 0) - returnsInclVat;
-    const outputVat = Number(orders._sum.vatAmount || 0) - returnsVat;
-    const revenue = round2(salesInclVat - outputVat);
-    const cogs = round2(Number(orders._sum.totalCogs || 0) - Number(ret._sum.cogsReturned || 0));
-    const grossProfit = round2(revenue - cogs);
+    // shared definition with /reports/*: bills in the period, partial returns made in the period
+    // reduce sales, VAT and (for restocked goods) COGS; discounts = line + bill discounts
+    const t = await salesTotals(this.prisma, period);
+    const returnsInclVat = t.returns.amount;
+    const salesInclVat = t.netSales;
+    const outputVat = t.outputVat;
+    const revenue = t.revenueExVat;
+    const cogs = t.cogs;
+    const grossProfit = t.grossProfit;
 
     const claims = await this.prisma.customerClaim.findMany({ where: { createdAt: period }, select: { metadata: true } });
     let replacementCost = 0;
@@ -316,8 +318,8 @@ export class PlanningService {
     const netProfit = round2(operatingProfit + otherIncome + overShort + adjustments);
     return {
       period: { from: from.toISOString(), to: to.toISOString() },
-      orderCount: orders._count,
-      salesInclVat: round2(salesInclVat), outputVat: round2(outputVat), revenue, returnsInclVat, discounts: round2(Number(orders._sum.discountAmount || 0)),
+      orderCount: t.completedCount,
+      salesInclVat: round2(salesInclVat), outputVat: round2(outputVat), revenue, returnsInclVat, discounts: t.discounts, grossSales: t.grossSales,
       cogs, grossProfit, grossMargin: revenue > 0 ? round2((grossProfit / revenue) * 100) : 0,
       claims: { replacementCost: round2(replacementCost), refundsPaid: round2(refundsPaid), supplierRecovery: round2(supplierRecovery), net: claimCost },
       stockWriteOff,
@@ -332,8 +334,9 @@ export class PlanningService {
   async reconcileState(accountId: string, q: { to?: string }) {
     const acc = await this.prisma.moneyAccount.findUnique({ where: { id: accountId } });
     if (!acc) throw new NotFoundException('ไม่พบบัญชี');
-    const to = q.to ? new Date(q.to) : new Date();
-    to.setHours(23, 59, 59, 999);
+    // end of the Bangkok day of `to` (default today)
+    const end = dateRangeFilter(undefined, bangkokDayKey(q.to ? parseDateParam(q.to) : new Date()))!;
+    const to = new Date(end.lt!.getTime() - 1);
     const [unreconciled, clearedAgg, ledgerAgg, history] = await Promise.all([
       this.prisma.moneyTransaction.findMany({ where: { accountId, reconciledAt: null, occurredAt: { lte: to } }, orderBy: { occurredAt: 'asc' } }),
       this.prisma.moneyTransaction.groupBy({ by: ['direction'], where: { accountId, reconciledAt: { not: null } }, _sum: { amount: true } }),

@@ -54,318 +54,148 @@ import {
   ArrowRight,
   Info
 } from "lucide-react";
-import { useShiftStore } from "@/lib/store/shift-store";
-import { useProductStore } from "@/lib/store/product-store";
-import { loadAllDebtRecords } from "@/lib/debt-service";
-import { loadCustomers } from "@/lib/customer-service";
 import { fetchAllClaimRecords, loadAllClaimRecords } from "@/lib/claim-service";
-import { DebtRecord, Customer, ClaimRecord } from "@/lib/types";
+import { ClaimRecord } from "@/lib/types";
+import { bangkokDate, bangkokParts, bangkokStartOfDay, DAY_MS } from "@/lib/bangkok-date";
 
 // Palette colors for charts
 const COLORS = ["#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#64748b"];
 
+type DashboardRange = "today" | "7days" | "30days" | "month" | "all";
+
+/** Thai short label for a Bangkok day key (YYYY-MM-DD) or month key (YYYY-MM). */
+function bucketLabel(key: string) {
+  if (/^\d{4}-\d{2}$/.test(key)) {
+    return new Date(`${key}-01T00:00:00Z`).toLocaleDateString("th-TH", { month: "short", year: "2-digit", timeZone: "UTC" });
+  }
+  return new Date(`${key}T00:00:00Z`).toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "UTC" });
+}
+
 export default function DashboardPage() {
-  const [timeFilter, setTimeFilter] = useState<"today" | "7days" | "30days" | "month" | "all">("7days");
+  const [timeFilter, setTimeFilter] = useState<DashboardRange>("7days");
   const [loading, setLoading] = useState(false);
-  const [backendOrders, setBackendOrders] = useState<any[]>([]);
+  const [dash, setDash] = useState<any>(null);
   const [claims, setClaims] = useState<ClaimRecord[]>([]);
-  const [isMounted, setIsMounted] = useState(false);
 
-  const shiftStore = useShiftStore();
-  const { products, fetchProducts } = useProductStore();
-
-  // Load backend orders + claims + local shift orders
-  const loadDashboardData = async () => {
+  // All figures come from the server aggregate (/reports/dashboard): no row cap for "all",
+  // returns netted like the P&L, Bangkok days, one low-stock threshold (StoreSettings).
+  const loadDashboardData = async (range: DashboardRange = timeFilter) => {
     setLoading(true);
     try {
-      const [ordersRes, claimsRes] = await Promise.allSettled([
-        apiFetch("/orders?limit=1000"),
+      const [dashRes, claimsRes] = await Promise.allSettled([
+        apiFetch(`/reports/dashboard?range=${range}`),
         fetchAllClaimRecords().catch(() => loadAllClaimRecords()),
       ]);
-
-      const unwrap = (res: any) => {
-        if (res.status === "fulfilled") {
-          const val = res.value;
-          if (val?.data && Array.isArray(val.data)) return val.data;
-          if (Array.isArray(val)) return val;
-        }
-        return [];
-      };
-
-      setBackendOrders(unwrap(ordersRes));
-      setClaims(unwrap(claimsRes));
-    } catch {
-      setBackendOrders([]);
+      if (dashRes.status === "fulfilled") setDash(dashRes.value);
+      else setDash(null);
+      if (claimsRes.status === "fulfilled") {
+        const val: any = claimsRes.value;
+        setClaims(Array.isArray(val) ? val : Array.isArray(val?.data) ? val.data : []);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    setIsMounted(true);
-    fetchProducts();
-    loadDashboardData();
-  }, [fetchProducts]);
+    loadDashboardData(timeFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeFilter]);
 
-  // Combine and deduplicate orders from shift store & backend
-  const allOrders = useMemo(() => {
-    const local = isMounted ? shiftStore.completedOrders || [] : [];
-    const map = new Map<string, any>();
-
-    local.forEach((o) => {
-      const key = o.orderNumber || o.id;
-      if (key) map.set(key, o);
-    });
-
-    backendOrders.forEach((b) => {
-      const key = b.orderNumber || b.id;
-      if (key && !map.has(key)) {
-        map.set(key, b);
-      }
-    });
-
-    return Array.from(map.values()).sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-  }, [isMounted, shiftStore.completedOrders, backendOrders]);
-
-  // Load debts and customers
-  const debtRecords: DebtRecord[] = useMemo(() => {
-    if (!isMounted || typeof window === "undefined") return [];
-    return loadAllDebtRecords();
-  }, [isMounted]);
-
-  const customers: any[] = useMemo(() => {
-    if (!isMounted || typeof window === "undefined") return [];
-    return loadCustomers();
-  }, [isMounted]);
-
-  // Filter orders by selected time range
-  const filteredOrders = useMemo(() => {
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-
-    return allOrders.filter((order) => {
-      const orderTime = new Date(order.createdAt).getTime();
-
-      if (timeFilter === "today") {
-        return orderTime >= startOfToday;
-      }
-      if (timeFilter === "7days") {
-        const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).getTime();
-        return orderTime >= d7;
-      }
-      if (timeFilter === "30days") {
-        const d30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).getTime();
-        return orderTime >= d30;
-      }
-      if (timeFilter === "month") {
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-        return orderTime >= startOfMonth;
-      }
-      return true; // "all"
-    });
-  }, [allOrders, timeFilter]);
-
-  // Filter claims by selected time range
+  // Claim refunds of the same period (Bangkok calendar) -- shown separately, like the P&L
   const filteredClaims = useMemo(() => {
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-
+    const now = Date.now();
+    const today = bangkokStartOfDay(now);
+    const { year, month } = bangkokParts(now);
+    const from =
+      timeFilter === "today" ? today
+      : timeFilter === "7days" ? today - 6 * DAY_MS
+      : timeFilter === "30days" ? today - 29 * DAY_MS
+      : timeFilter === "month" ? bangkokDate(year, month, 1)
+      : -Infinity;
     return claims.filter((claim) => {
       const claimTime = new Date(claim.claimDate || claim.orderDate || "").getTime();
       if (!claimTime) return true;
-
-      if (timeFilter === "today") return claimTime >= startOfToday;
-      if (timeFilter === "7days") return claimTime >= now.getTime() - 7 * 24 * 60 * 60 * 1000;
-      if (timeFilter === "30days") return claimTime >= now.getTime() - 30 * 24 * 60 * 60 * 1000;
-      if (timeFilter === "month") return claimTime >= new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-      return true;
+      return claimTime >= from;
     });
   }, [claims, timeFilter]);
 
-  // Key KPI metrics calculations (Clear distinction between Gross Sales, Refunds, and Net Revenue)
   const kpi = useMemo(() => {
-    let grossSales = 0; // ยอดขายรวมก่อนหักบิลยกเลิก/คืนเงิน
-    let completedRevenue = 0; // ยอดขายเฉพาะบิลที่สำเร็จ
-    let voidedAmount = 0; // ยอดเงินบิลที่ถูกยกเลิก (Voided / Cancelled)
-    let completedOrdersCount = 0;
-    let voidedOrdersCount = 0;
-    let totalUnitsSold = 0;
-    let voidedUnits = 0;
+    const s = dash?.sales || {};
+    const pay = dash?.payments || {};
+    const inv = dash?.inventory || {};
 
-    let cashSales = 0;
-    let qrSales = 0;
-    let creditSales = 0;
-    let cardSales = 0;
-
-    filteredOrders.forEach((o) => {
-      const isVoid = o.status === "VOIDED" || o.status === "CANCELLED";
-      const total = Number(o.totalAmount || o.total || 0);
-      grossSales += total;
-
-      if (isVoid) {
-        voidedOrdersCount++;
-        voidedAmount += total;
-        (o.items || []).forEach((it: any) => {
-          voidedUnits += Number(it.quantity || 1);
-        });
-        return;
-      }
-
-      completedOrdersCount++;
-      completedRevenue += total;
-
-      // Units sold
-      (o.items || []).forEach((it: any) => {
-        totalUnitsSold += Number(it.quantity || 1);
-      });
-
-      // Payment breakdown
-      if (Array.isArray(o.payments) && o.payments.length > 0) {
-        o.payments.forEach((p: any) => {
-          const amt = Number(p.amount || 0);
-          if (p.method === "CASH") cashSales += amt;
-          else if (p.method === "QR_PROMPTPAY" || p.method === "TRANSFER") qrSales += amt;
-          else if (p.method === "CREDIT_NOTE" || p.method === "CREDIT") creditSales += amt;
-          else if (p.method === "CREDIT_CARD") cardSales += amt;
-          else cashSales += amt;
-        });
-      } else {
-        const pm = (o.paymentMethod || "CASH").toUpperCase();
-        if (pm.includes("CASH") || pm.includes("เงินสด")) cashSales += total;
-        else if (pm.includes("QR") || pm.includes("PROMPT") || pm.includes("โอน")) qrSales += total;
-        else if (pm.includes("CREDIT_NOTE") || pm.includes("เงินเชื่อ")) creditSales += total;
-        else if (pm.includes("CARD") || pm.includes("บัตร")) cardSales += total;
-        else cashSales += total;
-      }
-    });
-
-    // Claim Refunds (คืนเงินจากการเคลมสินค้า)
     let claimRefundAmount = 0;
     let claimRefundCount = 0;
     filteredClaims.forEach((c) => {
-      const isRefund =
-        c.resolutionType === "REFUND_CASH" ||
-        c.resolutionType === "REFUND_TRANSFER" ||
-        (c as any).claimType === "REFUND";
+      const isRefund = c.resolutionType === "REFUND_CASH" || c.resolutionType === "REFUND_TRANSFER" || (c as any).claimType === "REFUND";
       if (isRefund) {
         claimRefundCount++;
         claimRefundAmount += Number(c.totalClaimValue || c.refundAmount || 0);
       }
     });
 
-    // Total Refunds & Net Revenue
-    const totalRefunds = voidedAmount + claimRefundAmount;
-    const netRevenue = Math.max(0, completedRevenue - claimRefundAmount);
-    const averageBasket = completedOrdersCount > 0 ? netRevenue / completedOrdersCount : 0;
-    const totalOrdersCount = completedOrdersCount + voidedOrdersCount;
-    const refundRate = grossSales > 0 ? ((totalRefunds / grossSales) * 100).toFixed(1) : "0";
-
-    // Debt KPI
-    let totalPendingDebt = 0;
-    debtRecords.forEach((d) => {
-      totalPendingDebt += Number(d.remainingDebt || 0);
-    });
-
-    // Inventory status
-    let lowStockCount = 0;
-    let outOfStockCount = 0;
-    let totalInventoryValue = 0;
-
-    products.forEach((p: any) => {
-      const stock = Number(p.stock || 0);
-      const minAlert = Number(p.minStockAlert ?? 10);
-      const price = Number(p.retailPrice || p.price || 0);
-      totalInventoryValue += stock * price;
-
-      if (stock <= 0) outOfStockCount++;
-      else if (stock <= minAlert) lowStockCount++;
-    });
+    const voidedAmount = Number(s.voidedAmount || 0);
+    const returnsAmount = Number(s.returnsAmount || 0);
+    const completedRevenue = Number(s.billsInclVat || 0);
+    const grossSales = completedRevenue + voidedAmount; // every bill rung up, before voids / returns
+    const totalRefunds = voidedAmount + returnsAmount; // voided bills + partial returns
+    const netRevenue = Number(s.netSales || 0); // = P&L sales incl. VAT (net of returns)
+    const completedOrdersCount = Number(s.completedCount || 0);
+    const voidedOrdersCount = Number(s.voidedCount || 0);
 
     return {
       grossSales,
       completedRevenue,
       voidedAmount,
+      returnsAmount,
+      returnCount: Number(s.returnCount || 0),
       claimRefundAmount,
       claimRefundCount,
       totalRefunds,
       netRevenue,
-      refundRate,
-      totalOrdersCount,
+      refundRate: grossSales > 0 ? ((totalRefunds / grossSales) * 100).toFixed(1) : "0",
+      totalOrdersCount: completedOrdersCount + voidedOrdersCount,
       completedOrdersCount,
       voidedOrdersCount,
-      totalUnitsSold,
-      voidedUnits,
-      averageBasket,
-      cashSales,
-      qrSales,
-      creditSales,
-      cardSales,
-      totalPendingDebt,
-      lowStockCount,
-      outOfStockCount,
-      totalProductsCount: products.length,
-      totalInventoryValue,
-      totalCustomers: customers.length,
+      totalUnitsSold: Number(s.unitsSoldNet || 0),
+      averageBasket: Number(s.averageBasket || 0),
+      cashSales: Number(pay.cash || 0),
+      qrSales: Number(pay.qrTransfer || 0),
+      creditSales: Number(pay.credit || 0), // CREDIT_DEBT (ขายเชื่อ) net of DEBT_REDUCTION returns
+      cardSales: Number(pay.card || 0),
+      otherSales: Number(pay.other || 0),
+      totalPendingDebt: Number(dash?.receivables?.totalPending || 0),
+      lowStockCount: Number(inv.lowStockCount || 0),
+      outOfStockCount: Number(inv.outOfStockCount || 0),
+      lowStockThreshold: Number(inv.lowStockThreshold ?? 5),
+      totalProductsCount: Number(inv.totalProducts || 0),
+      totalInventoryValue: Number(inv.stockCostValue || 0), // at cost
+      totalInventoryRetailValue: Number(inv.stockRetailValue || 0),
+      totalCustomers: Number(dash?.totalCustomers || 0),
     };
-  }, [filteredOrders, filteredClaims, debtRecords, products, customers]);
+  }, [dash, filteredClaims]);
 
-  // Timeline Revenue Trend Chart Data (Group by date: Sales, Refunds, Net)
+  // Timeline (Bangkok days, or months for long ranges)
   const salesTimelineData = useMemo(() => {
-    const map = new Map<string, { date: string; fullDate: string; grossSales: number; refunds: number; netSales: number; orders: number }>();
-
-    // Prepare chronological buckets
-    const now = new Date();
-    const daysToShow = timeFilter === "today" ? 1 : timeFilter === "7days" ? 7 : timeFilter === "30days" ? 30 : 14;
-
-    for (let i = daysToShow - 1; i >= 0; i--) {
-      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      const key = `${d.getDate()}/${d.getMonth() + 1}`;
-      const fullDateStr = d.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
-      map.set(key, { date: fullDateStr, fullDate: d.toISOString().split("T")[0], grossSales: 0, refunds: 0, netSales: 0, orders: 0 });
-    }
-
-    filteredOrders.forEach((o) => {
-      const isVoid = o.status === "VOIDED" || o.status === "CANCELLED";
-      const amt = Number(o.totalAmount || o.total || 0);
-      const d = new Date(o.createdAt);
-      const key = `${d.getDate()}/${d.getMonth() + 1}`;
-      const entry = map.get(key);
-
-      if (entry) {
-        if (isVoid) {
-          entry.refunds += amt;
-        } else {
-          entry.grossSales += amt;
-          entry.orders += 1;
-        }
-      } else {
-        const fullDateStr = d.toLocaleDateString("th-TH", { day: "numeric", month: "short" });
-        map.set(key, {
-          date: fullDateStr,
-          fullDate: d.toISOString().split("T")[0],
-          grossSales: isVoid ? 0 : amt,
-          refunds: isVoid ? amt : 0,
-          netSales: isVoid ? 0 : amt,
-          orders: isVoid ? 0 : 1,
-        });
-      }
-    });
-
-    return Array.from(map.values()).map((item) => ({
-      ...item,
-      netSales: Math.max(0, item.grossSales - item.refunds),
+    return (dash?.timeline || []).map((t: any) => ({
+      date: bucketLabel(t.date),
+      fullDate: t.date,
+      grossSales: Number(t.sales || 0) + Number(t.voided || 0),
+      refunds: Number(t.returns || 0) + Number(t.voided || 0),
+      netSales: Number(t.netSales || 0),
+      orders: Number(t.orders || 0),
     }));
-  }, [filteredOrders, timeFilter]);
+  }, [dash]);
 
-  // Payment Channels Donut Chart Data (Net Sales per channel)
+  // Payment Channels Donut Chart Data (net of refunds)
   const paymentChartData = useMemo(() => {
     const data = [
       { name: "เงินสด (Cash)", value: kpi.cashSales, color: "#10b981" },
       { name: "QR พร้อมเพย์ / โอน", value: kpi.qrSales, color: "#0ea5e9" },
-      { name: "เงินเชื่อ (Credit)", value: kpi.creditSales, color: "#f59e0b" },
+      { name: "ขายเชื่อ (Credit)", value: kpi.creditSales, color: "#f59e0b" },
       { name: "บัตรเครดิต", value: kpi.cardSales, color: "#8b5cf6" },
+      { name: "อื่นๆ / ใบลดหนี้", value: kpi.otherSales, color: "#64748b" },
     ].filter((item) => item.value > 0);
 
     if (data.length === 0) {
@@ -374,43 +204,14 @@ export default function DashboardPage() {
     return data;
   }, [kpi]);
 
-  // Top 5 Best-Selling Products by Revenue & Qty
+  // Top 5 products by net revenue (after bill discounts and returns)
   const topProductsData = useMemo(() => {
-    const map = new Map<string, { name: string; quantity: number; revenue: number; sku?: string }>();
+    return (dash?.topProducts || []).map((p: any) => ({ name: p.name, sku: p.sku, quantity: Number(p.quantity || 0), revenue: Number(p.revenue || 0) })) as {
+      name: string; sku?: string; quantity: number; revenue: number;
+    }[];
+  }, [dash]);
 
-    filteredOrders.forEach((o) => {
-      const isVoid = o.status === "VOIDED" || o.status === "CANCELLED";
-      if (isVoid) return;
-
-      (o.items || []).forEach((item: any) => {
-        const key = item.productId || item.sku || item.name;
-        const qty = Number(item.quantity || 1);
-        const lineTotal = Number(item.lineTotal || qty * (item.unitPrice || item.price || 0));
-
-        const existing = map.get(key);
-        if (existing) {
-          existing.quantity += qty;
-          existing.revenue += lineTotal;
-        } else {
-          map.set(key, {
-            name: item.name || item.productName || "สินค้า",
-            quantity: qty,
-            revenue: lineTotal,
-            sku: item.sku || "",
-          });
-        }
-      });
-    });
-
-    return Array.from(map.values())
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5);
-  }, [filteredOrders]);
-
-  // Recent 6 Orders
-  const recentOrders = useMemo(() => {
-    return allOrders.slice(0, 6);
-  }, [allOrders]);
+  const recentOrders: any[] = useMemo(() => dash?.recentOrders || [], [dash]);
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-5 p-4 sm:p-6 lg:p-7 font-sans">
@@ -456,7 +257,7 @@ export default function DashboardPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={loadDashboardData}
+            onClick={() => loadDashboardData()}
             className="border-slate-300 text-slate-700 hover:bg-slate-50 h-9 px-3 text-xs font-bold rounded-xl shadow-2xs gap-1.5 cursor-pointer"
             title="รีเฟรชข้อมูลแดชบอร์ด"
           >
@@ -516,7 +317,7 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between">
               <span className="text-xs text-rose-900 font-bold">2. คืนเงิน & ยกเลิกบิล (Refunds)</span>
               <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px] font-bold">
-                {kpi.voidedOrdersCount} ยกเลิก / {kpi.claimRefundCount} เคลม
+                {kpi.voidedOrdersCount} ยกเลิก / {kpi.returnCount} คืนสินค้า
               </Badge>
             </div>
             <div className="text-xl sm:text-2xl font-black font-mono text-rose-600 mt-1">
@@ -524,7 +325,8 @@ export default function DashboardPage() {
             </div>
             <div className="text-[11px] text-rose-700/90 mt-1 flex flex-wrap gap-x-2 font-medium">
               <span>ยกเลิกบิล: -{formatCurrency(kpi.voidedAmount)}</span>
-              {kpi.claimRefundAmount > 0 && <span>• เคลมคืนเงิน: -{formatCurrency(kpi.claimRefundAmount)}</span>}
+              {kpi.returnsAmount > 0 && <span>• คืนสินค้า ({kpi.returnCount}): -{formatCurrency(kpi.returnsAmount)}</span>}
+              {kpi.claimRefundAmount > 0 && <span>• เคลมคืนเงิน (แสดงแยก ไม่หักจากยอดขาย): {formatCurrency(kpi.claimRefundAmount)}</span>}
             </div>
           </div>
 
@@ -582,7 +384,7 @@ export default function DashboardPage() {
           </div>
           <div className="text-right text-[10px] text-slate-400">
             <div>{kpi.voidedOrdersCount} บิลยกเลิก</div>
-            <div>{kpi.claimRefundCount} รายการเคลม</div>
+            <div>{kpi.returnCount} รายการคืนสินค้า</div>
           </div>
         </div>
 
@@ -646,8 +448,9 @@ export default function DashboardPage() {
             <DollarSign className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <span className="text-xs text-slate-500 block font-medium">มูลค่าสต็อกในคลัง</span>
+            <span className="text-xs text-slate-500 block font-medium">มูลค่าสต็อก (ราคาทุน)</span>
             <span className="font-mono font-bold text-emerald-700 text-sm">{formatCurrency(kpi.totalInventoryValue)}</span>
+            <span className="text-[10px] text-slate-400 block font-mono">ตามราคาขาย: {formatCurrency(kpi.totalInventoryRetailValue)}</span>
           </div>
         </div>
 
@@ -666,7 +469,7 @@ export default function DashboardPage() {
             <AlertTriangle className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <span className="text-xs text-slate-500 block font-medium">สินค้าใกล้หมด/หมด</span>
+            <span className="text-xs text-slate-500 block font-medium">สินค้าใกล้หมด (≤ {kpi.lowStockThreshold}) / หมด</span>
             <span className="font-mono font-bold text-rose-600 text-sm">{kpi.lowStockCount + kpi.outOfStockCount} รายการ</span>
           </div>
         </div>
@@ -959,7 +762,7 @@ export default function DashboardPage() {
                 const isVoid = ord.status === "VOIDED" || ord.status === "CANCELLED";
                 const isCredit =
                   Array.isArray(ord.payments) &&
-                  ord.payments.some((p: any) => p.method === "CREDIT_NOTE" || p.method === "CREDIT");
+                  ord.payments.some((p: any) => p.method === "CREDIT_DEBT");
 
                 return (
                   <div
@@ -989,7 +792,7 @@ export default function DashboardPage() {
                       <div className="text-xs text-slate-500 truncate flex items-center gap-2 font-medium">
                         <span>{ord.customerName || (typeof ord.customer === "object" ? ord.customer?.name : ord.customer) || "ลูกค้าทั่วไป"}</span>
                         <span>•</span>
-                        <span>{new Date(ord.createdAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })} น.</span>
+                        <span>{new Date(ord.createdAt).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" })} น.</span>
                       </div>
                     </div>
 
@@ -998,7 +801,7 @@ export default function DashboardPage() {
                         {formatCurrency(ord.totalAmount || ord.total || 0)}
                       </span>
                       <span className="text-xs text-slate-400">
-                        {ord.items?.length || 0} รายการ
+                        {ord.itemCount ?? ord.items?.length ?? 0} รายการ
                       </span>
                     </div>
                   </div>

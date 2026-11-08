@@ -4,6 +4,7 @@ import { loadPurchaseOrders, loadSuppliers } from './supplier-return-service';
 import { loadAllDebtRecords } from './debt-service';
 import { loadCustomers } from './customer-service';
 import { loadAllShiftSummaries } from './shift-service';
+import { bangkokDate, bangkokDayKey, bangkokDayStart, bangkokParts, bangkokStartOfDay, DAY_MS } from './bangkok-date';
 
 export type ReportTimeRange = 'today' | 'yesterday' | '7days' | '30days' | 'thisMonth' | 'lastMonth' | 'thisYear' | 'all' | 'custom';
 
@@ -22,57 +23,125 @@ export function loadAllOrders(): any[] {
   return [];
 }
 
-// ─── Filter Orders by Time Range ───
+// ─── Time ranges (Asia/Bangkok calendar, end exclusive) ───
+/** [start, end) in epoch ms for a report range, using the Bangkok calendar whatever the device TZ. */
+export function reportRangeBounds(
+  timeRange: ReportTimeRange,
+  customStart?: string,
+  customEnd?: string,
+  now: number = Date.now()
+): { start: number; end: number } {
+  const today = bangkokStartOfDay(now);
+  const tomorrow = today + DAY_MS;
+  const { year, month } = bangkokParts(now);
+  switch (timeRange) {
+    case 'today':
+      return { start: today, end: tomorrow };
+    case 'yesterday':
+      return { start: today - DAY_MS, end: today };
+    case '7days':
+      return { start: today - 6 * DAY_MS, end: tomorrow };
+    case '30days':
+      return { start: today - 29 * DAY_MS, end: tomorrow };
+    case 'thisMonth':
+      return { start: bangkokDate(year, month, 1), end: tomorrow };
+    case 'lastMonth':
+      return { start: bangkokDate(year, month - 1, 1), end: bangkokDate(year, month, 1) };
+    case 'thisYear':
+      return { start: bangkokDate(year, 0, 1), end: tomorrow };
+    case 'custom': {
+      const s = customStart ? bangkokDayStart(customStart) : NaN;
+      const e = customEnd ? bangkokDayStart(customEnd) : NaN;
+      // custom end date is inclusive: the whole Bangkok day, up to next day 00:00 (exclusive)
+      return { start: isNaN(s) ? -Infinity : s, end: isNaN(e) ? Infinity : e + DAY_MS };
+    }
+    case 'all':
+    default:
+      return { start: -Infinity, end: Infinity };
+  }
+}
+
+/** Keep rows whose createdAt (or orderDate) falls in the range (Bangkok days, end exclusive). */
 export function filterOrdersByDateRange(
   orders: any[],
   timeRange: ReportTimeRange,
   customStart?: string,
   customEnd?: string
 ): any[] {
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const endOfToday = startOfToday + 86400000 - 1;
-
+  const { start, end } = reportRangeBounds(timeRange, customStart, customEnd);
+  if (start === -Infinity && end === Infinity) return orders;
   return orders.filter((o) => {
     const d = new Date(o.createdAt || o.orderDate || Date.now()).getTime();
     if (isNaN(d)) return true;
-
-    switch (timeRange) {
-      case 'today':
-        return d >= startOfToday && d <= endOfToday;
-      case 'yesterday': {
-        const startYesterday = startOfToday - 86400000;
-        const endYesterday = startOfToday - 1;
-        return d >= startYesterday && d <= endYesterday;
-      }
-      case '7days':
-        return d >= startOfToday - 6 * 86400000 && d <= endOfToday;
-      case '30days':
-        return d >= startOfToday - 29 * 86400000 && d <= endOfToday;
-      case 'thisMonth': {
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-        return d >= startOfMonth && d <= endOfToday;
-      }
-      case 'lastMonth': {
-        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
-        const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59).getTime();
-        return d >= startOfLastMonth && d <= endOfLastMonth;
-      }
-      case 'thisYear': {
-        const startOfYear = new Date(now.getFullYear(), 0, 1).getTime();
-        return d >= startOfYear && d <= endOfToday;
-      }
-      case 'custom': {
-        if (!customStart && !customEnd) return true;
-        const start = customStart ? new Date(`${customStart}T00:00:00`).getTime() : 0;
-        const end = customEnd ? new Date(`${customEnd}T23:59:59`).getTime() : Infinity;
-        return d >= start && d <= end;
-      }
-      case 'all':
-      default:
-        return true;
-    }
+    return d >= start && d < end;
   });
+}
+
+const isVoidStatus = (s: any) => s === 'VOIDED' || s === 'CANCELLED' || s === 'REFUNDED';
+const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+
+/** A partial return (OrderReturn) together with its order, for period-based netting. */
+export interface FlatReturn {
+  order: any;
+  createdAt: string;
+  refundAmount: number;
+  vatAmount: number;
+  cogsReturned: number;
+  refundMethod: string;
+  items: { orderItemId: string; productId: string; quantity: number; baseQuantity: number; refundAmount: number; unitCost: number; restock: boolean }[];
+}
+
+/**
+ * All partial returns of the given orders. Like the P&L, a return reduces sales in the period
+ * it was MADE (filter the result with filterOrdersByDateRange), not in the bill's period.
+ */
+export function collectReturns(orders: any[]): FlatReturn[] {
+  const out: FlatReturn[] = [];
+  for (const o of orders || []) {
+    if (isVoidStatus(o.status)) continue;
+    for (const r of Array.isArray(o.returns) ? o.returns : []) {
+      out.push({
+        order: o,
+        createdAt: r.createdAt || o.createdAt,
+        refundAmount: Number(r.refundAmount || 0),
+        vatAmount: Number(r.vatAmount || 0),
+        cogsReturned: Number(r.cogsReturned || 0),
+        refundMethod: String(r.refundMethod || 'CASH'),
+        items: Array.isArray(r.items) ? r.items : [],
+      });
+    }
+  }
+  return out;
+}
+
+/** Returns made in the selected range (from all loaded orders, whatever the bill date). */
+export function returnsInRange(allOrders: any[], timeRange: ReportTimeRange, customStart?: string, customEnd?: string): FlatReturn[] {
+  return filterOrdersByDateRange(collectReturns(allOrders), timeRange, customStart, customEnd);
+}
+
+/** List value of a bill: qty x unit price before any discount. */
+function orderListValue(order: any) {
+  let list = 0;
+  for (const it of order.items || []) list += Number(it.quantity || 0) * Number(it.unitPrice ?? it.price ?? 0);
+  return list;
+}
+
+/** List value of returned goods (qty x unit price of the original line). */
+function returnListValue(ret: FlatReturn) {
+  if (!ret.items.length) return ret.refundAmount;
+  let list = 0;
+  for (const ri of ret.items) {
+    const line = (ret.order.items || []).find((i: any) => i.id === ri.orderItemId);
+    list += Number(ri.quantity || 0) * Number(line?.unitPrice ?? 0);
+  }
+  return list;
+}
+
+/** Share of the bill-level discount that applies to each line: total / subtotal. */
+function billFactor(order: any) {
+  const sub = Number(order.subtotal || 0);
+  const total = Number(order.totalAmount ?? order.total ?? 0);
+  return sub > 0 ? total / sub : 1;
 }
 
 // ─── 1. Sales & Gross Profit Summary ───
@@ -87,7 +156,33 @@ export interface DailySalesProfit {
   profitMarginPercent: number;
 }
 
-export function calculateSalesAndProfitReport(orders: any[], productsCatalog: any[]) {
+/** Recorded COGS of a bill (0 is a valid recorded value); only a missing figure falls back to catalog cost. */
+function orderCost(order: any, productCostMap: Map<string, number>) {
+  if (order.totalCogs !== null && order.totalCogs !== undefined && order.totalCogs !== '') return Number(order.totalCogs) || 0;
+  let cost = 0;
+  (order.items || []).forEach((item: any) => {
+    const qty = Number(item.baseQuantity ?? item.quantity ?? 1);
+    let itemCost = item.unitCost !== null && item.unitCost !== undefined ? Number(item.unitCost) : NaN;
+    if (!Number.isFinite(itemCost)) {
+      itemCost =
+        Number(item.product?.costPrice ?? 0) ||
+        productCostMap.get(item.productId) ||
+        productCostMap.get(item.sku) ||
+        productCostMap.get(item.productName) ||
+        0;
+    }
+    cost += itemCost * qty;
+  });
+  return cost;
+}
+
+/**
+ * Sales tab. Net sales = bills in the range - returns made in the range (same rule as the P&L).
+ * Gross = qty x unit price before any discount; discounts = line + bill discounts (net of the
+ * discount share of returned goods); gross - discounts = net.
+ * `returns`: returns made in the range (returnsInRange); if omitted, each bill's own returns are used.
+ */
+export function calculateSalesAndProfitReport(orders: any[], productsCatalog: any[], returns?: FlatReturn[]) {
   const productCostMap = new Map<string, number>();
   productsCatalog.forEach((p) => {
     // IMPORTANT: Never fall back to p.basePrice (selling price) as cost!
@@ -98,86 +193,88 @@ export function calculateSalesAndProfitReport(orders: any[], productsCatalog: an
   });
 
   const dailyMap = new Map<string, DailySalesProfit>();
+  const day = (key: string) => {
+    let row = dailyMap.get(key);
+    if (!row) {
+      row = { date: key, orderCount: 0, grossSales: 0, discounts: 0, netSales: 0, cogs: 0, grossProfit: 0, profitMarginPercent: 0 };
+      dailyMap.set(key, row);
+    }
+    return row;
+  };
+
+  const completed = orders.filter((o) => !isVoidStatus(o.status));
+  completed.forEach((order) => {
+    const total = Number(order.totalAmount ?? order.total ?? 0);
+    const list = orderListValue(order);
+    const gross = list > 0 ? list : total + Number(order.discountAmount ?? order.discount ?? 0);
+    const row = day(bangkokDayKey(order.createdAt || order.orderDate || Date.now()));
+    row.orderCount += 1;
+    row.grossSales += gross;
+    row.discounts += gross - total; // line + bill discounts
+    row.netSales += total;
+    row.cogs += orderCost(order, productCostMap);
+  });
+
+  const rets = returns ?? collectReturns(completed);
+  rets.forEach((r) => {
+    const listBack = returnListValue(r);
+    const row = day(bangkokDayKey(r.createdAt));
+    row.grossSales -= listBack;
+    row.discounts -= listBack - r.refundAmount;
+    row.netSales -= r.refundAmount;
+    row.cogs -= r.cogsReturned;
+  });
 
   let totalGrossSales = 0;
   let totalDiscounts = 0;
   let totalNetSales = 0;
   let totalCogs = 0;
+  for (const row of dailyMap.values()) {
+    row.grossSales = round2(row.grossSales);
+    row.discounts = round2(row.discounts);
+    row.netSales = round2(row.netSales);
+    row.cogs = round2(row.cogs);
+    row.grossProfit = round2(row.netSales - row.cogs);
+    row.profitMarginPercent = row.netSales > 0 ? Math.round((row.grossProfit / row.netSales) * 1000) / 10 : 0;
+    totalGrossSales += row.grossSales;
+    totalDiscounts += row.discounts;
+    totalNetSales += row.netSales;
+    totalCogs += row.cogs;
+  }
 
-  orders.forEach((order) => {
-    if (order.status === 'VOIDED' || order.status === 'CANCELLED' || order.status === 'REFUNDED') return;
-
-    const orderDateStr = (order.createdAt || order.orderDate || new Date().toISOString()).slice(0, 10);
-    // partial returns (refunds) reduce the bill's net sales; restocked goods reduce its cost
-    const returns = Array.isArray(order.returns) ? order.returns : [];
-    const returnedAmount = returns.reduce((sum: number, r: any) => sum + Number(r.refundAmount || 0), 0);
-    const returnedCogs = returns.reduce((sum: number, r: any) => sum + Number(r.cogsReturned || 0), 0);
-    const net = Number(order.totalAmount ?? order.total ?? 0) - returnedAmount;
-    const disc = Number(order.discountAmount ?? order.discount ?? 0);
-    const gross = net + disc;
-
-    let orderCost = 0;
-    if (order.totalCogs != null && Number(order.totalCogs) > 0) {
-      orderCost = Number(order.totalCogs);
-    } else {
-      (order.items || []).forEach((item: any) => {
-        const qty = Number(item.baseQuantity ?? item.quantity ?? 1);
-        let itemCost = Number(item.unitCost ?? item.costPrice ?? 0);
-        if (itemCost <= 0) {
-          itemCost =
-            Number(item.product?.costPrice ?? 0) ||
-            productCostMap.get(item.productId) ||
-            productCostMap.get(item.sku) ||
-            productCostMap.get(item.productName) ||
-            0;
-        }
-        orderCost += itemCost * qty;
-      });
-    }
-
-    orderCost = Math.max(0, orderCost - returnedCogs);
-    totalGrossSales += gross;
-    totalDiscounts += disc;
-    totalNetSales += net;
-    totalCogs += orderCost;
-
-    const existing = dailyMap.get(orderDateStr);
-    if (!existing) {
-      dailyMap.set(orderDateStr, {
-        date: orderDateStr,
-        orderCount: 1,
-        grossSales: gross,
-        discounts: disc,
-        netSales: net,
-        cogs: orderCost,
-        grossProfit: net - orderCost,
-        profitMarginPercent: net > 0 ? Math.round(((net - orderCost) / net) * 1000) / 10 : 0,
-      });
-    } else {
-      existing.orderCount += 1;
-      existing.grossSales += gross;
-      existing.discounts += disc;
-      existing.netSales += net;
-      existing.cogs += orderCost;
-      existing.grossProfit = existing.netSales - existing.cogs;
-      existing.profitMarginPercent = existing.netSales > 0 ? Math.round((existing.grossProfit / existing.netSales) * 1000) / 10 : 0;
-    }
-  });
-
-  const dailyList = Array.from(dailyMap.values()).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const totalGrossProfit = totalNetSales - totalCogs;
+  const dailyList = Array.from(dailyMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+  totalNetSales = round2(totalNetSales);
+  totalCogs = round2(totalCogs);
+  const totalGrossProfit = round2(totalNetSales - totalCogs);
   const overallMargin = totalNetSales > 0 ? Math.round((totalGrossProfit / totalNetSales) * 1000) / 10 : 0;
 
   return {
-    totalOrders: orders.filter((o) => o.status !== 'VOIDED' && o.status !== 'CANCELLED' && o.status !== 'REFUNDED').length,
-    totalGrossSales,
-    totalDiscounts,
+    totalOrders: completed.length,
+    totalGrossSales: round2(totalGrossSales),
+    totalDiscounts: round2(totalDiscounts),
     totalNetSales,
+    totalReturns: round2(rets.reduce((s, r) => s + r.refundAmount, 0)),
     totalCogs,
     totalGrossProfit,
     overallMargin,
     dailyBreakdown: dailyList,
   };
+}
+
+/** Output VAT card: VAT bills in the range minus VAT of returns made in the range. */
+export function calculateVatSummary(orders: any[], returns: FlatReturn[]) {
+  const completed = orders.filter((o) => !isVoidStatus(o.status));
+  let vatAmount = completed.reduce((s, o) => s + (Number(o.vatAmount) || 0), 0);
+  let vatSales = completed.filter((o) => Number(o.vatAmount) > 0).reduce((s, o) => s + (Number(o.totalAmount) || 0), 0);
+  for (const r of returns) {
+    if (Number(r.order?.vatAmount) > 0 || r.vatAmount > 0) {
+      vatAmount -= r.vatAmount;
+      vatSales -= r.refundAmount;
+    }
+  }
+  vatAmount = round2(vatAmount);
+  vatSales = round2(vatSales);
+  return { vatAmount, vatSales, vatBase: round2(vatSales - vatAmount) };
 }
 
 // ─── 2. Best Selling & Top Profit Products ───
@@ -201,7 +298,12 @@ function extractCategoryName(category: any): string {
   return 'ทั่วไป';
 }
 
-export function calculateBestSellingProducts(orders: any[], productsCatalog: any[]) {
+/**
+ * Best sellers. Revenue per line = line total x bill-discount share (total / subtotal), so the
+ * sum over products equals net sales; returned goods (returns made in the range) are taken off
+ * quantity, revenue and (when restocked) cost.
+ */
+export function calculateBestSellingProducts(orders: any[], productsCatalog: any[], returns?: FlatReturn[]) {
   const productCostMap = new Map<string, number>();
   const productCategoryMap = new Map<string, string>();
   const productNameMap = new Map<string, string>();
@@ -239,6 +341,7 @@ export function calculateBestSellingProducts(orders: any[], productsCatalog: any
 
   orders.forEach((order) => {
     if (order.status === 'VOIDED' || order.status === 'CANCELLED' || order.status === 'REFUNDED') return;
+    const factor = billFactor(order);
 
     (order.items || []).forEach((item: any) => {
       // Prioritize item.name, item.productName, item.product.name, or lookup from productsCatalog
@@ -263,10 +366,12 @@ export function calculateBestSellingProducts(orders: any[], productsCatalog: any
       const baseQty = Number(item.baseQuantity ?? item.quantity ?? 1);
       const price = Number(item.unitPrice ?? item.price ?? 0);
       const lineDiscount = Number(item.discountAmount ?? 0);
-      const revenue = Number(item.total ?? item.subtotal ?? (price * qty - lineDiscount));
+      const revenue = Number(item.total ?? item.subtotal ?? (price * qty - lineDiscount)) * factor;
 
-      let cost = Number(item.unitCost ?? item.costPrice ?? 0);
-      if (cost <= 0) {
+      // recorded cost of the sale (0 is valid); catalog cost only when nothing was recorded
+      const recorded = item.unitCost ?? item.costPrice;
+      let cost = recorded !== null && recorded !== undefined ? Number(recorded) || 0 : NaN;
+      if (!Number.isFinite(cost)) {
         cost =
           Number(item.product?.costPrice ?? 0) ||
           productCostMap.get(item.productId) ||
@@ -324,6 +429,34 @@ export function calculateBestSellingProducts(orders: any[], productsCatalog: any
     });
   });
 
+  // returned goods
+  const rets = returns ?? collectReturns(orders);
+  for (const r of rets) {
+    for (const ri of r.items) {
+      const line = (r.order.items || []).find((i: any) => i.id === ri.orderItemId);
+      const key = ri.productId || line?.productId;
+      if (!key) continue;
+      let entry = map.get(key);
+      if (!entry) {
+        entry = {
+          id: key, name: line?.product?.name || productNameMap.get(key) || 'สินค้า', sku: line?.product?.sku || productSkuMap.get(key) || '-',
+          category: extractCategoryName(line?.product?.category || productCategoryMap.get(key)), unitName: productUnitMap.get(key) || 'ชิ้น',
+          quantitySold: 0, totalRevenue: 0, totalCost: 0, totalProfit: 0, profitMarginPercent: 0,
+        };
+        map.set(key, entry);
+      }
+      entry.quantitySold -= Number(ri.baseQuantity ?? ri.quantity ?? 0);
+      entry.totalRevenue -= Number(ri.refundAmount || 0);
+      if (ri.restock !== false) entry.totalCost -= Number(ri.unitCost || 0) * Number(ri.baseQuantity ?? ri.quantity ?? 0);
+    }
+  }
+  for (const e of map.values()) {
+    e.totalRevenue = round2(e.totalRevenue);
+    e.totalCost = round2(e.totalCost);
+    e.totalProfit = round2(e.totalRevenue - e.totalCost);
+    e.profitMarginPercent = e.totalRevenue > 0 ? Math.round((e.totalProfit / e.totalRevenue) * 1000) / 10 : 0;
+  }
+
   const list = Array.from(map.values());
   const byQuantity = [...list].sort((a, b) => b.quantitySold - a.quantitySold);
   const byProfit = [...list].sort((a, b) => b.totalProfit - a.totalProfit);
@@ -352,15 +485,28 @@ export interface InventoryValuationItem {
   totalRetailValue: number;
   potentialProfit: number;
   daysSinceLastSale?: number;
-  isDeadstock: boolean; // No sale in 30+ days or never sold
+  daysSinceLastReceipt?: number;
+  isDeadstock: boolean; // stock on hand, no sale in 30+ days and nothing received in 30+ days
   isLowStock: boolean;
 }
 
+export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
+export const DEADSTOCK_DAYS = 30;
+
+/**
+ * Inventory tab. Stock value at cost (FIFO batches); retail value shown separately.
+ * Low stock = stock <= StoreSettings.lowStockThreshold (one threshold everywhere, default 5).
+ * Deadstock = stock on hand, no sale for DEADSTOCK_DAYS AND nothing received within DEADSTOCK_DAYS
+ * (goods that just arrived are not "dead").
+ */
 export function calculateInventoryValuationReport(
   products: any[],
   orders: any[],
-  batchValuationByProduct?: Record<string, { quantityRemaining: number; totalCostValue: number; averageUnitCost: number }>
+  batchValuationByProduct?: Record<string, { quantityRemaining: number; totalCostValue: number; averageUnitCost: number }>,
+  options: { lowStockThreshold?: number; lastReceivedAtByProduct?: Record<string, string | null>; deadstockDays?: number } = {}
 ) {
+  const threshold = Number.isFinite(Number(options.lowStockThreshold)) ? Number(options.lowStockThreshold) : DEFAULT_LOW_STOCK_THRESHOLD;
+  const deadDays = options.deadstockDays ?? DEADSTOCK_DAYS;
   const lastSoldDateMap = new Map<string, number>();
 
   orders.forEach((o) => {
@@ -387,7 +533,7 @@ export function calculateInventoryValuationReport(
   let deadstockCostVal = 0;
   let lowStockCount = 0;
 
-  const items: InventoryValuationItem[] = products.map((p) => {
+  const items: InventoryValuationItem[] = products.filter((p) => !p.isBundle).map((p) => {
     const batchInfo = p.id ? batchValuationByProduct?.[p.id] : undefined;
     const stock = Math.max(0, Number(batchInfo?.quantityRemaining ?? p.stock ?? p.quantity ?? 0));
     // IMPORTANT: Use explicit costPrice for cost and priceLevel1/basePrice for retail price!
@@ -422,8 +568,10 @@ export function calculateInventoryValuationReport(
 
     const lastSaleTime = lastSoldDateMap.get(p.id) || lastSoldDateMap.get(p.sku) || 0;
     const daysSinceLastSale = lastSaleTime > 0 ? Math.floor((nowTime - lastSaleTime) / 86400000) : 999;
-    const isDeadstock = stock > 0 && daysSinceLastSale >= 30;
-    const isLowStock = stock <= (p.minStock || 5);
+    const lastReceived = options.lastReceivedAtByProduct?.[p.id] ? new Date(options.lastReceivedAtByProduct[p.id] as string).getTime() : 0;
+    const daysSinceLastReceipt = lastReceived > 0 ? Math.floor((nowTime - lastReceived) / 86400000) : 999;
+    const isDeadstock = stock > 0 && daysSinceLastSale >= deadDays && daysSinceLastReceipt >= deadDays;
+    const isLowStock = stock <= threshold;
 
     totalProducts += 1;
     totalStockPieces += stock;
@@ -452,6 +600,7 @@ export function calculateInventoryValuationReport(
       totalRetailValue: retailVal,
       potentialProfit,
       daysSinceLastSale,
+      daysSinceLastReceipt,
       isDeadstock,
       isLowStock,
     };
@@ -469,6 +618,7 @@ export function calculateInventoryValuationReport(
     deadstockPieces,
     deadstockCostVal,
     lowStockCount,
+    lowStockThreshold: threshold,
     items: items.sort((a, b) => b.totalCostValue - a.totalCostValue),
     deadstockList,
     lowStockList,
@@ -484,55 +634,83 @@ export interface PaymentChannelBreakdown {
   percentage: number;
 }
 
-export function calculatePaymentsAndShiftsReport(orders: any[], shiftsHistory: any[]) {
+/**
+ * Payments tab.
+ * - channels: money per channel for bills in the range, net of refunds of returns made in the range
+ *   (CASH / TRANSFER refunds; DEBT_REDUCTION reduces the credit channel). CREDIT_DEBT = credit sale.
+ * - totalCollected = money actually received: cash + QR/transfer + card - refunds + debt receipts
+ *   in the range. Unpaid credit sales are NOT collected money (shown separately).
+ * - shift statistics: only shifts closed (or opened, if still open) within the range.
+ */
+export function calculatePaymentsAndShiftsReport(
+  orders: any[],
+  shiftsHistory: any[],
+  options: { returns?: FlatReturn[]; debtReceipts?: { amount: number; method?: string; createdAt: string }[]; inRange?: (iso: string) => boolean } = {}
+) {
   const methodMap = new Map<string, { label: string; count: number; amount: number }>();
 
   methodMap.set('CASH', { label: 'เงินสด (Cash)', count: 0, amount: 0 });
   methodMap.set('QR_PROMPTPAY', { label: 'สแกน QR PromptPay / โอนเงิน', count: 0, amount: 0 });
   methodMap.set('CREDIT_CARD', { label: 'บัตรเครดิต / เดบิต', count: 0, amount: 0 });
-  methodMap.set('CREDIT', { label: 'เงินเชื่อ / ค้างชำระ (ลูกหนี้)', count: 0, amount: 0 });
+  methodMap.set('CREDIT', { label: 'ขายเชื่อ (ยังไม่ได้รับเงิน)', count: 0, amount: 0 });
+  methodMap.set('STORE_CREDIT', { label: 'ใบลดหนี้ / เครดิตร้าน', count: 0, amount: 0 });
   methodMap.set('OTHER', { label: 'ช่องทางอื่นๆ', count: 0, amount: 0 });
 
-  let totalCollected = 0;
+  const channelKey = (m: string) => {
+    if (m === 'CREDIT_DEBT' || m === 'CREDIT' || m === 'DEBT_REDUCTION') return 'CREDIT';
+    if (m === 'CREDIT_NOTE') return 'STORE_CREDIT';
+    if (m === 'TRANSFER' || m === 'QR_PROMPTPAY') return 'QR_PROMPTPAY';
+    if (m === 'CASH' || m === 'CREDIT_CARD') return m;
+    return 'OTHER';
+  };
+  const add = (m: string, amt: number, count = 1) => {
+    const entry = methodMap.get(channelKey(m)) || methodMap.get('OTHER')!;
+    entry.count += count;
+    entry.amount += amt;
+  };
 
   orders.forEach((o) => {
-    if (o.status === 'VOIDED' || o.status === 'CANCELLED' || o.status === 'REFUNDED') return;
-
+    if (isVoidStatus(o.status)) return;
     if (Array.isArray(o.payments) && o.payments.length > 0) {
-      o.payments.forEach((p: any) => {
-        const amt = Number(p.amount || 0);
-        totalCollected += amt;
-        let m = p.method || 'OTHER';
-        if (m === 'CREDIT_NOTE' || m === 'CREDIT_DEBT') m = 'CREDIT';
-        else if (m === 'TRANSFER') m = 'QR_PROMPTPAY';
-        const entry = methodMap.get(m) || methodMap.get('OTHER')!;
-        entry.count += 1;
-        entry.amount += amt;
-      });
+      o.payments.forEach((p: any) => add(p.method || 'OTHER', Number(p.amount || 0)));
     } else {
-      const amt = Number(o.totalAmount ?? o.total ?? 0);
-      totalCollected += amt;
-      let m = o.paymentMethod || 'CASH';
-      if (m === 'CREDIT_NOTE' || m === 'CREDIT_DEBT') m = 'CREDIT';
-      else if (m === 'TRANSFER') m = 'QR_PROMPTPAY';
-      const entry = methodMap.get(m) || methodMap.get('OTHER')!;
-      entry.count += 1;
-      entry.amount += amt;
+      add(o.paymentMethod || 'CASH', Number(o.totalAmount ?? o.total ?? 0));
     }
   });
+
+  let refunds = 0;
+  for (const r of options.returns ?? collectReturns(orders)) {
+    add(r.refundMethod, -r.refundAmount, 0);
+    if (r.refundMethod !== 'DEBT_REDUCTION') refunds += r.refundAmount;
+  }
+
+  const debtReceipts = (options.debtReceipts || []).filter((d) => !options.inRange || options.inRange(d.createdAt));
+  const debtReceived = round2(debtReceipts.reduce((s, d) => s + Number(d.amount || 0), 0));
+
+  const amountOf = (k: string) => round2(methodMap.get(k)?.amount || 0);
+  const salesCollected = round2(amountOf('CASH') + amountOf('QR_PROMPTPAY') + amountOf('CREDIT_CARD') + amountOf('OTHER'));
+  const totalCollected = round2(salesCollected + debtReceived);
+  const totalSales = round2(Array.from(methodMap.values()).reduce((s, e) => s + e.amount, 0));
 
   const channels: PaymentChannelBreakdown[] = Array.from(methodMap.entries())
     .map(([method, data]) => ({
       method,
       label: data.label,
       orderCount: data.count,
-      totalAmount: data.amount,
-      percentage: totalCollected > 0 ? Math.round((data.amount / totalCollected) * 1000) / 10 : 0,
+      totalAmount: round2(data.amount),
+      percentage: totalSales > 0 ? Math.round((data.amount / totalSales) * 1000) / 10 : 0,
     }))
-    .filter((c) => c.totalAmount > 0);
+    .filter((c) => Math.abs(c.totalAmount) >= 0.005);
+  if (debtReceived > 0) {
+    channels.push({ method: 'DEBT_RECEIPT', label: 'รับชำระหนี้ลูกค้า (เงินเข้า ไม่ใช่ยอดขาย)', orderCount: debtReceipts.length, totalAmount: debtReceived, percentage: 0 });
+  }
 
-  // Shift discrepancy summary
-  const shifts = Array.isArray(shiftsHistory) ? shiftsHistory : [];
+  // Shift discrepancy summary (shifts of the selected range only)
+  const shifts = (Array.isArray(shiftsHistory) ? shiftsHistory : []).filter((s) => {
+    if (!options.inRange) return true;
+    const when = s.closedAt || s.openedAt || s.createdAt;
+    return !when || options.inRange(when);
+  });
   const totalShiftsCount = shifts.length;
   let totalExpectedCash = 0;
   let totalActualCash = 0;
@@ -553,19 +731,23 @@ export function calculatePaymentsAndShiftsReport(orders: any[], shiftsHistory: a
     totalActualCash += act;
     totalCashDiscrepancy += diff;
 
-    if (diff === 0) balancedShifts += 1;
+    if (Math.abs(diff) < 0.005) balancedShifts += 1;
     else if (diff < 0) shortShifts += 1;
     else overShifts += 1;
   });
 
   return {
     totalCollected,
+    salesCollected,
+    debtReceived,
+    creditSales: amountOf('CREDIT'),
+    refunds: round2(refunds),
     channels,
     shifts: {
       totalShiftsCount,
-      totalExpectedCash,
-      totalActualCash,
-      totalCashDiscrepancy,
+      totalExpectedCash: round2(totalExpectedCash),
+      totalActualCash: round2(totalActualCash),
+      totalCashDiscrepancy: round2(totalCashDiscrepancy),
       balancedShifts,
       shortShifts,
       overShifts,
@@ -595,6 +777,10 @@ export interface DebtAgingBucket {
   totalAmount: number;
 }
 
+/**
+ * Customers tab. totalSpent = bills in the range net of their partial returns (incl. DEBT_REDUCTION).
+ * Debt aging here is by BILL AGE (days since the bill date); Finance overview buckets by days OVERDUE.
+ */
 export function calculateCustomerAndDebtsReport(orders: any[], debts: any[], customers: any[]) {
   // 1. Build lookup maps from customers catalog
   const customerProfileMap = new Map<string, any>();
@@ -631,7 +817,10 @@ export function calculateCustomerAndDebtsReport(orders: any[], debts: any[], cus
     const cName = profile?.name || rawName;
     const cPhone = profile?.phone || o.customerPhone || o.customer?.phone || '-';
     const cPoints = Number(profile?.points || 0);
-    const amt = Number(o.totalAmount ?? o.total ?? 0);
+    const returned = Array.isArray(o.returns) && o.returns.length
+      ? o.returns.reduce((s: number, r: any) => s + Number(r.refundAmount || 0), 0)
+      : Number(o.returnedAmount || 0);
+    const amt = round2(Number(o.totalAmount ?? o.total ?? 0) - returned);
     const orderDate = o.createdAt || o.orderDate || '';
 
     const existing = customerSpendingMap.get(cId);
@@ -651,6 +840,7 @@ export function calculateCustomerAndDebtsReport(orders: any[], debts: any[], cus
     } else {
       existing.orderCount += 1;
       existing.totalSpent += amt;
+      existing.totalSpent = round2(existing.totalSpent);
       existing.averageTicket = Math.round(existing.totalSpent / existing.orderCount);
       if (orderDate && (!existing.lastOrderDate || new Date(orderDate) > new Date(existing.lastOrderDate))) {
         existing.lastOrderDate = orderDate;
@@ -687,10 +877,10 @@ export function calculateCustomerAndDebtsReport(orders: any[], debts: any[], cus
   let totalOutstandingDebt = 0;
 
   const buckets: DebtAgingBucket[] = [
-    { bucketName: 'หนี้ใหม่ (0 - 15 วัน)', rangeDays: '0-15', billCount: 0, totalAmount: 0 },
-    { bucketName: 'หนี้ปกติ (16 - 30 วัน)', rangeDays: '16-30', billCount: 0, totalAmount: 0 },
-    { bucketName: 'หนี้เริ่มค้าง (31 - 60 วัน)', rangeDays: '31-60', billCount: 0, totalAmount: 0 },
-    { bucketName: 'หนี้ค้างนาน / เกินกำหนด (> 60 วัน)', rangeDays: '60+', billCount: 0, totalAmount: 0 },
+    { bucketName: 'อายุบิล 0 - 15 วัน', rangeDays: '0-15', billCount: 0, totalAmount: 0 },
+    { bucketName: 'อายุบิล 16 - 30 วัน', rangeDays: '16-30', billCount: 0, totalAmount: 0 },
+    { bucketName: 'อายุบิล 31 - 60 วัน', rangeDays: '31-60', billCount: 0, totalAmount: 0 },
+    { bucketName: 'อายุบิลเกิน 60 วัน', rangeDays: '60+', billCount: 0, totalAmount: 0 },
   ];
 
   const unpaidDebts = (debts || []).filter((d) => {
@@ -736,102 +926,78 @@ export function calculateCustomerAndDebtsReport(orders: any[], debts: any[], cus
 export interface SupplierPurchaseSummary {
   supplierId: string;
   supplierName: string;
-  poCount: number;
-  totalPurchaseAmount: number;
-  totalPaidAmount: number;
-  remainingPayable: number;
+  poCount: number; // POs with goods received in the range
+  totalPurchaseAmount: number; // value RECEIVED in the range
+  orderedNotReceived: number; // still to be delivered (now)
+  remainingPayable: number; // owed now for received goods (same as Finance overview)
   claimsCount: number;
   claimPieces: number;
   claimCostTotal: number;
 }
 
-export function calculatePurchasesAndClaimsReport(purchaseOrders: any[], claims: any[], suppliers: any[]) {
+export interface PurchasesData {
+  receipts: { createdAt: string; supplierId: string; supplierName: string; poNumber: string; value: number }[];
+  open: { supplierId: string; supplierName: string; poNumber: string; value: number }[];
+  payable: { supplierId: string; supplierName: string; poNumber: string; amount: number }[];
+}
+
+/**
+ * Purchases tab (from /reports/analytics `purchases`):
+ * - purchases = value of goods RECEIVED in the selected range (by receipt date)
+ * - ordered but not yet received = separate column (current, not range-bound)
+ * - remaining payable = owed for received goods, same formula as /finance/overview
+ * Claims are filtered by the caller to the same range.
+ */
+export function calculatePurchasesAndClaimsReport(purchases: PurchasesData, claims: any[], suppliers: any[], inRange?: (iso: string) => boolean) {
   const map = new Map<string, SupplierPurchaseSummary>();
-
-  // Populate from suppliers catalog
-  suppliers.forEach((s) => {
-    map.set(s.id, {
-      supplierId: s.id,
-      supplierName: s.name,
-      poCount: 0,
-      totalPurchaseAmount: 0,
-      totalPaidAmount: 0,
-      remainingPayable: 0,
-      claimsCount: 0,
-      claimPieces: 0,
-      claimCostTotal: 0,
-    });
-  });
-
-  // Aggregate Purchase Orders
-  purchaseOrders.forEach((po) => {
-    if (po.status === 'CANCELLED' || po.status === 'DRAFT') return;
-    const suppId = po.supplierId || po.supplier?.id || 'UNKNOWN';
-    const suppName = po.supplierName || po.supplier?.name || 'ไม่ระบุผู้จำหน่าย';
-    const total = Number(po.totalAmount || 0);
-
-    let entry = map.get(suppId);
-    if (!entry) {
-      entry = {
-        supplierId: suppId,
-        supplierName: suppName,
-        poCount: 0,
-        totalPurchaseAmount: 0,
-        totalPaidAmount: 0,
-        remainingPayable: 0,
-        claimsCount: 0,
-        claimPieces: 0,
-        claimCostTotal: 0,
-      };
-      map.set(suppId, entry);
+  const entry = (id: string, name: string) => {
+    let e = map.get(id);
+    if (!e) {
+      e = { supplierId: id, supplierName: name, poCount: 0, totalPurchaseAmount: 0, orderedNotReceived: 0, remainingPayable: 0, claimsCount: 0, claimPieces: 0, claimCostTotal: 0 };
+      map.set(id, e);
     }
+    return e;
+  };
+  (suppliers || []).forEach((s) => entry(s.id, s.name));
 
-    entry.poCount += 1;
-    entry.totalPurchaseAmount += total;
-    entry.remainingPayable += Number(po.remainingPayable ?? (total - Number(po.paidAmount || 0)));
-    entry.totalPaidAmount += Number(po.paidAmount ?? (total - Number(po.remainingPayable || 0)));
-  });
+  const poSeen = new Map<string, Set<string>>();
+  for (const r of purchases?.receipts || []) {
+    if (inRange && !inRange(r.createdAt)) continue;
+    const e = entry(r.supplierId, r.supplierName);
+    e.totalPurchaseAmount += Number(r.value || 0);
+    const seen = poSeen.get(r.supplierId) || new Set<string>();
+    seen.add(r.poNumber);
+    poSeen.set(r.supplierId, seen);
+  }
+  for (const [id, seen] of poSeen) entry(id, '').poCount = seen.size;
+  for (const o of purchases?.open || []) entry(o.supplierId, o.supplierName).orderedNotReceived += Number(o.value || 0);
+  for (const p of purchases?.payable || []) entry(p.supplierId, p.supplierName).remainingPayable += Number(p.amount || 0);
 
-  // Aggregate Claims
-  claims.forEach((c) => {
-    const suppId = c.supplierId || 'UNKNOWN';
-    let entry = map.get(suppId);
-    if (!entry) {
-      entry = {
-        supplierId: suppId,
-        supplierName: c.supplierName || 'ไม่ระบุผู้จำหน่าย',
-        poCount: 0,
-        totalPurchaseAmount: 0,
-        totalPaidAmount: 0,
-        remainingPayable: 0,
-        claimsCount: 0,
-        claimPieces: 0,
-        claimCostTotal: 0,
-      };
-      map.set(suppId, entry);
-    }
-
+  (claims || []).forEach((c) => {
+    const e = entry(c.supplierId || 'UNKNOWN', c.supplierName || 'ไม่ระบุผู้จำหน่าย');
     const qty = Number(c.baseQuantity !== undefined ? c.baseQuantity : (c.quantity || 1));
-    const cost = Number(
-      c.totalCostValue ??
-        (c.costPrice ? Number(c.costPrice) * qty : c.totalClaimValue ?? 0)
-    );
-
-    entry.claimsCount += 1;
-    entry.claimPieces += qty;
-    entry.claimCostTotal += cost;
+    const cost = Number(c.totalCostValue ?? (c.costPrice ? Number(c.costPrice) * qty : c.totalClaimValue ?? 0));
+    e.claimsCount += 1;
+    e.claimPieces += qty;
+    e.claimCostTotal += cost;
   });
 
   const list = Array.from(map.values())
-    .filter((s) => s.poCount > 0 || s.claimsCount > 0)
+    .map((e) => ({
+      ...e,
+      totalPurchaseAmount: round2(e.totalPurchaseAmount),
+      orderedNotReceived: round2(e.orderedNotReceived),
+      remainingPayable: round2(e.remainingPayable),
+      claimCostTotal: round2(e.claimCostTotal),
+    }))
+    .filter((s) => s.totalPurchaseAmount > 0 || s.orderedNotReceived > 0 || s.remainingPayable > 0 || s.claimsCount > 0)
     .sort((a, b) => b.totalPurchaseAmount - a.totalPurchaseAmount);
 
-  const totalPurchasesOverall = list.reduce((s, i) => s + i.totalPurchaseAmount, 0);
-  const totalClaimsCostOverall = list.reduce((s, i) => s + i.claimCostTotal, 0);
-
   return {
-    totalPurchasesOverall,
-    totalClaimsCostOverall,
+    totalPurchasesOverall: round2(list.reduce((s, i) => s + i.totalPurchaseAmount, 0)),
+    totalOrderedNotReceived: round2(list.reduce((s, i) => s + i.orderedNotReceived, 0)),
+    totalRemainingPayable: round2(list.reduce((s, i) => s + i.remainingPayable, 0)),
+    totalClaimsCostOverall: round2(list.reduce((s, i) => s + i.claimCostTotal, 0)),
     supplierBreakdown: list,
   };
 }

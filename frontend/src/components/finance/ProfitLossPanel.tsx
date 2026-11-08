@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
+import { bangkokDate, bangkokDayKey, bangkokParts } from '@/lib/bangkok-date';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,23 +16,27 @@ interface PL {
   stockWriteOff: number; expenses: Record<string, number>; totalExpenses: number; operatingProfit: number;
   otherIncome: number; cashOverShort: number; accountAdjustments: number; netProfit: number; netMargin: number;
 }
-const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const iso = (d: Date) => bangkokDayKey(d); // Bangkok calendar day
 
 export function ProfitLossPanel() {
   const now = new Date();
-  const [from, setFrom] = useState(iso(new Date(now.getFullYear(), now.getMonth(), 1)));
+  const bk = bangkokParts(now);
+  const [from, setFrom] = useState(iso(new Date(bangkokDate(bk.year, bk.month, 1))));
   const [to, setTo] = useState(iso(now));
   const [data, setData] = useState<PL | null>(null);
   useEffect(() => {
-    const f = new Date(`${from}T00:00:00`).toISOString();
-    const t = new Date(`${to}T23:59:59`).toISOString();
+    // date-only = whole Bangkok day on the server (to is inclusive, up to next day 00:00)
+    const f = from;
+    const t = to;
     apiFetch(`/finance/profit-loss?from=${encodeURIComponent(f)}&to=${encodeURIComponent(t)}`).then(setData).catch((err: any) => toast.error(err?.message || 'โหลดไม่สำเร็จ'));
   }, [from, to]);
   const preset = (kind: 'this' | 'last' | 'year') => {
     const n = new Date();
-    if (kind === 'this') { setFrom(iso(new Date(n.getFullYear(), n.getMonth(), 1))); setTo(iso(n)); }
-    if (kind === 'last') { setFrom(iso(new Date(n.getFullYear(), n.getMonth() - 1, 1))); setTo(iso(new Date(n.getFullYear(), n.getMonth(), 0))); }
-    if (kind === 'year') { setFrom(iso(new Date(n.getFullYear(), 0, 1))); setTo(iso(n)); }
+    const { year, month } = bangkokParts(n);
+    const at = (y: number, m: number, d: number) => iso(new Date(bangkokDate(y, m, d)));
+    if (kind === 'this') { setFrom(at(year, month, 1)); setTo(iso(n)); }
+    if (kind === 'last') { setFrom(at(year, month - 1, 1)); setTo(at(year, month, 0)); }
+    if (kind === 'year') { setFrom(at(year, 0, 1)); setTo(iso(n)); }
   };
   const Row = ({ label, value, strong, indent, sign }: { label: string; value: number; strong?: boolean; indent?: boolean; sign?: '-' | '+' }) => (
     <div className={`flex justify-between py-1 ${strong ? 'font-black border-t border-slate-300 mt-1 pt-2' : ''} ${indent ? 'pl-5 text-slate-600' : ''}`}>

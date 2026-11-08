@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api';
+import { bangkokDayKey, bangkokDayStart, DAY_MS } from '@/lib/bangkok-date';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +15,9 @@ interface State {
   ledgerBalance: number; clearedBalance: number; unreconciled: Row[];
   history: { id: string; statementDate: string; statementBalance: number; difference: number; createdAt: string; note?: string }[];
 }
-const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const iso = (d: Date) => bangkokDayKey(d); // Bangkok calendar day
+/** last millisecond of a Bangkok day */
+const endOfDayIso = (key: string) => new Date(bangkokDayStart(key) + DAY_MS - 1).toISOString();
 
 /** Parse a statement CSV: needs a date column and either one signed amount or separate deposit/withdraw columns. */
 function parseStatement(text: string): { date: Date; amount: number }[] {
@@ -49,7 +52,7 @@ export function ReconcilePanel({ accounts, onChanged }: { accounts: FinAccount[]
   const load = useCallback(async () => {
     if (!accountId) return;
     try {
-      const s = await apiFetch(`/finance/reconcile/${accountId}?to=${encodeURIComponent(new Date(`${statementDate}T23:59:59`).toISOString())}`);
+      const s = await apiFetch(`/finance/reconcile/${accountId}?to=${encodeURIComponent(statementDate)}`);
       setState(s); setChecked(new Set());
     } catch (err: any) { toast.error(err?.message || 'โหลดไม่สำเร็จ'); }
   }, [accountId, statementDate]);
@@ -83,7 +86,7 @@ export function ReconcilePanel({ accounts, onChanged }: { accounts: FinAccount[]
     try {
       const res = await apiFetch(`/finance/reconcile/${accountId}`, {
         method: 'POST',
-        body: JSON.stringify({ statementDate: new Date(`${statementDate}T23:59:59`).toISOString(), statementBalance: Number(statementBalance), transactionIds: [...checked], adjustDifference: adjust, adjustReason }),
+        body: JSON.stringify({ statementDate: endOfDayIso(statementDate), statementBalance: Number(statementBalance), transactionIds: [...checked], adjustDifference: adjust, adjustReason }),
       });
       toast.success(res.difference === 0 ? `กระทบยอดตรงกันแล้ว (${res.matched} รายการ)` : `บันทึกแล้ว ยังต่างอยู่ ${formatCurrency(res.difference)}`);
       setAdjustReason(''); void load(); onChanged();

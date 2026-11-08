@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { businessTransaction } from '../prisma/business-transaction';
 import * as ledger from './ledger';
 import { PlanningService } from './planning.service';
+import { addDays, bangkokDayKey, bangkokStartOfDay, dateRangeFilter, DAY_MS, parseDateParam } from '../common/bangkok-date';
 
 type Actor = { id?: string; fullName?: string; username?: string } | undefined;
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -75,6 +76,7 @@ export class FinanceService {
   // ─── accounts ───
   async listAccounts() {
     await ledger.ensureCoreAccounts(this.prisma);
+    await ledger.removeUnusedDuplicateCoreAccounts(this.prisma);
     const [accounts, bal, openShifts] = await Promise.all([
       this.prisma.moneyAccount.findMany({ orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }], include: { bankAccount: true } }),
       ledger.balances(this.prisma),
@@ -257,7 +259,8 @@ export class FinanceService {
     const where: any = {};
     if (q.includeCancelled !== 'true') where.status = 'ACTIVE';
     if (q.categoryId) where.categoryId = q.categoryId;
-    if (q.from || q.to) where.paidAt = { ...(q.from ? { gte: new Date(q.from) } : {}), ...(q.to ? { lte: new Date(q.to) } : {}) };
+    const range = dateRangeFilter(q.from, q.to); // YYYY-MM-DD = whole Bangkok day
+    if (range) where.paidAt = range;
     const [rows, total, sum] = await Promise.all([
       this.prisma.expense.findMany({
         where, skip: (page - 1) * limit, take: limit, orderBy: { paidAt: 'desc' },
@@ -280,6 +283,9 @@ export class FinanceService {
     const description = String(body.description || '').trim();
     if (!description) throw new BadRequestException('กรุณาระบุรายละเอียดค่าใช้จ่าย');
     if (body.receiptImage && body.receiptImage.length > 3_000_000) throw new BadRequestException('รูปใบเสร็จใหญ่เกินไป (ไม่เกินประมาณ 2MB)');
+    const paidAt = body.paidAt ? parseDateParam(String(body.paidAt)) : undefined;
+    // money leaves the account now, so the expense cannot be dated in the future (5 min clock tolerance)
+    if (paidAt && paidAt.getTime() > Date.now() + 5 * 60_000) throw new BadRequestException('วันที่จ่ายค่าใช้จ่ายต้องไม่เป็นวันในอนาคต');
     return businessTransaction(this.prisma, (tx) =>
       this.once(tx, body.clientId, { op: 'expense', cat: body.categoryId, acc: body.accountId, amount, description }, async () => {
         const acc = await this.account(tx, String(body.accountId));
@@ -289,7 +295,7 @@ export class FinanceService {
         }
         const { expense } = await ledger.recordExpense(tx, {
           categoryId: String(body.categoryId), accountId: acc.id, amount, description,
-          vendor: body.vendor, receiptImage: body.receiptImage, paidAt: body.paidAt ? new Date(body.paidAt) : undefined, userId: actor?.id,
+          vendor: body.vendor, receiptImage: body.receiptImage, paidAt, userId: actor?.id,
         });
         const expenseNumber = expense.expenseNumber;
         await this.mirrorDrawer(tx, acc, 'OUT', amount, `ค่าใช้จ่าย ${expenseNumber}: ${description}`);
@@ -319,7 +325,8 @@ export class FinanceService {
     const where: any = {};
     if (q.accountId) where.accountId = q.accountId;
     if (q.type) where.type = q.type;
-    if (q.from || q.to) where.occurredAt = { ...(q.from ? { gte: new Date(q.from) } : {}), ...(q.to ? { lte: new Date(q.to) } : {}) };
+    const range = dateRangeFilter(q.from, q.to); // YYYY-MM-DD = whole Bangkok day
+    if (range) where.occurredAt = range;
     const [rows, total] = await Promise.all([
       this.prisma.moneyTransaction.findMany({
         where, skip: (page - 1) * limit, take: limit, orderBy: [{ occurredAt: 'desc' }, { createdAt: 'desc' }],
@@ -345,10 +352,13 @@ export class FinanceService {
   /** Balances now + money in / out in a period, grouped by kind and expense category. */
   async summary(q: { from?: string; to?: string }) {
     const accounts = await this.listAccounts();
-    const from = q.from ? new Date(q.from) : (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; })();
-    const to = q.to ? new Date(q.to) : new Date();
+    // default: today (Bangkok); YYYY-MM-DD params cover the whole Bangkok day
+    const range = dateRangeFilter(q.from || bangkokDayKey(new Date()), q.to) || {};
+    const from = range.gte!;
+    const toFilter = range.lt ? { lt: range.lt } : { lte: range.lte ?? new Date() };
+    const to = range.lt ? new Date(range.lt.getTime() - 1) : toFilter.lte!;
     const rows = await this.prisma.moneyTransaction.findMany({
-      where: { occurredAt: { gte: from, lte: to } },
+      where: { occurredAt: { gte: from, ...toFilter } },
       select: { direction: true, amount: true, type: true, occurredAt: true, transferGroupId: true, reversalOfId: true, category: { select: { name: true } }, account: { select: { type: true } } },
     });
     const inByType: Record<string, number> = {};
@@ -365,7 +375,7 @@ export class FinanceService {
     const add = (bucket: Record<string, number>, key: string, v: number) => { bucket[key] = round2((bucket[key] || 0) + v); };
     const dayIn: Record<string, number> = {};
     const dayOut: Record<string, number> = {};
-    const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const dayKey = (d: Date) => bangkokDayKey(d);
     for (const r of rows) {
       const amt = Number(r.amount);
       const kind = r.type === 'REVERSAL' ? originalType.get(r.reversalOfId || '') || 'REVERSAL' : r.type;
@@ -400,11 +410,11 @@ export class FinanceService {
       flow: { totalIn: round2(totalIn), totalOut: round2(totalOut), net: round2(totalIn - totalOut), inByType, outByType, expenseByCategory },
       daily: (() => {
         const days: { date: string; in: number; out: number; net: number }[] = [];
-        const d = new Date(from); d.setHours(0, 0, 0, 0);
+        let d = bangkokStartOfDay(from);
         while (d <= to && days.length < 92) {
           const k = dayKey(d);
           days.push({ date: k, in: dayIn[k] || 0, out: dayOut[k] || 0, net: round2((dayIn[k] || 0) - (dayOut[k] || 0)) });
-          d.setDate(d.getDate() + 1);
+          d = addDays(d, 1);
         }
         return days;
       })(),
@@ -416,8 +426,8 @@ export class FinanceService {
    * Due date of a supplier bill: PO due date, else bill date + supplier credit terms (30 days default).
    */
   async overview() {
-    const DAY = 86400000;
-    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const DAY = DAY_MS;
+    const today = bangkokStartOfDay(); // Bangkok calendar, whatever the server TZ
     const pos = await this.prisma.purchaseOrder.findMany({
       where: { status: { in: ['PARTIALLY_RECEIVED', 'RECEIVED', 'COMPLETED'] }, remainingPayable: { gt: 0 } },
       select: {
@@ -431,7 +441,7 @@ export class FinanceService {
         const received = po.items.reduce((sum, i) => sum + i.receivedQty * grossPerUnit(i), 0);
         const amount = round2(Math.max(0, Math.min(Number(po.remainingPayable), received - Number(po.paidAmount))));
         const due = po.dueDate ?? new Date(po.billDate.getTime() + (po.supplier.creditTerms ?? 30) * DAY);
-        const daysToDue = Math.floor((new Date(due).setHours(0, 0, 0, 0) - today.getTime()) / DAY);
+        const daysToDue = Math.floor((bangkokStartOfDay(due).getTime() - today.getTime()) / DAY);
         return { poId: po.id, poNumber: po.poNumber, invoiceNo: po.supplierInvoiceNo, supplierId: po.supplier.id, supplierName: po.supplier.name, amount, dueDate: due.toISOString(), daysToDue, dueDateSet: !!po.dueDate };
       })
       .filter((p) => p.amount > 0)
@@ -457,7 +467,7 @@ export class FinanceService {
     for (const d of debts) {
       const amt = Number(d.remainingAmount);
       const due = d.dueDate ?? new Date(d.createdAt.getTime() + 30 * DAY);
-      const overdueDays = Math.floor((today.getTime() - new Date(due).setHours(0, 0, 0, 0)) / DAY);
+      const overdueDays = Math.floor((today.getTime() - bangkokStartOfDay(due).getTime()) / DAY);
       if (overdueDays <= 0) buckets.notDue += amt;
       else if (overdueDays <= 30) buckets.d1_30 += amt;
       else if (overdueDays <= 60) buckets.d31_60 += amt;
@@ -478,6 +488,10 @@ export class FinanceService {
       debtorCount: customers.length,
       overdueDebtorCount: customers.filter((c) => c.overdue > 0).length,
       buckets,
+      // buckets are by days OVERDUE (past the due date; no due date = bill date + 30 days),
+      // not by bill age like the Reports "customers" tab
+      agingBasis: 'DAYS_OVERDUE',
+      agingBasisLabel: 'นับจากวันเลยกำหนดชำระ (ไม่มีกำหนด = 30 วันหลังวันบิล)',
       topDebtors: customers.slice(0, 20),
     };
 

@@ -29,9 +29,24 @@ export interface PostInput {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+/**
+ * Date of a sale's ledger rows = the bill date. Offline bills synced later (back-dated createdAt) are
+ * then on the same day in Finance as in the P&L. Only the first posting of an order is back-dated;
+ * re-postings after a payment change (old rows reversed today) stay at "now".
+ */
+async function saleDate(tx: Tx, input: PostInput): Promise<Date | undefined> {
+  if (input.occurredAt || input.type !== 'SALE' || input.refType !== 'ORDER' || !input.refId) return input.occurredAt;
+  if (!tx?.order?.findUnique || !tx?.moneyTransaction?.findFirst) return undefined;
+  const order = await tx.order.findUnique({ where: { id: input.refId }, select: { createdAt: true } });
+  if (!order?.createdAt || Date.now() - new Date(order.createdAt).getTime() < 60_000) return undefined;
+  const earlier = await tx.moneyTransaction.findFirst({ where: { refType: 'ORDER', refId: input.refId }, select: { id: true } });
+  return earlier ? undefined : new Date(order.createdAt);
+}
+
 export async function post(tx: Tx, input: PostInput) {
   const amount = round2(Number(input.amount));
   if (!Number.isFinite(amount) || amount <= 0) return null; // nothing to record
+  const occurredAt = await saleDate(tx, input);
   return tx.moneyTransaction.create({
     data: {
       accountId: input.accountId,
@@ -44,7 +59,7 @@ export async function post(tx: Tx, input: PostInput) {
       userId: input.userId ?? null,
       categoryId: input.categoryId ?? null,
       transferGroupId: input.transferGroupId ?? null,
-      occurredAt: input.occurredAt ?? new Date(),
+      occurredAt: occurredAt ?? new Date(),
     },
   });
 }
@@ -115,21 +130,55 @@ export async function balances(tx: Tx): Promise<Map<string, number>> {
   return map;
 }
 
-/** Make sure the safe, the card clearing account and one account per bank account exist. */
+/**
+ * Fixed ids for the automatically created core accounts. Creation is INSERT ... ON CONFLICT DO NOTHING
+ * on these ids (and on the unique bankAccountId / terminalId), so parallel first loads can never
+ * create duplicates or fail with a unique-constraint 500.
+ */
+export const CORE_ACCOUNT_IDS = {
+  CASH_SAFE: '00000000-0000-4000-8000-00000000c0a1',
+  CARD_CLEARING: '00000000-0000-4000-8000-00000000c0a2',
+  BANK_UNASSIGNED: '00000000-0000-4000-8000-00000000c0a3',
+} as const;
+export const CORE_ACCOUNT_DEFAULTS = {
+  CASH_SAFE: { name: 'เงินสดในเซฟ / สำนักงาน', sortOrder: 10 },
+  CARD_CLEARING: { name: 'ยอดบัตรเครดิตรอเงินเข้า', sortOrder: 90 },
+} as const;
+
+/** Make sure the safe, the card clearing account and one account per bank account exist (idempotent, race-safe). */
 export async function ensureCoreAccounts(tx: Tx) {
-  if (!(await tx.moneyAccount.findFirst({ where: { type: 'CASH_SAFE' } }))) {
-    await tx.moneyAccount.create({ data: { name: 'เงินสดในเซฟ / สำนักงาน', type: 'CASH_SAFE', sortOrder: 10 } });
-  }
-  if (!(await tx.moneyAccount.findFirst({ where: { type: 'CARD_CLEARING' } }))) {
-    await tx.moneyAccount.create({ data: { name: 'ยอดบัตรเครดิตรอเงินเข้า', type: 'CARD_CLEARING', sortOrder: 90 } });
+  const create: any[] = [];
+  for (const type of ['CASH_SAFE', 'CARD_CLEARING'] as const) {
+    if (!(await tx.moneyAccount.findFirst({ where: { type }, select: { id: true } }))) {
+      create.push({ id: CORE_ACCOUNT_IDS[type], type, ...CORE_ACCOUNT_DEFAULTS[type] });
+    }
   }
   const banks = await tx.bankAccount.findMany({ include: { moneyAccount: true } });
   for (const b of banks) {
-    const label = `${b.bankName} ${b.accountNumber}`;
-    if (!b.moneyAccount) {
-      await tx.moneyAccount.create({ data: { name: label, type: 'BANK', bankAccountId: b.id, sortOrder: 20 } });
-    }
+    if (!b.moneyAccount) create.push({ name: `${b.bankName} ${b.accountNumber}`, type: 'BANK', bankAccountId: b.id, sortOrder: 20 });
   }
+  if (create.length) await tx.moneyAccount.createMany({ data: create, skipDuplicates: true });
+}
+
+/**
+ * Clean up duplicates left by the old (racy) ensureCoreAccounts: extra auto-created safe / card
+ * clearing accounts with the default name that were never used (no ledger row, expense, recurring
+ * rule or reconciliation). The oldest one of each type is kept. Accounts with money are never touched.
+ */
+export async function removeUnusedDuplicateCoreAccounts(tx: Tx) {
+  let removed = 0;
+  for (const type of ['CASH_SAFE', 'CARD_CLEARING'] as const) {
+    const rows = await tx.moneyAccount.findMany({ where: { type, name: CORE_ACCOUNT_DEFAULTS[type].name }, orderBy: { createdAt: 'asc' }, select: { id: true } });
+    if (rows.length < 2) continue;
+    const res = await tx.moneyAccount.deleteMany({
+      where: {
+        id: { in: rows.slice(1).map((r: any) => r.id) },
+        transactions: { none: {} }, expenses: { none: {} }, recurring: { none: {} }, reconciliations: { none: {} },
+      },
+    });
+    removed += res.count;
+  }
+  return removed;
 }
 
 export async function safeAccount(tx: Tx) {
@@ -148,7 +197,9 @@ export async function drawerAccount(tx: Tx, terminalId?: string | null) {
   const existing = await tx.moneyAccount.findUnique({ where: { terminalId: key } });
   if (existing) return existing;
   const name = key === UNASSIGNED_TERMINAL ? 'ลิ้นชักเงินสด (ไม่ระบุเครื่อง)' : `ลิ้นชักเงินสด เครื่อง ${key.slice(0, 6).toUpperCase()}`;
-  return tx.moneyAccount.create({ data: { name, type: 'CASH_DRAWER', terminalId: key, sortOrder: 1 } });
+  // ON CONFLICT DO NOTHING on the unique terminalId: two first sales at once never fail
+  await tx.moneyAccount.createMany({ data: [{ name, type: 'CASH_DRAWER', terminalId: key, sortOrder: 1 }], skipDuplicates: true });
+  return tx.moneyAccount.findUnique({ where: { terminalId: key } });
 }
 
 /**
@@ -165,7 +216,8 @@ export async function bankMoneyAccount(tx: Tx, bankAccountId?: string | null) {
   if (def?.moneyAccount) return def.moneyAccount;
   const anyBank = await tx.moneyAccount.findFirst({ where: { type: 'BANK', isActive: true }, orderBy: { createdAt: 'asc' } });
   if (anyBank) return anyBank;
-  return tx.moneyAccount.create({ data: { name: 'บัญชีธนาคาร (ยังไม่ระบุ)', type: 'BANK', sortOrder: 29 } });
+  await tx.moneyAccount.createMany({ data: [{ id: CORE_ACCOUNT_IDS.BANK_UNASSIGNED, name: 'บัญชีธนาคาร (ยังไม่ระบุ)', type: 'BANK', sortOrder: 29 }], skipDuplicates: true });
+  return tx.moneyAccount.findUnique({ where: { id: CORE_ACCOUNT_IDS.BANK_UNASSIGNED } });
 }
 
 /** Account where a payment method's money lands. Null = no money moves (credit sale, credit note). */
