@@ -38,6 +38,8 @@ export function mapServerShiftToSummary(s: any): ShiftSummaryData {
 
   return {
     shiftId: s.shiftCode || s.shiftNumber || s.shiftId || s.id,
+    shiftCode: s.shiftCode || s.code || s.shiftNumber || undefined,
+    status: s.status,
     isOpen: !!isOpen,
     cashInExcludesDebt: s.otherCashIn !== undefined,
     userId: s.userId,

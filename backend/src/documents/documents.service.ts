@@ -1,6 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
+/** dd/MM/yyyy HH:mm, Buddhist year, Bangkok time (same format as the printed documents) */
+export function formatThaiDateTime(value: Date | string): string {
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return '-';
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value || '00';
+  return `${get('day')}/${get('month')}/${Number(get('year')) + 543} ${get('hour')}:${get('minute')}`;
+}
+
 export interface UnifiedDocumentSearchResult {
   type: 'ORDER' | 'CLAIM' | 'SHIFT' | 'DEBT' | 'PURCHASE_ORDER' | 'SUPPLIER_RETURN' | 'PAYMENT_VOUCHER';
   typeName: string;
@@ -46,7 +57,8 @@ export class DocumentsService {
         },
         include: {
           customer: true,
-          user: true,
+          user: { select: { id: true, username: true, fullName: true } },
+          debt: true,
           items: {
             include: { product: true },
           },
@@ -84,7 +96,7 @@ export class DocumentsService {
           ],
         },
         include: {
-          user: true,
+          user: { select: { id: true, username: true, fullName: true } },
           cashMovements: true,
         },
         take: 10,
@@ -226,7 +238,7 @@ export class DocumentsService {
         status: shift.status,
         amount: Number(shift.totalSales),
         customerName: shift.user?.fullName || shift.user?.username || 'แคชเชียร์',
-        description: `เริ่ม: ${new Date(shift.openedAt).toLocaleString('th-TH')} • ยอดขายรวม: ฿${Number(shift.totalSales).toLocaleString()}`,
+        description: `เริ่ม: ${formatThaiDateTime(shift.openedAt)} • ยอดขายรวม: ฿${Number(shift.totalSales).toLocaleString()}`,
         rawData: shift,
       });
     }

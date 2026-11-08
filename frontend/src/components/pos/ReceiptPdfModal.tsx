@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Printer, Download, ExternalLink, FileText, CheckCircle2, Store } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
-import html2canvas from 'html2canvas';
+import { capturePrintable as html2canvas } from '@/lib/pdf-print-service';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';

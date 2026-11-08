@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { formatCurrency, thaiBahtText } from '@/lib/utils';
+import { formatCurrency, formatDocDate, thaiBahtText } from '@/lib/utils';
 import { PayablePaymentEntry, SupplierPayableBill, PaymentVoucher } from '@/lib/payable-service';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
@@ -142,7 +142,7 @@ export function PaymentVoucherModal({
                   </div>
                   {data.cancelledAt && (
                     <span className="text-[10px] text-rose-600 font-mono">
-                      ยกเลิกเมื่อ: {new Date(data.cancelledAt).toLocaleString('th-TH')}
+                      ยกเลิกเมื่อ: {formatDocDate(data.cancelledAt, { time: true })}
                     </span>
                   )}
                 </div>
@@ -194,7 +194,7 @@ export function PaymentVoucherModal({
                   </p>
                   <div className="pt-1 text-[10.5px] space-y-0.5 font-mono">
                     <p><span className="text-slate-500 font-sans">เลขที่เอกสาร:</span> <b className="text-indigo-700 font-bold">{data.voucherNumber}</b></p>
-                    <p><span className="text-slate-500 font-sans">วันที่จ่ายเงิน:</span> <b>{new Date(data.paymentDate).toLocaleDateString('th-TH')}</b></p>
+                    <p><span className="text-slate-500 font-sans">วันที่จ่ายเงิน:</span> <b>{formatDocDate(data.paymentDate)}</b></p>
                     <p><span className="text-slate-500 font-sans">จำนวนบิลที่จ่าย:</span> <b className="text-amber-800 font-bold">{data.bills.length} บิล</b></p>
                   </div>
                   <div className="pt-1 flex justify-end">
@@ -267,7 +267,7 @@ export function PaymentVoucherModal({
                             <span className="text-slate-500 font-normal ml-2 font-mono text-[11px]">(PO: {b.poNumber})</span>
                           </p>
                           <p className="text-[10.5px] text-slate-500">
-                            วันที่ในบิล: {new Date(b.billDate).toLocaleDateString('th-TH')}
+                            วันที่ในบิล: {formatDocDate(b.billDate)}
                             {b.totalBillAmount > b.amountPaid && (
                               <span className="text-amber-800 font-medium ml-2">• ยอดบิลเต็ม: {formatCurrency(b.totalBillAmount)} (ตัดจ่ายครั้งนี้)</span>
                             )}
@@ -379,7 +379,7 @@ export function PaymentVoucherModal({
 
               <div className="pt-4 flex justify-between items-center text-[10.5px] text-slate-600 border-t border-slate-200 mt-4">
                 <span>ผู้จัดทำเอกสาร: <b className="text-slate-900 font-sans">{data.cashierName || 'เจ้าหน้าที่การเงิน'}</b></span>
-                <span className="font-mono text-slate-400 text-[9.5px]">เอกสารนี้ออกโดยระบบอัตโนมัติ Purim POS • พิมพ์เมื่อ {new Date().toLocaleString('th-TH')}</span>
+                <span className="font-mono text-slate-400 text-[9.5px]">เอกสารนี้ออกโดยระบบอัตโนมัติ Purim POS • พิมพ์เมื่อ {formatDocDate(new Date(), { time: true })}</span>
               </div>
             </div>
           </div>

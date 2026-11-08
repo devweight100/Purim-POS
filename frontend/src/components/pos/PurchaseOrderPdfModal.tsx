@@ -5,13 +5,11 @@ import { calculatePurchaseBill } from '@/lib/po-calc';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Printer, Download, FileText, CheckCircle2, Store, Building2, Calendar, FileCheck } from 'lucide-react';
-import { formatCurrency, formatDate } from '@/lib/utils';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
+import { formatCurrency, formatDocDate, thaiBahtText } from '@/lib/utils';
 import { toast } from 'sonner';
 import { BarcodeView } from '@/components/common/BarcodeView';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
-import { printDocumentIframe } from '@/lib/pdf-print-service';
+import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
 
 export interface PurchaseOrderData {
   id: string;
@@ -52,61 +50,20 @@ interface PurchaseOrderPdfModalProps {
   po: PurchaseOrderData | null;
 }
 
-function thaiBahtText(num: number): string {
-  if (!num || isNaN(num) || num <= 0) return "ศูนย์บาทถ้วน";
-  const thaiNums = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"];
-  const thaiUnits = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน", "ล้าน"];
-  
-  const [bahtStr, satangStr] = num.toFixed(2).split(".");
-  let bahtVal = parseInt(bahtStr, 10);
-  
-  if (bahtVal === 0) return "ศูนย์บาทถ้วน";
+const PO_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'ฉบับร่าง',
+  PENDING: 'รออนุมัติ',
+  ISSUED: 'ออกใบสั่งซื้อแล้ว',
+  ORDERED: 'สั่งซื้อแล้ว',
+  PARTIALLY_RECEIVED: 'รับสินค้าบางส่วน',
+  RECEIVED: 'รับสินค้าครบแล้ว',
+  COMPLETED: 'เสร็จสมบูรณ์',
+  CANCELLED: 'ยกเลิก',
+};
 
-  let result = "";
-  const str = bahtVal.toString();
-  const len = str.length;
-
-  for (let i = 0; i < len; i++) {
-    const digit = parseInt(str[i], 10);
-    const pos = len - 1 - i;
-    const unitPos = pos % 6;
-
-    if (digit !== 0) {
-      if (unitPos === 1 && digit === 1) {
-        result += "สิบ";
-      } else if (unitPos === 1 && digit === 2) {
-        result += "ยี่สิบ";
-      } else if (unitPos === 0 && digit === 1 && len > 1 && i === len - 1) {
-        result += "เอ็ด";
-      } else {
-        result += thaiNums[digit] + thaiUnits[unitPos];
-      }
-    }
-    if (unitPos === 0 && pos > 0) {
-      result += "ล้าน";
-    }
-  }
-
-  result += "บาท";
-  const satangVal = parseInt(satangStr, 10);
-  if (satangVal === 0) {
-    result += "ถ้วน";
-  } else {
-    if (satangVal < 10) {
-      result += thaiNums[satangVal] + "สตางค์";
-    } else {
-      const ten = Math.floor(satangVal / 10);
-      const unit = satangVal % 10;
-      if (ten === 1) result += "สิบ";
-      else if (ten === 2) result += "ยี่สิบ";
-      else result += thaiNums[ten] + "สิบ";
-
-      if (unit === 1) result += "เอ็ด";
-      else if (unit > 1) result += thaiNums[unit];
-      result += "สตางค์";
-    }
-  }
-  return result;
+export function poStatusLabel(status: string | null | undefined): string {
+  const key = String(status || '').toUpperCase();
+  return PO_STATUS_LABELS[key] || String(status || '-');
 }
 
 export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: PurchaseOrderPdfModalProps) {
@@ -154,6 +111,10 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
     { type: poData.billDiscountType ?? poData.discountType, value: poData.billDiscountValue ?? poData.discountValue },
   );
   const subtotalBeforeDiscount = Math.round((calc.baseAmount - calc.lineDiscountAmount) * 100) / 100;
+  // each line's own discount (without its share of the bill discount), same rule as po-calc
+  const lineDiscounts = calc.lines.map((l) =>
+    Math.round(Math.min(l.baseAmount, l.discountType === 'percent' ? (l.baseAmount * Math.min(l.discountValue, 100)) / 100 : l.discountValue) * 100) / 100,
+  );
   const billDiscountAmount = calc.billDiscountAmount;
   const vatAmount = calc.vatAmount;
   const netAmount = calc.subtotalAmount;
@@ -173,26 +134,10 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
     if (!printRef.current) return;
     setIsExporting(true);
     try {
-      const canvas = await html2canvas(printRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        logging: false,
-      });
-
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'mm',
-        format: 'a4',
-      });
-
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`ใบสั่งซื้อ_${poNumber}.pdf`);
-      toast.success('ดาวน์โหลดไฟล์ PDF เรียบร้อยแล้ว');
+      // multi-page: long POs are split over as many A4 pages as needed
+      const ok = await exportElementToPdf(printRef.current, `ใบสั่งซื้อ_${poNumber}.pdf`, 'a4');
+      if (ok) toast.success('ดาวน์โหลดไฟล์ PDF เรียบร้อยแล้ว');
+      else toast.error('เกิดข้อผิดพลาดในการสร้างไฟล์ PDF');
     } catch (err) {
       toast.error('เกิดข้อผิดพลาดในการสร้างไฟล์ PDF');
     } finally {
@@ -234,7 +179,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
         <div className="p-6 bg-slate-100/60 overflow-y-auto overflow-x-auto flex-1 flex justify-center">
           <div
             ref={printRef}
-            className="w-full max-w-[210mm] min-h-[297mm] bg-white border border-slate-300 p-8 shadow-lg text-slate-800 flex flex-col justify-between"
+            className="a4-container w-full max-w-[210mm] min-h-[297mm] bg-white border border-slate-300 p-8 shadow-lg text-slate-800 flex flex-col justify-between"
             style={{ fontFamily: `'Sarabun', sans-serif` }}
           >
             {/* Top Company Header & Document Title */}
@@ -245,7 +190,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                     <Store className="w-7 h-7 text-sky-600" />
                     <h1 className="text-2xl font-black text-slate-900 tracking-tight">{storeSettings?.storeName || 'ร้านปุริม POS / PURIM POS STORE'}</h1>
                   </div>
-                  <p className="text-xs text-slate-600 font-medium">{storeSettings?.storeAddress || '123/45 ถนนรัชดาภิเษก แขวงห้วยขวาง เขตห้วยขวาง กรุงเทพมหานคร 10310'}</p>
+                  {storeSettings?.storeAddress && <p className="text-xs text-slate-600 font-medium">{storeSettings.storeAddress}</p>}
                   <p className="text-xs text-slate-600 font-medium">
                     {storeSettings?.taxId && `เลขประจำตัวผู้เสียภาษี: ${storeSettings.taxId} | `}
                     {storeSettings?.storePhone && `โทร: ${storeSettings.storePhone}`}
@@ -290,7 +235,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                     </div>
                     <div className="flex justify-between border-b border-slate-200/60 pb-1">
                       <span className="text-slate-500 font-medium">วันที่สั่งซื้อ:</span>
-                      <span className="font-bold text-slate-900">{formatDate(createdAt)}</span>
+                      <span className="font-bold text-slate-900">{formatDocDate(createdAt, { time: true })}</span>
                     </div>
                     <div className="flex justify-between border-b border-slate-200/60 pb-1">
                       <span className="text-slate-500 font-medium">เงื่อนไขการชำระเงิน:</span>
@@ -309,7 +254,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                           ? 'text-amber-700 bg-amber-50 border-amber-200'
                           : 'text-emerald-700 bg-emerald-50 border-emerald-200'
                       }`}>
-                        {status}
+                        {poStatusLabel(status)}
                       </span>
                     </div>
                   </div>
@@ -326,13 +271,15 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                       <th className="p-2.5 border-r border-slate-700">รายการสินค้า (DESCRIPTION)</th>
                       <th className="p-2.5 text-right w-20 border-r border-slate-700">จำนวน</th>
                       <th className="p-2.5 text-right w-24 border-r border-slate-700">หน่วยละ</th>
+                      <th className="p-2.5 text-right w-20 border-r border-slate-700">ส่วนลด</th>
+                      <th className="p-2.5 text-right w-20 border-r border-slate-700">VAT</th>
                       <th className="p-2.5 text-right w-28">จำนวนเงิน (บาท)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 font-medium">
                     {items.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="p-8 text-center text-slate-400 font-semibold">
+                        <td colSpan={8} className="p-8 text-center text-slate-400 font-semibold">
                           ไม่พบรายการสินค้าในใบสั่งซื้อนี้
                         </td>
                       </tr>
@@ -342,7 +289,10 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                         const sku = item.sku || item.product?.sku || '-';
                         const qty = Number(item.quantity) || Number(item.qty) || 0;
                         const cost = Number(item.unitCost) || Number(item.cost) || Number(item.price) || 0;
-                        const lineGross = qty * cost;
+                        const line = calc.lines[idx];
+                        const lineDiscount = lineDiscounts[idx] || 0;
+                        // amount after the line's own discount: rows add up to "รวมเป็นเงิน"
+                        const lineAmount = Math.round((qty * cost - lineDiscount) * 100) / 100;
                         const unitBadge = item.unitName || item.product?.unit || item.unit || 'ชิ้น';
                         return (
                           <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
@@ -356,7 +306,16 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                             </td>
                             <td className="p-2.5 text-right font-bold text-slate-900 border-r border-slate-200">{qty.toLocaleString()}</td>
                             <td className="p-2.5 text-right text-slate-700 border-r border-slate-200">{formatCurrency(cost)}</td>
-                            <td className="p-2.5 text-right font-bold text-slate-900">{formatCurrency(lineGross)}</td>
+                            <td className="p-2.5 text-right text-rose-600 border-r border-slate-200">
+                              {lineDiscount > 0 ? `-${formatCurrency(lineDiscount)}` : '-'}
+                              {lineDiscount > 0 && line?.discountType === 'percent' && (
+                                <span className="block text-[10px] text-slate-500">({line.discountValue}%)</span>
+                              )}
+                            </td>
+                            <td className="p-2.5 text-right text-slate-700 border-r border-slate-200">
+                              {line && line.vatType !== 'NONE' ? formatCurrency(line.vatAmount) : '-'}
+                            </td>
+                            <td className="p-2.5 text-right font-bold text-slate-900">{formatCurrency(lineAmount)}</td>
                           </tr>
                         );
                       })

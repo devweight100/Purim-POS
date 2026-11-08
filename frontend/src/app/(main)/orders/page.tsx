@@ -64,6 +64,7 @@ import { loadAllDebtRecords, getDebtRecordByOrderId } from "@/lib/debt-service";
 import { DebtRecord, DebtPaymentInstallment } from "@/lib/types";
 import { ReceiptA4PdfModal, ReceiptA4Data } from "@/components/pos/ReceiptA4PdfModal";
 import { ReceiptPdfModal, ReceiptData } from "@/components/pos/ReceiptPdfModal";
+import { orderToA4Data, orderToReceiptData, paymentMethodLabel } from "@/lib/receipt-mapper";
 import { DebtHistoryModal } from "@/components/debts/DebtHistoryModal";
 import { DebtReceiptPdfModal } from "@/components/debts/DebtReceiptPdfModal";
 import { syncPendingOrders } from "@/lib/order-sync-service";
@@ -375,102 +376,15 @@ export default function OrdersPage() {
     return filteredOrders.slice(start, start + pageSize);
   }, [filteredOrders, currentPage, pageSize]);
 
-  // ─── Format Order to Full A4 Receipt ───
-  const formatOrderToA4 = (order: any): ReceiptA4Data => {
-    const customer = order.customerId ? getCustomerById(order.customerId) : null;
-    return {
-      orderNumber: order.orderNumber || order.id,
-      createdAt: order.createdAt || new Date().toISOString(),
-      customerName: order.customerName || (typeof order.customer === "object" ? order.customer?.name : order.customer) || "ลูกค้าทั่วไป",
-      customerPhone: customer?.phone || order.customerPhone,
-      customerAddress: customer?.address || order.customerAddress,
-      customerTaxId: customer?.taxId || order.customerTaxId,
-      customerBranch: customer?.companyName ? "สำนักงานใหญ่" : undefined,
-      customerCompany: customer?.companyName,
-      userName: order.userName || "พนักงาน POS",
-      items: (order.items || []).map((i: any) => {
-        const qty = Number(i.quantity) || 1;
-        const uPrice = Number(i.unitPrice ?? i.price) || 0;
-        return {
-          sku: i.sku || i.code,
-          name: i.name || i.productName || "สินค้า",
-          quantity: qty,
-          unitName: i.unitName || "ชิ้น",
-          unitPrice: uPrice,
-          lineTotal: Number(i.lineTotal) || (qty * uPrice),
-          discountAmount: Number(i.discountAmount) || 0,
-        };
-      }),
-      subtotal: Number(order.subtotal ?? order.totalAmount ?? order.total) || 0,
-      billDiscountAmount: Number(order.billDiscountAmount) || 0,
-      pointsDiscountAmount: Number(order.pointsDiscountAmount) || 0,
-      pointsUsed: Number(order.pointsUsed) || 0,
-      customerPointsEarned: order.customerPointsEarned ? Number(order.customerPointsEarned) : undefined,
-      customerPointsBalance: order.customerPointsBalance ? Number(order.customerPointsBalance) : undefined,
-      vatAmount: Number(order.vatAmount) || 0,
-      totalAmount: Number(order.totalAmount ?? order.total) || 0,
-      paymentMethod:
-        order.payments?.length > 1
-          ? "แบ่งชำระ (Split Payment)"
-          : order.payments?.[0]?.method === "CASH"
-          ? "เงินสด (Cash)"
-          : order.payments?.[0]?.method === "QR_PROMPTPAY"
-          ? "QR PromptPay"
-          : order.payments?.[0]?.method === "CREDIT_CARD"
-          ? "บัตรเครดิต"
-          : order.payments?.[0]?.method === "CREDIT_DEBT" || order.payments?.[0]?.method === "DEBT" || order.payments?.[0]?.method === "CREDIT_NOTE" || order.payments?.[0]?.method === "CREDIT"
-          ? "เงินเชื่อ (Credit)"
-          : order.paymentMethod || "เงินสด",
-      payments: order.payments,
-      cashReceived: Number(order.cashReceived ?? order.payments?.[0]?.cashReceived) || undefined,
-      changeAmount: Number(order.changeAmount ?? order.payments?.[0]?.changeAmount) || undefined,
-    };
-  };
+  // ─── Order -> printed documents (shared mapper, same as POS history / document search) ───
+  // Reprints from this page are copies: A4 "สำเนา (COPY)", thermal "พิมพ์ซ้ำ".
+  const formatOrderToA4 = (order: any): ReceiptA4Data =>
+    orderToA4Data(order, {
+      isReprint: true,
+      customer: order.customerId ? getCustomerById(order.customerId) || undefined : undefined,
+    });
 
-  // ─── Format Order to 80mm Slip ───
-  const formatOrderToSlip = (order: any): ReceiptData => {
-    return {
-      orderNumber: order.orderNumber || order.id,
-      createdAt: order.createdAt || new Date().toISOString(),
-      customerName: order.customerName || (typeof order.customer === "object" ? order.customer?.name : order.customer) || "ลูกค้าทั่วไป",
-      userName: order.userName || "พนักงาน POS",
-      items: (order.items || []).map((i: any) => {
-        const qty = Number(i.quantity) || 1;
-        const uPrice = Number(i.unitPrice ?? i.price) || 0;
-        return {
-          name: i.name || i.productName || "สินค้า",
-          quantity: qty,
-          unitName: i.unitName || "ชิ้น",
-          unitPrice: uPrice,
-          lineTotal: Number(i.lineTotal) || (qty * uPrice),
-          discountAmount: Number(i.discountAmount) || 0,
-        };
-      }),
-      subtotal: Number(order.subtotal ?? order.totalAmount ?? order.total) || 0,
-      billDiscountAmount: Number(order.billDiscountAmount) || 0,
-      pointsDiscountAmount: Number(order.pointsDiscountAmount) || 0,
-      pointsUsed: Number(order.pointsUsed) || 0,
-      customerPointsEarned: order.customerPointsEarned ? Number(order.customerPointsEarned) : undefined,
-      customerPointsBalance: order.customerPointsBalance ? Number(order.customerPointsBalance) : undefined,
-      vatAmount: Number(order.vatAmount) || 0,
-      totalAmount: Number(order.totalAmount ?? order.total) || 0,
-      paymentMethod:
-        order.payments?.length > 1
-          ? "แบ่งชำระ (Split Payment)"
-          : order.payments?.[0]?.method === "CASH"
-          ? "เงินสด (Cash)"
-          : order.payments?.[0]?.method === "QR_PROMPTPAY"
-          ? "QR พร้อมเพย์"
-          : order.payments?.[0]?.method === "CREDIT_CARD"
-          ? "บัตรเครดิต"
-          : order.payments?.[0]?.method === "CREDIT_NOTE"
-          ? "เงินเชื่อ"
-          : order.paymentMethod || "เงินสด",
-      payments: order.payments,
-      cashReceived: Number(order.cashReceived ?? order.payments?.[0]?.cashReceived) || undefined,
-      changeAmount: Number(order.changeAmount ?? order.payments?.[0]?.changeAmount) || undefined,
-    };
-  };
+  const formatOrderToSlip = (order: any): ReceiptData => orderToReceiptData(order, { isReprint: true });
 
   // ─── Normal A4 Print Handler ───
   const handleOpenA4Receipt = (order: any, e?: React.MouseEvent) => {
@@ -503,14 +417,11 @@ export default function OrdersPage() {
       accumulatedPaid: inst.previousPaid + inst.amountPaid,
       remainingDebt: inst.remainingAfter,
       installmentDate: inst.paymentDate,
-      paymentMethod:
-        inst.paymentMethod === "CASH"
-          ? "เงินสด (Cash)"
-          : inst.paymentMethod === "QR_PROMPTPAY"
-          ? "QR PromptPay"
-          : inst.paymentMethod === "TRANSFER"
-          ? "โอนเงินผ่านธนาคาร"
-          : inst.paymentMethod,
+      isCopy: false,
+      outstandingAmount: undefined,
+      cashReceived: undefined,
+      changeAmount: undefined,
+      paymentMethod: paymentMethodLabel(inst.paymentMethod),
       payments: [
         {
           method: inst.paymentMethod,

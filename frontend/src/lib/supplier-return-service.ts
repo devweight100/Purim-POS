@@ -2,6 +2,7 @@ import { ClaimRecord, SupplierReturnNote, SupplierReturnItem, SupplierReturnItem
 import { loadAllClaimRecords, saveClaimRecords, markClaimsAsReturnedToSupplier, updateClaimStatus } from './claim-service';
 import { useProductStore } from './store/product-store';
 import { apiFetch, api } from './api';
+import { grossPerUnit } from './po-calc';
 
 const STORAGE_KEY_RETURNS = 'pos_supplier_returns';
 const STORAGE_KEY_SUPPLIERS = 'custom_suppliers';
@@ -224,7 +225,7 @@ export function resolveProductSupplierAndCost(productId: string, sku?: string): 
     try {
       const pos = loadPurchaseOrders();
       const poWithItem = pos.find((po) =>
-        (po.items || []).some((i: any) => i.productId === productId || i.sku === sku || (prod?.name && i.productName === prod.name))
+        (po.items || []).some((i: any) => i.productId === productId || (i.sku || i.product?.sku) === sku || (prod?.name && (i.productName || i.product?.name) === prod.name))
       );
       if (poWithItem) {
         const poSuppId = poWithItem.supplierId || poWithItem.supplier?.id;
@@ -350,16 +351,24 @@ export function getPayablePOsBySupplier(supplierId: string): PayablePO[] {
         totalAmount,
         alreadyDeducted,
         remainingPayable,
-        items: (po.items || []).map((i: any) => ({
-          id: i.id,
-          productId: i.productId,
-          productName: i.productName,
-          sku: i.sku,
-          quantity: Number(i.quantity || 0),
-          receivedQuantity: Number(i.receivedQuantity || i.quantity || 0),
-          unitPrice: Number(i.unitPrice || i.costPrice || 0),
-          unitName: i.unitName || 'ชิ้น',
-        })),
+        // backend PO items carry product.{name,sku}, unitCost and total (not productName/unitPrice)
+        items: (po.items || []).map((i: any) => {
+          const quantity = Number(i.quantity || 0);
+          const explicit = Number(i.unitPrice ?? i.costPrice);
+          const unitPrice = Number.isFinite(explicit) && explicit > 0
+            ? explicit
+            : Math.round(grossPerUnit({ quantity, total: i.total ?? undefined, unitCost: i.unitCost }) * 100) / 100;
+          return {
+            id: i.id,
+            productId: i.productId || i.product?.id,
+            productName: i.productName || i.product?.name || i.name || 'สินค้า',
+            sku: i.sku || i.product?.sku || '',
+            quantity,
+            receivedQuantity: Number(i.receivedQuantity ?? i.quantity ?? 0),
+            unitPrice,
+            unitName: i.unitName || i.product?.unit || 'ชิ้น',
+          };
+        }),
       };
     })
     .filter((po) => po.remainingPayable > 0);
@@ -428,7 +437,7 @@ export function getEligibleClaimsForReturn(supplierId?: string): ClaimRecord[] {
     );
     const inPo = supplierPos.some((po) =>
       (po.items || []).some(
-        (i: any) => i.productId === claim.productId || i.sku === claim.sku || (claim.productName && i.productName === claim.productName)
+        (i: any) => i.productId === claim.productId || (i.sku || i.product?.sku) === claim.sku || (claim.productName && (i.productName || i.product?.name) === claim.productName)
       )
     );
     if (inPo) return true;

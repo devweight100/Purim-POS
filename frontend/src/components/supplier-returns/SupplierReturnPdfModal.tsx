@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { formatCurrency, thaiBahtText } from '@/lib/utils';
+import { formatCurrency, formatDocDate, thaiBahtText } from '@/lib/utils';
 import { SupplierReturnNote } from '@/lib/types';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
@@ -38,8 +38,23 @@ export function SupplierReturnPdfModal({
 
   if (!returnNote) return null;
 
-  const defectiveItems = returnNote.items.filter((i) => i.itemType === 'DEFECTIVE');
-  const overstockItems = returnNote.items.filter((i) => i.itemType === 'OVERSTOCK');
+  // tolerate server-shaped items (product.{name,sku}, unitPrice) so names and line totals always print
+  const noteItems = (returnNote.items || []).map((raw) => {
+    const i = raw as typeof raw & { product?: { name?: string; sku?: string }; unitPrice?: number };
+    const quantity = Number(i.quantity) || 0;
+    const unitCost = Number(i.unitCost ?? i.unitPrice) || 0;
+    const totalCost = Number(i.totalCost) || Math.round(quantity * unitCost * 100) / 100;
+    return {
+      ...i,
+      productName: i.productName || i.product?.name || 'สินค้า',
+      sku: i.sku || i.product?.sku || '-',
+      quantity,
+      unitCost,
+      totalCost,
+    };
+  });
+  const defectiveItems = noteItems.filter((i) => i.itemType === 'DEFECTIVE');
+  const overstockItems = noteItems.filter((i) => i.itemType === 'OVERSTOCK');
 
   const defectiveTotal = returnNote.defectiveTotalCost !== undefined 
     ? returnNote.defectiveTotalCost 
@@ -130,7 +145,7 @@ export function SupplierReturnPdfModal({
                 <p className="text-[10px] font-semibold text-slate-500">DEBIT NOTE / RETURN NOTE</p>
                 <div className="pt-1 text-[10px] space-y-0.5 font-mono">
                   <p><b className="text-slate-700">เลขที่:</b> <span className="text-indigo-600 font-bold">{returnNote.id}</span></p>
-                  <p><b className="text-slate-700">วันที่:</b> {new Date(returnNote.returnDate).toLocaleDateString('th-TH')}</p>
+                  <p><b className="text-slate-700">วันที่:</b> {formatDocDate(returnNote.returnDate)}</p>
                   {returnNote.linkedPoNumber && (
                     <p><b className="text-slate-700">อ้างอิงใบสั่งซื้อ:</b> <span className="font-bold text-amber-700">{returnNote.linkedPoNumber}</span></p>
                   )}

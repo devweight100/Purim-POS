@@ -4,7 +4,8 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { Store } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatDocDate } from '@/lib/utils';
+import { paymentMethodLabel } from '@/lib/receipt-mapper';
 import { StoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe } from '@/lib/pdf-print-service';
 import { BarcodeView } from '@/components/common/BarcodeView';
@@ -57,6 +58,11 @@ export interface ReceiptData {
   cashReceived?: number;
   changeAmount?: number;
   note?: string;
+  /** unpaid part of a credit sale (ค้างชำระ) */
+  outstandingAmount?: number;
+  /** reprint of an existing bill -> "พิมพ์ซ้ำ" marker with the reprint time */
+  isReprint?: boolean;
+  reprintedAt?: string;
 }
 
 export const SAMPLE_RECEIPT_DATA: ReceiptData = {
@@ -117,7 +123,7 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
         <div className="text-center space-y-1 pb-2 border-b-2 border-black">
           <div className="flex items-center justify-center gap-1.5 font-black text-base sm:text-lg font-sans text-black">
             <Store className="w-5 h-5 text-black shrink-0 stroke-[2.5]" />
-            <span className="truncate">{settings.storeName}</span>
+            <span className="break-words min-w-0">{settings.storeName}</span>
           </div>
 
           {settings.branchName && (
@@ -160,10 +166,16 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
           )}
 
           <div className="pt-1">
-            <span className="text-[13px] font-black border-2 border-black px-3 py-0.5 rounded-none font-sans inline-block text-black uppercase tracking-wider">
-              ใบเสร็จรับเงิน
+            <span className="text-[13px] font-black border-2 border-black px-3 py-0.5 rounded-none font-sans inline-block text-black tracking-wider">
+              {Number(data.vatAmount) > 0 ? 'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ' : 'ใบเสร็จรับเงิน'}
             </span>
           </div>
+          {data.isReprint && (
+            <div className="pt-1 text-[12px] font-black text-black">
+              *** พิมพ์ซ้ำ ***
+              <div className="text-[10.5px] font-bold">พิมพ์ซ้ำเมื่อ {formatDocDate(data.reprintedAt || new Date(), { time: true })}</div>
+            </div>
+          )}
         </div>
 
         {/* ─── 2. Meta Details (เลขที่บิล, วันที่, พนักงาน, ลูกค้า) ─── */}
@@ -175,16 +187,16 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
           <div className="flex justify-between items-center gap-1">
             <span className="shrink-0">วันที่:</span>
             <span className="font-bold truncate text-right font-mono text-black text-[11px]">
-              {new Date(data.createdAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'medium' })}
+              {formatDocDate(data.createdAt, { time: true })}
             </span>
           </div>
           <div className="flex justify-between items-center gap-1">
             <span className="shrink-0">พนักงานขาย:</span>
             <span className="font-bold truncate text-right text-black">{data.userName || 'พนักงาน POS'}</span>
           </div>
-          <div className="flex justify-between items-center gap-1">
+          <div className="flex justify-between items-start gap-1">
             <span className="shrink-0">ลูกค้า:</span>
-            <span className="font-black text-black truncate text-right max-w-[170px]">
+            <span className="font-black text-black text-right break-words min-w-0">
               {data.customerName || 'ลูกค้าทั่วไป (Walk-in)'}
             </span>
           </div>
@@ -315,13 +327,9 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
 
           {/* แจกแจงการแบ่งชำระ (Split Payment) */}
           {data.payments && data.payments.length > 0 && (
-            <div className="space-y-0.5 pt-1 p-1 border-2 border-black my-1">
+            <div className="space-y-0.5 pt-1 my-1">
               {data.payments.map((p, pIdx) => {
-                const methodName = 
-                  p.method === 'CASH' ? 'เงินสด (Cash)' :
-                  p.method === 'QR_PROMPTPAY' ? 'คิวอาร์ (PromptPay)' :
-                  p.method === 'CREDIT_CARD' ? 'บัตรเครดิต' :
-                  p.method === 'TRANSFER' ? 'โอนเงิน' : p.method;
+                const methodName = paymentMethodLabel(p.method);
                 return (
                   <div key={pIdx} className="flex justify-between items-center text-black font-bold text-[11px]">
                     <span className="truncate pr-1">• {methodName}</span>
@@ -336,6 +344,12 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
             <div className="flex justify-between items-center font-bold pt-0.5">
               <span>รับเงินมา:</span>
               <span className="shrink-0 font-mono font-bold text-[12px]">{formatCurrency(data.cashReceived)}</span>
+            </div>
+          )}
+          {data.outstandingAmount !== undefined && data.outstandingAmount > 0 && (
+            <div className="flex justify-between items-center font-black text-[13px] pt-1 border-t border-black">
+              <span>ยอดค้างชำระ:</span>
+              <span className="shrink-0 font-mono font-black text-[14px]">{formatCurrency(data.outstandingAmount)}</span>
             </div>
           )}
           {data.changeAmount !== undefined && data.changeAmount > 0 && (
@@ -355,7 +369,9 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
                 <span className="font-bold"> (ใช้ {data.pointsUsed.toLocaleString()})</span>
               )}
             </span>
-            <span>แต้มรวม: <b className="font-black font-mono">{(data.customerPointsBalance ?? 0).toLocaleString()}</b> แต้ม</span>
+            {data.customerPointsBalance !== undefined && (
+              <span>แต้มรวม: <b className="font-black font-mono">{data.customerPointsBalance.toLocaleString()}</b> แต้ม</span>
+            )}
           </div>
         )}
 

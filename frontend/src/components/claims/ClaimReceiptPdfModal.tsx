@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { formatCurrency, formatDate, thaiBahtText } from '@/lib/utils';
+import { formatCurrency, formatDocDate, formatDocDateTime, thaiBahtText } from '@/lib/utils';
 import { ClaimRecord } from '@/lib/types';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
@@ -18,6 +18,32 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BarcodeView } from '@/components/common/BarcodeView';
+
+/** Thai labels for every claim resolution type (frontend enum + legacy/backend values). */
+export const CLAIM_RESOLUTION_LABELS: Record<string, string> = {
+  REPLACE_ITEM: 'เปลี่ยนสินค้าตัวใหม่ทันที (Replacement)',
+  REFUND: 'คืนเงินให้ลูกค้า (Refund)',
+  REFUND_CASH: 'คืนเงินสดให้ลูกค้า (Cash Refund)',
+  REFUND_TRANSFER: 'โอนเงินคืนลูกค้า (Bank Transfer)',
+  STORE_DISCOUNT: 'ใช้เป็นส่วนลดซื้อสินค้าในบิลใหม่ (Store Discount)',
+  CLAIM_DISCOUNT: 'ใช้เป็นส่วนลดซื้อสินค้าในบิลใหม่ (Claim Discount)',
+  SUPPLIER_RMA: 'ส่งเคลมบริษัทผู้จัดจำหน่าย (Supplier RMA)',
+  VENDOR_CLAIM: 'ส่งเคลมบริษัทผู้จัดจำหน่าย (Vendor Claim)',
+  EXCHANGE: 'เปลี่ยนสินค้า (Exchange)',
+  WARRANTY: 'เคลมตามการรับประกัน (Warranty)',
+  REPAIR: 'ส่งซ่อม (Repair)',
+  REJECT: 'ปฏิเสธการเคลม (Reject)',
+  REJECTED: 'ปฏิเสธการเคลม (Reject)',
+};
+
+export function claimResolutionLabel(type: string | null | undefined): string {
+  if (!type) return '-';
+  return CLAIM_RESOLUTION_LABELS[String(type).toUpperCase()] || String(type);
+}
+
+export function isRefundResolution(type: string | null | undefined): boolean {
+  return String(type || '').toUpperCase().startsWith('REFUND');
+}
 
 interface ClaimReceiptPdfModalProps {
   open: boolean;
@@ -37,19 +63,9 @@ export function ClaimReceiptPdfModal({
 
   if (!claim) return null;
 
-  const resolutionLabels: Record<string, string> = {
-    REPLACE_ITEM: 'เปลี่ยนสินค้าตัวใหม่ทันที (Replacement)',
-    REFUND_CASH: 'คืนเงินสดให้ลูกค้า (Cash Refund)',
-    REFUND_TRANSFER: 'โอนเงินคืนลูกค้า (Bank Transfer)',
-    CLAIM_DISCOUNT: 'ออกคูปองส่วนลดเพื่อใช้ซื้อสินค้าใหม่ (Claim Discount)',
-    VENDOR_CLAIM: 'ส่งเคลมบริษัทผู้จัดจำหน่าย (Vendor Claim)',
-    REPAIR: 'ส่งซ่อม (Repair)',
-    REJECT: 'ปฏิเสธการเคลม (Reject)',
-  };
-
-  const getResolutionLabel = (type: string) => {
-    return resolutionLabels[type] || type;
-  };
+  const getResolutionLabel = (type: string) => claimResolutionLabel(type);
+  // any refund (REFUND, REFUND_CASH, REFUND_TRANSFER, ...) prints the refund amount block
+  const isRefund = isRefundResolution(claim.resolutionType);
 
   // Direct WYSIWYG Print with 100% style fidelity
   const handleNativePrint = () => {
@@ -204,7 +220,7 @@ export function ClaimReceiptPdfModal({
                   </div>
                   <div className="flex justify-between items-center gap-1">
                     <span className="shrink-0">วันที่รับเคลม:</span>
-                    <span className="font-bold truncate text-right font-mono text-[11px]">{formatDate(claim.claimDate)}</span>
+                    <span className="font-bold truncate text-right font-mono text-[11px]">{formatDocDateTime(claim.claimDate)}</span>
                   </div>
                   <div className="flex justify-between items-center gap-1">
                     <span className="shrink-0">อ้างอิงบิลเดิม:</span>
@@ -255,7 +271,7 @@ export function ClaimReceiptPdfModal({
                     </div>
                   )}
 
-                  {(claim.resolutionType === 'REFUND_CASH' || claim.resolutionType === 'REFUND_TRANSFER') && (
+                  {isRefund && (
                     <div className="flex justify-between text-[12px] font-black text-black pl-1 pt-1 border-t border-black">
                       <span>ยอดเงินคืน:</span>
                       <span className="font-mono text-[14px]">{formatCurrency(claim.refundAmount || claim.totalClaimValue)}</span>
@@ -337,9 +353,9 @@ export function ClaimReceiptPdfModal({
                     <p className="text-[10.5px] font-bold text-slate-500 font-mono">CLAIM VOUCHER / REPLACEMENT</p>
                     <div className="pt-1.5 text-xs space-y-1 font-mono">
                       <p><b className="text-slate-700">เลขที่เอกสารเคลม:</b> <span className="text-indigo-700 font-bold">{claim.id}</span></p>
-                      <p><b className="text-slate-700">วันที่รับเคลม:</b> {formatDate(claim.claimDate)}</p>
+                      <p><b className="text-slate-700">วันที่รับเคลม:</b> {formatDocDateTime(claim.claimDate)}</p>
                       <p><b className="text-slate-700">อ้างอิงบิลเดิม:</b> <span className="font-bold text-slate-900">#{claim.orderNumber}</span></p>
-                      <p><b className="text-slate-700">วันที่ซื้อเดิม:</b> {formatDate(claim.orderDate)}</p>
+                      <p><b className="text-slate-700">วันที่ซื้อเดิม:</b> {formatDocDate(claim.orderDate)}</p>
                     </div>
                   </div>
                 </div>
@@ -441,7 +457,7 @@ export function ClaimReceiptPdfModal({
                       </div>
                     )}
 
-                    {(claim.resolutionType === 'REFUND_CASH' || claim.resolutionType === 'REFUND_TRANSFER') && (
+                    {isRefund && (
                       <div className="bg-white p-3 rounded-lg border border-rose-200 space-y-1 text-slate-800">
                         <div className="flex justify-between items-center text-sm font-black text-rose-700">
                           <span>จำนวนเงินสด / เงินโอนที่คืนให้ลูกค้า:</span>
@@ -497,7 +513,7 @@ export function ClaimReceiptPdfModal({
                     <p className="font-bold text-slate-700">ลงชื่อ ผู้รับเคลม / เจ้าหน้าที่ผู้อนุมัติ</p>
                     <div className="pt-8 border-b border-slate-400 mx-auto w-3/4 border-dashed" />
                     <p className="text-slate-900 font-bold">({claim.cashierName || 'พนักงาน POS'})</p>
-                    <p className="text-[10.5px] text-slate-400">วันที่: {formatDate(claim.claimDate)}</p>
+                    <p className="text-[10.5px] text-slate-400">วันที่: {formatDocDateTime(claim.claimDate)}</p>
                   </div>
                 </div>
               </div>

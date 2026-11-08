@@ -10,6 +10,8 @@ export interface CashDrawerConfig {
   enabled: boolean;
   method: 'desktop_native' | 'print_pulse' | 'web_serial';
   selectedPrinter?: string;
+  /** A4 documents (tax invoice, PO, vouchers). Empty = show the system print dialog. */
+  selectedA4Printer?: string;
   kickTechnique?: 'auto' | 'escpos' | 'epson_font';
   openOnCashPayment: boolean; // Automatically kick drawer when cash payment is confirmed
   soundFeedback: boolean; // Play cash register chime
@@ -21,6 +23,7 @@ const DEFAULT_CONFIG: CashDrawerConfig = {
   enabled: true,
   method: 'desktop_native',
   selectedPrinter: '',
+  selectedA4Printer: '',
   kickTechnique: 'escpos',
   openOnCashPayment: true,
   soundFeedback: true,

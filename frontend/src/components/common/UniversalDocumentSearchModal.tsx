@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 
 // Preview Modals
 import { ReceiptPdfModal, ReceiptData } from '@/components/pos/ReceiptPdfModal';
+import { orderToReceiptData } from '@/lib/receipt-mapper';
 import { ShiftSummaryPdfModal, ShiftSummaryData } from '@/components/pos/ShiftSummaryPdfModal';
 import { ClaimReceiptPdfModal } from '@/components/claims/ClaimReceiptPdfModal';
 import { DebtReceiptPdfModal } from '@/components/debts/DebtReceiptPdfModal';
@@ -176,30 +177,11 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
     switch (doc.type) {
       case 'ORDER': {
         const ord = doc.rawData;
-        const receipt: ReceiptData = {
-          orderNumber: ord.orderNumber || doc.docNumber,
-          createdAt: String(ord.createdAt || doc.date || new Date().toISOString()),
-          userName: ord.user?.fullName || ord.user?.username || 'แคชเชียร์',
-          customerName: ord.customer?.name || null,
-          items: (ord.items || []).map((it: any) => ({
-            name: it.product?.name || it.name || 'สินค้า',
-            quantity: Number(it.quantity || 1),
-            unitName: it.unitName || it.product?.unit || 'ชิ้น',
-            unitPrice: Number(it.unitPrice || it.price || 0),
-            lineTotal: Number(it.total || ((it.quantity || 1) * (it.unitPrice || it.price || 0))),
-            discountAmount: Number(it.discountAmount || 0),
-          })),
-          subtotal: Number(ord.subtotal || ord.totalAmount || 0),
-          billDiscountAmount: Number(ord.discountAmount || 0),
-          vatAmount: 0,
-          totalAmount: Number(ord.totalAmount || 0),
-          paymentMethod: ord.payments?.[0]?.method || 'CASH',
-          payments: (ord.payments || []).map((p: any) => ({
-            method: p.method,
-            amount: Number(p.amount),
-          })),
-          changeAmount: ord.change ? Number(ord.change) : 0,
-        };
+        // same mapping as the orders page / POS history reprint
+        const receipt: ReceiptData = orderToReceiptData(
+          { ...ord, orderNumber: ord.orderNumber || doc.docNumber, createdAt: ord.createdAt || doc.date },
+          { isReprint: true },
+        );
         setActiveOrder(receipt);
         break;
       }
@@ -214,6 +196,8 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
 
         const shiftData: ShiftSummaryData = {
           shiftId: sh.shiftNumber || sh.id,
+          shiftCode: sh.shiftCode || sh.code || sh.shiftNumber,
+          status: sh.status,
           userName: sh.user?.fullName || sh.user?.username || 'แคชเชียร์',
           openedAt: String(sh.openedAt || new Date().toISOString()),
           closedAt: String(sh.closedAt || new Date().toISOString()),

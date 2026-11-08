@@ -4,8 +4,8 @@ import { useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Printer, Download, ExternalLink, FileText, CheckCircle2, Store, Building2 } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
-import html2canvas from 'html2canvas';
+import { formatCurrency, formatDocDate } from '@/lib/utils';
+import { capturePrintable as html2canvas } from '@/lib/pdf-print-service';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
 import { BarcodeView } from '@/components/common/BarcodeView';
@@ -18,7 +18,14 @@ export interface BankAccountBreakdownItem {
 }
 
 export interface ShiftSummaryData {
+  /** UUID or shift number; prefer shiftCode/code for display */
   shiftId: string;
+  /** readable shift number, e.g. SHF-261100003 */
+  shiftCode?: string;
+  code?: string;
+  shiftNumber?: string;
+  /** OPEN / CLOSED - an open shift is printed as "ยังไม่ปิดกะ" */
+  status?: string;
   userId?: string;
   userName: string;
   openedAt: string;
@@ -69,6 +76,8 @@ export function ShiftSummaryPdfModal({ open, onOpenChange, data }: ShiftSummaryP
   const summaryRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [storeSettings] = useState(() => loadStoreSettings());
+  const shiftLabel = data ? data.shiftCode || data.code || data.shiftNumber || data.shiftId : '';
+  const isOpenShift = !!data?.isOpen || String(data?.status || '').toUpperCase() === 'OPEN';
 
   if (!data) return null;
 
@@ -107,9 +116,9 @@ export function ShiftSummaryPdfModal({ open, onOpenChange, data }: ShiftSummaryP
     setIsGenerating(true);
     toast.loading('กำลังสร้างไฟล์ PDF...', { id: 'shift-pdf' });
     try {
-      const success = await exportElementToPdf(summaryRef.current, `Shift-Summary-${data.shiftId}.pdf`, '80mm');
+      const success = await exportElementToPdf(summaryRef.current, `Shift-Summary-${shiftLabel}.pdf`, '80mm');
       if (success) {
-        toast.success(`ดาวน์โหลดไฟล์ PDF ใบสรุปกะ #${data.shiftId} เรียบร้อยแล้ว!`, { id: 'shift-pdf' });
+        toast.success(`ดาวน์โหลดไฟล์ PDF ใบสรุปกะ #${shiftLabel} เรียบร้อยแล้ว!`, { id: 'shift-pdf' });
       } else {
         toast.error('ไม่สามารถสร้างไฟล์ PDF ได้', { id: 'shift-pdf' });
       }
@@ -132,7 +141,7 @@ export function ShiftSummaryPdfModal({ open, onOpenChange, data }: ShiftSummaryP
 
   const handlePrint = () => {
     if (!summaryRef.current) return;
-    printDocumentIframe(summaryRef.current, `พิมพ์ใบสรุปปิดกะ - Shift ${data.shiftId}`, '80mm');
+    printDocumentIframe(summaryRef.current, `พิมพ์ใบสรุปปิดกะ - Shift ${shiftLabel}`, '80mm');
   };
 
   return (
@@ -145,7 +154,7 @@ export function ShiftSummaryPdfModal({ open, onOpenChange, data }: ShiftSummaryP
               <span>ใบสรุปปิดกะ (Shift Summary PDF)</span>
             </div>
             <span className="text-xs font-mono text-slate-600 font-bold bg-slate-200 px-2.5 py-1 rounded-md">
-              #{data.shiftId}
+              #{shiftLabel}
             </span>
           </DialogTitle>
         </DialogHeader>
@@ -220,13 +229,13 @@ export function ShiftSummaryPdfModal({ open, onOpenChange, data }: ShiftSummaryP
               )}
               <div className="pt-1">
                 <span className="text-[13px] font-black border-2 border-black px-3 py-0.5 rounded-none font-sans inline-block text-black uppercase tracking-wider">
-                  ใบสรุปปิดกะการขาย
+                  {isOpenShift ? 'ใบสรุปยอดระหว่างกะ (ยังไม่ปิดกะ)' : 'ใบสรุปปิดกะการขาย'}
                 </span>
               </div>
 
               {/* Barcode of Shift ID */}
               <div className="pt-2 pb-1 flex justify-center bg-white">
-                <BarcodeView value={data.shiftId} width={1.8} height={44} fontSize={12} />
+                <BarcodeView value={shiftLabel} width={1.8} height={44} fontSize={12} />
               </div>
             </div>
 
@@ -234,7 +243,7 @@ export function ShiftSummaryPdfModal({ open, onOpenChange, data }: ShiftSummaryP
             <div className="text-[11.5px] space-y-1 pb-2 border-b-2 border-dashed border-black font-bold text-black">
               <div className="flex justify-between items-center gap-1">
                 <span className="shrink-0">รหัสกะ:</span>
-                <span className="font-black truncate text-right font-mono text-black text-[12px]">#{data.shiftId}</span>
+                <span className="font-black truncate text-right font-mono text-black text-[12px]">{shiftLabel}</span>
               </div>
               <div className="flex justify-between items-center gap-1">
                 <span className="shrink-0">พนักงานขาย:</span>
@@ -242,11 +251,11 @@ export function ShiftSummaryPdfModal({ open, onOpenChange, data }: ShiftSummaryP
               </div>
               <div className="flex justify-between items-center gap-1">
                 <span className="shrink-0">เปิดกะ:</span>
-                <span className="truncate text-right font-mono text-[11px]">{new Date(data.openedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                <span className="truncate text-right font-mono text-[11px]">{formatDocDate(data.openedAt, { time: true })}</span>
               </div>
               <div className="flex justify-between items-center gap-1">
                 <span className="shrink-0">ปิดกะ:</span>
-                <span className="truncate text-right font-mono text-[11px]">{data.isOpen ? 'ยังไม่ปิดกะ (กะเปิดอยู่)' : new Date(data.closedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                <span className="truncate text-right font-mono text-[11px]">{isOpenShift ? 'ยังไม่ปิดกะ' : formatDocDate(data.closedAt, { time: true })}</span>
               </div>
             </div>
 
@@ -426,15 +435,15 @@ export function ShiftSummaryPdfModal({ open, onOpenChange, data }: ShiftSummaryP
               </div>
               <div className="flex justify-between items-center font-black text-black">
                 <span>เงินสดที่นับได้จริง:</span>
-                <span className="shrink-0 font-mono font-black text-[14px]">{data.isOpen ? '- (ยังไม่นับ)' : formatCurrency(data.actualCash)}</span>
+                <span className="shrink-0 font-mono font-black text-[14px]">{isOpenShift ? 'ยังไม่ได้นับ' : formatCurrency(data.actualCash)}</span>
               </div>
 
               {/* Prominent Cash Reconciliation Result Box */}
               <div className="flex justify-between items-center font-black text-[12px] p-2 mt-1 border-2 border-black bg-white">
                 <span>ผลการกระทบยอด:</span>
                 <span className="font-black text-[13px] font-sans">
-                  {data.isOpen
-                    ? 'กะยังเปิดอยู่ (ยังไม่นับเงิน)'
+                  {isOpenShift
+                    ? 'ยังไม่ปิดกะ'
                     : Math.abs(diff) < 0.005
                     ? 'ครบพอดี (฿0.00)' 
                     : diff > 0 
@@ -455,7 +464,7 @@ export function ShiftSummaryPdfModal({ open, onOpenChange, data }: ShiftSummaryP
                 <span>.................................</span>
               </div>
               <div className="text-center text-[10px] text-black pt-1 border-t-2 border-black">
-                พิมพ์เมื่อ: {new Date().toLocaleString('th-TH')}
+                พิมพ์เมื่อ: {formatDocDate(new Date(), { time: true })}
               </div>
             </div>
 
