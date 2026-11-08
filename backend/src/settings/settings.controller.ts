@@ -6,16 +6,46 @@ import { Roles, RequirePermissions } from '../auth/roles.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import { UpdateSettingsDto, SETTINGS_FIELDS } from './update-settings.dto';
+
+/** Images only: checked by MIME type AND extension, 5 MB max (served same-origin from /uploads). */
+export const IMAGE_TYPES: Record<string, string[]> = {
+  'image/png': ['.png'],
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/webp': ['.webp'],
+  'image/gif': ['.gif'],
+};
+export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+
+export function isAllowedImage(file: { mimetype?: string; originalname?: string }) {
+  const ext = extname(String(file.originalname || '')).toLowerCase();
+  const allowed = IMAGE_TYPES[String(file.mimetype || '').toLowerCase()];
+  return Boolean(allowed && allowed.includes(ext));
+}
 
 const storageOptions = {
   storage: diskStorage({
     destination: './uploads',
     filename: (req, file, cb) => {
       const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-      cb(null, `${file.fieldname}-${uniqueSuffix}${extname(file.originalname)}`);
+      const ext = extname(file.originalname).toLowerCase();
+      cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
     }
-  })
+  }),
+  limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
+  fileFilter: (req: any, file: Express.Multer.File, cb: (error: Error | null, accept: boolean) => void) => {
+    if (!isAllowedImage(file)) return cb(new BadRequestException('รองรับเฉพาะไฟล์รูปภาพ PNG, JPG, WEBP หรือ GIF เท่านั้น'), false);
+    cb(null, true);
+  },
 };
+
+/** Never published pre-login: server paths and approval policy. */
+const PRIVATE_FIELDS = ['backupOffsiteDir', 'approvalRules'] as const;
+function publicSettings<T extends Record<string, any>>(s: T) {
+  const out: Record<string, any> = { ...s };
+  for (const k of PRIVATE_FIELDS) delete out[k];
+  return out;
+}
 
 @Controller('settings')
 export class SettingsController {
@@ -28,7 +58,7 @@ export class SettingsController {
       if (!settings) {
         settings = await this.prisma.storeSettings.create({ data: {} });
       }
-      return settings;
+      return publicSettings(settings);
     } catch (err) {
       return {
         storeName: 'ร้านปุริม POS',
@@ -44,20 +74,30 @@ export class SettingsController {
   @Roles('ADMIN', 'MANAGER')
   @RequirePermissions('MANAGE_SETTINGS')
   @Patch()
-  async updateSettings(@Body() data: any) {
-    let settings = await this.prisma.storeSettings.findFirst();
-    if (!settings) {
-      return this.prisma.storeSettings.create({ data });
-    }
-    return this.prisma.storeSettings.update({ where: { id: settings.id }, data });
+  async updateSettings(@Body() body: UpdateSettingsDto) {
+    return this.applySettings(body);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'MANAGER')
   @RequirePermissions('MANAGE_SETTINGS')
   @Put()
-  async putSettings(@Body() data: any) {
-    return this.updateSettings(data);
+  async putSettings(@Body() body: UpdateSettingsDto) {
+    return this.applySettings(body);
+  }
+
+  /** Only whitelisted, validated fields reach the database (no id/createdAt/approvalRules/backupOffsiteDir). */
+  private async applySettings(body: Partial<UpdateSettingsDto>) {
+    const data: Record<string, any> = {};
+    for (const k of SETTINGS_FIELDS) {
+      if ((body as any)?.[k] !== undefined) data[k] = (body as any)[k];
+    }
+    if (data.loyaltyConfig === null) data.loyaltyConfig = undefined;
+    const settings = await this.prisma.storeSettings.findFirst();
+    const saved = settings
+      ? await this.prisma.storeSettings.update({ where: { id: settings.id }, data })
+      : await this.prisma.storeSettings.create({ data });
+    return publicSettings(saved);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -66,9 +106,9 @@ export class SettingsController {
   @Post('upload-qr')
   @UseInterceptors(FileInterceptor('file', storageOptions))
   async uploadQr(@UploadedFile() file: Express.Multer.File) {
-    if (!file) throw new BadRequestException('No file uploaded');
+    if (!file) throw new BadRequestException('กรุณาเลือกไฟล์รูปภาพ');
     const url = `/uploads/${file.filename}`;
-    await this.updateSettings({ qrImageUrl: url });
+    await this.applySettings({ qrImageUrl: url });
     return { url };
   }
 
@@ -78,9 +118,9 @@ export class SettingsController {
   @Post('upload-logo')
   @UseInterceptors(FileInterceptor('file', storageOptions))
   async uploadLogo(@UploadedFile() file: Express.Multer.File) {
-    if (!file) throw new BadRequestException('No file uploaded');
+    if (!file) throw new BadRequestException('กรุณาเลือกไฟล์รูปภาพ');
     const url = `/uploads/${file.filename}`;
-    await this.updateSettings({ logoUrl: url });
+    await this.applySettings({ logoUrl: url });
     return { url };
   }
 

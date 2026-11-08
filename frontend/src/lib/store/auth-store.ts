@@ -21,6 +21,8 @@ interface AuthStore {
   login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   loginWithPin: (pin: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  /** Replace the session token (the server revokes the old one after a password/PIN change). */
+  setToken: (token: string) => void;
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -68,6 +70,11 @@ export const useAuthStore = create<AuthStore>()(
           console.warn('PIN Login error:', error);
           return { success: false, error: error.message || 'รหัส PIN ไม่ถูกต้อง' };
         }
+      },
+
+      setToken: (token: string) => {
+        setInMemoryAuthToken(token);
+        set({ token });
       },
 
       logout: () => {

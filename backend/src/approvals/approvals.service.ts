@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -28,6 +28,7 @@ export const DEFAULT_APPROVAL_RULES: ApprovalRules = {
   belowPriceFloorNeedsApproval: true,
 };
 
+const APPROVER_PIN_INVALID = 'PIN ไม่ถูกต้อง หรือไม่ใช่ PIN ของผู้มีสิทธิ์อนุมัติ (ต้องเป็นผู้จัดการ/เจ้าของคนอื่น)';
 const TICKET_TTL_MS = 10 * 60 * 1000; // ticket and approval stay valid for 10 minutes
 const b64 = (s: string) => Buffer.from(s).toString('base64url');
 const sign = (body: string) => createHmac('sha256', getJwtSecret()).update('approval:' + body).digest('base64url');
@@ -99,20 +100,24 @@ export class ApprovalsService {
     if (t.u !== requester.id) throw new ForbiddenException('คำขออนุมัตินี้เป็นของผู้ใช้อื่น');
     const key = `approve-pin:${ip}`;
     loginThrottle.assertAllowed(key);
-    const pin = String(body.pin || '');
+    const pin = typeof body.pin === 'string' ? body.pin : '';
     const candidates = /^\d{4,6}$/.test(pin)
       ? await this.prisma.user.findMany({ where: { isActive: true, pinCode: { not: null } }, select: { id: true, fullName: true, username: true, role: true, permissions: true, pinCode: true } })
       : [];
     let approver: (typeof candidates)[number] | undefined;
     for (const u of candidates) if (u.pinCode && (await bcrypt.compare(pin, u.pinCode))) { approver = u; break; }
-    if (!approver) { loginThrottle.fail(key); throw new UnauthorizedException('PIN ไม่ถูกต้อง'); }
-    loginThrottle.succeed(key);
-    if (!canApprove(approver)) throw new ForbiddenException(`${approver.fullName} ไม่มีสิทธิ์อนุมัติ`);
-    if (approver.id === requester.id) throw new ForbiddenException('อนุมัติรายการของตัวเองไม่ได้ ต้องเป็นผู้จัดการ/เจ้าของคนอื่น');
+    // A PIN without approve rights (or the requester's own PIN) answers exactly like a wrong PIN:
+    // no name leak, and it counts as a failure. Failures are never cleared by a success, so
+    // interleaving valid PINs cannot extend the 5-attempts-per-15-minutes budget of this IP.
+    if (!approver || !canApprove(approver) || approver.id === requester.id) {
+      loginThrottle.fail(key);
+      // 403 (not 401): a 401 would make the POS log the cashier out.
+      throw new ForbiddenException(APPROVER_PIN_INVALID);
+    }
     const row = await this.prisma.approvalRequest.create({
       data: {
         type: t.t, status: 'APPROVED', channel: 'PIN', requestedById: t.u, approvedById: approver.id, terminalId: t.term ?? null,
-        contextHash: t.h, amount: t.a, reasons: t.r as any, summary: (t.s ?? null) as any, decisionNote: body.note?.trim() || null,
+        contextHash: t.h, amount: t.a, reasons: t.r as any, summary: (t.s ?? null) as any, decisionNote: typeof body.note === 'string' ? body.note.trim().slice(0, 500) || null : null,
         expiresAt: new Date(Date.now() + TICKET_TTL_MS), decidedAt: new Date(),
       },
     });
@@ -136,6 +141,8 @@ export class ApprovalsService {
 
   async decide(id: string, body: { approve?: boolean; note?: string }, approver: { id: string; role?: string; permissions?: unknown }) {
     if (!canApprove(approver)) throw new ForbiddenException('ไม่มีสิทธิ์อนุมัติ');
+    if (typeof body?.approve !== 'boolean') throw new BadRequestException('กรุณาระบุผลการพิจารณา (approve: true/false)');
+    if (body.note !== undefined && body.note !== null && typeof body.note !== 'string') throw new BadRequestException('หมายเหตุไม่ถูกต้อง');
     const row = await this.prisma.approvalRequest.findUnique({ where: { id } });
     if (!row) throw new NotFoundException('ไม่พบคำขออนุมัติ');
     if (row.status !== 'PENDING') throw new BadRequestException('คำขอนี้ถูกตัดสินไปแล้ว');
@@ -146,7 +153,7 @@ export class ApprovalsService {
     if (row.requestedById === approver.id) throw new ForbiddenException('อนุมัติรายการของตัวเองไม่ได้');
     const updated = await this.prisma.approvalRequest.update({
       where: { id },
-      data: { status: body.approve ? 'APPROVED' : 'REJECTED', approvedById: approver.id, decidedAt: new Date(), decisionNote: body.note?.trim() || null, expiresAt: new Date(Date.now() + TICKET_TTL_MS) },
+      data: { status: body.approve === true ? 'APPROVED' : 'REJECTED', approvedById: approver.id, decidedAt: new Date(), decisionNote: body.note?.trim() || null, expiresAt: new Date(Date.now() + TICKET_TTL_MS) },
     });
     this.emit([id]);
     return updated;

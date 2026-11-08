@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { MAX_TERMINALS } from './telemetry-input';
 import { PrismaService } from '../prisma/prisma.service';
 import * as os from 'os';
 import * as fs from 'fs';
@@ -585,6 +586,7 @@ export class ServerControlService {
     latencyMs = 5,
     liveState?: Partial<TerminalLiveState>,
   ) {
+    this.makeRoomFor(terminalId);
     this.activePings.set(terminalId, {
       terminalName: terminalName || `Terminal ${terminalId.slice(0, 4).toUpperCase()}`,
       ipAddress: ip || '127.0.0.1',
@@ -597,12 +599,27 @@ export class ServerControlService {
     }
   }
 
-  recordLiveState(terminalId: string, state: Partial<TerminalLiveState>, ip = '127.0.0.1') {
+  /** Bound the in-memory telemetry: at most MAX_TERMINALS terminals, the least recently seen is dropped. */
+  private makeRoomFor(terminalId: string) {
+    if (this.activePings.has(terminalId) || this.activePings.size < MAX_TERMINALS) return;
+    let oldestId: string | null = null;
+    let oldestAt = Infinity;
+    this.activePings.forEach((v, id) => {
+      if (v.lastPingAt < oldestAt) { oldestAt = v.lastPingAt; oldestId = id; }
+    });
+    if (oldestId !== null) {
+      this.activePings.delete(oldestId);
+      this.terminalLiveStates.delete(oldestId);
+    }
+  }
+
+  recordLiveState(terminalId: string, state: Partial<TerminalLiveState>, ip = '127.0.0.1', userName?: string) {
     if (!this.activePings.has(terminalId)) {
+      this.makeRoomFor(terminalId);
       this.activePings.set(terminalId, {
         terminalName: `จุดขาย #${terminalId.slice(0, 6).toUpperCase()}`,
         ipAddress: ip,
-        userName: 'แคชเชียร์',
+        userName: userName || 'แคชเชียร์',
         lastPingAt: Date.now(),
         latencyMs: 3,
       });

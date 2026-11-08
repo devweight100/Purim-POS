@@ -1,12 +1,86 @@
 import { businessTransaction } from '../prisma/business-transaction';
 import * as ledger from '../finance/ledger';
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ClaimStatus, ClaimType } from '@prisma/client';
+import { CashMovementType, ClaimStatus, ClaimType, OrderStatus, ShiftStatus } from '@prisma/client';
+import { ShiftsService } from '../shifts/shifts.service';
+import { userHasPermission } from '../auth/permissions';
+
+export interface ClaimActor {
+  id: string;
+  username?: string;
+  fullName?: string | null;
+  role?: string;
+  permissions?: unknown;
+}
+
+export const RESOLUTION_TYPES = ['REPLACE_ITEM', 'REFUND_CASH', 'REFUND_TRANSFER', 'STORE_DISCOUNT', 'SUPPLIER_RMA'] as const;
+export const FRONTEND_STATUSES = ['COMPLETED', 'PENDING_CHECKOUT', 'PENDING_SUPPLIER', 'SENT_TO_SUPPLIER', 'SUPPLIER_REPLACED', 'SCRAPPED', 'REJECTED'] as const;
+export type FrontendStatus = (typeof FRONTEND_STATUSES)[number];
+/** Legacy / Prisma names accepted on input, mapped onto the frontend workflow statuses. */
+const STATUS_ALIASES: Record<string, FrontendStatus> = { PENDING: 'PENDING_SUPPLIER', IN_PROGRESS: 'SENT_TO_SUPPLIER' };
+
+/**
+ * Claim workflow. COMPLETED -> SENT_TO_SUPPLIER/SCRAPPED is the defective unit (kept in the claim
+ * stock) going to the supplier or being written off after the customer was already served.
+ * SENT_TO_SUPPLIER -> PENDING_SUPPLIER is a cancelled supplier-return document.
+ * SCRAPPED and REJECTED are final.
+ */
+export const CLAIM_TRANSITIONS: Record<FrontendStatus, FrontendStatus[]> = {
+  PENDING_CHECKOUT: ['COMPLETED', 'REJECTED'],
+  PENDING_SUPPLIER: ['SENT_TO_SUPPLIER', 'SUPPLIER_REPLACED', 'COMPLETED', 'SCRAPPED', 'REJECTED'],
+  SENT_TO_SUPPLIER: ['SUPPLIER_REPLACED', 'PENDING_SUPPLIER', 'COMPLETED', 'SCRAPPED', 'REJECTED'],
+  SUPPLIER_REPLACED: ['COMPLETED'],
+  COMPLETED: ['SENT_TO_SUPPLIER', 'SCRAPPED', 'REJECTED'],
+  SCRAPPED: [],
+  REJECTED: [],
+};
+
+export function normalizeFrontendStatus(raw: unknown): FrontendStatus | null {
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim().toUpperCase();
+  if ((FRONTEND_STATUSES as readonly string[]).includes(s)) return s as FrontendStatus;
+  return STATUS_ALIASES[s] || null;
+}
+
+export function canTransition(from: FrontendStatus, to: FrontendStatus) {
+  return from === to || CLAIM_TRANSITIONS[from].includes(to);
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Claim stock quantity: whole units, never negative. */
+export function parseClaimStockQuantity(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN;
+  if (!Number.isSafeInteger(n) || n < 0 || n > 1_000_000_000) throw new BadRequestException('จำนวนสต็อกสินค้าเคลมต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป');
+  return n;
+}
+
+/** Claim stock unit cost: a money amount, never negative. */
+export function parseClaimStockCost(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN;
+  if (!Number.isFinite(n) || n < 0 || n > 99_999_999) throw new BadRequestException('ต้นทุนต่อหน่วยต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป');
+  return Math.round(n * 100) / 100;
+}
+
+function assertClaimStockText(data: any) {
+  for (const k of ['condition', 'location', 'note']) {
+    const v = data[k];
+    if (v !== undefined && v !== null && (typeof v !== 'string' || v.length > 1000)) throw new BadRequestException('ข้อมูลสต็อกสินค้าเคลมไม่ถูกต้อง');
+  }
+}
+const MAX_MONEY = 1e9;
 
 @Injectable()
 export class ClaimsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Optional() private readonly shifts?: ShiftsService,
+  ) {}
+
+  private actorName(actor?: ClaimActor | null) {
+    return actor?.fullName || actor?.username || 'พนักงาน POS';
+  }
 
   private mapToPrismaClaimStatus(rawStatus?: string): ClaimStatus {
     const s = String(rawStatus || '').toUpperCase();
@@ -177,15 +251,27 @@ export class ClaimsService {
     return this.mergeClaimWithLogs(claim, logs);
   }
 
-  async createClaim(dto: any) {
+  async createClaim(dto: any, actor?: ClaimActor) {
+    if (!dto || typeof dto !== 'object' || Array.isArray(dto)) throw new BadRequestException('ข้อมูลการเคลมไม่ถูกต้อง');
+    if (typeof dto.productId !== 'string' || !dto.productId.trim()) throw new BadRequestException('กรุณาระบุสินค้าที่เคลม');
     const quantity = dto.quantity === undefined ? 1 : Number(dto.quantity);
-    if (!Number.isSafeInteger(quantity) || quantity <= 0) throw new BadRequestException('จำนวนสินค้าเคลมต้องเป็นจำนวนเต็มมากกว่า 0');
+    if (!Number.isSafeInteger(quantity) || quantity <= 0 || quantity > 100000) throw new BadRequestException('จำนวนสินค้าเคลมต้องเป็นจำนวนเต็มมากกว่า 0');
+    if (dto.resolutionType !== undefined && dto.resolutionType !== null && !(RESOLUTION_TYPES as readonly string[]).includes(dto.resolutionType)) {
+      throw new BadRequestException('รูปแบบการแก้ไขเคลมไม่ถูกต้อง');
+    }
+    for (const key of ['orderId', 'customerId', 'replacementProductId', 'fulfilledInOrderId', 'fulfilledInOrderNumber', 'refundAccountId', 'clientClaimId']) {
+      if (dto[key] !== undefined && dto[key] !== null && typeof dto[key] !== 'string') throw new BadRequestException('ข้อมูลการเคลมไม่ถูกต้อง');
+    }
+    // The audit trail names the logged-in user, never a name typed by the client.
+    dto = { ...dto, cashierName: this.actorName(actor) };
     return businessTransaction(this.prisma, async tx => {
-      const skipStockDeduction = dto.skipStockDeduction === true || !!dto.fulfilledInOrderNumber || !!dto.fulfilledInOrderId;
       const exchange = /REPLACE|EXCHANGE/.test(String(dto.claimType || '').toUpperCase());
-      const clientClaimId = dto.clientClaimId || (skipStockDeduction ? `auto-claim-${Date.now()}-${Math.random().toString(36).slice(2, 10)}` : null);
+      const wantsSkip = exchange && (dto.skipStockDeduction === true || !!dto.fulfilledInOrderNumber || !!dto.fulfilledInOrderId);
+      let fulfilledOrder: { id: string; orderNumber: string } | null = null;
+      let skipStockDeduction = false;
+      const clientClaimId = dto.clientClaimId || (wantsSkip ? `auto-claim-${Date.now()}-${Math.random().toString(36).slice(2, 10)}` : null);
       const receiptId = exchange && clientClaimId ? 'claim-exchange-' + clientClaimId : null;
-      if (exchange && !skipStockDeduction && !/^[a-zA-Z0-9-]{16,80}$/.test(dto.clientClaimId || '')) throw new BadRequestException('กรุณาระบุรหัสเคลมเพื่อป้องกันตัดสต็อกซ้ำ');
+      if (exchange && !wantsSkip && !/^[a-zA-Z0-9-]{16,80}$/.test(dto.clientClaimId || '')) throw new BadRequestException('กรุณาระบุรหัสเคลมเพื่อป้องกันตัดสต็อกซ้ำ');
       const fingerprint = JSON.stringify({
         productId: dto.productId,
         orderId: dto.orderId || null,
@@ -208,13 +294,15 @@ export class ClaimsService {
       }
 
       let orderId: string | null = dto.orderId || null;
+      let linkedOrder: any = null;
       if (orderId) {
-        const ord = await tx.order.findFirst({
+        linkedOrder = await tx.order.findFirst({
           where: {
             OR: [{ id: orderId }, { orderNumber: orderId }],
           },
+          include: { items: true },
         });
-        orderId = ord ? ord.id : null;
+        orderId = linkedOrder ? linkedOrder.id : null;
       }
 
       let customerId: string | null = dto.customerId || null;
@@ -226,14 +314,13 @@ export class ClaimsService {
       }
 
       let productId = dto.productId;
-      if (productId) {
-        const prod = await tx.product.findFirst({
-          where: {
-            OR: [{ id: productId }, { sku: productId }, { barcodes: { some: { barcode: productId } } }],
-          },
-        });
-        if (prod) productId = prod.id;
-      }
+      const claimedProduct = await tx.product.findFirst({
+        where: {
+          OR: [{ id: productId }, { sku: productId }, { barcodes: { some: { barcode: productId } } }],
+        },
+      });
+      if (!claimedProduct) throw new NotFoundException('ไม่พบสินค้าที่เคลม');
+      productId = claimedProduct.id;
 
       const factorFor = async (id: string, raw: any) => {
         const factor = Number(raw ?? 1);
@@ -252,6 +339,14 @@ export class ClaimsService {
       const baseQuantity = quantity * (await factorFor(productId, dto.conversionFactor));
       if (!Number.isSafeInteger(baseQuantity)) throw new BadRequestException('จำนวนสินค้าเคลมมากเกินไป');
 
+      const requestedResolution = String(dto.resolutionType || dto.claimType || '').toUpperCase();
+      const isRefund = requestedResolution.includes('REFUND');
+      if (isRefund && !userHasPermission(actor, 'MANAGE_CLAIMS')) {
+        throw new ForbiddenException('การคืนเงินเคลมต้องใช้สิทธิ์จัดการเคลม (MANAGE_CLAIMS)');
+      }
+      // Claimed quantity must exist in the referenced bill (earlier claims of that line count too).
+      const orderLine = await this.checkAgainstOrder(tx, linkedOrder, dto, productId, baseQuantity, isRefund);
+
       let stockMovements: any[] = [];
       let replacementProductId: string | undefined;
       let replacementBaseQuantity: number | undefined;
@@ -268,6 +363,10 @@ export class ClaimsService {
         replacementProductId = replacement.id;
         replacementBaseQuantity = quantity * (await factorFor(replacement.id, dto.replacementConversionFactor ?? dto.conversionFactor));
         if (!Number.isSafeInteger(replacementBaseQuantity)) throw new BadRequestException('จำนวนของเปลี่ยนมากเกินไป');
+        // "Replacement already rung up in sale X" is only believed when sale X really holds that line.
+        fulfilledOrder = wantsSkip ? await this.verifiedFulfilmentOrder(tx, dto, actor, replacement.id, replacementBaseQuantity) : null;
+        skipStockDeduction = !!fulfilledOrder;
+        if (!skipStockDeduction && !/^[a-zA-Z0-9-]{16,80}$/.test(dto.clientClaimId || '')) throw new BadRequestException('กรุณาระบุรหัสเคลมเพื่อป้องกันตัดสต็อกซ้ำ');
 
         if (!skipStockDeduction) {
           const batches = await tx.stockBatch.findMany({ where: { productId: replacement.id }, orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }] });
@@ -305,7 +404,14 @@ export class ClaimsService {
         claimNumber = `${prefix}${String(seq).padStart(5, '0')}`;
       }
 
-      const prismaStatus = this.mapToPrismaClaimStatus(dto.frontendStatus || dto.status);
+      // Initial status follows the resolution (the client cannot open a claim as e.g. SCRAPPED).
+      const initialResolution =
+        dto.resolutionType ||
+        (claimType === ClaimType.EXCHANGE ? 'REPLACE_ITEM' : claimType === ClaimType.REFUND ? 'REFUND_CASH' : 'SUPPLIER_RMA');
+      const initialFrontendStatus: FrontendStatus =
+        initialResolution === 'SUPPLIER_RMA' ? 'PENDING_SUPPLIER' : initialResolution === 'STORE_DISCOUNT' ? 'PENDING_CHECKOUT' : 'COMPLETED';
+      dto = { ...dto, frontendStatus: initialFrontendStatus, claimStatus: undefined, status: initialFrontendStatus };
+      const prismaStatus = this.mapToPrismaClaimStatus(initialFrontendStatus);
 
       const claim = await tx.customerClaim.create({
         data: {
@@ -319,6 +425,13 @@ export class ClaimsService {
           status: prismaStatus,
           resolutionNote: dto.note || dto.resolutionNote || null,
           completedDate: prismaStatus === ClaimStatus.COMPLETED ? now : null,
+          quantity,
+          conversionFactor: baseQuantity / quantity,
+          baseQuantity,
+          unitName: typeof dto.unitName === 'string' ? dto.unitName.slice(0, 40) : claimedProduct.unit,
+          cashierName: dto.cashierName,
+          frontendStatus: initialFrontendStatus,
+          ...(replacementProductId ? { replacementProductId, replacementBaseQuantity: replacementBaseQuantity ?? null } : {}),
         },
         include: {
           product: true,
@@ -352,7 +465,8 @@ export class ClaimsService {
         });
       }
 
-      const resolvedUnitCost = Number(dto.costPrice ?? claim.product?.costPrice ?? 0);
+      const clientCost = dto.costPrice === undefined || dto.costPrice === null ? NaN : Number(dto.costPrice);
+      const resolvedUnitCost = Number.isFinite(clientCost) && clientCost >= 0 && clientCost <= MAX_MONEY ? clientCost : Number(claim.product?.costPrice ?? 0);
 
       // Track in Claim Inventory
       const existingInv = await tx.claimInventory.findFirst({
@@ -399,8 +513,17 @@ export class ClaimsService {
               : 'PENDING_SUPPLIER');
 
       const resolvedUnitPrice = Number(dto.unitPrice ?? claim.product?.priceLevel1 ?? claim.product?.basePrice ?? 0);
+      if (!Number.isFinite(resolvedUnitPrice) || resolvedUnitPrice < 0 || resolvedUnitPrice > MAX_MONEY) throw new BadRequestException('ราคาสินค้าเคลมไม่ถูกต้อง');
+      if (resolvedResolutionType.startsWith('REFUND')) {
+        const refundAmount = this.validatedRefundAmount(dto, actor, orderLine, claimedProduct, baseQuantity);
+        dto = { ...dto, refundAmount };
+      } else if (dto.refundAmount !== undefined) {
+        dto = { ...dto, refundAmount: undefined };
+      }
       const resolvedTotalClaimValue = Number(dto.totalClaimValue ?? dto.refundAmount ?? resolvedUnitPrice * quantity);
-      const resolvedTotalCostValue = Number(dto.totalCostValue ?? Math.round(resolvedUnitCost * quantity * 100) / 100);
+      if (!Number.isFinite(resolvedTotalClaimValue) || resolvedTotalClaimValue < 0 || resolvedTotalClaimValue > MAX_MONEY) throw new BadRequestException('มูลค่าเคลมไม่ถูกต้อง');
+      const clientTotalCost = dto.totalCostValue === undefined || dto.totalCostValue === null ? NaN : Number(dto.totalCostValue);
+      const resolvedTotalCostValue = Number.isFinite(clientTotalCost) && clientTotalCost >= 0 && clientTotalCost <= MAX_MONEY ? clientTotalCost : Math.round(resolvedUnitCost * quantity * 100) / 100;
 
       const claimMeta = {
         id: claimNumber,
@@ -455,7 +578,7 @@ export class ClaimsService {
         note: dto.note || dto.resolutionNote || undefined,
         isReplacementItem: Boolean(dto.isReplacementItem),
         parentClaimId: dto.parentClaimId || dto.originalClaimId,
-        claimedInOrderNumber: dto.claimedInOrderNumber || dto.fulfilledInOrderNumber,
+        claimedInOrderNumber: fulfilledOrder?.orderNumber || undefined,
         supplierId: dto.supplierId,
         supplierName: dto.supplierName,
         supplierTrackingNo: dto.supplierTrackingNo,
@@ -484,16 +607,26 @@ export class ClaimsService {
         data: {
           resolutionType: resolvedResolutionType,
           refundAmount: refundPaid > 0 ? refundPaid : null,
-          metadata: { ...((claim as any).metadata || {}), accounting: { replacementCost, refundPaid, refundMethod: refundPaid > 0 ? resolvedResolutionType : null } },
+          unitPrice: resolvedUnitPrice,
+          totalClaimValue: resolvedTotalClaimValue,
+          metadata: {
+            ...((claim as any).metadata || {}),
+            accounting: { replacementCost, refundPaid, refundMethod: refundPaid > 0 ? resolvedResolutionType : null },
+            ...(fulfilledOrder ? { fulfilledInOrderId: fulfilledOrder.id } : {}),
+            createdByUserId: actor?.id ?? null,
+          },
         },
       });
-      // Money ledger: transfer refunds leave the bank now (cash refunds are posted from the drawer
-      // by the POS cash-movement call, so they are not posted here again).
+      // Money: both refund kinds are posted here, in the same transaction as the claim.
+      // Cash refunds leave the drawer of the user's open shift (cash movement + ledger).
+      if (refundPaid > 0 && resolvedResolutionType === 'REFUND_CASH') {
+        await this.postCashRefund(tx, actor, claim.id, claimNumber, refundPaid, claimMeta.defectReason);
+      }
       if (refundPaid > 0 && resolvedResolutionType === 'REFUND_TRANSFER') {
         const bank = await ledger.bankMoneyAccount(tx, dto.refundAccountId);
         await ledger.post(tx, {
           accountId: bank.id, direction: 'OUT', amount: refundPaid, type: 'CLAIM_REFUND',
-          refType: 'CLAIM', refId: claim.id, note: 'โอนคืนเงินเคลม ' + claimNumber,
+          refType: 'CLAIM', refId: claim.id, note: 'โอนคืนเงินเคลม ' + claimNumber, userId: actor?.id,
         });
       }
 
@@ -569,6 +702,8 @@ export class ClaimsService {
         replacementProductId: claimMeta.replacementProductId,
         replacementBaseQuantity,
         replacementConversionFactor: claimMeta.replacementConversionFactor,
+        refundAmount: claimMeta.refundAmount,
+        cashierName: claimMeta.cashierName,
       };
       if (receiptId) {
         await tx.auditLog.create({
@@ -589,7 +724,200 @@ export class ClaimsService {
     });
   }
 
-  async updateClaim(id: string, dto: any) {
+  // ─── create-claim checks ───
+
+  /**
+   * A claim that names a bill must match it: the product must be on the bill and the total claimed
+   * (all earlier, not rejected claims of that bill+product) may not exceed what was bought.
+   * Returns the line value used to cap refunds.
+   */
+  private async checkAgainstOrder(tx: any, order: any, dto: any, productId: string, baseQuantity: number, isRefund: boolean) {
+    if (!order) {
+      if (dto.orderId && isRefund) throw new BadRequestException('ไม่พบบิลขายที่อ้างอิง จึงคืนเงินไม่ได้');
+      return null;
+    }
+    if (isRefund && order.status !== OrderStatus.COMPLETED) throw new BadRequestException('บิลนี้ถูกยกเลิกหรือคืนเงินไปแล้ว คืนเงินซ้ำไม่ได้');
+    const lines = (order.items || []).filter((i: any) => i.productId === productId);
+    if (!lines.length) {
+      // A replacement unit under warranty is not on the original bill (it came from an earlier claim).
+      if (dto.isReplacementItem) return null;
+      throw new BadRequestException('สินค้านี้ไม่อยู่ในบิลที่อ้างอิง');
+    }
+    const bought = lines.reduce((sum: number, i: any) => sum + Number(i.baseQuantity ?? i.quantity ?? 0), 0);
+    const prior = await tx.customerClaim.aggregate({
+      where: { orderId: order.id, productId, status: { not: ClaimStatus.REJECTED } },
+      _sum: { baseQuantity: true, refundAmount: true },
+    });
+    const priorQty = Number(prior._sum.baseQuantity || 0);
+    if (priorQty + baseQuantity > bought) {
+      throw new BadRequestException(`จำนวนเคลมเกินจำนวนที่ซื้อในบิล (ซื้อ ${bought} เคลมไปแล้ว ${priorQty} หน่วยฐาน)`);
+    }
+    // Bill-level discount is spread over the lines, so a refund never exceeds what was really paid.
+    const itemsTotal = (order.items || []).reduce((sum: number, i: any) => sum + Number(i.total || 0), 0);
+    const billFactor = itemsTotal > 0 ? Math.min(1, Number(order.totalAmount || 0) / itemsTotal) : 1;
+    const lineValue = lines.reduce((sum: number, i: any) => sum + Number(i.total || 0), 0) * billFactor;
+    return {
+      bought,
+      lineValue: round2(lineValue),
+      perBase: bought > 0 ? lineValue / bought : 0,
+      priorRefunded: Number(prior._sum.refundAmount || 0),
+    };
+  }
+
+  /**
+   * Refund amount: a positive number, capped by the paid value of the claimed units of the bill.
+   * Without a bill line there is nothing to cap against, so only a manager/owner (or a user with
+   * APPROVE_OVERRIDES) may refund, capped by the product's highest selling price.
+   */
+  private validatedRefundAmount(
+    dto: any,
+    actor: ClaimActor | undefined,
+    orderLine: { lineValue: number; perBase: number; priorRefunded: number } | null,
+    product: any,
+    baseQuantity: number,
+  ): number {
+    let cap: number;
+    if (orderLine) {
+      cap = Math.min(round2(orderLine.perBase * baseQuantity), round2(orderLine.lineValue - orderLine.priorRefunded));
+    } else {
+      const manager = actor?.role === 'ADMIN' || actor?.role === 'MANAGER' || userHasPermission(actor ? { ...actor, role: undefined } : null, 'APPROVE_OVERRIDES');
+      if (!manager) throw new ForbiddenException('คืนเงินโดยไม่อ้างอิงบิลขาย ต้องให้ผู้จัดการ/เจ้าของเป็นผู้ทำรายการ');
+      const prices = ['basePrice', 'priceLevel1', 'priceLevel2', 'priceLevel3', 'priceLevel4', 'priceLevel5']
+        .map((k) => Number(product?.[k] || 0))
+        .filter((n) => Number.isFinite(n));
+      cap = round2(Math.max(0, ...prices) * baseQuantity);
+    }
+    const raw = dto.refundAmount;
+    const amount = raw === undefined || raw === null || raw === '' ? cap : typeof raw === 'number' || typeof raw === 'string' ? Number(raw) : NaN;
+    if (!Number.isFinite(amount) || amount <= 0) throw new BadRequestException('ยอดคืนเงินต้องเป็นตัวเลขมากกว่า 0');
+    const rounded = round2(amount);
+    if (rounded > cap + 0.005) {
+      throw new BadRequestException(`ยอดคืนเงินเกินมูลค่าสินค้าที่เคลม (คืนได้สูงสุด ฿${Math.max(0, cap).toFixed(2)})`);
+    }
+    return rounded;
+  }
+
+  /** Cash refund leaves the drawer of the user's open shift: cash movement + money ledger, same transaction. */
+  private async postCashRefund(tx: any, actor: ClaimActor | undefined, claimId: string, claimNumber: string, amount: number, reason?: string) {
+    if (!actor?.id) throw new BadRequestException('ไม่พบผู้ทำรายการ');
+    const shift = await tx.shift.findFirst({ where: { userId: actor.id, status: ShiftStatus.OPEN }, orderBy: { openedAt: 'desc' } });
+    if (!shift) throw new BadRequestException('ต้องเปิดกะขายก่อนคืนเงินสด (หรือเลือกคืนเป็นเงินโอน)');
+    if (this.shifts) {
+      const expected = Number((await this.shifts.getShiftSummary(shift.id, tx)).expectedCash || 0);
+      if (amount > expected + 0.005) throw new BadRequestException(`เงินสดในลิ้นชักไม่พอคืนเงิน (คงเหลือ ฿${expected.toFixed(2)})`);
+    }
+    const text = `คืนเงินสดเคลมสินค้า #${claimNumber}${reason && reason !== '-' ? `: ${reason}` : ''}`.slice(0, 500);
+    const movement = await tx.cashMovement.create({
+      data: { id: `claim-refund-${claimId}`, shiftId: shift.id, type: CashMovementType.OUT, amount, category: 'REFUND', reason: text },
+    });
+    const drawer = await ledger.drawerAccount(tx, shift.terminalId);
+    await ledger.post(tx, {
+      accountId: drawer.id, direction: 'OUT', amount, type: 'CLAIM_REFUND',
+      refType: 'CASH_MOVEMENT', refId: movement.id, userId: actor.id, note: text,
+    });
+    return movement;
+  }
+
+  /**
+   * In-bill replacement: stock was already deducted by sale X. Believed only when X is a completed
+   * sale (by this user, or the actor is a manager) whose lines of the replacement product cover
+   * this claim plus earlier claims fulfilled from the same sale.
+   */
+  private async verifiedFulfilmentOrder(tx: any, dto: any, actor: ClaimActor | undefined, replacementProductId: string, replacementBaseQuantity: number) {
+    const ref = dto.fulfilledInOrderId || dto.fulfilledInOrderNumber;
+    if (!ref || typeof ref !== 'string') return null;
+    const order = await tx.order.findFirst({ where: { OR: [{ id: ref }, { orderNumber: ref }] }, include: { items: true } });
+    if (!order || order.status !== OrderStatus.COMPLETED) return null;
+    const manager = actor?.role === 'ADMIN' || actor?.role === 'MANAGER';
+    if (!manager && order.userId !== actor?.id) return null;
+    const sold = (order.items || [])
+      .filter((i: any) => i.productId === replacementProductId)
+      .reduce((sum: number, i: any) => sum + Number(i.baseQuantity ?? i.quantity ?? 0), 0);
+    if (sold <= 0) return null;
+    const used = await tx.customerClaim.aggregate({
+      where: {
+        replacementProductId,
+        status: { not: ClaimStatus.REJECTED },
+        metadata: { path: ['fulfilledInOrderId'], equals: order.id },
+      },
+      _sum: { replacementBaseQuantity: true },
+    });
+    if (Number(used._sum.replacementBaseQuantity || 0) + replacementBaseQuantity > sold) return null;
+    return { id: order.id as string, orderNumber: order.orderNumber as string };
+  }
+
+  private currentFrontendStatus(claim: any, meta: any): FrontendStatus {
+    const fromMeta = normalizeFrontendStatus(claim.frontendStatus) || normalizeFrontendStatus(meta?.frontendStatus) || normalizeFrontendStatus(meta?.status);
+    if (fromMeta) return fromMeta;
+    if (claim.status === ClaimStatus.COMPLETED) return 'COMPLETED';
+    if (claim.status === ClaimStatus.REJECTED) return 'REJECTED';
+    if (claim.status === ClaimStatus.IN_PROGRESS) return 'SENT_TO_SUPPLIER';
+    return 'PENDING_SUPPLIER';
+  }
+
+  /** Reject = the claim is void: replacement stock handed out comes back, the defective unit goes back to the customer. */
+  private async reverseOnReject(tx: any, claim: any, actor?: ClaimActor) {
+    const receipt = await tx.auditLog.findFirst({ where: { entity: 'CustomerClaim', entityId: claim.id, action: 'EXCHANGE' } });
+    const movements: Array<{ batchId: string; quantity: number }> = ((receipt?.details as any)?.stockMovements || []) as any[];
+    let restored = 0;
+    for (const m of movements) {
+      const qty = Number(m.quantity) || 0;
+      if (!m.batchId || qty <= 0) continue;
+      await tx.stockBatch.update({ where: { id: m.batchId }, data: { quantityRemaining: { increment: qty } } });
+      restored += qty;
+    }
+    if (restored > 0) {
+      const productId = claim.replacementProductId || claim.productId;
+      await tx.auditLog.create({
+        data: {
+          action: 'STOCK_IN_CLAIM_REVERSAL',
+          entity: 'Product',
+          entityId: productId,
+          userId: actor?.id ?? null,
+          details: {
+            productId,
+            type: 'IN_CLAIM_REVERSAL',
+            quantityChange: restored,
+            referenceType: 'CLAIM',
+            referenceNo: claim.claimNumber,
+            reason: 'ยกเลิกเคลม คืนสินค้าที่เปลี่ยนให้ลูกค้าเข้าสต็อก #' + claim.claimNumber,
+            userName: this.actorName(actor),
+          },
+        },
+      });
+    }
+    const inv = await tx.claimInventory.findFirst({ where: { productId: claim.productId } });
+    if (inv) {
+      const back = Math.min(Math.max(0, inv.quantity), Number(claim.baseQuantity || 0));
+      if (back > 0) await tx.claimInventory.update({ where: { id: inv.id }, data: { quantity: { decrement: back } } });
+    }
+    const meta: any = claim.metadata || {};
+    await tx.customerClaim.update({
+      where: { id: claim.id },
+      data: {
+        replacementBaseQuantity: restored > 0 ? 0 : claim.replacementBaseQuantity,
+        metadata: { ...meta, accounting: { ...(meta.accounting || {}), replacementCost: 0 }, rejectedStockRestored: restored, rejectedAt: new Date().toISOString() },
+      },
+    });
+  }
+
+  async updateClaim(id: string, dto: any, actor?: ClaimActor) {
+    if (!dto || typeof dto !== 'object' || Array.isArray(dto)) throw new BadRequestException('ข้อมูลการแก้ไขเคลมไม่ถูกต้อง');
+    const textFields = ['returnDocId', 'supplierId', 'supplierName', 'supplierTrackingNo', 'claimedInOrderNumber', 'settledInBillNumber', 'note', 'resolutionNote'];
+    for (const k of textFields) {
+      const v = dto[k];
+      if (v !== undefined && v !== null && (typeof v !== 'string' || v.length > 2000)) throw new BadRequestException('ข้อมูลการแก้ไขเคลมไม่ถูกต้อง');
+    }
+    for (const k of ['costPrice', 'totalCostValue']) {
+      if (dto[k] !== undefined && dto[k] !== null) {
+        const n = Number(dto[k]);
+        if (!Number.isFinite(n) || n < 0 || n > MAX_MONEY) throw new BadRequestException('ต้นทุนเคลมไม่ถูกต้อง');
+      }
+    }
+    const requested = dto.frontendStatus ?? dto.status;
+    const next = requested === undefined || requested === null ? null : normalizeFrontendStatus(requested);
+    if (requested !== undefined && requested !== null && !next) throw new BadRequestException('สถานะเคลมไม่ถูกต้อง');
+
     return businessTransaction(this.prisma, async (tx) => {
       const claim = await tx.customerClaim.findFirst({
         where: {
@@ -598,12 +926,35 @@ export class ClaimsService {
       });
       if (!claim) throw new NotFoundException('ไม่พบข้อมูลการเคลมนี้');
 
+      const existingMetaLog = await tx.auditLog.findFirst({
+        where: { entity: 'CustomerClaim', entityId: claim.id, action: 'CLAIM_META' },
+        orderBy: { createdAt: 'desc' },
+      });
+      const prevMeta = (existingMetaLog?.details as any) || {};
+      const current = this.currentFrontendStatus(claim, prevMeta);
+
+      if (!userHasPermission(actor, 'MANAGE_CLAIMS')) {
+        // A cashier without claim rights may only settle a store-discount claim in a real sale.
+        const settlesInSale =
+          current === 'PENDING_CHECKOUT' && next === 'COMPLETED' && typeof dto.claimedInOrderNumber === 'string' &&
+          !!(await tx.order.findFirst({ where: { orderNumber: dto.claimedInOrderNumber, status: OrderStatus.COMPLETED } }));
+        if (!settlesInSale) throw new ForbiddenException('การเปลี่ยนสถานะเคลมต้องใช้สิทธิ์จัดการเคลม (MANAGE_CLAIMS)');
+      }
+      if (next && !canTransition(current, next)) {
+        throw new BadRequestException(`เปลี่ยนสถานะเคลมจาก ${current} เป็น ${next} ไม่ได้`);
+      }
+      if (next === 'REJECTED' && current !== 'REJECTED' && Number(claim.refundAmount || 0) > 0) {
+        throw new BadRequestException('เคลมนี้คืนเงินให้ลูกค้าแล้ว ยกเลิกเคลมไม่ได้');
+      }
+
       const updatePayload: any = {};
-      if (dto.status || dto.frontendStatus) {
-        const mappedStatus = this.mapToPrismaClaimStatus(dto.frontendStatus || dto.status);
+      if (next) {
+        const mappedStatus = this.mapToPrismaClaimStatus(next);
         updatePayload.status = mappedStatus;
-        if (mappedStatus === ClaimStatus.COMPLETED) {
-          updatePayload.completedDate = dto.completedDate ? new Date(dto.completedDate) : new Date();
+        updatePayload.frontendStatus = next;
+        if (mappedStatus === ClaimStatus.COMPLETED && claim.status !== ClaimStatus.COMPLETED) {
+          const when = dto.completedDate ? new Date(dto.completedDate) : new Date();
+          updatePayload.completedDate = isNaN(when.getTime()) ? new Date() : when;
         }
       }
       if (dto.resolutionNote !== undefined) {
@@ -612,23 +963,17 @@ export class ClaimsService {
         updatePayload.resolutionNote = dto.note;
       }
 
+      if (next === 'REJECTED' && current !== 'REJECTED') {
+        await this.reverseOnReject(tx, claim, actor);
+      }
+
       const updated = await tx.customerClaim.update({
         where: { id: claim.id },
         data: updatePayload,
         include: { product: true, customer: true, order: true },
       });
 
-      const existingMetaLog = await tx.auditLog.findFirst({
-        where: {
-          entity: 'CustomerClaim',
-          entityId: claim.id,
-          action: 'CLAIM_META',
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-
-      const prevMeta = (existingMetaLog?.details as any) || {};
-      const nextFrontendStatus = dto.frontendStatus || dto.status || prevMeta.frontendStatus || prevMeta.status || updated.status;
+      const nextFrontendStatus = next || current;
       const mergedMeta = {
         ...prevMeta,
         id: updated.claimNumber,
@@ -640,13 +985,14 @@ export class ClaimsService {
         ...(dto.supplierId !== undefined ? { supplierId: dto.supplierId } : {}),
         ...(dto.supplierName !== undefined ? { supplierName: dto.supplierName } : {}),
         ...(dto.supplierTrackingNo !== undefined ? { supplierTrackingNo: dto.supplierTrackingNo } : {}),
-        ...(dto.costPrice !== undefined ? { costPrice: Number(dto.costPrice) } : {}),
-        ...(dto.totalCostValue !== undefined ? { totalCostValue: Number(dto.totalCostValue) } : {}),
+        ...(dto.costPrice !== undefined && dto.costPrice !== null ? { costPrice: Number(dto.costPrice) } : {}),
+        ...(dto.totalCostValue !== undefined && dto.totalCostValue !== null ? { totalCostValue: Number(dto.totalCostValue) } : {}),
         ...(dto.claimedInOrderNumber !== undefined ? { claimedInOrderNumber: dto.claimedInOrderNumber } : {}),
         ...(dto.settledInBillNumber !== undefined ? { settledInBillNumber: dto.settledInBillNumber } : {}),
         ...(dto.note !== undefined ? { note: dto.note } : {}),
         ...(dto.resolutionNote !== undefined ? { note: dto.resolutionNote } : {}),
         ...(updated.completedDate ? { completedDate: updated.completedDate.toISOString() } : {}),
+        ...(next && next !== current ? { lastStatusChangeBy: this.actorName(actor), lastStatusChangeAt: new Date().toISOString() } : {}),
       };
 
       if (existingMetaLog) {
@@ -811,24 +1157,23 @@ export class ClaimsService {
   }
 
   async createClaimInventory(data: any) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new BadRequestException('ข้อมูลสต็อกสินค้าเคลมไม่ถูกต้อง');
+    if (typeof data.productId !== 'string' || !data.productId.trim()) throw new BadRequestException('กรุณาระบุรหัสสินค้า');
+    const qty = parseClaimStockQuantity(data.quantity ?? 0);
+    const unitCost = parseClaimStockCost(data.unitCost ?? 0);
+    assertClaimStockText(data);
     return businessTransaction(this.prisma, async (tx) => {
-      let productId = data.productId;
-      if (productId) {
-        const prod = await tx.product.findFirst({
-          where: {
-            OR: [{ id: productId }, { sku: productId }],
-          },
-        });
-        if (prod) productId = prod.id;
-      }
-      if (!productId) throw new BadRequestException('กรุณาระบุรหัสสินค้า');
+      const prod = await tx.product.findFirst({
+        where: {
+          OR: [{ id: data.productId }, { sku: data.productId }],
+        },
+      });
+      if (!prod) throw new NotFoundException('ไม่พบสินค้านี้');
+      const productId = prod.id;
 
       const existing = await tx.claimInventory.findFirst({
         where: { productId },
       });
-
-      const qty = Number(data.quantity ?? 0);
-      const unitCost = Number(data.unitCost ?? 0);
 
       let inv: any;
       if (existing && data.increment) {
@@ -874,7 +1219,7 @@ export class ClaimsService {
           action: 'CLAIM_INVENTORY_META',
           entity: 'ClaimInventory',
           entityId: inv.id,
-          details: JSON.parse(JSON.stringify(data)),
+          details: JSON.parse(JSON.stringify({ ...data, productId, quantity: qty, unitCost })),
         },
       });
 
@@ -883,6 +1228,13 @@ export class ClaimsService {
   }
 
   async updateClaimInventory(id: string, data: { quantity?: number; unitCost?: number; condition?: string; location?: string; note?: string; [key: string]: any }) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new BadRequestException('ข้อมูลสต็อกสินค้าเคลมไม่ถูกต้อง');
+    if (data.quantity !== undefined) data.quantity = parseClaimStockQuantity(data.quantity);
+    if (data.unitCost !== undefined) data.unitCost = parseClaimStockCost(data.unitCost);
+    assertClaimStockText(data);
+    if (['quantity', 'unitCost', 'condition', 'location', 'note'].every((k) => data[k] === undefined)) {
+      throw new BadRequestException('ไม่มีข้อมูลที่จะแก้ไข');
+    }
     return businessTransaction(this.prisma, async (tx) => {
       const existing = await tx.claimInventory.findFirst({
         where: {

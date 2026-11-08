@@ -840,6 +840,8 @@ export async function processClaim(params: ProcessClaimParams): Promise<ClaimRec
   if (!confirmed?.id || !confirmed?.claimNumber) throw new Error('ยังไม่ได้รับการยืนยันเคลมจากฐานข้อมูล กรุณาตรวจสอบหรือส่งข้อมูลเดิมซ้ำ');
   claimId = confirmed.claimNumber;
   claimRecord.id = claimId;
+  if (confirmed.refundAmount !== undefined && confirmed.refundAmount !== null) claimRecord.refundAmount = Number(confirmed.refundAmount);
+  if (confirmed.cashierName) claimRecord.cashierName = confirmed.cashierName;
   // From here on, the DB transaction has committed; cache failures cannot undo it.
   try {
   const existingClaims = loadAllClaimRecords().filter(row => row.id !== claimId);
@@ -872,18 +874,11 @@ export async function processClaim(params: ProcessClaimParams): Promise<ClaimRec
     void createReplacementWarranty(newRw);
   }
 
-  // 4. If resolution is 'REFUND_CASH', deduct cash from active POS shift drawer!
+  // 4. REFUND_CASH: the server already took the cash out of this user's shift drawer (cash
+  // movement + ledger, same transaction as the claim). Only refresh the local shift view here;
+  // posting another cash movement would count the refund twice.
   if (params.resolutionType === 'REFUND_CASH') {
-    try {
-      const { useShiftStore } = require('./store/shift-store');
-      const shiftStore = useShiftStore.getState();
-      if (shiftStore && shiftStore.isShiftOpen()) {
-        const cashRefundAmt = params.refundAmount ?? totalClaimVal;
-        shiftStore.recordClaimRefund(cashRefundAmt, claimId, params.defectReason);
-      }
-    } catch (e) {
-      console.warn('Could not deduct cash from shift for claim refund:', e);
-    }
+    void useShiftStore.getState().fetchCurrentShift().catch(() => undefined);
   }
 
   } catch {
@@ -949,7 +944,13 @@ export function updateClaimStatus(
       resolutionNote: target?.note ?? options?.note,
       completedDate: target?.completedDate,
     }),
-  }).catch((err) => console.warn('[ClaimService] Failed to sync claim status update to backend:', err));
+  }).catch((err) => {
+    // The server enforces permissions and the claim workflow; tell the user instead of silently
+    // keeping a status the database refused.
+    console.warn('[ClaimService] Failed to sync claim status update to backend:', err);
+    toast.error(`อัปเดตสถานะเคลม #${claimId} ในฐานข้อมูลไม่สำเร็จ: ${err?.message || 'เกิดข้อผิดพลาด'}`);
+    window.dispatchEvent(new Event('pos-data-synced'));
+  });
 
   return target || null;
 }

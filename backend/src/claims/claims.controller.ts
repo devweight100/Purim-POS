@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@nestjs/common';
-import { ClaimsService } from './claims.service';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request, BadRequestException } from '@nestjs/common';
+import { ClaimType } from '@prisma/client';
+import { ClaimsService, FRONTEND_STATUSES } from './claims.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { RequirePermissions } from '../auth/roles.decorator';
@@ -18,11 +19,26 @@ export class ClaimsController {
     @Query('type') type?: string,
     @Query('search') search?: string,
   ) {
+    const intParam = (raw: string | undefined, fallback: number, min: number, max: number, label: string) => {
+      if (raw === undefined || raw === '') return fallback;
+      if (!/^\d+$/.test(String(raw))) throw new BadRequestException(`${label} ต้องเป็นจำนวนเต็ม`);
+      const n = Number(raw);
+      if (n < min || n > max) throw new BadRequestException(`${label} ต้องอยู่ระหว่าง ${min}-${max}`);
+      return n;
+    };
+    const knownStatuses = ['ALL', 'PENDING', 'IN_PROGRESS', ...FRONTEND_STATUSES];
+    if (status !== undefined && status !== '' && (typeof status !== 'string' || !knownStatuses.includes(status))) {
+      throw new BadRequestException('สถานะเคลมไม่ถูกต้อง');
+    }
+    if (type !== undefined && type !== '' && (typeof type !== 'string' || !['ALL', ...Object.values(ClaimType)].includes(type as any))) {
+      throw new BadRequestException('ประเภทเคลมไม่ถูกต้อง');
+    }
+    if (search !== undefined && (typeof search !== 'string' || search.length > 200)) throw new BadRequestException('คำค้นหาไม่ถูกต้อง');
     return this.claimsService.getAllClaims(
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 20,
-      status,
-      type,
+      intParam(page, 1, 1, 100000, 'page'),
+      intParam(limit, 20, 1, 500, 'limit'),
+      status || undefined,
+      type || undefined,
       search,
     );
   }
@@ -75,12 +91,12 @@ export class ClaimsController {
   }
 
   @Post()
-  create(@Body() body: any) {
-    return this.claimsService.createClaim(body);
+  create(@Body() body: any, @Request() req: any) {
+    return this.claimsService.createClaim(body, req.user);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() body: any) {
-    return this.claimsService.updateClaim(id, body);
+  update(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+    return this.claimsService.updateClaim(id, body, req.user);
   }
 }

@@ -1,3 +1,4 @@
+import './tz'; // must stay the first import (sets process.env.TZ before anything reads the clock)
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
@@ -24,9 +25,23 @@ async function bootstrap() {
 
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
-  // Serve static files from uploads directory
+  // Serve uploaded images only (logo / QR). Anything else that may sit in the folder from older
+  // versions (html, svg, ...) is not served, and browsers must not sniff a different content type.
+  app.use('/uploads', (req: any, res: any, next: any) => {
+    let p = '';
+    try { p = decodeURIComponent(String(req.path || '')).toLowerCase(); } catch { p = ''; }
+    if (!/^\/[^/\\]+\.(png|jpe?g|webp|gif)$/.test(p)) {
+      res.status(404).json({ statusCode: 404, message: 'ไม่พบไฟล์' });
+      return;
+    }
+    next();
+  });
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads/',
+    setHeaders: (res) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    },
   });
 
   const port = process.env.PORT || 3001;

@@ -1,4 +1,6 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Req } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { userFromRequest } from '../auth/optional-user';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -43,13 +45,30 @@ function sourceVersion(): VersionInfo | null {
   }
 }
 
-/** Public: which version is running, and is the code on disk newer than what runs? */
+/** Only what identifies the version: no commit hash, branch, message or paths. */
+function publicInfo(v: VersionInfo | null) {
+  if (!v) return null;
+  return {
+    label: v.label,
+    modified: Boolean(v.modified),
+    committedAt: v.committedAt ?? null,
+    builtAt: v.builtAt,
+    installedAt: v.installedAt,
+  };
+}
+
+/**
+ * Public: which version is running, and is the code on disk newer than what runs?
+ * Commit / branch / message / Node version are shown to an authenticated ADMIN only.
+ */
 @Controller('version')
 export class VersionController {
   private readonly build = loadBuildInfo();
 
+  constructor(private readonly prisma: PrismaService) {}
+
   @Get()
-  get() {
+  async get(@Req() req: any) {
     const source = sourceVersion();
     const running = this.build;
     const sameCode =
@@ -57,13 +76,22 @@ export class VersionController {
         ? null
         : running.commit === source.commit &&
           running.modified === source.modified;
+    const viewer = await userFromRequest(req, this.prisma);
+    if (viewer?.role === 'ADMIN') {
+      return {
+        running,
+        source,
+        // false = code was updated on disk (git pull / copy) but the server still runs the old build
+        upToDateWithSource: sameCode,
+        startedAt,
+        node: process.version,
+      };
+    }
     return {
-      running,
-      source,
-      // false = code was updated on disk (git pull / copy) but the server still runs the old build
+      running: publicInfo(running),
+      source: publicInfo(source),
       upToDateWithSource: sameCode,
       startedAt,
-      node: process.version,
     };
   }
 }
