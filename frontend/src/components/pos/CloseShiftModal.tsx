@@ -14,7 +14,8 @@ import { CountCashModal } from './CountCashModal';
 import { ShiftSummaryPdfModal, ShiftSummaryData, BankAccountBreakdownItem } from './ShiftSummaryPdfModal';
 import { loadBankAccounts } from '@/lib/bank-account-storage';
 import { getShiftDebtCollections } from '@/lib/debt-service';
-import { saveShiftSummary } from '@/lib/shift-service';
+import { saveShiftSummary, mapServerShiftToSummary } from '@/lib/shift-service';
+import { api } from '@/lib/api';
 import { kickCashDrawer } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
 
@@ -57,11 +58,17 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
 
   const expectedCash = getExpectedCash();
   const diff = actualCash !== null ? actualCash - expectedCash : 0;
+  // counted cash must be a real amount >= 0 (the server rejects anything else)
+  const actualCashValid = actualCash !== null && Number.isFinite(actualCash) && actualCash >= 0;
 
   const handleCloseShift = async () => {
     if (!currentShift) return;
+    if (!actualCashValid) {
+      toast.error('กรุณาระบุยอดเงินสดที่นับได้เป็นตัวเลขตั้งแต่ 0 ขึ้นไป');
+      return;
+    }
 
-    const finalActualCash = actualCash !== null ? actualCash : expectedCash;
+    const finalActualCash = Math.round((actualCash as number) * 100) / 100;
     const closedTime = new Date().toISOString();
 
     // Calculate bank account breakdown for QR & Transfer payments
@@ -143,8 +150,8 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
     // Calculate Debt Payment Collections made during shift
     const debtCollections = getShiftDebtCollections(shiftStartTime, new Date(closedTime).getTime());
 
-    const dataForReport: ShiftSummaryData = {
-      shiftId: currentShift.id,
+    let dataForReport: ShiftSummaryData = {
+      shiftId: currentShift.shiftId || currentShift.shiftNumber || currentShift.id,
       userName: currentShift.userName || 'พนักงานขาย',
       openedAt: currentShift.openedAt,
       closedAt: closedTime,
@@ -175,6 +182,17 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
     try { await closeShift(finalActualCash); }
     catch (error) { toast.error('ปิดกะไม่ได้: ' + (error instanceof Error ? error.message : String(error))); return; }
     onOpenChange(false);
+
+    // The server's figures for the closed shift (discounts, debt collections, returns, voids) win
+    try {
+      const srv: any = await api.shifts.getSummary(currentShift.id);
+      if (srv?.shift) {
+        const fromServer = mapServerShiftToSummary({ ...srv.shift, ...srv, shift: undefined, userName: dataForReport.userName });
+        dataForReport = { ...fromServer, bankAccountBreakdown: dataForReport.bankAccountBreakdown, isOpen: false };
+      }
+    } catch {
+      // offline: keep the figures computed on this terminal
+    }
 
     // Save rich shift summary to history
     saveShiftSummary(dataForReport);
@@ -254,6 +272,8 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
                 <Input
                   type="number"
                   value={actualCash === null ? '' : actualCash}
+                  min={0}
+                  step="0.01"
                   onChange={(e) => setActualCash(e.target.value !== '' ? parseFloat(e.target.value) : null)}
                   className="bg-slate-50 border-slate-300 h-13 text-xl font-black text-slate-900 rounded-xl focus:bg-white font-mono text-center flex-1 shadow-inner"
                   placeholder="0.00"
@@ -289,8 +309,14 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
                 </Button>
               </div>
 
+              {actualCash !== null && !actualCashValid && (
+                <div className="p-3 rounded-xl border bg-rose-50 border-rose-300 text-rose-800 text-xs font-bold">
+                  ยอดเงินสดที่นับได้ต้องเป็นตัวเลขตั้งแต่ 0 บาทขึ้นไป
+                </div>
+              )}
+
               {/* Difference Status Badge */}
-              {actualCash !== null && (
+              {actualCashValid && (
                 <div className={`p-3 rounded-xl border flex justify-between items-center text-xs font-bold transition-all ${
                   diff === 0 
                     ? 'bg-emerald-50 border-emerald-300 text-emerald-800' 
@@ -319,7 +345,7 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
               type="button"
               className="flex-1 h-12 bg-rose-600 hover:bg-rose-700 text-white font-black text-base rounded-xl shadow-md"
               onClick={handleCloseShift}
-              disabled={actualCash === null}
+              disabled={!actualCashValid}
             >
               ยืนยันปิดกะ
             </Button>

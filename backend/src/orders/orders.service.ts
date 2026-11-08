@@ -7,6 +7,7 @@ import { ConflictException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { ApprovalsService, ApprovalReason } from '../approvals/approvals.service';
 import * as ledger from '../finance/ledger';
+import { validateCheckoutInput, lineAmounts, checkPointsDiscount, claimableBaseQty, paidPerBaseUnit, round2 } from './checkout-guards';
 
 @Injectable()
 export class OrdersService {
@@ -17,6 +18,25 @@ export class OrdersService {
   ) {}
 
   async checkout(data: any, userId: string) {
+    validateCheckoutInput(data);
+    if (data.orderNumber) {
+      const taken = await this.prisma.order.findUnique({ where: { orderNumber: data.orderNumber }, select: { clientOrderId: true } });
+      if (taken && taken.clientOrderId !== data.clientOrderId) throw new ConflictException('เลขที่บิลนี้ถูกใช้แล้ว');
+    }
+    try {
+      return await this.checkoutTx(data, userId);
+    } catch (e: any) {
+      if (e?.code === 'P2002') {
+        const target = JSON.stringify(e.meta?.target ?? '');
+        if (target.includes('order_number') || target.includes('orderNumber')) throw new ConflictException('เลขที่บิลนี้ถูกใช้แล้ว');
+        if (target.includes('client_order_id') || target.includes('clientOrderId')) throw new ConflictException('บิลนี้กำลังถูกบันทึกอยู่ กรุณาลองใหม่');
+        throw new ConflictException('ข้อมูลซ้ำกับรายการที่มีอยู่แล้ว');
+      }
+      throw e;
+    }
+  }
+
+  private async checkoutTx(data: any, userId: string) {
     return businessTransaction(this.prisma, async (tx) => {
       // 1. Idempotency check for offline sync (clientOrderId)
       if (data.clientOrderId) {
@@ -70,7 +90,7 @@ export class OrdersService {
       const rules = this.approvals ? await this.approvals.getRules(tx) : null;
       const approvalExempt = !rules || cashierUser?.role === 'ADMIN' || cashierUser?.role === 'MANAGER';
       const approvalReasons: ApprovalReason[] = [];
-      const approvalLines: { name: string; qty: number; unitPrice: number; lineDiscount: number; costPerBase: number; netPerBase: number; claim: boolean }[] = [];
+      const approvalLines: { name: string; qty: number; unitPrice: number; lineDiscount: number; costPerBase: number; netPerBase: number; productId: string; factor: number; claimQty: number; verifiedClaimQty: number }[] = [];
       // Total base quantity per product in this bill (wholesale steps apply on the bill total)
       const billBaseQty = new Map<string, number>();
       for (const it of data.items) {
@@ -114,7 +134,7 @@ export class OrdersService {
         const baseQuantity = item.quantity * factor;
         // Price guard: the selling price may not go below the lowest price configured in the
         // system (price levels, unit prices, wholesale steps) unless the user may give discounts.
-        if (!canOverridePrice && !item.isClaimReplacement) {
+        if (!canOverridePrice) {
           const minAllowed = this.lowestAllowedUnitPrice(product, factor, item.unitId, item.unitName, billBaseQty.get(item.productId) || baseQuantity);
           if (minAllowed !== null && Number(item.unitPrice) + 0.01 < minAllowed) {
             const message = `ราคาขาย "${product.name}" ฿${Number(item.unitPrice).toFixed(2)} ต่ำกว่าราคาในระบบ (ขั้นต่ำ ฿${minAllowed.toFixed(2)})`;
@@ -210,15 +230,23 @@ export class OrdersService {
           });
         }
 
-        const itemTotal = Math.round((item.quantity * Number(item.unitPrice) - lineDiscount) * 100) / 100;
+        const { storedUnitPrice, total: itemTotal, storedDiscount } = lineAmounts(item.quantity, Number(item.unitPrice), lineDiscount);
         subtotal += itemTotal;
         totalCogs += itemCogs;
 
         const unitCost = baseQuantity > 0 ? itemCogs / baseQuantity : 0;
+        // claim replacement (free units): the quantity is only trusted after it is checked against
+        // the customer's claimable purchases below; otherwise the line is an ordinary discount.
+        const price = Number(item.unitPrice);
+        const claimQty = !item.isClaimReplacement || !(price > 0)
+          ? 0
+          : Number.isSafeInteger(item.claimQuantity) && item.claimQuantity > 0
+            ? Math.min(item.claimQuantity, item.quantity)
+            : Math.min(item.quantity, Math.floor(lineDiscount / price + 1e-9));
         approvalLines.push({
-          name: product.name, qty: item.quantity, unitPrice: Number(item.unitPrice), lineDiscount,
-          costPerBase: unitCost, netPerBase: baseQuantity > 0 ? (item.quantity * Number(item.unitPrice) - lineDiscount) / baseQuantity : 0,
-          claim: !!item.isClaimReplacement,
+          name: product.name, qty: item.quantity, unitPrice: price, lineDiscount,
+          costPerBase: unitCost, netPerBase: baseQuantity > 0 ? (item.quantity * price - lineDiscount) / baseQuantity : 0,
+          productId: product.id, factor, claimQty, verifiedClaimQty: 0,
         });
 
         orderItems.push({
@@ -226,15 +254,17 @@ export class OrdersService {
           quantity: item.quantity,
           baseQuantity,
           unitName,
-          discountAmount: lineDiscount,
-          unitPrice: item.unitPrice,
+          discountAmount: storedDiscount,
+          unitPrice: storedUnitPrice,
           unitCost: unitCost,
           total: itemTotal,
           bundleData: bundleSnapshot,
         });
       }
 
-      const discountAmount = Number(data.discountAmount) || 0;
+      subtotal = round2(subtotal);
+      if (subtotal > 1_000_000_000) throw new BadRequestException('ยอดบิลสูงเกินกว่าที่ระบบรองรับ');
+      const discountAmount = round2(Number(data.discountAmount) || 0);
       if (!Number.isFinite(discountAmount) || discountAmount < 0 || discountAmount > subtotal) throw new BadRequestException('ส่วนลดบิลไม่ถูกต้อง');
       const totalAmount = Math.round((subtotal - discountAmount) * 100) / 100;
       const paid = data.payments.reduce((sum: number, p: any) => sum + Number(p.amount), 0);
@@ -253,8 +283,57 @@ export class OrdersService {
       const units = Number(profile.pointEarnUnits || config.defaultPointEarnUnits || 10);
       const redeemRate = Number(profile.pointRedeemRatePoints || config.defaultPointRedeemRatePoints || 100);
       const redeemBaht = Number(profile.pointRedeemDiscountBaht || config.defaultPointRedeemDiscountBaht || 1);
-      const allowedDiscount = Math.floor(pointsUsed / redeemRate) * redeemBaht;
-      if (Number(data.pointsDiscountAmount || 0) > allowedDiscount || (config.isLoyaltyEnabled === false && pointsUsed > 0)) throw new BadRequestException('ส่วนลดคะแนนไม่ถูกต้อง');
+      const pointsDiscount = round2(Number(data.pointsDiscountAmount || 0));
+      if (config.isLoyaltyEnabled === false && pointsUsed > 0) throw new BadRequestException('ร้านปิดระบบแต้มสะสม ใช้แต้มไม่ได้');
+      if (pointsUsed > 0 && !customer) throw new BadRequestException('ใช้แต้มต้องระบุลูกค้า');
+      checkPointsDiscount(pointsUsed, pointsDiscount, redeemRate, redeemBaht, totalAmount <= 0.01);
+      if (pointsDiscount > discountAmount + 0.01) throw new BadRequestException('ส่วนลดคะแนนเกินส่วนลดบิล');
+
+      // Claims: free replacement units and claim value used as a discount count only when backed by
+      // the customer's real purchases (not yet returned / claimed) or an open claim record.
+      let verifiedClaimCogs = 0;
+      const requestedClaimDiscount = round2(Number(data.claimDiscountAmount || 0));
+      let verifiedClaimDiscount = 0;
+      const usedClaimIds: string[] = [];
+      if (customer) {
+        const quota = new Map<string, number>();
+        const quotaOf = async (productId: string) => {
+          if (!quota.has(productId)) quota.set(productId, await claimableBaseQty(tx, customer.id, productId));
+          return quota.get(productId)!;
+        };
+        for (const l of approvalLines) {
+          if (!l.claimQty) continue;
+          const need = l.claimQty * l.factor;
+          const left = await quotaOf(l.productId);
+          if (need > left) continue; // not backed by a purchase: stays an ordinary discount (approval rules apply)
+          quota.set(l.productId, left - need);
+          l.verifiedClaimQty = l.claimQty;
+          verifiedClaimCogs += need * l.costPerBase;
+        }
+        if (requestedClaimDiscount > 0) {
+          let allowance = 0;
+          const refs = data.claimRefs && typeof data.claimRefs === 'object' ? data.claimRefs : {};
+          if (typeof refs.claimId === 'string' && refs.claimId) {
+            const claim = await tx.customerClaim.findFirst({ where: { OR: [{ id: refs.claimId }, { claimNumber: refs.claimId }] } });
+            if (claim && claim.status === 'PENDING' && claim.resolutionType === 'STORE_DISCOUNT' && (!claim.customerId || claim.customerId === customer.id)
+              && !(await tx.auditLog.findFirst({ where: { action: 'CLAIM_DISCOUNT_USED', entityId: claim.id } }))) {
+              // the claim's face value, capped by what the customer actually paid for those units
+              const face = Number(claim.totalClaimValue ?? Number(claim.unitPrice || 0) * claim.quantity) || 0;
+              allowance += Math.min(face, claim.baseQuantity * (await paidPerBaseUnit(tx, customer.id, claim.productId)));
+              usedClaimIds.push(claim.id);
+            }
+          }
+          for (const p of Array.isArray(refs.pending) ? refs.pending.slice(0, 50) : []) {
+            const qty = Number(p?.quantity);
+            if (typeof p?.productId !== 'string' || !Number.isSafeInteger(qty) || qty <= 0) continue;
+            const left = await quotaOf(p.productId);
+            if (qty > left) continue;
+            quota.set(p.productId, left - qty);
+            allowance += qty * (await paidPerBaseUnit(tx, customer.id, p.productId));
+          }
+          verifiedClaimDiscount = Math.min(requestedClaimDiscount, round2(allowance));
+        }
+      }
       const pointsEarned = customer && config.isLoyaltyEnabled !== false ? Math.floor(totalAmount / rate) * units : 0;
       if (customer) await tx.customer.update({ where: { id: customer.id }, data: { points: { increment: pointsEarned - pointsUsed } } });
       if (creditAmount > 0 && profile.isCreditBlocked) throw new BadRequestException('ลูกค้าถูกระงับเครดิต');
@@ -271,19 +350,27 @@ export class OrdersService {
 
       // Approval check: discount above the role's limit, prices below floor or below cost
       if (rules && !approvalExempt) {
-        const sale = approvalLines.filter((l) => !l.claim);
+        // verified claim units are free by design: judge only the chargeable part of each line
+        const sale = approvalLines
+          .map((l) => {
+            if (!l.verifiedClaimQty) return l;
+            const qty = l.qty - l.verifiedClaimQty;
+            const lineDiscount = Math.max(0, l.lineDiscount - l.verifiedClaimQty * l.unitPrice);
+            return { ...l, qty, lineDiscount, netPerBase: qty > 0 ? (qty * l.unitPrice - lineDiscount) / (qty * l.factor) : 0 };
+          })
+          .filter((l) => l.qty > 0);
         if (rules.belowCostNeedsApproval) {
           for (const l of sale) {
             if (l.costPerBase > 0 && l.netPerBase + 0.005 < l.costPerBase) {
               approvalReasons.push({ code: 'BELOW_COST', message: `"${l.name}" ขายต่ำกว่าทุน (ขาย ฿${l.netPerBase.toFixed(2)} / ทุน ฿${l.costPerBase.toFixed(2)} ต่อหน่วย)` });
             }
           }
-          if (totalAmount + 0.005 < totalCogs && !approvalReasons.some((r) => r.code === 'BELOW_COST')) {
+          if (totalAmount + verifiedClaimDiscount + 0.005 < totalCogs - verifiedClaimCogs && !approvalReasons.some((r) => r.code === 'BELOW_COST')) {
             approvalReasons.push({ code: 'BELOW_COST', message: `ยอดบิล ฿${totalAmount.toFixed(2)} ต่ำกว่าต้นทุนรวม ฿${totalCogs.toFixed(2)}` });
           }
         }
         const gross = sale.reduce((sum, l) => sum + l.qty * l.unitPrice, 0);
-        const billDiscount = Math.max(0, discountAmount - Number(data.pointsDiscountAmount || 0) - Number(data.claimDiscountAmount || 0));
+        const billDiscount = Math.max(0, discountAmount - pointsDiscount - verifiedClaimDiscount);
         const discountPct = gross > 0 ? ((sale.reduce((sum, l) => sum + l.lineDiscount, 0) + billDiscount) / gross) * 100 : 0;
         const limit = rules.maxDiscountPercent[cashierUser?.role || 'CASHIER'] ?? 0;
         if (discountPct > limit + 0.0001) {
@@ -369,6 +456,11 @@ export class OrdersService {
         });
       }
 
+      // 5a. A claim credit can be used as a discount only once
+      for (const claimId of usedClaimIds) {
+        await tx.auditLog.create({ data: { userId: userId || null, action: 'CLAIM_DISCOUNT_USED', entity: 'CustomerClaim', entityId: claimId, details: { orderId: order.id, orderNumber, amount: verifiedClaimDiscount } } });
+      }
+
       // 5b. Consume the manager approval for this exact bill (single use)
       if (approvalHash && data.approvalId) {
         await this.approvals!.consume(tx, data.approvalId, approvalHash, userId, order.id);
@@ -452,7 +544,7 @@ export class OrdersService {
       if (Number(order.returnedAmount) > 0) throw new BadRequestException('บิลนี้มีการคืนสินค้าบางส่วนแล้ว ยกเลิกทั้งบิลไม่ได้ ให้ทำรายการคืนสินค้าที่เหลือแทน');
 
       if (order.debt && Number(order.debt.paidAmount) > 0) throw new BadRequestException('บิลมีการรับชำระหนี้แล้ว ต้องจัดการคืนเงินก่อนยกเลิก');
-      if (order.debt) await tx.customerDebt.delete({ where: { id: order.debt.id } });
+      if (order.debt) await this.dropDebt(tx, order.debt, 'ยกเลิกบิล ' + order.orderNumber);
       if (order.customerId && (order.pointsUsed || order.pointsEarned)) {
         const customer = await tx.customer.findUnique({ where: { id: order.customerId } });
         if (!customer || customer.points + order.pointsUsed < order.pointsEarned) throw new BadRequestException('คะแนนจากบิลถูกใช้แล้ว ต้องตรวจสอบก่อนยกเลิก');
@@ -465,21 +557,19 @@ export class OrdersService {
         .reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
       if (cashPaid > 0 && order.shift && order.shift.status === ShiftStatus.CLOSED) {
-        let activeShift = userId
+        // the cash is paid back from the drawer of the person voiding (their own open shift only)
+        const activeShift = userId
           ? await tx.shift.findFirst({
               where: { userId, status: ShiftStatus.OPEN },
               orderBy: { openedAt: 'desc' },
             })
           : null;
         if (!activeShift) {
-          activeShift = await tx.shift.findFirst({
-            where: { status: ShiftStatus.OPEN },
-            orderBy: { openedAt: 'desc' },
-          });
+          throw new BadRequestException('บิลเงินสดนี้อยู่ในกะที่ปิดไปแล้ว ผู้ยกเลิกต้องเปิดกะของตัวเองก่อนเพื่อจ่ายเงินสดคืนลูกค้าจากลิ้นชัก');
         }
-        if (!activeShift) {
-          throw new BadRequestException('บิลเงินสดนี้อยู่ในกะที่ปิดไปแล้ว กรุณาเปิดกะปัจจุบันก่อนเพื่อบันทึกการจ่ายเงินสดคืนลูกค้า');
-        }
+        const voidDrawer = await ledger.drawerAccount(tx, activeShift.terminalId);
+        const inVoidDrawer = await ledger.balanceOf(tx, voidDrawer.id);
+        if (inVoidDrawer + 0.001 < cashPaid) throw new BadRequestException(`เงินสดในลิ้นชักไม่พอคืน (มี ฿${inVoidDrawer.toFixed(2)} ต้องคืน ฿${cashPaid.toFixed(2)})`);
         await tx.cashMovement.create({
           data: {
             shiftId: activeShift.id,
@@ -614,8 +704,10 @@ export class OrdersService {
 
   async update(id: string, data: any) {
     return businessTransaction(this.prisma, async tx => {
-      const order = await tx.order.findUnique({ where: { id }, include: { payments: true, debt: true, shift: true } });
+      const order = await tx.order.findUnique({ where: { id }, include: { payments: true, debt: true, shift: true, customer: true } });
       if (!order) throw new NotFoundException('ไม่พบบิลนี้');
+      if (!data || typeof data !== 'object' || Array.isArray(data)) throw new BadRequestException('ข้อมูลไม่ถูกต้อง');
+      if (data.note !== undefined && data.note !== null && typeof data.note !== 'string') throw new BadRequestException('หมายเหตุไม่ถูกต้อง');
       if (order.status !== OrderStatus.COMPLETED) throw new BadRequestException('แก้ไขได้เฉพาะบิลที่สำเร็จแล้ว');
       if (Object.prototype.hasOwnProperty.call(data, 'note')) {
         await tx.order.update({ where: { id }, data: { note: data.note?.trim() || null } });
@@ -625,7 +717,7 @@ export class OrdersService {
         if (order.shift && order.shift.status === ShiftStatus.CLOSED) {
           throw new BadRequestException('ไม่สามารถเปลี่ยนวิธีชำระเงินของบิลในกะที่ปิดไปแล้วได้');
         }
-        if (!payments.length || payments.some((p: any) => !Object.values(PaymentMethod).includes(p.method) || !Number.isFinite(Number(p.amount)) || Number(p.amount) < 0)) throw new BadRequestException('วิธีหรือยอดชำระไม่ถูกต้อง');
+        if (!payments.length || payments.length > 20 || payments.some((p: any) => !p || typeof p !== 'object' || !Object.values(PaymentMethod).includes(p.method) || !Number.isFinite(Number(p.amount)) || Number(p.amount) < 0 || (p.bankAccountId != null && typeof p.bankAccountId !== 'string'))) throw new BadRequestException('วิธีหรือยอดชำระไม่ถูกต้อง');
         const total = payments.reduce((sum: number, p: any) => sum + Number(p.amount), 0);
         if (Math.abs(total - Number(order.totalAmount)) > 0.01) throw new BadRequestException('ยอดชำระไม่ตรงกับยอดบิล');
         if (payments.some((p: any) => p.method === PaymentMethod.CREDIT_DEBT && !(Number(p.amount) > 0))) throw new BadRequestException('ยอดขายเชื่อต้องมากกว่า 0 บาท');
@@ -634,10 +726,20 @@ export class OrdersService {
         if (order.debt && Number(order.debt.paidAmount) > 0) throw new BadRequestException('บิลมีการรับชำระหนี้แล้ว ไม่สามารถเปลี่ยนวิธีชำระได้');
         if (Number(order.returnedAmount) > 0) throw new BadRequestException('บิลนี้มีการคืนสินค้าแล้ว เปลี่ยนวิธีชำระไม่ได้');
         if (credit) {
-          await tx.customerDebt.upsert({ where: { orderId: id }, create: { orderId: id, customerId: order.customerId!, totalDebt: credit, remainingAmount: credit, dueDate: new Date(order.createdAt.getTime() + 30 * 86400000) }, update: { totalDebt: credit, remainingAmount: credit, status: DebtStatus.PENDING } });
-        } else if (order.debt) await tx.customerDebt.delete({ where: { id: order.debt.id } });
+          // same credit rules as at checkout: blocked customers and the credit limit (other bills' debt + this one)
+          const profile: any = order.customer?.profile || {};
+          if (profile.isCreditBlocked) throw new BadRequestException('ลูกค้าถูกระงับเครดิต');
+          if (Number(profile.creditLimit) > 0) {
+            const debts = await tx.customerDebt.aggregate({ where: { customerId: order.customerId!, NOT: { orderId: id } }, _sum: { remainingAmount: true } });
+            if (Number(debts._sum.remainingAmount || 0) + credit > Number(profile.creditLimit) + 0.001) throw new BadRequestException('ยอดขายเกินวงเงินเครดิต');
+          }
+          const dueDays = Number(profile.creditTerms) > 0 ? Number(profile.creditTerms) : 30;
+          await tx.customerDebt.upsert({ where: { orderId: id }, create: { orderId: id, customerId: order.customerId!, totalDebt: credit, remainingAmount: credit, dueDate: new Date(order.createdAt.getTime() + dueDays * 86400000), note: `หนี้จากการขายบิล ${order.orderNumber}` }, update: { totalDebt: credit, paidAmount: 0, remainingAmount: credit, status: DebtStatus.PENDING } });
+        } else if (order.debt) await this.dropDebt(tx, order.debt, 'เปลี่ยนวิธีชำระบิล ' + order.orderNumber);
+        // QR / transfer must name a known bank account (unknown ids fall back to the default bank, as at checkout)
+        const knownBankIds = new Set((await tx.bankAccount.findMany({ select: { id: true } })).map((b: { id: string }) => b.id));
         await tx.payment.deleteMany({ where: { orderId: id } });
-        await tx.payment.createMany({ data: payments.map((p: any) => ({ orderId: id, method: p.method, amount: Number(p.amount), referenceNo: p.referenceNo || null, bankAccountId: p.bankAccountId || null })) });
+        await tx.payment.createMany({ data: payments.map((p: any) => ({ orderId: id, method: p.method, amount: Number(p.amount), referenceNo: p.referenceNo ? String(p.referenceNo).slice(0, 200) : null, bankAccountId: p.bankAccountId && knownBankIds.has(p.bankAccountId) ? p.bankAccountId : null })) });
         // Money ledger: undo the old payment split and post the new one
         await ledger.reverseByRef(tx, 'ORDER', id, 'แก้ไขวิธีชำระเงินบิล #' + order.orderNumber);
         const fresh = await tx.payment.findMany({ where: { orderId: id } });
@@ -647,9 +749,28 @@ export class OrdersService {
     });
   }
 
+  /**
+   * The bill no longer creates a debt. A debt with payment history (all cancelled, since paid debts
+   * cannot get here) is kept and closed at 0 so the cancelled receipts stay in the payment history;
+   * a debt that never had a payment is simply removed.
+   */
+  private async dropDebt(tx: any, debt: { id: string; note?: string | null }, why: string) {
+    const history = await tx.debtPayment.count({ where: { debtId: debt.id } });
+    if (!history) {
+      await tx.customerDebt.delete({ where: { id: debt.id } });
+      return;
+    }
+    await tx.customerDebt.update({
+      where: { id: debt.id },
+      data: { totalDebt: 0, paidAmount: 0, remainingAmount: 0, status: DebtStatus.PAID, note: `[ยกเลิก] ${why}` + (debt.note ? ` | ${debt.note}` : '') },
+    });
+  }
+
   async findAll(query: any) {
-    const page = query.page ? parseInt(query.page, 10) : 1;
-    const limit = query.limit ? parseInt(query.limit, 10) : 50;
+    const pageNum = parseInt(query.page, 10);
+    const limitNum = parseInt(query.limit, 10);
+    const page = Number.isFinite(pageNum) && pageNum > 0 ? pageNum : 1;
+    const limit = Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 1000) : 50;
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -658,10 +779,10 @@ export class OrdersService {
     }
 
     if (query.startDate && query.endDate) {
-      where.createdAt = {
-        gte: new Date(query.startDate),
-        lte: new Date(query.endDate),
-      };
+      const from = new Date(query.startDate);
+      const to = new Date(query.endDate);
+      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) throw new BadRequestException('ช่วงวันที่ไม่ถูกต้อง');
+      where.createdAt = { gte: from, lte: to };
     }
 
     if (query.search && query.search.trim()) {
@@ -672,7 +793,9 @@ export class OrdersService {
       ];
     }
 
-    const [orders, total, aggregate] = await Promise.all([
+    if (query.search !== undefined && typeof query.search !== 'string') throw new BadRequestException('คำค้นหาไม่ถูกต้อง');
+    const completedWhere = { ...where, status: OrderStatus.COMPLETED };
+    const [orders, total, aggregate, completedCount, returnsAgg] = await Promise.all([
       this.prisma.order.findMany({
         where,
         skip,
@@ -689,10 +812,15 @@ export class OrdersService {
       }),
       this.prisma.order.count({ where }),
       this.prisma.order.aggregate({
-        where: { ...where, status: OrderStatus.COMPLETED },
+        where: completedWhere,
         _sum: { totalAmount: true, totalCogs: true },
       }),
+      this.prisma.order.count({ where: completedWhere }),
+      this.prisma.orderReturn.aggregate({ where: { order: completedWhere }, _sum: { refundAmount: true, cogsReturned: true } }),
     ]);
+    // completed bills, net of partial returns (refunds and the cost of goods that came back)
+    const netSales = round2((Number(aggregate._sum.totalAmount) || 0) - (Number(returnsAgg._sum.refundAmount) || 0));
+    const netCogs = round2((Number(aggregate._sum.totalCogs) || 0) - (Number(returnsAgg._sum.cogsReturned) || 0));
 
     return {
       data: orders,
@@ -703,10 +831,12 @@ export class OrdersService {
         totalPages: Math.ceil(total / limit),
       },
       summary: {
-        totalSales: Number(aggregate._sum.totalAmount) || 0,
-        totalCogs: Number(aggregate._sum.totalCogs) || 0,
-        grossProfit: (Number(aggregate._sum.totalAmount) || 0) - (Number(aggregate._sum.totalCogs) || 0),
-        orderCount: total,
+        totalSales: netSales,
+        totalCogs: netCogs,
+        grossProfit: round2(netSales - netCogs),
+        orderCount: completedCount,
+        grossSales: Number(aggregate._sum.totalAmount) || 0,
+        totalReturns: Number(returnsAgg._sum.refundAmount) || 0,
       },
     };
   }

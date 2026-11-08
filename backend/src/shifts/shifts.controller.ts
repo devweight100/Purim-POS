@@ -1,8 +1,16 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards, Request, BadRequestException } from '@nestjs/common';
 import { ShiftsService } from './shifts.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
+
+/** Money from the request body: a number (or numeric string) >= 0 with at most 2 decimals worth keeping. */
+function parseMoney(v: unknown, label: string, optional = false): number {
+  if ((v === undefined || v === null || v === '') && optional) return 0;
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+  if (!Number.isFinite(n) || n < 0 || n > 1_000_000_000) throw new BadRequestException(`${label}ไม่ถูกต้อง (ต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป)`);
+  return Math.round(n * 100) / 100;
+}
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('shifts')
@@ -22,10 +30,12 @@ export class ShiftsController {
     @Query('limit') limit?: string,
     @Query('search') search?: string,
   ) {
+    const p = parseInt(String(page ?? ''), 10);
+    const l = parseInt(String(limit ?? ''), 10);
     return this.shiftsService.getShiftHistory(
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 20,
-      search,
+      Number.isFinite(p) && p > 0 ? p : 1,
+      Number.isFinite(l) && l > 0 ? Math.min(l, 200) : 20,
+      typeof search === 'string' ? search : undefined,
     );
   }
 
@@ -43,7 +53,7 @@ export class ShiftsController {
     @Body('terminalId') terminalId: string,
     @Body('note') note?: string,
   ) {
-    return this.shiftsService.openShift(req.user.id, Number(startingCash) || 0, note, terminalId);
+    return this.shiftsService.openShift(req.user.id, parseMoney(startingCash, 'เงินทอนตั้งต้น', true), note, terminalId);
   }
 
   @RequirePermissions('POS_SELL')
@@ -54,7 +64,7 @@ export class ShiftsController {
     @Body('actualCash') actualCash: number,
     @Body('note') note?: string,
   ) {
-    return this.shiftsService.closeShift(id, Number(actualCash) || 0, note, req.user);
+    return this.shiftsService.closeShift(id, parseMoney(actualCash, 'ยอดเงินสดที่นับได้'), note, req.user);
   }
 
   @RequirePermissions('POS_SELL')
@@ -70,7 +80,8 @@ export class ShiftsController {
     @Body('purpose') purpose?: string,
     @Body('expenseCategoryId') expenseCategoryId?: string,
     @Body('bankAccountId') bankAccountId?: string,
+    @Body('approvalId') approvalId?: string,
   ) {
-    return this.shiftsService.addCashMovement(id, type, Number(amount) || 0, reason, clientMovementId, req.user, category, { purpose, expenseCategoryId, bankAccountId });
+    return this.shiftsService.addCashMovement(id, type, parseMoney(amount, 'จำนวนเงิน'), reason, clientMovementId, req.user, category, { purpose, expenseCategoryId, bankAccountId, approvalId });
   }
 }

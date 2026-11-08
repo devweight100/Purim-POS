@@ -72,8 +72,9 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
   // Active total to use
   const activeTotal = useMemo(() => {
     if (isDirectMode) {
-      const val = parseFloat(directTotal);
-      return isNaN(val) ? 0 : val;
+      if (directTotal.trim() === '') return 0;
+      const val = Number(directTotal);
+      return Number.isFinite(val) ? Math.round(val * 100) / 100 : NaN; // NaN = invalid, rejected on confirm
     }
     return calculatedTotal;
   }, [isDirectMode, directTotal, calculatedTotal]);
@@ -102,7 +103,7 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
   }, [open]);
 
   const handleConfirmOpen = async () => {
-    if (activeTotal < 0) {
+    if (!(activeTotal >= 0)) {
       toast.error('กรุณาระบุจำนวนเงินตั้งต้นให้ถูกต้อง');
       return;
     }

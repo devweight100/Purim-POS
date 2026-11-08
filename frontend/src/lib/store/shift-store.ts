@@ -7,6 +7,8 @@ export interface CashPurposeInput {
   purpose: 'EXPENSE' | 'TO_SAFE' | 'TO_BANK' | 'OTHER' | 'FROM_SAFE' | 'FROM_BANK' | 'OTHER_INCOME';
   expenseCategoryId?: string;
   bankAccountId?: string;
+  /** manager approval for a movement above the store's limit (see CashDrawerModal) */
+  approvalId?: string;
 }
 
 interface ShiftStore {
@@ -220,7 +222,8 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
   addCashTransaction: async (type: 'in' | 'out', amount: number, reason: string, operationId?: string, purpose?: CashPurposeInput) => {
     const shift = get().currentShift;
     if (!shift?.isOpen) throw new Error('กรุณาเปิดกะบนฐานข้อมูลก่อนทำรายการเงินสด');
-    if (!Number.isFinite(amount) || amount <= 0) throw new Error('จำนวนเงินต้องมากกว่า 0');
+    amount = Math.round(Number(amount) * 100) / 100;
+    if (!Number.isFinite(amount) || amount < 0.01) throw new Error('จำนวนเงินต้องไม่น้อยกว่า 0.01 บาท');
 
     const currentCash = Math.max(0, shift.openingCash + shift.cashSales + shift.cashIn - shift.cashOut - (shift.cashRefunds || 0));
     if (type === 'out' && currentCash <= 0) {

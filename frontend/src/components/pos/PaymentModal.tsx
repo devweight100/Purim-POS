@@ -272,6 +272,11 @@ export function PaymentModal({
         approvalId: approvalIdRef.current || undefined,
         terminalId: getTerminalId(),
         claimDiscountAmount: claimDiscountAmt,
+        // lets the server check the claim credit against the real claim / purchase records
+        claimRefs: {
+          claimId: attachedClaim?.id,
+          pending: (cart.pendingClaims || []).filter((c) => c.resolutionType === 'STORE_DISCOUNT').map((c) => ({ orderId: c.orderId, productId: c.productId, quantity: c.quantity })),
+        },
         customerId: cart.customerId,
         shiftId: shiftStore.currentShift?.id,
         createdAt: new Date().toISOString(),
@@ -296,6 +301,7 @@ export function PaymentModal({
             conversionFactor: i.conversionFactor || 1,
             discountAmount: lineDiscount,
             isClaimReplacement: (i.claimQuantity || 0) > 0,
+            claimQuantity: i.claimQuantity || 0,
           };
         }),
         payments,

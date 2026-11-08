@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useShiftStore, CashPurposeInput } from '@/lib/store/shift-store';
-import { apiFetch, api } from '@/lib/api';
+import { apiFetch, api, ApiError } from '@/lib/api';
+import { ApprovalDialog, ApprovalNeeded } from '@/components/approvals/ApprovalDialog';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -74,7 +75,9 @@ export function CashDrawerModal({
 
   const shiftOpen = isShiftOpen();
   const currentExpectedCash = getExpectedCash();
-  const parsedAmount = parseFloat(amountStr) || 0;
+  // the server keeps 2 decimals: 0.001 is not a movement
+  const parsedAmount = Math.round((parseFloat(amountStr) || 0) * 100) / 100;
+  const [approvalNeeded, setApprovalNeeded] = useState<ApprovalNeeded | null>(null);
 
   // Calculate new expected cash preview
   let newExpectedCash = currentExpectedCash;
@@ -139,8 +142,8 @@ export function CashDrawerModal({
       return;
     }
 
-    if (parsedAmount <= 0) {
-      toast.error('กรุณาระบุจำนวนเงินที่ถูกต้อง (มากกว่า 0 บาท)');
+    if (!(parsedAmount >= 0.01)) {
+      toast.error('กรุณาระบุจำนวนเงินที่ถูกต้อง (อย่างน้อย 0.01 บาท)');
       return;
     }
 
@@ -163,11 +166,17 @@ export function CashDrawerModal({
       toast.error('กรุณาระบุรายละเอียดในหมายเหตุ');
       return;
     }
+    operationId.current ||= newOperationId();
+    await submitMovement();
+  };
+
+  /** Sends the movement; above the store limit the server asks for a manager PIN, then we send it again. */
+  const submitMovement = async (approvalId?: string) => {
+    if (mode === 'open_only' || !operationId.current) return;
     const finalReason = reason.trim() || purposeLabel;
 
     setIsSubmitting(true);
     try {
-      operationId.current ||= newOperationId();
       await addCashTransaction(
         mode,
         parsedAmount,
@@ -177,6 +186,7 @@ export function CashDrawerModal({
           purpose,
           expenseCategoryId: purpose === 'EXPENSE' ? expenseCategoryId : undefined,
           bankAccountId: purpose === 'TO_BANK' || purpose === 'FROM_BANK' ? bankAccountId || undefined : undefined,
+          approvalId,
         },
       );
       operationId.current = null;
@@ -190,6 +200,11 @@ export function CashDrawerModal({
 
       onOpenChange(false);
     } catch (err) {
+      if (err instanceof ApiError && err.data?.code === 'APPROVAL_REQUIRED') {
+        // same movement id: the approval is bound to exactly this movement
+        setApprovalNeeded({ ticket: err.data.ticket, reasons: err.data.reasons || [], total: parsedAmount });
+        return;
+      }
       console.error('Failed to add cash transaction:', err);
       toast.error((err as Error)?.message || 'เกิดข้อผิดพลาดในการบันทึกรายการ');
     } finally {
@@ -198,6 +213,15 @@ export function CashDrawerModal({
   };
 
   return (
+    <>
+    <ApprovalDialog
+      request={approvalNeeded}
+      onCancel={() => setApprovalNeeded(null)}
+      onApproved={(approvalId) => {
+        setApprovalNeeded(null);
+        void submitMovement(approvalId);
+      }}
+    />
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] sm:w-[540px] max-w-[540px] bg-white border-slate-200 text-slate-900 rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
@@ -484,7 +508,7 @@ export function CashDrawerModal({
             disabled={
               isSubmitting ||
               (mode === 'out' && currentExpectedCash <= 0) ||
-              (mode !== 'open_only' && (parsedAmount <= 0 || (mode === 'out' && parsedAmount > currentExpectedCash)))
+              (mode !== 'open_only' && (parsedAmount < 0.01 || (mode === 'out' && parsedAmount > currentExpectedCash)))
             }
             className={`h-10 px-6 text-white font-black text-sm rounded-xl shadow-md gap-2 ${
               mode === 'in'
@@ -506,5 +530,6 @@ export function CashDrawerModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

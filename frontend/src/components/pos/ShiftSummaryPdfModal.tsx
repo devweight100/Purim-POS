@@ -45,6 +45,18 @@ export interface ShiftSummaryData {
   billDiscountsTotal?: number;
   pointsDiscountsTotal?: number;
   bankAccountBreakdown?: BankAccountBreakdownItem[];
+  /** shift still open: no closing time / counted cash yet */
+  isOpen?: boolean;
+  /** cashIn excludes cash debt collections, which then get their own line */
+  cashInExcludesDebt?: boolean;
+  returnsTotal?: number;
+  returnCount?: number;
+  netSales?: number;
+  returnRefundAmount?: number;
+  returnRefundCount?: number;
+  voidRefundAmount?: number;
+  voidRefundCount?: number;
+  claimRefundAmount?: number;
 }
 
 interface ShiftSummaryPdfModalProps {
@@ -234,7 +246,7 @@ export function ShiftSummaryPdfModal({ open, onOpenChange, data }: ShiftSummaryP
               </div>
               <div className="flex justify-between items-center gap-1">
                 <span className="shrink-0">ปิดกะ:</span>
-                <span className="truncate text-right font-mono text-[11px]">{new Date(data.closedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                <span className="truncate text-right font-mono text-[11px]">{data.isOpen ? 'ยังไม่ปิดกะ (กะเปิดอยู่)' : new Date(data.closedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
               </div>
             </div>
 
@@ -281,9 +293,21 @@ export function ShiftSummaryPdfModal({ open, onOpenChange, data }: ShiftSummaryP
                 <span className="font-bold shrink-0 font-mono text-[12px]">{formatCurrency(data.creditSales || 0)}</span>
               </div>
               <div className="flex justify-between items-center text-[14px] font-black text-black pt-1 border-t-2 border-black my-1">
-                <span>รวมยอดขายสุทธิ:</span>
+                <span>{data.returnsTotal ? 'รวมยอดขาย:' : 'รวมยอดขายสุทธิ:'}</span>
                 <span className="shrink-0 font-mono text-[16px]">{formatCurrency(data.totalSales)}</span>
               </div>
+              {!!data.returnsTotal && (
+                <>
+                  <div className="flex justify-between items-center">
+                    <span className="truncate pr-1">(-) คืนสินค้า ({data.returnCount || 0} ครั้ง):</span>
+                    <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.returnsTotal)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[14px] font-black text-black">
+                    <span>ยอดขายสุทธิ (หักคืนสินค้า):</span>
+                    <span className="shrink-0 font-mono text-[16px]">{formatCurrency(data.netSales ?? data.totalSales - data.returnsTotal)}</span>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Debt Collections (การรับชำระหนี้ / เงินเชื่อประจำกะ) */}
@@ -371,10 +395,28 @@ export function ShiftSummaryPdfModal({ open, onOpenChange, data }: ShiftSummaryP
                 <span>(-) เงินออกลิ้นชัก (Cash Out):</span>
                 <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.cashOut)}</span>
               </div>
-              {data.cashRefunds !== undefined && data.cashRefunds > 0 && (
+              {!!data.debtCollectionCash && data.cashInExcludesDebt && (
+                <div className="flex justify-between items-center">
+                  <span>(+) รับชำระหนี้เงินสด:</span>
+                  <span className="shrink-0 font-mono text-[12px]">+{formatCurrency(data.debtCollectionCash)}</span>
+                </div>
+              )}
+              {!!data.returnRefundAmount && (
+                <div className="flex justify-between items-center">
+                  <span>(-) คืนเงินสดคืนสินค้า ({data.returnRefundCount || 1} ครั้ง):</span>
+                  <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.returnRefundAmount)}</span>
+                </div>
+              )}
+              {!!data.voidRefundAmount && (
+                <div className="flex justify-between items-center">
+                  <span>(-) คืนเงินสดยกเลิกบิล ({data.voidRefundCount || 1} ครั้ง):</span>
+                  <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.voidRefundAmount)}</span>
+                </div>
+              )}
+              {(data.returnRefundAmount !== undefined ? !!data.claimRefundAmount : data.cashRefunds !== undefined && data.cashRefunds > 0) && (
                 <div className="flex justify-between items-center">
                   <span>(-) คืนเงินสดเคลม ({data.claimRefundCount || 1} ครั้ง):</span>
-                  <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.cashRefunds)}</span>
+                  <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.returnRefundAmount !== undefined ? data.claimRefundAmount || 0 : data.cashRefunds || 0)}</span>
                 </div>
               )}
               
@@ -384,14 +426,16 @@ export function ShiftSummaryPdfModal({ open, onOpenChange, data }: ShiftSummaryP
               </div>
               <div className="flex justify-between items-center font-black text-black">
                 <span>เงินสดที่นับได้จริง:</span>
-                <span className="shrink-0 font-mono font-black text-[14px]">{formatCurrency(data.actualCash)}</span>
+                <span className="shrink-0 font-mono font-black text-[14px]">{data.isOpen ? '- (ยังไม่นับ)' : formatCurrency(data.actualCash)}</span>
               </div>
 
               {/* Prominent Cash Reconciliation Result Box */}
               <div className="flex justify-between items-center font-black text-[12px] p-2 mt-1 border-2 border-black bg-white">
                 <span>ผลการกระทบยอด:</span>
                 <span className="font-black text-[13px] font-sans">
-                  {diff === 0 
+                  {data.isOpen
+                    ? 'กะยังเปิดอยู่ (ยังไม่นับเงิน)'
+                    : Math.abs(diff) < 0.005
                     ? 'ครบพอดี (฿0.00)' 
                     : diff > 0 
                     ? `เงินสดเกิน (+${formatCurrency(diff)})` 
