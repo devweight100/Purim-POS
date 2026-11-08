@@ -30,11 +30,15 @@ export class SupplierReturnsController {
     return this.returnsService.getReturnNoteDetails(id);
   }
 
+  // credit notes change what we owe suppliers: purchasing / payables staff only (not claims alone)
+  @RequirePermissions('MANAGE_PURCHASES', 'MANAGE_PAYABLES')
   @Post()
   create(@Body() body: any) {
     return this.returnsService.createReturnNote(body);
   }
 
+  // credit notes change what we owe suppliers: purchasing / payables staff only (not claims alone)
+  @RequirePermissions('MANAGE_PURCHASES', 'MANAGE_PAYABLES')
   @Patch(':id')
   update(@Param('id') id: string, @Body() body: any) {
     return this.returnsService.updateReturnNote(id, body);
@@ -43,6 +47,8 @@ export class SupplierReturnsController {
   // Credit notes are applied to supplier bills only through payment vouchers (/payables/settle-multiple),
   // so the old stand-alone POST /supplier-returns/:id/deduct endpoint was removed.
 
+  // credit notes change what we owe suppliers: purchasing / payables staff only (not claims alone)
+  @RequirePermissions('MANAGE_PURCHASES', 'MANAGE_PAYABLES')
   @Post(':id/cancel')
   cancel(@Param('id') id: string, @Body('reason') reason?: string) {
     return this.returnsService.cancelReturnNote(id, reason);

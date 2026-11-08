@@ -965,6 +965,7 @@ export function SettleMultipleBillsModal({
                       <Input
                         type="date"
                         value={paymentDate}
+                        max={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)}
                         onChange={(e) => setPaymentDate(e.target.value)}
                         className="h-8.5 text-xs bg-slate-50 border-slate-300 rounded-xl"
                       />

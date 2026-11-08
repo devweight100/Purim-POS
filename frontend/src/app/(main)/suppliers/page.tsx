@@ -60,34 +60,72 @@ export default function SuppliersPage() {
 
   const handleOpenEdit = (supp: any) => {
     setIsEditMode(true);
-    setCurrentSupplier({ ...supp });
+    // null columns (e.g. address) must not reach controlled inputs as null
+    setCurrentSupplier({
+      ...supp,
+      name: supp.name ?? "",
+      contactName: supp.contactName ?? "",
+      phone: supp.phone ?? "",
+      email: supp.email ?? "",
+      address: supp.address ?? "",
+      creditTerms: supp.creditTerms ?? 0,
+    });
     setIsDialogOpen(true);
   };
 
   const handleSave = async () => {
-    if (!currentSupplier.name.trim()) {
+    const name = String(currentSupplier.name || "").trim();
+    const phone = String(currentSupplier.phone || "").trim();
+    const email = String(currentSupplier.email || "").trim();
+    const creditTermsRaw = currentSupplier.creditTerms;
+    const creditTerms = creditTermsRaw === "" || creditTermsRaw === null || creditTermsRaw === undefined ? 0 : Number(creditTermsRaw);
+    if (!name) {
       toast.error("กรุณากรอกชื่อบริษัทผู้จำหน่าย");
       return;
     }
+    if (phone && !/^[0-9+\-\s()]{3,30}$/.test(phone)) {
+      toast.error("เบอร์โทรศัพท์ไม่ถูกต้อง (ใช้ได้เฉพาะตัวเลข - + และช่องว่าง)");
+      return;
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("รูปแบบอีเมลไม่ถูกต้อง");
+      return;
+    }
+    if (!Number.isInteger(creditTerms) || creditTerms < 0) {
+      toast.error("เครดิตเทอมต้องเป็นจำนวนวันเต็ม ตั้งแต่ 0 ขึ้นไป");
+      return;
+    }
+    const duplicate = suppliers.find(
+      (s) => s.id !== currentSupplier.id && String(s.name || "").trim().toLowerCase() === name.toLowerCase(),
+    );
+    if (duplicate && !confirm(`มีผู้จำหน่ายชื่อ "${duplicate.name}" อยู่แล้ว ต้องการบันทึกซ้ำหรือไม่?`)) return;
+    const payload = {
+      name,
+      contactName: String(currentSupplier.contactName || "").trim() || null,
+      phone: phone || null,
+      email: email || null,
+      address: String(currentSupplier.address || "").trim() || null,
+      creditTerms,
+    };
 
     try {
       if (isEditMode) {
         await apiFetch(`/suppliers/${currentSupplier.id}`, {
           method: "PATCH",
-          body: JSON.stringify(currentSupplier),
+          body: JSON.stringify(payload),
         });
         toast.success("อัปเดตข้อมูลผู้จำหน่ายสำเร็จ");
       } else {
         await apiFetch("/suppliers", {
           method: "POST",
-          body: JSON.stringify(currentSupplier),
+          body: JSON.stringify(payload),
         });
         toast.success("เพิ่มผู้จำหน่ายสำเร็จ");
       }
       setIsDialogOpen(false);
       fetchSuppliers();
     } catch (err: any) {
-      toast.error("เกิดข้อผิดพลาด: " + (err.message || "ไม่สามารถบันทึกได้"));
+      toast.error(err?.message || "บันทึกข้อมูลผู้จำหน่ายไม่สำเร็จ");
     }
   };
 
@@ -98,7 +136,7 @@ export default function SuppliersPage() {
       toast.success("ลบผู้จำหน่ายสำเร็จ");
       fetchSuppliers();
     } catch (err: any) {
-      toast.error("เกิดข้อผิดพลาดในการลบ: " + err.message);
+      toast.error(err?.message || "ลบผู้จำหน่ายไม่สำเร็จ");
     }
   };
 
@@ -204,7 +242,7 @@ export default function SuppliersPage() {
                 ชื่อบริษัท / ผู้จำหน่าย <span className="text-rose-500">*</span>
               </label>
               <Input
-                value={currentSupplier.name}
+                value={currentSupplier.name ?? ""}
                 onChange={(e) => setCurrentSupplier({ ...currentSupplier, name: e.target.value })}
                 placeholder="เช่น บริษัท ปุริม ซัพพลาย จำกัด"
               />
@@ -213,7 +251,7 @@ export default function SuppliersPage() {
               <div>
                 <label className="text-xs font-semibold text-slate-700 block mb-1">ชื่อผู้ติดต่อ</label>
                 <Input
-                  value={currentSupplier.contactName}
+                  value={currentSupplier.contactName ?? ""}
                   onChange={(e) => setCurrentSupplier({ ...currentSupplier, contactName: e.target.value })}
                   placeholder="เช่น คุณสมชาย"
                 />
@@ -221,7 +259,7 @@ export default function SuppliersPage() {
               <div>
                 <label className="text-xs font-semibold text-slate-700 block mb-1">เบอร์โทรศัพท์</label>
                 <Input
-                  value={currentSupplier.phone}
+                  value={currentSupplier.phone ?? ""}
                   onChange={(e) => setCurrentSupplier({ ...currentSupplier, phone: e.target.value })}
                   placeholder="เช่น 081-234-5678"
                 />
@@ -231,7 +269,7 @@ export default function SuppliersPage() {
               <div>
                 <label className="text-xs font-semibold text-slate-700 block mb-1">อีเมล</label>
                 <Input
-                  value={currentSupplier.email}
+                  value={currentSupplier.email ?? ""}
                   onChange={(e) => setCurrentSupplier({ ...currentSupplier, email: e.target.value })}
                   placeholder="เช่น contact@supplier.com"
                 />
@@ -240,8 +278,10 @@ export default function SuppliersPage() {
                 <label className="text-xs font-semibold text-slate-700 block mb-1">เครดิตเทอม (วัน)</label>
                 <Input
                   type="number"
-                  value={currentSupplier.creditTerms}
-                  onChange={(e) => setCurrentSupplier({ ...currentSupplier, creditTerms: Number(e.target.value) })}
+                  min={0}
+                  step={1}
+                  value={currentSupplier.creditTerms ?? ""}
+                  onChange={(e) => setCurrentSupplier({ ...currentSupplier, creditTerms: e.target.value === "" ? "" : Number(e.target.value) })}
                   placeholder="30"
                 />
               </div>
@@ -249,7 +289,7 @@ export default function SuppliersPage() {
             <div>
               <label className="text-xs font-semibold text-slate-700 block mb-1">ที่อยู่</label>
               <textarea
-                value={currentSupplier.address}
+                value={currentSupplier.address ?? ""}
                 onChange={(e) => setCurrentSupplier({ ...currentSupplier, address: e.target.value })}
                 placeholder="ที่อยู่สำหรับจัดส่งหรือออกใบกำกับภาษี..."
                 className="w-full text-sm p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"

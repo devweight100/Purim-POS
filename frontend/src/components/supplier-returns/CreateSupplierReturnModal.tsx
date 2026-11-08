@@ -390,6 +390,15 @@ export function CreateSupplierReturnModal({
       toast.error('กรุณาเลือกหรือเพิ่มรายการสินค้าที่ต้องการส่งคืนอย่างน้อย 1 รายการ');
       return;
     }
+    const badItem = returnItems.find((i: any) => !Number.isInteger(Number(i.quantity)) || Number(i.quantity) <= 0 || !Number.isFinite(Number(i.unitCost)) || Number(i.unitCost) < 0);
+    if (badItem) {
+      toast.error(`รายการ "${(badItem as any).productName || ''}" ต้องมีจำนวนเป็นจำนวนเต็มมากกว่า 0 และต้นทุนไม่ติดลบ`);
+      return;
+    }
+    if (finalEffectiveCredit > grandTotalCost + 0.001) {
+      toast.error(`ยอดเครดิตต้องไม่เกินมูลค่าสินค้าที่ส่งคืน (${grandTotalCost.toLocaleString('th-TH', { minimumFractionDigits: 2 })} บาท)`);
+      return;
+    }
 
     setIsSubmitting(true);
     try {

@@ -4,6 +4,24 @@ import { PrismaService } from '../prisma/prisma.service';
 import { DebtStatus, PaymentMethod } from '@prisma/client';
 import * as ledger from '../finance/ledger';
 
+/**
+ * Money account of the bank that receives a QR / transfer debt payment.
+ * A given bankAccountId must exist and be active (400 otherwise); without one the default bank
+ * account is used, and if there is no default the user must choose.
+ */
+export async function resolveReceivingBank(tx: any, bankAccountId?: string | null) {
+  await ledger.ensureCoreAccounts(tx);
+  const id = typeof bankAccountId === 'string' ? bankAccountId.trim() : '';
+  const bank = id
+    ? await tx.bankAccount.findUnique({ where: { id }, include: { moneyAccount: true } })
+    : await tx.bankAccount.findFirst({ where: { isDefault: true }, include: { moneyAccount: true } });
+  if (!bank) {
+    throw new BadRequestException(id ? 'ไม่พบบัญชีธนาคารที่เลือก กรุณาเลือกบัญชีรับเงินใหม่' : 'กรุณาเลือกบัญชีธนาคารที่รับเงิน (ยังไม่ได้ตั้งบัญชีหลัก)');
+  }
+  if (!bank.moneyAccount || !bank.moneyAccount.isActive) throw new BadRequestException('บัญชีธนาคารที่เลือกถูกปิดใช้งานแล้ว กรุณาเลือกบัญชีอื่น');
+  return bank.moneyAccount;
+}
+
 @Injectable()
 export class DebtsService {
   constructor(private prisma: PrismaService) {}
@@ -134,6 +152,8 @@ export class DebtsService {
         const shift = shiftId ? await tx.shift.findUnique({where:{id:shiftId}}) : null;
         if (!shift || shift.status !== 'OPEN' || shift.userId !== userId) throw new BadRequestException('กรุณาเปิดกะของผู้รับเงินก่อนรับชำระเงินสด');
       }
+      // QR / transfer: the receiving bank must be a real, active account (never silently replaced)
+      const receivingBank = paymentMethod === PaymentMethod.CASH ? null : await resolveReceivingBank(tx, bankAccountId);
       const payAmt = amount;
       if (payAmt <= 0) {
         throw new BadRequestException('ยอดชำระต้องมากกว่า 0 บาท');
@@ -186,7 +206,9 @@ export class DebtsService {
       if (paymentMethod === PaymentMethod.CASH) await tx.cashMovement.create({ data: { id: 'debt-' + clientPaymentId, shiftId: shiftId!, type: 'IN', category: 'DEBT_PAYMENT', amount: payAmt, reason: 'รับชำระหนี้ ' + receiptNo } });
       // Money ledger: cash into the receiving shift's drawer, QR / transfer into the bank
       const shiftRow = paymentMethod === PaymentMethod.CASH && shiftId ? await tx.shift.findUnique({ where: { id: shiftId } }) : null;
-      const moneyAccount = await ledger.accountForPaymentMethod(tx, paymentMethod, { terminalId: shiftRow?.terminalId, bankAccountId });
+      const moneyAccount = paymentMethod === PaymentMethod.CASH
+        ? await ledger.accountForPaymentMethod(tx, paymentMethod, { terminalId: shiftRow?.terminalId })
+        : receivingBank;
       if (moneyAccount) {
         await ledger.post(tx, {
           accountId: moneyAccount.id, direction: 'IN', amount: payAmt, type: 'DEBT_RECEIPT',

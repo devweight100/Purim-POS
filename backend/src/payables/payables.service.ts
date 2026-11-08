@@ -21,8 +21,23 @@ export function payableNow(po: { totalAmount: any; paidAmount: any; remainingPay
   return Math.max(0, Math.min(remaining, cap));
 }
 
-import { IsString, IsNotEmpty, IsArray, IsOptional, IsNumber, IsEnum, ValidateNested, Matches } from 'class-validator';
+import { IsString, IsNotEmpty, IsArray, IsOptional, IsNumber, IsIn, ValidateNested, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
+
+/** Real money methods a supplier can be paid with (credit sale / credit note / card are not money out). */
+export const SUPPLIER_PAYMENT_METHODS: PaymentMethod[] = [PaymentMethod.CASH, PaymentMethod.TRANSFER, PaymentMethod.QR_PROMPTPAY];
+
+/** Ledger note / type used to book a settlement discount received from a supplier. */
+export const SUPPLIER_DISCOUNT_NOTE = 'ส่วนลดรับจากผู้จำหน่าย';
+
+/** Parse and check a voucher payment date: valid and not in the future (10 min clock tolerance). */
+export function parsePaymentDate(raw: any, now = new Date()): Date {
+  if (raw === undefined || raw === null || raw === '') return now;
+  const d = new Date(raw);
+  if (typeof raw !== 'string' || Number.isNaN(d.getTime()) || d.getFullYear() < 2000) throw new BadRequestException('วันที่จ่ายเงินไม่ถูกต้อง');
+  if (d.getTime() > now.getTime() + 10 * 60 * 1000) throw new BadRequestException('วันที่จ่ายเงินต้องไม่เป็นวันในอนาคต');
+  return d;
+}
 
 export class SettleBillItemDto {
   @IsString()
@@ -67,7 +82,7 @@ export class SettleMultipleBillsDto {
   @IsOptional()
   discountAmount?: number;
 
-  @IsEnum(PaymentMethod)
+  @IsIn(SUPPLIER_PAYMENT_METHODS, { message: 'วิธีจ่ายเงินต้องเป็น เงินสด / โอนเงิน / พร้อมเพย์ เท่านั้น' })
   paymentMethod!: PaymentMethod;
 
   @IsString()
@@ -167,8 +182,8 @@ export class PayablesService {
   }
 
   async getSupplierSummaries() {
+    // inactive suppliers are listed too while they still have unpaid bills or unused credit
     const suppliers = await this.prisma.supplier.findMany({
-      where: { isActive: true },
       include: {
         purchaseOrders: {
           where: { status: { in: PAYABLE_PO_STATUSES }, remainingPayable: { gt: 0 } },
@@ -181,21 +196,23 @@ export class PayablesService {
       },
     });
 
-    return suppliers.map((s) => {
+    return suppliers.flatMap((s) => {
       const payable = s.purchaseOrders.map((po) => payableNow(po)).filter((amount) => amount > 0);
       const unpaidCount = payable.length;
       const totalUnpaid = payable.reduce((sum, amount) => sum + amount, 0);
       const totalCredit = s.returnNotes.reduce((sum, rn) => sum + Number(rn.remainingCreditAmount), 0);
 
-      return {
+      if (!s.isActive && unpaidCount === 0 && totalCredit <= 0) return [];
+      return [{
         id: s.id,
         name: s.name,
         contactName: s.contactName,
         phone: s.phone,
+        isActive: s.isActive,
         unpaidCount,
         totalUnpaid,
         availableCredit: totalCredit,
-      };
+      }];
     });
   }
 
@@ -233,6 +250,9 @@ export class PayablesService {
         paymentDate,
       } = dto;
 
+      if (!SUPPLIER_PAYMENT_METHODS.includes(paymentMethod)) throw new BadRequestException('วิธีจ่ายเงินต้องเป็น เงินสด / โอนเงิน / พร้อมเพย์ เท่านั้น');
+      const paidAt = parsePaymentDate(paymentDate);
+      if (!supplierId || !(await tx.supplier.findUnique({ where: { id: supplierId } }))) throw new BadRequestException('ไม่พบผู้จำหน่ายนี้');
       if (!billsToSettle || billsToSettle.length === 0) {
         throw new BadRequestException('กรุณาเลือกบิลอย่างน้อย 1 ใบเพื่อชำระ');
       }
@@ -280,7 +300,7 @@ export class PayablesService {
         data: {
           voucherNumber,
           supplierId,
-          paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+          paymentDate: paidAt,
           totalBillsAmount,
           debitDeducted: totalDebitDeducted,
           discountAmount: disc,
@@ -370,12 +390,33 @@ export class PayablesService {
       // Money ledger: the net amount actually paid leaves the chosen account
       if (netPaidAmount > 0) {
         let account = dto.moneyAccountId ? await tx.moneyAccount.findUnique({ where: { id: dto.moneyAccountId } }) : null;
-        if (dto.moneyAccountId && !account) throw new BadRequestException('ไม่พบบัญชีเงินที่เลือกจ่าย');
+        if (dto.moneyAccountId && (!account || !account.isActive)) throw new BadRequestException('ไม่พบบัญชีเงินที่เลือกจ่าย หรือบัญชีถูกปิดใช้งาน');
         if (!account) account = await ledger.accountForPaymentMethod(tx, paymentMethod, { cashTo: 'SAFE' });
         if (!account) account = await ledger.safeAccount(tx);
+        // Owner decision: cash on hand can never go negative
+        if (account!.type === 'CASH_SAFE' || account!.type === 'CASH_DRAWER') {
+          const balance = await ledger.balanceOf(tx, account!.id);
+          if (balance + 0.001 < netPaidAmount) {
+            throw new BadRequestException(`เงินสดใน "${account!.name}" ไม่พอจ่าย (คงเหลือ ฿${balance.toFixed(2)} ต้องจ่าย ฿${netPaidAmount.toFixed(2)}) กรุณาโอนเงินเข้าเซฟก่อน หรือเลือกจ่ายด้วยการโอน`);
+          }
+        }
         await ledger.post(tx, {
           accountId: account!.id, direction: 'OUT', amount: netPaidAmount, type: 'SUPPLIER_PAYMENT',
           refType: 'VOUCHER', refId: voucher.id, note: `จ่ายเจ้าหนี้ ${voucherNumber}`,
+        });
+      }
+      // Settlement discount (books): the bill is settled "gross" (supplier payment = net + discount)
+      // and the discount comes back as other income, so payables reduction = money out + discount
+      // + credit notes and P&L shows the gain. The two rows net to zero on the safe's balance.
+      if (disc > 0) {
+        const safe = await ledger.safeAccount(tx);
+        await ledger.post(tx, {
+          accountId: safe!.id, direction: 'OUT', amount: disc, type: 'SUPPLIER_PAYMENT',
+          refType: 'VOUCHER', refId: voucher.id, note: `${SUPPLIER_DISCOUNT_NOTE} (หักจากบิล) ${voucherNumber}`,
+        });
+        await ledger.post(tx, {
+          accountId: safe!.id, direction: 'IN', amount: disc, type: 'OTHER_INCOME',
+          refType: 'VOUCHER', refId: voucher.id, note: `${SUPPLIER_DISCOUNT_NOTE} ${voucherNumber}`,
         });
       }
 
@@ -488,8 +529,9 @@ export class PayablesService {
       // 2. Rollback all debit notes: restore remainingCreditAmount
       for (const dn of voucher.debitNotes) {
         const note = await tx.supplierReturnNote.findUnique({ where: { id: dn.returnNoteId } });
-        if (note) {
-          const restoredCredit = Number(note.remainingCreditAmount) + Number(dn.amountDeducted);
+        // a cancelled credit note stays cancelled (its credit is gone); never revive it
+        if (note && note.status !== ReturnNoteStatus.CANCELLED) {
+          const restoredCredit = Math.min(Number(note.totalAmount), Math.round((Number(note.remainingCreditAmount) + Number(dn.amountDeducted)) * 100) / 100);
           const restoredStatus = restoredCredit >= Number(note.totalAmount) ? ReturnNoteStatus.PENDING : ReturnNoteStatus.PARTIALLY_USED;
 
           await tx.supplierReturnNote.update({
