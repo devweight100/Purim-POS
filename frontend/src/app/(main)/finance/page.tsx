@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api';
+import { bangkokDate, bangkokDayKey, bangkokDayStart, bangkokParts, bangkokStartOfDay, DAY_MS } from '@/lib/bangkok-date';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,12 +70,12 @@ const isCash = (t: AccountType) => t === 'CASH_DRAWER' || t === 'CASH_SAFE';
 
 type Range = 'today' | '7d' | 'month';
 function rangeDates(r: Range) {
+  // Bangkok calendar, whatever the device time zone
   const now = new Date();
-  const from = new Date(now);
-  from.setHours(0, 0, 0, 0);
-  if (r === '7d') from.setDate(from.getDate() - 6);
-  if (r === 'month') from.setDate(1);
-  return { from: from.toISOString(), to: now.toISOString() };
+  const today = bangkokStartOfDay(now);
+  const { year, month } = bangkokParts(now);
+  const from = r === '7d' ? today - 6 * DAY_MS : r === 'month' ? bangkokDate(year, month, 1) : today;
+  return { from: new Date(from).toISOString(), to: now.toISOString() };
 }
 
 const fieldCls = 'w-full h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm';
@@ -277,12 +278,13 @@ export default function FinancePage() {
               <span className="text-xl font-black font-mono text-emerald-700">{formatCurrency(overview.receivables.total)}</span>
             </div>
             <div className="text-xs text-slate-600">เกินกำหนด <b className="text-rose-600">{formatCurrency(overview.receivables.overdue)}</b> จาก {overview.receivables.overdueDebtorCount} คน</div>
+            <div className="text-[11px] text-slate-500">อายุหนี้: นับจากจำนวนวันที่เลยกำหนดชำระ (ไม่มีกำหนด = 30 วันหลังวันบิล) — หน้ารายงานลูกค้านับตามอายุบิล</div>
             <div className="grid grid-cols-5 gap-1.5 text-[11px]">
               {[
-                ['ยังไม่ครบ', overview.receivables.buckets.notDue],
+                ['ยังไม่ครบกำหนด', overview.receivables.buckets.notDue],
                 ['เกิน 1-30 วัน', overview.receivables.buckets.d1_30],
-                ['31-60 วัน', overview.receivables.buckets.d31_60],
-                ['61-90 วัน', overview.receivables.buckets.d61_90],
+                ['เกิน 31-60 วัน', overview.receivables.buckets.d31_60],
+                ['เกิน 61-90 วัน', overview.receivables.buckets.d61_90],
                 ['เกิน 90 วัน', overview.receivables.buckets.d90plus],
               ].map(([l, v], i) => (
                 <div key={String(l)} className={`rounded-lg border p-1.5 ${i === 0 ? 'bg-emerald-50 border-emerald-200' : i >= 3 ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200'}`}>
@@ -538,7 +540,7 @@ function TransferDialog({ mode, accounts, onClose, onDone }: { mode: null | 'dep
 }
 
 function ExpenseDialog({ open, accounts, categories, onClose, onDone }: { open: boolean; accounts: MoneyAccount[]; categories: Category[]; onClose: () => void; onDone: () => void }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = bangkokDayKey(Date.now());
   const [categoryId, setCategoryId] = useState('');
   const [accountId, setAccountId] = useState('');
   const [amount, setAmount] = useState('');
@@ -552,7 +554,7 @@ function ExpenseDialog({ open, accounts, categories, onClose, onDone }: { open: 
   useEffect(() => {
     if (!open) return;
     setClientId(newId());
-    setAmount(''); setDescription(''); setVendor(''); setReceipt(undefined); setPaidAt(new Date().toISOString().slice(0, 10));
+    setAmount(''); setDescription(''); setVendor(''); setReceipt(undefined); setPaidAt(bangkokDayKey(Date.now()));
     setAccountId(accounts.find((a) => a.type === 'CASH_SAFE')?.id || accounts[0]?.id || '');
     setCategoryId(categories[0]?.id || '');
   }, [open, accounts, categories]);
@@ -571,7 +573,9 @@ function ExpenseDialog({ open, accounts, categories, onClose, onDone }: { open: 
     if (!description.trim()) return toast.error('กรุณาระบุรายละเอียด');
     setSaving(true);
     try {
-      const paid = paidAt === today ? new Date() : new Date(`${paidAt}T12:00:00`);
+      if (paidAt > today) { setSaving(false); return toast.error('วันที่จ่ายต้องไม่เป็นวันในอนาคต'); }
+      // a past day: noon Bangkok time of that day
+      const paid = paidAt === today ? new Date() : new Date(bangkokDayStart(paidAt) + 12 * 3600 * 1000);
       await apiFetch('/finance/expenses', {
         method: 'POST',
         body: JSON.stringify({ clientId, categoryId, accountId, amount: Number(amount), paidAt: paid.toISOString(), description, vendor: vendor || undefined, receiptImage: receipt }),

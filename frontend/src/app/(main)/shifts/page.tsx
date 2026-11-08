@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { bangkokDayKey, DAY_MS } from '@/lib/bangkok-date';
 import Link from 'next/link';
 import { 
   History, Clock, Calendar, Search, Filter, Printer, Eye, 
@@ -94,16 +95,12 @@ export default function ShiftsHistoryPage() {
 
   // Filter shifts based on Cashier, Date, Search, and Status
   const filteredShifts = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const yest = new Date();
-    yest.setDate(yest.getDate() - 1);
-    const yesterday = yest.toISOString().split('T')[0];
-
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    // Bangkok calendar days (not UTC / device TZ)
+    const now = Date.now();
+    const today = bangkokDayKey(now);
+    const yesterday = bangkokDayKey(now - DAY_MS);
+    const sevenDaysAgo = bangkokDayKey(now - 6 * DAY_MS);
+    const thirtyDaysAgo = bangkokDayKey(now - 29 * DAY_MS);
 
     return shifts.filter((s) => {
       // 1. Cashier Filter (Flexible matching by ID, username, and fullName)
@@ -127,12 +124,12 @@ export default function ShiftsHistoryPage() {
       }
 
       // 2. Date Filter
-      const shiftDate = s.closedAt ? s.closedAt.split('T')[0] : s.openedAt.split('T')[0];
+      const shiftDate = bangkokDayKey(s.closedAt || s.openedAt);
 
       if (dateFilter === 'TODAY' && shiftDate !== today) return false;
       if (dateFilter === 'YESTERDAY' && shiftDate !== yesterday) return false;
-      if (dateFilter === '7DAYS' && new Date(shiftDate) < sevenDaysAgo) return false;
-      if (dateFilter === '30DAYS' && new Date(shiftDate) < thirtyDaysAgo) return false;
+      if (dateFilter === '7DAYS' && shiftDate < sevenDaysAgo) return false;
+      if (dateFilter === '30DAYS' && shiftDate < thirtyDaysAgo) return false;
       if (dateFilter === 'CUSTOM' && customDate && shiftDate !== customDate) return false;
 
       // 3. Status Filter
@@ -158,7 +155,7 @@ export default function ShiftsHistoryPage() {
     const map = new Map<string, ShiftSummaryData[]>();
 
     filteredShifts.forEach((s) => {
-      const dateKey = s.closedAt ? s.closedAt.split('T')[0] : s.openedAt.split('T')[0];
+      const dateKey = bangkokDayKey(s.closedAt || s.openedAt);
       if (!map.has(dateKey)) {
         map.set(dateKey, []);
       }
@@ -213,6 +210,7 @@ export default function ShiftsHistoryPage() {
         year: 'numeric',
         month: 'long',
         day: 'numeric',
+        timeZone: 'Asia/Bangkok',
       });
     } catch {
       return dateStr;
@@ -223,8 +221,8 @@ export default function ShiftsHistoryPage() {
     try {
       const openD = new Date(openStr);
       const closeD = new Date(closeStr);
-      const openTime = openD.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-      const closeTime = closeD.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+      const openTime = openD.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' });
+      const closeTime = closeD.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' });
 
       const diffMinutes = Math.round((closeD.getTime() - openD.getTime()) / (1000 * 60));
       const hours = Math.floor(diffMinutes / 60);
