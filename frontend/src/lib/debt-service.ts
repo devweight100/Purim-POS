@@ -97,7 +97,7 @@ function mapDebt(row: any): DebtRecord {
     totalAmount,
     paidAmount,
     remainingDebt: Number(row.remainingAmount),
-    progressPercent: totalAmount ? Math.min(100, (paidAmount / totalAmount) * 100) : 100,
+    progressPercent: totalAmount ? Math.min(100, Math.round((paidAmount / totalAmount) * 10000) / 100) : 100,
     status: Number(row.remainingAmount) <= 0 ? 'PAID' : paidAmount > 0 ? 'PARTIAL' : 'UNPAID',
     installments,
     lastPaymentDate: installments.at(-1)?.paymentDate,

@@ -2,7 +2,7 @@
 
 import { useRef, useState } from 'react';
 import { DebtRecord, DebtPaymentInstallment } from '@/lib/types';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatDocDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -33,7 +33,10 @@ export function DebtReceiptPdfModal({ open, onOpenChange, debtRecord, installmen
   if (!debtRecord || !installment) return null;
 
   const progressAfter = debtRecord.totalAmount > 0 
-    ? Math.min(100, Math.round(((installment.previousPaid + installment.amountPaid) / debtRecord.totalAmount) * 100))
+    ? Math.min(
+        installment.remainingAfter > 0 ? 99.99 : 100,
+        Math.round(((installment.previousPaid + installment.amountPaid) / debtRecord.totalAmount) * 10000) / 100,
+      )
     : 100;
 
   const generatePdfBlob = async () => {
@@ -213,11 +216,11 @@ export function DebtReceiptPdfModal({ open, onOpenChange, debtRecord, installmen
               </div>
               <div className="flex justify-between items-center gap-1">
                 <span className="text-black shrink-0">วันที่ซื้อเดิม:</span>
-                <span className="truncate text-right">{new Date(debtRecord.orderDate).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                <span className="truncate text-right">{formatDocDate(debtRecord.orderDate, { time: true })}</span>
               </div>
               <div className="flex justify-between items-center gap-1">
                 <span className="text-black shrink-0">วันที่รับชำระ:</span>
-                <span className="font-black text-black truncate text-right">{new Date(installment.paymentDate).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                <span className="font-black text-black truncate text-right">{formatDocDate(installment.paymentDate, { time: true })}</span>
               </div>
               <div className="flex justify-between items-center gap-1 pt-1 border-t border-black">
                 <span className="text-black shrink-0 flex items-center gap-1">
@@ -309,7 +312,7 @@ export function DebtReceiptPdfModal({ open, onOpenChange, debtRecord, installmen
               <div className="flex justify-between items-center text-[10.5px] font-black border border-black px-2 py-1 rounded">
                 <span>ความคืบหน้าการชำระ:</span>
                 <span>
-                  {progressAfter}% {progressAfter === 100 ? '(ชำระครบแล้ว)' : `(คงค้าง ${formatCurrency(installment.remainingAfter)})`}
+                  {progressAfter.toFixed(2)}% {progressAfter === 100 ? '(ชำระครบแล้ว)' : `(คงค้าง ${formatCurrency(installment.remainingAfter)})`}
                 </span>
               </div>
 
@@ -332,7 +335,7 @@ export function DebtReceiptPdfModal({ open, onOpenChange, debtRecord, installmen
                 <span>.................................</span>
               </div>
               <div className="text-center text-[10px] text-black pt-1 border-t border-black font-semibold">
-                พิมพ์เมื่อ: {new Date().toLocaleString('th-TH')}
+                พิมพ์เมื่อ: {formatDocDate(new Date(), { time: true })}
               </div>
             </div>
 
