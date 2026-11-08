@@ -13,7 +13,12 @@ import {
   calculatePaymentsAndShiftsReport,
   calculateCustomerAndDebtsReport,
   calculatePurchasesAndClaimsReport,
+  calculateVatSummary,
+  returnsInRange,
+  reportRangeBounds,
+  PurchasesData,
 } from '@/lib/reports-service';
+import { downloadReport, ExportColumn } from './report-export';
 import { useProductStore } from '@/lib/store/product-store';
 import { loadPurchaseOrders, loadSuppliers } from '@/lib/supplier-return-service';
 import { loadAllClaimRecords } from '@/lib/claim-service';
@@ -227,6 +232,10 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     events: { createdAt: string; claimNumber: string; replacementCost: number; refundPaid: number }[];
     supplierRecoveries: { createdAt: string; returnNumber: string; amount: number }[];
   }>({ events: [], supplierRecoveries: [] });
+  const [purchasesData, setPurchasesData] = useState<PurchasesData>({ receipts: [], open: [], payable: [] });
+  const [lowStockThreshold, setLowStockThreshold] = useState<number>(5);
+  const [lastReceivedAtByProduct, setLastReceivedAtByProduct] = useState<Record<string, string | null>>({});
+  const [debtReceipts, setDebtReceipts] = useState<{ amount: number; method?: string; createdAt: string }[]>([]);
   const [batchValuationByProduct, setBatchValuationByProduct] = useState<
     Record<string, { quantityRemaining: number; totalCostValue: number; averageUnitCost: number }>
   >({});
@@ -300,6 +309,10 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       if (analyticsData?.stockBatchValuation?.byProductId) {
         setBatchValuationByProduct(analyticsData.stockBatchValuation.byProductId);
       }
+      if (analyticsData?.purchases) setPurchasesData(analyticsData.purchases);
+      if (Number.isFinite(Number(analyticsData?.lowStockThreshold))) setLowStockThreshold(Number(analyticsData.lowStockThreshold));
+      if (analyticsData?.lastReceivedAtByProduct) setLastReceivedAtByProduct(analyticsData.lastReceivedAtByProduct);
+      if (Array.isArray(analyticsData?.debtReceipts)) setDebtReceipts(analyticsData.debtReceipts);
 
       setRawOrders(realOrders);
       setPurchaseOrders(realPOs);
@@ -350,13 +363,26 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     return filterOrdersByDateRange(rawOrders, timeRange, customStartDate, customEndDate);
   }, [rawOrders, timeRange, customStartDate, customEndDate]);
 
+  // Returns MADE in the selected range (any bill date) -- same netting rule as the P&L
+  const rangeReturns = useMemo(
+    () => returnsInRange(rawOrders, timeRange, customStartDate, customEndDate),
+    [rawOrders, timeRange, customStartDate, customEndDate]
+  );
+  const inRange = useMemo(() => {
+    const { start, end } = reportRangeBounds(timeRange, customStartDate, customEndDate);
+    return (iso: string) => {
+      const t = new Date(iso).getTime();
+      return isNaN(t) || (t >= start && t < end);
+    };
+  }, [timeRange, customStartDate, customEndDate]);
+
   // 1. Sales & Profit (Lazy)
   const salesProfitReport = useMemo(() => {
     if (activeTab !== 'sales') {
-      return { totalOrders: 0, totalGrossSales: 0, totalDiscounts: 0, totalNetSales: 0, totalCogs: 0, totalGrossProfit: 0, overallMargin: 0, dailyBreakdown: [] };
+      return { totalOrders: 0, totalGrossSales: 0, totalDiscounts: 0, totalNetSales: 0, totalReturns: 0, totalCogs: 0, totalGrossProfit: 0, overallMargin: 0, dailyBreakdown: [] };
     }
-    return calculateSalesAndProfitReport(filteredOrders, products);
-  }, [activeTab, filteredOrders, products]);
+    return calculateSalesAndProfitReport(filteredOrders, products, rangeReturns);
+  }, [activeTab, filteredOrders, products, rangeReturns]);
 
   // Claims & VAT for the same period (net profit after claims, output VAT)
   const claimsAndVat = useMemo(() => {
@@ -366,35 +392,34 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     const refundsPaid = events.reduce((sum: number, e: any) => sum + (Number(e.refundPaid) || 0), 0);
     const supplierRecovery = recoveries.reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0);
     const claimNetCost = replacementCost + refundsPaid - supplierRecovery;
-    const completed = filteredOrders.filter((o: any) => (o.status || 'COMPLETED') === 'COMPLETED');
-    const vatAmount = completed.reduce((sum: number, o: any) => sum + (Number(o.vatAmount) || 0), 0);
-    const vatSales = completed.filter((o: any) => Number(o.vatAmount) > 0).reduce((sum: number, o: any) => sum + (Number(o.totalAmount) || 0), 0);
-    return { replacementCost, refundsPaid, supplierRecovery, claimNetCost, vatAmount, vatSales, vatBase: vatSales - vatAmount };
-  }, [claimAccounting, timeRange, customStartDate, customEndDate, filteredOrders]);
+    // output VAT of bills in the range minus VAT of returns made in the range (matches the P&L)
+    const vat = calculateVatSummary(filteredOrders, rangeReturns);
+    return { replacementCost, refundsPaid, supplierRecovery, claimNetCost, ...vat };
+  }, [claimAccounting, timeRange, customStartDate, customEndDate, filteredOrders, rangeReturns]);
 
   // 2. Best Sellers (Lazy)
   const bestSellersReport = useMemo(() => {
     if (activeTab !== 'bestsellers') {
       return { allProducts: [], topByQuantity: [], topByProfit: [], topByRevenue: [] };
     }
-    return calculateBestSellingProducts(filteredOrders, products);
-  }, [activeTab, filteredOrders, products]);
+    return calculateBestSellingProducts(filteredOrders, products, rangeReturns);
+  }, [activeTab, filteredOrders, products, rangeReturns]);
 
   // 3. Inventory Valuation & Deadstock (Lazy)
   const inventoryReport = useMemo(() => {
     if (activeTab !== 'inventory') {
-      return { totalProducts: 0, totalStockPieces: 0, totalCostVal: 0, totalRetailVal: 0, totalPotentialProfit: 0, deadstockPieces: 0, deadstockCostVal: 0, lowStockCount: 0, items: [], deadstockList: [], lowStockList: [] };
+      return { totalProducts: 0, totalStockPieces: 0, totalCostVal: 0, totalRetailVal: 0, totalPotentialProfit: 0, deadstockPieces: 0, deadstockCostVal: 0, lowStockCount: 0, lowStockThreshold, items: [], deadstockList: [], lowStockList: [] };
     }
-    return calculateInventoryValuationReport(products, rawOrders, batchValuationByProduct);
-  }, [activeTab, products, rawOrders, batchValuationByProduct]);
+    return calculateInventoryValuationReport(products, rawOrders, batchValuationByProduct, { lowStockThreshold, lastReceivedAtByProduct });
+  }, [activeTab, products, rawOrders, batchValuationByProduct, lowStockThreshold, lastReceivedAtByProduct]);
 
   // 4. Payments & Shifts (Lazy)
   const paymentsShiftsReport = useMemo(() => {
     if (activeTab !== 'payments') {
-      return { totalCollected: 0, channels: [], shifts: { totalShiftsCount: 0, totalExpectedCash: 0, totalActualCash: 0, totalCashDiscrepancy: 0, balancedShifts: 0, shortShifts: 0, overShifts: 0, list: [] } };
+      return { totalCollected: 0, salesCollected: 0, debtReceived: 0, creditSales: 0, refunds: 0, channels: [], shifts: { totalShiftsCount: 0, totalExpectedCash: 0, totalActualCash: 0, totalCashDiscrepancy: 0, balancedShifts: 0, shortShifts: 0, overShifts: 0, list: [] } };
     }
-    return calculatePaymentsAndShiftsReport(filteredOrders, shifts);
-  }, [activeTab, filteredOrders, shifts]);
+    return calculatePaymentsAndShiftsReport(filteredOrders, shifts, { returns: rangeReturns, debtReceipts, inRange });
+  }, [activeTab, filteredOrders, shifts, rangeReturns, debtReceipts, inRange]);
 
   // 5. Customers & Debts Aging (Lazy)
   const customerDebtsReport = useMemo(() => {
@@ -419,10 +444,11 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
   // 6. Purchases & Claims (Lazy)
   const purchasesClaimsReport = useMemo(() => {
     if (activeTab !== 'purchases') {
-      return { totalPurchasesOverall: 0, totalClaimsCostOverall: 0, supplierBreakdown: [] };
+      return { totalPurchasesOverall: 0, totalOrderedNotReceived: 0, totalRemainingPayable: 0, totalClaimsCostOverall: 0, supplierBreakdown: [] };
     }
-    return calculatePurchasesAndClaimsReport(purchaseOrders, claims, suppliers);
-  }, [activeTab, purchaseOrders, claims, suppliers]);
+    const claimsInRange = filterOrdersByDateRange(claims, timeRange, customStartDate, customEndDate);
+    return calculatePurchasesAndClaimsReport(purchasesData, claimsInRange, suppliers, inRange);
+  }, [activeTab, purchasesData, claims, suppliers, inRange, timeRange, customStartDate, customEndDate]);
 
   // ─── PAGINATED & FILTERED DATASETS FOR ALL REPORT TABLES ───
   // 1. Sales
@@ -505,49 +531,100 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     window.print();
   };
 
-  // Export to CSV Handler
-  const handleExportCsv = () => {
-    let csvContent = 'data:text/csv;charset=utf-8,\uFEFF';
-    let filename = `report_${activeTab}_${timeRange}.csv`;
-
-    if (activeTab === 'sales') {
-      csvContent += 'ลำดับ,วันที่,จำนวนออเดอร์,ยอดขายรวม(Gross),ส่วนลด,ยอดขายสุทธิ(Net),ต้นทุน(COGS),กำไรขั้นต้น(Gross Profit),% กำไร(Margin)\n';
-      salesProfitReport.dailyBreakdown.forEach((row, i) => {
-        csvContent += `${i + 1},"${row.date}",${row.orderCount},${row.grossSales},${row.discounts},${row.netSales},${row.cogs},${row.grossProfit},${row.profitMarginPercent}%\n`;
-      });
-    } else if (activeTab === 'bestsellers') {
-      csvContent += 'ลำดับ,บาร์โค้ด,ชื่อสินค้า,หมวดหมู่,จำนวนที่ขายได้,ยอดขายรวม,ต้นทุนรวม,กำไรสุทธิ,% กำไร\n';
-      bestSellersReport.allProducts.forEach((row, i) => {
-        csvContent += `${i + 1},"${row.sku}","${row.name}","${formatCategory(row.category)}",${row.quantitySold},${row.totalRevenue},${row.totalCost},${row.totalProfit},${row.profitMarginPercent}%\n`;
-      });
-    } else if (activeTab === 'inventory') {
-      csvContent += 'ลำดับ,บาร์โค้ด,ชื่อสินค้า,หมวดหมู่,ผู้จำหน่าย,สต็อกคงเหลือ,ราคาทุน,มูลค่าทุนรวม,ราคาขาย,มูลค่าขายรวม,สถานะ\n';
-      inventoryReport.items.forEach((row, i) => {
-        const status = row.isDeadstock ? 'ขายช้า(Deadstock)' : row.isLowStock ? 'สต็อกต่ำ' : 'ปกติ';
-        csvContent += `${i + 1},"${row.sku}","${row.name}","${formatCategory(row.category)}","${row.supplierName}",${row.stock},${row.costPrice},${row.totalCostValue},${row.retailPrice},${row.totalRetailValue},"${status}"\n`;
-      });
-    } else if (activeTab === 'customers') {
-      csvContent += 'ลำดับ,รหัสลูกค้า,ชื่อลูกค้า,เบอร์โทรศัพท์,จำนวนครั้งที่ซื้อ,ยอดซื้อเฉลี่ยต่อบิล,ยอดซื้อสะสมรวม,แต้มสะสม,หนี้คงค้าง,วันที่ซื้อล่าสุด\n';
-      customerDebtsReport.allCustomers.forEach((row, i) => {
-        csvContent += `${i + 1},"${row.code}","${row.name}","${row.phone}",${row.orderCount},${row.averageTicket},${row.totalSpent},${row.points},${row.outstandingDebt},"${row.lastOrderDate}"\n`;
-      });
-    } else if (activeTab === 'purchases') {
-      csvContent += 'ลำดับ,ชื่อบริษัทคู่ค้า,จำนวนใบสั่งซื้อ,ยอดสั่งซื้อรวม,ยอดจ่ายแล้ว,หนี้คงค้าง,จำนวนเคลม,ชิ้นที่เคลม,มูลค่าเคลมรวม\n';
-      purchasesClaimsReport.supplierBreakdown.forEach((row, i) => {
-        csvContent += `${i + 1},"${row.supplierName}",${row.poCount},${row.totalPurchaseAmount},${row.totalPaidAmount},${row.remainingPayable},${row.claimsCount},${row.claimPieces},${row.claimCostTotal}\n`;
-      });
-    } else {
-      csvContent += 'ลำดับ,รายการ,ยอดรวม\n';
+  // Export (Excel .xlsx or CSV) of the active tab
+  const handleExport = async (format: 'csv' | 'xlsx') => {
+    const base = `report_${activeTab}_${timeRange === 'custom' ? `${customStartDate || 'start'}_${customEndDate || 'end'}` : timeRange}`;
+    const no = { header: 'ลำดับ', value: (_r: any, i: number) => i + 1 };
+    let file = '';
+    try {
+      if (activeTab === 'sales') {
+        const cols: ExportColumn<any>[] = [
+          no,
+          { header: 'วันที่', value: (r) => r.date },
+          { header: 'จำนวนออเดอร์', value: (r) => r.orderCount },
+          { header: 'ยอดขายรวมก่อนส่วนลด (Gross)', value: (r) => r.grossSales },
+          { header: 'ส่วนลด (สินค้า+บิล)', value: (r) => r.discounts },
+          { header: 'ยอดขายสุทธิหลังคืนสินค้า (Net)', value: (r) => r.netSales },
+          { header: 'ต้นทุน (COGS)', value: (r) => r.cogs },
+          { header: 'กำไรขั้นต้น', value: (r) => r.grossProfit },
+          { header: '% กำไร', value: (r) => r.profitMarginPercent },
+        ];
+        file = await downloadReport(format, base, 'ยอดขาย', salesProfitReport.dailyBreakdown, cols);
+      } else if (activeTab === 'bestsellers') {
+        const cols: ExportColumn<any>[] = [
+          no,
+          { header: 'รหัส/บาร์โค้ด', value: (r) => r.sku },
+          { header: 'ชื่อสินค้า', value: (r) => r.name },
+          { header: 'หมวดหมู่', value: (r) => formatCategory(r.category) },
+          { header: 'จำนวนขายสุทธิ', value: (r) => r.quantitySold },
+          { header: 'ยอดขายสุทธิ', value: (r) => r.totalRevenue },
+          { header: 'ต้นทุนรวม', value: (r) => r.totalCost },
+          { header: 'กำไร', value: (r) => r.totalProfit },
+          { header: '% กำไร', value: (r) => r.profitMarginPercent },
+        ];
+        file = await downloadReport(format, base, 'สินค้าขายดี', bestSellersReport.allProducts, cols);
+      } else if (activeTab === 'inventory') {
+        const cols: ExportColumn<any>[] = [
+          no,
+          { header: 'รหัส/บาร์โค้ด', value: (r) => r.sku },
+          { header: 'ชื่อสินค้า', value: (r) => r.name },
+          { header: 'หมวดหมู่', value: (r) => formatCategory(r.category) },
+          { header: 'ผู้จำหน่าย', value: (r) => r.supplierName },
+          { header: 'สต็อกคงเหลือ', value: (r) => r.stock },
+          { header: 'ราคาทุนเฉลี่ย', value: (r) => r.costPrice },
+          { header: 'มูลค่าทุนรวม', value: (r) => r.totalCostValue },
+          { header: 'ราคาขาย', value: (r) => r.retailPrice },
+          { header: 'มูลค่าขายรวม', value: (r) => r.totalRetailValue },
+          { header: 'สถานะ', value: (r) => (r.isDeadstock ? 'ขายช้า(Deadstock)' : r.isLowStock ? 'สต็อกต่ำ' : 'ปกติ') },
+        ];
+        file = await downloadReport(format, base, 'มูลค่าคลัง', inventoryReport.items, cols);
+      } else if (activeTab === 'payments') {
+        const rows = [
+          ...paymentsShiftsReport.channels.map((c) => ({ label: c.label, count: c.orderCount, amount: c.totalAmount, pct: c.percentage })),
+          { label: 'เงินรับจริง (รวมรับชำระหนี้ ไม่รวมขายเชื่อ)', count: null, amount: paymentsShiftsReport.totalCollected, pct: null },
+          { label: `ผลต่างปิดกะสะสม (${paymentsShiftsReport.shifts.totalShiftsCount} กะ)`, count: paymentsShiftsReport.shifts.totalShiftsCount, amount: paymentsShiftsReport.shifts.totalCashDiscrepancy, pct: null },
+        ];
+        const cols: ExportColumn<any>[] = [
+          no,
+          { header: 'ช่องทาง / รายการ', value: (r) => r.label },
+          { header: 'จำนวนรายการ', value: (r) => r.count },
+          { header: 'ยอดเงิน', value: (r) => r.amount },
+          { header: '% ของยอดขาย', value: (r) => r.pct },
+        ];
+        file = await downloadReport(format, base, 'ช่องทางชำระ', rows, cols);
+      } else if (activeTab === 'customers') {
+        const cols: ExportColumn<any>[] = [
+          no,
+          { header: 'รหัสลูกค้า', value: (r) => r.code },
+          { header: 'ชื่อลูกค้า', value: (r) => r.name },
+          { header: 'เบอร์โทรศัพท์', value: (r) => r.phone },
+          { header: 'จำนวนครั้งที่ซื้อ', value: (r) => r.orderCount },
+          { header: 'ยอดซื้อเฉลี่ยต่อบิล', value: (r) => r.averageTicket },
+          { header: 'ยอดซื้อสุทธิ (หลังคืนสินค้า)', value: (r) => r.totalSpent },
+          { header: 'แต้มสะสม', value: (r) => r.points },
+          { header: 'หนี้คงค้าง', value: (r) => r.outstandingDebt },
+          { header: 'วันที่ซื้อล่าสุด', value: (r) => r.lastOrderDate },
+        ];
+        file = await downloadReport(format, base, 'ลูกค้า', customerDebtsReport.allCustomers, cols);
+      } else if (activeTab === 'purchases') {
+        const cols: ExportColumn<any>[] = [
+          no,
+          { header: 'บริษัทคู่ค้า', value: (r) => r.supplierName },
+          { header: 'PO ที่รับของในช่วงนี้', value: (r) => r.poCount },
+          { header: 'ยอดซื้อ (รับของแล้วในช่วงนี้)', value: (r) => r.totalPurchaseAmount },
+          { header: 'สั่งแล้วยังไม่รับของ', value: (r) => r.orderedNotReceived },
+          { header: 'ค้างจ่าย (AP) ปัจจุบัน', value: (r) => r.remainingPayable },
+          { header: 'จำนวนเคลม', value: (r) => r.claimsCount },
+          { header: 'ชิ้นที่เคลม', value: (r) => r.claimPieces },
+          { header: 'มูลค่าเคลมรวม', value: (r) => r.claimCostTotal },
+        ];
+        file = await downloadReport(format, base, 'จัดซื้อ', purchasesClaimsReport.supplierBreakdown, cols);
+      }
+      toast.success(`ส่งออกไฟล์ ${file} เรียบร้อยแล้ว`);
+    } catch (err) {
+      console.error('export failed', err);
+      toast.error('ส่งออกไฟล์ไม่สำเร็จ');
     }
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success(`ส่งออกไฟล์ ${filename} เรียบร้อยแล้ว`);
   };
 
   return (
@@ -589,12 +666,22 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
 
           <Button
             size="sm"
-            onClick={handleExportCsv}
+            onClick={() => handleExport('xlsx')}
             className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm h-8 px-3.5 rounded-lg shadow-2xs gap-1.5"
-            title="ส่งออกไฟล์ข้อมูลเป็น CSV / Excel"
+            title="ส่งออกไฟล์ Excel (.xlsx)"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>ส่งออก CSV</span>
+            <span>Excel</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleExport('csv')}
+            className="border-slate-300 text-slate-700 hover:bg-slate-50 h-8 px-3 text-xs sm:text-sm font-bold shadow-2xs gap-1.5"
+            title="ส่งออกไฟล์ CSV (UTF-8)"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>CSV</span>
           </Button>
         </div>
       </div>
@@ -1074,7 +1161,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 <div className="p-1 bg-amber-50 text-amber-600 rounded-md border border-amber-100 shrink-0">
                   <AlertTriangle className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-amber-950">สินค้าสต็อกต่ำ:</span>
+                <span className="text-sm font-bold text-amber-950">สินค้าสต็อกต่ำ (≤ {inventoryReport.lowStockThreshold}):</span>
               </div>
               <span className="text-lg sm:text-xl font-black text-amber-700 font-mono tracking-tight">
                 {inventoryReport.lowStockCount} <span className="text-xs font-sans">รายการ</span>
@@ -1101,7 +1188,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 inventorySubFilter === 'deadstock' ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-700'
               }`}
             >
-              ⚠️ สินค้าขายช้า/ไม่เคลื่อนไหว &gt; 30 วัน ({inventoryReport.deadstockList.length})
+              ⚠️ ขายช้า: ไม่มีขายและไม่ได้รับเข้า &gt; 30 วัน ({inventoryReport.deadstockList.length})
             </button>
             <button
               type="button"
@@ -1215,7 +1302,9 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 <div className="p-1 bg-sky-50 text-sky-600 rounded-md border border-sky-100 shrink-0">
                   <Coins className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-sky-950">ยอดรับชำระทั้งหมด:</span>
+                <span className="text-sm font-bold text-sky-950" title="เงินที่ได้รับจริง: เงินสด + QR/โอน + บัตร หักคืนเงิน รวมรับชำระหนี้ (ไม่รวมขายเชื่อที่ยังไม่ได้รับเงิน)">
+                  เงินรับจริง (รวมรับชำระหนี้):
+                </span>
               </div>
               <span className="text-lg sm:text-xl font-black text-sky-700 font-mono tracking-tight">
                 {formatCurrency(paymentsShiftsReport.totalCollected)}
@@ -1265,6 +1354,13 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                   : formatCurrency(paymentsShiftsReport.shifts.totalCashDiscrepancy)}
               </span>
             </div>
+          </div>
+
+          <div className="text-xs text-slate-500 flex flex-wrap gap-x-4 gap-y-1 px-1">
+            <span>ยอดขายรับเงินแล้ว (สุทธิหลังคืนเงิน): <b className="font-mono text-slate-700">{formatCurrency(paymentsShiftsReport.salesCollected)}</b></span>
+            <span>รับชำระหนี้ลูกค้า: <b className="font-mono text-slate-700">{formatCurrency(paymentsShiftsReport.debtReceived)}</b></span>
+            <span>ขายเชื่อ (ยังไม่ได้รับเงิน ไม่นับเป็นเงินรับ): <b className="font-mono text-amber-700">{formatCurrency(paymentsShiftsReport.creditSales)}</b></span>
+            <span>สถิติปิดกะ: เฉพาะกะในช่วงเวลาที่เลือก ({paymentsShiftsReport.shifts.totalShiftsCount} กะ)</span>
           </div>
 
           {/* Payment Methods Table */}
@@ -1464,13 +1560,16 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           {/* Table 2: Debt Aging Buckets Table */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="p-3.5 border-b border-slate-100 bg-slate-50/50">
-              <span className="font-bold text-sm text-slate-900">ตารางวิเคราะห์อายุหนี้เงินเชื่อ (Debt Aging Schedule)</span>
+              <span className="font-bold text-sm text-slate-900">ตารางวิเคราะห์อายุหนี้เงินเชื่อ — นับตามอายุบิล (วันนับจากวันที่ขาย)</span>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                หมายเหตุ: หน้า &quot;การเงิน&quot; แบ่งช่วงตาม &quot;จำนวนวันที่เลยกำหนดชำระ&quot; ตัวเลขแต่ละช่วงจึงต่างกันได้ แต่ยอดรวมเท่ากัน
+              </p>
             </div>
             <Table>
               <TableHeader className="bg-slate-50">
                 <TableRow>
                   <TableHead className="py-3 px-3.5 text-center w-16 font-bold text-sm">ลำดับ</TableHead>
-                  <TableHead className="py-3 px-3.5 text-left font-bold text-sm">ช่วงอายุหนี้</TableHead>
+                  <TableHead className="py-3 px-3.5 text-left font-bold text-sm">ช่วงอายุบิล</TableHead>
                   <TableHead className="py-3 px-3.5 text-center w-36 font-bold text-sm">จำนวนบิล</TableHead>
                   <TableHead className="py-3 px-3.5 text-right w-48 font-bold text-sm">ยอดหนี้ค้างชำระ</TableHead>
                   <TableHead className="py-3 px-3.5 text-center w-40 font-bold text-sm">ระดับความเสี่ยง</TableHead>
@@ -1515,7 +1614,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
                   <Truck className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-indigo-950">ยอดสั่งซื้อคู่ค้ารวม:</span>
+                <span className="text-sm font-bold text-indigo-950" title="มูลค่าสินค้าที่รับเข้าแล้วในช่วงเวลาที่เลือก (ตามวันที่รับของ)">ยอดซื้อ (รับของแล้วในช่วงนี้):</span>
               </div>
               <span className="text-lg sm:text-xl font-black text-indigo-700 font-mono tracking-tight">
                 {formatCurrency(purchasesClaimsReport.totalPurchasesOverall)}
@@ -1527,10 +1626,11 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
                   <Building2 className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-emerald-950">บริษัทคู่ค้าที่สั่งซื้อ:</span>
+                <span className="text-sm font-bold text-emerald-950" title="ยอดค้างจ่ายสำหรับสินค้าที่รับแล้ว (ตรงกับหน้าการเงิน) / สั่งแล้วยังไม่ได้รับของ">ค้างจ่าย / สั่งแล้วยังไม่รับ:</span>
               </div>
-              <span className="text-lg sm:text-xl font-black text-emerald-700 font-mono tracking-tight">
-                {purchasesClaimsReport.supplierBreakdown.length} <span className="text-xs font-sans">บริษัท</span>
+              <span className="text-sm sm:text-base font-black text-emerald-700 font-mono tracking-tight text-right">
+                {formatCurrency(purchasesClaimsReport.totalRemainingPayable)}
+                <span className="block text-xs text-slate-500 font-bold">{formatCurrency(purchasesClaimsReport.totalOrderedNotReceived)}</span>
               </span>
             </div>
 
@@ -1567,10 +1667,10 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
                     <TableHead className="py-3.5 px-3.5 text-left text-slate-700 font-bold text-sm">บริษัทผู้จำหน่าย</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-28 text-slate-700 font-bold text-sm">จำนวน PO</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-40 text-slate-700 font-bold text-sm">ยอดสั่งซื้อรวม</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">ชำระแล้ว</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">หนี้ค้างจ่าย (AP)</TableHead>
+                    <TableHead className="py-3.5 px-3.5 text-center w-28 text-slate-700 font-bold text-sm">PO ที่รับของ</TableHead>
+                    <TableHead className="py-3.5 px-3.5 text-right w-40 text-slate-700 font-bold text-sm">ยอดซื้อ (รับแล้วในช่วงนี้)</TableHead>
+                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">สั่งแล้วยังไม่รับ</TableHead>
+                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">ค้างจ่าย (AP) ปัจจุบัน</TableHead>
                     <TableHead className="py-3.5 px-3.5 text-right w-32 text-slate-700 font-bold text-sm">จำนวนเคลม</TableHead>
                     <TableHead className="py-3.5 px-3.5 text-right w-40 text-slate-700 font-bold text-sm">มูลค่าเคลมรวม</TableHead>
                   </TableRow>
@@ -1601,8 +1701,8 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td className="py-3.5 px-3.5 text-right font-mono font-black text-slate-900 text-[15px]">
                             {formatCurrency(supp.totalPurchaseAmount)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono text-emerald-700 text-sm">
-                            {formatCurrency(supp.totalPaidAmount)}
+                          <td className="py-3.5 px-3.5 text-right font-mono text-slate-600 text-sm">
+                            {formatCurrency(supp.orderedNotReceived)}
                           </td>
                           <td className="py-3.5 px-3.5 text-right font-mono font-bold text-amber-700 text-sm">
                             {formatCurrency(supp.remainingPayable)}
