@@ -154,10 +154,13 @@ export function hasThaiCharacters(text: string): boolean {
 
 /**
  * Converts a raw scanned string containing Thai Kedmanee characters into standard English/Digits.
- * If the string is already English/Digits, it returns the string unchanged.
+ * Only input that contains Thai characters (a scan typed while the keyboard was in Thai layout) is
+ * converted. Plain ASCII input such as `RICE-JAS-5KG`, `ABC-123` or `1.5L` is returned unchanged:
+ * '-', '/', '.' etc. are real characters there, not Thai-layout keys.
  */
 export function convertThaiToEnBarcode(raw: string): string {
   if (!raw) return '';
+  if (!hasThaiCharacters(raw)) return raw;
 
   let converted = '';
   for (let i = 0; i < raw.length; i++) {
@@ -184,4 +187,16 @@ export function convertThaiToEnBarcode(raw: string): string {
   }
 
   return converted;
+}
+
+/**
+ * Codes to try, in order, when looking a scanned / typed code up: the raw text first, then the
+ * Thai-layout conversion when it differs (e.g. a product code that really contains Thai text still
+ * matches as typed).
+ */
+export function barcodeLookupCandidates(raw: string): string[] {
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return [];
+  const converted = convertThaiToEnBarcode(trimmed).trim();
+  return converted && converted !== trimmed ? [trimmed, converted] : [trimmed];
 }

@@ -58,7 +58,10 @@ export const useProductStore = create<ProductStore>((set, get) => ({
       const formattedProducts: Product[] = rawCatalog.map((p: any) => {
         const pId = p.id || p.sku;
         const basePrice = Number(p.price || p.priceLevel1 || p.basePrice || 0);
-        const baseCost = Number(p.cost || p.costPrice || 0);
+        // Cost is only sent to users with VIEW_COST / ADMIN; without it, cost stays undefined
+        // (not 0) so nothing mistakes it for a real zero cost or writes it back.
+        const rawCost = p.costPrice ?? p.cost;
+        const baseCost: number | undefined = rawCost !== undefined && rawCost !== null ? Number(rawCost) || 0 : undefined;
         const baseUnitName = p.unit ?? '';
         const baseBarcode =
           (typeof p.barcodes?.[0] === 'string' ? p.barcodes[0] : p.barcodes?.[0]?.barcode) ||

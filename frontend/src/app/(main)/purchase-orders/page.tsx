@@ -1,7 +1,24 @@
 'use client';
 
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { calculatePurchaseBill, normVatType, type PoVatType } from '@/lib/po-calc';
+import { calculatePurchaseBill, normVatType, toBaseUnitLine, type PoVatType } from '@/lib/po-calc';
+
+/** Default purchase cost of a product: its last purchase / reference cost, never the selling price. */
+function defaultUnitCost(product: any): number {
+  const preferred = Array.isArray(product?.supplierEntries) ? (product.supplierEntries.find((s: any) => s?.isPreferred) || product.supplierEntries[0]) : null;
+  for (const v of [product?.unitCost, product?.lastCost, preferred?.lastCost, preferred?.unitCost, product?.costPrice, product?.cost]) {
+    const n = Number(v);
+    if (v !== undefined && v !== null && v !== '' && Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+}
+
+/** VAT rate of a line: an explicit 0 stays 0, only a missing rate defaults to 7%. */
+function lineVatRate(v: unknown): number {
+  if (v === undefined || v === null || v === '') return 7;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 7;
+}
 import { apiFetch } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { CreateSupplierReturnModal } from '@/components/supplier-returns/CreateSupplierReturnModal';
@@ -315,7 +332,7 @@ export default function PurchaseOrdersPage() {
         discountValue: Number(i.discountValue) || 0,
         // per-line VAT from the server; very old local POs had one VAT setting for the whole bill
         vatType: normVatType(i.vatType ?? po.vatType) as PoVatType,
-        vatRate: i.vatType && normVatType(i.vatType) !== 'NONE' ? Number(i.vatRate) || 7 : 7,
+        vatRate: i.vatType && normVatType(i.vatType) !== 'NONE' ? lineVatRate(i.vatRate) : 7,
         imageUrl: i.imageUrl || null,
       };
     });
@@ -417,7 +434,7 @@ export default function PurchaseOrdersPage() {
     name: product.name,
     sku: product.sku,
     stock: product.stock,
-    unitCost: product.unitCost || product.basePrice || 0,
+    unitCost: defaultUnitCost(product),
     quantity,
     discountType: 'baht' as 'baht' | 'percent',
     discountValue: 0,
@@ -485,14 +502,25 @@ export default function PurchaseOrdersPage() {
     const calculatedVat = bill.vatAmount;
     const netAmount = bill.subtotalAmount;
     const finalTotal = bill.totalAmount;
-    const apiItems = cartItems.map((i: any) => ({
+    // The server stores, receives and costs stock in BASE units only: a line ordered in a pack unit
+    // (2 โหล x12 @ 120) is sent as 24 units @ 10 with the same line total (see toBaseUnitLine).
+    const baseLines = cartItems.map((i: any) => {
+      const base = toBaseUnitLine(i);
+      return {
+        ...i,
+        ...base,
+        unitName: (Number(i.multiplier) || 1) > 1 ? (i.baseUnit || 'ชิ้น') : (i.unitName || i.baseUnit || 'ชิ้น'),
+        multiplier: 1,
+      };
+    });
+    const apiItems = baseLines.map((i: any) => ({
       productId: i.productId,
       quantity: Number(i.quantity),
       unitCost: Number(i.unitCost),
       discountType: i.discountType || 'baht',
       discountValue: Number(i.discountValue) || 0,
       vatType: normVatType(i.vatType),
-      vatRate: Number(i.vatRate) || 7,
+      vatRate: lineVatRate(i.vatRate),
     }));
 
     if (editingPo) {
@@ -509,7 +537,7 @@ export default function PurchaseOrdersPage() {
         vatAmount: calculatedVat,
         netAmount,
         updatedAt: new Date().toISOString(),
-        items: cartItems.map((i: any) => ({
+        items: baseLines.map((i: any) => ({
           id: i.id || "poi_" + Math.random().toString(36).substring(2, 7),
           productId: i.productId,
           name: i.name,
@@ -522,7 +550,7 @@ export default function PurchaseOrdersPage() {
           discountType: i.discountType || 'baht',
           discountValue: Number(i.discountValue) || 0,
           vatType: normVatType(i.vatType),
-          vatRate: Number(i.vatRate) || 7,
+          vatRate: lineVatRate(i.vatRate),
         })),
       };
 
@@ -570,7 +598,7 @@ export default function PurchaseOrdersPage() {
       vatType,
       vatAmount: calculatedVat,
       netAmount,
-      items: cartItems.map((i: any) => ({
+      items: baseLines.map((i: any) => ({
         id: "poi_" + Math.random().toString(36).substring(2, 7),
         productId: i.productId,
         name: i.name,
@@ -583,7 +611,7 @@ export default function PurchaseOrdersPage() {
         discountType: i.discountType || 'baht',
         discountValue: Number(i.discountValue) || 0,
         vatType: normVatType(i.vatType),
-        vatRate: Number(i.vatRate) || 7,
+        vatRate: lineVatRate(i.vatRate),
       })),
     };
 
@@ -875,8 +903,8 @@ export default function PurchaseOrdersPage() {
   const addCartItemWithUnit = (product: any, unitName: string, multiplier: number, deltaQty = 1) => {
     const targetUnit = unitName || product.unit || 'ชิ้น';
     const cartKey = `${product.id}_${targetUnit}`;
-    const baseCost = product.unitCost || product.basePrice || 0;
-    const unitCost = baseCost * multiplier;
+    const baseCost = defaultUnitCost(product);
+    const unitCost = Math.round(baseCost * multiplier * 100) / 100;
 
     setCartItems(prev => {
       const existingIndex = prev.findIndex(item => (item.cartKey ? item.cartKey === cartKey : (item.productId === product.id && item.unitName === targetUnit)));
@@ -1657,7 +1685,7 @@ export default function PurchaseOrdersPage() {
 
                                 <div className="flex items-center justify-between text-sm font-bold text-slate-900 lg:block lg:text-right">
                                   <span className="text-xs font-medium text-slate-500 lg:hidden">ต้นทุน</span>
-                                  {formatCurrency(product.unitCost || product.basePrice || 0)}
+                                  {formatCurrency(defaultUnitCost(product))}
                                 </div>
 
                                 <div className="flex flex-wrap items-center justify-end gap-1.5">
@@ -2177,7 +2205,7 @@ export default function PurchaseOrdersPage() {
                           {formatCurrency(item.total !== undefined && item.total !== null ? Number(item.total) : item.quantity * item.unitCost)}
                           {normVatType(item.vatType) !== 'NONE' && (
                             <span className={`block text-[10px] font-semibold ${normVatType(item.vatType) === 'INCLUDED' ? 'text-emerald-700' : 'text-amber-700'}`}>
-                              {normVatType(item.vatType) === 'INCLUDED' ? 'รวม' : '+'}VAT {Number(item.vatRate) || 7}% ({formatCurrency(Number(item.vatAmount) || 0)})
+                              {normVatType(item.vatType) === 'INCLUDED' ? 'รวม' : '+'}VAT {lineVatRate(item.vatRate)}% ({formatCurrency(Number(item.vatAmount) || 0)})
                             </span>
                           )}
                         </TableCell>

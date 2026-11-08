@@ -1,5 +1,6 @@
 import { useProductStore } from './store/product-store';
 import { apiFetch } from './api';
+import { ApiError } from './api-error';
 
 export type StockMovementType = 
   | 'IN_PO'       // รับเข้าจากใบสั่งซื้อ PO
@@ -417,8 +418,9 @@ export async function adjustSingleProductStock(params: {
   amount: number;
   reason: string;
   userName?: string;
-}): Promise<{ success: boolean; newStock: number; previousStock: number; delta: number }> {
-  // 1. Try Backend API first
+}): Promise<{ success: boolean; newStock: number; previousStock: number; delta: number; offline?: boolean; error?: string }> {
+  // 1. Backend first. A server answer (400 not enough stock, 403 no permission, validation...) is
+  //    final and is thrown to the caller; only "no answer at all" (offline) falls back to local.
   try {
     const res = await apiFetch('/inventory/adjust', {
       method: 'POST',
@@ -428,22 +430,24 @@ export async function adjustSingleProductStock(params: {
         adjustmentType: params.type === 'SUB' ? 'SUBTRACT' : params.type,
         amount: params.amount,
         reason: params.reason,
-        userName: params.userName || 'ผู้ดูแลระบบ',
+        ...(params.userName ? { userName: params.userName } : {}),
       }),
     });
 
-    if (res && res.success) {
-      // Refresh real product catalog from DB
-      await useProductStore.getState().fetchProducts();
-      return {
-        success: true,
-        newStock: Number(res.newStock),
-        previousStock: Number(res.previousStock),
-        delta: Number(res.delta),
-      };
-    }
+    if (!res || !res.success) throw new ApiError('เซิร์ฟเวอร์ไม่ยืนยันการปรับสต็อก', 502, res);
+    // Refresh real product catalog from DB
+    await useProductStore.getState().fetchProducts();
+    return {
+      success: true,
+      newStock: Number(res.newStock),
+      previousStock: Number(res.previousStock),
+      delta: Number(res.delta),
+      offline: false,
+    };
   } catch (err) {
-    console.warn('[StockService] Backend adjust failed, falling back to local:', err);
+    const noAnswer = err instanceof ApiError ? err.status === 0 : !(Number((err as any)?.status) > 0);
+    if (!noAnswer) throw err;
+    console.warn('[StockService] Backend unreachable, adjusting local copy only:', err);
   }
 
   // 2. Offline / local fallback
@@ -453,11 +457,14 @@ export async function adjustSingleProductStock(params: {
   );
 
   if (prodIndex === -1) {
-    return { success: false, newStock: 0, previousStock: 0, delta: 0 };
+    return { success: false, newStock: 0, previousStock: 0, delta: 0, offline: true, error: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ และไม่พบสินค้าในเครื่อง' };
   }
 
   const prod = products[prodIndex];
   const previousStock = Number(prod.stock !== undefined && prod.stock !== null ? prod.stock : 0);
+  if (params.type === 'SUB' && params.amount > previousStock) {
+    return { success: false, newStock: previousStock, previousStock, delta: 0, offline: true, error: `สต็อกคงเหลือไม่พอให้ปรับลด (มี ${previousStock})` };
+  }
   let newStock = previousStock;
   let delta = 0;
   let movementType: StockMovementType = 'ADJUST_SET';
@@ -499,5 +506,5 @@ export async function adjustSingleProductStock(params: {
     userName: params.userName || 'ผู้ดูแลระบบ',
   });
 
-  return { success: true, newStock, previousStock, delta };
+  return { success: true, newStock, previousStock, delta, offline: true };
 }

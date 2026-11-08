@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
-import { parseProductCSV, csvRowsToProducts } from "@/lib/csv-parser";
+import { parseProductCSV, csvRowsToProducts, CsvImportError } from "@/lib/csv-parser";
 import { useProductStore } from "@/lib/store/product-store";
 import * as XLSX from "xlsx";
 
@@ -254,6 +254,23 @@ function stripConflictingBarcodes(product: any, conflictingBarcodeKeys: Set<stri
   };
 }
 
+/** Excel cell -> number; blank/missing -> undefined (field not in the file, server keeps its value). Non-numeric text is passed through so the server rejects the row with its row number. */
+function optionalNumberCell(value: any): any {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === 'number') return value;
+  const text = String(value).replace(/,/g, '').trim();
+  if (!text) return undefined;
+  const n = Number(text);
+  return Number.isFinite(n) ? n : text;
+}
+
+function pickProductCost(product: any): number | undefined {
+  const raw = product?.cost ?? product?.costPrice;
+  if (raw === undefined || raw === null || raw === '') return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function productToApiPayload(product: any, conflictingBarcodeKeys = new Set<string>()) {
   const sellingPrice = Number(product.priceLevel1 ?? product.price ?? 0);
   const barcodes = getProductBarcodes(product).filter((barcode) => !conflictingBarcodeKeys.has(normalizeKey(barcode)));
@@ -262,7 +279,8 @@ function productToApiPayload(product: any, conflictingBarcodeKeys = new Set<stri
     sku: product.sku,
     categoryId: product.categoryId || undefined,
     basePrice: sellingPrice,
-    costPrice: Number(product.cost ?? product.costPrice ?? product.basePrice ?? 0),
+    // never fall back to basePrice (selling price); no cost known (e.g. user without VIEW_COST) = field omitted, server keeps its value
+    costPrice: pickProductCost(product),
     priceLevel1: product.priceLevel1 != null ? Number(product.priceLevel1) : undefined,
     priceLevel2: product.priceLevel2 != null ? Number(product.priceLevel2) : undefined,
     priceLevel3: product.priceLevel3 != null ? Number(product.priceLevel3) : undefined,
@@ -384,7 +402,8 @@ export default function ProductsPage() {
       ].filter(Boolean);
       const uniqueBarcodes = Array.from(new Set(barcodesList)).join(", ");
 
-      const costVal = Number(p.costPrice !== undefined && p.costPrice !== null ? p.costPrice : (p.cost ?? p.basePrice ?? 0));
+      const costKnown = pickProductCost(p);
+      const costVal = costKnown !== undefined ? costKnown : "";
       const price1Val = Number(p.priceLevel1 !== undefined && p.priceLevel1 !== null ? p.priceLevel1 : (p.price ?? p.basePrice ?? 0));
 
       return {
@@ -511,14 +530,34 @@ export default function ProductsPage() {
       try {
         const buffer = e.target?.result as ArrayBuffer;
         if (!buffer) return;
-        const workbook = XLSX.read(buffer, { type: "array" });
-        const firstSheetName = workbook.SheetNames[0];
-        if (!firstSheetName) {
-          toast.error("ไม่พบข้อมูลในไฟล์ Excel");
-          return;
+        let rawJson: any[];
+        if (/\.csv$/i.test(file.name)) {
+          // CSV: exact header matching, ',' or ';' delimiter, negative numbers rejected (lib/csv-parser)
+          const csvRows = parseProductCSV(new TextDecoder("utf-8").decode(buffer));
+          rawJson = csvRows.map((r) => ({
+            "รหัสสินค้า": r.productCode || undefined,
+            "ชื่อสินค้า": r.productName || undefined,
+            "บาร์โค้ด": r.customBarcodeId || undefined,
+            "หมวดหมู่": r.category || undefined,
+            "หน่วยนับ": r.unit || undefined,
+            "ราคาทุน": r.cost,
+            "ราคา 1": r.priceLevel1,
+            "ราคา 2": r.priceLevel2,
+            "ราคา 3": r.priceLevel3,
+            "ราคา 4": r.priceLevel4,
+            "ราคา 5": r.priceLevel5,
+            "จำนวนสต็อก": r.stock,
+          }));
+        } else {
+          const workbook = XLSX.read(buffer, { type: "array" });
+          const firstSheetName = workbook.SheetNames[0];
+          if (!firstSheetName) {
+            toast.error("ไม่พบข้อมูลในไฟล์ Excel");
+            return;
+          }
+          const worksheet = workbook.Sheets[firstSheetName];
+          rawJson = XLSX.utils.sheet_to_json(worksheet);
         }
-        const worksheet = workbook.Sheets[firstSheetName];
-        const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet);
 
         if (rawJson.length === 0) {
           toast.error("ไม่พบแถวข้อมูลสินค้าในไฟล์ที่อัพโหลด");
@@ -526,25 +565,24 @@ export default function ProductsPage() {
         }
 
         const parsedItems = rawJson
-          .map((row: any) => {
+          .map((row: any, rowIndex: number) => {
             const id = row["รหัสระบบ (System ID - ห้ามแก้ไข)"] || row["System ID"] || row["ID"] || row["id"] || undefined;
             const sku = String(row["รหัสสินค้า (SKU)"] || row["รหัสสินค้า"] || row["SKU"] || row["sku"] || row["code"] || "").trim();
             const name = String(row["ชื่อสินค้า (Product Name)"] || row["ชื่อสินค้า"] || row["Name"] || row["name"] || row["product_name"] || "").trim();
             const barcode = String(row["บาร์โค้ด (Barcode)"] || row["บาร์โค้ด"] || row["Barcode"] || row["barcode"] || "").trim();
-            const categoryName = String(row["หมวดหมู่ (Category)"] || row["หมวดหมู่"] || row["Category"] || row["category"] || "ทั่วไป").trim();
-            const unit = String(row["หน่วยนับ (Unit)"] || row["หน่วยนับ"] || row["Unit"] || row["unit"] || "ชิ้น").trim();
+            const categoryName = String(row["หมวดหมู่ (Category)"] || row["หมวดหมู่"] || row["Category"] || row["category"] || "").trim();
+            const unit = String(row["หน่วยนับ (Unit)"] || row["หน่วยนับ"] || row["Unit"] || row["unit"] || "").trim();
 
-            const costPrice = Number(
+            const costPrice = optionalNumberCell(
               row["ราคาทุน (Cost Price)"] ??
               row["ราคาทุน"] ??
               row["Cost Price"] ??
               row["Cost"] ??
               row["costPrice"] ??
-              row["cost"] ??
-              0
+              row["cost"]
             );
 
-            const priceLevel1 = Number(
+            const priceLevel1 = optionalNumberCell(
               row["ราคาขาย 1 / ขายปลีก (Price 1)"] ??
               row["ราคาขาย 1 / ขายปลีก (Price Level 1)"] ??
               row["ราคาขายปลีก / ราคาฐาน (Retail Price)"] ??
@@ -557,15 +595,14 @@ export default function ProductsPage() {
               row["Retail Price"] ??
               row["Price 1"] ??
               row["priceLevel1"] ??
-              row["price"] ??
-              0
+              row["price"]
             );
 
-            const priceLevel2 = Number(row["ราคาขาย 2 (Price Level 2)"] ?? row["ราคาขาย 2 (Price 2)"] ?? row["ระดับราคา 2 (Price Level 2)"] ?? row["ระดับราคา 2"] ?? row["ราคาขาย 2"] ?? row["ราคา 2"] ?? row["priceLevel2"] ?? 0);
-            const priceLevel3 = Number(row["ราคาขาย 3 (Price Level 3)"] ?? row["ราคาขาย 3 (Price 3)"] ?? row["ระดับราคา 3 (Price Level 3)"] ?? row["ระดับราคา 3"] ?? row["ราคาขาย 3"] ?? row["ราคา 3"] ?? row["priceLevel3"] ?? 0);
-            const priceLevel4 = Number(row["ราคาขาย 4 (Price Level 4)"] ?? row["ราคาขาย 4 (Price 4)"] ?? row["ระดับราคา 4 (Price Level 4)"] ?? row["ระดับราคา 4"] ?? row["ราคาขาย 4"] ?? row["ราคา 4"] ?? row["priceLevel4"] ?? 0);
-            const priceLevel5 = Number(row["ราคาขาย 5 (Price Level 5)"] ?? row["ราคาขาย 5 (Price 5)"] ?? row["ระดับราคา 5 (Price Level 5)"] ?? row["ระดับราคา 5"] ?? row["ราคาขาย 5"] ?? row["ราคา 5"] ?? row["priceLevel5"] ?? 0);
-            const stock = Number(row["จำนวนสต็อก (Stock)"] ?? row["จำนวนสต็อก"] ?? row["สต็อก"] ?? row["Stock"] ?? row["stock"] ?? 0);
+            const priceLevel2 = optionalNumberCell(row["ราคาขาย 2 (Price Level 2)"] ?? row["ราคาขาย 2 (Price 2)"] ?? row["ระดับราคา 2 (Price Level 2)"] ?? row["ระดับราคา 2"] ?? row["ราคาขาย 2"] ?? row["ราคา 2"] ?? row["priceLevel2"]);
+            const priceLevel3 = optionalNumberCell(row["ราคาขาย 3 (Price Level 3)"] ?? row["ราคาขาย 3 (Price 3)"] ?? row["ระดับราคา 3 (Price Level 3)"] ?? row["ระดับราคา 3"] ?? row["ราคาขาย 3"] ?? row["ราคา 3"] ?? row["priceLevel3"]);
+            const priceLevel4 = optionalNumberCell(row["ราคาขาย 4 (Price Level 4)"] ?? row["ราคาขาย 4 (Price 4)"] ?? row["ระดับราคา 4 (Price Level 4)"] ?? row["ระดับราคา 4"] ?? row["ราคาขาย 4"] ?? row["ราคา 4"] ?? row["priceLevel4"]);
+            const priceLevel5 = optionalNumberCell(row["ราคาขาย 5 (Price Level 5)"] ?? row["ราคาขาย 5 (Price 5)"] ?? row["ระดับราคา 5 (Price Level 5)"] ?? row["ระดับราคา 5"] ?? row["ราคาขาย 5"] ?? row["ราคา 5"] ?? row["priceLevel5"]);
+            const stock = optionalNumberCell(row["จำนวนสต็อก (Stock)"] ?? row["จำนวนสต็อก"] ?? row["สต็อก"] ?? row["Stock"] ?? row["stock"]);
             const minStockAlert = Number(row["จุดแจ้งเตือนสต็อกต่ำ (Min Stock)"] ?? row["จุดแจ้งเตือน"] ?? row["minStockAlert"] ?? 10);
             const description = String(row["รายละเอียดสินค้า (Description)"] ?? row["รายละเอียด"] ?? row["Description"] ?? row["description"] ?? "").trim();
 
@@ -592,35 +629,35 @@ export default function ProductsPage() {
               if (sku && sku !== existing.sku) {
                 diffs.push(`SKU: ${existing.sku} ➔ ${sku}`);
               }
-              if (costPrice !== existingCost) {
+              if (costPrice !== undefined && costPrice !== existingCost) {
                 diffs.push(`ทุน: ${existingCost} ➔ ${costPrice}`);
               }
-              if (priceLevel1 !== existingPrice1) {
+              if (priceLevel1 !== undefined && priceLevel1 !== existingPrice1) {
                 diffs.push(`ราคา 1: ${existingPrice1} ➔ ${priceLevel1}`);
               }
-              if (priceLevel2 !== existingPrice2) {
+              if (priceLevel2 !== undefined && priceLevel2 !== existingPrice2) {
                 diffs.push(`ราคา 2: ${existingPrice2} ➔ ${priceLevel2}`);
               }
-              if (priceLevel3 !== existingPrice3) {
+              if (priceLevel3 !== undefined && priceLevel3 !== existingPrice3) {
                 diffs.push(`ราคา 3: ${existingPrice3} ➔ ${priceLevel3}`);
               }
-              if (priceLevel4 !== existingPrice4) {
+              if (priceLevel4 !== undefined && priceLevel4 !== existingPrice4) {
                 diffs.push(`ราคา 4: ${existingPrice4} ➔ ${priceLevel4}`);
               }
-              if (priceLevel5 !== existingPrice5) {
+              if (priceLevel5 !== undefined && priceLevel5 !== existingPrice5) {
                 diffs.push(`ราคา 5: ${existingPrice5} ➔ ${priceLevel5}`);
               }
-              if (stock !== existingStock) {
+              if (stock !== undefined && stock !== existingStock) {
                 diffs.push(`สต็อก: ${existingStock} ➔ ${stock}`);
               }
               const existingUnit = String(existing.unit || "ชิ้น").trim();
-              const newUnit = String(unit || "ชิ้น").trim();
+              const newUnit = String(unit || existingUnit).trim();
               if (existingUnit !== newUnit) {
                 diffs.push(`หน่วย: ${existingUnit} ➔ ${newUnit}`);
               }
 
               const existingCat = String(existing.category?.name || existing.category || "ทั่วไป").trim();
-              const newCat = String(categoryName || "ทั่วไป").trim();
+              const newCat = String(categoryName || existingCat).trim();
               if (existingCat !== newCat) {
                 diffs.push(`หมวด: "${existingCat}" ➔ "${newCat}"`);
               }
@@ -632,12 +669,14 @@ export default function ProductsPage() {
             }
 
             return {
+              rowNo: rowIndex + 2, // spreadsheet row (row 1 = header) for server error messages
               id: existing?.id || id,
               sku,
               name,
               barcode,
-              categoryName,
-              unit,
+              // blank cells: keep what the product has (new products get the defaults)
+              categoryName: categoryName || (existing ? undefined : "ทั่วไป"),
+              unit: unit || (existing ? undefined : "ชิ้น"),
               costPrice,
               retailPrice: priceLevel1,
               priceLevel1,
@@ -666,7 +705,7 @@ export default function ProductsPage() {
         setIsImportPreviewOpen(true);
       } catch (err: any) {
         console.error("Failed to parse Excel:", err);
-        toast.error("เกิดข้อผิดพลาดในการอ่านไฟล์ Excel กรุณาตรวจสอบรูปแบบไฟล์");
+        toast.error(err instanceof CsvImportError ? err.message : "เกิดข้อผิดพลาดในการอ่านไฟล์ Excel กรุณาตรวจสอบรูปแบบไฟล์");
       }
     };
     reader.readAsArrayBuffer(file);
@@ -686,8 +725,9 @@ export default function ProductsPage() {
     setImportProgress(0);
 
     try {
-      // Chunk into batches of 150 items to optimize network & memory
-      const chunkSize = 150;
+      // Each request is one server transaction (a bad row rejects that batch, nothing half-saved in it).
+      // Batches stay small enough to finish within the request timeout; re-importing is safe (upsert).
+      const chunkSize = 300;
       let totalCreated = 0;
       let totalUpdated = 0;
 
@@ -709,7 +749,8 @@ export default function ProductsPage() {
       loadData();
     } catch (err: any) {
       console.error("Import failed:", err);
-      toast.error(err?.message || "ไม่สามารถนำเข้าข้อมูลสินค้าได้");
+      toast.error(`นำเข้าไม่สำเร็จ: ${err?.message || "ไม่สามารถนำเข้าข้อมูลสินค้าได้"} (แถวก่อนหน้านี้ที่บันทึกแล้วยังคงอยู่ แก้ไขไฟล์แล้วนำเข้าซ้ำได้)`);
+      loadData();
     } finally {
       setIsImporting(false);
       setImportProgress(0);
@@ -740,6 +781,11 @@ export default function ProductsPage() {
             workingProducts = latest;
           }
         } catch {}
+        if (!canUseBackend) {
+          // no local-only products: they would never reach the database or the other terminals
+          toast.error("เชื่อมต่อฐานข้อมูลไม่ได้ ยังไม่ได้นำเข้าสินค้า กรุณาลองใหม่เมื่อเชื่อมต่อได้");
+          return;
+        }
 
         let createdCount = 0;
         let updatedCount = 0;
@@ -784,36 +830,19 @@ export default function ProductsPage() {
               duplicateSourceProducts = [created || p, ...duplicateSourceProducts];
             }
           } catch (err: any) {
+            // the server rejected this row: report it, do not keep a local-only copy
             failedCount++;
-            failedMessages.push(`${p.sku || p.name}: ${err?.message || 'import failed'}`);
-
-            const localDuplicate = findDuplicateProduct(p, workingProducts);
-            if (localDuplicate?.id) {
-              updatedCount++;
-              workingProducts = workingProducts.map((item) =>
-                item.id === localDuplicate.id ? { ...item, ...p, id: localDuplicate.id, stock: item.stock ?? p.stock } : item
-              );
-            } else {
-              createdCount++;
-              workingProducts = [{ ...p, id: p.id || p.sku || `prod_${Date.now()}` }, ...workingProducts];
-            }
+            failedMessages.push(`${p.sku || p.name}: ${err?.message || 'นำเข้าไม่สำเร็จ'}`);
           }
         }
 
-        if (failedCount > 0) {
-          saveSavedProducts(workingProducts);
-        } else {
-          clearSavedProducts();
-        }
+        clearSavedProducts();
         await useProductStore.getState().fetchProducts();
-        const storeProducts = failedCount === 0 && useProductStore.getState().products.length > 0
-          ? useProductStore.getState().products
-          : workingProducts;
-        setProducts(storeProducts);
+        setProducts(useProductStore.getState().products);
 
         if (failedCount > 0) {
-          console.warn('[Products CSV import] Backend errors, local fallback applied:', failedMessages);
-          toast.warning(`นำเข้าสำเร็จแบบ fallback: เพิ่ม ${createdCount} | อัปเดต ${updatedCount} | API error ${failedCount} รายการ`);
+          console.warn('[Products CSV import] rows rejected by the server:', failedMessages);
+          toast.error(`นำเข้าได้ ${createdCount + updatedCount} รายการ (เพิ่ม ${createdCount} | อัปเดต ${updatedCount}) ไม่สำเร็จ ${failedCount} รายการ: ${failedMessages.slice(0, 3).join(' / ')}${failedMessages.length > 3 ? ' ...' : ''}`);
         } else if (conflictingImportBarcodeKeys.size > 0) {
           toast.warning(`นำเข้าสินค้าสำเร็จ: เพิ่มใหม่ ${createdCount} | อัปเดตสินค้าเดิม ${updatedCount} รายการ | ข้ามบาร์โค้ดซ้ำ ${conflictingImportBarcodeKeys.size} ค่า`);
         } else {
@@ -1046,7 +1075,8 @@ export default function ProductsPage() {
       name: p.name || "", sku: p.sku || generateEAN13(), unit: p.unit || "",
       size: p.size || "", color: p.color || "", categoryId: p.categoryId || "",
       stock: (p.stock !== undefined && p.stock !== null ? p.stock : 0).toString(),
-      basePrice: p.basePrice?.toString() || "",
+      // reference cost field (see handleSave): the product's cost, blank when the user cannot see costs
+      basePrice: p.costPrice != null ? String(p.costPrice) : p.cost != null ? String(p.cost) : "",
       minStockAlert: p.minStockAlert !== undefined && p.minStockAlert !== null ? p.minStockAlert.toString() : "10",
       priceLevel1: p.priceLevel1?.toString() || "", priceLevel2: p.priceLevel2?.toString() || "",
       priceLevel3: p.priceLevel3?.toString() || "", priceLevel4: p.priceLevel4?.toString() || "",
@@ -1115,7 +1145,9 @@ export default function ProductsPage() {
       size: form.size.trim(),
       color: form.color.trim(),
       categoryId: form.categoryId,
-      basePrice: form.basePrice ? parseFloat(form.basePrice) : null,
+      // the "ต้นทุนอ้างอิง" field (form.basePrice) is the reference COST; selling price = ราคา 1
+      basePrice: form.priceLevel1 ? parseFloat(form.priceLevel1) : null,
+      costPrice: form.basePrice !== "" && form.basePrice != null ? parseFloat(form.basePrice) : undefined,
       minStockAlert: form.minStockAlert ? parseInt(form.minStockAlert) : 10,
       priceLevel1: form.priceLevel1 ? parseFloat(form.priceLevel1) : null,
       priceLevel2: form.priceLevel2 ? parseFloat(form.priceLevel2) : null,
@@ -1152,7 +1184,14 @@ export default function ProductsPage() {
       targetId = persistedProduct?.id || targetId;
       clearSavedProducts();
     } catch (err: any) {
-      toast.warning(`บันทึกลงฐานข้อมูลไม่สำเร็จ ใช้ข้อมูลสำรองในเครื่องแทน: ${err.message || 'Server error'}`);
+      // Not saved: keep the dialog open with the form as typed, never add a local-only product
+      const offline = !(Number(err?.status) > 0); // ApiError status 0 = no answer from the server
+      toast.error(
+        offline
+          ? 'บันทึกสินค้าไม่สำเร็จ: เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่อีกครั้ง'
+          : `บันทึกสินค้าไม่สำเร็จ: ${err?.message || 'เกิดข้อผิดพลาด'}`
+      );
+      return;
     }
 
     const displayProduct = {
@@ -2284,9 +2323,9 @@ export default function ProductsPage() {
                           {row.name}
                           {row.barcode && <span className="text-[10.5px] text-slate-400 block font-mono font-normal">บาร์โค้ด: {row.barcode}</span>}
                         </TableCell>
-                        <TableCell className="text-right font-mono text-slate-600">{formatCurrency(row.costPrice)}</TableCell>
-                        <TableCell className="text-right font-mono text-emerald-700 font-bold">{formatCurrency(row.priceLevel1)}</TableCell>
-                        <TableCell className="text-center font-mono text-slate-800">{row.stock} {row.unit}</TableCell>
+                        <TableCell className="text-right font-mono text-slate-600">{row.costPrice === undefined ? "-" : formatCurrency(row.costPrice)}</TableCell>
+                        <TableCell className="text-right font-mono text-emerald-700 font-bold">{row.priceLevel1 === undefined ? "-" : formatCurrency(row.priceLevel1)}</TableCell>
+                        <TableCell className="text-center font-mono text-slate-800">{row.stock ?? "-"} {row.unit ?? ""}</TableCell>
                         <TableCell className="text-[11px] text-indigo-700 font-medium">
                           {row.diffs?.length > 0 ? (
                             <div className="flex flex-wrap gap-1">
