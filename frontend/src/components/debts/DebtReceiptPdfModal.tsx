@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { FileText, Printer, Download, ExternalLink, CheckCircle2, Store, User, Building2, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
-import html2canvas from 'html2canvas';
+import { capturePrintable as html2canvas } from '@/lib/pdf-print-service';
 import jsPDF from 'jspdf';
 import { BarcodeView } from '@/components/common/BarcodeView';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';

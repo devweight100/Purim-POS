@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Printer, Download, ExternalLink, FileText, CheckCircle2, Store, Building2 } from 'lucide-react';
 import { formatCurrency, formatDocDate } from '@/lib/utils';
-import html2canvas from 'html2canvas';
+import { capturePrintable as html2canvas } from '@/lib/pdf-print-service';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
 import { BarcodeView } from '@/components/common/BarcodeView';

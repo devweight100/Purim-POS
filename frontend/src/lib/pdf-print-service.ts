@@ -330,8 +330,78 @@ function addCanvasPaged(pdf: jsPDF, canvas: HTMLCanvasElement, margin: number, f
   }
 }
 
+/**
+ * html2canvas 1.x cannot parse modern color functions (Tailwind v4 uses oklch()), which made
+ * every PDF download fail. Before capture, rewrite such computed colors on the cloned DOM to rgb().
+ */
+const COLOR_PROPS = [
+  'color', 'background-color', 'border-top-color', 'border-right-color', 'border-bottom-color',
+  'border-left-color', 'outline-color', 'text-decoration-color', 'column-rule-color', 'caret-color', 'fill', 'stroke',
+  '-webkit-text-stroke-color', '-webkit-text-fill-color',
+];
+const MODERN_COLOR = /(oklch|oklab|lch|lab|color-mix|color)\(/i;
+
+function makeColorConverter(): (value: string) => string {
+  const cache = new Map<string, string>();
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 1;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  return (value: string) => {
+    const hit = cache.get(value);
+    if (hit) return hit;
+    let out = 'rgba(0, 0, 0, 0)';
+    if (ctx) {
+      ctx.clearRect(0, 0, 1, 1);
+      ctx.fillStyle = '#000';
+      ctx.fillStyle = value;
+      ctx.fillRect(0, 0, 1, 1);
+      const [r, g, b, a] = Array.from(ctx.getImageData(0, 0, 1, 1).data);
+      out = `rgba(${r}, ${g}, ${b}, ${Math.round((a / 255) * 1000) / 1000})`;
+    }
+    cache.set(value, out);
+    return out;
+  };
+}
+
+function replaceModernColors(root: HTMLElement): void {
+  const win = root.ownerDocument.defaultView;
+  if (!win) return;
+  const toRgb = makeColorConverter();
+  const els = [root, ...Array.from(root.querySelectorAll<HTMLElement>('*'))];
+  for (const el of els) {
+    const cs = win.getComputedStyle(el);
+    for (const prop of COLOR_PROPS) {
+      const v = cs.getPropertyValue(prop);
+      if (v && MODERN_COLOR.test(v)) el.style.setProperty(prop, toRgb(v), 'important');
+    }
+    const shadow = cs.getPropertyValue('box-shadow');
+    if (shadow && MODERN_COLOR.test(shadow)) el.style.setProperty('box-shadow', 'none', 'important');
+    const textShadow = cs.getPropertyValue('text-shadow');
+    if (textShadow && MODERN_COLOR.test(textShadow)) el.style.setProperty('text-shadow', 'none', 'important');
+    const bgImage = cs.getPropertyValue('background-image');
+    if (bgImage && MODERN_COLOR.test(bgImage)) el.style.setProperty('background-image', 'none', 'important');
+  }
+}
+
+async function withPlainPageBackground<T>(run: () => Promise<T>): Promise<T> {
+  // html2canvas reads the <html>/<body> background of the live page, which is oklch() too
+  const targets = [document.documentElement, document.body].filter(Boolean) as HTMLElement[];
+  const saved = targets.map((el) => el.style.getPropertyValue('background-color'));
+  const savedPrio = targets.map((el) => el.style.getPropertyPriority('background-color'));
+  targets.forEach((el) => el.style.setProperty('background-color', '#ffffff', 'important'));
+  try {
+    return await run();
+  } finally {
+    targets.forEach((el, i) => {
+      if (saved[i]) el.style.setProperty('background-color', saved[i], savedPrio[i]);
+      else el.style.removeProperty('background-color');
+    });
+  }
+}
+
 function captureElement(element: HTMLElement): Promise<HTMLCanvasElement> {
-  return html2canvas(element, {
+  return withPlainPageBackground(() => html2canvas(element, {
+    onclone: (_doc: Document, clonedEl: HTMLElement) => replaceModernColors(clonedEl),
     scale: 2.5,
     useCORS: true,
     allowTaint: true,
@@ -340,7 +410,22 @@ function captureElement(element: HTMLElement): Promise<HTMLCanvasElement> {
     scrollX: 0,
     scrollY: -window.scrollY,
     windowWidth: document.documentElement.offsetWidth,
-  });
+  }));
+}
+
+/** html2canvas with the modern-color fix (drop-in for direct html2canvas calls). */
+export function capturePrintable(
+  element: HTMLElement,
+  options: Parameters<typeof html2canvas>[1] = {},
+): Promise<HTMLCanvasElement> {
+  const userOnClone = options?.onclone;
+  return withPlainPageBackground(() => html2canvas(element, {
+    ...options,
+    onclone: (doc: Document, clonedEl: HTMLElement) => {
+      replaceModernColors(clonedEl);
+      if (userOnClone) return userOnClone(doc, clonedEl);
+    },
+  }));
 }
 
 /**
