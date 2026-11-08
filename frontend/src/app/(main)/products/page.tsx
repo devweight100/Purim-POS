@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
-import { parseProductCSV, csvRowsToProducts } from "@/lib/csv-parser";
+import { parseProductCSV, csvRowsToProducts, CsvImportError } from "@/lib/csv-parser";
 import { useProductStore } from "@/lib/store/product-store";
 import * as XLSX from "xlsx";
 
@@ -530,14 +530,34 @@ export default function ProductsPage() {
       try {
         const buffer = e.target?.result as ArrayBuffer;
         if (!buffer) return;
-        const workbook = XLSX.read(buffer, { type: "array" });
-        const firstSheetName = workbook.SheetNames[0];
-        if (!firstSheetName) {
-          toast.error("ไม่พบข้อมูลในไฟล์ Excel");
-          return;
+        let rawJson: any[];
+        if (/\.csv$/i.test(file.name)) {
+          // CSV: exact header matching, ',' or ';' delimiter, negative numbers rejected (lib/csv-parser)
+          const csvRows = parseProductCSV(new TextDecoder("utf-8").decode(buffer));
+          rawJson = csvRows.map((r) => ({
+            "รหัสสินค้า": r.productCode || undefined,
+            "ชื่อสินค้า": r.productName || undefined,
+            "บาร์โค้ด": r.customBarcodeId || undefined,
+            "หมวดหมู่": r.category || undefined,
+            "หน่วยนับ": r.unit || undefined,
+            "ราคาทุน": r.cost,
+            "ราคา 1": r.priceLevel1,
+            "ราคา 2": r.priceLevel2,
+            "ราคา 3": r.priceLevel3,
+            "ราคา 4": r.priceLevel4,
+            "ราคา 5": r.priceLevel5,
+            "จำนวนสต็อก": r.stock,
+          }));
+        } else {
+          const workbook = XLSX.read(buffer, { type: "array" });
+          const firstSheetName = workbook.SheetNames[0];
+          if (!firstSheetName) {
+            toast.error("ไม่พบข้อมูลในไฟล์ Excel");
+            return;
+          }
+          const worksheet = workbook.Sheets[firstSheetName];
+          rawJson = XLSX.utils.sheet_to_json(worksheet);
         }
-        const worksheet = workbook.Sheets[firstSheetName];
-        const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet);
 
         if (rawJson.length === 0) {
           toast.error("ไม่พบแถวข้อมูลสินค้าในไฟล์ที่อัพโหลด");
@@ -685,7 +705,7 @@ export default function ProductsPage() {
         setIsImportPreviewOpen(true);
       } catch (err: any) {
         console.error("Failed to parse Excel:", err);
-        toast.error("เกิดข้อผิดพลาดในการอ่านไฟล์ Excel กรุณาตรวจสอบรูปแบบไฟล์");
+        toast.error(err instanceof CsvImportError ? err.message : "เกิดข้อผิดพลาดในการอ่านไฟล์ Excel กรุณาตรวจสอบรูปแบบไฟล์");
       }
     };
     reader.readAsArrayBuffer(file);
