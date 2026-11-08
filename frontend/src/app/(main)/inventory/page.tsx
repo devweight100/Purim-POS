@@ -301,22 +301,43 @@ export default function InventoryPage() {
     const finalReason =
       adjustReason === 'other' ? adjustCustomReason.trim() || 'ปรับยอดสต็อก' : adjustReason;
 
-    const res = await adjustSingleProductStock({
-      productId: targetProduct.id || targetProduct.sku,
-      type: adjustType,
-      amount: numAmount,
-      reason: finalReason,
-      userName: 'ผู้ดูแลระบบ',
-    });
+    if ((adjustType === 'ADD' || adjustType === 'SUB') && numAmount <= 0) {
+      toast.error('จำนวนที่ปรับต้องมากกว่า 0');
+      return;
+    }
+    if (!Number.isInteger(numAmount)) {
+      toast.error('จำนวนต้องเป็นจำนวนเต็ม');
+      return;
+    }
 
-    if (res.success) {
+    let res;
+    try {
+      // the server records the logged-in user on the stock movement
+      res = await adjustSingleProductStock({
+        productId: targetProduct.id || targetProduct.sku,
+        type: adjustType,
+        amount: numAmount,
+        reason: finalReason,
+      });
+    } catch (err: any) {
+      // rejected by the server (e.g. not enough stock, no permission): nothing was changed
+      toast.error(`ปรับสต็อกไม่สำเร็จ: ${err?.message || 'เกิดข้อผิดพลาด'}`);
+      return;
+    }
+
+    if (res.success && res.offline) {
+      toast.warning(
+        `เชื่อมต่อเซิร์ฟเวอร์ไม่ได้: ปรับสต็อก ${targetProduct.name} ไว้ในเครื่องนี้เท่านั้น (${res.previousStock} ➔ ${res.newStock}) ยังไม่ถูกบันทึกในฐานข้อมูล กรุณาปรับใหม่เมื่อเชื่อมต่อได้`
+      );
+      setIsAdjustModalOpen(false);
+    } else if (res.success) {
       toast.success(
         `ปรับสต็อก ${targetProduct.name} เรียบร้อย: ${res.previousStock} ➔ ${res.newStock} (${res.delta >= 0 ? '+' : ''}${res.delta} ${targetProduct.unit || 'ชิ้น'})`
       );
       setIsAdjustModalOpen(false);
       await reloadData();
     } else {
-      toast.error('ไม่สามารถปรับสต็อกสินค้าได้');
+      toast.error(res.error || 'ไม่สามารถปรับสต็อกสินค้าได้');
     }
   };
 

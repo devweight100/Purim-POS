@@ -41,7 +41,7 @@ export class InventoryController {
   @RequirePermissions('MANAGE_INVENTORY')
   @Post('adjust')
   adjustStock(@Body() data: any, @Request() req: any) {
-    return this.inventoryService.adjustStock({ ...data, userId: req.user?.id, userName: data.userName || req.user?.fullName || req.user?.username });
+    return this.inventoryService.adjustStock({ ...data, userId: req.user?.id, userName: req.user?.fullName || req.user?.username || data.userName });
   }
 
   @RequirePermissions('MANAGE_INVENTORY', 'VIEW_REPORTS')
