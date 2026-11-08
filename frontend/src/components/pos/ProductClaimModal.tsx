@@ -338,7 +338,7 @@ export function ProductClaimModal({
       }
     } catch (err) {
       console.error('Failed to process claim:', err);
-      toast.error('เกิดข้อผิดพลาดในการบันทึกการรับเคลม');
+      toast.error(`บันทึกการรับเคลมไม่สำเร็จ: ${(err as any)?.message || 'เกิดข้อผิดพลาด'}`);
     } finally {
       claimSubmitting.current = false;
       setIsSubmitting(false);

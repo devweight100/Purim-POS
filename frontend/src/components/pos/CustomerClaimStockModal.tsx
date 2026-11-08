@@ -247,36 +247,49 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
 
       for (const entry of selectedList) {
         const { product, claimQty, reason } = entry;
-        const latestOrder = product.orders.find((o) => o.availableClaimQuantity > 0) || product.orders[0];
+        // The server checks every refund against the bill it names, so split the quantity over the
+        // customer's bills that still have claim quota (in the listed order).
+        const withQuota = product.orders.filter((o) => o.availableClaimQuantity > 0);
+        const plan: Array<{ order: (typeof product.orders)[number] | undefined; qty: number }> = [];
+        let left = claimQty;
+        for (const o of withQuota) {
+          if (left <= 0) break;
+          const take = Math.min(left, o.availableClaimQuantity);
+          plan.push({ order: o, qty: take });
+          left -= take;
+        }
+        if (left > 0) plan.push({ order: plan.length ? undefined : product.orders[0], qty: left });
 
-        const eligibleItem = {
-          orderId: latestOrder?.orderId || '',
-          orderNumber: latestOrder?.orderNumber || '-',
-          orderDate: latestOrder?.orderDate || new Date().toISOString(),
-          customerId: customerId || null,
-          customerName: customerName || stockSummary?.customerName || 'ลูกค้าทั่วไป',
-          customerPhone: stockSummary?.customerPhone || null,
-          productId: product.productId,
-          productName: product.productName,
-          sku: product.sku,
-          unitName: product.unitName,
-          boughtQuantity: product.totalBoughtQuantity,
-          alreadyClaimedQuantity: product.totalClaimedQuantity,
-          availableClaimQuantity: product.availableClaimQuantity,
-          unitPrice: product.baseUnitPrice,
-          isReplacementWarranty: false,
-        };
+        for (const { order: latestOrder, qty } of plan) {
+          const eligibleItem = {
+            orderId: latestOrder?.orderId || '',
+            orderNumber: latestOrder?.orderNumber || '-',
+            orderDate: latestOrder?.orderDate || new Date().toISOString(),
+            customerId: customerId || null,
+            customerName: customerName || stockSummary?.customerName || 'ลูกค้าทั่วไป',
+            customerPhone: stockSummary?.customerPhone || null,
+            productId: product.productId,
+            productName: product.productName,
+            sku: product.sku,
+            unitName: product.unitName,
+            boughtQuantity: product.totalBoughtQuantity,
+            alreadyClaimedQuantity: product.totalClaimedQuantity,
+            availableClaimQuantity: product.availableClaimQuantity,
+            unitPrice: product.baseUnitPrice,
+            isReplacementWarranty: false,
+          };
 
-        const params: ProcessClaimParams = {
-          item: eligibleItem,
-          quantity: claimQty,
-          defectReason: reason,
-          resolutionType: resType,
-          cashierName: 'พนักงานขาย',
-          refundAmount: claimQty * product.baseUnitPrice,
-        };
+          const params: ProcessClaimParams = {
+            item: eligibleItem,
+            quantity: qty,
+            defectReason: reason,
+            resolutionType: resType,
+            cashierName: 'พนักงานขาย',
+            refundAmount: qty * product.baseUnitPrice,
+          };
 
-        await processClaim(params);
+          await processClaim(params);
+        }
       }
 
       toast.success(
@@ -287,7 +300,7 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
       await loadStock();
     } catch (err) {
       console.error('Failed to process refund claims:', err);
-      toast.error('เกิดข้อผิดพลาดในการบันทึกการคืนเงิน');
+      toast.error(`บันทึกการคืนเงินไม่สำเร็จ: ${(err as any)?.message || 'เกิดข้อผิดพลาด'}`);
     } finally {
       setIsProcessing(false);
     }
