@@ -194,6 +194,8 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
 
         const shiftData: ShiftSummaryData = {
           shiftId: sh.shiftNumber || sh.id,
+          shiftCode: sh.shiftCode || sh.code || sh.shiftNumber,
+          status: sh.status,
           userName: sh.user?.fullName || sh.user?.username || 'แคชเชียร์',
           openedAt: String(sh.openedAt || new Date().toISOString()),
           closedAt: String(sh.closedAt || new Date().toISOString()),

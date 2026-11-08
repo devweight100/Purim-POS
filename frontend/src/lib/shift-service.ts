@@ -34,6 +34,8 @@ export function mapServerShiftToSummary(s: any): ShiftSummaryData {
 
   return {
     shiftId: s.shiftNumber || s.shiftId || s.id,
+    shiftCode: s.shiftCode || s.code || s.shiftNumber || undefined,
+    status: s.status,
     userId: s.userId,
     userName: s.userName || s.user?.fullName || 'พนักงานขาย',
     openedAt: s.openedAt,
