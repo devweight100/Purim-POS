@@ -293,6 +293,7 @@
         <div class="quick-ips" id="quick-ip-container">
           <button class="quick-ip-btn" onclick="setIp('http://localhost:3000')">💻 เครื่องนี้ (localhost:3000)</button>
           <button class="quick-ip-btn scan-btn" id="scan-btn" onclick="scanNetwork()">🔍 สแกนหาเครื่องแม่ในวง LAN</button>
+          <button class="quick-ip-btn" id="gpu-btn" onclick="toggleGpu()" title="ใช้เมื่อหน้าจอขาวหรือค้างหลังเชื่อมต่อ">🖥️ จอขาว/ค้าง? เปิดใหม่แบบไม่ใช้การ์ดจอ</button>
         </div>
       </div>
 
@@ -351,7 +352,12 @@
           if (data && data.lastUrl) {
             input.value = data.lastUrl;
           }
-          showStatus('⚠️ ยังไม่พบเครื่องเซิร์ฟเวอร์ กรุณาเปิด Purim-POS-Server.exe บนเครื่องแม่ หรือกดสแกน', 'error');
+          const why = data && data.reason ? data.reason : 'ยังไม่พบเครื่องเซิร์ฟเวอร์ กรุณาเปิด Purim POS Server บนเครื่องแม่ หรือกดสแกน';
+          showStatus('⚠️ ' + why, 'error');
+          if (data && data.logPath) {
+            const logEl = document.getElementById('log-path');
+            if (logEl) logEl.textContent = 'บันทึกการทำงาน: ' + data.logPath;
+          }
         });
 
         // Fetch initial config & local IPs
@@ -517,6 +523,22 @@
     });
 
     init();
-  </script>
+  
+    async function toggleGpu() {
+      if (!window.electronAPI || !window.electronAPI.setGpuDisabled) return;
+      const cfg = await window.electronAPI.getConfig();
+      const off = !(cfg && cfg.disableGpu);
+      if (!confirm(off ? 'เปิดโปรแกรมใหม่แบบไม่ใช้การ์ดจอ (แก้อาการจอขาว/ค้าง) ?' : 'เปิดโปรแกรมใหม่แบบใช้การ์ดจอตามปกติ ?')) return;
+      await window.electronAPI.setGpuDisabled(off);
+    }
+    (async () => {
+      try {
+        const cfg = window.electronAPI && await window.electronAPI.getConfig();
+        const b = document.getElementById('gpu-btn');
+        if (b && cfg && cfg.disableGpu) b.textContent = '🖥️ ตอนนี้ไม่ใช้การ์ดจอ: กดเพื่อกลับไปใช้ตามปกติ';
+      } catch (e) {}
+    })();
+</script>
+<div id="log-path" style="position:fixed;left:12px;bottom:8px;font-size:11px;color:#64748b;"></div>
 </body>
 </html>

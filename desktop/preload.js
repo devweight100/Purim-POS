@@ -28,4 +28,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Window Controls
   toggleFullscreen: () => ipcRenderer.invoke('toggle-fullscreen'),
   reloadApp: () => ipcRenderer.invoke('reload-app'),
+  setGpuDisabled: (disabled) => ipcRenderer.invoke('set-gpu-disabled', disabled),
 });

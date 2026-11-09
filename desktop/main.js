@@ -9,6 +9,18 @@ let mainWindow = null;
 // Persistent configuration path in userData
 const configPath = path.join(app.getPath('userData'), 'purim-pos-config.json');
 
+// Diagnostic log (userData/purim-pos.log, rotated at 1 MB): what the app tried and what failed,
+// so a stuck screen at the shop can be explained afterwards.
+const logPath = path.join(app.getPath('userData'), 'purim-pos.log');
+function log(...parts) {
+  const line = parts.map((p) => (typeof p === 'string' ? p : JSON.stringify(p))).join(' ');
+  console.log(line);
+  try {
+    if (fs.existsSync(logPath) && fs.statSync(logPath).size > 1024 * 1024) fs.renameSync(logPath, logPath + '.old');
+    fs.appendFileSync(logPath, `${new Date().toISOString()} ${line}${os.EOL}`);
+  } catch (e) { /* logging must never break the app */ }
+}
+
 function loadConfig() {
   try {
     if (fs.existsSync(configPath)) {
@@ -43,7 +55,26 @@ function saveConfig(updates) {
   }
 }
 
-// Check if a URL responds to /pos or /api/health within a short timeout
+// Graphics: some shop PCs (mini PCs with old Intel/AMD drivers) show a white, frozen window with
+// hardware acceleration. Turned off by config (set automatically after a GPU crash or a hang at
+// startup) or by starting the app with --disable-gpu.
+const gpuDisabled = Boolean(loadConfig().disableGpu) || process.argv.includes('--disable-gpu');
+if (gpuDisabled) app.disableHardwareAcceleration();
+log(`[Start] app ${app.getVersion()} gpu=${gpuDisabled ? 'off' : 'on'} platform=${process.platform} ${os.release()}`);
+
+/** Restart the app once with hardware acceleration off (remembered in the config). */
+function relaunchWithoutGpu(reason) {
+  if (gpuDisabled) return false;
+  log(`[GPU] turning hardware acceleration off and restarting: ${reason}`);
+  saveConfig({ disableGpu: true });
+  app.relaunch();
+  app.exit(0);
+  return true;
+}
+
+// Is a Purim POS server answering at this URL? Asks /api/version (served by the frontend and
+// proxied to the backend), so another program on port 3000 or a server whose backend is down
+// is not mistaken for a working shop server.
 function checkServerPos(url, timeoutMs = 1200) {
   return new Promise((resolve) => {
     try {
@@ -55,15 +86,22 @@ function checkServerPos(url, timeoutMs = 1200) {
       const req = http.request({
         hostname: parsed.hostname,
         port: parsed.port || 80,
-        path: '/login',
+        path: '/api/version',
         method: 'GET',
         timeout: timeoutMs
       }, (res) => {
-        res.resume();
-        resolve({
-          ok: res.statusCode > 0 && res.statusCode < 500,
-          status: res.statusCode
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { if (body.length < 4096) body += chunk; });
+        res.on('end', () => {
+          const isPurim = res.statusCode === 200 && /"(source|running)"/.test(body);
+          resolve({
+            ok: isPurim,
+            status: res.statusCode,
+            error: isPurim ? undefined : (res.statusCode === 200 ? 'ไม่ใช่เครื่องแม่ Purim POS' : `เครื่องแม่ตอบ ${res.statusCode} (ระบบหลังบ้านอาจยังไม่พร้อม)`),
+          });
         });
+        res.on('error', (err) => resolve({ ok: false, error: err.message }));
       });
       req.on('error', (err) => resolve({ ok: false, error: err.message }));
       req.on('timeout', () => {
@@ -92,7 +130,7 @@ function getLocalIps() {
 }
 
 // Concurrently scan local subnet /24 on port 3000 to find any Purim POS server
-async function scanSubnetForServer(port = 3000) {
+async function scanSubnetForServer(port = 3000, onProgress) {
   const ips = getLocalIps();
   const found = [];
 
@@ -119,6 +157,7 @@ async function scanSubnetForServer(port = 3000) {
 
     for (let i = 0; i < allHosts.length; i += batchSize) {
       const batch = allHosts.slice(i, i + batchSize);
+      if (onProgress) onProgress(Math.min(i + batchSize, allHosts.length), allHosts.length);
       const results = await Promise.all(
         batch.map(async (host) => {
           const res = await checkServerPos(`http://${host}:${port}`, 400);
@@ -169,13 +208,101 @@ function createWindow() {
     // and aborted navigations (-3) must not throw the cashier back to the search screen.
     if (!isMainFrame || errorCode === -3) return;
     if (String(validatedURL || '').startsWith('file:')) return;
-    console.warn(`Page load failed (${errorCode}: ${errorDescription}), falling back to connect screen...`);
-    showConnectScreen();
+    log(`[Load] failed ${validatedURL} (${errorCode}: ${errorDescription})`);
+    showConnectScreen(`เปิดหน้าจากเครื่องแม่ไม่สำเร็จ (${errorDescription || errorCode})`);
   });
+
+  // A crashed page: reload it (and say so in the log) instead of leaving a white window
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    log(`[Crash] page process gone: ${details.reason} (${details.exitCode})`);
+    if (details.reason === 'clean-exit') return;
+    setTimeout(() => {
+      if (!mainWindow) return;
+      const url = mainWindow.webContents.getURL();
+      if (url && url.startsWith('http')) mainWindow.reload(); else autoConnectOrShowScreen();
+    }, 1000);
+  });
+
+  // A frozen page (the white-screen case): Electron's own 'unresponsive' event needs keyboard or
+  // mouse input, so the page is also pinged every 5 s. Frozen for ~15 s -> restart without GPU
+  // (the usual cause on shop PCs); if the GPU is already off, restart the page.
+  let hangHandled = false;
+  let pageRestarts = 0;
+  const onHang = (why) => {
+    if (hangHandled || !mainWindow) return;
+    hangHandled = true;
+    log(`[Hang] ${why}`);
+    if (relaunchWithoutGpu(why)) return;
+    pageRestarts += 1;
+    if (pageRestarts > 1) {
+      log('[Hang] page froze again after a restart: showing the server screen');
+      pageRestarts = 0;
+      showConnectScreen('หน้าขายค้าง (ไม่ตอบสนองนานเกิน 15 วินาที) แม้ปิดการใช้การ์ดจอแล้ว ลองกด "เชื่อมต่อ" อีกครั้ง หรือแจ้งผู้ดูแลพร้อมไฟล์บันทึกด้านล่าง');
+      setTimeout(() => { hangHandled = false; }, 5000);
+      return;
+    }
+    log('[Hang] GPU already off: restarting the page');
+    try { mainWindow.webContents.forcefullyCrashRenderer(); } catch (e) { /* ignore */ }
+    setTimeout(() => { hangHandled = false; }, 30000);
+    setTimeout(() => { pageRestarts = 0; }, 120000);
+  };
+  let unresponsiveTimer = null;
+  mainWindow.on('unresponsive', () => {
+    log('[Hang] window reported not responding');
+    if (!unresponsiveTimer) unresponsiveTimer = setTimeout(() => { unresponsiveTimer = null; onHang('window not responding for 15 s'); }, 15000);
+  });
+  mainWindow.on('responsive', () => {
+    if (unresponsiveTimer) { clearTimeout(unresponsiveTimer); unresponsiveTimer = null; log('[Hang] window responding again'); }
+  });
+  let missedPings = 0;
+  const heartbeat = setInterval(async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return clearInterval(heartbeat);
+    const wc = mainWindow.webContents;
+    if (wc.isLoading() || !String(wc.getURL()).startsWith('http')) { missedPings = 0; return; }
+    const alive = await Promise.race([
+      wc.executeJavaScript('1').then(() => true).catch(() => true),
+      new Promise((r) => setTimeout(() => r(false), 4000)),
+    ]);
+    missedPings = alive ? 0 : missedPings + 1;
+    if (!alive) log(`[Hang] page did not answer (${missedPings})`);
+    if (missedPings >= 3) { missedPings = 0; onHang('page frozen for about 15 s'); }
+  }, 5000);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+}
+
+/** Text under the spinner on the start-up screen. */
+function splashMessage(text) {
+  log(`[Splash] ${text}`);
+  if (!mainWindow) return;
+  const url = mainWindow.webContents.getURL();
+  if (url && !url.startsWith('file:')) return;
+  mainWindow.webContents
+    .executeJavaScript(`(function(){var e=document.getElementById('msg');if(e)e.textContent=${JSON.stringify(text)};})()`)
+    .catch(() => undefined);
+}
+
+// A page from the server that does not finish loading must not leave a white screen forever
+let loadWatchdog = null;
+let loadWatchId = 0;
+function watchPageLoad(url) {
+  if (loadWatchdog) clearTimeout(loadWatchdog);
+  const started = Date.now();
+  const id = ++loadWatchId;
+  loadWatchdog = setTimeout(() => {
+    loadWatchdog = null;
+    log(`[Load] ${url} did not finish loading in 25 s`);
+    showConnectScreen(`เปิดหน้า ${url} ไม่สำเร็จภายใน 25 วินาที เครื่องแม่อาจกำลังเริ่มระบบหรือเครือข่ายช้า กด "เชื่อมต่อ" เพื่อลองใหม่`);
+  }, 25000);
+  if (mainWindow) {
+    mainWindow.webContents.once('did-finish-load', () => {
+      if (id !== loadWatchId) return;
+      if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
+      log(`[Load] ${mainWindow ? mainWindow.webContents.getURL() : url} loaded in ${Date.now() - started} ms`);
+    });
+  }
 }
 
 // Startup: last server that worked first (generous timeout + retries: the server may still be
@@ -184,13 +311,17 @@ async function autoConnectOrShowScreen() {
   if (!mainWindow) return;
   const config = loadConfig();
   const tried = new Set();
-  const tryUrl = async (url, timeoutMs) => {
+  let lastError = '';
+  const tryUrl = async (url, timeoutMs, label) => {
     if (!url) return false;
     const clean = url.replace(/\/+$/, '');
+    if (label) splashMessage(label);
     const res = await checkServerPos(clean, timeoutMs);
     tried.add(clean);
+    if (!res.ok) { lastError = `${clean}: ${res.error || res.status}`; log(`[AutoConnect] ${lastError}`); }
     if (res.ok) {
-      console.log(`[AutoConnect] server found at: ${clean}`);
+      log(`[AutoConnect] server found at: ${clean}`);
+      splashMessage(`พบเครื่องแม่ ${clean} กำลังเปิดหน้าขาย...`);
       saveConfig({ serverUrl: clean });
       loadPosScreen(clean);
       return true;
@@ -200,33 +331,37 @@ async function autoConnectOrShowScreen() {
 
   if (config.serverUrl) {
     for (let attempt = 0; attempt < 3; attempt++) {
-      if (await tryUrl(config.serverUrl, 4000)) return;
+      if (await tryUrl(config.serverUrl, 4000, `กำลังเชื่อมต่อเครื่องแม่ ${config.serverUrl} (ครั้งที่ ${attempt + 1}/3)`)) return;
       await new Promise((r) => setTimeout(r, 1500));
     }
   }
-  if (!tried.has('http://localhost:3000') && (await tryUrl('http://localhost:3000', 1500))) return;
+  if (!tried.has('http://localhost:3000') && (await tryUrl('http://localhost:3000', 1500, 'กำลังตรวจหาเครื่องแม่ในเครื่องนี้...'))) return;
   for (const ip of getLocalIps()) {
     const u = `http://${ip}:3000`;
-    if (!tried.has(u) && (await tryUrl(u, 1500))) return;
+    if (!tried.has(u) && (await tryUrl(u, 1500, `กำลังตรวจหาเครื่องแม่ที่ ${ip}...`))) return;
   }
   try {
-    const found = await scanSubnetForServer(3000);
+    const found = await scanSubnetForServer(3000, (done, total) => splashMessage(`กำลังสแกนหาเครื่องแม่ในวง LAN... ${done}/${total}`));
     if (found && found.length > 0 && (await tryUrl(found[0], 4000))) return;
   } catch (err) {
-    console.warn('[AutoConnect] scan failed:', err);
+    log(`[AutoConnect] scan failed: ${err && err.message}`);
   }
-  showConnectScreen();
+  showConnectScreen(lastError ? `ไม่พบเครื่องแม่ (${lastError})` : 'ไม่พบเครื่องแม่ในวง LAN');
 }
 
 /** Server-search screen, with the reason it is shown. */
-function showConnectScreen() {
+function showConnectScreen(reason) {
   if (!mainWindow) return;
+  if (loadWatchdog) { clearTimeout(loadWatchdog); loadWatchdog = null; }
   const config = loadConfig();
+  if (reason) log(`[Connect] showing server screen: ${reason}`);
   mainWindow.webContents.once('did-finish-load', () => {
     if (mainWindow && mainWindow.webContents) {
       mainWindow.webContents.send('connection-failed', {
         localIps: getLocalIps(),
-        lastUrl: config.serverUrl || 'http://localhost:3000'
+        lastUrl: config.serverUrl || 'http://localhost:3000',
+        reason: reason || '',
+        logPath,
       });
     }
   });
@@ -238,7 +373,8 @@ function loadPosScreen(customUrl) {
   const config = loadConfig();
   let base = (customUrl || config.serverUrl || 'http://localhost:3000').replace(/\/+$/, '');
   const posUrl = `${base}/pos`;
-  console.log(`Navigating to POS: ${posUrl}`);
+  log(`[Load] opening ${posUrl}`);
+  watchPageLoad(posUrl);
   mainWindow.loadURL(posUrl).catch((err) => {
     // an interrupted navigation (ERR_ABORTED) is not a dead server
     if (err && (err.code === 'ERR_ABORTED' || err.errno === -3)) return;
@@ -251,7 +387,8 @@ function loadRouteScreen(route) {
   const config = loadConfig();
   let base = (config.serverUrl || 'http://localhost:3000').replace(/\/+$/, '');
   const targetUrl = `${base}${route.startsWith('/') ? route : '/' + route}`;
-  console.log(`Navigating to route: ${targetUrl}`);
+  log(`[Load] opening ${targetUrl}`);
+  watchPageLoad(targetUrl);
   mainWindow.loadURL(targetUrl).catch((err) => {
     // an interrupted navigation (ERR_ABORTED) is not a dead server
     if (err && (err.code === 'ERR_ABORTED' || err.errno === -3)) return;
@@ -418,6 +555,14 @@ ipcMain.handle('get-local-ips', () => {
 
 ipcMain.handle('scan-network', async () => {
   return await scanSubnetForServer(3000);
+});
+
+ipcMain.handle('set-gpu-disabled', (event, disabled) => {
+  log(`[GPU] set by user: ${disabled ? 'off' : 'on'}`);
+  saveConfig({ disableGpu: Boolean(disabled) });
+  app.relaunch();
+  app.exit(0);
+  return true;
 });
 
 ipcMain.handle('test-server-url', async (event, url) => {
@@ -1020,6 +1165,11 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
+});
+
+app.on('child-process-gone', (event, details) => {
+  log(`[Crash] ${details.type} process gone: ${details.reason} (${details.exitCode})`);
+  if (details.type === 'GPU' && details.reason !== 'clean-exit') relaunchWithoutGpu(`GPU process ${details.reason}`);
 });
 
 app.on('will-quit', () => {

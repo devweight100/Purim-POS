@@ -1,6 +1,6 @@
 {
   "name": "purim-pos-desktop",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Purim POS Native Desktop Client for Windows",
   "main": "main.js",
   "scripts": {
