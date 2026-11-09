@@ -27,9 +27,6 @@ import { Type } from 'class-transformer';
 /** Real money methods a supplier can be paid with (credit sale / credit note / card are not money out). */
 export const SUPPLIER_PAYMENT_METHODS: PaymentMethod[] = [PaymentMethod.CASH, PaymentMethod.TRANSFER, PaymentMethod.QR_PROMPTPAY];
 
-/** Ledger note / type used to book a settlement discount received from a supplier. */
-export const SUPPLIER_DISCOUNT_NOTE = 'ส่วนลดรับจากผู้จำหน่าย';
-
 /** Parse and check a voucher payment date: valid and not in the future (10 min clock tolerance). */
 export function parsePaymentDate(raw: any, now = new Date()): Date {
   if (raw === undefined || raw === null || raw === '') return now;
@@ -405,20 +402,9 @@ export class PayablesService {
           refType: 'VOUCHER', refId: voucher.id, note: `จ่ายเจ้าหนี้ ${voucherNumber}`,
         });
       }
-      // Settlement discount (books): the bill is settled "gross" (supplier payment = net + discount)
-      // and the discount comes back as other income, so payables reduction = money out + discount
-      // + credit notes and P&L shows the gain. The two rows net to zero on the safe's balance.
-      if (disc > 0) {
-        const safe = await ledger.safeAccount(tx);
-        await ledger.post(tx, {
-          accountId: safe!.id, direction: 'OUT', amount: disc, type: 'SUPPLIER_PAYMENT',
-          refType: 'VOUCHER', refId: voucher.id, note: `${SUPPLIER_DISCOUNT_NOTE} (หักจากบิล) ${voucherNumber}`,
-        });
-        await ledger.post(tx, {
-          accountId: safe!.id, direction: 'IN', amount: disc, type: 'OTHER_INCOME',
-          refType: 'VOUCHER', refId: voucher.id, note: `${SUPPLIER_DISCOUNT_NOTE} ${voucherNumber}`,
-        });
-      }
+      // Settlement discount: it simply lowers what is paid on the bill (owner decision). The bill is
+      // still fully settled (payables reduction = money out + discount + credit notes), but no
+      // income line is booked - the discount is not money received.
 
       await tx.auditLog.create({
         data: { id: receiptId, action: 'SETTLE_PAYABLES', entity: 'PaymentVoucher', entityId: voucher.id, details: { fingerprint, voucherId: voucher.id } },
