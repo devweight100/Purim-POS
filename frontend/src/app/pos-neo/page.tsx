@@ -45,6 +45,7 @@ import { useDocumentSearchStore } from '@/lib/store/document-search-store';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 import { getTerminalId } from '@/lib/terminal-id';
+import { PosLogoutButton } from '@/components/pos/PosLogoutButton';
 
 const PAGE_SIZE = 36;
 
@@ -792,6 +793,8 @@ export default function PosNeoPage() {
               <ArrowLeft className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">แดชบอร์ด</span>
             </Link>
+
+            <PosLogoutButton variant="neo" />
 
             <div className="flex items-center gap-1.5 rounded-lg border-2 border-black bg-black px-2.5 py-1.5 text-white shadow-[2px_2px_0px_#000]">
               <span className="w-2 h-2 rounded-full bg-[#FF6B00] animate-ping" />

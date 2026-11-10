@@ -49,6 +49,7 @@ import { useDocumentSearchStore } from '@/lib/store/document-search-store';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 import { getTerminalId } from '@/lib/terminal-id';
+import { PosLogoutButton } from '@/components/pos/PosLogoutButton';
 
 const PAGE_SIZE = 32;
 
@@ -830,6 +831,8 @@ export default function POSPage() {
               <ArrowLeft className="w-4 h-4 text-slate-500" />
               <span className="hidden sm:inline">แดชบอร์ด</span>
             </Link>
+
+            <PosLogoutButton variant="classic" />
 
             {/* Search Input */}
             <div className="relative flex-1 min-w-[180px]">

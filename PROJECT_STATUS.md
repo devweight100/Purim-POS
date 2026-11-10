@@ -280,3 +280,7 @@ Some corresponding database tables already exist. The remaining work is to remov
   - The start-up screen shows each step (server tried, attempt n/3, LAN scan progress). A server counts as found only if `/api/version` answers like Purim POS (another program on port 3000, or a frontend whose backend is down, is skipped). A server page that does not finish loading in 25 s falls back to the server screen with the reason.
   - The server screen shows why it appeared, the log file path, and a "จอขาว/ค้าง? เปิดใหม่แบบไม่ใช้การ์ดจอ" toggle. Log: `%APPDATA%\Purim POS\purim-pos.log` (userData; rotated at 1 MB).
   - Verified under Xvfb with a real server, a never-loading page and a page that freezes. Not run on Windows.
+- 2026-11-10: "ออกจากระบบ" button on the sales screens (touch POS toolbar, list-mode bar, pos-neo header); the back office already had one in the sidebar.
+  - `PosLogoutButton` asks first and says when the shift is still open (logging out is not closing the shift), and how many cart items / held bills stay on the device.
+  - `lib/logout.ts` `performLogout()` (also used by the sidebar) forgets this device's copy of the shift (`pos_current_shift`, `pos_cash_transactions`) before logging out, so the next employee sees their own shift from the server. The cart and held bills stay on the device.
+  - Verified with Playwright: cashier logs out from touch / list / neo views and the sidebar, lands on /login, /pos redirects to login, and the admin who logs in next does not see the cashier's shift.

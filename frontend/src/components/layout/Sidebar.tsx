@@ -13,6 +13,7 @@ import { Gamepad2,
   Wallet, ShieldCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { performLogout } from '@/lib/logout';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { canAccessRoute } from '@/lib/permissions';
 import { PwaInstallButton } from '@/components/common/PwaInstallButton';
@@ -107,7 +108,7 @@ const navGroups: NavGroup[] = [
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Persistent scroll position refs
@@ -213,7 +214,7 @@ export function Sidebar() {
   };
 
   const handleLogout = () => {
-    logout();
+    performLogout();
     router.push('/login');
   };
 

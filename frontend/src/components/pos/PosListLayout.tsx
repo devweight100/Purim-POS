@@ -19,6 +19,7 @@ import { RedeemPointsModal } from './RedeemPointsModal';
 import { Customer, getCustomerById, calculateEarnedPoints } from '@/lib/customer-service';
 import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
 import { toast } from 'sonner';
+import { PosLogoutButton } from '@/components/pos/PosLogoutButton';
 
 interface PosListLayoutProps {
   viewMode: 'touch_screen' | 'list_view';
@@ -955,6 +956,7 @@ export function PosListLayout({
               <span>ปิดกะ</span>
             </button>
           )}
+          <PosLogoutButton variant="classic" className="min-h-[44px]" />
         </div>
 
         {/* Option Selector for Sales Screen View & Exit to Dashboard */}
