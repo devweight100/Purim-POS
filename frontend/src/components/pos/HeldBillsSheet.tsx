@@ -8,6 +8,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { PlayCircle, Trash2, Clock, User, ShoppingBag } from 'lucide-react';
+import { addQty, formatQty } from '@/lib/qty';
 
 interface HeldBillsSheetProps {
   open: boolean;
@@ -60,7 +61,7 @@ export function HeldBillsSheet({ open, onOpenChange }: HeldBillsSheetProps) {
               if (bill.billDiscountType === 'percent') billDiscountAmount = subtotal * (bill.billDiscountValue / 100);
               
               const total = subtotal - billDiscountAmount;
-              const itemCount = bill.items.reduce((sum, i) => sum + i.quantity, 0);
+              const itemCount = addQty(...bill.items.map((i) => i.quantity));
 
               return (
                 <div key={bill.id} className="bg-slate-50 border-2 border-slate-200 hover:border-sky-300 rounded-2xl p-5 flex flex-col gap-4 shadow-sm transition-all">
@@ -92,7 +93,7 @@ export function HeldBillsSheet({ open, onOpenChange }: HeldBillsSheetProps) {
                     <div className="text-right">
                       <p className="font-black text-xl sm:text-2xl text-slate-900 font-mono">{formatCurrency(total)}</p>
                       <span className="text-xs font-bold text-slate-600 bg-slate-200 px-2 py-0.5 rounded-md mt-1 inline-block">
-                        {itemCount} ชิ้น ({bill.items.length} รายการ)
+                        {formatQty(itemCount)} ชิ้น ({bill.items.length} รายการ)
                       </span>
                     </div>
                   </div>

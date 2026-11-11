@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Percent, DollarSign, Tag, RefreshCcw } from 'lucide-react';
+import { subQty } from '@/lib/qty';
 
 interface ItemEditPopupProps {
   item: CartItem | null;
@@ -43,7 +44,7 @@ export function ItemEditPopup({ item, open, onOpenChange }: ItemEditPopupProps) 
   // Validation: price >= 0; percent discount within 0-100; baht discount not above the line amount
   const parsedPrice = parseFloat(customPrice);
   const effectivePrice = item ? (!isNaN(parsedPrice) ? parsedPrice : item.originalPrice) : 0;
-  const chargeableQty = item ? Math.max(0, item.quantity - (item.claimQuantity || 0)) : 0;
+  const chargeableQty = item ? Math.max(0, subQty(item.quantity, item.claimQuantity || 0)) : 0;
   const lineAmount = Math.max(0, effectivePrice * chargeableQty);
   const parsedDiscount = parseFloat(discountValue);
   let validationError: string | null = null;

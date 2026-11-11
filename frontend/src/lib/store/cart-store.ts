@@ -3,6 +3,10 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { CartItem, HeldBill, Product, ProductUnit, ClaimRecord, PendingClaimItem } from '../types';
 import { calculateSmartRollupAndPricing } from '../cart-pricing';
 import { loadStoreSettings } from '../store-settings-storage';
+import { addQty, mulQty, roundQty, subQty } from '../qty';
+
+/** Money to the satang (line totals with decimal quantities, e.g. 2.33 m x 15.50 = 36.12). */
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 interface CartStore {
   items: CartItem[];
@@ -152,11 +156,11 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
       if (existing) {
         rawUpdated = state.items.map((i) => {
           if (i.productId === product.id && i.unitId === selectedUnit.id) {
-            const newQty = i.quantity + 1;
+            const newQty = addQty(i.quantity, 1);
             const updatedBundle = i.bundleData
               ? i.bundleData.map((b) => ({
                   ...b,
-                  totalQuantity: b.quantityPerBundle * newQty,
+                  totalQuantity: mulQty(b.quantityPerBundle, newQty),
                 }))
               : undefined;
             return { ...i, quantity: newQty, bundleData: updatedBundle };
@@ -170,8 +174,8 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
             productId: bi.childProductId,
             productName: bi.childProduct?.name || 'สินค้าในชุด',
             sku: bi.childProduct?.sku || '',
-            quantityPerBundle: bi.quantity,
-            totalQuantity: bi.quantity * 1,
+            quantityPerBundle: Number(bi.quantity),
+            totalQuantity: Number(bi.quantity),
             unitPrice: Number(bi.childProduct?.basePrice || bi.childProduct?.priceLevel1 || 0),
           }));
         }
@@ -209,8 +213,9 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
     });
   },
 
-  updateQuantity: (productId: string, quantity: number, unitId?: string) => {
-    if (quantity <= 0) {
+  updateQuantity: (productId: string, rawQuantity: number, unitId?: string) => {
+    const quantity = roundQty(rawQuantity);
+    if (!(quantity > 0)) {
       get().removeItem(productId, unitId);
       return;
     }
@@ -223,7 +228,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
           const updatedBundle = i.bundleData
             ? i.bundleData.map((b) => ({
                 ...b,
-                totalQuantity: b.quantityPerBundle * quantity,
+                totalQuantity: mulQty(b.quantityPerBundle, quantity),
               }))
             : undefined;
           return { ...i, quantity, bundleData: updatedBundle };
@@ -261,7 +266,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
       items: state.items.map((i) => {
         const match = unitId ? i.productId === productId && i.unitId === unitId : i.productId === productId;
         if (!match) return i;
-        const validClaimQty = Math.max(0, Math.min(claimQty, i.quantity));
+        const validClaimQty = Math.max(0, Math.min(roundQty(claimQty), i.quantity));
         return {
           ...i,
           claimQuantity: validClaimQty,
@@ -442,8 +447,8 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
 
   getItemDiscountAmount: (item: CartItem) => {
     const price = item.customPrice ?? item.originalPrice;
-    const chargeableQty = Math.max(0, item.quantity - (item.claimQuantity || 0));
-    const lineBefore = price * chargeableQty;
+    const chargeableQty = Math.max(0, subQty(item.quantity, item.claimQuantity || 0));
+    const lineBefore = round2(price * chargeableQty);
     if (item.discountType === 'baht') return Math.min(item.discountValue, lineBefore);
     if (item.discountType === 'percent') return lineBefore * (item.discountValue / 100);
     return 0;
@@ -451,10 +456,10 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
 
   getItemLineTotal: (item: CartItem) => {
     const price = item.customPrice ?? item.originalPrice;
-    const chargeableQty = Math.max(0, item.quantity - (item.claimQuantity || 0));
-    const lineBefore = price * chargeableQty;
+    const chargeableQty = Math.max(0, subQty(item.quantity, item.claimQuantity || 0));
     const discount = get().getItemDiscountAmount(item);
-    return Math.max(0, lineBefore - discount);
+    // same rounding as the server: round2(quantity x price - discount)
+    return Math.max(0, round2(price * chargeableQty - discount));
   },
 
   getSubtotal: () => {
@@ -525,7 +530,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
   },
 
   getItemCount: () => {
-    return get().items.reduce((sum, i) => sum + i.quantity, 0);
+    return addQty(...get().items.map((i) => i.quantity));
   },
 }), {
   name: CART_STORAGE_KEY,

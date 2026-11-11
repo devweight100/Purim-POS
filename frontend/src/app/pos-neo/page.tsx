@@ -46,6 +46,7 @@ import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
 import { getTerminalId } from '@/lib/terminal-id';
 import { PosLogoutButton } from '@/components/pos/PosLogoutButton';
+import { addQty, formatQty, parseQty, subQty, useAllowDecimalQty } from '@/lib/qty';
 
 const PAGE_SIZE = 36;
 
@@ -185,6 +186,7 @@ export default function PosNeoPage() {
   const [showPayment, setShowPayment] = useState(false);
   const [editItem, setEditItem] = useState<CartItem | null>(null);
   const [qtyEditItem, setQtyEditItem] = useState<CartItem | null>(null);
+  const allowDecimalQty = useAllowDecimalQty();
   const [priceEditItem, setPriceEditItem] = useState<CartItem | null>(null);
   const [selectedCartIndex, setSelectedCartIndex] = useState<number>(0);
   const [showBillDiscount, setShowBillDiscount] = useState(false);
@@ -347,7 +349,7 @@ export default function PosNeoPage() {
         } else if (cart.items.length > 0) {
           currentAction = 'SCANNING';
           const lastItem = cart.items[cart.items.length - 1];
-          currentDesc = `ยิงสินค้า: ${lastItem.name} (${lastItem.quantity} ${lastItem.unitName})`;
+          currentDesc = `ยิงสินค้า: ${lastItem.name} (${formatQty(lastItem.quantity)} ${lastItem.unitName})`;
 
           if (cart.items.length < prevItemsCount.current) {
             currentAction = 'VOID';
@@ -617,7 +619,7 @@ export default function PosNeoPage() {
           const idx = Math.min(items.length - 1, Math.max(0, selectedCartIndex));
           const target = items[idx];
           if (target) {
-            useCartStore.getState().updateQuantity(target.productId, target.quantity + 1, target.unitId);
+            useCartStore.getState().updateQuantity(target.productId, addQty(target.quantity, 1), target.unitId);
           }
         }
       } else if ((code === 'NumpadSubtract' || keyLower === '-') && canUseCartCharShortcut(activeEl, isHiddenScanner ? (activeEl as HTMLInputElement) : scannerInputRef.current, sincePrevKey)) {
@@ -627,7 +629,7 @@ export default function PosNeoPage() {
           const idx = Math.min(items.length - 1, Math.max(0, selectedCartIndex));
           const target = items[idx];
           if (target) {
-            useCartStore.getState().updateQuantity(target.productId, target.quantity - 1, target.unitId);
+            useCartStore.getState().updateQuantity(target.productId, subQty(target.quantity, 1), target.unitId);
           }
         }
       }
@@ -1210,7 +1212,7 @@ export default function PosNeoPage() {
                 <div className="flex flex-wrap gap-1 pt-1">
                   {cart.pendingClaims.map((pc) => (
                     <span key={pc.id} className="inline-flex items-center gap-1 rounded border border-black bg-white px-1.5 py-0.5 text-[10px] font-bold">
-                      <span>{pc.productName} ({pc.quantity} {pc.unitName})</span>
+                      <span>{pc.productName} ({formatQty(pc.quantity)} {pc.unitName})</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -1293,7 +1295,7 @@ export default function PosNeoPage() {
                     {item.claimQuantity !== undefined && item.claimQuantity > 0 && (
                       <div className="mt-1.5 inline-flex items-center gap-1 rounded border border-black bg-[#86EFAC] px-2 py-0.5 text-[10px] font-black text-black shadow-[1px_1px_0px_#000]">
                         <ShieldCheck className="w-3 h-3 text-black" />
-                        <span>เคลมฟรี {item.claimQuantity} {item.unitName} (คิดเงิน {Math.max(0, item.quantity - item.claimQuantity)} {item.unitName})</span>
+                        <span>เคลมฟรี {formatQty(item.claimQuantity)} {item.unitName} (คิดเงิน {formatQty(Math.max(0, subQty(item.quantity, item.claimQuantity)))} {item.unitName})</span>
                       </div>
                     )}
 
@@ -1343,7 +1345,7 @@ export default function PosNeoPage() {
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedCartIndex(idx);
-                              cart.updateQuantity(item.productId, item.quantity - 1, item.unitId);
+                              cart.updateQuantity(item.productId, subQty(item.quantity, 1), item.unitId);
                             }}
                             className="h-7 w-7 rounded border border-black bg-white flex items-center justify-center font-black hover:bg-neutral-100 active:translate-x-[1px] active:translate-y-[1px]"
                           >
@@ -1360,7 +1362,7 @@ export default function PosNeoPage() {
                             className="h-7 w-10 text-center font-mono font-black text-xs text-black hover:bg-[#FEF08A] transition-colors"
                             title="คลิกเพื่อแก้ไขจำนวนด้วย Numpad (F2)"
                           >
-                            {item.quantity}
+                            {formatQty(item.quantity)}
                           </button>
 
                           <button
@@ -1368,7 +1370,7 @@ export default function PosNeoPage() {
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedCartIndex(idx);
-                              cart.updateQuantity(item.productId, item.quantity + 1, item.unitId);
+                              cart.updateQuantity(item.productId, addQty(item.quantity, 1), item.unitId);
                             }}
                             className="h-7 w-7 rounded border border-black bg-white flex items-center justify-center font-black hover:bg-neutral-100 active:translate-x-[1px] active:translate-y-[1px]"
                           >
@@ -1636,11 +1638,13 @@ export default function PosNeoPage() {
         title={`ระบุจำนวน: ${qtyEditItem?.name || ''}`}
         subtitle="จำนวนสินค้าที่ระบุ"
         initialValue={qtyEditItem?.quantity || 1}
-        allowDecimals={false}
+        allowDecimals={allowDecimalQty}
+        quantityMode
         onConfirm={(val) => {
           if (qtyEditItem && val > 0) {
-            cart.updateQuantity(qtyEditItem.productId, Math.floor(val), qtyEditItem.unitId);
-            toast.success(`อัปเดตจำนวนเป็น ${Math.floor(val)} ${qtyEditItem.unitName}`);
+            const qty = parseQty(val, allowDecimalQty);
+            cart.updateQuantity(qtyEditItem.productId, qty, qtyEditItem.unitId);
+            toast.success(`อัปเดตจำนวนเป็น ${formatQty(qty)} ${qtyEditItem.unitName}`);
           }
           setQtyEditItem(null);
           setTimeout(() => scannerInputRef.current?.focus(), 20);
