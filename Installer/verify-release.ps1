@@ -75,10 +75,10 @@ $work = Join-Path ([IO.Path]::GetTempPath()) ('purim-verify-' + [guid]::NewGuid(
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 try {
   Write-Host '== server installer payload (7-Zip extract, nothing installed)'
-  $7z = Get-Command 7z -ErrorAction SilentlyContinue
-  $7zExe = if ($7z) { $7z.Source } else { Join-Path $env:ProgramFiles '7-Zip\7z.exe' }
+  $sevenZip = Get-Command 7z -ErrorAction SilentlyContinue
+  $sevenZipExe = if ($sevenZip) { $sevenZip.Source } else { Join-Path $env:ProgramFiles '7-Zip\7z.exe' }
   $sx = Join-Path $work 'setup'
-  & $7zExe x -y "-o$sx" $ServerExe | Out-Null
+  & $sevenZipExe x -y "-o$sx" $ServerExe | Out-Null
   Check ($LASTEXITCODE -eq 0) '7-Zip extracted the server installer'
   $vf = Get-ChildItem -LiteralPath $sx -Recurse -Filter 'VERSION.json' -File | Sort-Object { $_.FullName.Length } | Select-Object -First 1
   Check ([bool]$vf) 'server installer contains VERSION.json'

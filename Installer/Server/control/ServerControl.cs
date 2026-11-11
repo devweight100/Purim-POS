@@ -1,5 +1,6 @@
 ﻿// Purim POS Server - control panel for the server machine (Windows, .NET Framework 4.x).
-// Built by Installer/build-installers.sh with mono's mcs; installed as "<install dir>\Purim POS Server.exe".
+// Built (C# 5, .NET Framework 4.x) by Installer/build-installers.ps1 with csc on Windows / GitHub Actions, or by
+// Installer/build-installers.sh with mono mcs; installed as "<install dir>\Purim POS Server.exe". Keep it C# 5.
 //
 //   Purim POS Server.exe              open the control panel
 //   Purim POS Server.exe --autostart  (Windows logon) start the server hidden and stay in the tray
