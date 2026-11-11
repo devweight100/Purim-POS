@@ -17,6 +17,13 @@ import {
   type Status,
 } from '@/components/monitor/pixel-engine';
 
+/** A terminal opened on the server machine itself reaches the backend from loopback. */
+function ipLabel(ip?: string) {
+  const v = String(ip || '').replace('::ffff:', '');
+  if (!v) return '-';
+  return v === '127.0.0.1' || v === '::1' || v === 'localhost' ? 'เครื่องแม่ (เครื่องนี้)' : v;
+}
+
 interface LiveCartItem {
   productId: string;
   name: string;
@@ -493,7 +500,7 @@ export default function MonitorPage() {
                     </div>
                     <div className="flex items-center justify-between mt-1.5 font-mono text-[11px]">
                       <span className="text-[#fde047] font-black">🪙 {money(term.todaySales)}</span>
-                      <span className="text-slate-400">{term.todayBills} บิล · {term.ipAddress}</span>
+                      <span className="text-slate-400">{term.todayBills} บิล · {ipLabel(term.ipAddress)}</span>
                     </div>
                   </button>
                 );
@@ -523,7 +530,7 @@ export default function MonitorPage() {
                     {selected.shift ? `${selected.shift.userName} (เปิด ${new Date(selected.shift.openedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })})` : '-'}
                   </span>
                   <span>IP</span>
-                  <span className="text-slate-100 font-mono">{selected.ipAddress}</span>
+                  <span className="text-slate-100 font-mono">{ipLabel(selected.ipAddress)}</span>
                   {selected.status !== 'OFFLINE' && (
                     <>
                       <span>สัญญาณล่าสุด</span>
