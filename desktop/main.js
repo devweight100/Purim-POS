@@ -5,6 +5,7 @@ const http = require('http');
 const os = require('os');
 
 let mainWindow = null;
+let autoConnectCancelled = false;
 
 // Persistent configuration path in userData
 const configPath = path.join(app.getPath('userData'), 'purim-pos-config.json');
@@ -20,6 +21,22 @@ function log(...parts) {
     fs.appendFileSync(logPath, `${new Date().toISOString()} ${line}${os.EOL}`);
   } catch (e) { /* logging must never break the app */ }
 }
+
+log(`[Boot] Purim POS ${app.getVersion()} starting (pid ${process.pid}, ${process.platform} ${os.release()})`);
+
+// Any start-up error must be visible: a message box with the error and the log file, never a
+// silently missing window.
+function reportFatal(where, err) {
+  const msg = (err && (err.stack || err.message)) || String(err);
+  log(`[Error] ${where}: ${msg}`);
+  try {
+    if (app.isReady()) {
+      dialog.showErrorBox('ร้านปุริม POS เกิดข้อผิดพลาด', `${where}\n\n${(err && err.message) || err}\n\nบันทึกการทำงาน: ${logPath}`);
+    }
+  } catch (e) { /* nothing more we can do */ }
+}
+process.on('uncaughtException', (err) => reportFatal('ข้อผิดพลาดในโปรแกรม', err));
+process.on('unhandledRejection', (err) => log(`[Error] unhandled promise: ${(err && err.message) || err}`));
 
 function loadConfig() {
   try {
@@ -56,20 +73,29 @@ function saveConfig(updates) {
 }
 
 // Graphics: some shop PCs (mini PCs with old Intel/AMD drivers) show a white, frozen window with
-// hardware acceleration. Turned off by config (set automatically after a GPU crash or a hang at
-// startup) or by starting the app with --disable-gpu.
-const gpuDisabled = Boolean(loadConfig().disableGpu) || process.argv.includes('--disable-gpu');
+// hardware acceleration.
+// Off by default: a POS screen does not need it, and on shop mini PCs it is the usual cause of a
+// white/frozen or missing window. `disableGpu: false` in the config (button on the start screen)
+// turns it back on; `--disable-gpu` always forces it off.
+const gpuDisabled = loadConfig().disableGpu !== false || process.argv.includes('--disable-gpu');
 if (gpuDisabled) app.disableHardwareAcceleration();
 log(`[Start] app ${app.getVersion()} gpu=${gpuDisabled ? 'off' : 'on'} platform=${process.platform} ${os.release()}`);
 
-/** Restart the app once with hardware acceleration off (remembered in the config). */
-function relaunchWithoutGpu(reason) {
-  if (gpuDisabled) return false;
-  log(`[GPU] turning hardware acceleration off and restarting: ${reason}`);
+/** Next start without hardware acceleration. Never restarts the app on its own: Chromium already
+ *  recovers from a GPU crash (falls back to software drawing), and an automatic relaunch that
+ *  fails leaves the cashier with no window at all. */
+function rememberGpuOff(reason) {
+  if (gpuDisabled || loadConfig().disableGpu === true) return;
+  log(`[GPU] hardware acceleration will be off from the next start: ${reason}`);
   saveConfig({ disableGpu: true });
+}
+
+/** Restart the app, asked by the user (button or dialog). */
+function restartApp(disableGpu) {
+  log(`[Restart] by user${disableGpu === undefined ? '' : `, gpu ${disableGpu ? 'off' : 'on'}`}`);
+  if (disableGpu !== undefined) saveConfig({ disableGpu: Boolean(disableGpu) });
   app.relaunch();
-  app.exit(0);
-  return true;
+  app.quit();
 }
 
 // Is a Purim POS server answering at this URL? Asks /api/version (served by the frontend and
@@ -192,10 +218,19 @@ function createWindow() {
   });
 
   mainWindow.maximize();
+  mainWindow.show();
+  log('[Window] main window shown');
 
-  // Short "connecting" splash; the server-search screen only appears when no server is found
-  mainWindow.loadFile(path.join(__dirname, 'splash.html'));
-  autoConnectOrShowScreen();
+  // Start-up screen (steps, version, log file, buttons); the server-search screen only appears
+  // when no server is found
+  mainWindow.loadFile(path.join(__dirname, 'splash.html'))
+    .then(() => log('[Window] start-up screen loaded'))
+    .catch((err) => {
+      // ERR_ABORTED: the POS page replaced the start-up screen before it finished (server found fast)
+      if (err && (err.code === 'ERR_ABORTED' || err.errno === -3)) return;
+      log(`[Window] start-up screen failed: ${err && err.message}`);
+    });
+  autoConnectOrShowScreen().catch((err) => reportFatal('ค้นหาเครื่องแม่ไม่สำเร็จ', err));
 
   // once the shop screen is up, offer a newer app version if the server has one
   mainWindow.webContents.on('did-finish-load', () => {
@@ -224,27 +259,35 @@ function createWindow() {
   });
 
   // A frozen page (the white-screen case): Electron's own 'unresponsive' event needs keyboard or
-  // mouse input, so the page is also pinged every 5 s. Frozen for ~15 s -> restart without GPU
-  // (the usual cause on shop PCs); if the GPU is already off, restart the page.
+  // mouse input, so the page is also pinged every 5 s. Frozen for ~15 s -> the main process (which
+  // still works) asks the cashier what to do; nothing restarts silently.
   let hangHandled = false;
-  let pageRestarts = 0;
-  const onHang = (why) => {
+  const onHang = async (why) => {
     if (hangHandled || !mainWindow) return;
     hangHandled = true;
     log(`[Hang] ${why}`);
-    if (relaunchWithoutGpu(why)) return;
-    pageRestarts += 1;
-    if (pageRestarts > 1) {
-      log('[Hang] page froze again after a restart: showing the server screen');
-      pageRestarts = 0;
-      showConnectScreen('หน้าขายค้าง (ไม่ตอบสนองนานเกิน 15 วินาที) แม้ปิดการใช้การ์ดจอแล้ว ลองกด "เชื่อมต่อ" อีกครั้ง หรือแจ้งผู้ดูแลพร้อมไฟล์บันทึกด้านล่าง');
-      setTimeout(() => { hangHandled = false; }, 5000);
-      return;
+    rememberGpuOff(why);
+    const buttons = gpuDisabled
+      ? ['โหลดหน้าใหม่', 'เลือกเครื่องแม่', 'รอต่อ']
+      : ['เปิดโปรแกรมใหม่แบบไม่ใช้การ์ดจอ', 'เลือกเครื่องแม่', 'รอต่อ'];
+    const { response } = await dialog.showMessageBox({
+      type: 'warning',
+      title: 'ร้านปุริม POS ไม่ตอบสนอง',
+      message: 'หน้าจอค้าง (ไม่ตอบสนองนานกว่า 15 วินาที)',
+      detail: `${gpuDisabled ? 'โหลดหน้าใหม่ หรือเลือกเครื่องแม่ใหม่' : 'มักเกิดจากการ์ดจอของเครื่องนี้ แนะนำให้เปิดโปรแกรมใหม่แบบไม่ใช้การ์ดจอ'}\nบันทึกการทำงาน: ${logPath}`,
+      buttons,
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+    });
+    log(`[Hang] user chose: ${buttons[response]}`);
+    if (response === 0) {
+      if (!gpuDisabled) return restartApp(true);
+      try { mainWindow.webContents.forcefullyCrashRenderer(); } catch (e) { /* ignore */ }
+    } else if (response === 1) {
+      showConnectScreen('หน้าขายค้าง เลือกเครื่องแม่แล้วกด "เชื่อมต่อ" อีกครั้ง');
     }
-    log('[Hang] GPU already off: restarting the page');
-    try { mainWindow.webContents.forcefullyCrashRenderer(); } catch (e) { /* ignore */ }
     setTimeout(() => { hangHandled = false; }, 30000);
-    setTimeout(() => { pageRestarts = 0; }, 120000);
   };
   let unresponsiveTimer = null;
   mainWindow.on('unresponsive', () => {
@@ -280,7 +323,7 @@ function splashMessage(text) {
   const url = mainWindow.webContents.getURL();
   if (url && !url.startsWith('file:')) return;
   mainWindow.webContents
-    .executeJavaScript(`(function(){var e=document.getElementById('msg');if(e)e.textContent=${JSON.stringify(text)};})()`)
+    .executeJavaScript(`(function(){if(window.addStep){window.addStep(${JSON.stringify(text)});return;}var e=document.getElementById('msg');if(e)e.textContent=${JSON.stringify(text)};})()`)
     .catch(() => undefined);
 }
 
@@ -309,17 +352,19 @@ function watchPageLoad(url) {
 // starting), then this machine, then an automatic LAN scan. Only if all fail: search screen.
 async function autoConnectOrShowScreen() {
   if (!mainWindow) return;
+  autoConnectCancelled = false;
   const config = loadConfig();
   const tried = new Set();
   let lastError = '';
   const tryUrl = async (url, timeoutMs, label) => {
     if (!url) return false;
+    if (autoConnectCancelled) return true; // stop: the user is choosing the server
     const clean = url.replace(/\/+$/, '');
     if (label) splashMessage(label);
     const res = await checkServerPos(clean, timeoutMs);
     tried.add(clean);
     if (!res.ok) { lastError = `${clean}: ${res.error || res.status}`; log(`[AutoConnect] ${lastError}`); }
-    if (res.ok) {
+    if (res.ok && !autoConnectCancelled) {
       log(`[AutoConnect] server found at: ${clean}`);
       splashMessage(`พบเครื่องแม่ ${clean} กำลังเปิดหน้าขาย...`);
       saveConfig({ serverUrl: clean });
@@ -346,7 +391,7 @@ async function autoConnectOrShowScreen() {
   } catch (err) {
     log(`[AutoConnect] scan failed: ${err && err.message}`);
   }
-  showConnectScreen(lastError ? `ไม่พบเครื่องแม่ (${lastError})` : 'ไม่พบเครื่องแม่ในวง LAN');
+  if (!autoConnectCancelled) showConnectScreen(lastError ? `ไม่พบเครื่องแม่ (${lastError})` : 'ไม่พบเครื่องแม่ในวง LAN');
 }
 
 /** Server-search screen, with the reason it is shown. */
@@ -490,6 +535,9 @@ function setupAppMenu() {
 // ─────────────────────────────────────────────────────────────
 
 ipcMain.handle('get-app-version', () => app.getVersion());
+ipcMain.handle('get-start-info', () => ({ version: app.getVersion(), logPath, gpu: gpuDisabled ? 'off' : 'on' }));
+ipcMain.handle('restart-app', (event, disableGpu) => { restartApp(disableGpu); return true; });
+ipcMain.handle('quit-app', () => { log('[Quit] by user'); app.quit(); return true; });
 
 // ---- App update from the server (Installer/Client on the server machine) ----
 const { checkForUpdate, downloadAndInstall } = require('./app-updater');
@@ -557,13 +605,7 @@ ipcMain.handle('scan-network', async () => {
   return await scanSubnetForServer(3000);
 });
 
-ipcMain.handle('set-gpu-disabled', (event, disabled) => {
-  log(`[GPU] set by user: ${disabled ? 'off' : 'on'}`);
-  saveConfig({ disableGpu: Boolean(disabled) });
-  app.relaunch();
-  app.exit(0);
-  return true;
-});
+ipcMain.handle('set-gpu-disabled', (event, disabled) => { restartApp(Boolean(disabled)); return true; });
 
 ipcMain.handle('test-server-url', async (event, url) => {
   return await checkServerPos(url, 3000);
@@ -575,6 +617,8 @@ ipcMain.handle('load-pos-screen', (event, customUrl) => {
 });
 
 ipcMain.handle('open-server-config', () => {
+  autoConnectCancelled = true; // the cashier chose to pick the server: stop the background search
+  log('[Connect] server screen opened by user');
   loadConnectScreen();
   return true;
 });
@@ -1124,8 +1168,17 @@ ipcMain.handle('kick-drawer', async (event, options) => {
 // ─────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
-  setupAppMenu();
-  createWindow();
+  log('[Boot] Electron ready');
+  try {
+    createWindow();
+  } catch (err) {
+    reportFatal('เปิดหน้าต่างโปรแกรมไม่สำเร็จ', err);
+  }
+  try {
+    setupAppMenu();
+  } catch (err) {
+    log(`[Error] menu: ${err && err.message}`);
+  }
 
   // The receipt render window is hidden and must not keep the app alive
   if (mainWindow) mainWindow.on('closed', () => app.quit());
@@ -1169,7 +1222,10 @@ app.whenReady().then(() => {
 
 app.on('child-process-gone', (event, details) => {
   log(`[Crash] ${details.type} process gone: ${details.reason} (${details.exitCode})`);
-  if (details.type === 'GPU' && details.reason !== 'clean-exit') relaunchWithoutGpu(`GPU process ${details.reason}`);
+  if (details.type === 'GPU' && details.reason !== 'clean-exit') {
+    rememberGpuOff(`GPU process ${details.reason}`);
+    splashMessage('การ์ดจอมีปัญหา กำลังใช้การวาดหน้าจอแบบสำรอง...');
+  }
 });
 
 app.on('will-quit', () => {

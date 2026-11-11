@@ -9,7 +9,7 @@
       box-sizing: border-box;
       margin: 0;
       padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-family: "Leelawadee UI", "Segoe UI", Tahoma, Roboto, Arial, sans-serif;
     }
     body {
       background: #0f172a;
@@ -114,7 +114,7 @@
     }
     .info-box strong {
       color: #38bdf8;
-      font-family: Consolas, monospace;
+      font-family: Consolas, "Courier New", Tahoma, monospace;
       font-size: 13px;
     }
 
@@ -524,18 +524,19 @@
 
     init();
   
+    async function gpuIsOff() {
+      try { const info = await window.electronAPI.getStartInfo(); return info && info.gpu === 'off'; } catch (e) { return true; }
+    }
     async function toggleGpu() {
       if (!window.electronAPI || !window.electronAPI.setGpuDisabled) return;
-      const cfg = await window.electronAPI.getConfig();
-      const off = !(cfg && cfg.disableGpu);
-      if (!confirm(off ? 'เปิดโปรแกรมใหม่แบบไม่ใช้การ์ดจอ (แก้อาการจอขาว/ค้าง) ?' : 'เปิดโปรแกรมใหม่แบบใช้การ์ดจอตามปกติ ?')) return;
-      await window.electronAPI.setGpuDisabled(off);
+      const turnOff = !(await gpuIsOff());
+      if (!confirm(turnOff ? 'เปิดโปรแกรมใหม่แบบไม่ใช้การ์ดจอ (แก้อาการจอขาว/ค้าง) ?' : 'เปิดโปรแกรมใหม่แบบใช้การ์ดจอ ? (ถ้าจอขาวหรือค้าง ให้กลับมาปิด)')) return;
+      await window.electronAPI.setGpuDisabled(turnOff);
     }
     (async () => {
       try {
-        const cfg = window.electronAPI && await window.electronAPI.getConfig();
         const b = document.getElementById('gpu-btn');
-        if (b && cfg && cfg.disableGpu) b.textContent = '🖥️ ตอนนี้ไม่ใช้การ์ดจอ: กดเพื่อกลับไปใช้ตามปกติ';
+        if (b && window.electronAPI && (await gpuIsOff())) b.textContent = '🖥️ ตอนนี้ไม่ใช้การ์ดจอ: กดเพื่อเปิดใช้';
       } catch (e) {}
     })();
 </script>
