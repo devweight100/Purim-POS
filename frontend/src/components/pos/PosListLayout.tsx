@@ -20,6 +20,7 @@ import { Customer, getCustomerById, calculateEarnedPoints } from '@/lib/customer
 import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
 import { toast } from 'sonner';
 import { PosLogoutButton } from '@/components/pos/PosLogoutButton';
+import { formatQty, subQty } from '@/lib/qty';
 
 interface PosListLayoutProps {
   viewMode: 'touch_screen' | 'list_view';
@@ -674,7 +675,7 @@ export function PosListLayout({
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {cart.pendingClaims.map((pc) => (
                     <span key={pc.id} className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded-md border border-amber-200 text-[10px] text-slate-700 font-medium">
-                      <span>{pc.productName} ({pc.quantity} {pc.unitName})</span>
+                      <span>{pc.productName} ({formatQty(pc.quantity)} {pc.unitName})</span>
                       <button
                         type="button"
                         onClick={() => {
@@ -733,7 +734,7 @@ export function PosListLayout({
                           {item.claimQuantity !== undefined && item.claimQuantity > 0 && (
                             <span className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md font-bold mt-0.5 inline-flex items-center gap-1 w-fit ml-8">
                               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>เคลมฟรี {item.claimQuantity} {item.unitName} (คิดเงิน {Math.max(0, item.quantity - item.claimQuantity)} {item.unitName})</span>
+                              <span>เคลมฟรี {formatQty(item.claimQuantity)} {item.unitName} (คิดเงิน {formatQty(Math.max(0, subQty(item.quantity, item.claimQuantity)))} {item.unitName})</span>
                             </span>
                           )}
                           {item.itemNote && (
@@ -755,7 +756,7 @@ export function PosListLayout({
                           className="inline-flex items-center border border-slate-300 rounded-lg bg-white overflow-hidden shadow-sm h-10 w-24 cursor-pointer hover:border-sky-500 hover:bg-sky-50 transition-all"
                           title="คลิกเพื่อแก้ไขจำนวนด้วย Numpad (F2)"
                         >
-                          <span className="w-full text-center font-extrabold text-slate-900 text-base">{item.quantity}</span>
+                          <span className="w-full text-center font-extrabold text-slate-900 text-base">{formatQty(item.quantity)}</span>
                           <span className="px-2 text-xs font-semibold text-slate-600 border-l border-slate-300 h-full flex items-center bg-slate-50 whitespace-nowrap">{item.unitName}</span>
                         </div>
                       </td>
@@ -1013,7 +1014,7 @@ export function PosListLayout({
         onConfirm={(val) => {
           if (discountEditItem && val >= 0) {
             const currentType = discountEditItem.discountType === 'none' ? 'baht' : discountEditItem.discountType;
-            const discountError = validateDiscount(currentType, val, cart.getEffectivePrice(discountEditItem) * Math.max(0, discountEditItem.quantity - (discountEditItem.claimQuantity || 0)));
+            const discountError = validateDiscount(currentType, val, cart.getEffectivePrice(discountEditItem) * Math.max(0, subQty(discountEditItem.quantity, discountEditItem.claimQuantity || 0)));
             if (discountError) {
               toast.error(discountError);
               return;

@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CashMovementType, ClaimStatus, ClaimType, OrderStatus, ShiftStatus } from '@prisma/client';
 import { ShiftsService } from '../shifts/shifts.service';
 import { userHasPermission } from '../auth/permissions';
+import { addQty, assertQtyAllowed, decimalQtyAllowed, fromHund, hasMax2Decimals, mulQty, qn, roundQty, subQty, toHund } from '../common/qty';
 
 export interface ClaimActor {
   id: string;
@@ -49,11 +50,11 @@ export function canTransition(from: FrontendStatus, to: FrontendStatus) {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-/** Claim stock quantity: whole units, never negative. */
+/** Claim stock quantity: never negative, at most 2 decimals (whole units unless the store allows decimals). */
 export function parseClaimStockQuantity(raw: unknown): number {
   const n = typeof raw === 'number' ? raw : typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN;
-  if (!Number.isSafeInteger(n) || n < 0 || n > 1_000_000_000) throw new BadRequestException('จำนวนสต็อกสินค้าเคลมต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป');
-  return n;
+  if (!Number.isFinite(n) || !hasMax2Decimals(n) || n < 0 || n > 1_000_000_000) throw new BadRequestException('จำนวนสต็อกสินค้าเคลมต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป (ทศนิยมไม่เกิน 2 ตำแหน่ง)');
+  return roundQty(n);
 }
 
 /** Claim stock unit cost: a money amount, never negative. */
@@ -255,7 +256,7 @@ export class ClaimsService {
     if (!dto || typeof dto !== 'object' || Array.isArray(dto)) throw new BadRequestException('ข้อมูลการเคลมไม่ถูกต้อง');
     if (typeof dto.productId !== 'string' || !dto.productId.trim()) throw new BadRequestException('กรุณาระบุสินค้าที่เคลม');
     const quantity = dto.quantity === undefined ? 1 : Number(dto.quantity);
-    if (!Number.isSafeInteger(quantity) || quantity <= 0 || quantity > 100000) throw new BadRequestException('จำนวนสินค้าเคลมต้องเป็นจำนวนเต็มมากกว่า 0');
+    if (!Number.isFinite(quantity) || !hasMax2Decimals(quantity) || quantity <= 0 || quantity > 100000) throw new BadRequestException('จำนวนสินค้าเคลมต้องมากกว่า 0 (ทศนิยมไม่เกิน 2 ตำแหน่ง)');
     if (dto.resolutionType !== undefined && dto.resolutionType !== null && !(RESOLUTION_TYPES as readonly string[]).includes(dto.resolutionType)) {
       throw new BadRequestException('รูปแบบการแก้ไขเคลมไม่ถูกต้อง');
     }
@@ -321,6 +322,7 @@ export class ClaimsService {
       });
       if (!claimedProduct) throw new NotFoundException('ไม่พบสินค้าที่เคลม');
       productId = claimedProduct.id;
+      assertQtyAllowed(quantity, await decimalQtyAllowed(tx));
 
       const factorFor = async (id: string, raw: any) => {
         const factor = Number(raw ?? 1);
@@ -336,8 +338,8 @@ export class ClaimsService {
         return factor;
       };
 
-      const baseQuantity = quantity * (await factorFor(productId, dto.conversionFactor));
-      if (!Number.isSafeInteger(baseQuantity)) throw new BadRequestException('จำนวนสินค้าเคลมมากเกินไป');
+      const baseQuantity = mulQty(quantity, await factorFor(productId, dto.conversionFactor));
+      if (!(baseQuantity <= 1_000_000_000)) throw new BadRequestException('จำนวนสินค้าเคลมมากเกินไป');
 
       const requestedResolution = String(dto.resolutionType || dto.claimType || '').toUpperCase();
       const isRefund = requestedResolution.includes('REFUND');
@@ -361,8 +363,8 @@ export class ClaimsService {
         if (!replacement) throw new NotFoundException('ไม่พบสินค้าที่นำไปเปลี่ยน');
         replacementProductObj = replacement;
         replacementProductId = replacement.id;
-        replacementBaseQuantity = quantity * (await factorFor(replacement.id, dto.replacementConversionFactor ?? dto.conversionFactor));
-        if (!Number.isSafeInteger(replacementBaseQuantity)) throw new BadRequestException('จำนวนของเปลี่ยนมากเกินไป');
+        replacementBaseQuantity = mulQty(quantity, await factorFor(replacement.id, dto.replacementConversionFactor ?? dto.conversionFactor));
+        if (!(replacementBaseQuantity <= 1_000_000_000)) throw new BadRequestException('จำนวนของเปลี่ยนมากเกินไป');
         // "Replacement already rung up in sale X" is only believed when sale X really holds that line.
         fulfilledOrder = wantsSkip ? await this.verifiedFulfilmentOrder(tx, dto, actor, replacement.id, replacementBaseQuantity) : null;
         skipStockDeduction = !!fulfilledOrder;
@@ -370,18 +372,19 @@ export class ClaimsService {
 
         if (!skipStockDeduction) {
           const batches = await tx.stockBatch.findMany({ where: { productId: replacement.id }, orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }] });
-          replacementPreviousStock = batches.reduce((sum, batch) => sum + batch.quantityRemaining, 0);
+          replacementPreviousStock = addQty(...batches.map((batch) => batch.quantityRemaining));
           if (replacementPreviousStock < replacementBaseQuantity) {
             throw new BadRequestException(`สต็อกสินค้าที่นำไปเปลี่ยนไม่เพียงพอ (คงเหลือ ${replacementPreviousStock} ชิ้น, ต้องการ ${replacementBaseQuantity} ชิ้น)`);
           }
-          let remaining = replacementBaseQuantity;
+          let remainingH = toHund(replacementBaseQuantity);
           for (const batch of batches) {
-            if (remaining <= 0) break;
-            const amount = Math.min(Math.max(0, batch.quantityRemaining), remaining);
-            if (!amount) continue;
-            await tx.stockBatch.update({ where: { id: batch.id }, data: { quantityRemaining: { decrement: amount } } });
-            stockMovements.push({ batchId: batch.id, quantity: amount, unitCost: Number(batch.unitCost) });
-            remaining -= amount;
+            if (remainingH <= 0) break;
+            const batchH = toHund(batch.quantityRemaining);
+            const takeH = Math.min(Math.max(0, batchH), remainingH);
+            if (!takeH) continue;
+            await tx.stockBatch.update({ where: { id: batch.id }, data: { quantityRemaining: fromHund(batchH - takeH) } });
+            stockMovements.push({ batchId: batch.id, quantity: fromHund(takeH), unitCost: Number(batch.unitCost) });
+            remainingH -= takeH;
           }
         }
       }
@@ -426,7 +429,7 @@ export class ClaimsService {
           resolutionNote: dto.note || dto.resolutionNote || null,
           completedDate: prismaStatus === ClaimStatus.COMPLETED ? now : null,
           quantity,
-          conversionFactor: baseQuantity / quantity,
+          conversionFactor: Math.round(baseQuantity / quantity),
           baseQuantity,
           unitName: typeof dto.unitName === 'string' ? dto.unitName.slice(0, 40) : claimedProduct.unit,
           cashierName: dto.cashierName,
@@ -455,7 +458,7 @@ export class ClaimsService {
               type: 'OUT_CLAIM',
               quantityChange: -replacementBaseQuantity,
               previousStock: replacementPreviousStock,
-              currentStock: replacementPreviousStock - replacementBaseQuantity,
+              currentStock: subQty(replacementPreviousStock, replacementBaseQuantity),
               referenceType: 'CLAIM',
               referenceNo: claimNumber,
               reason: 'เปลี่ยนสินค้าเคลมใบ #' + claimNumber,
@@ -541,7 +544,7 @@ export class ClaimsService {
         sku: claim.product?.sku || dto.sku || '-',
         unitName: dto.unitName || claim.product?.unit || 'ชิ้น',
         quantity,
-        conversionFactor: baseQuantity / quantity,
+        conversionFactor: Math.round(baseQuantity / quantity),
         baseQuantity,
         unitPrice: resolvedUnitPrice,
         totalClaimValue: resolvedTotalClaimValue,
@@ -568,10 +571,10 @@ export class ClaimsService {
         replacementUnitName: dto.replacementUnitName || dto.unitName || replacementProductObj?.unit || claim.product?.unit || 'ชิ้น',
         replacementBaseQuantity,
         replacementConversionFactor: replacementBaseQuantity
-          ? replacementBaseQuantity / quantity
+          ? Math.round(replacementBaseQuantity / quantity)
           : dto.replacementConversionFactor
             ? Number(dto.replacementConversionFactor)
-            : baseQuantity / quantity,
+            : Math.round(baseQuantity / quantity),
         status: resolvedFrontendStatus,
         frontendStatus: resolvedFrontendStatus,
         cashierName: dto.cashierName || 'พนักงาน POS',
@@ -698,7 +701,7 @@ export class ClaimsService {
         frontendStatus: claimMeta.frontendStatus,
         quantity,
         baseQuantity,
-        conversionFactor: baseQuantity / quantity,
+        conversionFactor: Math.round(baseQuantity / quantity),
         replacementProductId: claimMeta.replacementProductId,
         replacementBaseQuantity,
         replacementConversionFactor: claimMeta.replacementConversionFactor,
@@ -743,13 +746,13 @@ export class ClaimsService {
       if (dto.isReplacementItem) return null;
       throw new BadRequestException('สินค้านี้ไม่อยู่ในบิลที่อ้างอิง');
     }
-    const bought = lines.reduce((sum: number, i: any) => sum + Number(i.baseQuantity ?? i.quantity ?? 0), 0);
+    const bought = addQty(...lines.map((i: any) => i.baseQuantity ?? i.quantity ?? 0));
     const prior = await tx.customerClaim.aggregate({
       where: { orderId: order.id, productId, status: { not: ClaimStatus.REJECTED } },
       _sum: { baseQuantity: true, refundAmount: true },
     });
-    const priorQty = Number(prior._sum.baseQuantity || 0);
-    if (priorQty + baseQuantity > bought) {
+    const priorQty = qn(prior._sum.baseQuantity);
+    if (addQty(priorQty, baseQuantity) > bought) {
       throw new BadRequestException(`จำนวนเคลมเกินจำนวนที่ซื้อในบิล (ซื้อ ${bought} เคลมไปแล้ว ${priorQty} หน่วยฐาน)`);
     }
     // Bill-level discount is spread over the lines, so a refund never exceeds what was really paid.
@@ -832,7 +835,7 @@ export class ClaimsService {
     if (!manager && order.userId !== actor?.id) return null;
     const sold = (order.items || [])
       .filter((i: any) => i.productId === replacementProductId)
-      .reduce((sum: number, i: any) => sum + Number(i.baseQuantity ?? i.quantity ?? 0), 0);
+      .reduce((sum: number, i: any) => addQty(sum, i.baseQuantity ?? i.quantity ?? 0), 0);
     if (sold <= 0) return null;
     const used = await tx.customerClaim.aggregate({
       where: {
@@ -842,7 +845,7 @@ export class ClaimsService {
       },
       _sum: { replacementBaseQuantity: true },
     });
-    if (Number(used._sum.replacementBaseQuantity || 0) + replacementBaseQuantity > sold) return null;
+    if (addQty(used._sum.replacementBaseQuantity, replacementBaseQuantity) > sold) return null;
     return { id: order.id as string, orderNumber: order.orderNumber as string };
   }
 
@@ -864,7 +867,7 @@ export class ClaimsService {
       const qty = Number(m.quantity) || 0;
       if (!m.batchId || qty <= 0) continue;
       await tx.stockBatch.update({ where: { id: m.batchId }, data: { quantityRemaining: { increment: qty } } });
-      restored += qty;
+      restored = addQty(restored, qty);
     }
     if (restored > 0) {
       const productId = claim.replacementProductId || claim.productId;
@@ -888,7 +891,7 @@ export class ClaimsService {
     }
     const inv = await tx.claimInventory.findFirst({ where: { productId: claim.productId } });
     if (inv) {
-      const back = Math.min(Math.max(0, inv.quantity), Number(claim.baseQuantity || 0));
+      const back = Math.min(Math.max(0, qn(inv.quantity)), qn(claim.baseQuantity));
       if (back > 0) await tx.claimInventory.update({ where: { id: inv.id }, data: { quantity: { decrement: back } } });
     }
     const meta: any = claim.metadata || {};
@@ -1163,6 +1166,7 @@ export class ClaimsService {
     const unitCost = parseClaimStockCost(data.unitCost ?? 0);
     assertClaimStockText(data);
     return businessTransaction(this.prisma, async (tx) => {
+      assertQtyAllowed(qty, await decimalQtyAllowed(tx));
       const prod = await tx.product.findFirst({
         where: {
           OR: [{ id: data.productId }, { sku: data.productId }],
@@ -1242,6 +1246,7 @@ export class ClaimsService {
         },
       });
       if (!existing) throw new NotFoundException('ไม่พบข้อมูลสต็อกสินค้าเคลมนี้');
+      if (data.quantity !== undefined) assertQtyAllowed(data.quantity, await decimalQtyAllowed(tx));
 
       const updateData: any = {};
       if (data.quantity !== undefined) updateData.quantity = Number(data.quantity);

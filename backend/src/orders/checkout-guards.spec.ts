@@ -28,6 +28,19 @@ describe('validateCheckoutInput', () => {
     bad((d) => (d.items[0].claimQuantity = 5));
     expect(() => validateCheckoutInput(null)).toThrow(BadRequestException);
   });
+  it('accepts quantities with up to 2 decimals (the store setting is checked in the transaction)', () => {
+    const d: any = base();
+    d.items[0].quantity = 1.25;
+    d.payments[0].amount = 12.5;
+    expect(() => validateCheckoutInput(d)).not.toThrow();
+    bad((x) => (x.items[0].quantity = 1.255));
+    bad((x) => (x.items[0].quantity = 0));
+    bad((x) => (x.items[0].quantity = -0.5));
+  });
+  it('prices a decimal-quantity line to the satang', () => {
+    expect(lineAmounts(1.25, 39, 0).total).toBe(48.75);
+    expect(lineAmounts(2.33, 15.5, 0).total).toBe(36.12); // 36.115 -> 36.12
+  });
 });
 
 describe('lineAmounts', () => {

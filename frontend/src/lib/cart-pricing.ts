@@ -1,3 +1,4 @@
+import { addQty, mulQty, toHund } from './qty';
 import { CartItem } from './types';
 import { useProductStore } from './store/product-store';
 
@@ -88,10 +89,7 @@ export function calculateSmartRollupAndPricing(items: CartItem[]): CartItem[] {
     const firstItem = group[0];
 
     // Compute total base quantity across all items for this product
-    const totalBaseQty = group.reduce(
-      (sum, i) => sum + i.quantity * (i.conversionFactor || 1),
-      0
-    );
+    const totalBaseQty = addQty(...group.map((i) => mulQty(i.quantity, i.conversionFactor || 1)));
 
     if (totalBaseQty <= 0) continue;
 
@@ -113,7 +111,8 @@ export function calculateSmartRollupAndPricing(items: CartItem[]): CartItem[] {
     ].sort((a, b) => b.multiplier - a.multiplier);
 
     // Roll up totalBaseQty into largest possible packaging units
-    let remQty = totalBaseQty;
+    // whole hundredths of a base unit: decimal quantities (1.25 m) roll up without float residue
+    let remH = toHund(totalBaseQty);
     const rolledUpList: {
       unitName: string;
       factor: number;
@@ -124,7 +123,8 @@ export function calculateSmartRollupAndPricing(items: CartItem[]): CartItem[] {
 
     for (const unit of allUnitsSorted) {
       if (unit.multiplier > 1) {
-        const count = Math.floor(remQty / unit.multiplier);
+        const unitH = Math.round(unit.multiplier * 100);
+        const count = Math.floor(remH / unitH);
         if (count > 0) {
           rolledUpList.push({
             unitName: unit.name,
@@ -133,26 +133,26 @@ export function calculateSmartRollupAndPricing(items: CartItem[]): CartItem[] {
             unitPrice: unit.priceLevel1 > 0 ? unit.priceLevel1 : (baseUnitPrice * unit.multiplier),
             unitId: `u-${productId}-${unit.name}`,
           });
-          remQty = remQty % unit.multiplier;
+          remH = remH % unitH;
         }
       } else {
         // Base unit (multiplier = 1)
-        if (remQty > 0) {
+        if (remH > 0) {
           rolledUpList.push({
             unitName: unit.name,
             factor: 1,
-            qty: remQty,
+            qty: remH / 100,
             unitPrice: baseUnitPrice,
             unitId: `u-${productId}-base`,
           });
-          remQty = 0;
+          remH = 0;
         }
       }
     }
 
     // Convert rolledUpList into CartItems
     for (const r of rolledUpList) {
-      const lineBaseQty = r.qty * r.factor;
+      const lineBaseQty = mulQty(r.qty, r.factor);
       const applicableWholesale = wholesaleSteps.find(s => lineBaseQty >= s.minQuantity);
       
       let finalUnitPrice = r.unitPrice;

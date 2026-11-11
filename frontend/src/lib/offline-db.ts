@@ -7,6 +7,7 @@
 // 3. เมื่อระบบตรวจจับว่าเชื่อมต่อเน็ตได้ จะส่ง POST /api/orders/sync-offline ทันที
 //    โดยมี Idempotency Key ป้องกันข้อมูลซ้ำ ข้อมูลไม่มั่ว ไม่ซ้ำ และไม่ทับ
 // ==============================================================================
+import { addQty } from './qty';
 
 const DB_NAME = 'purim_pos_offline_db';
 const DB_VERSION = 1;
@@ -124,7 +125,7 @@ export async function cacheProducts(products: any[]): Promise<void> {
         costPrice: Number(p.costPrice) || 0,
         categoryId: p.categoryId,
         barcodes,
-        stockRemaining: p.stockBatches?.reduce((sum: number, b: any) => sum + (b.quantityRemaining || 0), 0) ?? p.stock,
+        stockRemaining: p.stockBatches ? addQty(...p.stockBatches.map((b: any) => b.quantityRemaining || 0)) : p.stock,
       };
 
       store.put(cachedItem);

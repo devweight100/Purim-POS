@@ -5,6 +5,7 @@ import { loadAllDebtRecords } from './debt-service';
 import { loadCustomers } from './customer-service';
 import { loadAllShiftSummaries } from './shift-service';
 import { bangkokDate, bangkokDayKey, bangkokDayStart, bangkokParts, bangkokStartOfDay, DAY_MS } from './bangkok-date';
+import { addQty } from './qty';
 
 export type ReportTimeRange = 'today' | 'yesterday' | '7days' | '30days' | 'thisMonth' | 'lastMonth' | 'thisYear' | 'all' | 'custom';
 
@@ -548,7 +549,7 @@ export function calculateInventoryValuationReport(
       cost = stock > 0 ? costVal / stock : fallbackCost;
     } else if (Array.isArray(p.stockBatches) && p.stockBatches.length > 0 && stock > 0) {
       const activeBatches = p.stockBatches.filter((b: any) => Number(b.quantityRemaining) > 0);
-      const batchQty = activeBatches.reduce((sum: number, b: any) => sum + Number(b.quantityRemaining || 0), 0);
+      const batchQty = addQty(...activeBatches.map((b: any) => Number(b.quantityRemaining || 0)));
       const batchCost = activeBatches.reduce(
         (sum: number, b: any) => sum + Number(b.quantityRemaining || 0) * Number(b.unitCost ?? fallbackCost),
         0

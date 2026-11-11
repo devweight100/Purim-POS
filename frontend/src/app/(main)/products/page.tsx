@@ -22,6 +22,7 @@ import { parseProductCSV, csvRowsToProducts, CsvImportError } from "@/lib/csv-pa
 import { useProductStore } from "@/lib/store/product-store";
 import * as XLSX from "xlsx";
 import { buildExportWorkbook, buildTemplateWorkbook, ImportFileError, isUnitsFormat, packChainText, parseUnitsRows, UNITS_SHEET } from '@/lib/product-import';
+import { qtyInputMode, qtyStep, useAllowDecimalQty } from '@/lib/qty';
 
 // ─── EAN-13 Generator ─────────────────────────────────────────────────
 function generateEAN13(): string {
@@ -374,6 +375,7 @@ function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey | 
 
 // ─── Page ──────────────────────────────────────────────────────────────
 export default function ProductsPage() {
+  const allowDecimalQty = useAllowDecimalQty();
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
@@ -1443,7 +1445,9 @@ export default function ProductsPage() {
                         <div className="flex items-center gap-1.5">
                           <Input
                             type="number"
-                            min="1"
+                            min={qtyStep(allowDecimalQty)}
+                            step={qtyStep(allowDecimalQty)}
+                            inputMode={qtyInputMode(allowDecimalQty)}
                             value={bi.quantity}
                             onChange={(e) => updateBundleItem(idx, "quantity", e.target.value)}
                             className="h-9 border-slate-300 font-bold text-center"
@@ -1772,7 +1776,7 @@ export default function ProductsPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <div className="space-y-1">
                     <label className="text-xs text-slate-500">จำนวนตั้งแต่</label>
-                    <Input type="number" min="0" value={step.minQuantity} onChange={e => updateWholesale(idx, "minQuantity", e.target.value)} className="h-8 border-slate-300 text-right text-sm" />
+                    <Input type="number" min="0" step={qtyStep(allowDecimalQty)} value={step.minQuantity} onChange={e => updateWholesale(idx, "minQuantity", e.target.value)} className="h-8 border-slate-300 text-right text-sm" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-slate-500">ราคา/ชิ้น</label>

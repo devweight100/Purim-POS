@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Body, Query, UseGuards, Request } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
+import { addQty } from '../common/qty';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
@@ -21,7 +22,7 @@ export class InventoryController {
     });
     return products.map(p => ({
       ...p,
-      computedStock: p.stockBatches.reduce((sum, b) => sum + b.quantityRemaining, 0)
+      computedStock: addQty(...p.stockBatches.map((b) => b.quantityRemaining))
     }));
   }
 
@@ -56,7 +57,7 @@ export class InventoryController {
   async getLowStock(@Query('threshold') thresholdStr: string, @Request() req: any) {
     // one store-wide threshold (StoreSettings.lowStockThreshold, default 5) unless the caller asks for another
     const settings = await this.prisma.storeSettings.findFirst({ select: { lowStockThreshold: true } });
-    const threshold = Number(thresholdStr) > 0 ? Number(thresholdStr) : (settings?.lowStockThreshold ?? 5);
+    const threshold = Number(thresholdStr) > 0 ? Number(thresholdStr) : Number(settings?.lowStockThreshold ?? 5);
     const products = await this.stockList();
     return costFilterFor(req?.user)(products.filter(p => p.computedStock <= threshold));
   }

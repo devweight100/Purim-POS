@@ -45,6 +45,7 @@ import {
 import { toast } from 'sonner';
 
 import { useProductStore } from '@/lib/store/product-store';
+import { addQty, formatQty, mulQty, parseQty, qtyInputMode, qtyStep, subQty, useAllowDecimalQty } from '@/lib/qty';
 
 import PurchaseOrderPdfModal, { PurchaseOrderData } from '@/components/pos/PurchaseOrderPdfModal';
 
@@ -138,6 +139,7 @@ function getProductUnits(product: any): { name: string; mult: number }[] {
 
 export default function PurchaseOrdersPage() {
   const router = useRouter();
+  const allowDecimalQty = useAllowDecimalQty();
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -446,7 +448,7 @@ export default function PurchaseOrdersPage() {
   const getCartItem = (productId: string) => cartItems.find(item => item.productId === productId);
 
   const updateProductQuantity = (product: any, quantity: number) => {
-    const safeQuantity = Math.max(0, Math.floor(Number(quantity) || 0));
+    const safeQuantity = Math.max(0, parseQty(quantity, allowDecimalQty) || 0);
     setCartItems(prev => {
       const existing = prev.find(item => item.productId === product.id);
       if (safeQuantity === 0) {
@@ -800,7 +802,7 @@ export default function PurchaseOrdersPage() {
       const currentStock = Number(prod?.stock !== undefined && prod?.stock !== null ? prod.stock : (item.stock || 0));
       const ordered = Number(item.quantity) || 1;
       const received = Number(item.receivedQty ?? item.receivedQuantity) || 0;
-      const remaining = Math.max(0, ordered - received);
+      const remaining = Math.max(0, subQty(ordered, received));
       const mult = Number(item.multiplier) || 1;
 
       return {
@@ -829,7 +831,7 @@ export default function PurchaseOrdersPage() {
   const handleTriggerReceivePO = () => {
     if (!currentPo) return;
 
-    const totalToReceive = receiveItems.reduce((s, i) => s + (Number(i.toReceive) || 0), 0);
+    const totalToReceive = addQty(...receiveItems.map((i) => Number(i.toReceive) || 0));
     if (totalToReceive <= 0) {
       toast.error("กรุณาระบุจำนวนสินค้าที่ต้องการรับเข้าสต็อกอย่างน้อย 1 รายการ");
       return;
@@ -837,7 +839,7 @@ export default function PurchaseOrdersPage() {
 
     // Check if there are items under-received (total received < ordered)
     const hasIncompleteItems = receiveItems.some((i: any) => {
-      const totalRec = (Number(i.receivedQty) || 0) + (Number(i.toReceive) || 0);
+      const totalRec = addQty(Number(i.receivedQty) || 0, Number(i.toReceive) || 0);
       return totalRec < Number(i.orderedQty);
     });
 
@@ -859,7 +861,7 @@ export default function PurchaseOrdersPage() {
         supplierInvoiceNo: receiveSupplierInvoiceNo.trim(),
         items: receiveItems.map((item: any) => ({
           purchaseOrderItemId: item.id,
-          receivedQty: Number(item.toReceive),
+          receivedQty: parseQty(item.toReceive, allowDecimalQty) || 0,
           unitCost: Number(item.unitCost),
         })).filter((item: any) => item.receivedQty > 0),
       });
@@ -910,7 +912,7 @@ export default function PurchaseOrdersPage() {
       const existingIndex = prev.findIndex(item => (item.cartKey ? item.cartKey === cartKey : (item.productId === product.id && item.unitName === targetUnit)));
       if (existingIndex >= 0) {
         const existing = prev[existingIndex];
-        const newQty = existing.quantity + deltaQty;
+        const newQty = addQty(existing.quantity, deltaQty);
         if (newQty <= 0) return prev.filter((_, idx) => idx !== existingIndex);
         const updated = [...prev];
         updated[existingIndex] = { ...existing, quantity: newQty };
@@ -1377,8 +1379,9 @@ export default function PurchaseOrdersPage() {
                               <span className="lg:hidden">จำนวน</span>
                               <Input
                                 type="number"
-                                min="1"
-                                step="1"
+                                min={qtyStep(allowDecimalQty)}
+                                step={qtyStep(allowDecimalQty)}
+                                inputMode={qtyInputMode(allowDecimalQty)}
                                 value={quantity}
                                 onChange={(e) => updateProductQuantity(product, Number(e.target.value))}
                                 className="h-9 bg-white text-right text-sm border-slate-300 focus-visible:ring-sky-500 font-bold text-sky-600"
@@ -1469,7 +1472,7 @@ export default function PurchaseOrdersPage() {
                     <Badge className="bg-sky-500 text-white font-bold px-3 py-1 text-sm">
                       เลือกสั่งรวม {cartItems.length} รายการ
                     </Badge>
-                    <span>จำนวนชิ้นรวม: <b>{cartItems.reduce((s, i) => s + (i.quantity || 0), 0)}</b> ชิ้น</span>
+                    <span>จำนวนชิ้นรวม: <b>{formatQty(addQty(...cartItems.map((i) => i.quantity || 0)))}</b> ชิ้น</span>
                   </div>
 
                   <div className="space-y-2.5">
@@ -1702,7 +1705,7 @@ export default function PurchaseOrdersPage() {
                                         }`}
                                         onClick={() => addCartItemWithUnit(product, u.name, u.mult, 1)}
                                       >
-                                        +1 {u.name} {u.mult > 1 ? `(×${u.mult})` : ''} {existing ? `[สั่งแล้ว ${existing.quantity}]` : ''}
+                                        +1 {u.name} {u.mult > 1 ? `(×${u.mult})` : ''} {existing ? `[สั่งแล้ว ${formatQty(existing.quantity)}]` : ''}
                                       </Button>
                                     );
                                   })}
@@ -2032,9 +2035,9 @@ export default function PurchaseOrdersPage() {
                   {receiveItems.map((item, idx) => {
                     const toRec = Number(item.toReceive) || 0;
                     const mult = Number(item.multiplier) || 1;
-                    const stockDelta = toRec * mult;
+                    const stockDelta = mulQty(toRec, mult);
                     const currentStock = Number(item.currentStock || 0);
-                    const newStock = currentStock + stockDelta;
+                    const newStock = addQty(currentStock, stockDelta);
 
                     return (
                       <TableRow key={idx} className="border-slate-100 hover:bg-slate-50/70">
@@ -2060,16 +2063,18 @@ export default function PurchaseOrdersPage() {
                             {item.unitName} {mult > 1 ? `(×${mult})` : ''}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-center text-slate-700 font-semibold">{item.orderedQty}</TableCell>
-                        <TableCell className="text-center text-emerald-600 font-bold">{item.receivedQty}</TableCell>
-                        <TableCell className="text-center text-amber-700 font-bold">{item.remainingQty}</TableCell>
+                        <TableCell className="text-center text-slate-700 font-semibold">{formatQty(item.orderedQty)}</TableCell>
+                        <TableCell className="text-center text-emerald-600 font-bold">{formatQty(item.receivedQty)}</TableCell>
+                        <TableCell className="text-center text-amber-700 font-bold">{formatQty(item.remainingQty)}</TableCell>
                         <TableCell className="text-right">
                           <Input 
                             type="number" 
                             min="0"
+                            step={qtyStep(allowDecimalQty)}
+                            inputMode={qtyInputMode(allowDecimalQty)}
                             value={item.toReceive}
                             onChange={(e) => {
-                              const val = Math.max(0, Number(e.target.value) || 0);
+                              const val = Math.max(0, parseQty(e.target.value, allowDecimalQty) || 0);
                               const newItems = [...receiveItems];
                               newItems[idx].toReceive = val;
                               setReceiveItems(newItems);
@@ -2080,11 +2085,11 @@ export default function PurchaseOrdersPage() {
                         <TableCell className="text-right text-xs">
                           <div className="flex flex-col items-end">
                             <span className="font-semibold text-slate-800">
-                              {currentStock} → <b className="text-emerald-600 font-bold">{newStock}</b>
+                              {formatQty(currentStock)} → <b className="text-emerald-600 font-bold">{formatQty(newStock)}</b>
                             </span>
                             {stockDelta > 0 && (
                               <span className="text-[11px] font-bold text-emerald-600">
-                                (+{stockDelta} ชิ้น)
+                                (+{formatQty(stockDelta)} ชิ้น)
                               </span>
                             )}
                           </div>
@@ -2098,7 +2103,7 @@ export default function PurchaseOrdersPage() {
 
             {/* Status Preview Card */}
             {(() => {
-              const isAllReceived = receiveItems.every((i) => ((i.receivedQty || 0) + (Number(i.toReceive) || 0)) >= i.orderedQty);
+              const isAllReceived = receiveItems.every((i) => addQty(i.receivedQty || 0, Number(i.toReceive) || 0) >= i.orderedQty);
               const totalItemsReceiving = receiveItems.filter(i => Number(i.toReceive) > 0).length;
               const totalUnitsReceiving = receiveItems.reduce((s, i) => s + (Number(i.toReceive) || 0) * (Number(i.multiplier) || 1), 0);
 
@@ -2198,8 +2203,8 @@ export default function PurchaseOrdersPage() {
                           </button>
                           <span>{item.name || item.product?.name}</span>
                         </TableCell>
-                        <TableCell className="text-right text-slate-700 font-semibold">{item.quantity}</TableCell>
-                        <TableCell className="text-right text-emerald-600 font-bold">{Number(item.receivedQty ?? item.receivedQuantity) || 0}</TableCell>
+                        <TableCell className="text-right text-slate-700 font-semibold">{formatQty(item.quantity)}</TableCell>
+                        <TableCell className="text-right text-emerald-600 font-bold">{formatQty(Number(item.receivedQty ?? item.receivedQuantity) || 0)}</TableCell>
                         <TableCell className="text-right text-slate-600">{formatCurrency(item.unitCost)}</TableCell>
                         <TableCell className="text-right text-slate-900 font-bold">
                           {formatCurrency(item.total !== undefined && item.total !== null ? Number(item.total) : item.quantity * item.unitCost)}
@@ -2585,16 +2590,16 @@ export default function PurchaseOrdersPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {receiveItems
-                      .filter(i => ((Number(i.receivedQty) || 0) + (Number(i.toReceive) || 0)) < Number(i.orderedQty))
+                      .filter(i => addQty(Number(i.receivedQty) || 0, Number(i.toReceive) || 0) < Number(i.orderedQty))
                       .map((item, idx) => {
-                        const totalRec = (Number(item.receivedQty) || 0) + (Number(item.toReceive) || 0);
-                        const diff = Number(item.orderedQty) - totalRec;
+                        const totalRec = addQty(Number(item.receivedQty) || 0, Number(item.toReceive) || 0);
+                        const diff = subQty(item.orderedQty, totalRec);
                         return (
                           <tr key={idx} className="hover:bg-slate-50">
                             <td className="p-2.5 font-medium text-slate-900">{item.name}</td>
-                            <td className="p-2.5 text-center font-bold text-slate-700">{item.orderedQty} {item.unitName}</td>
-                            <td className="p-2.5 text-center font-bold text-emerald-700">{totalRec} {item.unitName}</td>
-                            <td className="p-2.5 text-right font-bold text-rose-600">-{diff} {item.unitName}</td>
+                            <td className="p-2.5 text-center font-bold text-slate-700">{formatQty(item.orderedQty)} {item.unitName}</td>
+                            <td className="p-2.5 text-center font-bold text-emerald-700">{formatQty(totalRec)} {item.unitName}</td>
+                            <td className="p-2.5 text-right font-bold text-rose-600">-{formatQty(diff)} {item.unitName}</td>
                           </tr>
                         );
                       })}

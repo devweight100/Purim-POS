@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { api, apiFetch } from '../api';
 import { Product, Category, ProductUnit } from '../types';
 import { mirrorCategoriesToStorage } from '../category-storage';
+import { addQty } from '../qty';
 
 interface ProductStore {
   products: Product[];
@@ -135,10 +136,9 @@ export const useProductStore = create<ProductStore>((set, get) => ({
         const liveStock =
           p.computedStock !== undefined
             ? Number(p.computedStock)
-            : p.stockBatches?.reduce(
-                (sum: number, b: any) => sum + (b.quantityRemaining || 0),
-                0,
-              ) ?? Number(p.stock || 0);
+            : p.stockBatches
+              ? addQty(...p.stockBatches.map((b: any) => b.quantityRemaining || 0))
+              : Number(p.stock || 0);
 
         return {
           id: pId,

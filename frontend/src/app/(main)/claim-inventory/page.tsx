@@ -57,6 +57,7 @@ import {
   Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { addQty } from '@/lib/qty';
 
 // Item representation for Claim Stock
 interface ClaimStockItem {
@@ -363,7 +364,7 @@ export default function ClaimInventoryPage() {
     );
 
     const totalUniqueInStockProducts = new Set(inStockClaims.map((c) => `${c.productId}_${c.sku}`)).size;
-    const totalInStockPieces = inStockClaims.reduce((s, c) => s + c.quantity, 0);
+    const totalInStockPieces = addQty(...inStockClaims.map((c) => c.quantity));
     const totalInStockCost = inStockClaims.reduce((s, c) => s + c.totalCostValue, 0);
 
     const distinctSuppliers = new Set(inStockClaims.map((c) => c.supplierId));

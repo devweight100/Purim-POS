@@ -213,7 +213,7 @@ export class PlanningService {
       select: { poNumber: true, billDate: true, dueDate: true, paidAmount: true, remainingPayable: true, supplier: { select: { name: true, creditTerms: true } }, items: { select: { receivedQty: true, unitCost: true, quantity: true, total: true } } },
     });
     for (const po of pos) {
-      const received = po.items.reduce((s, i) => s + i.receivedQty * grossPerUnit(i), 0);
+      const received = po.items.reduce((s, i) => s + Number(i.receivedQty) * grossPerUnit(i), 0);
       const amount = round2(Math.max(0, Math.min(Number(po.remainingPayable), received - Number(po.paidAmount))));
       if (amount <= 0) continue;
       const due = po.dueDate ?? new Date(po.billDate.getTime() + (po.supplier.creditTerms ?? 30) * DAY);

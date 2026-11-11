@@ -11,6 +11,7 @@
  * (5 ลัง x 12 + 3 แพ็ค x 6 + 10 ขวด = 88 ขวด).
  */
 import type * as XLSXType from 'xlsx';
+import { addQty, decimalQtyEnabled, formatQty, mulQty } from './qty';
 
 type XLSXLib = typeof XLSXType;
 
@@ -105,13 +106,16 @@ function cellText(v: unknown): string {
   return String(v).trim();
 }
 
-function cellNumber(v: unknown, rowNo: number, label: string, opts: { integer?: boolean; min?: number } = {}): number | undefined {
+function cellNumber(v: unknown, rowNo: number, label: string, opts: { integer?: boolean; min?: number; maxDecimals?: number } = {}): number | undefined {
   const t = cellText(v).replace(/,/g, '');
   if (t === '') return undefined;
   const n = Number(t);
   if (!Number.isFinite(n)) throw new ImportFileError(`แถวที่ ${rowNo}: ${label} "${cellText(v)}" ไม่ใช่ตัวเลข`);
   if (n < (opts.min ?? 0)) throw new ImportFileError(`แถวที่ ${rowNo}: ${label} ต้องไม่ต่ำกว่า ${opts.min ?? 0}`);
   if (opts.integer && !Number.isInteger(n)) throw new ImportFileError(`แถวที่ ${rowNo}: ${label} ต้องเป็นจำนวนเต็ม`);
+  if (opts.maxDecimals !== undefined && Math.abs(n * 10 ** opts.maxDecimals - Math.round(n * 10 ** opts.maxDecimals)) > 1e-6) {
+    throw new ImportFileError(`แถวที่ ${rowNo}: ${label} มีทศนิยมได้ไม่เกิน ${opts.maxDecimals} ตำแหน่ง`);
+  }
   return n;
 }
 
@@ -198,14 +202,16 @@ export function parseUnitsRows(rows: Record<string, unknown>[], headers: string[
     // stock counted in every unit -> smallest unit
     let factor = 1;
     let stockTotal = 0;
+    const allowDecimalStock = decimalQtyEnabled();
     let anyStock = false;
     const stockParts: string[] = [];
     const addStock = (row: Record<string, unknown>, n: number, unitName: string, f: number) => {
-      const c = cellNumber(get(row, 'stock'), n, `จำนวนคงเหลือ (${unitName})`, { integer: true });
+      // whole units unless the store allows decimal quantities (then up to 2 decimals, e.g. 12.5 เมตร)
+      const c = cellNumber(get(row, 'stock'), n, `จำนวนคงเหลือ (${unitName})`, allowDecimalStock ? { maxDecimals: 2 } : { integer: true });
       if (c === undefined) return;
       anyStock = true;
-      stockTotal += c * f;
-      if (c > 0) stockParts.push(`${c.toLocaleString('th-TH')} ${unitName}`);
+      stockTotal = addQty(stockTotal, mulQty(c, f));
+      if (c > 0) stockParts.push(`${formatQty(c, { grouping: true })} ${unitName}`);
     };
     addStock(r, rowNo, unit, 1);
 
@@ -242,7 +248,7 @@ export function parseUnitsRows(rows: Record<string, unknown>[], headers: string[
     if (anyStock) {
       product.stock = stockTotal;
       product.stockNote =
-        stockParts.length > 1 ? `${stockParts.join(' + ')} = ${stockTotal.toLocaleString('th-TH')} ${unit}` : undefined;
+        stockParts.length > 1 ? `${stockParts.join(' + ')} = ${formatQty(stockTotal, { grouping: true })} ${unit}` : undefined;
     }
     return product;
   });

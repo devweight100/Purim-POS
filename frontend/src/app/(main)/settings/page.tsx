@@ -49,6 +49,7 @@ import {
   StoreSettings, 
   DEFAULT_STORE_SETTINGS 
 } from "@/lib/store-settings-storage";
+import { isValidQty, qtyInputMode, qtyStep } from "@/lib/qty";
 import { ThermalReceiptView, SAMPLE_RECEIPT_DATA } from "@/components/pos/ThermalReceiptView";
 import { formatCurrency } from "@/lib/utils";
 import { VersionDetails } from "@/components/common/VersionInfo";
@@ -330,7 +331,9 @@ export default function SettingsPage() {
     if (!String(settings.storeName ?? '').trim()) errors.storeName = 'กรุณาระบุชื่อร้านค้า (จะพิมพ์บนหัวใบเสร็จ)';
     const lowStr = String(lowStockInput).trim();
     const low = Number(lowStr);
-    if (lowStr === '' || !Number.isInteger(low) || low < 0) errors.lowStockThreshold = 'ต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป';
+    if (lowStr === '' || !isValidQty(low, { allowDecimal: settings.allowDecimalQty === true, min: 'nonneg', max: 100000 })) {
+      errors.lowStockThreshold = settings.allowDecimalQty ? 'ต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป (ทศนิยมไม่เกิน 2 ตำแหน่ง)' : 'ต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป';
+    }
     const limStr = String(cashLimitInput).trim();
     const lim = Number(limStr);
     if (limStr === '' || !Number.isFinite(lim) || lim < 0) errors.cashMovementApprovalLimit = 'ต้องเป็นจำนวนเงินตั้งแต่ 0 ขึ้นไป';
@@ -539,6 +542,28 @@ export default function SettingsPage() {
                 <p className="text-[11px] text-slate-500 pl-8">มีผลกับบิลขายใหม่ทุกเครื่องทันทีหลังกดบันทึก (บิลเก่าไม่เปลี่ยน) · ภาษีฝั่งซื้อแยกตามบิลซื้อ ไม่เกี่ยวกับตัวเลือกนี้</p>
               </div>
 
+              {/* Decimal quantities (store-wide): sell by metre / kg / cubic metre */}
+              <div className={`rounded-xl border p-3.5 space-y-1.5 ${settings.allowDecimalQty ? 'border-sky-300 bg-sky-50/60' : 'border-slate-200 bg-slate-50'}`}>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    data-testid="allow-decimal-qty"
+                    checked={settings.allowDecimalQty === true}
+                    onChange={(e) => setSettings({ ...settings, allowDecimalQty: e.target.checked })}
+                    className="mt-0.5 w-5 h-5 rounded text-sky-600 focus:ring-sky-500"
+                  />
+                  <span className="space-y-0.5">
+                    <span className="block text-sm font-extrabold text-slate-900">อนุญาตจำนวนทศนิยม (สูงสุด 2 ตำแหน่ง) เช่น ขายเป็นเมตร / กิโล</span>
+                    <span className="block text-xs text-slate-600 leading-relaxed">
+                      {settings.allowDecimalQty
+                        ? 'เปิดอยู่: ใส่จำนวนได้ เช่น 1.5 เมตร, 2.25 กก., 0.5 คิว ทั้งหน้าขาย ใบสั่งซื้อ ปรับสต็อก คืนสินค้า เคลม และนำเข้าสินค้า'
+                        : 'ปิดอยู่: จำนวนเป็นจำนวนเต็มเท่านั้น (ระบบปฏิเสธจำนวนที่มีทศนิยม)'}
+                    </span>
+                  </span>
+                </label>
+                <p className="text-[11px] text-slate-500 pl-8">มีผลกับทุกเครื่องหลังกดบันทึก · รายการเดิมที่มีทศนิยมยังคงอยู่แม้จะปิดภายหลัง</p>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label htmlFor="low-stock-threshold" className="text-xs font-bold text-slate-700">
@@ -548,8 +573,8 @@ export default function SettingsPage() {
                     id="low-stock-threshold"
                     type="number"
                     min={0}
-                    step={1}
-                    inputMode="numeric"
+                    step={qtyStep(settings.allowDecimalQty === true)}
+                    inputMode={qtyInputMode(settings.allowDecimalQty === true)}
                     value={String(lowStockInput)}
                     onChange={e => setSettings({ ...settings, lowStockThreshold: e.target.value } as unknown as StoreSettings)}
                     aria-invalid={!!storeFieldErrors.lowStockThreshold}

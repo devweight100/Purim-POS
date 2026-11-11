@@ -9,12 +9,12 @@ import * as ledger from '../finance/ledger';
 export const PAYABLE_PO_STATUSES: POStatus[] = [POStatus.PARTIALLY_RECEIVED, POStatus.RECEIVED, POStatus.COMPLETED];
 
 /** Amount that can still be paid now: never more than the value of goods actually received. */
-export function payableNow(po: { totalAmount: any; paidAmount: any; remainingPayable: any; items?: { receivedQty: number; unitCost: any; quantity?: number; total?: any }[] }): number {
+export function payableNow(po: { totalAmount: any; paidAmount: any; remainingPayable: any; items?: { receivedQty: unknown; unitCost: any; quantity?: unknown; total?: any }[] }): number {
   const remaining = Number(po.remainingPayable) || 0;
   if (!po.items) return Math.max(0, remaining);
   // value of goods received so far, incl. discounts and VAT of each line
   const receivedValue = po.items.reduce(
-    (sum, i) => sum + i.receivedQty * (i.quantity && i.total !== undefined ? grossPerUnit({ quantity: i.quantity, total: i.total, unitCost: i.unitCost }) : Number(i.unitCost)),
+    (sum, i) => sum + Number(i.receivedQty) * (Number(i.quantity) && i.total !== undefined ? grossPerUnit({ quantity: i.quantity, total: i.total, unitCost: i.unitCost }) : Number(i.unitCost)),
     0,
   );
   const cap = Math.round((receivedValue - Number(po.paidAmount || 0)) * 100) / 100;

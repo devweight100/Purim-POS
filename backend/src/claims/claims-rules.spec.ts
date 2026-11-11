@@ -19,9 +19,10 @@ describe('claim workflow', () => {
 });
 
 describe('claim stock input', () => {
-  it('rejects negative, fractional and huge quantities', () => {
+  it('rejects negative, 3+ decimal and huge quantities (2 decimals are fine; the store setting is checked separately)', () => {
     expect(() => parseClaimStockQuantity(-1)).toThrow(BadRequestException);
-    expect(() => parseClaimStockQuantity(1.5)).toThrow(BadRequestException);
+    expect(() => parseClaimStockQuantity(1.505)).toThrow(BadRequestException);
+    expect(parseClaimStockQuantity(1.5)).toBe(1.5);
     expect(() => parseClaimStockQuantity(1e30)).toThrow(BadRequestException);
     expect(() => parseClaimStockQuantity('abc')).toThrow(BadRequestException);
     expect(parseClaimStockQuantity('3')).toBe(3);

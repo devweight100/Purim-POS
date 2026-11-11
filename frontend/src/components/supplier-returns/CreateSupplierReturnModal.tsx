@@ -29,6 +29,7 @@ import {
   CreateSupplierReturnItemInput
 } from '@/lib/supplier-return-service';
 import { ClaimRecord, SupplierReturnNote } from '@/lib/types';
+import { addQty, formatQty, isValidQty, parseQty, qtyInputMode, qtyStep, roundQty, useAllowDecimalQty } from '@/lib/qty';
 
 export interface GroupedClaimProduct {
   groupKey: string;
@@ -112,6 +113,7 @@ export function CreateSupplierReturnModal({
   onSuccess,
 }: CreateSupplierReturnModalProps) {
   const [suppliers, setSuppliers] = useState<any[]>([]);
+  const allowDecimalQty = useAllowDecimalQty();
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   
   // Available data for selected supplier
@@ -257,7 +259,7 @@ export function CreateSupplierReturnModal({
 
   // Update return quantity for a grouped defective claim product
   const updateGroupReturnQty = (group: GroupedClaimProduct, newQty: number) => {
-    const clampedQty = Math.max(1, Math.min(newQty, group.totalQuantity));
+    const clampedQty = Math.max(allowDecimalQty ? 0 : 1, Math.min(roundQty(newQty), group.totalQuantity));
     setReturnItems((prev) => {
       const existingIdx = prev.findIndex(
         (i) => (i.productId && i.productId === group.productId) || (i.sku && i.sku === group.sku)
@@ -328,7 +330,7 @@ export function CreateSupplierReturnModal({
       toast.error('กรุณาเลือกสินค้าของผู้จำหน่าย');
       return;
     }
-    const qty = parseFloat(overstockQty) || 0;
+    const qty = parseQty(overstockQty, allowDecimalQty) || 0;
     const cost = parseFloat(overstockCost) || 0;
 
     if (qty <= 0) {
@@ -365,7 +367,7 @@ export function CreateSupplierReturnModal({
   const handleUpdateItemQty = (idx: number, newQty: number) => {
     if (newQty <= 0) return;
     setReturnItems((prev) =>
-      prev.map((item, i) => (i === idx ? { ...item, quantity: newQty } : item))
+      prev.map((item, i) => (i === idx ? { ...item, quantity: roundQty(newQty) } : item))
     );
   };
 
@@ -390,9 +392,9 @@ export function CreateSupplierReturnModal({
       toast.error('กรุณาเลือกหรือเพิ่มรายการสินค้าที่ต้องการส่งคืนอย่างน้อย 1 รายการ');
       return;
     }
-    const badItem = returnItems.find((i: any) => !Number.isInteger(Number(i.quantity)) || Number(i.quantity) <= 0 || !Number.isFinite(Number(i.unitCost)) || Number(i.unitCost) < 0);
+    const badItem = returnItems.find((i: any) => !isValidQty(Number(i.quantity), { allowDecimal: allowDecimalQty }) || !Number.isFinite(Number(i.unitCost)) || Number(i.unitCost) < 0);
     if (badItem) {
-      toast.error(`รายการ "${(badItem as any).productName || ''}" ต้องมีจำนวนเป็นจำนวนเต็มมากกว่า 0 และต้นทุนไม่ติดลบ`);
+      toast.error(`รายการ "${(badItem as any).productName || ''}" ต้องมีจำนวน${allowDecimalQty ? 'มากกว่า 0 (ทศนิยมไม่เกิน 2 ตำแหน่ง)' : 'เป็นจำนวนเต็มมากกว่า 0'} และต้นทุนไม่ติดลบ`);
       return;
     }
     if (finalEffectiveCredit > grandTotalCost + 0.001) {
@@ -582,7 +584,7 @@ export function CreateSupplierReturnModal({
                   className="rounded-xl font-bold text-xs data-[state=active]:bg-white data-[state=active]:text-rose-700 data-[state=active]:shadow-xs gap-1.5"
                 >
                   <ShieldAlert className="w-4 h-4 text-rose-600" />
-                  <span>สต็อกของเคลม ({groupedSupplierClaims.length} รายการ / {availableClaims.reduce((s, c) => s + (c.quantity || 1), 0)} ชิ้น)</span>
+                  <span>สต็อกของเคลม ({groupedSupplierClaims.length} รายการ / {formatQty(addQty(...availableClaims.map((c) => c.quantity || 1)))} ชิ้น)</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="overstock"
@@ -675,10 +677,12 @@ export function CreateSupplierReturnModal({
                                   <div className="relative">
                                     <Input
                                       type="number"
-                                      min="1"
+                                      min={qtyStep(allowDecimalQty)}
+                                      step={qtyStep(allowDecimalQty)}
+                                      inputMode={qtyInputMode(allowDecimalQty)}
                                       max={group.totalQuantity}
                                       value={currentItem.quantity}
-                                      onChange={(e) => updateGroupReturnQty(group, parseFloat(e.target.value) || 1)}
+                                      onChange={(e) => updateGroupReturnQty(group, parseQty(e.target.value, allowDecimalQty) || (allowDecimalQty ? 0 : 1))}
                                       className="h-9 text-xs font-mono font-black text-center bg-slate-50 border-slate-300"
                                     />
                                     <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
@@ -862,10 +866,12 @@ export function CreateSupplierReturnModal({
                                       <div className="relative">
                                         <Input
                                           type="number"
-                                          min="1"
+                                          min={qtyStep(allowDecimalQty)}
+                                          step={qtyStep(allowDecimalQty)}
+                                          inputMode={qtyInputMode(allowDecimalQty)}
                                           max={group.totalQuantity}
                                           value={currentItem.quantity}
-                                          onChange={(e) => updateGroupReturnQty(group, parseFloat(e.target.value) || 1)}
+                                          onChange={(e) => updateGroupReturnQty(group, parseQty(e.target.value, allowDecimalQty) || (allowDecimalQty ? 0 : 1))}
                                           className="h-9 text-xs font-mono font-black text-center bg-slate-50 border-slate-300"
                                         />
                                         <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
@@ -1039,7 +1045,9 @@ export function CreateSupplierReturnModal({
                           </label>
                           <Input
                             type="number"
-                            min="1"
+                            min={qtyStep(allowDecimalQty)}
+                            step={qtyStep(allowDecimalQty)}
+                            inputMode={qtyInputMode(allowDecimalQty)}
                             max={selectedProduct.stock || 9999}
                             value={overstockQty}
                             onChange={(e) => setOverstockQty(e.target.value)}
@@ -1149,9 +1157,11 @@ export function CreateSupplierReturnModal({
                         <td className="p-2.5 text-center">
                           <Input
                             type="number"
-                            min="1"
+                            min={qtyStep(allowDecimalQty)}
+                            step={qtyStep(allowDecimalQty)}
+                            inputMode={qtyInputMode(allowDecimalQty)}
                             value={item.quantity}
-                            onChange={(e) => handleUpdateItemQty(idx, parseFloat(e.target.value) || 1)}
+                            onChange={(e) => handleUpdateItemQty(idx, parseQty(e.target.value, allowDecimalQty) || (allowDecimalQty ? 0.01 : 1))}
                             className="h-7 w-16 text-center font-mono font-bold text-xs mx-auto"
                           />
                         </td>

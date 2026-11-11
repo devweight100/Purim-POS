@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BarcodeView } from '@/components/common/BarcodeView';
+import { formatQty } from '@/lib/qty';
 
 /** Thai labels for every claim resolution type (frontend enum + legacy/backend values). */
 export const CLAIM_RESOLUTION_LABELS: Record<string, string> = {
@@ -245,7 +246,7 @@ export function ClaimReceiptPdfModal({
                   </div>
                   <div className="flex justify-between text-black text-[11px] pl-1">
                     <span>รหัส: {claim.sku}</span>
-                    <span>จำนวน: <b className="font-black font-mono">{claim.quantity} {claim.unitName}</b></span>
+                    <span>จำนวน: <b className="font-black font-mono">{formatQty(claim.quantity)} {claim.unitName}</b></span>
                   </div>
                   <div className="flex justify-between text-[11.5px] font-black text-black pl-1">
                     <span>มูลค่าเดิม:</span>
@@ -405,7 +406,7 @@ export function ClaimReceiptPdfModal({
                               {claim.defectReason || 'ไม่ระบุอาการ'}
                             </td>
                             <td className="py-2.5 px-3 text-center font-mono font-bold border-r border-slate-300">
-                              {claim.quantity} {claim.unitName}
+                              {formatQty(claim.quantity)} {claim.unitName}
                             </td>
                             <td className="py-2.5 px-3 text-right font-mono font-black text-slate-900">
                               {formatCurrency(claim.totalClaimValue)}
@@ -425,7 +426,7 @@ export function ClaimReceiptPdfModal({
                         <tfoot>
                           <tr className="bg-slate-50 font-bold border-t-2 border-slate-300">
                             <td colSpan={4} className="py-2 px-3 text-right text-slate-600 border-r border-slate-300">
-                              จำนวนรวม: {claim.quantity} {claim.unitName}
+                              จำนวนรวม: {formatQty(claim.quantity)} {claim.unitName}
                             </td>
                             <td className="py-2 px-3 text-center text-slate-700 border-r border-slate-300">มูลค่ารวม:</td>
                             <td className="py-2 px-3 text-right font-mono font-black text-indigo-700">
@@ -452,7 +453,7 @@ export function ClaimReceiptPdfModal({
                     {claim.resolutionType === 'REPLACE_ITEM' && (
                       <div className="bg-white p-3 rounded-lg border border-indigo-200 space-y-1 text-slate-800">
                         <p><b>สินค้าตัวใหม่ที่มอบให้ลูกค้า:</b> {claim.replacementProductName || claim.productName}</p>
-                        <p><b>จำนวนที่เปลี่ยน:</b> {claim.quantity} {claim.unitName}</p>
+                        <p><b>จำนวนที่เปลี่ยน:</b> {formatQty(claim.quantity)} {claim.unitName}</p>
                         <p className="text-emerald-700 font-semibold">✨ บันทึกการรับประกันสินค้าชิ้นใหม่ในระบบเรียบร้อยแล้ว</p>
                       </div>
                     )}

@@ -19,6 +19,7 @@ import { RedeemPointsModal } from './RedeemPointsModal';
 import { Customer, getCustomerById, calculateEarnedPoints } from '@/lib/customer-service';
 import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
 import { toast } from 'sonner';
+import { addQty, formatQty, subQty } from '@/lib/qty';
 
 interface PosNeoListLayoutProps {
   viewMode: 'touch_screen' | 'list_view';
@@ -628,7 +629,7 @@ export function PosNeoListLayout({
                           {item.claimQuantity !== undefined && item.claimQuantity > 0 && (
                             <div className="mt-1 inline-flex items-center gap-1 rounded border border-black bg-[#86EFAC] px-1.5 py-0.2 text-[10px] font-black">
                               <ShieldCheck className="w-3 h-3 text-black" />
-                              <span>เคลมฟรี {item.claimQuantity} {item.unitName}</span>
+                              <span>เคลมฟรี {formatQty(item.claimQuantity)} {item.unitName}</span>
                             </div>
                           )}
                           {item.itemNote && (
@@ -655,7 +656,7 @@ export function PosNeoListLayout({
                           <div className="flex items-center justify-center rounded-lg border border-black bg-[#FAF6EE] p-0.5 shadow-[1px_1px_0px_#000] w-fit mx-auto">
                             <button
                               type="button"
-                              onClick={() => cart.updateQuantity(item.productId, item.quantity - 1, item.unitId)}
+                              onClick={() => cart.updateQuantity(item.productId, subQty(item.quantity, 1), item.unitId)}
                               className="h-7 w-7 rounded border border-black bg-white flex items-center justify-center font-black hover:bg-neutral-100 active:translate-x-[1px] active:translate-y-[1px]"
                             >
                               <Minus className="w-3 h-3" />
@@ -666,11 +667,11 @@ export function PosNeoListLayout({
                               className="h-7 w-12 text-center font-mono font-black text-xs text-black hover:bg-[#FEF08A] transition-colors"
                               title="คลิกเพื่อระบุจำนวนด้วย Numpad"
                             >
-                              {item.quantity}
+                              {formatQty(item.quantity)}
                             </button>
                             <button
                               type="button"
-                              onClick={() => cart.updateQuantity(item.productId, item.quantity + 1, item.unitId)}
+                              onClick={() => cart.updateQuantity(item.productId, addQty(item.quantity, 1), item.unitId)}
                               className="h-7 w-7 rounded border border-black bg-white flex items-center justify-center font-black hover:bg-neutral-100 active:translate-x-[1px] active:translate-y-[1px]"
                             >
                               <Plus className="w-3 h-3" />
@@ -914,7 +915,7 @@ export function PosNeoListLayout({
           onConfirm={(val) => {
             if (val >= 0) {
               const currentType = discountEditItem.discountType === 'none' ? 'baht' : discountEditItem.discountType;
-              const discountError = validateDiscount(currentType, val, cart.getEffectivePrice(discountEditItem) * Math.max(0, discountEditItem.quantity - (discountEditItem.claimQuantity || 0)));
+              const discountError = validateDiscount(currentType, val, cart.getEffectivePrice(discountEditItem) * Math.max(0, subQty(discountEditItem.quantity, discountEditItem.claimQuantity || 0)));
               if (discountError) {
                 toast.error(discountError);
                 return;

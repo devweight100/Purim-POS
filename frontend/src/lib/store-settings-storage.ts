@@ -19,6 +19,8 @@ export interface StoreSettings {
   lowStockThreshold?: number;
   /** drawer cash in/out above this needs a manager PIN (0 = always) */
   cashMovementApprovalLimit?: number;
+  /** quantities may have up to 2 decimals (sell by metre / kg); off = whole units only */
+  allowDecimalQty?: boolean;
 }
 
 const STORAGE_KEY = 'pos_store_settings_v2';
@@ -37,6 +39,7 @@ export const DEFAULT_STORE_SETTINGS: StoreSettings = {
   vatRate: 7,
   vatEnabled: false,
   lowStockThreshold: 5,
+  allowDecimalQty: false,
 };
 
 export function loadStoreSettings(): StoreSettings {
@@ -60,6 +63,7 @@ function normalizeStoreSettings(settings: Partial<StoreSettings> | null | undefi
     ...(settings || {}),
     vatRate: Number(settings?.vatRate ?? DEFAULT_STORE_SETTINGS.vatRate),
     vatEnabled: settings?.vatEnabled === true,
+    allowDecimalQty: settings?.allowDecimalQty === true,
     lowStockThreshold: Number.isFinite(Number(settings?.lowStockThreshold)) ? Number(settings?.lowStockThreshold) : 5,
   };
 }

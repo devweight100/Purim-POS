@@ -7,7 +7,8 @@ import { ConflictException } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { ApprovalsService, ApprovalReason } from '../approvals/approvals.service';
 import * as ledger from '../finance/ledger';
-import { validateCheckoutInput, lineAmounts, checkPointsDiscount, claimableBaseQty, paidPerBaseUnit, round2 } from './checkout-guards';
+import { validateCheckoutInput, lineAmounts, checkPointsDiscount, claimableBaseQty, paidPerBaseUnit, round2, MAX_ITEM_QTY } from './checkout-guards';
+import { addQty, decimalQtyAllowed, hasMax2Decimals, mulQty, parseQty, qn, subQty } from '../common/qty';
 
 @Injectable()
 export class OrdersService {
@@ -93,15 +94,17 @@ export class OrdersService {
       const approvalLines: { name: string; qty: number; unitPrice: number; lineDiscount: number; costPerBase: number; netPerBase: number; productId: string; factor: number; claimQty: number; verifiedClaimQty: number }[] = [];
       // Total base quantity per product in this bill (wholesale steps apply on the bill total)
       const billBaseQty = new Map<string, number>();
+      const allowDecimal = await decimalQtyAllowed(tx);
       for (const it of data.items) {
+        it.quantity = parseQty(it.quantity, { allowDecimal, max: MAX_ITEM_QTY, message: 'จำนวนสินค้าหรือราคาไม่ถูกต้อง' });
         const f = Number(it.conversionFactor) > 0 ? Number(it.conversionFactor) : 1;
-        billBaseQty.set(it.productId, (billBaseQty.get(it.productId) || 0) + Number(it.quantity || 0) * f);
+        billBaseQty.set(it.productId, addQty(billBaseQty.get(it.productId) || 0, mulQty(it.quantity, f)));
       }
       const cashierName = cashierUser?.fullName || cashierUser?.username || data.cashierName || 'พนักงานขาย';
 
       // 3. Deduct FIFO Inventory
       for (const item of data.items) {
-        if (!Number.isSafeInteger(item.quantity) || item.quantity <= 0 || !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) < 0) {
+        if (!(item.quantity > 0) || !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) < 0) {
           throw new BadRequestException('จำนวนสินค้าหรือราคาไม่ถูกต้อง');
         }
         // Check if product is a bundle
@@ -131,7 +134,7 @@ export class OrdersService {
           if (!unit || factor !== item.conversionFactor) throw new BadRequestException('หน่วยสินค้าเปลี่ยนแล้ว กรุณาตรวจสอบบิล');
           unitName = unit.name;
         }
-        const baseQuantity = item.quantity * factor;
+        const baseQuantity = mulQty(item.quantity, factor);
         // Price guard: the selling price may not go below the lowest price configured in the
         // system (price levels, unit prices, wholesale steps) unless the user may give discounts.
         if (!canOverridePrice) {
@@ -151,13 +154,13 @@ export class OrdersService {
           // Bundle product: deduct each component item individually!
           bundleSnapshot = [];
           for (const bi of product.bundleItems) {
-            const childDeductQty = bi.quantity * baseQuantity;
+            const childDeductQty = mulQty(bi.quantity, baseQuantity);
             const prevStockAgg = await tx.stockBatch.aggregate({
               where: { productId: bi.childProductId },
               _sum: { quantityRemaining: true },
             });
-            const previousStock = Number(prevStockAgg._sum.quantityRemaining || 0);
-            const currentStock = previousStock - childDeductQty;
+            const previousStock = qn(prevStockAgg._sum.quantityRemaining);
+            const currentStock = subQty(previousStock, childDeductQty);
 
             const childFifo = await this.inventory.deductFIFO(bi.childProductId, childDeductQty, tx);
             itemCogs += childFifo.totalCost;
@@ -165,7 +168,7 @@ export class OrdersService {
               productId: bi.childProductId,
               productName: bi.childProduct.name,
               sku: bi.childProduct.sku,
-              quantityPerBundle: bi.quantity,
+              quantityPerBundle: qn(bi.quantity),
               totalQuantity: childDeductQty,
               unitPrice: Number(bi.childProduct.basePrice || bi.childProduct.priceLevel1 || 0),
               unitCost: childDeductQty > 0 ? childFifo.totalCost / childDeductQty : 0,
@@ -200,8 +203,8 @@ export class OrdersService {
             where: { productId: item.productId },
             _sum: { quantityRemaining: true },
           });
-          const previousStock = Number(prevStockAgg._sum.quantityRemaining || 0);
-          const currentStock = previousStock - baseQuantity;
+          const previousStock = qn(prevStockAgg._sum.quantityRemaining);
+          const currentStock = subQty(previousStock, baseQuantity);
 
           const fifoResult = await this.inventory.deductFIFO(item.productId, baseQuantity, tx);
           itemCogs = fifoResult.totalCost;
@@ -240,7 +243,7 @@ export class OrdersService {
         const price = Number(item.unitPrice);
         const claimQty = !item.isClaimReplacement || !(price > 0)
           ? 0
-          : Number.isSafeInteger(item.claimQuantity) && item.claimQuantity > 0
+          : typeof item.claimQuantity === 'number' && hasMax2Decimals(item.claimQuantity) && item.claimQuantity > 0
             ? Math.min(item.claimQuantity, item.quantity)
             : Math.min(item.quantity, Math.floor(lineDiscount / price + 1e-9));
         approvalLines.push({
@@ -303,10 +306,10 @@ export class OrdersService {
         };
         for (const l of approvalLines) {
           if (!l.claimQty) continue;
-          const need = l.claimQty * l.factor;
+          const need = mulQty(l.claimQty, l.factor);
           const left = await quotaOf(l.productId);
           if (need > left) continue; // not backed by a purchase: stays an ordinary discount (approval rules apply)
-          quota.set(l.productId, left - need);
+          quota.set(l.productId, subQty(left, need));
           l.verifiedClaimQty = l.claimQty;
           verifiedClaimCogs += need * l.costPerBase;
         }
@@ -318,17 +321,17 @@ export class OrdersService {
             if (claim && claim.status === 'PENDING' && claim.resolutionType === 'STORE_DISCOUNT' && (!claim.customerId || claim.customerId === customer.id)
               && !(await tx.auditLog.findFirst({ where: { action: 'CLAIM_DISCOUNT_USED', entityId: claim.id } }))) {
               // the claim's face value, capped by what the customer actually paid for those units
-              const face = Number(claim.totalClaimValue ?? Number(claim.unitPrice || 0) * claim.quantity) || 0;
-              allowance += Math.min(face, claim.baseQuantity * (await paidPerBaseUnit(tx, customer.id, claim.productId)));
+              const face = Number(claim.totalClaimValue ?? Number(claim.unitPrice || 0) * qn(claim.quantity)) || 0;
+              allowance += Math.min(face, qn(claim.baseQuantity) * (await paidPerBaseUnit(tx, customer.id, claim.productId)));
               usedClaimIds.push(claim.id);
             }
           }
           for (const p of Array.isArray(refs.pending) ? refs.pending.slice(0, 50) : []) {
             const qty = Number(p?.quantity);
-            if (typeof p?.productId !== 'string' || !Number.isSafeInteger(qty) || qty <= 0) continue;
+            if (typeof p?.productId !== 'string' || !hasMax2Decimals(qty) || qty <= 0) continue;
             const left = await quotaOf(p.productId);
             if (qty > left) continue;
-            quota.set(p.productId, left - qty);
+            quota.set(p.productId, subQty(left, qty));
             allowance += qty * (await paidPerBaseUnit(tx, customer.id, p.productId));
           }
           verifiedClaimDiscount = Math.min(requestedClaimDiscount, round2(allowance));
@@ -354,7 +357,7 @@ export class OrdersService {
         const sale = approvalLines
           .map((l) => {
             if (!l.verifiedClaimQty) return l;
-            const qty = l.qty - l.verifiedClaimQty;
+            const qty = subQty(l.qty, l.verifiedClaimQty);
             const lineDiscount = Math.max(0, l.lineDiscount - l.verifiedClaimQty * l.unitPrice);
             return { ...l, qty, lineDiscount, netPerBase: qty > 0 ? (qty * l.unitPrice - lineDiscount) / (qty * l.factor) : 0 };
           })
@@ -603,13 +606,13 @@ export class OrdersService {
         const bundleSnapshot = item.bundleData as any[];
         if (Array.isArray(bundleSnapshot) && bundleSnapshot.length > 0) {
           for (const child of bundleSnapshot) {
-            const restoreQty = Number(child.totalQuantity) || 0;
+            const restoreQty = qn(child.totalQuantity);
             const prevStockAgg = await tx.stockBatch.aggregate({
               where: { productId: child.productId },
               _sum: { quantityRemaining: true },
             });
-            const previousStock = Number(prevStockAgg._sum.quantityRemaining || 0);
-            const currentStock = previousStock + restoreQty;
+            const previousStock = qn(prevStockAgg._sum.quantityRemaining);
+            const currentStock = addQty(previousStock, restoreQty);
             const childProd = await tx.product.findUnique({
               where: { id: child.productId },
               select: { sku: true, name: true, unit: true },
@@ -649,13 +652,13 @@ export class OrdersService {
             });
           }
         } else {
-          const restoreQty = Number(item.baseQuantity ?? item.quantity) || 0;
+          const restoreQty = qn(item.baseQuantity ?? item.quantity);
           const prevStockAgg = await tx.stockBatch.aggregate({
             where: { productId: item.productId },
             _sum: { quantityRemaining: true },
           });
-          const previousStock = Number(prevStockAgg._sum.quantityRemaining || 0);
-          const currentStock = previousStock + restoreQty;
+          const previousStock = qn(prevStockAgg._sum.quantityRemaining);
+          const currentStock = addQty(previousStock, restoreQty);
 
           await tx.stockBatch.create({
             data: {

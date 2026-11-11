@@ -2,6 +2,7 @@ import { businessTransaction } from '../prisma/business-transaction';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClaimStatus, ReturnNoteStatus } from '@prisma/client';
+import { addQty, decimalQtyAllowed, fromHund, hasMax2Decimals, isWholeQty, DECIMAL_QTY_DISABLED, qn, roundQty, subQty, toHund } from '../common/qty';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const isMoney = (n: number) => Number.isFinite(n) && n >= 0 && Math.abs(n * 100 - Math.round(n * 100)) < 0.00001;
@@ -23,7 +24,7 @@ export function summarizeReturnItems(items: { itemType: string; quantity: number
   let overstock = 0;
   for (const i of items) {
     const line = round2(Number(i.quantity) * Number(i.unitCost));
-    totalQuantity += Number(i.quantity);
+    totalQuantity = addQty(totalQuantity, i.quantity);
     if (i.itemType === 'OVERSTOCK') overstock += line;
     else defective += line;
   }
@@ -53,14 +54,17 @@ export function statusForRemaining(remaining: number, total: number): ReturnNote
 export class SupplierReturnsService {
   constructor(private prisma: PrismaService) {}
 
-  /** Validate items: qty > 0 (integer), unit cost >= 0, product must exist. */
-  private async normalizeItems(tx: any, raw: any): Promise<NormalizedReturnItem[]> {
+  /** Validate items: qty > 0 (max 2 decimals, whole units unless the store allows decimals), unit cost >= 0, product must exist. */
+  private async normalizeItems(tx: any, raw: any, newItems = true): Promise<NormalizedReturnItem[]> {
     if (!Array.isArray(raw) || raw.length === 0) throw new BadRequestException('กรุณาเลือกสินค้าที่ส่งคืนอย่างน้อย 1 รายการ');
     const out: NormalizedReturnItem[] = [];
+    // items already saved keep their quantities even after the store turns decimal quantities off
+    const allowDecimal = !newItems || (await decimalQtyAllowed(tx));
     for (const item of raw) {
       if (!item || typeof item !== 'object') throw new BadRequestException('รายการสินค้าไม่ถูกต้อง');
-      const qty = Number(item.quantity);
-      if (!Number.isInteger(qty) || qty <= 0) throw new BadRequestException('จำนวนสินค้าที่ส่งคืนต้องเป็นจำนวนเต็มมากกว่า 0');
+      const qty = roundQty(item.quantity);
+      if (typeof item.quantity === 'boolean' || !Number.isFinite(Number(item.quantity)) || !hasMax2Decimals(Number(item.quantity)) || qty <= 0 || qty > 10_000_000) throw new BadRequestException('จำนวนสินค้าที่ส่งคืนต้องมากกว่า 0 (ทศนิยมไม่เกิน 2 ตำแหน่ง)');
+      if (!allowDecimal && !isWholeQty(qty)) throw new BadRequestException(DECIMAL_QTY_DISABLED);
       const unitCost = Number(item.unitCost ?? 0);
       if (typeof item.unitCost === 'boolean' || !isMoney(unitCost)) throw new BadRequestException('ราคาต้นทุนต่อหน่วยต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป');
       const ref = item.productId || item.sku;
@@ -82,7 +86,7 @@ export class SupplierReturnsService {
     const map = new Map<string, number>();
     for (const i of items || []) {
       const qty = Number(i?.quantity || 0);
-      if (i?.itemType === 'OVERSTOCK' && i.productId && qty > 0) map.set(i.productId, (map.get(i.productId) || 0) + qty);
+      if (i?.itemType === 'OVERSTOCK' && i.productId && qty > 0) map.set(i.productId, addQty(map.get(i.productId) || 0, qty));
     }
     return map;
   }
@@ -92,15 +96,16 @@ export class SupplierReturnsService {
     const prod = await tx.product.findFirst({ where: { OR: [{ id: productId }, { sku: productId }] } });
     if (!prod) throw new BadRequestException('ไม่พบสินค้าที่ส่งคืนในระบบ');
     const batches = await tx.stockBatch.findMany({ where: { productId: prod.id }, orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }] });
-    const previousStock = batches.reduce((sum: number, b: any) => sum + b.quantityRemaining, 0);
-    const available = batches.reduce((sum: number, b: any) => sum + Math.max(0, b.quantityRemaining), 0);
+    const previousStock = addQty(...batches.map((b: any) => b.quantityRemaining));
+    const available = fromHund(batches.reduce((sum: number, b: any) => sum + Math.max(0, toHund(b.quantityRemaining)), 0));
     if (qty > available) throw new BadRequestException(`สต็อก "${prod.name}" ไม่พอส่งคืน (คงเหลือ ${available} ต้องการ ${qty})`);
-    let left = qty;
+    let left = toHund(qty);
     for (const batch of batches) {
       if (left <= 0) break;
-      if (batch.quantityRemaining <= 0) continue;
-      const take = Math.min(batch.quantityRemaining, left);
-      await tx.stockBatch.update({ where: { id: batch.id }, data: { quantityRemaining: { decrement: take } } });
+      const batchH = toHund(batch.quantityRemaining);
+      if (batchH <= 0) continue;
+      const take = Math.min(batchH, left);
+      await tx.stockBatch.update({ where: { id: batch.id }, data: { quantityRemaining: fromHund(batchH - take) } });
       left -= take;
     }
     await tx.auditLog.create({
@@ -108,7 +113,7 @@ export class SupplierReturnsService {
         action: 'STOCK_ADJUST_SUB', entity: 'Product', entityId: prod.id,
         details: {
           productId: prod.id, sku: prod.sku, productName: prod.name, unitName: prod.unit || 'ชิ้น', type: 'ADJUST_SUB',
-          quantityChange: -qty, previousStock, currentStock: previousStock - qty,
+          quantityChange: -qty, previousStock, currentStock: subQty(previousStock, qty),
           referenceType: 'SUPPLIER_RETURN', referenceNo: ref, reason, userName,
         },
       },
@@ -119,14 +124,14 @@ export class SupplierReturnsService {
   private async addStock(tx: any, productId: string, qty: number, unitCost: number | undefined, ref: string, reason: string) {
     const prod = await tx.product.findFirst({ where: { OR: [{ id: productId }, { sku: productId }] }, include: { stockBatches: true } });
     if (!prod) return;
-    const previousStock = prod.stockBatches.reduce((sum: number, b: any) => sum + b.quantityRemaining, 0);
+    const previousStock = addQty(...prod.stockBatches.map((b: any) => b.quantityRemaining));
     await tx.stockBatch.create({ data: { productId: prod.id, quantityReceived: qty, quantityRemaining: qty, unitCost: Number(unitCost ?? prod.costPrice ?? 0), note: reason } });
     await tx.auditLog.create({
       data: {
         action: 'STOCK_ADJUST_ADD', entity: 'Product', entityId: prod.id,
         details: {
           productId: prod.id, sku: prod.sku, productName: prod.name, unitName: prod.unit || 'ชิ้น', type: 'ADJUST_ADD',
-          quantityChange: qty, previousStock, currentStock: previousStock + qty,
+          quantityChange: qty, previousStock, currentStock: addQty(previousStock, qty),
           referenceType: 'SUPPLIER_RETURN_CANCEL', referenceNo: ref, reason, userName: 'เจ้าหน้าที่ฝ่ายส่งคืน/เคลม',
         },
       },
@@ -458,8 +463,8 @@ export class SupplierReturnsService {
           }
         }
         const inv = await tx.claimInventory.findFirst({ where: { productId: item.productId } });
-        if (inv && inv.quantity > 0) {
-          await tx.claimInventory.update({ where: { id: inv.id }, data: { quantity: Math.max(0, inv.quantity - item.quantity) } });
+        if (inv && qn(inv.quantity) > 0) {
+          await tx.claimInventory.update({ where: { id: inv.id }, data: { quantity: Math.max(0, subQty(inv.quantity, item.quantity)) } });
         }
       }
 
@@ -594,7 +599,7 @@ export class SupplierReturnsService {
         }
         if (itemsGiven || totalGiven) {
           const oldItems = Array.isArray(prevMeta.items) ? prevMeta.items : [];
-          const items = await this.normalizeItems(tx, itemsGiven ? dto.items : oldItems);
+          const items = await this.normalizeItems(tx, itemsGiven ? dto.items : oldItems, !!itemsGiven);
           const sums = summarizeReturnItems(items);
           total = resolveCreditAmount(dto.totalCreditAmount ?? dto.totalAmount, sums.itemsTotal);
           if (total + 0.001 < used) throw new BadRequestException(`ยอดเครดิตต้องไม่น้อยกว่ายอดที่ถูกใช้หักไปแล้ว (฿${used.toFixed(2)})`);
@@ -604,7 +609,7 @@ export class SupplierReturnsService {
               const before = this.overstockByProduct(oldItems);
               const after = this.overstockByProduct(items);
               for (const productId of new Set([...before.keys(), ...after.keys()])) {
-                const delta = (after.get(productId) || 0) - (before.get(productId) || 0);
+                const delta = subQty(after.get(productId) || 0, before.get(productId) || 0);
                 if (delta > 0) await this.deductStock(tx, productId, delta, note.returnNumber, 'เจ้าหน้าที่ฝ่ายส่งคืน/เคลม', `แก้ไขใบส่งคืนสินค้า #${note.returnNumber}`);
                 else if (delta < 0) await this.addStock(tx, productId, -delta, this.unitCostOf(oldItems, productId), note.returnNumber, `แก้ไขใบส่งคืนสินค้า #${note.returnNumber} (คืนสต็อก)`);
               }

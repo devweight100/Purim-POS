@@ -58,8 +58,10 @@ import {
   adjustSingleProductStock,
 } from '@/lib/stock-service';
 import { toast } from 'sonner';
+import { addQty, formatQty, isValidQty, qtyInputMode, qtyStep, subQty, useAllowDecimalQty } from '@/lib/qty';
 
 export default function InventoryPage() {
+  const allowDecimalQty = useAllowDecimalQty();
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string | 'all'>('all');
   const [stockStatusFilter, setStockStatusFilter] = useState<'all' | 'normal' | 'low' | 'out' | 'negative'>('all');
@@ -150,19 +152,21 @@ export default function InventoryPage() {
       return `${stock.toLocaleString()} ${baseUnit}`;
     }
 
-    let remaining = stock;
+    // whole hundredths: decimal stock (7.25 m) splits into packs without float residue
+    let remainingH = Math.round(stock * 100);
     const parts: string[] = [];
 
     for (const p of sorted) {
-      if (remaining >= p.multiplier) {
-        const count = Math.floor(remaining / p.multiplier);
+      const unitH = Math.round(p.multiplier * 100);
+      if (remainingH >= unitH) {
+        const count = Math.floor(remainingH / unitH);
         parts.push(`${count.toLocaleString()} ${p.name}`);
-        remaining = remaining % p.multiplier;
+        remainingH = remainingH % unitH;
       }
     }
 
-    if (remaining > 0 || parts.length === 0) {
-      parts.push(`${remaining.toLocaleString()} ${baseUnit}`);
+    if (remainingH > 0 || parts.length === 0) {
+      parts.push(`${formatQty(remainingH / 100, { grouping: true })} ${baseUnit}`);
     }
 
     return parts.join(' ');
@@ -306,8 +310,8 @@ export default function InventoryPage() {
       toast.error('จำนวนที่ปรับต้องมากกว่า 0');
       return;
     }
-    if (!Number.isInteger(numAmount)) {
-      toast.error('จำนวนต้องเป็นจำนวนเต็ม');
+    if (!isValidQty(numAmount, { allowDecimal: allowDecimalQty, min: 'nonneg' })) {
+      toast.error(allowDecimalQty ? 'จำนวนมีทศนิยมได้ไม่เกิน 2 ตำแหน่ง' : 'จำนวนต้องเป็นจำนวนเต็ม');
       return;
     }
 
@@ -1203,6 +1207,8 @@ export default function InventoryPage() {
               <Input
                 type="number"
                 min="0"
+                step={qtyStep(allowDecimalQty)}
+                inputMode={qtyInputMode(allowDecimalQty)}
                 placeholder="ระบุจำนวนตัวเลข..."
                 value={adjustAmount}
                 onChange={(e) => setAdjustAmount(e.target.value)}
@@ -1216,9 +1222,9 @@ export default function InventoryPage() {
                   <div className="font-extrabold text-sm">
                     {targetProduct.stock ?? 0} ➔{' '}
                     <span className="text-emerald-700 text-base">
-                      {adjustType === 'ADD' && (Number(targetProduct.stock ?? 0) + Number(adjustAmount)).toLocaleString()}
-                      {adjustType === 'SUB' && Math.max(0, Number(targetProduct.stock ?? 0) - Number(adjustAmount)).toLocaleString()}
-                      {adjustType === 'SET' && Number(adjustAmount).toLocaleString()}
+                      {adjustType === 'ADD' && formatQty(addQty(targetProduct.stock ?? 0, adjustAmount), { grouping: true })}
+                      {adjustType === 'SUB' && formatQty(Math.max(0, subQty(targetProduct.stock ?? 0, adjustAmount)), { grouping: true })}
+                      {adjustType === 'SET' && formatQty(adjustAmount, { grouping: true })}
                     </span>{' '}
                     {targetProduct.unit || 'ชิ้น'}
                   </div>

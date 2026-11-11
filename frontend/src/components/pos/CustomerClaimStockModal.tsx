@@ -30,6 +30,7 @@ import { processClaim, ProcessClaimParams } from '../../lib/claim-service';
 import { PendingClaimItem } from '../../lib/types';
 import { formatCurrency } from '../../lib/utils';
 import { toast } from 'sonner';
+import { addQty, minQty, parseQty, qtyInputMode, qtyStep, roundQty, subQty, useAllowDecimalQty } from '@/lib/qty';
 
 interface CustomerClaimStockModalProps {
   isOpen: boolean;
@@ -59,6 +60,7 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
   const products = useProductStore((s) => s.products);
 
   const [loading, setLoading] = useState(false);
+  const allowDecimalQty = useAllowDecimalQty();
   const [stockSummary, setStockSummary] = useState<CustomerStockSummary | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedProductIds, setExpandedProductIds] = useState<Record<string, boolean>>({});
@@ -141,7 +143,7 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
   };
 
   const handleUpdateClaimQty = (productId: string, qty: number, maxQty: number) => {
-    const validQty = Math.max(1, Math.min(qty, maxQty));
+    const validQty = Math.max(allowDecimalQty ? 0 : 1, Math.min(roundQty(qty), maxQty));
     setSelectedClaims((prev) => {
       if (!prev[productId]) return prev;
       return {
@@ -496,7 +498,7 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
                               onClick={() =>
                                 handleUpdateClaimQty(
                                   item.productId,
-                                  selectedEntry.claimQty - 1,
+                                  Math.max(minQty(allowDecimalQty), subQty(selectedEntry.claimQty, 1)),
                                   item.availableClaimQuantity
                                 )
                               }
@@ -506,13 +508,15 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
                             </button>
                             <input
                               type="number"
-                              min="1"
+                              min={qtyStep(allowDecimalQty)}
+                              step={qtyStep(allowDecimalQty)}
+                              inputMode={qtyInputMode(allowDecimalQty)}
                               max={item.availableClaimQuantity}
                               value={selectedEntry.claimQty}
                               onChange={(e) =>
                                 handleUpdateClaimQty(
                                   item.productId,
-                                  parseInt(e.target.value) || 1,
+                                  parseQty(e.target.value, allowDecimalQty) || (allowDecimalQty ? 0 : 1),
                                   item.availableClaimQuantity
                                 )
                               }
@@ -523,7 +527,7 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
                               onClick={() =>
                                 handleUpdateClaimQty(
                                   item.productId,
-                                  selectedEntry.claimQty + 1,
+                                  addQty(selectedEntry.claimQty, 1),
                                   item.availableClaimQuantity
                                 )
                               }

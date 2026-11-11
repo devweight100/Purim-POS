@@ -48,6 +48,7 @@ import {
   Layers
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { addQty, formatQty, minQty, parseQty, qtyInputMode, qtyStep, subQty, useAllowDecimalQty } from '@/lib/qty';
 
 interface ProductClaimModalProps {
   open: boolean;
@@ -63,6 +64,7 @@ export function ProductClaimModal({
   isBackoffice = false,
 }: ProductClaimModalProps) {
   const [searchKeyword, setSearchKeyword] = useState('');
+  const allowDecimalQty = useAllowDecimalQty();
   const [eligibleItems, setEligibleItems] = useState<ClaimEligibleItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<ClaimEligibleItem | null>(null);
 
@@ -213,7 +215,10 @@ export function ProductClaimModal({
         : selectedItem.availableClaimQuantity * (selectedItem.conversionFactor || 1))
     : 0;
 
-  const maxClaimQty = Math.max(1, Math.floor(remainingBaseQuota / currentClaimUnit.factor));
+  // whole units unless the store allows decimals (then up to 2 decimals)
+  const maxClaimQty = allowDecimalQty
+    ? Math.max(0.01, Math.floor((remainingBaseQuota / currentClaimUnit.factor) * 100 + 1e-7) / 100)
+    : Math.max(1, Math.floor(remainingBaseQuota / currentClaimUnit.factor));
 
   // Submit Claim
   const claimSubmitting = useRef(false);
@@ -964,29 +969,31 @@ export function ProductClaimModal({
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setClaimQty((q) => Math.max(1, q - 1))}
+                      onClick={() => setClaimQty((q) => Math.max(minQty(allowDecimalQty), subQty(q, 1)))}
                       className="w-10 h-10 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 font-black text-slate-800"
                     >
                       -
                     </button>
                     <input
                       type="number"
-                      min={1}
+                      min={qtyStep(allowDecimalQty)}
+                      step={qtyStep(allowDecimalQty)}
+                      inputMode={qtyInputMode(allowDecimalQty)}
                       max={maxClaimQty}
                       value={claimQty}
-                      onChange={(e) => setClaimQty(Math.min(maxClaimQty, Math.max(1, Number(e.target.value))))}
+                      onChange={(e) => setClaimQty(Math.min(maxClaimQty, Math.max(allowDecimalQty ? 0 : 1, parseQty(e.target.value, allowDecimalQty) || 0)))}
                       className="w-16 h-10 text-center font-mono font-black text-base border border-slate-300 rounded-xl bg-white shadow-inner"
                     />
                     <button
                       type="button"
-                      onClick={() => setClaimQty((q) => Math.min(maxClaimQty, q + 1))}
+                      onClick={() => setClaimQty((q) => Math.min(maxClaimQty, addQty(q, 1)))}
                       className="w-10 h-10 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 font-black text-slate-800"
                     >
                       +
                     </button>
                   </div>
                   <span className="text-[10.5px] text-slate-500 mt-1 block">
-                    เคลมได้สูงสุด {maxClaimQty} {currentClaimUnit.unitName}
+                    เคลมได้สูงสุด {formatQty(maxClaimQty)} {currentClaimUnit.unitName}
                   </span>
                 </div>
 

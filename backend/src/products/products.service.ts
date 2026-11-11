@@ -6,10 +6,11 @@ import { InventoryService } from '../inventory/inventory.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { rethrowPrismaError } from './prisma-errors';
+import { addQty, assertQtyAllowed, decimalQtyAllowed, hasMax2Decimals, qn, roundQty } from '../common/qty';
 
 /** Highest price / cost accepted for a product (columns are Decimal(10,2)). */
 export const MAX_PRODUCT_PRICE = 10_000_000;
-/** Highest stock quantity accepted from an import (stock columns are 32-bit ints). */
+/** Highest stock quantity accepted from an import (stock columns are DECIMAL(12,2)). */
 export const MAX_IMPORT_STOCK = 10_000_000;
 const MAX_QTY_PER_PREV = 100_000;
 
@@ -105,11 +106,13 @@ export class ProductsService {
   private async assertBundleChildren(tx: any, productId: string | null, items: any[] | undefined) {
     if (!Array.isArray(items) || items.length === 0) return;
     const ids: string[] = [];
+    const allowDecimal = await decimalQtyAllowed(tx);
     for (const item of items) {
       const id = item?.childProductId ? String(item.childProductId).trim() : '';
       const qty = Number(item?.quantity);
       if (!id) throw new BadRequestException('กรุณาเลือกสินค้าในชุดสินค้า (bundle)');
-      if (!Number.isSafeInteger(qty) || qty < 1) throw new BadRequestException('จำนวนสินค้าในชุดต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป');
+      if (!Number.isFinite(qty) || !hasMax2Decimals(qty) || qty <= 0 || qty > 100000) throw new BadRequestException('จำนวนสินค้าในชุดต้องมากกว่า 0 (ทศนิยมไม่เกิน 2 ตำแหน่ง)');
+      if (!Number.isSafeInteger(qty)) assertQtyAllowed(qty, allowDecimal);
       if (productId && id === productId) throw new BadRequestException('ชุดสินค้าไม่สามารถมีตัวเองเป็นส่วนประกอบได้');
       ids.push(id);
     }
@@ -155,19 +158,13 @@ export class ProductsService {
     if (product.isBundle && product.bundleItems && product.bundleItems.length > 0) {
       const possibleSets = product.bundleItems.map((bi: any) => {
         const childStock =
-          bi.childProduct?.stockBatches?.reduce(
-            (sum: number, batch: any) => sum + batch.quantityRemaining,
-            0,
-          ) || 0;
-        const requiredPerSet = Number(bi.quantity) || 1;
-        return Math.floor(childStock / requiredPerSet);
+          addQty(...(bi.childProduct?.stockBatches || []).map((batch: any) => batch.quantityRemaining)) || 0;
+        const requiredPerSet = qn(bi.quantity) || 1;
+        return Math.floor(childStock / requiredPerSet + 1e-9);
       });
       stock = Math.min(...possibleSets);
     } else {
-      const sum = product.stockBatches?.reduce(
-        (acc: number, batch: any) => acc + Number(batch.quantityRemaining || 0),
-        0,
-      );
+      const sum = addQty(...(product.stockBatches || []).map((batch: any) => batch.quantityRemaining));
       stock = typeof sum === 'number' && !isNaN(sum) ? sum : 0;
     }
 
@@ -221,7 +218,7 @@ export class ProductsService {
       .filter((item) => item?.childProductId && Number(item?.quantity) > 0)
       .map((item) => ({
         childProductId: String(item.childProductId).trim(),
-        quantity: Math.max(1, Math.round(Number(item.quantity))),
+        quantity: Math.max(0.01, roundQty(item.quantity)),
       }));
   }
 
@@ -261,7 +258,7 @@ export class ProductsService {
     return prices
       .filter((price) => Number(price?.minQuantity) > 0 && Number(price?.unitPrice) > 0)
       .map((price, index) => ({
-        minQuantity: Number(price.minQuantity),
+        minQuantity: roundQty(price.minQuantity),
         unitPrice: parsePrice(price.unitPrice, 'ราคาขายส่ง'),
         sortOrder: index,
       }));
@@ -650,8 +647,9 @@ export class ProductsService {
     let stock: number | undefined;
     if (!isBlank(item.stock)) {
       const n = typeof item.stock === 'string' ? Number(item.stock.replace(/,/g, '').trim()) : Number(item.stock);
-      if (!Number.isSafeInteger(n) || n < 0 || n > MAX_IMPORT_STOCK) throw rowErr('จำนวนสต็อกต้องเป็นจำนวนเต็มตั้งแต่ 0 ขึ้นไป');
-      stock = n;
+      // up to 2 decimals; whether decimals are allowed at all is checked against the store setting on save
+      if (!Number.isFinite(n) || !hasMax2Decimals(n) || n < 0 || n > MAX_IMPORT_STOCK) throw rowErr('จำนวนสต็อกต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป (ทศนิยมไม่เกิน 2 ตำแหน่ง)');
+      stock = roundQty(n);
     }
 
     // Pack units from the import file (larger units of this product, smallest first). Present ->

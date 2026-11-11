@@ -438,7 +438,7 @@ export class FinanceService {
     });
     const payItems = pos
       .map((po) => {
-        const received = po.items.reduce((sum, i) => sum + i.receivedQty * grossPerUnit(i), 0);
+        const received = po.items.reduce((sum, i) => sum + Number(i.receivedQty) * grossPerUnit(i), 0);
         const amount = round2(Math.max(0, Math.min(Number(po.remainingPayable), received - Number(po.paidAmount))));
         const due = po.dueDate ?? new Date(po.billDate.getTime() + (po.supplier.creditTerms ?? 30) * DAY);
         const daysToDue = Math.floor((bangkokStartOfDay(due).getTime() - today.getTime()) / DAY);

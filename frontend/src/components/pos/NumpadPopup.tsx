@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import { formatCurrency } from '@/lib/utils';
 import { Delete, Keyboard } from 'lucide-react';
+import { formatQty, roundQty } from '@/lib/qty';
 
 interface NumpadPopupProps {
   open: boolean;
@@ -18,6 +19,8 @@ interface NumpadPopupProps {
   initialValue?: number;
   allowDecimals?: boolean;
   fullAmount?: number;
+  /** quantity entry: shows the number as typed (1.5, not ฿1.50) and keeps at most 2 decimals */
+  quantityMode?: boolean;
 }
 
 export function NumpadPopup({
@@ -28,8 +31,10 @@ export function NumpadPopup({
   subtitle,
   initialValue = 0,
   allowDecimals = true,
-  fullAmount
+  fullAmount,
+  quantityMode = false,
 }: NumpadPopupProps) {
+  const parseValue = (v: string) => (allowDecimals ? roundQty(parseFloat(v)) : parseInt(v, 10));
   const [value, setValue] = useState(initialValue >= 0 ? Math.floor(initialValue).toString() : '');
   const [isFirstKey, setIsFirstKey] = useState(true);
 
@@ -73,6 +78,8 @@ export function NumpadPopup({
       if (isFirstKey) {
         setValue(key);
         setIsFirstKey(false);
+      } else if (value.includes('.') && value.split('.')[1].length >= 2) {
+        return; // at most 2 decimals
       } else {
         if (value === '0') {
           setValue(key);
@@ -94,7 +101,7 @@ export function NumpadPopup({
   };
 
   const handleConfirm = () => {
-    const num = allowDecimals ? parseFloat(value) : parseInt(value, 10);
+    const num = parseValue(value);
     if (!isNaN(num) && num >= 0) {
       onConfirm(num);
       onOpenChange(false);
@@ -127,7 +134,7 @@ export function NumpadPopup({
         handleFullAmount();
       } else if (key === 'Enter' || code === 'Enter' || code === 'NumpadEnter') {
         e.preventDefault();
-        const num = allowDecimals ? parseFloat(value) : parseInt(value, 10);
+        const num = parseValue(value);
         if (!isNaN(num) && num >= 0) {
           onConfirm(num);
           onOpenChange(false);
@@ -142,7 +149,9 @@ export function NumpadPopup({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [open, value, isFirstKey, onConfirm, onOpenChange, allowDecimals, fullAmount]);
 
-  const displayFormatted = allowDecimals
+  const displayFormatted = quantityMode
+    ? (value === '' || isNaN(parseFloat(value)) ? '0' : value.endsWith('.') ? formatQty(parseFloat(value), { grouping: true }) + '.' : value.includes('.') && value.endsWith('0') ? Number(parseFloat(value)).toLocaleString('en-US', { minimumFractionDigits: value.split('.')[1].length, maximumFractionDigits: 2 }) : formatQty(parseFloat(value), { grouping: true }))
+    : allowDecimals
     ? (value !== '' && !isNaN(parseFloat(value)) ? formatCurrency(parseFloat(value)).replace('฿', '') : '0.00')
     : (value !== '' && !isNaN(parseInt(value, 10)) ? parseInt(value, 10).toLocaleString('th-TH') : '0');
 

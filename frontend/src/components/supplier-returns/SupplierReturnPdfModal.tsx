@@ -20,6 +20,7 @@ import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
 import { BarcodeView } from '@/components/common/BarcodeView';
 import { toast } from 'sonner';
+import { formatQty } from '@/lib/qty';
 
 interface SupplierReturnPdfModalProps {
   open: boolean;
@@ -227,7 +228,7 @@ export function SupplierReturnPdfModal({
                         {item.defectReason || 'สินค้าชำรุดจากการใช้งาน'}
                       </td>
                       <td className="py-2 px-2 text-center font-mono font-bold border-r border-slate-300">
-                        {item.quantity} {item.unitName || 'ชิ้น'}
+                        {formatQty(item.quantity, { grouping: true })} {item.unitName || 'ชิ้น'}
                       </td>
                       <td className="py-2 px-2.5 text-right font-mono border-r border-slate-300">{formatCurrency(item.unitCost)}</td>
                       <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
@@ -249,7 +250,7 @@ export function SupplierReturnPdfModal({
                         {item.returnReason || 'สินค้าปกติขายไม่ออก / คืนสต็อก'}
                       </td>
                       <td className="py-2 px-2 text-center font-mono font-bold border-r border-slate-300">
-                        {item.quantity} {item.unitName || 'ชิ้น'}
+                        {formatQty(item.quantity, { grouping: true })} {item.unitName || 'ชิ้น'}
                       </td>
                       <td className="py-2 px-2.5 text-right font-mono border-r border-slate-300">{formatCurrency(item.unitCost)}</td>
                       <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
@@ -274,7 +275,7 @@ export function SupplierReturnPdfModal({
               <div className="border-t-2 border-slate-300 bg-slate-50 p-3 space-y-1.5 shrink-0">
                 <div className="flex justify-between items-center text-xs">
                   <span className="text-slate-700 font-medium">
-                    จำนวนสินค้ารวม: <b className="text-slate-900 font-mono font-bold">{returnNote.totalQuantity} ชิ้น</b>
+                    จำนวนสินค้ารวม: <b className="text-slate-900 font-mono font-bold">{formatQty(returnNote.totalQuantity, { grouping: true })} ชิ้น</b>
                     {defectiveItems.length > 0 && overstockItems.length > 0 && (
                       <span className="text-slate-500 ml-2">(ชำรุด {formatCurrency(defectiveTotal)} • ปกติ {formatCurrency(overstockTotal)})</span>
                     )}
