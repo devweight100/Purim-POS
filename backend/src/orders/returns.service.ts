@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { businessTransaction } from '../prisma/business-transaction';
 import * as ledger from '../finance/ledger';
+import { addQty, decimalQtyAllowed, mulQty, parseQty, qn, roundQty, subQty } from '../common/qty';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const CLIENT_ID = /^[a-zA-Z0-9-]{16,80}$/;
@@ -53,7 +54,12 @@ export class ReturnsService {
       if (order.status !== 'COMPLETED') throw new BadRequestException('คืนสินค้าได้เฉพาะบิลที่สำเร็จแล้ว');
 
       const returnedQty = new Map<string, number>();
-      for (const r of order.returns) for (const it of r.items) returnedQty.set(it.orderItemId, (returnedQty.get(it.orderItemId) || 0) + it.quantity);
+      const returnedBase = new Map<string, number>();
+      for (const r of order.returns) for (const it of r.items) {
+        returnedQty.set(it.orderItemId, addQty(returnedQty.get(it.orderItemId) || 0, it.quantity));
+        returnedBase.set(it.orderItemId, addQty(returnedBase.get(it.orderItemId) || 0, it.baseQuantity));
+      }
+      const allowDecimal = await decimalQtyAllowed(tx);
       const billFactor = Number(order.subtotal) > 0 ? Number(order.totalAmount) / Number(order.subtotal) : 1; // bill-level discount share
 
       const now = new Date();
@@ -68,12 +74,16 @@ export class ReturnsService {
       for (const line of lines) {
         const item = order.items.find((i) => i.id === line.orderItemId);
         if (!item) throw new BadRequestException('รายการสินค้าไม่อยู่ในบิลนี้');
-        const qty = Number(line.quantity);
-        const left = item.quantity - (returnedQty.get(item.id) || 0);
-        if (!Number.isSafeInteger(qty) || qty <= 0 || qty > left) throw new BadRequestException(`${item.product.name} คืนได้ไม่เกิน ${left} ${item.unitName || item.product.unit || 'ชิ้น'}`);
-        const factor = (item.baseQuantity ?? item.quantity) / item.quantity;
-        const baseQty = Math.round(qty * factor);
-        const lineRefund = round2((Number(item.total) * qty / item.quantity) * billFactor);
+        const itemQty = qn(item.quantity);
+        const itemBase = qn(item.baseQuantity ?? item.quantity);
+        const left = subQty(itemQty, returnedQty.get(item.id) || 0);
+        const overMsg = `${item.product.name} คืนได้ไม่เกิน ${left} ${item.unitName || item.product.unit || 'ชิ้น'}`;
+        const qty = parseQty(line.quantity, { allowDecimal, message: overMsg });
+        if (qty > left) throw new BadRequestException(overMsg);
+        const factor = itemQty > 0 ? itemBase / itemQty : 1;
+        // the last part of a line returns exactly what is left in base units (no rounding residue)
+        const baseQty = qty === left ? subQty(itemBase, returnedBase.get(item.id) || 0) : mulQty(qty, factor);
+        const lineRefund = round2((Number(item.total) * qty / itemQty) * billFactor);
         const unitCost = Number(item.unitCost);
         const restock = line.restock !== false;
         refund += lineRefund;
@@ -81,18 +91,18 @@ export class ReturnsService {
         if (restock) {
           const bundle = Array.isArray(item.bundleData) ? (item.bundleData as any[]) : [];
           const parts = bundle.length
-            ? bundle.map((c) => ({ productId: c.productId, name: c.productName, qty: Math.round(Number(c.totalQuantity) * qty / item.quantity), cost: Number(c.unitCost) || 0 }))
+            ? bundle.map((c) => ({ productId: c.productId, name: c.productName, qty: roundQty(Number(c.totalQuantity) * qty / itemQty), cost: Number(c.unitCost) || 0 }))
             : [{ productId: item.productId, name: item.product.name, qty: baseQty, cost: unitCost }];
           for (const part of parts) {
             if (part.qty <= 0) continue;
             const agg = await tx.stockBatch.aggregate({ where: { productId: part.productId }, _sum: { quantityRemaining: true } });
-            const previousStock = Number(agg._sum.quantityRemaining || 0);
+            const previousStock = qn(agg._sum.quantityRemaining);
             await tx.stockBatch.create({ data: { productId: part.productId, quantityReceived: part.qty, quantityRemaining: part.qty, unitCost: part.cost, note: `รับคืนจากลูกค้า ${returnNumber} (บิล ${order.orderNumber})` } });
             cogsReturned += part.qty * part.cost;
             await tx.auditLog.create({
               data: {
                 userId: actor?.id ?? null, action: 'STOCK_IN_RETURN', entity: 'Product', entityId: part.productId,
-                details: { productId: part.productId, productName: part.name, type: 'IN_RETURN', quantityChange: part.qty, previousStock, currentStock: previousStock + part.qty, referenceType: 'RETURN', referenceNo: returnNumber, reason: `ลูกค้าคืนสินค้า: ${reason}`, userName: actorName },
+                details: { productId: part.productId, productName: part.name, type: 'IN_RETURN', quantityChange: part.qty, previousStock, currentStock: addQty(previousStock, part.qty), referenceType: 'RETURN', referenceNo: returnNumber, reason: `ลูกค้าคืนสินค้า: ${reason}`, userName: actorName },
               },
             });
           }
@@ -103,7 +113,7 @@ export class ReturnsService {
       // the last return of a bill refunds exactly what is left (no rounding residue)
       const fullyReturned = order.items.every((i) => {
         const now = itemRows.find((r) => r.orderItemId === i.id)?.quantity || 0;
-        return (returnedQty.get(i.id) || 0) + now >= i.quantity;
+        return addQty(returnedQty.get(i.id) || 0, now) >= qn(i.quantity);
       });
       if (fullyReturned && itemRows.length) {
         const diff = round2(remainingRefundable - refund);

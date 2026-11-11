@@ -12,13 +12,13 @@ const DASHBOARD_RANGES = ['today', '7days', '30days', 'month', 'all'] as const;
 type DashboardRange = (typeof DASHBOARD_RANGES)[number];
 
 /** Net on-hand qty and cost value per product from stock batches (oversold batches net against positive stock). */
-export function valueStock(batches: { productId: string; quantityRemaining: number; unitCost: unknown }[]) {
+export function valueStock(batches: { productId: string; quantityRemaining: unknown; unitCost: unknown }[]) {
   const net: Record<string, { qty: number; positiveQty: number; positiveValue: number }> = {};
   for (const b of batches) {
     const qty = Number(b.quantityRemaining || 0);
     if (!qty) continue;
     const row = (net[b.productId] ||= { qty: 0, positiveQty: 0, positiveValue: 0 });
-    row.qty += qty;
+    row.qty = Math.round((row.qty + qty) * 100) / 100;
     if (qty > 0) {
       row.positiveQty += qty;
       row.positiveValue += qty * Number(b.unitCost ?? 0);
@@ -342,7 +342,7 @@ export class ReportsService {
           supplierId: po?.supplierId ?? 'UNKNOWN',
           supplierName: po?.supplier.name ?? 'ไม่ระบุผู้จำหน่าย',
           poNumber: po?.poNumber ?? '-',
-          value: round2(b.quantityReceived * (item ? grossPerUnit(item) : 0)),
+          value: round2(Number(b.quantityReceived) * (item ? grossPerUnit(item) : 0)),
         };
       })
       .filter((r) => r.value > 0);
@@ -350,13 +350,13 @@ export class ReportsService {
       .filter((p) => ['PENDING', 'ISSUED', 'ORDERED', 'PARTIALLY_RECEIVED'].includes(p.status))
       .map((p) => ({
         supplierId: p.supplierId, supplierName: p.supplier.name, poNumber: p.poNumber,
-        value: round2(p.items.reduce((s, i) => s + Math.max(0, i.quantity - i.receivedQty) * grossPerUnit(i), 0)),
+        value: round2(p.items.reduce((s, i) => s + Math.max(0, Number(i.quantity) - Number(i.receivedQty)) * grossPerUnit(i), 0)),
       }))
       .filter((p) => p.value > 0);
     const payable = pos
       .filter((p) => ['PARTIALLY_RECEIVED', 'RECEIVED', 'COMPLETED'].includes(p.status) && Number(p.remainingPayable) > 0)
       .map((p) => {
-        const received = p.items.reduce((s, i) => s + i.receivedQty * grossPerUnit(i), 0);
+        const received = p.items.reduce((s, i) => s + Number(i.receivedQty) * grossPerUnit(i), 0);
         return { supplierId: p.supplierId, supplierName: p.supplier.name, poNumber: p.poNumber, amount: round2(Math.max(0, Math.min(Number(p.remainingPayable), received - Number(p.paidAmount)))) };
       })
       .filter((p) => p.amount > 0);

@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { hasMax2Decimals, qn } from '../common/qty';
 
 /** Upper bounds that keep every amount inside the Decimal columns (unit price Decimal(10,2), totals Decimal(12,2)). */
 export const MAX_ITEM_QTY = 100000;
@@ -30,8 +31,8 @@ export function validateCheckoutInput(data: any): void {
   for (const it of data.items) {
     if (!isPlainObject(it)) throw new BadRequestException('รายการสินค้าในบิลไม่ถูกต้อง');
     if (typeof it.productId !== 'string' || !it.productId || it.productId.length > 100) throw new BadRequestException('รายการสินค้าไม่ระบุรหัสสินค้า');
-    if (!Number.isSafeInteger(it.quantity) || it.quantity <= 0 || it.quantity > MAX_ITEM_QTY) {
-      throw new BadRequestException(`จำนวนสินค้าไม่ถูกต้อง (1 - ${MAX_ITEM_QTY.toLocaleString()} ต่อรายการ)`);
+    if (typeof it.quantity !== 'number' || !hasMax2Decimals(it.quantity) || it.quantity <= 0 || it.quantity > MAX_ITEM_QTY) {
+      throw new BadRequestException(`จำนวนสินค้าไม่ถูกต้อง (มากกว่า 0 ไม่เกิน ${MAX_ITEM_QTY.toLocaleString()} ต่อรายการ ทศนิยมไม่เกิน 2 ตำแหน่ง)`);
     }
     const price = Number(it.unitPrice);
     if (it.unitPrice === null || it.unitPrice === '' || !Number.isFinite(price) || price < 0 || price > MAX_UNIT_PRICE) {
@@ -42,7 +43,7 @@ export function validateCheckoutInput(data: any): void {
     if (it.conversionFactor !== undefined && it.conversionFactor !== null && (!Number.isSafeInteger(Number(it.conversionFactor)) || Number(it.conversionFactor) <= 0 || Number(it.conversionFactor) > MAX_ITEM_QTY)) {
       throw new BadRequestException('หน่วยสินค้าไม่ถูกต้อง');
     }
-    if (it.claimQuantity !== undefined && it.claimQuantity !== null && (!Number.isSafeInteger(it.claimQuantity) || it.claimQuantity < 0 || it.claimQuantity > it.quantity)) {
+    if (it.claimQuantity !== undefined && it.claimQuantity !== null && (typeof it.claimQuantity !== 'number' || !hasMax2Decimals(it.claimQuantity) || it.claimQuantity < 0 || it.claimQuantity > it.quantity)) {
       throw new BadRequestException('จำนวนสินค้าเคลมไม่ถูกต้อง');
     }
     if (!optString(it.unitId) || !optString(it.unitName, 200)) throw new BadRequestException('หน่วยสินค้าไม่ถูกต้อง');
@@ -110,10 +111,10 @@ export async function claimableBaseQty(tx: any, customerId: string, productId: s
     select: { id: true, quantity: true, baseQuantity: true },
   });
   if (!bought.length) return 0;
-  const boughtQty = bought.reduce((s: number, i: any) => s + Number(i.baseQuantity ?? i.quantity), 0);
+  const boughtQty = bought.reduce((s: number, i: any) => s + Math.round(qn(i.baseQuantity ?? i.quantity) * 100), 0) / 100;
   const returned = await tx.orderReturnItem.aggregate({ where: { orderItemId: { in: bought.map((i: any) => i.id) } }, _sum: { baseQuantity: true } });
   const claimed = await tx.customerClaim.aggregate({ where: { customerId, productId, status: { not: 'REJECTED' } }, _sum: { baseQuantity: true } });
-  return Math.max(0, boughtQty - Number(returned._sum.baseQuantity || 0) - Number(claimed._sum.baseQuantity || 0));
+  return Math.max(0, Math.round((boughtQty - qn(returned._sum.baseQuantity) - qn(claimed._sum.baseQuantity)) * 100) / 100);
 }
 
 /** Highest net price per base unit the customer paid for this product (caps a claim's value). */

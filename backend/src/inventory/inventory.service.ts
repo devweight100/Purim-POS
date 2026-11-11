@@ -1,8 +1,9 @@
 import { businessTransaction } from '../prisma/business-transaction';
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { DECIMAL_QTY_DISABLED, decimalQtyAllowed, fromHund, hasMax2Decimals, isWholeQty, parseQty, toHund } from '../common/qty';
 
-/** Largest quantity accepted by a manual stock adjustment (stock columns are 32-bit ints). */
+/** Largest quantity accepted by a manual stock adjustment. */
 export const MAX_ADJUST_QTY = 10_000_000;
 
 @Injectable()
@@ -11,8 +12,7 @@ export class InventoryService {
 
   /** Add received stock as a new FIFO batch. Goes through adjustStock so it is audited. */
   async addStockBatch(data: any, user?: { id?: string; fullName?: string; username?: string }) {
-    const quantity = Number(data.quantity ?? data.quantityReceived);
-    if (!Number.isSafeInteger(quantity) || quantity <= 0) throw new BadRequestException('จำนวนรับเข้าต้องเป็นจำนวนเต็มมากกว่า 0');
+    const quantity = parseQty(data.quantity ?? data.quantityReceived, { allowDecimal: await decimalQtyAllowed(this.prisma), message: 'จำนวนรับเข้าต้องมากกว่า 0' });
     const unitCost = Number(data.unitCost);
     if (!Number.isFinite(unitCost) || unitCost < 0) throw new BadRequestException('ต้นทุนต่อหน่วยไม่ถูกต้อง');
     return this.adjustStock({
@@ -30,12 +30,12 @@ export class InventoryService {
     const batches = await this.prisma.stockBatch.findMany({
       where: { productId }
     });
-    return batches.reduce((sum, batch) => sum + batch.quantityRemaining, 0);
+    return fromHund(batches.reduce((sum, batch) => sum + toHund(batch.quantityRemaining), 0));
   }
 
   async deductFIFO(productId: string, quantity: number, tx: any = this.prisma) {
     if (tx === this.prisma) return businessTransaction(this.prisma, inner => this.deductFIFO(productId, quantity, inner));
-    if (!Number.isSafeInteger(quantity) || quantity <= 0) throw new BadRequestException('จำนวนตัดสต็อกต้องมากกว่า 0');
+    if (!Number.isFinite(quantity) || quantity <= 0 || !hasMax2Decimals(quantity)) throw new BadRequestException('จำนวนตัดสต็อกต้องมากกว่า 0');
 
     // 1. Lock the product row first
     const products = await tx.$queryRaw<{ id: string; costPrice: any; basePrice: any }[]>`
@@ -48,55 +48,58 @@ export class InventoryService {
     if (!product) throw new NotFoundException(`ไม่พบสินค้า "${productId}"`);
 
     // 2. Lock and retrieve all stock batches in FIFO order
-    const batches = await tx.$queryRaw<{ id: string; quantityRemaining: number; unitCost: any }[]>`
+    const rawBatches = await tx.$queryRaw<{ id: string; quantityRemaining: any; unitCost: any }[]>`
       SELECT id, quantity_remaining AS "quantityRemaining", unit_cost AS "unitCost"
       FROM stock_batches
       WHERE product_id = ${productId}
       ORDER BY received_at ASC, id ASC
       FOR UPDATE
     `;
+    // quantities in whole hundredths: decimal stock (1.25 m) never leaves float residues
+    const batches = rawBatches.map((b) => ({ id: b.id, unitCost: b.unitCost, h: toHund(b.quantityRemaining) }));
 
-    let remainingToDeduct = quantity;
+    let leftH = toHund(quantity);
     let totalCost = 0;
     const deductedBatches: any[] = [];
 
     // 3. Deduct from available positive batches
     for (const batch of batches) {
-      if (remainingToDeduct <= 0) break;
-      if (batch.quantityRemaining <= 0) continue;
+      if (leftH <= 0) break;
+      if (batch.h <= 0) continue;
 
-      const deductAmount = Math.min(batch.quantityRemaining, remainingToDeduct);
-      
+      const takeH = Math.min(batch.h, leftH);
+      batch.h -= takeH;
       await tx.stockBatch.update({
         where: { id: batch.id },
-        data: { quantityRemaining: { decrement: deductAmount } }
+        data: { quantityRemaining: fromHund(batch.h) }
       });
 
       const unitCost = Number(batch.unitCost);
-      totalCost += deductAmount * unitCost;
-      remainingToDeduct -= deductAmount;
-      
+      totalCost += fromHund(takeH) * unitCost;
+      leftH -= takeH;
+
       deductedBatches.push({
         batchId: batch.id,
-        deducted: deductAmount,
+        deducted: fromHund(takeH),
         unitCost: unitCost
       });
     }
+    const remainingToDeduct = fromHund(leftH);
 
     // 4. If remainingToDeduct > 0: Allow stock to go negative (ขายเกินสต็อกได้)
-    if (remainingToDeduct > 0) {
+    if (leftH > 0) {
       // Cost for units sold beyond stock: product cost, else the latest known purchase cost.
       // Never the selling price (basePrice), which would make the sale look like zero profit.
       const latestCostBatch = batches.slice().reverse().find(b => Number(b.unitCost) > 0);
       const fallbackCost = Number(product.costPrice) > 0
         ? Number(product.costPrice)
         : Number(latestCostBatch?.unitCost || 0);
-      const negativeBatch = batches.slice().reverse().find(b => b.quantityRemaining < 0);
+      const negativeBatch = batches.slice().reverse().find(b => b.h < 0);
 
       if (negativeBatch) {
         await tx.stockBatch.update({
           where: { id: negativeBatch.id },
-          data: { quantityRemaining: { decrement: remainingToDeduct } }
+          data: { quantityRemaining: fromHund(negativeBatch.h - leftH) }
         });
         const unitCost = Number(negativeBatch.unitCost || fallbackCost);
         totalCost += remainingToDeduct * unitCost;
@@ -157,7 +160,10 @@ export class InventoryService {
       throw new NotFoundException(`ไม่พบสินค้า "${dto.productId}"`);
     }
 
-    const previousStock = product.stockBatches.reduce((sum, b) => sum + b.quantityRemaining, 0);
+    // quantities are handled in whole hundredths (decimal stock without float residues)
+    const batchesH = product.stockBatches.map((b: any) => ({ ...b, h: toHund(b.quantityRemaining) }));
+    const previousStockH = batchesH.reduce((sum: number, b: any) => sum + b.h, 0);
+    const previousStock = fromHund(previousStockH);
     const rawType = String(dto.adjustmentType || dto.type || '').trim().toUpperCase();
     const normalizedType = rawType === 'SUBTRACT' || rawType === 'SUB' ? 'SUB' : rawType === 'ADD' || rawType === 'SET' ? rawType : null;
     if (!normalizedType) throw new BadRequestException('ประเภทการปรับสต็อกต้องเป็น ADD, SUB หรือ SET');
@@ -167,77 +173,82 @@ export class InventoryService {
       throw new BadRequestException('กรุณาระบุจำนวน');
     }
     const rawAmount = Number(amountInput);
-    if (!Number.isFinite(rawAmount) || !Number.isInteger(rawAmount)) throw new BadRequestException('จำนวนต้องเป็นจำนวนเต็ม');
+    const allowDecimal = await decimalQtyAllowed(db);
+    if (!Number.isFinite(rawAmount)) throw new BadRequestException('จำนวนไม่ถูกต้อง');
+    if (!hasMax2Decimals(rawAmount)) throw new BadRequestException(allowDecimal ? 'จำนวนมีทศนิยมได้ไม่เกิน 2 ตำแหน่ง' : DECIMAL_QTY_DISABLED);
+    if (!allowDecimal && !isWholeQty(rawAmount)) throw new BadRequestException(DECIMAL_QTY_DISABLED);
     if (Math.abs(rawAmount) > MAX_ADJUST_QTY) throw new BadRequestException(`จำนวนต้องไม่เกิน ${MAX_ADJUST_QTY.toLocaleString('en-US')}`);
     if (normalizedType !== 'SET' && rawAmount <= 0) {
       throw new BadRequestException(normalizedType === 'ADD' ? 'จำนวนปรับเพิ่มต้องมากกว่า 0' : 'จำนวนปรับลดต้องมากกว่า 0');
     }
-    const amount = rawAmount;
+    const amountH = toHund(rawAmount);
     const fallbackCost = dto.unitCost !== undefined && dto.unitCost !== null ? Number(dto.unitCost) : (Number(product.costPrice) || 0);
     if (!Number.isFinite(fallbackCost) || fallbackCost < 0 || fallbackCost > 10_000_000) throw new BadRequestException('ต้นทุนต่อหน่วยไม่ถูกต้อง');
 
     // Positive batches in FIFO order (oldest first)
-    const fifo = product.stockBatches
-      .filter((b: any) => b.quantityRemaining > 0)
+    const fifo = batchesH
+      .filter((b: any) => b.h > 0)
       .sort((x: any, y: any) => new Date(x.receivedAt).getTime() - new Date(y.receivedAt).getTime() || String(x.id).localeCompare(String(y.id)));
-    const onHand = fifo.reduce((sum: number, b: any) => sum + b.quantityRemaining, 0);
+    const onHandH = fifo.reduce((sum: number, b: any) => sum + b.h, 0);
     // Oversold (negative) batches, oldest first: stock coming in settles these before a new batch is opened
-    const overdraft = product.stockBatches
-      .filter((b: any) => b.quantityRemaining < 0)
+    const overdraft = batchesH
+      .filter((b: any) => b.h < 0)
       .sort((x: any, y: any) => new Date(x.receivedAt).getTime() - new Date(y.receivedAt).getTime() || String(x.id).localeCompare(String(y.id)));
 
-    const addBatch = async (qty: number, note: string) => {
-      let left = qty;
+    const addBatch = async (qtyH: number, note: string) => {
+      let left = qtyH;
       for (const batch of overdraft) {
         if (left <= 0) break;
-        const fill = Math.min(-batch.quantityRemaining, left);
+        const fill = Math.min(-batch.h, left);
         if (fill <= 0) continue;
-        await db.stockBatch.update({ where: { id: batch.id }, data: { quantityRemaining: { increment: fill } } });
-        batch.quantityRemaining += fill;
+        batch.h += fill;
+        await db.stockBatch.update({ where: { id: batch.id }, data: { quantityRemaining: fromHund(batch.h) } });
         left -= fill;
       }
       if (left > 0) {
         await db.stockBatch.create({
-          data: { productId: product.id, quantityReceived: left, quantityRemaining: left, unitCost: fallbackCost, note },
+          data: { productId: product.id, quantityReceived: fromHund(left), quantityRemaining: fromHund(left), unitCost: fallbackCost, note },
         });
       }
-      return qty * fallbackCost;
+      return fromHund(qtyH) * fallbackCost;
     };
-    const deductFifo = async (qty: number) => {
-      const available = Math.min(onHand, Math.max(0, previousStock)); // net of oversold (negative) batches
-      if (qty > available) throw new BadRequestException(`สต็อกคงเหลือไม่พอให้ปรับลด (มี ${available} ต้องการลด ${qty})`);
-      let left = qty;
+    const deductFifo = async (qtyH: number) => {
+      const availableH = Math.min(onHandH, Math.max(0, previousStockH)); // net of oversold (negative) batches
+      if (qtyH > availableH) throw new BadRequestException(`สต็อกคงเหลือไม่พอให้ปรับลด (มี ${fromHund(availableH)} ต้องการลด ${fromHund(qtyH)})`);
+      let left = qtyH;
       let cost = 0;
       for (const batch of fifo) {
         if (left <= 0) break;
-        const take = Math.min(batch.quantityRemaining, left);
-        await db.stockBatch.update({ where: { id: batch.id }, data: { quantityRemaining: { decrement: take } } });
-        cost += take * Number(batch.unitCost);
+        const take = Math.min(batch.h, left);
+        batch.h -= take;
+        await db.stockBatch.update({ where: { id: batch.id }, data: { quantityRemaining: fromHund(batch.h) } });
+        cost += fromHund(take) * Number(batch.unitCost);
         left -= take;
       }
       return cost;
     };
 
-    let delta = 0;
+    let deltaH = 0;
     let movementType = 'ADJUST_SET';
     let costValue = 0; // cost of units added (+) or written off (-)
 
     if (normalizedType === 'ADD') {
-      delta = amount;
+      deltaH = amountH;
       movementType = 'ADJUST_ADD';
-      costValue = await addBatch(amount, dto.reason || 'ปรับเพิ่มสต็อก');
+      costValue = await addBatch(amountH, dto.reason || 'ปรับเพิ่มสต็อก');
     } else if (normalizedType === 'SUB') {
-      delta = -amount;
+      deltaH = -amountH;
       movementType = 'ADJUST_SUB';
-      costValue = -(await deductFifo(amount));
+      costValue = -(await deductFifo(amountH));
     } else {
       if (rawAmount < 0) throw new BadRequestException('ยอดตรวจนับต้องไม่ติดลบ');
-      delta = rawAmount - previousStock;
-      movementType = delta >= 0 ? 'ADJUST_ADD' : 'ADJUST_SUB';
-      if (delta > 0) costValue = await addBatch(delta, dto.reason || 'ปรับยอดคงเหลือตามตรวจนับจริง');
-      else if (delta < 0) costValue = -(await deductFifo(-delta));
+      deltaH = amountH - previousStockH;
+      movementType = deltaH >= 0 ? 'ADJUST_ADD' : 'ADJUST_SUB';
+      if (deltaH > 0) costValue = await addBatch(deltaH, dto.reason || 'ปรับยอดคงเหลือตามตรวจนับจริง');
+      else if (deltaH < 0) costValue = -(await deductFifo(-deltaH));
     }
-    const newStock = previousStock + delta;
+    const delta = fromHund(deltaH);
+    const newStock = fromHund(previousStockH + deltaH);
 
     // Record AuditLog
     await db.auditLog.create({

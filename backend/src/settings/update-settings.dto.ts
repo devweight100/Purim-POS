@@ -1,7 +1,6 @@
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
-  IsInt,
   IsNotEmpty,
   IsNumber,
   IsObject,
@@ -67,10 +66,15 @@ export class UpdateSettingsDto {
 
   @ValidateIf((o) => o.lowStockThreshold !== undefined)
   @Transform(toNumber)
-  @IsInt({ message: 'เกณฑ์สต็อกต่ำต้องเป็นจำนวนเต็ม' })
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 }, { message: 'เกณฑ์สต็อกต่ำต้องเป็นตัวเลข (ทศนิยมไม่เกิน 2 ตำแหน่ง)' })
   @Min(0, { message: 'เกณฑ์สต็อกต่ำต้องอยู่ระหว่าง 0-100000' })
   @Max(100000, { message: 'เกณฑ์สต็อกต่ำต้องอยู่ระหว่าง 0-100000' })
   lowStockThreshold?: number;
+
+  /** Quantities may have up to 2 decimals (sell by metre / kg). Off = whole units only, as before. */
+  @ValidateIf((o) => o.allowDecimalQty !== undefined)
+  @IsBoolean({ message: 'การเปิด/ปิดจำนวนทศนิยมไม่ถูกต้อง' })
+  allowDecimalQty?: boolean;
 
   @ValidateIf((o) => o.cashMovementApprovalLimit !== undefined)
   @Transform(toNumber)
@@ -88,5 +92,5 @@ export class UpdateSettingsDto {
 export const SETTINGS_FIELDS = [
   'storeName', 'branchName', 'storePhone', 'storeAddress', 'storeEmail', 'logoUrl', 'qrImageUrl', 'qrLabel',
   'taxId', 'receiptHeader', 'receiptFooter', 'vatRate', 'vatEnabled', 'pointsPerBaht', 'pointValue',
-  'lowStockThreshold', 'cashMovementApprovalLimit', 'loyaltyConfig',
+  'lowStockThreshold', 'allowDecimalQty', 'cashMovementApprovalLimit', 'loyaltyConfig',
 ] as const;

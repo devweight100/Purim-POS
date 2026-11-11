@@ -138,7 +138,7 @@ export function calculatePurchaseBill(
 }
 
 /** Amount owed per unit of a stored line (incl. VAT). */
-export function grossPerUnit(line: { quantity: number; total?: unknown; unitCost?: unknown }): number {
+export function grossPerUnit(line: { quantity: unknown; total?: unknown; unitCost?: unknown }): number {
   const qty = Number(line.quantity) || 0;
   if (qty <= 0) return Number(line.unitCost) || 0;
   const total = Number(line.total);
@@ -147,7 +147,7 @@ export function grossPerUnit(line: { quantity: number; total?: unknown; unitCost
 
 /** Stock cost per unit: gross, or net when the shop claims VAT back (VAT-registered). */
 export function stockCostPerUnit(
-  line: { quantity: number; total?: unknown; netAmount?: unknown; unitCost?: unknown },
+  line: { quantity: unknown; total?: unknown; netAmount?: unknown; unitCost?: unknown },
   shopVatRegistered: boolean,
 ): number {
   const qty = Number(line.quantity) || 0;

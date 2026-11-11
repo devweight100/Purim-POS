@@ -5,8 +5,9 @@ import { clampInt, rethrowPrismaError } from '../products/prisma-errors';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { POStatus, PaymentStatus } from '@prisma/client';
+import { addQty, decimalQtyAllowed, parseQty, qn, toHund } from '../common/qty';
 
-/** Sanity limits (PO unit cost column is Decimal(10,2), totals Decimal(12,2), quantities Int). */
+/** Sanity limits (PO unit cost column is Decimal(10,2), totals Decimal(12,2), quantities Decimal(12,2)). */
 const MAX_PO_UNIT_COST = 10_000_000;
 const MAX_PO_QTY = 1_000_000;
 const MAX_PO_TOTAL = 9_999_999_999;
@@ -91,7 +92,7 @@ export class PurchaseOrdersService {
 
   async create(data: any) {
     return businessTransaction(this.prisma, async (tx) => {
-    this.validateItems(data.items);
+    this.validateItems(data.items, await decimalQtyAllowed(tx));
     if (data.status && ![POStatus.DRAFT, POStatus.ISSUED, POStatus.ORDERED].includes(data.status)) throw new BadRequestException('สถานะเริ่มต้นไม่ถูกต้อง');
     await this.assertSupplier(tx, data.supplierId);
     await this.assertProducts(tx, data.items);
@@ -158,7 +159,7 @@ export class PurchaseOrdersService {
     if (!EDITABLE_PO_STATUSES.includes(po.status)) throw new BadRequestException('ไม่สามารถแก้ไขใบสั่งซื้อที่ยกเลิกหรือเสร็จสิ้นแล้ว');
     if (data.supplierId !== undefined) {
       await this.assertSupplier(tx, data.supplierId);
-      if (data.supplierId !== po.supplierId && (po.items.some((i) => i.receivedQty > 0) || Number(po.paidAmount) > 0)) throw new BadRequestException('ไม่สามารถเปลี่ยนผู้จำหน่ายของใบสั่งซื้อที่รับสินค้าหรือชำระเงินแล้ว');
+      if (data.supplierId !== po.supplierId && (po.items.some((i) => qn(i.receivedQty) > 0) || Number(po.paidAmount) > 0)) throw new BadRequestException('ไม่สามารถเปลี่ยนผู้จำหน่ายของใบสั่งซื้อที่รับสินค้าหรือชำระเงินแล้ว');
     }
     if (data.billDate !== undefined) {
       const d = parseOptionalDate(data.billDate, 'วันที่บิล');
@@ -169,14 +170,14 @@ export class PurchaseOrdersService {
     if (data.notes !== undefined && data.notes !== null && typeof data.notes !== 'string') throw new BadRequestException('หมายเหตุไม่ถูกต้อง');
     if (data.supplierInvoiceNo !== undefined && data.supplierInvoiceNo !== null && typeof data.supplierInvoiceNo !== 'string') throw new BadRequestException('เลขที่ใบแจ้งหนี้ไม่ถูกต้อง');
     const repricing = data.items || data.billDiscountType !== undefined || data.billDiscountValue !== undefined;
-    if (data.items) this.validateItems(data.items);
+    if (data.items) this.validateItems(data.items, await decimalQtyAllowed(tx));
     if (po.status !== POStatus.DRAFT && repricing) {
       throw new BadRequestException('ไม่สามารถแก้ไขรายการ ส่วนลด หรือ VAT ของ PO ที่ไม่อยู่ในสถานะ DRAFT');
     }
     if (data.items) await this.assertProducts(tx, data.items);
 
     if (repricing) {
-      const lines = data.items || po.items.map((i) => ({ productId: i.productId, quantity: i.quantity, unitCost: Number(i.unitCost), discountType: i.discountType, discountValue: Number(i.discountValue), vatType: i.vatType, vatRate: Number(i.vatRate) }));
+      const lines = data.items || po.items.map((i) => ({ productId: i.productId, quantity: qn(i.quantity), unitCost: Number(i.unitCost), discountType: i.discountType, discountValue: Number(i.discountValue), vatType: i.vatType, vatRate: Number(i.vatRate) }));
       const bill = this.priceBill(lines, data.billDiscountType ?? po.billDiscountType, data.billDiscountValue ?? Number(po.billDiscountValue));
       await tx.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: id } });
       const { items, billDiscountType, billDiscountValue, ...restData } = data;
@@ -217,7 +218,7 @@ export class PurchaseOrdersService {
     return businessTransaction(this.prisma, async (tx) => {
     const po = await tx.purchaseOrder.findUnique({ where: { id }, include: { items: true } });
     if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อนี้');
-    if (po.status === POStatus.COMPLETED || po.items.some(item => item.receivedQty > 0) || Number(po.paidAmount) > 0) {
+    if (po.status === POStatus.COMPLETED || po.items.some(item => qn(item.receivedQty) > 0) || Number(po.paidAmount) > 0) {
       throw new BadRequestException('ไม่สามารถยกเลิกใบสั่งซื้อที่รับสินค้าหรือชำระเงินแล้วได้');
     }
     if (po.status === POStatus.CANCELLED) {
@@ -238,12 +239,14 @@ export class PurchaseOrdersService {
     });
   }
 
-  private validateItems(items: any[]) {
-    if (!Array.isArray(items) || !items.length || items.some(item => !item.productId || !Number.isSafeInteger(Number(item.quantity)) || Number(item.quantity) <= 0 || !Number.isFinite(Number(item.unitCost)) || Number(item.unitCost) < 0)) {
+  private validateItems(items: any[], allowDecimal: boolean) {
+    if (!Array.isArray(items) || !items.length || items.some(item => !item.productId || !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0 || !Number.isFinite(Number(item.unitCost)) || Number(item.unitCost) < 0)) {
       throw new BadRequestException('รายการสินค้า จำนวน หรือต้นทุนไม่ถูกต้อง');
     }
     for (const item of items) {
       if (typeof item.productId !== 'string') throw new BadRequestException('รายการสินค้าไม่ถูกต้อง');
+      if (Number(item.quantity) > MAX_PO_QTY) throw new BadRequestException(`จำนวนสั่งซื้อต้องไม่เกิน ${MAX_PO_QTY.toLocaleString('en-US')}`);
+      item.quantity = parseQty(item.quantity, { allowDecimal, max: MAX_PO_QTY, message: 'รายการสินค้า จำนวน หรือต้นทุนไม่ถูกต้อง' });
       if (Number(item.quantity) > MAX_PO_QTY) throw new BadRequestException(`จำนวนสั่งซื้อต้องไม่เกิน ${MAX_PO_QTY.toLocaleString('en-US')}`);
       if (Number(item.unitCost) > MAX_PO_UNIT_COST) throw new BadRequestException(`ต้นทุนต่อหน่วยต้องไม่เกิน ${MAX_PO_UNIT_COST.toLocaleString('en-US')} บาท`);
       if (item.discountType !== undefined && item.discountType !== null && !['baht', 'percent'].includes(String(item.discountType))) throw new BadRequestException('ประเภทส่วนลดรายการไม่ถูกต้อง');
@@ -297,7 +300,7 @@ export class PurchaseOrdersService {
 
   async receive(id: string, data: { clientReceiptId?: string; adjustAndComplete?: boolean; supplierInvoiceNo?: string; items: { purchaseOrderItemId: string; receivedQty: number; unitCost: number }[] }) {
     if (!data.clientReceiptId || !/^[a-zA-Z0-9-]{16,80}$/.test(data.clientReceiptId)) throw new BadRequestException('กรุณาระบุรหัสการรับสินค้าเพื่อป้องกันการบันทึกซ้ำ');
-    if (!Array.isArray(data.items) || !data.items.length || data.items.some(item => !Number.isSafeInteger(item.receivedQty) || item.receivedQty <= 0 || !Number.isFinite(item.unitCost) || item.unitCost < 0)) throw new BadRequestException('จำนวนรับและต้นทุนไม่ถูกต้อง');
+    if (!Array.isArray(data.items) || !data.items.length || data.items.some(item => typeof item?.receivedQty !== 'number' || !Number.isFinite(item.receivedQty) || item.receivedQty <= 0 || !Number.isFinite(item.unitCost) || item.unitCost < 0)) throw new BadRequestException('จำนวนรับและต้นทุนไม่ถูกต้อง');
     if (new Set(data.items.map(item => item.purchaseOrderItemId)).size !== data.items.length) throw new BadRequestException('รายการรับสินค้าซ้ำกัน');
     const fingerprint = JSON.stringify({ id, adjustAndComplete: !!data.adjustAndComplete, supplierInvoiceNo: data.supplierInvoiceNo || '', items: [...data.items].sort((a,b) => a.purchaseOrderItemId.localeCompare(b.purchaseOrderItemId)).map(item => ({ id: item.purchaseOrderItemId, qty: item.receivedQty, cost: item.unitCost })) });
     return businessTransaction(this.prisma, async tx => {
@@ -312,9 +315,11 @@ export class PurchaseOrdersService {
       const po = await tx.purchaseOrder.findUnique({ where: { id }, include: { items: { include: { product: true } } } });
       if (!po || !([POStatus.ISSUED, POStatus.PARTIALLY_RECEIVED, POStatus.ORDERED] as POStatus[]).includes(po.status)) throw new BadRequestException('สถานะ PO ไม่ถูกต้องสำหรับการรับสินค้า');
       if (data.adjustAndComplete && Number(po.paidAmount) > 0) throw new BadRequestException('ไม่สามารถปรับลดใบสั่งซื้อที่มีการชำระเงินแล้ว');
+      const allowDecimal = await decimalQtyAllowed(tx);
       for (const item of data.items) {
+        item.receivedQty = parseQty(item.receivedQty, { allowDecimal, message: 'จำนวนรับและต้นทุนไม่ถูกต้อง' });
         const original = po.items.find(row => row.id === item.purchaseOrderItemId);
-        if (!original || original.receivedQty + item.receivedQty > original.quantity) throw new BadRequestException('รายการรับไม่อยู่ในใบสั่งซื้อหรือจำนวนรับเกินยอดคงเหลือ');
+        if (!original || toHund(original.receivedQty) + toHund(item.receivedQty) > toHund(original.quantity)) throw new BadRequestException('รายการรับไม่อยู่ในใบสั่งซื้อหรือจำนวนรับเกินยอดคงเหลือ');
         if (Math.abs(item.unitCost - Number(original.unitCost)) > 0.001) throw new BadRequestException('ต้นทุนรับไม่ตรงกับใบสั่งซื้อ กรุณาตรวจสอบเอกสาร');
       }
       // VAT paid on purchases is part of the stock cost unless the shop is VAT-registered (claims it back)
@@ -326,7 +331,7 @@ export class PurchaseOrdersService {
           where: { productId: original.productId },
           _sum: { quantityRemaining: true },
         });
-        const previousStock = Number(prevStockAgg._sum.quantityRemaining || 0);
+        const previousStock = qn(prevStockAgg._sum.quantityRemaining);
         const product = (original as any).product || (await tx.product.findUnique({ where: { id: original.productId }, select: { sku: true, name: true, unit: true } }));
         await tx.stockBatch.create({ data: { productId: original.productId, quantityReceived: item.receivedQty, quantityRemaining: item.receivedQty, unitCost: costPerUnit, supplierId: po.supplierId, purchaseOrderId: id, note: 'รับเข้าจาก PO ' + po.poNumber } });
         await tx.purchaseOrderItem.update({ where: { id: original.id }, data: { receivedQty: { increment: item.receivedQty } } });
@@ -343,7 +348,7 @@ export class PurchaseOrdersService {
               type: 'IN_PO',
               quantityChange: item.receivedQty,
               previousStock,
-              currentStock: previousStock + item.receivedQty,
+              currentStock: addQty(previousStock, item.receivedQty),
               referenceType: 'PO',
               referenceNo: po.poNumber,
               reason: 'รับเข้าจากใบสั่งซื้อ ' + po.poNumber,
@@ -357,7 +362,7 @@ export class PurchaseOrdersService {
       if (data.adjustAndComplete) {
         // re-price the bill for what was actually delivered (same discounts and VAT settings)
         const bill = this.priceBill(
-          items.map((i) => ({ productId: i.productId, quantity: i.receivedQty, unitCost: Number(i.unitCost), discountType: i.discountType, discountValue: Number(i.discountValue), vatType: i.vatType, vatRate: Number(i.vatRate) })),
+          items.map((i) => ({ productId: i.productId, quantity: qn(i.receivedQty), unitCost: Number(i.unitCost), discountType: i.discountType, discountValue: Number(i.discountValue), vatType: i.vatType, vatRate: Number(i.vatRate) })),
           po.billDiscountType,
           Number(po.billDiscountValue),
           false, // re-pricing what was delivered: the bill discount is capped, never rejected
@@ -370,7 +375,7 @@ export class PurchaseOrdersService {
         adjusted = { ...bill.header, remainingPayable: bill.totals.totalAmount };
       }
       const result = await tx.purchaseOrder.update({ where: { id }, data: {
-        status: data.adjustAndComplete || items.every(item => item.receivedQty === item.quantity) ? POStatus.COMPLETED : POStatus.PARTIALLY_RECEIVED,
+        status: data.adjustAndComplete || items.every(item => toHund(item.receivedQty) >= toHund(item.quantity)) ? POStatus.COMPLETED : POStatus.PARTIALLY_RECEIVED,
         ...(adjusted || {}),
         ...(data.supplierInvoiceNo ? { supplierInvoiceNo: data.supplierInvoiceNo.trim() } : {}),
       }, include: { items: { include: { product: true } }, supplier: true } });

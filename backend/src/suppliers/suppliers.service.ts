@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { addQty } from '../common/qty';
 import { PAYABLE_PO_STATUSES } from '../payables/payables.service';
 
 
@@ -104,7 +105,7 @@ export class SuppliersService {
       supplierSku: link.supplierSku,
       unitCost: link.unitCost,
       isPreferred: link.isPreferred,
-      stock: link.product.stockBatches.reduce((sum, b) => sum + b.quantityRemaining, 0)
+      stock: addQty(...link.product.stockBatches.map((b) => b.quantityRemaining))
     }));
   }
 
