@@ -36,7 +36,7 @@ export class ClaimsController {
     if (search !== undefined && (typeof search !== 'string' || search.length > 200)) throw new BadRequestException('คำค้นหาไม่ถูกต้อง');
     return this.claimsService.getAllClaims(
       intParam(page, 1, 1, 100000, 'page'),
-      intParam(limit, 20, 1, 500, 'limit'),
+      intParam(limit, 20, 1, 10000, 'limit'), // the reports page loads all claims (limit=5000)
       status || undefined,
       type || undefined,
       search,
