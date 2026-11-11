@@ -31,6 +31,7 @@ import {
   Package, CreditCard, Edit3
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { addQty } from '@/lib/qty';
 
 interface OrderHistoryModalProps {
   open: boolean;
@@ -497,7 +498,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {paginatedOrders.map((order) => {
                     const isCancelled = order.status === 'CANCELLED' || order.status === 'VOIDED';
-                    const itemCount = order.items?.reduce((s: number, i: any) => s + (i.quantity || 1), 0) || order.items?.length || 0;
+                    const itemCount = (order.items?.length ? addQty(...order.items.map((i: any) => i.quantity || 1)) : 0) || order.items?.length || 0;
 
                     return (
                       <tr 

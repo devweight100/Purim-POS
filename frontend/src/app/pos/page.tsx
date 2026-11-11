@@ -1474,7 +1474,7 @@ export default function POSPage() {
         <div className="fixed bottom-0 left-0 right-0 z-30 lg:hidden bg-white/95 backdrop-blur-md border-t border-slate-200 px-4 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] flex items-center justify-between gap-3">
           <div className="flex flex-col">
             <span className="text-xs text-slate-500 font-bold">
-              ตะกร้า ({cart.items.reduce((s, i) => s + i.quantity, 0)} ชิ้น)
+              ตะกร้า ({formatQty(cart.getItemCount())} ชิ้น)
             </span>
             <span className="text-xl font-black text-primary font-mono">
               {formatCurrency(cart.getTotal())}

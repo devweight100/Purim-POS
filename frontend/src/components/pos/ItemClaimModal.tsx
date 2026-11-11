@@ -7,6 +7,7 @@ import { useCartStore } from '../../lib/store/cart-store';
 import { getCustomerQuotaForProduct } from '../../lib/customer-claim-stock-service';
 import { formatCurrency } from '../../lib/utils';
 import { toast } from 'sonner';
+import { addQty, parseQty, qtyInputMode, qtyStep, subQty, useAllowDecimalQty } from '@/lib/qty';
 
 interface ItemClaimModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ export const ItemClaimModal: React.FC<ItemClaimModalProps> = ({
   const { customerId, customerName, getEffectivePrice } = useCartStore();
 
   const [loading, setLoading] = useState(false);
+  const allowDecimalQty = useAllowDecimalQty();
   const [availableQuota, setAvailableQuota] = useState<number>(0);
   const [latestOrder, setLatestOrder] = useState<any>(null);
   const [claimQty, setClaimQty] = useState<number>(0);
@@ -197,7 +199,7 @@ export const ItemClaimModal: React.FC<ItemClaimModalProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setClaimQty(Math.max(0, claimQty - 1))}
+                onClick={() => setClaimQty(Math.max(0, subQty(claimQty, 1)))}
                 className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-lg flex items-center justify-center transition"
               >
                 -
@@ -205,17 +207,19 @@ export const ItemClaimModal: React.FC<ItemClaimModalProps> = ({
               <input
                 type="number"
                 min="0"
+                step={qtyStep(allowDecimalQty)}
+                inputMode={qtyInputMode(allowDecimalQty)}
                 max={maxClaim}
                 value={claimQty}
                 onChange={(e) => {
-                  const val = parseInt(e.target.value) || 0;
+                  const val = parseQty(e.target.value, allowDecimalQty) || 0;
                   setClaimQty(Math.max(0, Math.min(val, cartQty)));
                 }}
                 className="flex-1 h-10 text-center font-bold text-lg text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none"
               />
               <button
                 type="button"
-                onClick={() => setClaimQty(Math.min(maxClaim, claimQty + 1))}
+                onClick={() => setClaimQty(Math.min(maxClaim, addQty(claimQty, 1)))}
                 className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-lg flex items-center justify-center transition"
               >
                 +
