@@ -1,4 +1,5 @@
-﻿; Purim POS - server installer (built by Installer/build-installers.sh with makensis)
+﻿; Purim POS - server installer (built with makensis by Installer/build-installers.ps1 on Windows / GitHub Actions
+; release.yml, or Installer/build-installers.sh on Linux). Output goes to Installer/dist (not committed).
 Unicode true
 ManifestDPIAware true
 !include "MUI2.nsh"
@@ -92,6 +93,8 @@ Section "Install"
   RMDir /r "$INSTDIR\frontend\public"
   RMDir /r "$INSTDIR\frontend\.next"
   RMDir /r "$INSTDIR\Installer"
+  ; client app installer + client-version.json served to cashier machines (GET /api/client-app/*)
+  RMDir /r "$INSTDIR\downloads"
 
   ; the control panel keeps its exe open
   nsExec::Exec 'taskkill /F /IM "Purim POS Server.exe"'
@@ -116,10 +119,10 @@ Section "Install"
     StrCpy $0 "PowerShell"
   ${EndIf}
   ${If} $0 == 3010
-    MessageBox MB_ICONINFORMATION "ติดตั้ง Docker Desktop แล้ว ต้องรีสตาร์ทเครื่อง 1 ครั้ง$\r$\n$\r$\nหลังรีสตาร์ท: เปิด Docker Desktop ให้ทำงาน แล้วเปิดเมนู Start > Purim POS Server > $\" /SD IDOKติดตั้งหรือซ่อมระบบ Purim POS$\" เพื่อติดตั้งต่อให้เสร็จ" /SD IDOK
+    MessageBox MB_ICONINFORMATION "ติดตั้ง Docker Desktop แล้ว ต้องรีสตาร์ทเครื่อง 1 ครั้ง$\r$\n$\r$\nหลังรีสตาร์ท: เปิด Docker Desktop ให้ทำงาน แล้วเปิดเมนู Start > Purim POS Server > $\"ติดตั้งหรือซ่อมระบบ Purim POS$\" เพื่อติดตั้งต่อให้เสร็จ" /SD IDOK
     SetRebootFlag true
   ${ElseIf} $0 != 0
-    MessageBox MB_ICONEXCLAMATION "การติดตั้งยังไม่สำเร็จ (รหัส $0)$\r$\n$\r$\nดูรายละเอียดในโฟลเดอร์ $INSTDIR\logs$\r$\nแก้ไขแล้วเปิดเมนู Start > Purim POS Server > $\" /SD IDOKติดตั้งหรือซ่อมระบบ Purim POS$\" อีกครั้ง" /SD IDOK
+    MessageBox MB_ICONEXCLAMATION "การติดตั้งยังไม่สำเร็จ (รหัส $0)$\r$\n$\r$\nดูรายละเอียดในโฟลเดอร์ $INSTDIR\logs$\r$\nแก้ไขแล้วเปิดเมนู Start > Purim POS Server > $\"ติดตั้งหรือซ่อมระบบ Purim POS$\" อีกครั้ง" /SD IDOK
   ${EndIf}
 SectionEnd
 
@@ -139,6 +142,7 @@ Section "Uninstall"
   RMDir /r "$SMPROGRAMS\Purim POS Server"
 
   RMDir /r "$INSTDIR\Installer"
+  RMDir /r "$INSTDIR\downloads"
   RMDir /r "$INSTDIR\frontend"
   RMDir /r "$INSTDIR\backend\node_modules"
   RMDir /r "$INSTDIR\backend\dist"
