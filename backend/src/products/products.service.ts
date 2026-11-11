@@ -87,6 +87,15 @@ export class ProductsService {
     }
   }
 
+  /** A barcode must not already be a pack-unit barcode of ANOTHER product (scans would be ambiguous). */
+  private async assertPackBarcodeFree(tx: any, productId: string, code: string) {
+    const other = await tx.productPackagingUnit.findFirst({
+      where: { barcode: code, productId: { not: productId } },
+      include: { product: { select: { name: true } } },
+    });
+    if (other) throw new ConflictException(`บาร์โค้ด "${code}" ถูกใช้แล้วกับหน่วย "${other.name}" ของสินค้า "${other.product?.name || ''}"`);
+  }
+
   private async assertCategory(tx: any, categoryId: string | null | undefined) {
     if (!categoryId) return;
     const cat = await tx.category.findUnique({ where: { id: categoryId }, select: { id: true } });
@@ -645,11 +654,39 @@ export class ProductsService {
       stock = n;
     }
 
+    // Pack units from the import file (larger units of this product, smallest first). Present ->
+    // they REPLACE the product's pack units; absent -> the product's pack units are left as they are.
+    let packagingUnits: ReturnType<ProductsService['buildPackagingUnitCreates']> | undefined;
+    if (item.packagingUnits !== undefined && item.packagingUnits !== null) {
+      if (!Array.isArray(item.packagingUnits)) throw rowErr('หน่วยบรรจุไม่ถูกต้อง');
+      if (item.packagingUnits.length > 10) throw rowErr('หน่วยบรรจุได้ไม่เกิน 10 หน่วยต่อสินค้า');
+      try {
+        packagingUnits = this.buildPackagingUnitCreates(item.packagingUnits);
+      } catch (e: any) {
+        throw rowErr(e?.message || 'หน่วยบรรจุไม่ถูกต้อง');
+      }
+      const names = new Set<string>([String(fields.unit || item.unit || '').trim().toLowerCase()]);
+      for (const u of packagingUnits) {
+        if (u.qtyPerPrev < 2) throw rowErr(`หน่วย "${u.name}" ต้องบรรจุตั้งแต่ 2 หน่วยก่อนหน้าขึ้นไป`);
+        const key = u.name.toLowerCase();
+        if (names.has(key)) throw rowErr(`ชื่อหน่วย "${u.name}" ซ้ำกันในสินค้าเดียวกัน`);
+        names.add(key);
+      }
+    }
+    const extraBarcodes = Array.isArray(item.barcodes)
+      ? Array.from(new Set(item.barcodes.map((b: unknown) => str(b)).filter((b: string | undefined): b is string => !!b && b !== barcode)))
+      : [];
+    const allCodes = [barcode, ...extraBarcodes, ...(packagingUnits || []).map((u) => u.barcode)].filter(Boolean) as string[];
+    const dup = allCodes.find((c, i) => allCodes.indexOf(c) !== i);
+    if (dup) throw rowErr(`บาร์โค้ด "${dup}" ซ้ำกันในสินค้าเดียวกัน`);
+
     return {
       rowNo,
       id,
       sku,
       barcode,
+      extraBarcodes: extraBarcodes as string[],
+      packagingUnits,
       fields,
       stock,
       categoryId: str(item.categoryId),
@@ -773,7 +810,27 @@ export class ProductsService {
               });
 
               if (row.barcode && barcodeOwner !== productId) {
+                await this.assertPackBarcodeFree(tx, productId, row.barcode);
                 await tx.productBarcode.create({ data: { productId, barcode: row.barcode } });
+              }
+              for (const code of row.extraBarcodes) {
+                await this.assertIdentifiersFree(tx, productId, undefined, [code]);
+                await this.assertPackBarcodeFree(tx, productId, code);
+                const own = await tx.productBarcode.findUnique({ where: { barcode: code }, select: { productId: true } });
+                if (!own) await tx.productBarcode.create({ data: { productId, barcode: code } });
+              }
+              if (row.packagingUnits) {
+                for (const u of row.packagingUnits) {
+                  if (!u.barcode) continue;
+                  await this.assertIdentifiersFree(tx, productId, undefined, [u.barcode]);
+                  await this.assertPackBarcodeFree(tx, productId, u.barcode);
+                  const own = await tx.productBarcode.findUnique({ where: { barcode: u.barcode }, select: { productId: true } });
+                  if (own) throw new ConflictException(`บาร์โค้ด "${u.barcode}" ของหน่วย "${u.name}" ซ้ำกับบาร์โค้ดหน่วยหลักของสินค้านี้`);
+                }
+                await tx.productPackagingUnit.deleteMany({ where: { productId } });
+                if (row.packagingUnits.length > 0) {
+                  await tx.productPackagingUnit.createMany({ data: row.packagingUnits.map((u) => ({ ...u, productId })) });
+                }
               }
 
               if (row.stock !== undefined && (existing || row.stock > 0)) {

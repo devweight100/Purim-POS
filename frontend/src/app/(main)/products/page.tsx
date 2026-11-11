@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { parseProductCSV, csvRowsToProducts, CsvImportError } from "@/lib/csv-parser";
 import { useProductStore } from "@/lib/store/product-store";
 import * as XLSX from "xlsx";
+import { buildExportWorkbook, buildTemplateWorkbook, ImportFileError, isUnitsFormat, packChainText, parseUnitsRows, UNITS_SHEET } from '@/lib/product-import';
 
 // ─── EAN-13 Generator ─────────────────────────────────────────────────
 function generateEAN13(): string {
@@ -395,130 +396,18 @@ export default function ProductsPage() {
       toast.warning("ไม่มีรายการสินค้าให้ส่งออก");
       return;
     }
-
-    const exportRows = products.map((p, idx) => {
-      const barcodesList = [
-        p.barcode,
-        ...(Array.isArray(p.barcodes) ? p.barcodes.map((b: any) => (typeof b === "string" ? b : b.barcode)) : []),
-      ].filter(Boolean);
-      const uniqueBarcodes = Array.from(new Set(barcodesList)).join(", ");
-
-      const costKnown = pickProductCost(p);
-      const costVal = costKnown !== undefined ? costKnown : "";
-      const price1Val = Number(p.priceLevel1 !== undefined && p.priceLevel1 !== null ? p.priceLevel1 : (p.price ?? p.basePrice ?? 0));
-
-      return {
-        "ลำดับ (No.)": idx + 1,
-        "รหัสสินค้า (SKU)": p.sku || "",
-        "บาร์โค้ด (Barcode)": uniqueBarcodes || p.sku || "",
-        "ชื่อสินค้า (Product Name)": p.name || "",
-        "หมวดหมู่ (Category)": p.category?.name || p.category || "ทั่วไป",
-        "หน่วยนับ (Unit)": p.unit || "ชิ้น",
-        "ราคาทุน (Cost Price)": costVal,
-        "ราคาขาย 1 / ขายปลีก (Price 1)": price1Val,
-        "ราคาขาย 2 (Price Level 2)": Number(p.priceLevel2 || 0),
-        "ราคาขาย 3 (Price Level 3)": Number(p.priceLevel3 || 0),
-        "ราคาขาย 4 (Price Level 4)": Number(p.priceLevel4 || 0),
-        "ราคาขาย 5 (Price Level 5)": Number(p.priceLevel5 || 0),
-        "จำนวนสต็อก (Stock)": Number(p.stock || 0),
-        "จุดแจ้งเตือนสต็อกต่ำ (Min Stock)": Number(p.minStockAlert ?? getLowStockThreshold()),
-        "รายละเอียดสินค้า (Description)": p.description || "",
-        "รหัสระบบ (System ID - ห้ามแก้ไข)": p.id || "",
-      };
-    });
-
-    const worksheet = XLSX.utils.json_to_sheet(exportRows);
-    worksheet["!cols"] = [
-      { wch: 8 },  // ลำดับ
-      { wch: 18 }, // SKU
-      { wch: 22 }, // Barcode
-      { wch: 35 }, // Name
-      { wch: 16 }, // Category
-      { wch: 10 }, // Unit
-      { wch: 14 }, // Cost
-      { wch: 16 }, // Price 1
-      { wch: 14 }, // Level 2
-      { wch: 14 }, // Level 3
-      { wch: 14 }, // Level 4
-      { wch: 14 }, // Level 5
-      { wch: 12 }, // Stock
-      { wch: 14 }, // Min Stock
-      { wch: 30 }, // Description
-      { wch: 38 }, // ID
-    ];
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "รายการสินค้า");
+    // same per-unit format as the template: edit the file and import it back
+    const withCost = products.some((p) => pickProductCost(p) !== undefined);
+    const workbook = buildExportWorkbook(XLSX, products, { withCost });
     const todayStr = new Date().toISOString().split("T")[0];
     XLSX.writeFile(workbook, `สินค้า_POSร้านปุริม_${todayStr}.xlsx`);
-    toast.success(`📊 ส่งออกข้อมูลสินค้า ${products.length} รายการเป็นไฟล์ Excel สำเร็จ`);
+    toast.success(`📊 ส่งออกข้อมูลสินค้า ${products.length} รายการ (รวมหน่วยบรรจุและบาร์โค้ด) เป็นไฟล์ Excel สำเร็จ`);
   };
 
   // Download Sample Excel Template
   const handleDownloadExcelTemplate = () => {
-    const templateRows = [
-      {
-        "ลำดับ (No.)": 1,
-        "รหัสสินค้า (SKU)": "SKU-001",
-        "บาร์โค้ด (Barcode)": "8850001234567",
-        "ชื่อสินค้า (Product Name)": "น้ำดื่มตราช้าง 600ml",
-        "หมวดหมู่ (Category)": "เครื่องดื่ม",
-        "หน่วยนับ (Unit)": "ขวด",
-        "ราคาทุน (Cost Price)": 5.0,
-        "ราคาขาย 1 / ขายปลีก (Price 1)": 10.0,
-        "ราคาขาย 2 (Price Level 2)": 9.5,
-        "ราคาขาย 3 (Price Level 3)": 9.0,
-        "ราคาขาย 4 (Price Level 4)": 8.5,
-        "ราคาขาย 5 (Price Level 5)": 8.0,
-        "จำนวนสต็อก (Stock)": 100,
-        "จุดแจ้งเตือนสต็อกต่ำ (Min Stock)": 10,
-        "รายละเอียดสินค้า (Description)": "น้ำดื่มบริสุทธิ์ 600 มล.",
-        "รหัสระบบ (System ID - ห้ามแก้ไข)": "",
-      },
-      {
-        "ลำดับ (No.)": 2,
-        "รหัสสินค้า (SKU)": "SKU-002",
-        "บาร์โค้ด (Barcode)": "8850009876543",
-        "ชื่อสินค้า (Product Name)": "มาม่ารสต้มยำกุ้ง 55g",
-        "หมวดหมู่ (Category)": "บะหมี่กึ่งสำเร็จรูป",
-        "หน่วยนับ (Unit)": "ซอง",
-        "ราคาทุน (Cost Price)": 6.0,
-        "ราคาขาย 1 / ขายปลีก (Price 1)": 7.0,
-        "ราคาขาย 2 (Price Level 2)": 6.8,
-        "ราคาขาย 3 (Price Level 3)": 6.5,
-        "ราคาขาย 4 (Price Level 4)": 6.2,
-        "ราคาขาย 5 (Price Level 5)": 6.0,
-        "จำนวนสต็อก (Stock)": 200,
-        "จุดแจ้งเตือนสต็อกต่ำ (Min Stock)": 20,
-        "รายละเอียดสินค้า (Description)": "บะหมี่กึ่งสำเร็จรูป รสต้มยำกุ้ง",
-        "รหัสระบบ (System ID - ห้ามแก้ไข)": "",
-      },
-    ];
-
-    const worksheet = XLSX.utils.json_to_sheet(templateRows);
-    worksheet["!cols"] = [
-      { wch: 8 },
-      { wch: 18 },
-      { wch: 22 },
-      { wch: 35 },
-      { wch: 16 },
-      { wch: 10 },
-      { wch: 14 },
-      { wch: 16 },
-      { wch: 14 },
-      { wch: 14 },
-      { wch: 14 },
-      { wch: 14 },
-      { wch: 12 },
-      { wch: 14 },
-      { wch: 30 },
-      { wch: 38 },
-    ];
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "แม่แบบสินค้า");
-    XLSX.writeFile(workbook, "แม่แบบนำเข้าสินค้า_Template_POS.xlsx");
-    toast.success("ดาวน์โหลดไฟล์แม่แบบ Excel สำหรับกรอกสินค้าเรียบร้อย");
+    XLSX.writeFile(buildTemplateWorkbook(XLSX), "แม่แบบนำเข้าสินค้า_หลายหน่วย_POS.xlsx");
+    toast.success("ดาวน์โหลดไฟล์แม่แบบแล้ว: 1 แถว = 1 หน่วย (ชิ้น / แพ็ค / ลัง) ดูวิธีกรอกในแผ่นงาน \"วิธีกรอก\"");
   };
 
   const [importFilterTab, setImportFilterTab] = useState<"all" | "changed" | "new" | "unchanged">("all");
@@ -532,9 +421,41 @@ export default function ProductsPage() {
         const buffer = e.target?.result as ArrayBuffer;
         if (!buffer) return;
         let rawJson: any[];
-        if (/\.csv$/i.test(file.name)) {
+        const isCsv = /\.csv$/i.test(file.name);
+        const csvText = isCsv ? new TextDecoder("utf-8").decode(buffer) : "";
+        // per-unit format (template / export): one row per unit, grouped by SKU
+        const unitsBook = !isCsv
+          ? XLSX.read(buffer, { type: "array" })
+          : isUnitsFormat([csvText.split(/\r?\n/, 1)[0] || ""])
+            ? XLSX.read(csvText.replace(/^\ufeff/, ""), { type: "string" })
+            : null;
+        const unitsSheet = unitsBook ? unitsBook.Sheets[UNITS_SHEET] || unitsBook.Sheets[unitsBook.SheetNames[0]] : null;
+        const unitsHeaders: string[] = unitsSheet ? ((XLSX.utils.sheet_to_json(unitsSheet, { header: 1 })[0] as any[]) || []).map(String) : [];
+        if (unitsSheet && isUnitsFormat(unitsHeaders)) {
+          const grouped = parseUnitsRows(XLSX.utils.sheet_to_json(unitsSheet, { defval: "" }) as any[], unitsHeaders);
+          rawJson = grouped.map((g) => ({
+            "รหัสระบบ (System ID - ห้ามแก้ไข)": g.id,
+            "รหัสสินค้า (SKU)": g.sku,
+            "ชื่อสินค้า (Product Name)": g.name,
+            "บาร์โค้ด (Barcode)": g.barcode,
+            "หมวดหมู่ (Category)": g.categoryName,
+            "หน่วยนับ (Unit)": g.unit,
+            "ราคาทุน (Cost Price)": g.costPrice,
+            "ราคาขาย 1 / ขายปลีก (Price 1)": g.priceLevel1,
+            "ราคาขาย 2 (Price Level 2)": g.priceLevel2,
+            "ราคาขาย 3 (Price Level 3)": g.priceLevel3,
+            "ราคาขาย 4 (Price Level 4)": g.priceLevel4,
+            "ราคาขาย 5 (Price Level 5)": g.priceLevel5,
+            "จำนวนสต็อก (Stock)": g.stock,
+            "รายละเอียดสินค้า (Description)": g.description,
+            __rowNo: g.rowNo,
+            __barcodes: g.barcodes,
+            __packagingUnits: g.packagingUnits,
+            __stockNote: g.stockNote,
+          }));
+        } else if (isCsv) {
           // CSV: exact header matching, ',' or ';' delimiter, negative numbers rejected (lib/csv-parser)
-          const csvRows = parseProductCSV(new TextDecoder("utf-8").decode(buffer));
+          const csvRows = parseProductCSV(csvText);
           rawJson = csvRows.map((r) => ({
             "รหัสสินค้า": r.productCode || undefined,
             "ชื่อสินค้า": r.productName || undefined,
@@ -550,7 +471,7 @@ export default function ProductsPage() {
             "จำนวนสต็อก": r.stock,
           }));
         } else {
-          const workbook = XLSX.read(buffer, { type: "array" });
+          const workbook = unitsBook || XLSX.read(buffer, { type: "array" });
           const firstSheetName = workbook.SheetNames[0];
           if (!firstSheetName) {
             toast.error("ไม่พบข้อมูลในไฟล์ Excel");
@@ -657,6 +578,13 @@ export default function ProductsPage() {
                 diffs.push(`หน่วย: ${existingUnit} ➔ ${newUnit}`);
               }
 
+              if (Array.isArray(row.__packagingUnits) && row.__packagingUnits.length > 0) {
+                const before = packChainText(existing.unit, existing.packagingUnits);
+                const after = packChainText(unit || existing.unit, row.__packagingUnits);
+                if (before !== after) diffs.push(`หน่วยบรรจุ: ${before} ➔ ${after}`);
+                const oldCodes = new Set((existing.packagingUnits || []).map((u: any) => u.barcode).filter(Boolean));
+                if (row.__packagingUnits.some((u: any) => u.barcode && !oldCodes.has(u.barcode))) diffs.push("บาร์โค้ดหน่วยบรรจุ");
+              }
               const existingCat = String(existing.category?.name || existing.category || "ทั่วไป").trim();
               const newCat = String(categoryName || existingCat).trim();
               if (existingCat !== newCat) {
@@ -667,10 +595,16 @@ export default function ProductsPage() {
             } else {
               changeType = "NEW";
               diffs.push("สินค้าใหม่");
+              if (Array.isArray(row.__packagingUnits) && row.__packagingUnits.length > 0) {
+                diffs.push(`หน่วย: ${packChainText(unit, row.__packagingUnits)}`);
+              }
             }
 
             return {
-              rowNo: rowIndex + 2, // spreadsheet row (row 1 = header) for server error messages
+              rowNo: row.__rowNo ?? rowIndex + 2, // spreadsheet row (row 1 = header) for server error messages
+              ...(Array.isArray(row.__packagingUnits) && row.__packagingUnits.length > 0 ? { packagingUnits: row.__packagingUnits } : {}),
+              ...(Array.isArray(row.__barcodes) && row.__barcodes.length > 0 ? { barcodes: row.__barcodes } : {}),
+              stockNote: row.__stockNote,
               id: existing?.id || id,
               sku,
               name,
@@ -706,7 +640,7 @@ export default function ProductsPage() {
         setIsImportPreviewOpen(true);
       } catch (err: any) {
         console.error("Failed to parse Excel:", err);
-        toast.error(err instanceof CsvImportError ? err.message : "เกิดข้อผิดพลาดในการอ่านไฟล์ Excel กรุณาตรวจสอบรูปแบบไฟล์");
+        toast.error(err instanceof CsvImportError || err instanceof ImportFileError ? err.message : "เกิดข้อผิดพลาดในการอ่านไฟล์ Excel กรุณาตรวจสอบรูปแบบไฟล์", { duration: 10000 });
       }
     };
     reader.readAsArrayBuffer(file);
@@ -2322,11 +2256,19 @@ export default function ProductsPage() {
                         <TableCell className="font-mono text-slate-700 font-bold">{row.sku || "-"}</TableCell>
                         <TableCell className="font-bold text-slate-900 truncate max-w-[200px]">
                           {row.name}
-                          {row.barcode && <span className="text-[10.5px] text-slate-400 block font-mono font-normal">บาร์โค้ด: {row.barcode}</span>}
+                          {row.barcode && <span className="text-[10.5px] text-slate-400 block font-mono font-normal">บาร์โค้ด: {[row.barcode, ...(row.barcodes || [])].join(", ")}</span>}
+                          {Array.isArray(row.packagingUnits) && row.packagingUnits.length > 0 && (
+                            <span className="text-[10.5px] text-violet-600 block font-normal">
+                              หน่วย: {packChainText(row.unit, row.packagingUnits)}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-mono text-slate-600">{row.costPrice === undefined ? "-" : formatCurrency(row.costPrice)}</TableCell>
                         <TableCell className="text-right font-mono text-emerald-700 font-bold">{row.priceLevel1 === undefined ? "-" : formatCurrency(row.priceLevel1)}</TableCell>
-                        <TableCell className="text-center font-mono text-slate-800">{row.stock ?? "-"} {row.unit ?? ""}</TableCell>
+                        <TableCell className="text-center font-mono text-slate-800">
+                          {row.stock ?? "-"} {row.unit ?? ""}
+                          {row.stockNote && <span className="block text-[10px] text-slate-400 font-sans">{row.stockNote}</span>}
+                        </TableCell>
                         <TableCell className="text-[11px] text-indigo-700 font-medium">
                           {row.diffs?.length > 0 ? (
                             <div className="flex flex-wrap gap-1">
