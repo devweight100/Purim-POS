@@ -84,7 +84,7 @@ test('sell by scanning a hyphenated SKU and pay cash; the receipt shows the tota
   expect(text).toContain('ชำระโดย: เงินสด');
   expect(text).toContain('รับเงินมา: ฿500');
   expect(text).toContain('เงินทอน: ฿287');
-  await page.keyboard.press('Escape');
+  await receipt.getByRole('button', { name: 'Close' }).click();
   await expect(receipt).toBeHidden();
   await finishPayment();
 
@@ -148,13 +148,23 @@ test('partial return by the manager', async ({ browser }) => {
 test('close shift with counted cash', async () => {
   const expected = STARTING_CASH + CASH_TOTAL; // the credit sale and the transfer refund do not touch the drawer
   await page.getByRole('button', { name: 'ปิดกะ' }).click();
-  const dlg = page.getByRole('dialog').filter({ hasText: 'ปิดกะการขาย' });
+  const dlg = page.getByRole('dialog').filter({ hasText: 'ปิดกะการขาย (Close Shift)' });
   await expect(dlg).toContainText('เงินสดที่ควรมีในลิ้นชัก');
   await expect(dlg).toContainText('฿1,713');
   await dlg.getByPlaceholder('0.00').fill(String(expected));
   await expect(dlg).toContainText('ยอดเงินสดในลิ้นชักพอดี');
   await dlg.getByRole('button', { name: 'ยืนยันปิดกะ' }).click();
   await expect(dlg).toBeHidden();
+
+  // the shift summary slip follows
+  const summary = page.getByRole('dialog').filter({ hasText: 'ใบสรุปปิดกะ' });
+  await expect(summary).toBeVisible();
+  const text = (await summary.innerText()).replace(/\s+/g, ' ');
+  expect(text).toContain('เงินสด (Cash): ฿213');
+  expect(text).toContain('เงินเชื่อ (Credit / ลูกหนี้): ฿189');
+  expect(text).toContain('รวมยอดขาย: ฿402');
+  expect(text).toContain('-฿12');
+  await page.keyboard.press('Escape');
 
   const shift = await latestShift();
   expect(shift).toMatchObject({ isOpen: false, actualCash: expected, difference: 0, status: 'BALANCED' });
