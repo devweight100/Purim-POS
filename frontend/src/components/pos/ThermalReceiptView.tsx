@@ -9,6 +9,7 @@ import { paymentMethodLabel } from '@/lib/receipt-mapper';
 import { StoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe } from '@/lib/pdf-print-service';
 import { BarcodeView } from '@/components/common/BarcodeView';
+import { formatQty, mulQty, subQty } from '@/lib/qty';
 
 export interface ReceiptData {
   orderNumber: string;
@@ -222,7 +223,7 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
                   {item.bundleData.bundleItems.map((bItem, bIdx) => (
                     <div key={bIdx} className="flex justify-between">
                       <span>• {bItem.productName}</span>
-                      <span className="font-black font-mono">x{bItem.quantity * item.quantity}</span>
+                      <span className="font-black font-mono">x{formatQty(mulQty(bItem.quantity, item.quantity))}</span>
                     </div>
                   ))}
                 </div>
@@ -230,7 +231,7 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
 
               <div className="flex justify-between items-center text-black text-[11px] pl-1 font-bold">
                 <span className="truncate pr-1">
-                  {item.quantity} {item.unitName} x {formatCurrency(item.unitPrice)}
+                  {formatQty(item.quantity)} {item.unitName} x {formatCurrency(item.unitPrice)}
                 </span>
                 <span className="font-black text-black shrink-0 font-mono text-[12px]">
                   {formatCurrency(item.lineTotal)}
@@ -245,7 +246,7 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
 
               {item.claimQuantity !== undefined && item.claimQuantity > 0 && (
                 <div className="text-[11px] text-black font-black pl-1">
-                  * เคลมฟรี: {item.claimQuantity} {item.unitName} (คิดเงิน {Math.max(0, item.quantity - item.claimQuantity)} {item.unitName})
+                  * เคลมฟรี: {formatQty(item.claimQuantity)} {item.unitName} (คิดเงิน {formatQty(Math.max(0, subQty(item.quantity, item.claimQuantity)))} {item.unitName})
                 </div>
               )}
 
@@ -307,7 +308,7 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
               <span>[ข้อมูลการเคลมสินค้า]</span>
               <span className="font-mono font-black">#{data.claimInfo.claimId}</span>
             </div>
-            <div>• สินค้า: {data.claimInfo.productName} ({data.claimInfo.quantity} {data.claimInfo.unitName})</div>
+            <div>• สินค้า: {data.claimInfo.productName} ({formatQty(data.claimInfo.quantity)} {data.claimInfo.unitName})</div>
             {data.claimInfo.defectReason && (
               <div>• อาการเสีย: {data.claimInfo.defectReason}</div>
             )}

@@ -1,4 +1,5 @@
 import { Product } from './types';
+import { formatQty } from './qty';
 
 export function formatStockDisplay(product: Product): string {
   if (!product.units || product.units.length === 0) {
@@ -13,15 +14,17 @@ export function formatStockDisplay(product: Product): string {
   // Sort units descending by factor
   const sortedUnits = [...product.units].sort((a, b) => b.factor - a.factor);
   
-  let remaining = product.stock;
+  // whole hundredths: decimal stock (7.25 m) splits without float residue
+  let remainingH = Math.round(product.stock * 100);
   const parts: string[] = [];
 
   for (const u of sortedUnits) {
     if (u.factor <= 0) continue;
-    const qty = Math.floor(remaining / u.factor);
+    const unitH = Math.round(u.factor * 100);
+    const qty = u.factor === 1 ? remainingH / 100 : Math.floor(remainingH / unitH);
     if (qty > 0) {
-      parts.push(`${qty} ${u.unitName}`);
-      remaining = remaining % u.factor;
+      parts.push(`${formatQty(qty)} ${u.unitName}`);
+      remainingH = u.factor === 1 ? 0 : remainingH % unitH;
     }
   }
 

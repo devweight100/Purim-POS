@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { BarcodeView } from '@/components/common/BarcodeView';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
+import { formatQty } from '@/lib/qty';
 
 export interface PurchaseOrderData {
   id: string;
@@ -304,7 +305,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                               {calc.lines[idx]?.vatType === 'INCLUDED' && <span className="ml-1.5 text-[10px] text-emerald-700 font-normal">(ราคารวม VAT {calc.lines[idx].vatRate}%)</span>}
                               {calc.lines[idx]?.vatType === 'EXCLUDED' && <span className="ml-1.5 text-[10px] text-amber-700 font-normal">(+VAT {calc.lines[idx].vatRate}%)</span>}
                             </td>
-                            <td className="p-2.5 text-right font-bold text-slate-900 border-r border-slate-200">{qty.toLocaleString()}</td>
+                            <td className="p-2.5 text-right font-bold text-slate-900 border-r border-slate-200">{formatQty(qty, { grouping: true })}</td>
                             <td className="p-2.5 text-right text-slate-700 border-r border-slate-200">{formatCurrency(cost)}</td>
                             <td className="p-2.5 text-right text-rose-600 border-r border-slate-200">
                               {lineDiscount > 0 ? `-${formatCurrency(lineDiscount)}` : '-'}

@@ -24,6 +24,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatQty } from '@/lib/qty';
 
 export interface ReceiptA4Item {
   sku?: string;
@@ -426,7 +427,7 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
               <span className="font-mono text-indigo-700 font-bold text-[10.5px]">#{data.claimInfo.claimId}</span>
             </div>
             <div className="text-slate-800 text-[10px] pt-0.5">
-              • สินค้า: <b className="text-slate-900">{data.claimInfo.productName}</b> ({data.claimInfo.quantity} {data.claimInfo.unitName})
+              • สินค้า: <b className="text-slate-900">{data.claimInfo.productName}</b> ({formatQty(data.claimInfo.quantity)} {data.claimInfo.unitName})
             </div>
             {data.claimInfo.defectReason && (
               <div className="text-slate-600 text-[9.5px]">• อาการเสีย: {data.claimInfo.defectReason}</div>
@@ -652,7 +653,7 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
                                 <td className="py-1 px-3 border-r border-slate-300 align-top">
                                   <div className="font-bold text-black leading-snug">{item.name}</div>
                                 </td>
-                                <td className="py-1 px-1.5 text-center font-bold text-black border-r border-slate-300 font-mono align-top">{item.quantity}</td>
+                                <td className="py-1 px-1.5 text-center font-bold text-black border-r border-slate-300 font-mono align-top">{formatQty(item.quantity, { grouping: true })}</td>
                                 <td className="py-1 px-1.5 text-center text-black font-medium border-r border-slate-300 align-top">{item.unitName || 'ชิ้น'}</td>
                                 <td className="py-1 px-2 text-right font-mono text-black font-bold border-r border-slate-300 align-top">{formatCurrency(item.unitPrice)}</td>
                                 <td className="py-1 px-2 text-right font-mono text-black font-bold border-r border-slate-300 align-top">

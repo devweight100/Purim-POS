@@ -1,6 +1,7 @@
 import { useProductStore } from './store/product-store';
 import { apiFetch } from './api';
 import { ApiError } from './api-error';
+import { roundQty } from './qty';
 
 export type StockMovementType = 
   | 'IN_PO'       // รับเข้าจากใบสั่งซื้อ PO
@@ -152,7 +153,7 @@ export function deductPosSaleStock(
       (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.conversionFactor) || 1),
       0
     );
-    const newStock = previousStock - totalDeduct;
+    const newStock = roundQty(previousStock - totalDeduct);
 
     // Record stock movement log
     recordStockMovement({
@@ -291,7 +292,7 @@ export function restoreVoidOrderStock(
       (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.conversionFactor) || 1),
       0
     );
-    const newStock = previousStock + totalRestore;
+    const newStock = roundQty(previousStock + totalRestore);
 
     recordStockMovement({
       productId: prod.id || prod.sku,
@@ -344,7 +345,7 @@ export function recordPoReceiveStock(
 
     const previousStock = Number(prod.stock !== undefined && prod.stock !== null ? prod.stock : 0);
     const addQty = Number(item.toReceive) * (Number(item.multiplier) || 1);
-    const newStock = previousStock + addQty;
+    const newStock = roundQty(previousStock + addQty);
 
     recordStockMovement({
       productId: prod.id || prod.sku,
@@ -390,7 +391,7 @@ export function recordPoRollbackStock(
 
     const previousStock = Number(prod.stock !== undefined && prod.stock !== null ? prod.stock : 0);
     const deductQty = Number(item.receivedQuantity) * (Number(item.multiplier) || 1);
-    const newStock = Math.max(0, previousStock - deductQty);
+    const newStock = Math.max(0, roundQty(previousStock - deductQty));
 
     recordStockMovement({
       productId: prod.id || prod.sku,
