@@ -50,3 +50,11 @@ yarn-error.log*
 _trash/
 .jwt-secret
 backend/.jwt-secret
+
+# Installer build outputs: published as GitHub Release assets (.github/workflows/release.yml), never committed
+Installer/dist/
+Installer/Server/Purim-POS-Server-Setup.exe
+Installer/Client/Purim-POS-Client-Setup.exe
+Installer/Client/client-version.json
+Installer/Server/control/Purim POS Server.exe
+/downloads/
