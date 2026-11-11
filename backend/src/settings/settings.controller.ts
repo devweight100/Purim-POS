@@ -1,5 +1,6 @@
 import { Controller, Get, Post, Patch, Put, Body, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ServerControlService } from '../server-control/server-control.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
@@ -47,9 +48,26 @@ function publicSettings<T extends Record<string, any>>(s: T) {
   return out;
 }
 
+/** Default expense categories of a fresh install (same as the finance_ledger migration). */
+const RESET_EXPENSE_CATEGORIES = [
+  'ค่าเช่าที่',
+  'ค่าไฟฟ้า / ค่าน้ำ',
+  'เงินเดือน / ค่าแรง',
+  'ค่าขนส่ง / น้ำมัน',
+  'ค่าโทรศัพท์ / อินเทอร์เน็ต',
+  'วัสดุสิ้นเปลือง / ถุง / บรรจุภัณฑ์',
+  'ค่าซ่อมบำรุง',
+  'ค่าธรรมเนียมธนาคาร / บัตร',
+  'ภาษี / ค่าธรรมเนียมราชการ',
+  'ค่าใช้จ่ายเบ็ดเตล็ด',
+];
+
 @Controller('settings')
 export class SettingsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly serverControl: ServerControlService,
+  ) {}
 
   @Get()
   async getSettings() {
@@ -128,63 +146,42 @@ export class SettingsController {
   @Roles('ADMIN')
   @Post('reset-database')
   async resetDatabase() {
+    // Empty EVERY table (read from the database, so a table added later can never be missed -
+    // the old hand-written list left the cash ledger, expenses, returns and approvals behind).
+    // Kept: users (admin only, below), store settings and the migration history.
+    // A backup is taken first; no backup -> nothing is deleted.
+    let backupFile: string | null = null;
+    try {
+      const backup: any = await this.serverControl.createBackup('manual');
+      backupFile = backup?.fileName || null;
+    } catch (err: any) {
+      backupFile = null;
+    }
+    if (!backupFile) {
+      throw new BadRequestException('สำรองข้อมูลก่อนล้างไม่สำเร็จ จึงยังไม่ได้ลบข้อมูลใด ๆ กรุณาตรวจสอบหน้า "สำรองข้อมูล" แล้วลองใหม่');
+    }
     return this.prisma.$transaction(async (tx) => {
-      // 1. Payables & Vouchers
-      await tx.paymentVoucherDebit.deleteMany({});
-      await tx.paymentVoucherItem.deleteMany({});
-      await tx.paymentVoucher.deleteMany({});
-      await tx.supplierReturnNote.deleteMany({});
-
-      // 2. Purchase Orders
-      await tx.purchaseOrderItem.deleteMany({});
-      await tx.purchaseOrder.deleteMany({});
-
-      // 3. Claims
-      await tx.customerClaim.deleteMany({});
-      await tx.claimInventory.deleteMany({});
-
-      // 4. Debts
-      await tx.debtPayment.deleteMany({});
-      await tx.customerDebt.deleteMany({});
-
-      // 5. Customers
-      await tx.customer.deleteMany({});
-
-      // 6. Orders & Payments
-      await tx.payment.deleteMany({});
-      await tx.orderItem.deleteMany({});
-      await tx.order.deleteMany({});
-
-      // 7. Shifts & Cash Movements
-      await tx.cashMovement.deleteMany({});
-      await tx.shift.deleteMany({});
-
-      // 8. Products, Batches, Barcodes, Packaging, Suppliers
-      await tx.productSupplier.deleteMany({});
-      await tx.supplier.deleteMany({});
-      await tx.stockBatch.deleteMany({});
-      await tx.productBarcode.deleteMany({});
-      await tx.productPackagingUnit.deleteMany({});
-      await tx.productImage.deleteMany({});
-      await tx.productWholesalePrice.deleteMany({});
-      await tx.product.deleteMany({});
-      await tx.category.deleteMany({});
-
-      // 9. Logs & Bank Accounts
-      await tx.auditLog.deleteMany({});
-      await tx.bankAccount.deleteMany({});
-
-      // 10. Delete all users except admin
-      await tx.user.deleteMany({
-        where: {
-          username: { not: 'admin' },
-        },
+      const rows = await tx.$queryRaw<{ tablename: string }[]>`
+        SELECT tablename FROM pg_tables
+        WHERE schemaname = current_schema()
+          AND tablename NOT IN ('users', 'store_settings', '_prisma_migrations')`;
+      const tables = rows.map((r) => r.tablename).filter((t) => /^[a-z0-9_]+$/.test(t));
+      if (tables.length > 0) {
+        await tx.$executeRawUnsafe(`TRUNCATE TABLE ${tables.map((t) => `"${t}"`).join(', ')} RESTART IDENTITY CASCADE`);
+      }
+      await tx.user.deleteMany({ where: { username: { not: 'admin' } } });
+      // a fresh install comes with these expense categories (migration 20261107000000_finance_ledger)
+      await tx.expenseCategory.createMany({
+        data: RESET_EXPENSE_CATEGORIES.map((name, i) => ({ name, sortOrder: i + 1 })),
+        skipDuplicates: true,
       });
-
       return {
         success: true,
-        message: 'ล้างข้อมูลทั้งหมดในฐานข้อมูลเรียบร้อยแล้ว คงเหลือเฉพาะผู้ใช้งาน admin',
+        clearedTables: tables.length,
+        backupFile,
+        message: `ล้างข้อมูลทั้งหมดเรียบร้อยแล้ว (รวมยอดเงินในการเงิน) คงเหลือเฉพาะผู้ใช้งาน admin และการตั้งค่าร้าน — สำรองข้อมูลก่อนล้างไว้ที่ ${backupFile}`,
       };
-    });
+    }, { timeout: 60000 });
   }
+
 }

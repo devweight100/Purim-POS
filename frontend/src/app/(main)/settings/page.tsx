@@ -52,6 +52,7 @@ import {
 import { ThermalReceiptView, SAMPLE_RECEIPT_DATA } from "@/components/pos/ThermalReceiptView";
 import { formatCurrency } from "@/lib/utils";
 import { VersionDetails } from "@/components/common/VersionInfo";
+import { clearLocalShopData } from '@/lib/local-data-reset';
 
 function BackupSection() {
   const role = useAuthStore((s) => s.user?.role);
@@ -296,38 +297,16 @@ export default function SettingsPage() {
     try {
       await api.settings.resetDatabase();
 
-      // Clear all local storage keys
-      if (typeof window !== "undefined") {
-        const keysToRemove = [
-          "pos_orders_history",
-          "pos_shifts_history",
-          "pos_current_shift",
-          "pos_cash_transactions",
-          "pos_product_claims",
-          "pos_replacement_warranties",
-          "custom_products",
-          "pos_customers",
-          "pos_customer_debts",
-          "pos_debt_records",
-          "pos_cart_state",
-          "pos_product_categories",
-          "pos_suppliers",
-          "pos_purchase_orders",
-          "pos_payable_bills",
-          "pos_payment_vouchers",
-          "pos_supplier_returns",
-          "pos_bank_accounts",
-          "offline_orders_queue",
-        ];
-        keysToRemove.forEach((k) => localStorage.removeItem(k));
-      }
+      // Forget every piece of shop data cached on this device (cart, held bills, offline queues...)
+      await clearLocalShopData();
 
       // Reset stores
       await useProductStore.getState().fetchProducts();
       useShiftStore.setState({ currentShift: null, completedOrders: [], cashTransactions: [] });
+      useCartStore.setState({ items: [], heldBills: [] });
       useCartStore.getState().clearCart();
 
-      toast.success("✅ ล้างข้อมูลทั้งหมดในระบบเรียบร้อยแล้ว คงเหลือเฉพาะผู้ใช้งาน admin");
+      toast.success("✅ ล้างข้อมูลทั้งหมดเรียบร้อยแล้ว (รวมยอดเงิน) คงเหลือเฉพาะผู้ใช้งาน admin และการตั้งค่าร้าน — เครื่องลูกอื่นให้กด F5 หรือเปิดโปรแกรมใหม่");
       setIsResetModalOpen(false);
       setConfirmText("");
 
@@ -994,7 +973,7 @@ export default function SettingsPage() {
                   </Badge>
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500">
-                  ล้างข้อมูลทั้งหมดในฐานข้อมูลและประวัติการขายในระบบ โดยจะคงเหลือไว้เฉพาะผู้ใช้งาน admin
+                  ล้างข้อมูลทั้งหมดในฐานข้อมูล รวมยอดเงินในการเงิน (เงินสด/ธนาคาร) โดยจะคงเหลือไว้เฉพาะผู้ใช้งาน admin และการตั้งค่าร้าน
                 </CardDescription>
               </div>
             </div>
@@ -1036,7 +1015,7 @@ export default function SettingsPage() {
               ยืนยันการล้างข้อมูลทั้งหมดในระบบ?
             </DialogTitle>
             <DialogDescription className="text-center text-xs text-slate-600 leading-relaxed">
-              การกระทำนี้จะ <strong className="text-rose-600 font-bold">ลบข้อมูลทั้งหมดในฐานข้อมูลอย่างถาวร</strong> (ออเดอร์, สินค้า, ลูกค้า, เจ้าหนี้, สต็อก, กะ ฯลฯ) และ <strong className="text-slate-900">ไม่สามารถกู้คืนได้</strong> โดยจะคงเหลือไว้เฉพาะผู้ใช้งาน <code className="bg-slate-100 text-indigo-700 px-1 py-0.5 rounded font-mono font-bold">admin</code>
+              การกระทำนี้จะ <strong className="text-rose-600 font-bold">ลบข้อมูลทั้งหมดในฐานข้อมูลอย่างถาวร</strong> (ออเดอร์, สินค้า, ลูกค้า, เจ้าหนี้, สต็อก, กะ, ยอดเงินสด/ธนาคาร, ค่าใช้จ่าย, การคืนสินค้า ฯลฯ) และ <strong className="text-slate-900">ไม่สามารถกู้คืนได้</strong> โดยจะคงเหลือไว้เฉพาะผู้ใช้งาน <code className="bg-slate-100 text-indigo-700 px-1 py-0.5 rounded font-mono font-bold">admin</code> และการตั้งค่าร้าน (ระบบสำรองข้อมูลอัตโนมัติก่อนล้างไม่ได้ ควรกดสำรองข้อมูลก่อน)
             </DialogDescription>
           </DialogHeader>
 
