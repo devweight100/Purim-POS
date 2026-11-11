@@ -1,8 +1,9 @@
 /**
  * Update the Purim POS desktop app from the server (no internet needed).
  *
- * The server machine keeps the newest client installer (Installer/Client/Purim-POS-Client-Setup.exe
- * + client-version.json, delivered by the server installer / "อัปเดตระบบ"), and serves it at
+ * The server machine keeps the newest client installer (<install dir>/downloads/Purim-POS-Client-Setup.exe
+ * + client-version.json, taken from the GitHub Release by the server installer / "อัปเดตระบบ (GitHub)";
+ * installers are never committed to git), and serves it at
  *   GET /api/client-app/latest    { version, sha256, size }
  *   GET /api/client-app/download  the installer
  * This module compares versions, downloads, verifies the SHA-256 and runs the installer silently,
@@ -38,7 +39,14 @@ function getJson(url, timeoutMs = 5000) {
       res.setEncoding('utf8');
       res.on('data', (c) => (body += c));
       res.on('end', () => {
-        if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
+        if (res.statusCode !== 200) {
+          // the server explains in Thai (e.g. 404: no client installer on the server yet)
+          let msg = '';
+          try {
+            msg = JSON.parse(body).message || '';
+          } catch {}
+          return reject(new Error(typeof msg === 'string' && msg ? msg : `HTTP ${res.statusCode}`));
+        }
         try {
           resolve(JSON.parse(body));
         } catch (e) {

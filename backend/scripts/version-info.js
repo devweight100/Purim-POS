@@ -68,7 +68,9 @@ function getSourceVersion(rootDir) {
         branch: v.branch || '',
         modified: v.modified === true,
         installedAt: v.installedAt || '',
-        label: label(v.commit, committedAt),
+        // release installs (GitHub Releases, tag vX.Y.Z) show the version first
+        ...(v.version ? { version: String(v.version) } : {}),
+        label: (v.version ? `v${String(v.version).replace(/^v/, '')} · ` : '') + label(v.commit, committedAt),
       };
     } catch {}
   }
