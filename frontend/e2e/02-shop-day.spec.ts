@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { ADMIN, CASHIER } from './env';
-import { api, apiLogin, expectCartQty, scan, uiLogin } from './helpers';
+import { api, apiLogin, expectCartQty, scan, uiLogin, type ApiOrder, type ApiReturn, type ApiShift } from './helpers';
 
 /**
  * One cashier's day on the POS, in order: open shift -> cash sale by scanning -> credit sale ->
@@ -10,16 +10,21 @@ test.describe.configure({ mode: 'serial' });
 
 let page: Page;
 let adminToken = '';
-const state: { cashOrder?: any; creditOrder?: any } = {};
+const state: { cashOrder?: ApiOrder; creditOrder?: ApiOrder } = {};
 
 const STARTING_CASH = 1500;
 const WATER = { sku: 'DRK-SINGHA-600', name: 'น้ำดื่มสิงห์ 600ml', price: 12 };
 const RICE = { sku: 'RICE-JAS-5KG', barcode: '885000000001', name: 'ข้าวหอมมะลิ 5 กก.', price: 189 };
 const CASH_TOTAL = 2 * WATER.price + RICE.price; // 213
 
-const latestShift = async () => (await api('GET', '/shifts/history?limit=1', adminToken)).data[0];
-const findOrder = async (predicate: (o: any) => boolean) =>
-  ((await api('GET', '/orders?limit=20', adminToken)).data as any[]).find(predicate);
+const latestShift = async () => (await api<{ data: ApiShift[] }>('GET', '/shifts/history?limit=1', adminToken)).data[0];
+const findOrder = async (predicate: (o: ApiOrder) => boolean) =>
+  (await api<{ data: ApiOrder[] }>('GET', '/orders?limit=20', adminToken)).data.find(predicate);
+/** Set by an earlier step of this serial file. */
+const must = <T>(v: T | undefined): T => {
+  if (v === undefined) throw new Error('missing state from an earlier step');
+  return v;
+};
 
 /** Close the payment success window (it also closes by itself after a countdown). */
 async function finishPayment() {
@@ -90,7 +95,7 @@ test('sell by scanning a hyphenated SKU and pay cash; the receipt shows the tota
 
   state.cashOrder = await findOrder((o) => Number(o.totalAmount) === CASH_TOTAL);
   expect(state.cashOrder).toBeTruthy();
-  expect(state.cashOrder.payments.map((p: any) => p.method)).toEqual(['CASH']);
+  expect(must(state.cashOrder).payments.map((p) => p.method)).toEqual(['CASH']);
 });
 
 test('credit sale to a customer', async () => {
@@ -110,24 +115,25 @@ test('credit sale to a customer', async () => {
   await expect(pay).toContainText('ฐานข้อมูลยืนยันรายการเรียบร้อยแล้ว');
   await finishPayment();
 
-  state.creditOrder = await findOrder((o) => o.customer?.name?.includes('ประหยัด'));
+  state.creditOrder = await findOrder((o) => !!o.customer?.name?.includes('ประหยัด'));
   expect(state.creditOrder).toBeTruthy();
-  expect(Number(state.creditOrder.totalAmount)).toBe(RICE.price);
-  expect(state.creditOrder.payments.map((p: any) => p.method)).toEqual(['CREDIT_DEBT']);
+  expect(Number(must(state.creditOrder).totalAmount)).toBe(RICE.price);
+  expect(must(state.creditOrder).payments.map((p) => p.method)).toEqual(['CREDIT_DEBT']);
   const debts = await api('GET', '/debts', adminToken);
-  expect(JSON.stringify(debts)).toContain(state.creditOrder.id);
+  expect(JSON.stringify(debts)).toContain(must(state.creditOrder).id);
 });
 
 test('partial return by the manager', async ({ browser }) => {
+  const order = must(state.cashOrder);
   const ctx = await browser.newContext();
   const mgr = await ctx.newPage();
   try {
     await uiLogin(mgr, ADMIN.username, ADMIN.password);
     await expect(mgr).toHaveURL(/\/pos/);
     await mgr.goto('/orders');
-    await mgr.getByText(state.cashOrder.orderNumber).first().click();
+    await mgr.getByText(order.orderNumber).first().click();
     await mgr.getByRole('button', { name: 'รับคืนสินค้า', exact: true }).click();
-    const dlg = mgr.getByRole('dialog').filter({ hasText: `รับคืนสินค้า บิล ${state.cashOrder.orderNumber}` });
+    const dlg = mgr.getByRole('dialog').filter({ hasText: `รับคืนสินค้า บิล ${order.orderNumber}` });
     await dlg.locator('tbody tr').filter({ hasText: WATER.name }).locator('input[type=number]').fill('1');
     await dlg.getByPlaceholder('เหตุผล เช่น ลูกค้าซื้อเกิน, สินค้าไม่ตรงรุ่น').fill('ลูกค้าซื้อเกิน');
     // money back by transfer: the cashier's drawer is not touched
@@ -139,7 +145,7 @@ test('partial return by the manager', async ({ browser }) => {
     await ctx.close();
   }
 
-  const returns = await api<any[]>('GET', `/orders/${state.cashOrder.id}/returns`, adminToken);
+  const returns = await api<ApiReturn[]>('GET', `/orders/${must(state.cashOrder).id}/returns`, adminToken);
   expect(returns).toHaveLength(1);
   expect(Number(returns[0].refundAmount)).toBe(WATER.price);
   expect(returns[0].refundMethod).toBe('TRANSFER');

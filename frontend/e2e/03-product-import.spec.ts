@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { ADMIN } from './env';
-import { api, apiLogin, uiLogin } from './helpers';
+import { api, apiLogin, uiLogin, type ApiProduct } from './helpers';
 
 /** Products page: download the import template, upload it unchanged, confirm, products exist with pack units. */
 test('product import of the downloaded template', async ({ page }) => {
@@ -25,14 +25,14 @@ test('product import of the downloaded template', async ({ page }) => {
   await expect(page.getByText(/นำเข้าสำเร็จ/).first()).toBeVisible();
   await expect(preview).toBeHidden();
 
-  const all = await api('GET', '/products?limit=500', token);
-  const list: any[] = Array.isArray(all) ? all : all.data;
+  const all = await api<ApiProduct[] | { data: ApiProduct[] }>('GET', '/products?limit=500', token);
+  const list = Array.isArray(all) ? all : all.data;
   const water = list.find((p) => p.sku === 'DRK-001');
-  expect(water).toBeTruthy();
-  const full = await api('GET', `/products/${water.id}`, token);
+  if (!water) throw new Error('DRK-001 was not imported');
+  const full = await api<ApiProduct>('GET', `/products/${water.id}`, token);
   expect(full.name).toBe('น้ำดื่มตราช้าง 600 มล.');
   expect(full.unit).toBe('ขวด');
-  expect(full.packagingUnits.map((u: any) => [u.name, u.qtyPerPrev, u.barcode, Number(u.priceLevel1)])).toEqual([
+  expect(full.packagingUnits.map((u) => [u.name, u.qtyPerPrev, u.barcode, Number(u.priceLevel1)])).toEqual([
     ['แพ็ค', 6, '8850001111128', 39],
     ['ลัง', 2, '8850001111135', 75],
   ]);
@@ -41,6 +41,6 @@ test('product import of the downloaded template', async ({ page }) => {
   expect(JSON.stringify(stock)).toMatch(/88/);
 
   // base barcodes, including the extra one of the noodles, find their product
-  expect((await api('GET', '/products/barcode/8850001111111', token)).id).toBe(water.id);
-  expect((await api('GET', '/products/barcode/8850002222239', token)).sku).toBe('NDL-001');
+  expect((await api<ApiProduct>('GET', '/products/barcode/8850001111111', token)).id).toBe(water.id);
+  expect((await api<ApiProduct>('GET', '/products/barcode/8850002222239', token)).sku).toBe('NDL-001');
 });

@@ -4,7 +4,7 @@ import { BACKEND_URL } from './env';
 export type Account = { username: string; defaultPassword: string; password: string; pin: string };
 
 /** Direct backend call (setup / checks that the UI is not under test for). */
-export async function api<T = any>(method: string, path: string, token?: string, body?: unknown): Promise<T> {
+export async function api<T = unknown>(method: string, path: string, token?: string, body?: unknown): Promise<T> {
   const r = await fetch(`${BACKEND_URL}/api${path}`, {
     method,
     headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
@@ -19,16 +19,47 @@ export async function api<T = any>(method: string, path: string, token?: string,
   }
 }
 
+// Shapes of the API responses the specs read (only the fields they use).
+export interface ApiOrder {
+  id: string;
+  orderNumber: string;
+  totalAmount: string | number;
+  payments: { method: string }[];
+  customer?: { name: string } | null;
+}
+export interface ApiShift {
+  isOpen: boolean;
+  openingCash: number;
+  actualCash: number | null;
+  difference: number | null;
+  status: string;
+  orderCount: number;
+}
+export interface ApiReturn {
+  refundAmount: string | number;
+  refundMethod: string;
+}
+export interface ApiProduct {
+  id: string;
+  sku: string;
+  name: string;
+  unit: string;
+  packagingUnits: { name: string; qtyPerPrev: number; barcode: string | null; priceLevel1: string | number | null }[];
+}
+
 /** Token for an account; changes the default password first when the account still has it. */
 export async function apiLogin(acc: Account): Promise<string> {
   try {
-    return (await api('POST', '/auth/login', undefined, { username: acc.username, password: acc.password })).access_token;
+    return (await login(acc.username, acc.password)).access_token;
   } catch {
-    const t = (await api('POST', '/auth/login', undefined, { username: acc.username, password: acc.defaultPassword })).access_token;
+    const t = (await login(acc.username, acc.defaultPassword)).access_token;
     await api('POST', '/auth/change-password', t, { currentPassword: acc.defaultPassword, newPassword: acc.password, newPin: acc.pin });
-    return (await api('POST', '/auth/login', undefined, { username: acc.username, password: acc.password })).access_token;
+    return (await login(acc.username, acc.password)).access_token;
   }
 }
+
+const login = (username: string, password: string) =>
+  api<{ access_token: string }>('POST', '/auth/login', undefined, { username, password });
 
 /** Log in through the login page. */
 export async function uiLogin(page: Page, username: string, password: string) {
