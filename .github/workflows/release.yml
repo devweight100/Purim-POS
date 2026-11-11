@@ -1,0 +1,149 @@
+name: Release
+
+# Builds the Windows installers and publishes them as a GitHub Release.
+#   git tag v1.5.0 && git push origin v1.5.0     -> release v1.5.0 (desktop app version 1.5.0)
+#   Actions > Release > Run workflow (version)   -> same, for the selected branch's commit
+# Assets: Purim-POS-Server-Setup.exe, Purim-POS-Client-Setup.exe, client-version.json,
+#         Purim-POS-Server-Payload.zip (server updater), SHA256SUMS.txt
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version, e.g. 1.5.0 (creates or updates release v1.5.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      # keep LF line endings: the payload must match the repository byte for byte
+      # (Prisma migration checksums are computed from migration.sql)
+      - name: Keep LF line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+
+      - name: Version from tag
+        id: ver
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $v = if ($env:EVENT -eq 'workflow_dispatch') { $env:INPUT_VERSION } else { $env:REF_NAME }
+          $v = "$v".Trim().TrimStart('v')
+          if ($v -notmatch '^\d+\.\d+\.\d+$') { throw "Version must look like 1.5.0 (tag v1.5.0), got '$v'" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "tag=v$v" >> $env:GITHUB_OUTPUT
+          Write-Host "Release v$v"
+
+      - name: Check PowerShell scripts with Windows PowerShell 5.1 (the version on shop PCs)
+        shell: powershell
+        run: |
+          $bad = 0
+          Get-ChildItem Installer -Recurse -Filter *.ps1 | ForEach-Object {
+            $errs = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$errs)
+            if ($errs.Count) { $bad++; Write-Host "FAIL $($_.FullName)"; $errs | ForEach-Object { Write-Host "  $($_.Message) @ line $($_.Extent.StartLineNumber)" } }
+            else { Write-Host "OK   $($_.Name)" }
+          }
+          exit $bad
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+            desktop/package-lock.json
+
+      # smoke check: the code inside the server installer builds (the server machine builds it again on install)
+      - name: Build backend (smoke check)
+        working-directory: backend
+        run: |
+          npm ci --no-audit --no-fund
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npx prisma generate
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm run build
+
+      - name: Build frontend (smoke check)
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm run build
+
+      # the payload is copied from the checkout: it must be exactly the tagged code
+      - name: Restore files the smoke builds may have touched
+        run: |
+          git status --porcelain --untracked-files=no
+          git checkout -- .
+
+      - name: Install NSIS if missing
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue) -and -not (Test-Path "${env:ProgramFiles(x86)}\NSIS\makensis.exe")) {
+            choco install nsis -y --no-progress
+          }
+
+      - name: Build installers
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: ./Installer/build-installers.ps1 -What all -Version $env:VERSION -OutDir Installer/dist
+
+      - name: Smoke test (payload checks + silent client install)
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: ./Installer/verify-release.ps1 -Version $env:VERSION -Dist Installer/dist -InstallClient
+
+      - name: Keep the build as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: purim-pos-${{ steps.ver.outputs.tag }}
+          path: |
+            Installer/dist/Purim-POS-Server-Setup.exe
+            Installer/dist/Purim-POS-Client-Setup.exe
+            Installer/dist/client-version.json
+            Installer/dist/Purim-POS-Server-Payload.zip
+            Installer/dist/SHA256SUMS.txt
+          retention-days: 14
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          $files = @(
+            'Installer/dist/Purim-POS-Server-Setup.exe',
+            'Installer/dist/Purim-POS-Client-Setup.exe',
+            'Installer/dist/client-version.json',
+            'Installer/dist/Purim-POS-Server-Payload.zip',
+            'Installer/dist/SHA256SUMS.txt'
+          )
+          gh release view $env:TAG --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $env:TAG exists: replacing its files"
+            gh release upload $env:TAG @files --clobber --repo $env:GITHUB_REPOSITORY
+          } else {
+            gh release create $env:TAG @files --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA `
+              --title "Purim POS $env:TAG" --generate-notes --latest
+          }
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }

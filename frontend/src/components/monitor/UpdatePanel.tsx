@@ -4,7 +4,11 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { ApiError } from '@/lib/api-error';
 
+/** VERSION.json of the install / the latest GitHub Release (tag vX.Y.Z) */
 interface VersionInfo {
+  version?: string;
+  tag?: string;
+  url?: string;
   commit?: string;
   short?: string;
   message?: string;
@@ -17,6 +21,8 @@ interface UpdateStatus {
   supported: boolean;
   installed: VersionInfo | null;
   tokenConfigured: boolean;
+  /** client app version this server hands to cashier machines */
+  clientApp?: string | null;
   running: boolean;
   status: { state: 'running' | 'done' | 'failed'; step: string; message: string; at: string } | null;
 }
@@ -33,14 +39,16 @@ interface CheckResult {
 const STEPS: Record<string, string> = {
   start: 'เริ่มอัปเดต',
   check: 'ตรวจสอบเวอร์ชัน',
-  download: 'ดาวน์โหลดโค้ดใหม่',
+  download: 'ดาวน์โหลดจาก GitHub Releases',
   replace: 'แทนที่ไฟล์โปรแกรม',
   install: 'สำรองข้อมูล + อัปเดตฐานข้อมูล + build',
   end: 'เสร็จสิ้น',
 };
 const STEP_ORDER = ['start', 'check', 'download', 'replace', 'install', 'end'];
 
-const short = (v?: VersionInfo | null) => (v?.short || v?.commit?.slice(0, 7) || '-').toUpperCase();
+// releases are compared by tag (v1.5.0); installs made before v1.5 only know their commit
+const short = (v?: VersionInfo | null) =>
+  v?.tag || (v?.version ? `v${v.version}` : (v?.short || v?.commit?.slice(0, 7) || '-').toUpperCase());
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 const pixelBtn = (bg: string, disabled = false): React.CSSProperties => ({
@@ -163,16 +171,26 @@ export function UpdatePanel() {
             <span className="text-right text-slate-100">{info.installed.installedAt}</span>
           </>
         )}
+        {info?.clientApp !== undefined && (
+          <>
+            <span>แอปเครื่องลูก (แจกให้เครื่องขาย)</span>
+            <span className="font-mono font-black text-slate-100 text-right">{info.clientApp ? `v${info.clientApp}` : 'ยังไม่มี'}</span>
+          </>
+        )}
         {check?.latest && (
           <>
-            <span>ล่าสุดบน GitHub</span>
+            <span>Release ล่าสุดบน GitHub</span>
             <span className="font-mono font-black text-right" style={{ color: check.upToDate ? '#4ade80' : '#fde047' }}>
               {short(check.latest)}
             </span>
           </>
         )}
       </div>
-      {check?.latest?.message && <p className="text-slate-400 break-words">“{check.latest.message}”</p>}
+      {check?.latest?.message && (
+        <p className="text-slate-400 break-words">
+          “{check.latest.message}”{check.latest.committedAt ? ` · ${check.latest.committedAt}` : ''}
+        </p>
+      )}
 
       {/* progress of a running / finished update */}
       {(watching || (st && st.state !== 'done' && nowTs - Date.parse(st.at) < 3600_000)) && st && (

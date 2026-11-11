@@ -301,7 +301,9 @@ if ($isAdmin) {
 }
 
 # Purim POS desktop app on this machine too (silent install; again only when the setup file changed)
-$ClientSetup = Join-Path $InstallDir 'Installer\Client\Purim-POS-Client-Setup.exe'
+# downloads\ = from the GitHub Release (server installer / updater); Installer\Client\ = installs before v1.5
+$ClientSetup = Join-Path $InstallDir 'downloads\Purim-POS-Client-Setup.exe'
+if (-not (Test-Path $ClientSetup)) { $ClientSetup = Join-Path $InstallDir 'Installer\Client\Purim-POS-Client-Setup.exe' }
 if (Test-Path $ClientSetup) {
   $hash = (Get-FileHash $ClientSetup -Algorithm SHA256).Hash
   $marker = Join-Path $LogDir 'client-app.sha256'

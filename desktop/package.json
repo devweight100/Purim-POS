@@ -7,7 +7,8 @@
     "start": "electron .",
     "build:dir": "electron-builder --dir",
     "build:exe": "electron-builder",
-    "build:installer": "bash ../Installer/build-installers.sh client"
+    "build:installer": "bash ../Installer/build-installers.sh client",
+    "build:installer:win": "pwsh ../Installer/build-installers.ps1 -What client"
   },
   "keywords": [
     "pos",

@@ -8,10 +8,14 @@ import { execFile, spawn } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { clientAppDirs, findClientApp } from '../version/client-app.controller';
 
 /**
  * "Update from GitHub" for the server machine, driven from the store monitor page.
- * Runs Installer/Server/setup/update-from-github.ps1 (Windows installs made by the server installer).
+ * Runs Installer/Server/setup/update-from-github.ps1 (Windows installs made by the server installer),
+ * which compares VERSION.json with the latest GitHub Release (tag vX.Y.Z, built by
+ * .github/workflows/release.yml) and installs its assets: the server payload zip, plus the client
+ * app installer into <install dir>/downloads (served to cashier machines by /api/client-app).
  */
 @Injectable()
 export class ServerUpdateService {
@@ -83,6 +87,8 @@ export class ServerUpdateService {
         process.platform === 'win32' && fs.existsSync(this.scriptPath()),
       installed: this.readJson(path.join(dir, 'VERSION.json')),
       tokenConfigured: fs.existsSync(path.join(dir, 'update-token.dat')),
+      // client app version this server hands to cashier machines (null = none yet)
+      clientApp: findClientApp(clientAppDirs(dir))?.version ?? null,
       status,
       running: this.isRunning(status),
     };
