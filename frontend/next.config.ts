@@ -31,14 +31,16 @@ const nextConfig: NextConfig = {
     "trycloudflare.com",
   ],
   async rewrites() {
+    // Backend address (read at build time). Override only for tests that run the backend on another port.
+    const api = process.env.API_INTERNAL_URL || "http://127.0.0.1:3001";
     return [
       {
         source: "/api/:path*",
-        destination: "http://127.0.0.1:3001/api/:path*",
+        destination: `${api}/api/:path*`,
       },
       {
         source: "/uploads/:path*",
-        destination: "http://127.0.0.1:3001/uploads/:path*",
+        destination: `${api}/uploads/:path*`,
       },
     ];
   },
