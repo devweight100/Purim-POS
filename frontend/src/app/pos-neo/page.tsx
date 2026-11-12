@@ -40,7 +40,7 @@ import { CustomerClaimStockModal } from '@/components/pos/CustomerClaimStockModa
 import { PosNeoListLayout } from '@/components/pos/PosNeoListLayout';
 import { CartItem, Product, ProductUnit, ClaimRecord } from '@/lib/types';
 import { getProductAvailableUnits, getDefaultSelectedUnit } from '@/lib/product-unit-helpers';
-import { getCustomerById, Customer } from '@/lib/customer-service';
+import { useCustomerById, Customer } from '@/lib/customer-service';
 import { useDocumentSearchStore } from '@/lib/store/document-search-store';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
@@ -233,13 +233,11 @@ export default function PosNeoPage() {
   }, []);
 
   // Customer binding
+  // re-evaluated whenever the server's customer list is refreshed
+  const syncedCustomer = useCustomerById(cart.customerId);
   useEffect(() => {
-    if (cart.customerId) {
-      setActiveCustomer(getCustomerById(cart.customerId));
-    } else {
-      setActiveCustomer(null);
-    }
-  }, [cart.customerId]);
+    setActiveCustomer(syncedCustomer);
+  }, [syncedCustomer]);
 
   // Click on background focuses scanner
   const handleEmptySpaceClick = (e: React.MouseEvent) => {

@@ -19,7 +19,6 @@ import { loadBankAccounts, BankAccount } from '@/lib/bank-account-storage';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe } from '@/lib/pdf-print-service';
 import { deductPosSaleStock } from '@/lib/stock-service';
-import { recordCustomerSale } from '@/lib/customer-service';
 import { updateClaimStatus, processClaim } from '@/lib/claim-service';
 import { kickCashDrawer, getCashDrawerConfig } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';

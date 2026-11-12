@@ -7,8 +7,7 @@ import {
   Customer,
   CustomerType,
   LoyaltySystemConfig,
-  loadCustomers,
-  saveCustomers,
+  fetchCustomers,
   fetchLoyaltyConfig,
   upsertCustomer,
   deleteCustomer,
@@ -57,6 +56,7 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 
 export default function CustomersPage() {
   const authUser = useAuthStore((st) => st.user);
@@ -104,18 +104,22 @@ export default function CustomersPage() {
 
   const [activeFormTab, setActiveFormTab] = useState<'general' | 'tax' | 'credit' | 'loyalty'>('general');
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
   const reloadData = async () => {
+    setIsLoading(true);
     try {
-      const list = await apiFetch('/customers');
-      setCustomers(Array.isArray(list) ? list : []);
-      saveCustomers(Array.isArray(list) ? list : []);
+      const [list, config] = await Promise.all([fetchCustomers(), fetchLoyaltyConfig()]);
+      setCustomers(list);
+      setLoyaltyConfig(config);
+      setLoadError(null);
     } catch (err: any) {
-      setCustomers(loadCustomers());
-      if (err?.status !== 401) {
-        toast.error('โหลดข้อมูลลูกค้าจากฐานข้อมูลไม่ได้');
-      }
+      setCustomers([]);
+      setLoadError(errorMessage(err, 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
+    } finally {
+      setIsLoading(false);
     }
-    try { setLoyaltyConfig(await fetchLoyaltyConfig()); } catch { toast.warning('โหลดการตั้งค่าคะแนนไม่ได้ กำลังใช้ค่าล่าสุดในเครื่อง'); }
   };
 
   useEffect(() => {
@@ -314,6 +318,11 @@ export default function CustomersPage() {
 
   // Save Global Loyalty Settings
   const handleSaveLoyaltySettings = async () => {
+    if (loadError) {
+      // never overwrite the server's loyalty settings with values it has not confirmed
+      toast.error('ยังบันทึกไม่ได้: โหลดการตั้งค่าจากเซิร์ฟเวอร์ไม่สำเร็จ กรุณากด "ลองใหม่" ก่อน');
+      return;
+    }
     try { await saveLoyaltyConfig(loyaltyConfig); }
     catch (error) { toast.error('บันทึกการตั้งค่าคะแนนไม่ได้: ' + (error instanceof Error ? error.message : String(error))); return; }
     toast.success('บันทึกการตั้งค่าระบบคะแนนสะสมเรียบร้อยแล้ว');
@@ -484,10 +493,16 @@ export default function CustomersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredCustomers.length === 0 ? (
+              {loadError ? (
+                <TableRow>
+                  <TableCell colSpan={6}>
+                    <LoadErrorState message={loadError} onRetry={() => void reloadData()} retrying={isLoading} />
+                  </TableCell>
+                </TableRow>
+              ) : filteredCustomers.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center h-48 text-slate-400">
-                    ไม่พบข้อมูลลูกค้าที่ตรงกับเงื่อนไขการค้นหา
+                    {isLoading ? 'กำลังโหลด...' : 'ไม่พบข้อมูลลูกค้าที่ตรงกับเงื่อนไขการค้นหา'}
                   </TableCell>
                 </TableRow>
               ) : (

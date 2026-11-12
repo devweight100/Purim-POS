@@ -4,7 +4,7 @@ import { formatCurrency } from '@/lib/utils';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useProductStore } from '@/lib/store/product-store';
-import { rollbackCustomerSale } from '@/lib/customer-service';
+import { fetchCustomers } from '@/lib/customer-service';
 import { restoreVoidOrderStock } from '@/lib/stock-service';
 import { fetchAllClaimRecords } from '@/lib/claim-service';
 import { ReceiptPdfModal, ReceiptData } from './ReceiptPdfModal';
@@ -352,15 +352,8 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
         voidTargetOrder.userName || 'พนักงาน POS'
       );
 
-      const isCreditSale = Array.isArray(voidTargetOrder.payments)
-        ? voidTargetOrder.payments.some((p: any) => p.method === 'CREDIT_NOTE' || p.method === 'CREDIT')
-        : String(voidTargetOrder.paymentMethod || '').includes('เชื่อ') || String(voidTargetOrder.paymentMethod || '').includes('เครดิต');
-      rollbackCustomerSale(
-        voidTargetOrder.customerId,
-        Number(voidTargetOrder.totalAmount || voidTargetOrder.total || 0),
-        isCreditSale,
-        Number(voidTargetOrder.pointsUsed || 0)
-      );
+      // the server already reversed points / credit debt; refresh the customer list from it
+      void fetchCustomers().catch(() => undefined);
 
       toast.success(`✅ ยกเลิกบิล #${voidTargetOrder.orderNumber} คืนสต๊อก และปรับแต้ม/หนี้สมาชิกเรียบร้อยแล้ว`);
       setVoidTargetOrder(null);
