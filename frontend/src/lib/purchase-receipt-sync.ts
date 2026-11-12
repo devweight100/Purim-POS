@@ -1,13 +1,14 @@
 import { create } from 'zustand';
 import { apiFetch, getAuthToken } from './api';
-import { ApiError, isRetryableError } from './api-error';
+import { ApiError, isRetryableError, type UntypedJson } from './api-error';
 import { newOperationId } from './order-sync-service';
 import { toast } from 'sonner';
+import type { ApiPurchaseOrder, PurchaseReceiveRequest } from './types';
 
 // Receiving goods is NOT queued offline: it is sent to the server and any failure is shown.
 // Only the idempotency key of a request whose result is unknown (network dropped) is kept, so the
 // user's retry (same goods) reuses it and the server can never receive the same delivery twice.
-type Receipt = { poId: string; ownerId: string; body: any; failed?: boolean; error?: string };
+type Receipt = { poId: string; ownerId: string; body: PurchaseReceiveRequest; failed?: boolean; error?: string };
 const prefix = 'purim-pending-po-receipt:';
 export const useReceiptSyncStatus = create<{ rows: Receipt[] }>(() => ({ rows: [] }));
 function owner() { return JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.user?.id; }
@@ -29,9 +30,9 @@ function exclusive<T>(work: () => Promise<T>): Promise<T> {
 }
 async function send(row: Receipt) {
   const key = prefix + row.poId;
-  let result: any;
+  let result: ApiPurchaseOrder | null;
   try {
-    result = await apiFetch('/purchase-orders/' + row.poId + '/receive', { method: 'POST', body: JSON.stringify(row.body) });
+    result = await apiFetch<ApiPurchaseOrder | null>('/purchase-orders/' + row.poId + '/receive', { method: 'POST', body: JSON.stringify(row.body) });
     if (!result?.id || !result?.poNumber) throw new ApiError('ยังไม่ได้รับการยืนยันใบรับสินค้า', 502);
   } catch (error) {
     const retryable = isRetryableError(error);
@@ -45,7 +46,8 @@ async function send(row: Receipt) {
   window.dispatchEvent(new Event('pos-data-synced'));
   return result;
 }
-export function submitPurchaseReceipt(poId: string, body: any) {
+/** Resolves with the received PO from the server (typed loosely: callers map it into their own PO view types). */
+export function submitPurchaseReceipt(poId: string, body: PurchaseReceiveRequest): Promise<UntypedJson> {
   return exclusive(async () => {
     const ownerId = owner();
     if (!ownerId || !getAuthToken()) throw new ApiError('กรุณาเข้าสู่ระบบก่อนรับสินค้า', 401);
