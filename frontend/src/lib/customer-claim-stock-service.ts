@@ -1,5 +1,5 @@
 import { fetchClaimEligibleItems } from './claim-service';
-import { ClaimEligibleItem } from './types';
+import { ClaimEligibleItem, ApiClaimInventoryItem, ApiListResponse, apiListRows } from './types';
 import { apiFetch } from './api';
 
 
@@ -28,11 +28,11 @@ export interface CustomerClaimStockItem {
 /** Claim inventory from the server. Throws when the server cannot be reached (no local copy). */
 export async function fetchCustomerClaimStockItems(): Promise<CustomerClaimStockItem[]> {
   {
-    const res = await apiFetch('/claims/inventory/list');
-    const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : null);
+    const res = await apiFetch<ApiListResponse<ApiClaimInventoryItem> | null>('/claims/inventory/list');
+    const list = apiListRows(res);
     if (!Array.isArray(list)) throw new Error('ข้อมูลคลังของเคลมจากเซิร์ฟเวอร์ไม่ถูกต้อง');
     {
-      const mapped: CustomerClaimStockItem[] = list.map((item: any) => ({
+      const mapped: CustomerClaimStockItem[] = list.map((item) => ({
         id: item.id,
         productId: item.productId || item.product?.id || '',
         productName: item.product?.name || item.productName || 'สินค้า',
@@ -208,7 +208,7 @@ export async function getCustomerProductStock(params: {
 export async function getCustomerQuotaForProduct(
   productId: string,
   params: { customerId?: string | null; customerPhone?: string | null; customerName?: string | null }
-): Promise<{ availableQuota: number; latestOrder?: any; unitName: string; unitPrice: number }> {
+): Promise<{ availableQuota: number; latestOrder?: CustomerProductStock['orders'][number]; unitName: string; unitPrice: number }> {
   const stock = await getCustomerProductStock(params);
   const found = stock.items.find((i) => i.productId === productId);
   if (!found) {

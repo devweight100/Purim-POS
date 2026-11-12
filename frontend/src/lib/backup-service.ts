@@ -36,7 +36,15 @@ export interface CreateBackupResult {
   verify?: BackupVerifyResult;
 }
 
-function normalizeFile(raw: any): BackupFile {
+/** Backup file as the server lists it (older servers: `filename`). */
+interface BackupFileJson {
+  fileName?: string;
+  filename?: string;
+  sizeBytes?: number;
+  createdAt?: string;
+}
+
+function normalizeFile(raw: BackupFileJson | null | undefined): BackupFile {
   return {
     fileName: String(raw?.fileName ?? raw?.filename ?? ''),
     sizeBytes: Number(raw?.sizeBytes ?? 0),
@@ -46,13 +54,13 @@ function normalizeFile(raw: any): BackupFile {
 
 export const backupService = {
   async list(): Promise<BackupFile[]> {
-    const res = await apiFetch('/server-control/backups');
+    const res = await apiFetch<BackupFileJson[] | { data?: BackupFileJson[] } | null>('/server-control/backups');
     const arr = Array.isArray(res) ? res : res?.data ?? [];
     return arr.map(normalizeFile).filter((f: BackupFile) => f.fileName);
   },
 
   async create(): Promise<CreateBackupResult> {
-    const res = await apiFetch('/server-control/backup', { method: 'POST' });
+    const res = await apiFetch<(BackupFileJson & { success?: boolean; verify?: BackupVerifyResult }) | null>('/server-control/backup', { method: 'POST' });
     return {
       success: !!res?.success,
       fileName: String(res?.fileName ?? res?.filename ?? ''),
@@ -65,7 +73,7 @@ export const backupService = {
   /** Optional endpoint (needs a controller route); returns null when unavailable. */
   async status(): Promise<BackupStatus | null> {
     try {
-      return (await apiFetch('/server-control/backup-status')) as BackupStatus;
+      return await apiFetch<BackupStatus>('/server-control/backup-status');
     } catch {
       return null;
     }
@@ -73,7 +81,7 @@ export const backupService = {
 
   /** Set the folder (another disk / USB / cloud-synced folder) that receives a copy of every backup. */
   async setOffsiteDir(offsiteDir: string): Promise<{ success: boolean; offsiteDir: string | null }> {
-    return apiFetch('/server-control/backup-settings', { method: 'PUT', body: JSON.stringify({ offsiteDir }) });
+    return apiFetch<{ success: boolean; offsiteDir: string | null }>('/server-control/backup-settings', { method: 'PUT', body: JSON.stringify({ offsiteDir }) });
   },
 
   /** Download a backup file to this computer. */
@@ -93,9 +101,9 @@ export const backupService = {
   /** Optional endpoint (needs a controller route); returns null when unavailable. */
   async verify(fileName: string): Promise<BackupVerifyResult | null> {
     try {
-      return (await apiFetch(`/server-control/backup-verify?file=${encodeURIComponent(fileName)}`, {
+      return await apiFetch<BackupVerifyResult>(`/server-control/backup-verify?file=${encodeURIComponent(fileName)}`, {
         method: 'POST',
-      })) as BackupVerifyResult;
+      });
     } catch {
       return null;
     }

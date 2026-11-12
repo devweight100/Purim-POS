@@ -125,7 +125,7 @@ export interface PaymentsShiftsReport {
     balancedShifts: number;
     shortShifts: number;
     overShifts: number;
-    list: any[];
+    list: unknown[]; // the shifts' history rows (not read by the frontend)
   };
 }
 
@@ -156,7 +156,7 @@ export interface CustomerDebtsReport {
   agingBuckets: DebtAgingBucket[];
   allCustomers: CustomerSpendingSummary[];
   topCustomers: CustomerSpendingSummary[];
-  unpaidDebtsList: any[];
+  unpaidDebtsList: unknown[]; // the unpaid debt rows (not read by the frontend)
 }
 
 // ─── 6. Purchases & supplier claims ───

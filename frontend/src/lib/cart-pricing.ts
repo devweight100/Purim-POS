@@ -1,5 +1,5 @@
 import { addQty, mulQty, toHund } from './qty';
-import { CartItem } from './types';
+import { CartItem, ProductUnit } from './types';
 import { useProductStore } from './store/product-store';
 
 export interface PackagingUnitConfig {
@@ -17,7 +17,7 @@ export interface WholesaleStepConfig {
 
 // ─── Helpers to load configuration ───────────────────────────────────
 
-export function getProductPackagingUnits(productId: string, fallbackUnits?: any[]): PackagingUnitConfig[] {
+export function getProductPackagingUnits(productId: string, fallbackUnits?: ProductUnit[]): PackagingUnitConfig[] {
   // Fallback to product units array if available
   if (fallbackUnits && fallbackUnits.length > 0) {
     return fallbackUnits
@@ -53,8 +53,8 @@ export function getProductPackagingUnits(productId: string, fallbackUnits?: any[
 
 export function getProductWholesaleSteps(productId: string): WholesaleStepConfig[] {
   const product = useProductStore.getState().products.find(p => p.id === productId || p.sku === productId);
-  const steps = (product as any)?.wholesalePrices || [];
-  return steps.map((step: any) => ({ minQuantity: Number(step.minQuantity), unitPrice: Number(step.unitPrice) }))
+  const steps = product?.wholesalePrices || [];
+  return steps.map((step) => ({ minQuantity: Number(step.minQuantity), unitPrice: Number(step.unitPrice) }))
     .filter((step: WholesaleStepConfig) => step.minQuantity > 0 && step.unitPrice > 0)
     .sort((a: WholesaleStepConfig, b: WholesaleStepConfig) => b.minQuantity - a.minQuantity);
 }

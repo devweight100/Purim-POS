@@ -6,12 +6,11 @@ import { Product, ProductUnit } from './types';
  */
 export function getProductAvailableUnits(product: Product): ProductUnit[] {
   if (!product) return [];
-  const pAny = product as any;
 
   // 1. Resolve base unit name & price
-  const baseUnitName = pAny.unit || product.units?.[0]?.unitName || 'ชิ้น';
-  const basePrice = product.units?.[0]?.price || pAny.priceLevel1 || pAny.basePrice || pAny.price || 0;
-  const baseBarcode = product.units?.[0]?.barcode || pAny.barcodes?.[0]?.barcode || product.sku;
+  const baseUnitName = product.unit || product.units?.[0]?.unitName || 'ชิ้น';
+  const basePrice = product.units?.[0]?.price || product.priceLevel1 || product.basePrice || product.price || 0;
+  const baseBarcode = product.units?.[0]?.barcode || product.barcodes?.[0]?.barcode || product.sku;
 
   const baseUnitItem: ProductUnit = {
     id: `u-${product.id}-base`,
@@ -47,14 +46,13 @@ export function getDefaultSelectedUnit(
   units: ProductUnit[],
   searchQuery?: string
 ): ProductUnit {
-  const pAny = product as any;
 
   if (!units || units.length === 0) {
     return {
       id: `u-${product.id}`,
-      unitName: pAny.unit || 'ชิ้น',
+      unitName: product.unit || 'ชิ้น',
       factor: 1,
-      price: pAny.price || 0,
+      price: product.price || 0,
     };
   }
 

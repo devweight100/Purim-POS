@@ -1294,6 +1294,13 @@ export interface ApiClaimInventoryItem {
   condition?: string;
   location?: string;
   note?: string | null;
+  claimId?: string;
+  customerId?: string | null;
+  customerName?: string;
+  customerPhone?: string | null;
+  supplierId?: string;
+  supplierName?: string;
+  status?: string;
   createdAt?: string;
   updatedAt?: string;
 }

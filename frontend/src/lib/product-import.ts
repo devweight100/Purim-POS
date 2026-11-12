@@ -309,22 +309,59 @@ export function buildTemplateWorkbook(XLSX: XLSXLib) {
   return wb;
 }
 
+/** A packaging unit as product lists carry it (server row or the products page's form shape). */
+export interface ExportablePackagingUnit {
+  name?: string;
+  unitName?: string;
+  qtyPerPrev?: unknown;
+  barcode?: string | null;
+  priceLevel1?: unknown;
+  priceLevel2?: unknown;
+  priceLevel3?: unknown;
+  priceLevel4?: unknown;
+  priceLevel5?: unknown;
+}
+
+/** A product as the export reads it: server products or the products page's list; numbers may be strings. */
+export interface ExportableProduct {
+  id?: string;
+  sku?: string;
+  name?: string;
+  category?: string | { name?: string } | null;
+  unit?: string | null;
+  description?: string | null;
+  barcode?: string | null;
+  barcodes?: Array<string | { barcode?: string } | null>;
+  packagingUnits?: ExportablePackagingUnit[];
+  costPrice?: unknown;
+  cost?: unknown;
+  basePrice?: unknown;
+  price?: unknown;
+  priceLevel1?: unknown;
+  priceLevel2?: unknown;
+  priceLevel3?: unknown;
+  priceLevel4?: unknown;
+  priceLevel5?: unknown;
+  stock?: unknown;
+  computedStock?: unknown;
+}
+
 /** Current products in the same per-unit format (export -> edit -> import round trip). */
-export function buildExportWorkbook(XLSX: XLSXLib, products: any[], opts: { withCost: boolean }) {
+export function buildExportWorkbook(XLSX: XLSXLib, products: ExportableProduct[], opts: { withCost: boolean }) {
   const rows: Record<string, unknown>[] = [];
   const num = (v: unknown) => (v === undefined || v === null || v === '' ? '' : Number(v));
   for (const p of products) {
     const codes = [
       p.barcode,
-      ...(Array.isArray(p.barcodes) ? p.barcodes.map((b: any) => (typeof b === 'string' ? b : b?.barcode)) : []),
+      ...(Array.isArray(p.barcodes) ? p.barcodes.map((b) => (typeof b === 'string' ? b : b?.barcode)) : []),
     ].filter(Boolean);
-    const packs: any[] = Array.isArray(p.packagingUnits) ? p.packagingUnits : [];
+    const packs: ExportablePackagingUnit[] = Array.isArray(p.packagingUnits) ? p.packagingUnits : [];
     const packCodes = new Set(packs.map((u) => u?.barcode).filter(Boolean));
     const baseCodes = Array.from(new Set(codes)).filter((c) => !packCodes.has(c));
     rows.push({
       [COL.sku]: p.sku || '',
       [COL.name]: p.name || '',
-      [COL.category]: p.category?.name || (typeof p.category === 'string' ? p.category : '') || '',
+      [COL.category]: (typeof p.category === 'object' ? p.category?.name : undefined) || (typeof p.category === 'string' ? p.category : '') || '',
       [COL.unit]: p.unit || 'ชิ้น',
       [COL.perPrev]: '',
       [COL.barcode]: baseCodes.join(', '),
