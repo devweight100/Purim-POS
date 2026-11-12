@@ -16,7 +16,7 @@ import { NumpadPopup } from './NumpadPopup';
 import { ItemNotePopup } from './ItemNotePopup';
 import { SelectUnitModal } from './SelectUnitModal';
 import { RedeemPointsModal } from './RedeemPointsModal';
-import { Customer, getCustomerById, calculateEarnedPoints } from '@/lib/customer-service';
+import { Customer, useCustomerById, calculateEarnedPoints } from '@/lib/customer-service';
 import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
 import { toast } from 'sonner';
 import { addQty, formatQty, subQty } from '@/lib/qty';
@@ -75,14 +75,11 @@ export function PosNeoListLayout({
   const [showRedeemModal, setShowRedeemModal] = useState(false);
   const [currentCustomer, setCurrentCustomer] = useState<Customer | null>(null);
 
+  // re-evaluated whenever the server's customer list is refreshed
+  const syncedCustomer = useCustomerById(cart.customerId);
   useEffect(() => {
-    if (cart.customerId) {
-      const cust = getCustomerById(cart.customerId);
-      setCurrentCustomer(cust);
-    } else {
-      setCurrentCustomer(null);
-    }
-  }, [cart.customerId]);
+    setCurrentCustomer(syncedCustomer);
+  }, [syncedCustomer]);
 
   const earnedPointsFromCart = currentCustomer ? calculateEarnedPoints(currentCustomer, cart.getTotal()) : 0;
 

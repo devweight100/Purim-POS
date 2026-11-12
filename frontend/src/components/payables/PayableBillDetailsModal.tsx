@@ -40,7 +40,7 @@ export function PayableBillDetailsModal({
 
   if (!bill) return null;
 
-  const handleRollbackPayment = (paymentId?: string) => {
+  const handleRollbackPayment = async (paymentId?: string) => {
     const confirmMsg = paymentId
       ? `ต้องการยกเลิก/ย้อนสถานะการชำระเงินรอบนี้หรือไม่?\n(ยอดเงินสด/โอน และเครดิตใบลดหนี้จะถูกคืนกลับสถานะเดิม)`
       : `ต้องการย้อนสถานะการชำระเงินทั้งหมดของบิล ${bill.poNumber} หรือไม่?\n(ยอดเงินที่จ่ายไปและเครดิตใบลดหนี้จะถูกคืนสถานะทั้งหมด และยอดหนี้จะกลับมาค้างชำระเต็มจำนวน)`;
@@ -49,7 +49,7 @@ export function PayableBillDetailsModal({
 
     setIsRollingBack(true);
     try {
-      const res = rollbackPayableBillPayment(bill.poId, paymentId);
+      const res = await rollbackPayableBillPayment(bill.poId, paymentId);
       if (res.success) {
         toast.success(res.message);
         onReload();

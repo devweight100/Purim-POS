@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { useState, useEffect, useMemo } from 'react';
 import { Search, UserPlus, Building2, User, Coins, CreditCard, Tag, CheckCircle2 } from 'lucide-react';
 import { useCartStore } from '@/lib/store/cart-store';
-import { Customer, loadCustomers, fetchCustomers, upsertCustomer } from '@/lib/customer-service';
+import { Customer, fetchCustomers, upsertCustomer } from '@/lib/customer-service';
+import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -28,9 +29,15 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
 
   const cart = useCartStore();
 
+  const [loadError, setLoadError] = useState<string | null>(null);
   const reloadData = async () => {
-    try { setCustomers(await fetchCustomers()); }
-    catch { setCustomers(loadCustomers()); toast.warning('โหลดลูกค้าจากฐานข้อมูลไม่ได้ ใช้ข้อมูลล่าสุดในเครื่อง'); }
+    try {
+      setCustomers(await fetchCustomers());
+      setLoadError(null);
+    } catch (err) {
+      setCustomers([]);
+      setLoadError(errorMessage(err, 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
+    }
   };
 
   const resetForm = () => {
@@ -208,7 +215,11 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
                   );
                 })}
 
-                {filtered.length === 0 && (
+                {loadError && (
+                  <LoadErrorState message={loadError} onRetry={() => void reloadData()} className="m-3" />
+                )}
+
+                {!loadError && filtered.length === 0 && (
                   <div className="p-8 text-center text-slate-500 text-sm">
                     ไม่พบข้อมูลลูกค้าที่ค้นหา สามารถกดปุ่ม <b>"เพิ่มด่วน"</b> ด้านบนเพื่อสมัครสมาชิกได้ทันที
                   </div>

@@ -2,7 +2,7 @@ import { getLowStockThreshold } from '@/lib/store-settings-storage';
 import { create } from 'zustand';
 import { api, apiFetch } from '../api';
 import { Product, Category, ProductUnit } from '../types';
-import { mirrorCategoriesToStorage } from '../category-storage';
+import { cacheServerCategories, readCachedCategories } from '../category-storage';
 import { addQty } from '../qty';
 
 interface ProductStore {
@@ -10,7 +10,17 @@ interface ProductStore {
   categories: Category[];
   isLoading: boolean;
   error: string | null;
-  fetchProducts: () => Promise<void>;
+  /** true when the list came from the POS offline cache because the server was unreachable */
+  fromOfflineCache: boolean;
+  /**
+   * Load products + categories from the server. `offlineCache` (default: on POS screens only)
+   * allows falling back to the read-only offline cache so selling keeps working offline.
+   */
+  fetchProducts: (opts?: { offlineCache?: boolean }) => Promise<void>;
+}
+
+function onPosScreen(): boolean {
+  return typeof window !== 'undefined' && /^\/pos(-neo)?(\/|$)/.test(window.location.pathname);
 }
 
 export const useProductStore = create<ProductStore>((set, get) => ({
@@ -18,40 +28,39 @@ export const useProductStore = create<ProductStore>((set, get) => ({
   categories: [],
   isLoading: false,
   error: null,
+  fromOfflineCache: false,
 
-  fetchProducts: async () => {
+  fetchProducts: async (opts) => {
     if (get().isLoading) return;
+    const offlineCache = opts?.offlineCache ?? onPosScreen();
     set({ isLoading: true, error: null });
     try {
       // 1. Load Master Products Catalog directly from Backend Database
       let rawCatalog: any[] = [];
-      const fetchedProds = await api.products.getAll();
+      const fetchedProds: any = await api.products.getAll(undefined, undefined, { offlineCache });
+      const fromOfflineCache = Boolean(fetchedProds?.fromOfflineCache);
       if (Array.isArray(fetchedProds)) {
         rawCatalog = fetchedProds;
       }
 
-      // 2. Load Categories directly from Backend Database and mirror to localStorage
+      // 2. Load Categories from the server (refreshes the read-only offline cache)
       let loadedCategories: any[] = get().categories;
       try {
         const fetchedCats = await apiFetch('/categories');
         if (Array.isArray(fetchedCats)) {
-          loadedCategories = mirrorCategoriesToStorage(fetchedCats);
+          loadedCategories = cacheServerCategories(fetchedCats);
         }
       } catch (e) {
         console.warn('[ProductStore] Failed to fetch categories from backend:', e);
+        if (offlineCache && !loadedCategories.length) loadedCategories = readCachedCategories();
       }
 
-      // If database has 0 products, clear stale localStorage mirror and return empty list!
       if (rawCatalog.length === 0) {
-        if (typeof window !== 'undefined') {
-          try {
-            localStorage.setItem('custom_products', JSON.stringify([]));
-          } catch {}
-        }
         set({
           products: [],
           categories: loadedCategories,
           isLoading: false,
+          fromOfflineCache,
         });
         return;
       }
@@ -187,19 +196,16 @@ export const useProductStore = create<ProductStore>((set, get) => ({
         } as any;
       });
 
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem('custom_products', JSON.stringify(formattedProducts));
-        } catch {}
-      }
-
       set({
         products: formattedProducts,
         categories: loadedCategories,
         isLoading: false,
+        fromOfflineCache,
       });
     } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+      // Back office: never keep showing a list the server did not just confirm
+      if (offlineCache) set({ error: err.message, isLoading: false });
+      else set({ error: err.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้', isLoading: false, products: [], fromOfflineCache: false });
     }
   },
 }));

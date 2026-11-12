@@ -43,12 +43,12 @@ import {
   CashDrawerConfig 
 } from "@/lib/cash-drawer-service";
 import { 
-  loadStoreSettings, 
   loadStoreSettingsFromBackend,
   saveStoreSettingsToBackend,
   StoreSettings, 
   DEFAULT_STORE_SETTINGS 
 } from "@/lib/store-settings-storage";
+import { LoadErrorState, errorMessage } from "@/components/common/LoadErrorState";
 import { isValidQty, qtyInputMode, qtyStep } from "@/lib/qty";
 import { ThermalReceiptView, SAMPLE_RECEIPT_DATA } from "@/components/pos/ThermalReceiptView";
 import { formatCurrency } from "@/lib/utils";
@@ -240,6 +240,7 @@ function BackupSection() {
 export default function SettingsPage() {
   const [settings, setSettings] = useState<StoreSettings>(DEFAULT_STORE_SETTINGS);
   const [loading, setLoading] = useState(true);
+  const [storeLoadError, setStoreLoadError] = useState<string | null>(null);
   const [drawerConfig, setDrawerConfig] = useState<CashDrawerConfig>(getCashDrawerConfig());
 
   // Reset database state
@@ -261,10 +262,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     let mounted = true;
-    setSettings(loadStoreSettings());
-    loadStoreSettingsFromBackend().then((loaded) => {
-      if (mounted) setSettings(loaded);
-    });
+    void reloadStoreSettings(() => mounted);
     setDrawerConfig(getCashDrawerConfig());
 
     // Check if running inside Electron desktop app and fetch Windows printers
@@ -288,6 +286,17 @@ export default function SettingsPage() {
     return () => { mounted = false; };
   }, []);
 
+  const reloadStoreSettings = async (alive: () => boolean = () => true) => {
+    try {
+      const loaded = await loadStoreSettingsFromBackend();
+      if (!alive()) return;
+      setSettings(loaded);
+      setStoreLoadError(null);
+    } catch (err) {
+      if (alive()) setStoreLoadError(errorMessage(err, "ติดต่อเซิร์ฟเวอร์ไม่ได้"));
+    }
+  };
+
   const handleResetAllData = async () => {
     if (confirmText.trim() !== "RESET") {
       toast.error("กรุณาพิมพ์คำว่า RESET เพื่อยืนยัน");
@@ -303,7 +312,7 @@ export default function SettingsPage() {
 
       // Reset stores
       await useProductStore.getState().fetchProducts();
-      useShiftStore.setState({ currentShift: null, completedOrders: [], cashTransactions: [] });
+      useShiftStore.setState({ currentShift: null, cashTransactions: [] });
       useCartStore.setState({ items: [], heldBills: [] });
       useCartStore.getState().clearCart();
 
@@ -344,6 +353,11 @@ export default function SettingsPage() {
     const firstError = storeFieldErrors.storeName || storeFieldErrors.lowStockThreshold || storeFieldErrors.cashMovementApprovalLimit;
     if (firstError) {
       toast.error('ยังบันทึกไม่ได้: ' + firstError);
+      return;
+    }
+    if (storeLoadError) {
+      // never overwrite the server's settings with values it has not confirmed
+      toast.error('ยังบันทึกไม่ได้: โหลดข้อมูลร้านจากเซิร์ฟเวอร์ไม่สำเร็จ กรุณากด "ลองใหม่" ก่อน');
       return;
     }
     try {
@@ -436,6 +450,10 @@ export default function SettingsPage() {
           จัดการข้อมูลร้านค้า เลขผู้เสียภาษี ข้อความหัว-ท้ายใบเสร็จสลิป และอุปกรณ์ต่อพ่วง
         </p>
       </div>
+
+      {storeLoadError && (
+        <LoadErrorState message={storeLoadError} onRetry={() => void reloadStoreSettings()} />
+      )}
 
       {/* Direct Banner Link to Financial Accounts & QR Management */}
       <Card className="bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 shadow-2xs">

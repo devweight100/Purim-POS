@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
+import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 import { 
   loadPayableBills,
   fetchPayableBills, 
@@ -54,6 +55,7 @@ export default function PayablesPage() {
   const [returnNotes, setReturnNotes] = useState<SupplierReturnNote[]>([]);
   const [paymentVouchers, setPaymentVouchers] = useState<PaymentVoucher[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -96,8 +98,14 @@ export default function PayablesPage() {
       setSuppliers(supps);
       setReturnNotes(notes);
       setPaymentVouchers(vouchers);
+      setLoadError(null);
     } catch (e) {
       console.error('Failed to load payables data:', e);
+      setBills([]);
+      setSuppliers([]);
+      setReturnNotes([]);
+      setPaymentVouchers([]);
+      setLoadError(errorMessage(e, 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     } finally {
       setLoading(false);
     }
@@ -147,15 +155,17 @@ export default function PayablesPage() {
     }
   };
 
-  const handleSaveInlineInvoice = (poId: string) => {
+  const handleSaveInlineInvoice = async (poId: string) => {
     if (!editingInvoiceValue.trim()) {
       setEditingInvoicePoId(null);
       return;
     }
-    const res = updateBillInvoiceNo(poId, editingInvoiceValue.trim());
+    const res = await updateBillInvoiceNo(poId, editingInvoiceValue.trim());
     if (res.success) {
       toast.success(res.message);
       refreshData();
+    } else {
+      toast.error(res.message);
     }
     setEditingInvoicePoId(null);
   };
@@ -175,11 +185,11 @@ export default function PayablesPage() {
     setIsDetailsModalOpen(true);
   };
 
-  const handleRollbackBill = (bill: SupplierPayableBill) => {
+  const handleRollbackBill = async (bill: SupplierPayableBill) => {
     if (!confirm(`ต้องการย้อนสถานะการชำระเงินของบิล ${bill.poNumber} หรือไม่?\n(ยอดเงินที่จ่ายและเครดิตใบลดหนี้จะถูกคืนกลับสถานะเดิม ยอดหนี้จะกลับมาค้างชำระ)`)) {
       return;
     }
-    const res = rollbackPayableBillPayment(bill.poId);
+    const res = await rollbackPayableBillPayment(bill.poId);
     if (res.success) {
       toast.success(res.message);
       refreshData();
@@ -188,11 +198,11 @@ export default function PayablesPage() {
     }
   };
 
-  const handleRollbackSinglePayment = (poId: string, paymentId: string) => {
+  const handleRollbackSinglePayment = async (poId: string, paymentId: string) => {
     if (!confirm(`ต้องการยกเลิก/ย้อนสถานะการชำระเงินรอบนี้หรือไม่?\n(ยอดเงินและเครดิตใบลดหนี้ในรอบนี้จะถูกคืนกลับสถานะเดิม)`)) {
       return;
     }
-    const res = rollbackPayableBillPayment(poId, paymentId);
+    const res = await rollbackPayableBillPayment(poId, paymentId);
     if (res.success) {
       toast.success(res.message);
       refreshData();
@@ -201,10 +211,10 @@ export default function PayablesPage() {
     }
   };
 
-  const handleCancelBillAction = (bill: SupplierPayableBill) => {
+  const handleCancelBillAction = async (bill: SupplierPayableBill) => {
     const reason = prompt(`กรุณาระบุเหตุผลการยกเลิกบิล ${bill.poNumber}:`);
     if (reason === null) return;
-    const res = cancelPayableBill(bill.poId, reason);
+    const res = await cancelPayableBill(bill.poId, reason);
     if (res.success) {
       toast.success(res.message);
       refreshData();
@@ -249,6 +259,7 @@ export default function PayablesPage() {
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7 font-sans">
+      {loadError && <LoadErrorState message={loadError} onRetry={() => void refreshData()} retrying={loading} />}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div>

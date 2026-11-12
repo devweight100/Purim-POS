@@ -2,6 +2,7 @@
 import { newOperationId } from '@/lib/order-sync-service';
 
 import { useState, useEffect, useRef } from 'react';
+import { useProductStore } from '@/lib/store/product-store';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { formatCurrency } from '@/lib/utils';
@@ -18,8 +19,7 @@ import { ThermalReceiptView, printThermalReceiptDirect } from './ThermalReceiptV
 import { loadBankAccounts, BankAccount } from '@/lib/bank-account-storage';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe } from '@/lib/pdf-print-service';
-import { deductPosSaleStock } from '@/lib/stock-service';
-import { recordCustomerSale } from '@/lib/customer-service';
+
 import { updateClaimStatus, processClaim } from '@/lib/claim-service';
 import { kickCashDrawer, getCashDrawerConfig } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
@@ -219,7 +219,6 @@ export function PaymentModal({
     // Direct Payment Method Edit for existing order (without touching cart!)
     if (orderToEditPayment) {
       const orderId = orderToEditPayment.orderNumber || orderToEditPayment.id;
-      const oldPayments = orderToEditPayment.payments || [orderToEditPayment.paymentMethod || 'CASH'];
       const primaryNewMethod = payments.length > 1 ? 'SPLIT' : (payments[0]?.method || 'CASH');
 
       await apiFetch(`/orders/${orderToEditPayment.id}`, {
@@ -227,7 +226,7 @@ export function PaymentModal({
         body: JSON.stringify({ paymentMethod: primaryNewMethod, payments: payments })
       });
 
-      shiftStore.updateOrderPaymentMethod(orderId, oldPayments, payments, total);
+      void shiftStore.fetchCurrentShift();
 
       // same mapping as every other reprint; only the payments changed
       const completedReceipt: ReceiptData = orderToReceiptData(
@@ -308,7 +307,7 @@ export function PaymentModal({
 
       const previousEditingId = cart.editingOrderId;
       if (previousEditingId) {
-        shiftStore.voidOrder(previousEditingId, "แก้ไขรายการสินค้าและชำระเงินใหม่แทนบิลเดิม");
+        void shiftStore.fetchCurrentShift();
         cart.setEditingOrderId(null);
       }
 
@@ -451,19 +450,9 @@ export function PaymentModal({
         }
       }
 
-      // Deduct stock from inventory and log stock movement
-      deductPosSaleStock(
-        cart.items.map(i => ({
-          productId: i.productId,
-          quantity: i.quantity,
-          conversionFactor: i.conversionFactor || 1,
-          name: i.name,
-          sku: i.sku,
-          unitName: i.unitName,
-        })),
-        finalOrderNumber,
-        shiftStore.currentShift?.userName || 'พนักงาน POS'
-      );
+      // Stock is deducted by the server when it records the bill (also for outbox replays);
+      // refresh the product list so the POS shows the server's stock.
+      if (isSynced) void useProductStore.getState().fetchProducts({ offlineCache: true });
 
       const custSaleRes = {
         earnedPoints: isSynced ? Number(backendOrder.pointsEarned || 0) : 0,
@@ -552,7 +541,7 @@ export function PaymentModal({
       void api.bankAccounts.getAll().then(accs => {
         setBankAccounts(accs);
         setSelectedBank(accs.find((a: BankAccount) => a.isDefault) || accs[0] || null);
-      }).catch(() => toast.warning('โหลดบัญชีจากฐานข้อมูลไม่ได้ กำลังใช้ข้อมูลล่าสุดในเครื่อง'));
+      }).catch(() => toast.warning('โหลดบัญชีธนาคารจากเซิร์ฟเวอร์ไม่ได้'));
       const accs = loadBankAccounts();
       setBankAccounts(accs);
       const def = accs.find(a => a.isDefault) || accs[0] || null;

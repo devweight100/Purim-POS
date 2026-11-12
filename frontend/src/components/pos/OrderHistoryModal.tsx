@@ -4,8 +4,9 @@ import { formatCurrency } from '@/lib/utils';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useProductStore } from '@/lib/store/product-store';
-import { rollbackCustomerSale } from '@/lib/customer-service';
-import { restoreVoidOrderStock } from '@/lib/stock-service';
+import { fetchCustomers } from '@/lib/customer-service';
+import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
+
 import { fetchAllClaimRecords } from '@/lib/claim-service';
 import { ReceiptPdfModal, ReceiptData } from './ReceiptPdfModal';
 import { orderToReceiptData } from '@/lib/receipt-mapper';
@@ -42,6 +43,7 @@ interface OrderHistoryModalProps {
 export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: OrderHistoryModalProps) {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'completed' | 'cancelled'>('completed');
   const [search, setSearch] = useState('');
   const [dateRange, setDateRange] = useState<'today' | '7days' | 'this_month' | 'all'>('today');
@@ -78,19 +80,12 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      let fetchedBackend: any[] = [];
-      let allClaims: any[] = [];
-
-      try {
-        const [ordersRes, claimsRes] = await Promise.all([
-          apiFetch('/orders?limit=100'),
-          fetchAllClaimRecords().catch(() => []),
-        ]);
-        fetchedBackend = ordersRes?.data || (Array.isArray(ordersRes) ? ordersRes : []);
-        allClaims = claimsRes || [];
-      } catch (e) {
-        // Fallback gracefully if backend is offline
-      }
+      const [ordersRes, claimsRes] = await Promise.all([
+        apiFetch('/orders?limit=100'),
+        fetchAllClaimRecords().catch(() => []),
+      ]);
+      const fetchedBackend: any[] = ordersRes?.data || (Array.isArray(ordersRes) ? ordersRes : []);
+      const allClaims: any[] = claimsRes || [];
 
       const claimedOrderMap = new Set<string>();
       allClaims.forEach((c) => {
@@ -98,17 +93,9 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
         if (c.orderNumber) claimedOrderMap.add(c.orderNumber);
       });
 
-      const localOrders = useShiftStore.getState().completedOrders || [];
+      // Orders come from the server only (unsent offline bills wait in the outbox)
       const combinedMap = new Map<string, any>();
 
-      // Load local shift store orders first
-      localOrders.forEach((o) => {
-        const key = o.orderNumber || o.id;
-        const hasClaims = claimedOrderMap.has(key) || claimedOrderMap.has(o.id) || claimedOrderMap.has(o.orderNumber);
-        if (key) combinedMap.set(key, { ...o, hasClaims });
-      });
-
-      // Merge backend orders
       fetchedBackend.forEach((bOrder) => {
         const key = bOrder.orderNumber || bOrder.id;
         const existing = combinedMap.get(key);
@@ -145,8 +132,10 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
       });
 
       setOrders(list);
+      setLoadError(null);
     } catch (err) {
-      toast.error('ดึงข้อมูลประวัติการขายไม่สำเร็จ');
+      setOrders([]);
+      setLoadError(errorMessage(err, 'ดึงข้อมูลประวัติการขายไม่สำเร็จ'));
     } finally {
       setLoading(false);
     }
@@ -293,7 +282,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
   const handleConfirmEditPayment = async () => {
     if (!editPaymentOrder) return;
     const orderId = editPaymentOrder.orderNumber || editPaymentOrder.id;
-    const oldMethod = editPaymentOrder.paymentMethod || editPaymentOrder.payments?.[0]?.method || 'CASH';
+
 
     try {
       await apiFetch(`/orders/${editPaymentOrder.id}`, {
@@ -301,12 +290,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
         body: JSON.stringify({ paymentMethod: newPaymentMethod })
       });
 
-      shiftStore.updateOrderPaymentMethod(
-        orderId, 
-        oldMethod, 
-        [{ method: newPaymentMethod as any, amount: editPaymentOrder.totalAmount || 0 }], 
-        editPaymentOrder.totalAmount || 0
-      );
+      void shiftStore.fetchCurrentShift();
 
       const methodNames: Record<string, string> = {
         'CASH': 'เงินสด',
@@ -337,30 +321,12 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
         body: JSON.stringify({ reason: voidReason })
       });
 
-      shiftStore.voidOrder(voidTargetOrder.orderNumber || voidTargetOrder.id, voidReason);
-      restoreVoidOrderStock(
-        (voidTargetOrder.items || []).map((item: any) => ({
-          productId: item.productId,
-          quantity: item.quantity || 1,
-          conversionFactor: item.conversionFactor || 1,
-          name: item.name || item.productName,
-          sku: item.sku,
-          unitName: item.unitName,
-        })),
-        voidTargetOrder.orderNumber || voidTargetOrder.id,
-        voidReason,
-        voidTargetOrder.userName || 'พนักงาน POS'
-      );
+      void shiftStore.fetchCurrentShift();
+      // the server returned the stock in the void transaction
+      void useProductStore.getState().fetchProducts();
 
-      const isCreditSale = Array.isArray(voidTargetOrder.payments)
-        ? voidTargetOrder.payments.some((p: any) => p.method === 'CREDIT_NOTE' || p.method === 'CREDIT')
-        : String(voidTargetOrder.paymentMethod || '').includes('เชื่อ') || String(voidTargetOrder.paymentMethod || '').includes('เครดิต');
-      rollbackCustomerSale(
-        voidTargetOrder.customerId,
-        Number(voidTargetOrder.totalAmount || voidTargetOrder.total || 0),
-        isCreditSale,
-        Number(voidTargetOrder.pointsUsed || 0)
-      );
+      // the server already reversed points / credit debt; refresh the customer list from it
+      void fetchCustomers().catch(() => undefined);
 
       toast.success(`✅ ยกเลิกบิล #${voidTargetOrder.orderNumber} คืนสต๊อก และปรับแต้ม/หนี้สมาชิกเรียบร้อยแล้ว`);
       setVoidTargetOrder(null);
@@ -477,6 +443,8 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
           <div className="flex-1 overflow-y-auto min-h-[300px] py-2">
             {loading ? (
               <div className="py-20 text-center text-slate-400 font-bold">กำลังโหลดข้อมูลประวัติการขาย...</div>
+            ) : loadError ? (
+              <LoadErrorState message={loadError} onRetry={() => void fetchOrders()} className="m-4" />
             ) : paginatedOrders.length === 0 ? (
               <div className="py-20 text-center text-slate-400 font-semibold space-y-2">
                 <Clock className="w-12 h-12 mx-auto opacity-30" />

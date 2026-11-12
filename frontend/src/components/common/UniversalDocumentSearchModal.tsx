@@ -125,42 +125,12 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
       }
     } catch (err) {
       console.error('Document search error:', err);
-      // Fallback search in offline local storage if network error
-      searchLocalFallback(query);
+      // documents are searched on the server only
+      setResults([]);
+      toast.error('ค้นหาเอกสารจากเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่: ' + ((err as any)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const searchLocalFallback = (query: string) => {
-    const localResults: UnifiedDocumentSearchResult[] = [];
-    const qLower = query.toLowerCase();
-
-    // Check offline orders
-    try {
-      const offlineOrders = JSON.parse(localStorage.getItem('offline_orders') || '[]');
-      for (const ord of offlineOrders) {
-        if (
-          (ord.orderNumber && ord.orderNumber.toLowerCase().includes(qLower)) ||
-          (ord.id && ord.id.toLowerCase().includes(qLower))
-        ) {
-          localResults.push({
-            type: 'ORDER',
-            typeName: 'ใบเสร็จรับเงิน (ออฟไลน์ / บิลรอซิงค์)',
-            id: ord.id || ord.orderNumber,
-            docNumber: ord.orderNumber || ord.id,
-            date: ord.createdAt || new Date(),
-            status: 'OFFLINE_PENDING',
-            amount: Number(ord.totalAmount) || 0,
-            customerName: ord.customer?.name || 'ลูกค้าทั่วไป',
-            description: `บิลออฟไลน์รอซิงค์ • ฿${Number(ord.totalAmount).toLocaleString()}`,
-            rawData: ord,
-          });
-        }
-      }
-    } catch {}
-
-    setResults(localResults);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

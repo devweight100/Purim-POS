@@ -13,6 +13,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
+import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
+import { fetchAllClaimRecords } from '@/lib/claim-service';
 import { 
   loadSuppliers,
   fetchSuppliers, 
@@ -35,6 +37,7 @@ export default function SupplierReturnsPage() {
   const [pos, setPos] = useState<any[]>([]);
   const [pendingClaims, setPendingClaims] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -65,10 +68,18 @@ export default function SupplierReturnsPage() {
       setSuppliers(supps);
       setPos(purchaseOrders);
 
+      // eligible claims come from the server's claims list (refreshed here)
+      await fetchAllClaimRecords();
       const claims = getEligibleClaimsForReturn();
       setPendingClaims(claims);
+      setLoadError(null);
     } catch (e) {
       console.error('Failed to load supplier returns data:', e);
+      setReturnNotes([]);
+      setSuppliers([]);
+      setPos([]);
+      setPendingClaims([]);
+      setLoadError(errorMessage(e, 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     } finally {
       setLoading(false);
     }
@@ -189,6 +200,7 @@ export default function SupplierReturnsPage() {
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7 font-sans">
+      {loadError && <LoadErrorState message={loadError} onRetry={() => void refreshData()} retrying={loading} />}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div>

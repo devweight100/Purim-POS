@@ -53,7 +53,8 @@ export function PosDebtSelectModal({
       const records = await fetchDebtRecords();
       setDebts(records);
     } catch {
-      toast.error('ไม่สามารถโหลดข้อมูลบิลลูกหนี้ได้');
+      setDebts([]);
+      toast.error('ไม่สามารถโหลดข้อมูลบิลลูกหนี้จากเซิร์ฟเวอร์ได้ กรุณาลองใหม่');
     } finally {
       setLoading(false);
     }

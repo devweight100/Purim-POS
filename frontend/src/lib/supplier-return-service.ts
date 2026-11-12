@@ -1,168 +1,107 @@
 import { ClaimRecord, SupplierReturnNote, SupplierReturnItem, SupplierReturnItemType } from './types';
-import { loadAllClaimRecords, saveClaimRecords, markClaimsAsReturnedToSupplier, updateClaimStatus } from './claim-service';
+import { loadAllClaimRecords, fetchAllClaimRecords } from './claim-service';
 import { useProductStore } from './store/product-store';
 import { apiFetch, api } from './api';
 import { grossPerUnit } from '@shared/po-calc';
 
-const STORAGE_KEY_RETURNS = 'pos_supplier_returns';
-const STORAGE_KEY_SUPPLIERS = 'custom_suppliers';
-const STORAGE_KEY_POS = 'custom_purchase_orders';
-const STORAGE_KEY_PRODUCTS = 'custom_products';
+/**
+ * Suppliers, purchase orders and supplier return notes live on the server only. The last server
+ * response of each is kept in memory (never in localStorage) so helpers can read them
+ * synchronously; fetch* refresh them and throw when the server cannot be reached.
+ */
+let suppliersMem: any[] = [];
+let purchaseOrdersMem: any[] = [];
+let returnNotesMem: SupplierReturnNote[] = [];
 
-// ─── Default Suppliers Fallback ───
+// ─── Suppliers ───
 export const DEFAULT_SUPPLIERS: any[] = [];
 
+/** Suppliers from the server. Throws when the server cannot be reached. */
 export async function fetchSuppliers(): Promise<any[]> {
-  try {
-    const data = await apiFetch('/suppliers');
-    if (Array.isArray(data)) {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(STORAGE_KEY_SUPPLIERS, JSON.stringify(data));
-      }
-      return data;
-    }
-  } catch (err) {
-    console.warn('[SupplierReturnService] Failed to fetch suppliers from backend:', err);
-  }
-  return loadSuppliers();
+  const data = await apiFetch('/suppliers');
+  if (!Array.isArray(data)) throw new Error('ข้อมูลผู้จำหน่ายจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+  suppliersMem = data;
+  return data;
 }
 
+/** Last suppliers the server returned in this session. */
 export function loadSuppliers(): any[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_SUPPLIERS);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {}
-  return [];
+  return suppliersMem;
 }
 
-// ─── Purchase Orders Storage Helpers ───
+// ─── Purchase Orders ───
+/** Purchase orders from the server. Throws when the server cannot be reached. */
 export async function fetchPurchaseOrders(): Promise<any[]> {
-  try {
-    const data = await apiFetch('/purchase-orders?limit=1000');
-    const list = Array.isArray(data) ? data : data?.data;
-    if (Array.isArray(list)) {
-      savePurchaseOrders(list);
-      return list;
-    }
-  } catch (err) {
-    console.warn('[SupplierReturnService] Failed to fetch POs from backend:', err);
-  }
-  return loadPurchaseOrders();
+  const data = await apiFetch('/purchase-orders?limit=1000');
+  const list = Array.isArray(data) ? data : data?.data;
+  if (!Array.isArray(list)) throw new Error('ข้อมูลใบสั่งซื้อจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+  purchaseOrdersMem = list;
+  return list;
 }
 
+/** Last purchase orders the server returned in this session (with supplier names filled in). */
 export function loadPurchaseOrders(): any[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_POS);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const supps = loadSuppliers();
-        return parsed.map((po: any) => {
-          if (!po.supplier || !po.supplier.name) {
-            const supp = supps.find((s: any) => s.id === (po.supplierId || po.supplier?.id));
-            if (supp) {
-              return { ...po, supplier: supp, supplierName: supp.name };
-            }
-          }
-          return po;
-        });
+  const supps = suppliersMem;
+  return purchaseOrdersMem.map((po: any) => {
+    if (!po.supplier || !po.supplier.name) {
+      const supp = supps.find((s: any) => s.id === (po.supplierId || po.supplier?.id));
+      if (supp) {
+        return { ...po, supplier: supp, supplierName: supp.name };
       }
     }
-  } catch {}
-  return [];
+    return po;
+  });
 }
 
-export function savePurchaseOrders(pos: any[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY_POS, JSON.stringify(pos));
-  } catch (err) {
-    console.error('Failed to save POs to storage:', err);
-  }
+// ─── Supplier Return Notes ───
+function mapReturnNote(item: any): SupplierReturnNote {
+  const docNum = item.returnNumber || item.noteNumber || item.id;
+  const rawStatus = item.frontendStatus || item.status;
+  const resolvedStatus =
+    rawStatus === 'PENDING'
+      ? 'PENDING_DEDUCTION'
+      : rawStatus === 'PARTIALLY_USED'
+        ? 'PARTIALLY_DEDUCTED'
+        : rawStatus === 'USED'
+          ? 'DEDUCTED'
+          : rawStatus || 'PENDING_DEDUCTION';
+
+  return {
+    id: docNum,
+    noteNumber: docNum,
+    returnDate: item.returnDate || item.createdAt || new Date().toISOString(),
+    supplierId: item.supplierId || item.supplier?.id || '',
+    supplierName: item.supplierName || item.supplier?.name || 'ไม่ระบุผู้จำหน่าย',
+    supplierPhone: item.supplierPhone || item.supplier?.phone || '',
+    supplierContact: item.supplierContact || item.supplier?.contactName || '',
+    supplierAddress: item.supplierAddress || item.supplier?.address || '',
+    linkedPoId: item.linkedPoId,
+    linkedPoNumber: item.linkedPoNumber,
+    items: Array.isArray(item.items) ? item.items : [],
+    totalQuantity: Number(item.totalQuantity ?? 0),
+    defectiveTotalCost: Number(item.defectiveTotalCost ?? 0),
+    overstockTotalCost: Number(item.overstockTotalCost ?? 0),
+    totalCreditAmount: Number(item.totalCreditAmount ?? item.totalAmount ?? 0),
+    remainingCreditAmount: Number(item.remainingCreditAmount ?? item.totalAmount ?? 0),
+    status: resolvedStatus as any,
+    notes: item.notes ?? item.note ?? item.reason ?? '',
+    deductions: Array.isArray(item.deductions) ? item.deductions : [],
+    createdBy: item.createdBy || 'เจ้าหน้าที่ฝ่ายส่งคืน/เคลม',
+  } as SupplierReturnNote;
 }
 
-// ─── Local Storage for Supplier Return Notes ───
+/** Supplier return notes from the server. Throws when the server cannot be reached. */
 export async function fetchSupplierReturnNotes(): Promise<SupplierReturnNote[]> {
-  try {
-    const res = await apiFetch('/supplier-returns?limit=200');
-    const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : null);
-    if (Array.isArray(list)) {
-      const localNotes = loadSupplierReturnNotes();
-      const localMap = new Map<string, SupplierReturnNote>();
-      localNotes.forEach((n) => {
-        if (n.id) localMap.set(n.id, n);
-        if ((n as any).noteNumber) localMap.set((n as any).noteNumber, n);
-      });
-
-      const mappedList: SupplierReturnNote[] = list.map((item: any) => {
-        const docNum = item.returnNumber || item.noteNumber || item.id;
-        const local = localMap.get(docNum) || localMap.get(item.id);
-        const rawStatus = item.frontendStatus || item.status;
-        const resolvedStatus =
-          rawStatus === 'PENDING'
-            ? 'PENDING_DEDUCTION'
-            : rawStatus === 'PARTIALLY_USED'
-              ? 'PARTIALLY_DEDUCTED'
-              : rawStatus === 'USED'
-                ? 'DEDUCTED'
-                : rawStatus || local?.status || 'PENDING_DEDUCTION';
-
-        return {
-          id: docNum,
-          noteNumber: docNum,
-          returnDate: item.returnDate || item.createdAt || new Date().toISOString(),
-          supplierId: item.supplierId || item.supplier?.id || '',
-          supplierName: item.supplierName || item.supplier?.name || local?.supplierName || 'ไม่ระบุผู้จำหน่าย',
-          supplierPhone: item.supplierPhone || item.supplier?.phone || local?.supplierPhone || '',
-          supplierContact: item.supplierContact || item.supplier?.contactName || local?.supplierContact || '',
-          supplierAddress: item.supplierAddress || item.supplier?.address || local?.supplierAddress || '',
-          linkedPoId: item.linkedPoId || local?.linkedPoId,
-          linkedPoNumber: item.linkedPoNumber || local?.linkedPoNumber,
-          items: Array.isArray(item.items) && item.items.length > 0 ? item.items : (Array.isArray(item.items) ? (local?.items || []) : []),
-          totalQuantity: Number(item.totalQuantity ?? local?.totalQuantity ?? 0),
-          defectiveTotalCost: Number(item.defectiveTotalCost ?? local?.defectiveTotalCost ?? 0),
-          overstockTotalCost: Number(item.overstockTotalCost ?? local?.overstockTotalCost ?? 0),
-          totalCreditAmount: Number(item.totalCreditAmount ?? item.totalAmount ?? local?.totalCreditAmount ?? 0),
-          remainingCreditAmount: Number(item.remainingCreditAmount ?? item.totalAmount ?? local?.remainingCreditAmount ?? 0),
-          status: resolvedStatus as any,
-          notes: item.notes ?? item.note ?? item.reason ?? local?.notes ?? '',
-          deductions: Array.isArray(item.deductions) && item.deductions.length > 0 ? item.deductions : (local?.deductions || []),
-          createdBy: item.createdBy || local?.createdBy || 'เจ้าหน้าที่ฝ่ายส่งคืน/เคลม',
-        } as SupplierReturnNote;
-      });
-      saveSupplierReturnNotes(mappedList);
-      return mappedList;
-    }
-  } catch (err) {
-    console.warn('[SupplierReturnService] Failed to fetch return notes from backend:', err);
-  }
-  return loadSupplierReturnNotes();
+  const res = await apiFetch('/supplier-returns?limit=200');
+  const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : null);
+  if (!Array.isArray(list)) throw new Error('ข้อมูลใบส่งคืนจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+  returnNotesMem = list.map(mapReturnNote);
+  return returnNotesMem;
 }
 
+/** Last supplier return notes the server returned in this session. */
 export function loadSupplierReturnNotes(): SupplierReturnNote[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_RETURNS);
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch (err) {
-    console.error('Failed to load supplier return notes:', err);
-    return [];
-  }
-}
-
-export function saveSupplierReturnNotes(notes: SupplierReturnNote[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY_RETURNS, JSON.stringify(notes));
-  } catch (err) {
-    console.error('Failed to save supplier return notes:', err);
-  }
+  return returnNotesMem;
 }
 
 export function generateReturnDocNumber(): string {
@@ -182,16 +121,7 @@ export function resolveProductSupplierAndCost(productId: string, sku?: string): 
   supplierName: string;
   costPrice: number;
 } {
-  let storeProducts: any[] = useProductStore.getState().products || [];
-  if (typeof window !== 'undefined') {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_PRODUCTS);
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        storeProducts = parsed;
-      }
-    } catch {}
-  }
+  const storeProducts: any[] = useProductStore.getState().products || [];
   const suppliers = loadSuppliers();
 
   const prod = storeProducts.find((p) => p.id === productId || p.sku === sku || p.sku === productId);
@@ -261,16 +191,7 @@ export function resolveProductSupplierAndCost(productId: string, sku?: string): 
 
 // ─── Query Products that Belong to a Specific Supplier ───
 export function getProductsBySupplier(supplierId: string): any[] {
-  let storeProducts: any[] = useProductStore.getState().products || [];
-  if (typeof window !== 'undefined') {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_PRODUCTS);
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        storeProducts = parsed;
-      }
-    } catch {}
-  }
+  const storeProducts: any[] = useProductStore.getState().products || [];
 
   const pos = loadPurchaseOrders();
   const supplierPos = pos.filter(
@@ -380,16 +301,7 @@ export function getEligibleClaimsForReturn(supplierId?: string): ClaimRecord[] {
   const suppliers = loadSuppliers();
   const pos = loadPurchaseOrders();
 
-  let storeProducts: any[] = useProductStore.getState().products || [];
-  if (typeof window !== 'undefined') {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_PRODUCTS);
-      const parsed = raw ? JSON.parse(raw) : [];
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        storeProducts = parsed;
-      }
-    } catch {}
-  }
+  const storeProducts: any[] = useProductStore.getState().products || [];
 
   const targetSupplier = supplierId ? suppliers.find((s) => s.id === supplierId) : undefined;
 
@@ -589,18 +501,13 @@ export interface CreateReturnNoteParams {
   autoDeductFromPo?: boolean;
 }
 
-function createSupplierReturnNoteLocal(params: CreateReturnNoteParams): SupplierReturnNote {
-  const returnId = generateReturnDocNumber();
-  const nowIso = new Date().toISOString();
-  const allClaims = loadAllClaimRecords();
-
+/** Items, totals and claim ids of a return note, computed from the form (and claims for legacy claimItems). */
+function buildReturnContent(params: CreateReturnNoteParams) {
   const returnItems: SupplierReturnItem[] = [];
   let totalQty = 0;
   let defectiveTotalCost = 0;
   let overstockTotalCost = 0;
-  const claimIdsToUpdate = new Set<string>();
 
-  // Case 1: Advanced items array provided (combines Defective and Overstock)
   if (Array.isArray(params.items) && params.items.length > 0) {
     params.items.forEach((item) => {
       const itemTotalCost = Math.round(Number(item.unitCost) * Number(item.quantity) * 100) / 100;
@@ -621,88 +528,35 @@ function createSupplierReturnNoteLocal(params: CreateReturnNoteParams): Supplier
         returnReason: item.returnReason,
         originalOrderNumber: item.originalOrderNumber,
       };
-
       returnItems.push(rItem);
       totalQty += Number(item.quantity);
-
-      if (rItem.itemType === 'DEFECTIVE') {
-        defectiveTotalCost += itemTotalCost;
-        if (item.claimId) {
-          item.claimId.split(',').forEach((id) => {
-            const trimmed = id.trim();
-            if (trimmed) claimIdsToUpdate.add(trimmed);
-          });
-        }
-      } else {
-        overstockTotalCost += itemTotalCost;
-      }
+      if (rItem.itemType === 'DEFECTIVE') defectiveTotalCost += itemTotalCost;
+      else overstockTotalCost += itemTotalCost;
     });
-
-    // Update claim records locally & on backend
-    if (claimIdsToUpdate.size > 0) {
-      allClaims.forEach((c) => {
-        if (claimIdsToUpdate.has(c.id)) {
-          c.returnDocId = returnId;
-          c.status = 'SENT_TO_SUPPLIER';
-          c.supplierId = params.supplierId;
-          c.supplierName = params.supplierName;
-        }
-      });
-      saveClaimRecords(allClaims);
-      void markClaimsAsReturnedToSupplier(
-        Array.from(claimIdsToUpdate),
-        returnId,
-        params.supplierId,
-        params.supplierName
-      );
-    }
   } else if (Array.isArray(params.claimItems) && params.claimItems.length > 0) {
-    // Case 2: Legacy claimItems fallback
-    params.claimItems.forEach((i) => {
-      if (i.claimId) claimIdsToUpdate.add(i.claimId);
+    // Legacy claimItems: item details come from the server's claims
+    const claims = loadAllClaimRecords();
+    params.claimItems.forEach((ci) => {
+      const c = claims.find((row) => row.id === ci.claimId);
+      if (!c) return;
+      const unitCost = ci.unitCost ?? (c.costPrice || 50);
+      const itemTotalCost = Math.round(unitCost * c.quantity * 100) / 100;
+      returnItems.push({
+        claimId: c.id,
+        productId: c.productId,
+        productName: c.productName,
+        sku: c.sku,
+        unitName: c.unitName,
+        quantity: c.quantity,
+        unitCost,
+        totalCost: itemTotalCost,
+        itemType: 'DEFECTIVE',
+        defectReason: c.defectReason,
+        originalOrderNumber: c.orderNumber,
+      });
+      totalQty += c.quantity;
+      defectiveTotalCost += itemTotalCost;
     });
-
-    allClaims.forEach((c) => {
-      if (claimIdsToUpdate.has(c.id)) {
-        const matchParam = params.claimItems!.find((p) => p.claimId === c.id);
-        const unitCost = matchParam?.unitCost ?? (c.costPrice || 50);
-        const itemTotalCost = Math.round(unitCost * c.quantity * 100) / 100;
-
-        returnItems.push({
-          claimId: c.id,
-          productId: c.productId,
-          productName: c.productName,
-          sku: c.sku,
-          unitName: c.unitName,
-          quantity: c.quantity,
-          unitCost: unitCost,
-          totalCost: itemTotalCost,
-          itemType: 'DEFECTIVE',
-          defectReason: c.defectReason,
-          originalOrderNumber: c.orderNumber,
-        });
-
-        totalQty += c.quantity;
-        defectiveTotalCost += itemTotalCost;
-
-        c.returnDocId = returnId;
-        c.status = 'SENT_TO_SUPPLIER';
-        c.supplierId = params.supplierId;
-        c.supplierName = params.supplierName;
-        c.costPrice = unitCost;
-        c.totalCostValue = itemTotalCost;
-      }
-    });
-
-    saveClaimRecords(allClaims);
-    if (claimIdsToUpdate.size > 0) {
-      void markClaimsAsReturnedToSupplier(
-        Array.from(claimIdsToUpdate),
-        returnId,
-        params.supplierId,
-        params.supplierName
-      );
-    }
   }
 
   const itemsTotalCost = Math.round((defectiveTotalCost + overstockTotalCost) * 100) / 100;
@@ -710,9 +564,90 @@ function createSupplierReturnNoteLocal(params: CreateReturnNoteParams): Supplier
     ? Math.round(params.customCreditAmount * 100) / 100
     : itemsTotalCost;
 
-  const newReturnNote: SupplierReturnNote = {
-    id: returnId,
-    returnDate: nowIso,
+  return {
+    items: returnItems,
+    totalQuantity: totalQty,
+    defectiveTotalCost: Math.round(defectiveTotalCost * 100) / 100,
+    overstockTotalCost: Math.round(overstockTotalCost * 100) / 100,
+    totalCreditAmount: totalCredit,
+  };
+}
+
+/** After the server accepted a change: reload notes, claims (re-linked by the server) and stock. */
+async function refreshAfterReturnWrite(): Promise<void> {
+  await Promise.allSettled([fetchSupplierReturnNotes(), fetchAllClaimRecords()]);
+  if (typeof window !== 'undefined') {
+    void useProductStore.getState().fetchProducts();
+    window.dispatchEvent(new Event('pos-data-synced'));
+  }
+}
+
+const failMessage = (err: any, fallback: string) => (err && err.message) ? `${fallback}: ${err.message}` : fallback;
+
+// ─── Create Supplier Return Note (RTN) ───
+// The server links the claims, deducts overstock stock and stores the note in one transaction;
+// nothing is recorded on this device.
+export async function createSupplierReturnNote(params: CreateReturnNoteParams): Promise<SupplierReturnNote> {
+  if (!params.supplierId) throw new Error('กรุณาเลือกผู้จำหน่าย');
+  const returnId = generateReturnDocNumber();
+  const nowIso = new Date().toISOString();
+  const content = buildReturnContent(params);
+  const createdBy = params.createdBy || 'เจ้าหน้าที่ฝ่ายส่งคืน/เคลม';
+  let saved: any;
+  try {
+    saved = await api.supplierReturns.create({
+      returnNumber: returnId,
+      noteNumber: returnId,
+      returnDate: nowIso,
+      supplierId: params.supplierId,
+      supplierName: params.supplierName,
+      supplierContact: params.supplierContact,
+      supplierPhone: params.supplierPhone,
+      supplierAddress: params.supplierAddress,
+      linkedPoId: params.linkedPoId,
+      linkedPoNumber: params.linkedPoNumber,
+      ...content,
+      totalAmount: content.totalCreditAmount,
+      remainingCreditAmount: content.totalCreditAmount,
+      status: 'PENDING_DEDUCTION',
+      deductions: [],
+      notes: params.notes,
+      reason: params.notes || 'ส่งเคลม/คืนสินค้าบริษัท',
+      createdBy,
+      deductStock: true,
+    });
+  } catch (err) {
+    throw new Error(failMessage(err, 'บันทึกเอกสารส่งคืนลงฐานข้อมูลไม่สำเร็จ'));
+  }
+  await refreshAfterReturnWrite();
+  const serverNum = saved?.returnNumber || saved?.id || returnId;
+  return (
+    returnNotesMem.find((n) => n.id === serverNum) ||
+    mapReturnNote({
+      ...saved,
+      returnNumber: serverNum,
+      supplierName: params.supplierName,
+      supplierContact: params.supplierContact,
+      supplierPhone: params.supplierPhone,
+      supplierAddress: params.supplierAddress,
+      ...content,
+      remainingCreditAmount: content.totalCreditAmount,
+      notes: params.notes,
+      createdBy,
+    })
+  );
+}
+
+// ─── Update Supplier Return Note (When not yet fully deducted) ───
+export async function updateSupplierReturnNote(noteId: string, params: CreateReturnNoteParams): Promise<SupplierReturnNote> {
+  const existingNote = returnNotesMem.find((n) => n.id === noteId);
+  if (!existingNote) throw new Error('ไม่พบเอกสารส่งคืนที่ต้องการแก้ไข');
+  if (existingNote.status === 'DEDUCTED') {
+    throw new Error('เอกสารนี้ถูกหักลดหนี้ในบิลแล้ว ไม่สามารถแก้ไขได้โดยตรง (กรุณาย้อนสถานะก่อน)');
+  }
+  const content = buildReturnContent(params);
+  const updatedNote: SupplierReturnNote = {
+    ...existingNote,
     supplierId: params.supplierId,
     supplierName: params.supplierName,
     supplierContact: params.supplierContact,
@@ -720,185 +655,52 @@ function createSupplierReturnNoteLocal(params: CreateReturnNoteParams): Supplier
     supplierAddress: params.supplierAddress,
     linkedPoId: params.linkedPoId,
     linkedPoNumber: params.linkedPoNumber,
-    items: returnItems,
-    totalQuantity: totalQty,
-    defectiveTotalCost: Math.round(defectiveTotalCost * 100) / 100,
-    overstockTotalCost: Math.round(overstockTotalCost * 100) / 100,
-    totalCreditAmount: totalCredit,
-    remainingCreditAmount: totalCredit,
-    status: 'PENDING_DEDUCTION',
+    ...content,
+    remainingCreditAmount: content.totalCreditAmount,
     notes: params.notes,
-    createdBy: params.createdBy || 'เจ้าหน้าที่ฝ่ายส่งคืน/เคลม',
   };
-
-  // Credit notes are applied to supplier bills only through payment vouchers on the
-  // payables page (backend), so PO balances and credit balances cannot drift apart.
-
-  const existingNotes = loadSupplierReturnNotes();
-  existingNotes.unshift(newReturnNote);
-  saveSupplierReturnNotes(existingNotes);
-
-  // Sync full payload to backend API so PostgreSQL is the Single Source of Truth (and backend deducts overstock FIFO stock)
-  if (params.supplierId) {
-    track(api.supplierReturns
-      .create({
-        returnNumber: returnId,
-        noteNumber: returnId,
-        returnDate: nowIso,
-        supplierId: params.supplierId,
-        supplierName: params.supplierName,
-        supplierContact: params.supplierContact,
-        supplierPhone: params.supplierPhone,
-        supplierAddress: params.supplierAddress,
-        linkedPoId: params.linkedPoId,
-        linkedPoNumber: params.linkedPoNumber,
-        items: returnItems,
-        totalQuantity: totalQty,
-        defectiveTotalCost: newReturnNote.defectiveTotalCost,
-        overstockTotalCost: newReturnNote.overstockTotalCost,
-        totalCreditAmount: totalCredit,
-        totalAmount: totalCredit,
-        remainingCreditAmount: newReturnNote.remainingCreditAmount,
-        status: newReturnNote.status,
-        deductions: newReturnNote.deductions || [],
-        notes: params.notes,
-        reason: params.notes || 'ส่งเคลม/คืนสินค้าบริษัท',
-        createdBy: newReturnNote.createdBy,
-        deductStock: true,
-      })
-      .then((saved) => {
-        if (saved && (saved.returnNumber || saved.id)) {
-          const serverNum = saved.returnNumber || saved.id;
-          if (serverNum !== returnId) {
-            const currentNotes = loadSupplierReturnNotes();
-            const target = currentNotes.find((n) => n.id === returnId);
-            if (target) {
-              target.id = serverNum;
-              (target as any).noteNumber = serverNum;
-              saveSupplierReturnNotes(currentNotes);
-            }
-          }
-        }
-        if (typeof window !== 'undefined') {
-          void useProductStore.getState().fetchProducts();
-          window.dispatchEvent(new Event('pos-data-synced'));
-        }
-      })
-      .catch((err) => { console.warn('[SupplierReturnService] Failed to sync return note to backend:', err); throw err; }));
+  try {
+    await apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updatedNote),
+    });
+  } catch (err) {
+    throw new Error(failMessage(err, 'บันทึกการแก้ไขเอกสารส่งคืนไม่สำเร็จ'));
   }
-
-  return newReturnNote;
+  await refreshAfterReturnWrite();
+  return returnNotesMem.find((n) => n.id === noteId) || updatedNote;
 }
 
-// ─── Cancel Supplier Return Note & Rollback ───
-function cancelSupplierReturnNoteLocal(noteId: string): { success: boolean; message: string } {
-  const notes = loadSupplierReturnNotes();
-  const note = notes.find((n) => n.id === noteId);
-  if (!note) {
-    return { success: false, message: 'ไม่พบเอกสารส่งคืนที่ต้องการยกเลิก' };
+// ─── Cancel Supplier Return Note (server restores stock & claim statuses) ───
+export async function cancelSupplierReturnNote(noteId: string): Promise<{ success: boolean; message: string }> {
+  const note = returnNotesMem.find((n) => n.id === noteId);
+  if (note?.status === 'CANCELLED') return { success: false, message: 'เอกสารนี้ถูกยกเลิกไปแล้ว' };
+  try {
+    await apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: 'ยกเลิกเอกสารส่งคืน' }),
+    });
+  } catch (err) {
+    return { success: false, message: failMessage(err, 'ยกเลิกเอกสารในฐานข้อมูลไม่สำเร็จ') };
   }
-
-  if (note.status === 'CANCELLED') {
-    return { success: false, message: 'เอกสารนี้ถูกยกเลิกไปแล้ว' };
-  }
-
-  // 1. Rollback customer claims back to PENDING_SUPPLIER
-  const allClaims = loadAllClaimRecords();
-  allClaims.forEach((c) => {
-    if (c.returnDocId === noteId) {
-      c.returnDocId = undefined;
-      c.status = 'PENDING_SUPPLIER';
-      void updateClaimStatus(c.id, 'PENDING_SUPPLIER', { returnDocId: null });
-    }
-  });
-  saveClaimRecords(allClaims);
-
-  // 2. Rollback PO deductions if applied
-  if (note.deductions && note.deductions.length > 0) {
-    try {
-      const allPos = loadPurchaseOrders();
-      note.deductions.forEach((d) => {
-        const po = allPos.find((p) => p.poNumber === d.billNumber);
-        if (po && Array.isArray(po.deductedReturns)) {
-          po.deductedReturns = po.deductedReturns.filter((r: any) => r.returnNoteId !== noteId);
-          const totalAmount = Number(po.totalAmount || 0);
-          const totalDeducted = po.deductedReturns.reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
-          po.netAmountPayable = Math.max(0, totalAmount - totalDeducted);
-        }
-      });
-      savePurchaseOrders(allPos);
-    } catch (e) {
-      console.error('Failed to rollback PO deductions:', e);
-    }
-  }
-
-  note.status = 'CANCELLED';
-  note.remainingCreditAmount = 0;
-  (note as any).cancelledAt = new Date().toISOString();
-  saveSupplierReturnNotes(notes);
-
-  // Sync cancellation to backend (which also restores overstock stockBatch & claim statuses)
-  track(apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}/cancel`, {
-    method: 'POST',
-    body: JSON.stringify({ reason: 'ยกเลิกเอกสารส่งคืน' }),
-  })
-    .then(() => {
-      if (typeof window !== 'undefined') {
-        void useProductStore.getState().fetchProducts();
-        window.dispatchEvent(new Event('pos-data-synced'));
-      }
-    })
-    .catch((err) => { console.warn('[SupplierReturnService] Failed to sync cancel return note to backend:', err); throw err; }));
-
+  await refreshAfterReturnWrite();
   return { success: true, message: `ย้ายเอกสารส่งคืน ${noteId} ไปที่ถังขยะ และคืนยอดสต็อก/สถานะเรียบร้อยแล้ว` };
 }
 
 // ─── Restore Cancelled Return Note from Trash ───
-function restoreSupplierReturnNoteLocal(noteId: string): { success: boolean; message: string } {
-  const notes = loadSupplierReturnNotes();
-  const note = notes.find((n) => n.id === noteId);
+export async function restoreSupplierReturnNote(noteId: string): Promise<{ success: boolean; message: string }> {
+  const note = returnNotesMem.find((n) => n.id === noteId);
   if (!note) return { success: false, message: 'ไม่พบเอกสารส่งคืน' };
   if (note.status !== 'CANCELLED') return { success: false, message: 'เอกสารนี้ไม่ได้อยู่ในสถานะยกเลิก' };
-
-  note.status = 'PENDING_DEDUCTION';
-  note.remainingCreditAmount = note.totalCreditAmount;
-  delete (note as any).cancelledAt;
-
-  // Re-link claims if applicable
   try {
-    const allClaims = loadAllClaimRecords();
-    const restoredClaimIds: string[] = [];
-    for (const item of note.items) {
-      if (item.claimId) {
-        const claimIds = item.claimId.split(',').map((s) => s.trim()).filter(Boolean);
-        for (const cid of claimIds) {
-          const claim = allClaims.find((c) => c.id === cid);
-          if (claim) {
-            claim.returnDocId = noteId;
-            claim.status = 'SENT_TO_SUPPLIER';
-            restoredClaimIds.push(cid);
-          }
-        }
-      }
-    }
-    saveClaimRecords(allClaims);
-    if (restoredClaimIds.length > 0) {
-      void markClaimsAsReturnedToSupplier(restoredClaimIds, noteId, note.supplierId, note.supplierName);
-    }
-  } catch (e) {
-    console.error('Failed to re-link claims on restore:', e);
+    await apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'PENDING_DEDUCTION', remainingCreditAmount: note.totalCreditAmount }),
+    });
+  } catch (err) {
+    return { success: false, message: failMessage(err, 'กู้คืนเอกสารในฐานข้อมูลไม่สำเร็จ') };
   }
-
-  saveSupplierReturnNotes(notes);
-
-  track(apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      status: 'PENDING_DEDUCTION',
-      remainingCreditAmount: note.totalCreditAmount,
-    }),
-  }).catch((err) => { console.warn('[SupplierReturnService] Failed to sync restore return note to backend:', err); throw err; }));
-
+  await refreshAfterReturnWrite();
   return { success: true, message: `กู้คืนเอกสารส่งคืน ${noteId} กลับมาใช้งานเรียบร้อยแล้ว` };
 }
 
@@ -913,295 +715,39 @@ export function getAvailableReturnNotesForSupplier(supplierId: string): Supplier
   );
 }
 
-
-// ─── Update Supplier Return Note (When not yet fully deducted) ───
-function updateSupplierReturnNoteLocal(
-  noteId: string,
-  params: CreateReturnNoteParams
-): SupplierReturnNote {
-  const notes = loadSupplierReturnNotes();
-  const existingIndex = notes.findIndex((n) => n.id === noteId);
-  if (existingIndex < 0) {
-    throw new Error('ไม่พบเอกสารส่งคืนที่ต้องการแก้ไข');
-  }
-
-  const existingNote = notes[existingIndex];
-  if (existingNote.status === 'DEDUCTED') {
-    throw new Error('เอกสารนี้ถูกหักลดหนี้ในบิลแล้ว ไม่สามารถแก้ไขได้โดยตรง (กรุณาย้อนสถานะก่อน)');
-  }
-
-  // 1. Rollback old claims
-  const allClaims = loadAllClaimRecords();
-  allClaims.forEach((c) => {
-    if (c.returnDocId === noteId) {
-      c.returnDocId = undefined;
-      c.status = 'PENDING_SUPPLIER';
-    }
-  });
-
-  // 2. Process new items
-  const newReturnItems: SupplierReturnItem[] = [];
-  let totalQty = 0;
-  let defectiveTotalCost = 0;
-  let overstockTotalCost = 0;
-  const claimIdsToUpdate = new Set<string>();
-
-  (params.items || []).forEach((item) => {
-    const itemTotalCost = Math.round(Number(item.unitCost) * Number(item.quantity) * 100) / 100;
-    const rItem: SupplierReturnItem = {
-      claimId: item.claimId,
-      poId: item.poId || params.linkedPoId,
-      poNumber: item.poNumber || params.linkedPoNumber,
-      poItemId: item.poItemId,
-      productId: item.productId,
-      productName: item.productName,
-      sku: item.sku,
-      unitName: item.unitName || 'ชิ้น',
-      quantity: Number(item.quantity),
-      unitCost: Number(item.unitCost),
-      totalCost: itemTotalCost,
-      itemType: item.itemType || 'DEFECTIVE',
-      defectReason: item.defectReason,
-      returnReason: item.returnReason,
-      originalOrderNumber: item.originalOrderNumber,
-    };
-
-    newReturnItems.push(rItem);
-    totalQty += Number(item.quantity);
-
-    if (rItem.itemType === 'DEFECTIVE') {
-      defectiveTotalCost += itemTotalCost;
-      if (item.claimId) {
-        item.claimId.split(',').forEach((id) => {
-          const trimmed = id.trim();
-          if (trimmed) claimIdsToUpdate.add(trimmed);
-        });
-      }
-    } else {
-      overstockTotalCost += itemTotalCost;
-    }
-  });
-
-  // Update claim records
-  allClaims.forEach((c) => {
-    if (claimIdsToUpdate.has(c.id)) {
-      c.returnDocId = noteId;
-      c.status = 'SENT_TO_SUPPLIER';
-      c.supplierId = params.supplierId;
-      c.supplierName = params.supplierName;
-    }
-  });
-  saveClaimRecords(allClaims);
-
-  const itemsTotalCost = Math.round((defectiveTotalCost + overstockTotalCost) * 100) / 100;
-  const totalCredit = params.customCreditAmount !== undefined && params.customCreditAmount >= 0
-    ? Math.round(params.customCreditAmount * 100) / 100
-    : itemsTotalCost;
-
-  const updatedNote: SupplierReturnNote = {
-    ...existingNote,
-    supplierId: params.supplierId,
-    supplierName: params.supplierName,
-    supplierContact: params.supplierContact,
-    supplierPhone: params.supplierPhone,
-    supplierAddress: params.supplierAddress,
-    linkedPoId: params.linkedPoId,
-    linkedPoNumber: params.linkedPoNumber,
-    items: newReturnItems,
-    totalQuantity: totalQty,
-    defectiveTotalCost: Math.round(defectiveTotalCost * 100) / 100,
-    overstockTotalCost: Math.round(overstockTotalCost * 100) / 100,
-    totalCreditAmount: totalCredit,
-    remainingCreditAmount: totalCredit,
-    notes: params.notes,
-  };
-
-  notes[existingIndex] = updatedNote;
-  saveSupplierReturnNotes(notes);
-
-  track(apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify(updatedNote),
-  })
-    .then(() => {
-      if (typeof window !== 'undefined') {
-        void useProductStore.getState().fetchProducts();
-        window.dispatchEvent(new Event('pos-data-synced'));
-      }
-    })
-    .catch((err) => { console.warn('[SupplierReturnService] Failed to sync updated return note to backend:', err); throw err; }));
-
-  return updatedNote;
-}
-
 // ─── Change / Revert Supplier Return Note Status ───
-function changeSupplierReturnStatusLocal(
-  noteId: string,
-  newStatus: SupplierReturnNote['status'],
-  options?: { rollbackPo?: boolean }
-): { success: boolean; message: string; updatedNote?: SupplierReturnNote } {
-  const notes = loadSupplierReturnNotes();
-  const note = notes.find((n) => n.id === noteId);
-  if (!note) {
-    return { success: false, message: 'ไม่พบเอกสารส่งคืนที่ต้องการเปลี่ยนสถานะ' };
-  }
-
-  const oldStatus = note.status;
-  if (oldStatus === newStatus) {
-    return { success: true, message: 'สถานะเป็นสถานะเดิมอยู่แล้ว', updatedNote: note };
-  }
-
-  // 1. If reverting from DEDUCTED / PARTIALLY_DEDUCTED back to PENDING_DEDUCTION
-  if ((oldStatus === 'DEDUCTED' || oldStatus === 'PARTIALLY_DEDUCTED') && newStatus === 'PENDING_DEDUCTION') {
-    // Rollback deductions in PO
-    try {
-      const allPos = loadPurchaseOrders();
-      if (note.deductions && note.deductions.length > 0) {
-        note.deductions.forEach((d) => {
-          const po = allPos.find((p) => p.poNumber === d.billNumber);
-          if (po && Array.isArray(po.deductedReturns)) {
-            po.deductedReturns = po.deductedReturns.filter((r: any) => r.returnNoteId !== noteId);
-            const totalAmount = Number(po.totalAmount || 0);
-            const totalDeducted = po.deductedReturns.reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
-            po.netAmountPayable = Math.max(0, totalAmount - totalDeducted);
-          }
-        });
-        savePurchaseOrders(allPos);
-      }
-    } catch (e) {
-      console.error('Failed to rollback PO deduction on status change:', e);
-    }
-
-    note.remainingCreditAmount = note.totalCreditAmount;
-    note.deductions = [];
-    note.status = 'PENDING_DEDUCTION';
-  } else if (newStatus === 'CANCELLED') {
-    // 2. If cancelling
-    return cancelSupplierReturnNoteLocal(noteId);
-  } else if (oldStatus === 'CANCELLED' && newStatus === 'PENDING_DEDUCTION') {
-    // 3. If reviving from CANCELLED
-    // Re-link defective claims
-    const claimIds = new Set(note.items.filter((i) => i.itemType === 'DEFECTIVE' && i.claimId).map((i) => i.claimId!));
-    if (claimIds.size > 0) {
-      const allClaims = loadAllClaimRecords();
-      allClaims.forEach((c) => {
-        if (claimIds.has(c.id)) {
-          c.returnDocId = noteId;
-          c.status = 'SENT_TO_SUPPLIER';
-        }
-      });
-      saveClaimRecords(allClaims);
-    }
-
-    note.remainingCreditAmount = note.totalCreditAmount;
-    note.status = 'PENDING_DEDUCTION';
-  } else if (newStatus === 'DEDUCTED' && oldStatus === 'PENDING_DEDUCTION') {
-    // 4. Manually mark as deducted
-    note.remainingCreditAmount = 0;
-    note.status = 'DEDUCTED';
-  } else {
-    note.status = newStatus;
-  }
-
-  saveSupplierReturnNotes(notes);
-
-  track(apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      status: note.status,
-      remainingCreditAmount: note.remainingCreditAmount,
-      deductions: note.deductions,
-    }),
-  })
-    .then(() => {
-      if (typeof window !== 'undefined') {
-        void useProductStore.getState().fetchProducts();
-        window.dispatchEvent(new Event('pos-data-synced'));
-      }
-    })
-    .catch((err) => { console.warn('[SupplierReturnService] Failed to sync status change to backend:', err); throw err; }));
-
-  return { success: true, message: `เปลี่ยนสถานะเอกสาร ${noteId} เป็น "${newStatus}" เรียบร้อยแล้ว`, updatedNote: note };
-}
-
-export const updateSupplierReturnStatus = changeSupplierReturnStatus;
-
-// ─── Backend-first wrappers ───
-// Each mutation below still updates the local cache (used for instant UI), but the backend
-// write is awaited: if PostgreSQL rejects it, the local cache is restored and an error is returned.
-let pendingBackendWrites: Promise<unknown>[] = [];
-function track<T>(p: Promise<T>): Promise<T> {
-  pendingBackendWrites.push(p);
-  return p;
-}
-const LOCAL_KEYS = [STORAGE_KEY_RETURNS, STORAGE_KEY_POS, STORAGE_KEY_PRODUCTS, 'pos_product_claims'];
-async function backendFirst<T>(run: () => T): Promise<T> {
-  const snapshot = typeof window === 'undefined' ? {} : Object.fromEntries(LOCAL_KEYS.map((k) => [k, localStorage.getItem(k)]));
-  pendingBackendWrites = [];
-  let result: T;
-  try {
-    result = run();
-  } finally {
-    // collected synchronously by run()
-  }
-  const writes = pendingBackendWrites;
-  pendingBackendWrites = [];
-  try {
-    await Promise.all(writes);
-  } catch (err) {
-    if (typeof window !== 'undefined') {
-      for (const [k, v] of Object.entries(snapshot)) {
-        if (v === null) localStorage.removeItem(k);
-        else localStorage.setItem(k, v as string);
-      }
-    }
-    throw err;
-  }
-  return result;
-}
-const failMessage = (err: any, fallback: string) => (err && err.message) ? `${fallback}: ${err.message}` : fallback;
-
-export async function createSupplierReturnNote(params: CreateReturnNoteParams): Promise<SupplierReturnNote> {
-  if (!params.supplierId) throw new Error('กรุณาเลือกผู้จำหน่าย');
-  try {
-    return await backendFirst(() => createSupplierReturnNoteLocal(params));
-  } catch (err) {
-    throw new Error(failMessage(err, 'บันทึกเอกสารส่งคืนลงฐานข้อมูลไม่สำเร็จ'));
-  }
-}
-
-export async function updateSupplierReturnNote(noteId: string, params: CreateReturnNoteParams): Promise<SupplierReturnNote> {
-  try {
-    return await backendFirst(() => updateSupplierReturnNoteLocal(noteId, params));
-  } catch (err) {
-    throw new Error(failMessage(err, 'บันทึกการแก้ไขเอกสารส่งคืนไม่สำเร็จ'));
-  }
-}
-
-export async function cancelSupplierReturnNote(noteId: string): Promise<{ success: boolean; message: string }> {
-  try {
-    return await backendFirst(() => cancelSupplierReturnNoteLocal(noteId));
-  } catch (err) {
-    return { success: false, message: failMessage(err, 'ยกเลิกเอกสารในฐานข้อมูลไม่สำเร็จ') };
-  }
-}
-
-export async function restoreSupplierReturnNote(noteId: string): Promise<{ success: boolean; message: string }> {
-  try {
-    return await backendFirst(() => restoreSupplierReturnNoteLocal(noteId));
-  } catch (err) {
-    return { success: false, message: failMessage(err, 'กู้คืนเอกสารในฐานข้อมูลไม่สำเร็จ') };
-  }
-}
-
 export async function changeSupplierReturnStatus(
   noteId: string,
   newStatus: SupplierReturnNote['status'],
-  options?: { rollbackPo?: boolean },
+  _options?: { rollbackPo?: boolean },
 ): Promise<{ success: boolean; message: string; updatedNote?: SupplierReturnNote }> {
+  const note = returnNotesMem.find((n) => n.id === noteId);
+  if (!note) return { success: false, message: 'ไม่พบเอกสารส่งคืนที่ต้องการเปลี่ยนสถานะ' };
+  const oldStatus = note.status;
+  if (oldStatus === newStatus) return { success: true, message: 'สถานะเป็นสถานะเดิมอยู่แล้ว', updatedNote: note };
+  if (newStatus === 'CANCELLED') return cancelSupplierReturnNote(noteId);
+
+  let body: Record<string, unknown>;
+  if ((oldStatus === 'DEDUCTED' || oldStatus === 'PARTIALLY_DEDUCTED') && newStatus === 'PENDING_DEDUCTION') {
+    body = { status: 'PENDING_DEDUCTION', remainingCreditAmount: note.totalCreditAmount, deductions: [] };
+  } else if (oldStatus === 'CANCELLED' && newStatus === 'PENDING_DEDUCTION') {
+    body = { status: 'PENDING_DEDUCTION', remainingCreditAmount: note.totalCreditAmount, deductions: note.deductions };
+  } else if (newStatus === 'DEDUCTED' && oldStatus === 'PENDING_DEDUCTION') {
+    body = { status: 'DEDUCTED', remainingCreditAmount: 0, deductions: note.deductions };
+  } else {
+    body = { status: newStatus, remainingCreditAmount: note.remainingCreditAmount, deductions: note.deductions };
+  }
   try {
-    return await backendFirst(() => changeSupplierReturnStatusLocal(noteId, newStatus, options));
+    await apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, { method: 'PATCH', body: JSON.stringify(body) });
   } catch (err) {
     return { success: false, message: failMessage(err, 'เปลี่ยนสถานะในฐานข้อมูลไม่สำเร็จ') };
   }
+  await refreshAfterReturnWrite();
+  return {
+    success: true,
+    message: `เปลี่ยนสถานะเอกสาร ${noteId} เป็น "${newStatus}" เรียบร้อยแล้ว`,
+    updatedNote: returnNotesMem.find((n) => n.id === noteId),
+  };
 }
+
+export const updateSupplierReturnStatus = changeSupplierReturnStatus;

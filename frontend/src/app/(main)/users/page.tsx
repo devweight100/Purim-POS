@@ -191,17 +191,7 @@ export default function UsersManagementPage() {
   const clearLocalProductData = async () => {
     if (typeof window === 'undefined') return;
 
-    try {
-      localStorage.removeItem('custom_products');
-      Object.keys(localStorage).forEach((key) => {
-        if (key.startsWith('pkg_') || key.startsWith('img_') || key.startsWith('ws_')) {
-          localStorage.removeItem(key);
-        }
-      });
-    } catch (err) {
-      console.warn('[Admin] Failed to clear product localStorage:', err);
-    }
-
+    // the only local product data is the POS offline cache
     await clearCachedProducts();
     useProductStore.setState({ products: [] });
   };
@@ -225,8 +215,8 @@ export default function UsersManagementPage() {
       await clearLocalProductData();
       toast.success(`ล้างข้อมูลสินค้าเรียบร้อย${backendCount > 0 ? ` ${backendCount} รายการ` : ''}`);
     } catch (err: any) {
-      await clearLocalProductData();
-      toast.warning('ล้างข้อมูลสินค้าในเครื่องแล้ว แต่เชื่อมต่อฐานข้อมูลไม่สำเร็จ: ' + (err.message || 'Server error'));
+      // the server still has the products: change nothing here
+      toast.error('ล้างข้อมูลสินค้าไม่สำเร็จ: ' + (err.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     } finally {
       setClearingProducts(false);
     }

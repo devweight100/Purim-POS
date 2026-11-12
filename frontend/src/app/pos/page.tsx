@@ -44,7 +44,7 @@ import { PwaInstallButton } from '@/components/common/PwaInstallButton';
 import { CartItem, Product, ProductUnit, ClaimRecord } from '@/lib/types';
 import { ShieldAlert, ShieldCheck, Package } from 'lucide-react';
 import { getProductAvailableUnits, getDefaultSelectedUnit } from '@/lib/product-unit-helpers';
-import { getCustomerById, Customer } from '@/lib/customer-service';
+import { useCustomerById, Customer } from '@/lib/customer-service';
 import { useDocumentSearchStore } from '@/lib/store/document-search-store';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
@@ -189,13 +189,11 @@ export default function POSPage() {
   const router = useRouter();
   const { products, categories, fetchProducts } = useProductStore();
 
+  // re-evaluated whenever the server's customer list is refreshed
+  const syncedCustomer = useCustomerById(cart.customerId);
   useEffect(() => {
-    if (cart.customerId) {
-      setActiveCustomer(getCustomerById(cart.customerId));
-    } else {
-      setActiveCustomer(null);
-    }
-  }, [cart.customerId]);
+    setActiveCustomer(syncedCustomer);
+  }, [syncedCustomer]);
 
   const cartBottomRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);

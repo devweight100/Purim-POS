@@ -105,10 +105,15 @@ export function ProductClaimModal({
       setEligibleItems([]);
       return;
     }
-    const results = await fetchClaimEligibleItems({
-      searchKeyword: trimmed,
-    });
-    setEligibleItems(results);
+    try {
+      const results = await fetchClaimEligibleItems({
+        searchKeyword: trimmed,
+      });
+      setEligibleItems(results);
+    } catch (err: any) {
+      setEligibleItems([]);
+      toast.error('ค้นหาบิลจากเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่: ' + (err?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
+    }
   };
 
   useEffect(() => {

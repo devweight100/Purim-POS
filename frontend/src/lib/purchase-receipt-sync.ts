@@ -4,6 +4,9 @@ import { ApiError, isRetryableError } from './api-error';
 import { newOperationId } from './order-sync-service';
 import { toast } from 'sonner';
 
+// Receiving goods is NOT queued offline: it is sent to the server and any failure is shown.
+// Only the idempotency key of a request whose result is unknown (network dropped) is kept, so the
+// user's retry (same goods) reuses it and the server can never receive the same delivery twice.
 type Receipt = { poId: string; ownerId: string; body: any; failed?: boolean; error?: string };
 const prefix = 'purim-pending-po-receipt:';
 export const useReceiptSyncStatus = create<{ rows: Receipt[] }>(() => ({ rows: [] }));
@@ -17,6 +20,8 @@ function read(): Receipt[] {
   return rows;
 }
 function refresh() { useReceiptSyncStatus.setState({ rows: read() }); }
+/** Show receipts with an unknown result in the status bar (no network call). */
+export function refreshReceiptSyncStatus() { try { refresh(); } catch { /* storage unavailable */ } }
 let sequence: Promise<unknown> = Promise.resolve();
 function exclusive<T>(work: () => Promise<T>): Promise<T> {
   const run = async (): Promise<T> => navigator.locks ? await navigator.locks.request('purim-po-receipts', work) : await work();
@@ -52,10 +57,13 @@ export function submitPurchaseReceipt(poId: string, body: any) {
     localStorage.setItem(key, JSON.stringify(row));
     refresh();
     const result = await send(row);
-    if (!result) toast.warning('ยังไม่ยืนยันรับสินค้าในฐานข้อมูล เก็บรายการไว้ในเครื่องและจะส่งซ้ำอัตโนมัติเมื่อเชื่อมต่อได้');
+    if (!result) {
+      throw new ApiError('ยังบันทึกรับสินค้าในฐานข้อมูลไม่ได้ (ติดต่อเซิร์ฟเวอร์ไม่ได้) กรุณากดรับสินค้าอีกครั้งเมื่อเชื่อมต่อได้ ระบบใช้รหัสเดิมจึงไม่รับซ้ำ', 0);
+    }
     return result;
   });
 }
+/** Re-send receipts whose result is unknown (user-initiated from the status bar). */
 export function syncPurchaseReceipts() {
   return exclusive(async () => {
     refresh();

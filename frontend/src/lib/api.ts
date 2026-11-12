@@ -1,4 +1,4 @@
-import { saveBankAccounts } from './bank-account-storage';
+import { rememberServerBankAccounts } from './bank-account-storage';
 import { getTerminalId } from './terminal-id';
 // ==============================================================================
 // Purim POS - Unified Real API Client with Offline-First Resilience
@@ -103,7 +103,11 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}): Pro
         window.dispatchEvent(new CustomEvent('purim:forbidden', { detail: { endpoint: cleanEndpoint, message: errBody?.message } }));
       }
       reportConnection(res.status >= 500);
-      throw new ApiError(Array.isArray(errBody?.message) ? errBody.message.join(', ') : errBody?.message || `HTTP ${res.status}: ${res.statusText}`, res.status, errBody);
+      const fallbackMessage =
+        res.status >= 500 && !errBody?.message
+          ? `ติดต่อเซิร์ฟเวอร์ไม่ได้ (HTTP ${res.status}) กรุณาลองใหม่`
+          : `HTTP ${res.status}: ${res.statusText}`;
+      throw new ApiError(Array.isArray(errBody?.message) ? errBody.message.join(', ') : errBody?.message || fallbackMessage, res.status, errBody);
     }
 
     reportConnection(false);
@@ -157,9 +161,12 @@ export const api = {
     },
   },
 
-  // 3. Products & Categories (With automatic offline caching)
+  // 3. Products & Categories
+  // Every full server response refreshes the READ-ONLY offline product cache (IndexedDB). The
+  // cache is read back only when the caller asks for it (the POS, so selling keeps working
+  // offline); back-office pages get the error instead of stale data.
   products: {
-    getAll: async (search?: string, categoryId?: string) => {
+    getAll: async (search?: string, categoryId?: string, opts?: { offlineCache?: boolean }) => {
       try {
         const q = new URLSearchParams();
         if (search) q.append('search', search);
@@ -171,11 +178,11 @@ export const api = {
         }
         return data;
       } catch (err) {
-        // Fallback to IndexedDB
-        if (!isRetryableError(err)) throw err;
+        // POS only: fall back to the offline cache when the server cannot be reached
+        if (!opts?.offlineCache || !isRetryableError(err)) throw err;
         const cached = await getCachedProducts();
         if (!cached.length) throw err;
-        return cached;
+        return Object.assign(cached, { fromOfflineCache: true });
       }
     },
     getByBarcode: async (barcode: string) => {
@@ -311,7 +318,7 @@ export const api = {
 
   // 11. Bank Accounts
   bankAccounts: {
-    getAll: async () => { const rows = await apiFetch('/bank-accounts'); saveBankAccounts(rows); return rows; },
+    getAll: async () => { return rememberServerBankAccounts(await apiFetch('/bank-accounts')); },
     create: (data: any) => apiFetch('/bank-accounts', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: any) => apiFetch(`/bank-accounts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     setDefault: (id: string) => apiFetch(`/bank-accounts/${id}/set-default`, { method: 'PATCH' }),

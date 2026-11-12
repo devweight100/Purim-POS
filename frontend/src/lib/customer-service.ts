@@ -1,4 +1,5 @@
 'use client';
+import { useSyncExternalStore } from 'react';
 import { api } from './api';
 
 export type CustomerType = 'INDIVIDUAL' | 'COMPANY';
@@ -53,11 +54,21 @@ export interface LoyaltySystemConfig {
   isLoyaltyEnabled: boolean;
 }
 
-const STORAGE_KEY_CUSTOMERS = 'custom_customers';
-const STORAGE_KEY_LOYALTY_CONFIG = 'custom_loyalty_config';
+/**
+ * Customers live on the server only. The last server response is kept in memory (never in
+ * localStorage) so the POS can look a customer up synchronously; fetchCustomers() refreshes it
+ * and throws when the server cannot be reached.
+ */
+let lastServerCustomers: Customer[] = [];
+let lastServerLoyaltyConfig: LoyaltySystemConfig | null = null;
+let customersVersion = 0;
+const customerListeners = new Set<() => void>();
 
-let lastCustomerSyncAt = 0;
-let lastLoyaltySyncAt = 0;
+function publishCustomers(list: Customer[]) {
+  lastServerCustomers = list;
+  customersVersion++;
+  customerListeners.forEach((l) => l());
+}
 
 export const DEFAULT_LOYALTY_CONFIG: LoyaltySystemConfig = {
   defaultPointEarnRateBaht: 500,
@@ -67,7 +78,7 @@ export const DEFAULT_LOYALTY_CONFIG: LoyaltySystemConfig = {
   isLoyaltyEnabled: true,
 };
 
-function normalizeCustomerRow(c: any, idx = 0): Customer {
+export function normalizeCustomerRow(c: any, idx = 0): Customer {
   const profile = typeof c?.profile === 'object' && c?.profile !== null ? c.profile : {};
   const merged = { ...profile, ...c };
   return {
@@ -95,92 +106,58 @@ function normalizeCustomerRow(c: any, idx = 0): Customer {
   };
 }
 
-function readLocalCustomers(): Customer[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY_CUSTOMERS) || '[]');
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
+/** Last loyalty config the server returned in this session (defaults until then). */
 export function loadLoyaltyConfig(): LoyaltySystemConfig {
-  if (typeof window === 'undefined') return DEFAULT_LOYALTY_CONFIG;
-  if (Date.now() - lastLoyaltySyncAt > 15000) {
-    lastLoyaltySyncAt = Date.now();
-    void fetchLoyaltyConfig().catch(() => {});
-  }
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_LOYALTY_CONFIG);
-    if (raw) return { ...DEFAULT_LOYALTY_CONFIG, ...JSON.parse(raw) };
-  } catch {}
-  return DEFAULT_LOYALTY_CONFIG;
+  return lastServerLoyaltyConfig || DEFAULT_LOYALTY_CONFIG;
 }
 
 export async function saveLoyaltyConfig(config: LoyaltySystemConfig): Promise<void> {
   await api.settings.update({ loyaltyConfig: config });
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY_LOYALTY_CONFIG, JSON.stringify(config));
-  } catch {}
+  lastServerLoyaltyConfig = config;
 }
 
+/** Last customer list the server returned in this session (empty until the first fetch). */
 export function loadCustomers(): Customer[] {
-  const cached = readLocalCustomers();
-  if (typeof window !== 'undefined' && Date.now() - lastCustomerSyncAt > 10000) {
-    lastCustomerSyncAt = Date.now();
-    void fetchCustomers().catch(() => {});
-  }
-  return cached;
+  return lastServerCustomers;
 }
 
+/** Customers from the server. Throws when the server cannot be reached. */
 export async function fetchCustomers(): Promise<Customer[]> {
-  try {
-    const rows = await api.customers.getAll();
-    if (Array.isArray(rows)) {
-      lastCustomerSyncAt = Date.now();
-      const normalized = rows.map((c: any, idx: number) => normalizeCustomerRow(c, idx));
-      saveCustomers(normalized);
-      return normalized;
-    }
-  } catch (err) {
-    console.warn('[CustomerService] Failed to fetch customers from backend, using offline cache:', err);
-  }
-  return readLocalCustomers();
+  const rows = await api.customers.getAll();
+  const normalized = (Array.isArray(rows) ? rows : []).map((c: any, idx: number) => normalizeCustomerRow(c, idx));
+  publishCustomers(normalized);
+  return normalized;
 }
 
+/** Loyalty config from the server. Throws when the server cannot be reached. */
 export async function fetchLoyaltyConfig(): Promise<LoyaltySystemConfig> {
-  try {
-    const settings = await api.settings.get();
-    lastLoyaltySyncAt = Date.now();
-    const config = { ...DEFAULT_LOYALTY_CONFIG, ...(settings?.loyaltyConfig || {}) };
-    try {
-      localStorage.setItem(STORAGE_KEY_LOYALTY_CONFIG, JSON.stringify(config));
-    } catch {}
-    return config;
-  } catch {
-    return loadLoyaltyConfig();
-  }
-}
-
-export function saveCustomers(customers: Customer[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY_CUSTOMERS, JSON.stringify(customers));
-  } catch {}
+  const settings = await api.settings.get();
+  const config: LoyaltySystemConfig = { ...DEFAULT_LOYALTY_CONFIG, ...(settings?.loyaltyConfig || {}) };
+  lastServerLoyaltyConfig = config;
+  return config;
 }
 
 export function getCustomerById(id: string): Customer | null {
-  const list = readLocalCustomers();
-  return list.find((c) => c.id === id || c.code === id) || null;
+  return lastServerCustomers.find((c) => c.id === id || c.code === id) || null;
 }
 
-// Automatically generate sequential customer code CUST-0001, CUST-0002...
+/** React hook: the customer with this id from the latest server list (re-renders on refresh). */
+export function useCustomerById(id: string | null | undefined): Customer | null {
+  useSyncExternalStore(
+    (cb) => {
+      customerListeners.add(cb);
+      return () => customerListeners.delete(cb);
+    },
+    () => customersVersion,
+    () => 0,
+  );
+  return id ? getCustomerById(id) : null;
+}
+
+// Suggest the next sequential customer code CUST-0001, CUST-0002... from the server's list
 export function generateNextCustomerCode(): string {
-  const list = readLocalCustomers();
   let maxNum = 0;
-  list.forEach((c) => {
+  lastServerCustomers.forEach((c) => {
     if (c.code) {
       const match = c.code.match(/CUST-(\d+)/i);
       if (match) {
@@ -201,14 +178,13 @@ export async function upsertCustomer(
     ? await api.customers.update(customerData.id, customerData)
     : await api.customers.create(customerData);
   const customer = normalizeCustomerRow({ ...customerData, ...saved });
-  const rows = readLocalCustomers().filter((c) => c.id !== customer.id);
-  saveCustomers([...rows, customer]);
+  publishCustomers([...lastServerCustomers.filter((c) => c.id !== customer.id), customer]);
   return { success: true, customer };
 }
 
 export async function deleteCustomer(id: string): Promise<boolean> {
   await api.customers.delete(id);
-  saveCustomers(readLocalCustomers().filter((c) => c.id !== id));
+  publishCustomers(lastServerCustomers.filter((c) => c.id !== id));
   return true;
 }
 
@@ -230,101 +206,3 @@ export function calculateRedemptionDiscount(customer: Customer, pointsToRedeem: 
   return times * discountBaht;
 }
 
-// Record sale completion for a customer (Award points, deduct redeemed points & accumulate credit debt)
-export function recordCustomerSale(
-  customerId: string | null | undefined,
-  saleTotalBaht: number,
-  isCredit: boolean,
-  orderNumber: string,
-  pointsUsed: number = 0,
-): {
-  earnedPoints: number;
-  pointsUsed: number;
-  newTotalPoints: number;
-  previousPoints: number;
-  debtAdded: number;
-  customerName: string;
-} {
-  if (!customerId) {
-    return {
-      earnedPoints: 0,
-      pointsUsed: 0,
-      newTotalPoints: 0,
-      previousPoints: 0,
-      debtAdded: 0,
-      customerName: 'ลูกค้าทั่วไป',
-    };
-  }
-
-  const list = readLocalCustomers();
-  const target = list.find((c) => c.id === customerId || c.code === customerId);
-  if (!target) {
-    return {
-      earnedPoints: 0,
-      pointsUsed: 0,
-      newTotalPoints: 0,
-      previousPoints: 0,
-      debtAdded: 0,
-      customerName: 'ลูกค้าทั่วไป',
-    };
-  }
-
-  const previousPoints = target.points || 0;
-
-  // Deduct points used for discount
-  if (pointsUsed > 0) {
-    target.points = Math.max(0, (target.points || 0) - pointsUsed);
-    target.totalPointsRedeemed = (target.totalPointsRedeemed || 0) + pointsUsed;
-  }
-
-  // Earn new points based on final payment
-  const earned = calculateEarnedPoints(target, saleTotalBaht);
-  target.points = (target.points || 0) + earned;
-  target.totalPointsEarned = (target.totalPointsEarned || 0) + earned;
-
-  let debtAdded = 0;
-  if (isCredit) {
-    debtAdded = saleTotalBaht;
-    target.currentDebt = (target.currentDebt || 0) + saleTotalBaht;
-  }
-
-  target.updatedAt = new Date().toISOString();
-  saveCustomers(list);
-
-  return {
-    earnedPoints: earned,
-    pointsUsed,
-    newTotalPoints: target.points,
-    previousPoints,
-    debtAdded,
-    customerName: target.name,
-  };
-}
-
-// Rollback sale for a customer (Voiding order reverses points & credit debt)
-export function rollbackCustomerSale(
-  customerId: string | null | undefined,
-  saleTotalBaht: number,
-  isCredit: boolean,
-  pointsUsed: number = 0,
-): boolean {
-  if (!customerId) return false;
-  const list = readLocalCustomers();
-  const target = list.find((c) => c.id === customerId || c.code === customerId);
-  if (!target) return false;
-
-  const earned = calculateEarnedPoints(target, saleTotalBaht);
-  target.points = Math.max(0, (target.points || 0) - earned + pointsUsed);
-  target.totalPointsEarned = Math.max(0, (target.totalPointsEarned || 0) - earned);
-  if (pointsUsed > 0) {
-    target.totalPointsRedeemed = Math.max(0, (target.totalPointsRedeemed || 0) - pointsUsed);
-  }
-
-  if (isCredit) {
-    target.currentDebt = Math.max(0, (target.currentDebt || 0) - saleTotalBaht);
-  }
-
-  target.updatedAt = new Date().toISOString();
-  saveCustomers(list);
-  return true;
-}

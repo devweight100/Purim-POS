@@ -84,7 +84,7 @@ export default function DashboardPage() {
     try {
       const [dashRes, claimsRes] = await Promise.allSettled([
         apiFetch(`/reports/dashboard?range=${range}`),
-        fetchAllClaimRecords().catch(() => loadAllClaimRecords()),
+        fetchAllClaimRecords(),
       ]);
       if (dashRes.status === "fulfilled") setDash(dashRes.value);
       else setDash(null);

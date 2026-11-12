@@ -43,68 +43,20 @@ import {
   Pencil, Ban, AlertTriangle, Info, RotateCcw, ArrowLeftRight, CheckCircle2, History
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { LoadErrorState } from '@/components/common/LoadErrorState';
 
 import { useProductStore } from '@/lib/store/product-store';
 import { addQty, formatQty, mulQty, parseQty, qtyInputMode, qtyStep, subQty, useAllowDecimalQty } from '@/lib/qty';
 
 import PurchaseOrderPdfModal, { PurchaseOrderData } from '@/components/pos/PurchaseOrderPdfModal';
 
+/** Product images from the server's product list (cover first). */
 function loadProductImages(productId: string): string[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(`img_${productId}`);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const cover = parsed.find((i: any) => i.isCover)?.dataUrl;
-        const others = parsed.filter((i: any) => !i.isCover).map((i: any) => i.dataUrl);
-        return cover ? [cover, ...others] : parsed.map((i: any) => i.dataUrl);
-      }
-    }
-  } catch {}
-  return [];
-}
-
-function loadSuppliersFromStorage(): any[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem('custom_suppliers');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch {}
-  return [];
-}
-
-function loadPOsFromStorage(): any[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem('custom_purchase_orders');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const supps = loadSuppliersFromStorage();
-        return parsed.map((po: any) => {
-          if (!po.supplier || !po.supplier.name) {
-            const supp = supps.find((s: any) => s.id === (po.supplierId || po.supplier?.id));
-            if (supp) {
-              return { ...po, supplier: supp, supplierName: supp.name };
-            }
-          }
-          return po;
-        });
-      }
-    }
-  } catch {}
-  return [];
-}
-
-function savePOsToStorage(pos: any[]) {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem('custom_purchase_orders', JSON.stringify(pos));
-  } catch {}
+  const product: any = (useProductStore.getState().products || []).find((p: any) => p.id === productId);
+  const images: any[] = Array.isArray(product?.images) ? product.images.filter((i: any) => i?.dataUrl) : [];
+  const cover = images.find((i: any) => i.isCover)?.dataUrl;
+  const others = images.filter((i: any) => !i.isCover).map((i: any) => i.dataUrl);
+  return cover ? [cover, ...others] : images.map((i: any) => i.dataUrl);
 }
 
 const isBoundToSupplier = (product: any, supplierId: string) => {
@@ -118,22 +70,14 @@ const isBoundToSupplier = (product: any, supplierId: string) => {
 function getProductUnits(product: any): { name: string; mult: number }[] {
   const baseUnit = product.unit || 'ชิ้น';
   const units = [{ name: baseUnit, mult: 1 }];
-  if (typeof window !== 'undefined' && product?.id) {
-    try {
-      const raw = localStorage.getItem(`pkg_${product.id}`);
-      if (raw) {
-        const pkg: any[] = JSON.parse(raw);
-        if (Array.isArray(pkg) && pkg.length > 0) {
-          let currentMult = 1;
-          pkg.forEach(u => {
-            const q = parseFloat(u.qtyPerPrev) || 1;
-            currentMult = currentMult * q;
-            if (u.name) units.push({ name: u.name, mult: currentMult });
-          });
-        }
-      }
-    } catch {}
-  }
+  // packaging units come with the product from the server
+  const pkg: any[] = Array.isArray(product?.packagingUnits) ? product.packagingUnits : [];
+  let currentMult = 1;
+  pkg.forEach(u => {
+    const q = parseFloat(u.qtyPerPrev) || 1;
+    currentMult = currentMult * q;
+    if (u.name) units.push({ name: u.name, mult: currentMult });
+  });
   return units;
 }
 
@@ -142,6 +86,7 @@ export default function PurchaseOrdersPage() {
   const allowDecimalQty = useAllowDecimalQty();
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("ALL");
 
   const [viewMode, setViewMode] = useState<'list' | 'create'>('list');
@@ -217,10 +162,10 @@ export default function PurchaseOrdersPage() {
       const data = await apiFetch("/purchase-orders?limit=1000");
       list = Array.isArray(data) ? data : data.data;
       if (!Array.isArray(list)) throw new Error("ข้อมูลใบสั่งซื้อไม่ถูกต้อง");
-      savePOsToStorage(list);
+      setLoadError(null);
     } catch (error) {
-      toast.error("โหลดใบสั่งซื้อจากฐานข้อมูลไม่ได้ กำลังแสดงข้อมูลที่เก็บไว้ในเครื่อง");
-      list = loadPOsFromStorage();
+      list = [];
+      setLoadError(error instanceof Error ? error.message : "โหลดใบสั่งซื้อจากฐานข้อมูลไม่ได้");
     }
 
     setPurchaseOrders(list);
@@ -240,14 +185,8 @@ export default function PurchaseOrdersPage() {
       prods = useProductStore.getState().products;
     }
     if (!prods || prods.length === 0) {
-      if (typeof window !== 'undefined') {
-        try {
-          const raw = localStorage.getItem('custom_products');
-          if (raw) prods = JSON.parse(raw);
-        } catch {}
-      }
-    }
-    if (!prods || prods.length === 0) {
+      const err = useProductStore.getState().error;
+      if (err) toast.error('โหลดสินค้าจากเซิร์ฟเวอร์ไม่ได้: ' + err);
       return [];
     }
     return prods || [];
@@ -263,7 +202,10 @@ export default function PurchaseOrdersPage() {
     try {
       const data = await apiFetch("/suppliers");
       if (Array.isArray(data)) supps = data;
-    } catch (error) {}
+    } catch (error: any) {
+      toast.error('โหลดรายชื่อผู้จำหน่ายจากเซิร์ฟเวอร์ไม่ได้: ' + (error?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
+      return;
+    }
 
     const prods = await loadAllProducts();
     setSupplierProducts(prods);
@@ -297,7 +239,10 @@ export default function PurchaseOrdersPage() {
     try {
       const data = await apiFetch("/suppliers");
       if (Array.isArray(data)) supps = data;
-    } catch (error) {}
+    } catch (error: any) {
+      toast.error('โหลดรายชื่อผู้จำหน่ายจากเซิร์ฟเวอร์ไม่ได้: ' + (error?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
+      return;
+    }
     setSuppliers(supps);
 
     const supp = po.supplier || supps.find((s: any) => s.id === (po.supplierId || po.supplier?.id)) || {
@@ -385,21 +330,7 @@ export default function PurchaseOrdersPage() {
       return;
     }
 
-    const existingPOs = loadPOsFromStorage();
-    const updatedPOs = existingPOs.map((p) => {
-      if (p.id === targetCancelPo.id) {
-        return {
-          ...p,
-          status: 'CANCELLED',
-          cancelledAt: new Date().toISOString(),
-          cancelReason: finalReason,
-        };
-      }
-      return p;
-    });
-
-    savePOsToStorage(updatedPOs);
-    setPurchaseOrders(updatedPOs);
+    await fetchPOs();
 
     toast.success(`ยกเลิกใบสั่งซื้อ ${targetCancelPo.poNumber} เรียบร้อยแล้ว`);
     setIsCancelModalOpen(false);
@@ -651,10 +582,7 @@ export default function PurchaseOrdersPage() {
       return;
     }
 
-    const existingPOs = loadPOsFromStorage();
-    const updatedPOs = [createdPoObj, ...existingPOs.filter((p: any) => p.id !== createdPoObj.id)];
-    savePOsToStorage(updatedPOs);
-    setPurchaseOrders(updatedPOs);
+    await fetchPOs();
 
     toast.success("สร้างใบสั่งซื้อสำเร็จ");
     setViewMode('list');
@@ -744,11 +672,9 @@ export default function PurchaseOrdersPage() {
       }
     } catch {}
 
-    // 2. Offline fallback: current list / cached copy
+    // 2. The list this page loaded from the server
     if (!poData) {
-      const stored = loadPOsFromStorage();
-      poData = purchaseOrders.find((p: any) => p.id === id || p.poNumber === id) ||
-               stored.find((p: any) => p.id === id || p.poNumber === id);
+      poData = purchaseOrders.find((p: any) => p.id === id || p.poNumber === id);
     }
 
     if (poData) {
@@ -785,17 +711,8 @@ export default function PurchaseOrdersPage() {
 
     setCurrentPo(po);
 
-    // Get current inventory products to display live stock
-    let allProds: any[] = [];
-    if (typeof window !== 'undefined') {
-      try {
-        const raw = localStorage.getItem('custom_products');
-        if (raw) allProds = JSON.parse(raw);
-      } catch {}
-    }
-    if (!allProds || allProds.length === 0) {
-      allProds = useProductStore.getState().products;
-    }
+    // Get current inventory products (from the server) to display live stock
+    const allProds: any[] = useProductStore.getState().products || [];
 
     const items = (po.items || []).map((item: any) => {
       const prod = allProds.find((p: any) => (p.id === item.productId || p.sku === item.productId || p.sku === item.sku));
@@ -865,11 +782,6 @@ export default function PurchaseOrdersPage() {
           unitCost: Number(item.unitCost),
         })).filter((item: any) => item.receivedQty > 0),
       });
-      if (!result) {
-        setIsUnderReceiveModalOpen(false);
-        setIsReceiveOpen(false);
-        return;
-      }
       setCurrentPo(result);
       setPdfPoData(result);
       toast.success('ฐานข้อมูลยืนยันรับสินค้าและปรับสต็อกเรียบร้อยแล้ว');
@@ -1844,6 +1756,12 @@ export default function PurchaseOrdersPage() {
                 <TableRow>
                   <TableCell colSpan={7} className="text-center h-32 text-slate-500 text-sm">
                     กำลังโหลดข้อมูล...
+                  </TableCell>
+                </TableRow>
+              ) : loadError ? (
+                <TableRow>
+                  <TableCell colSpan={7}>
+                    <LoadErrorState message={loadError} onRetry={() => void fetchPOs()} />
                   </TableCell>
                 </TableRow>
               ) : filteredPOs.length === 0 ? (

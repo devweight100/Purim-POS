@@ -57,6 +57,7 @@ import {
   Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 import { addQty } from '@/lib/qty';
 
 // Item representation for Claim Stock
@@ -119,6 +120,7 @@ interface SupplierClaimSummary {
 
 export default function ClaimInventoryPage() {
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [claimItems, setClaimItems] = useState<ClaimStockItem[]>([]);
   const [suppliersList, setSuppliersList] = useState<any[]>([]);
   
@@ -143,7 +145,7 @@ export default function ClaimInventoryPage() {
     try {
       const [rawClaims, loadedSuppliers] = await Promise.all([
         fetchAllClaimRecords(),
-        fetchSuppliers().catch(() => loadSuppliers()),
+        fetchSuppliers(),
       ]);
       setSuppliersList(loadedSuppliers || []);
 
@@ -216,9 +218,11 @@ export default function ClaimInventoryPage() {
       });
 
       setClaimItems(enriched);
+      setLoadError(null);
     } catch (err) {
       console.error('Error loading claim inventory:', err);
-      toast.error('ไม่สามารถโหลดข้อมูลสต๊อกของเคลมได้');
+      setClaimItems([]);
+      setLoadError(errorMessage(err, 'ไม่สามารถโหลดข้อมูลสต๊อกของเคลมได้'));
     } finally {
       setLoading(false);
     }
@@ -407,6 +411,7 @@ export default function ClaimInventoryPage() {
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-3 p-3 sm:p-4 lg:p-5 font-sans">
+      {loadError && <LoadErrorState message={loadError} onRetry={() => void fetchData()} retrying={loading} />}
       {/* ─── PAGE HEADER (Standard Consistent Header) ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>

@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { api, apiFetch } from "@/lib/api";
-import { loadCategories, saveCategories, CategoryItem } from "@/lib/category-storage";
+import { fetchCategoriesFromBackend, CategoryItem } from "@/lib/category-storage";
+import { LoadErrorState, errorMessage } from "@/components/common/LoadErrorState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -40,14 +41,25 @@ export default function CategoriesPage() {
   // Delete confirm dialog
   const [deletingCat, setDeletingCat] = useState<CategoryItem | null>(null);
 
-  useEffect(() => {
-    Promise.all([
-      api.getProducts().catch(() => []),
-    ]).then(([prods]) => {
-      setProducts(prods || []);
-      setCategoriesState(loadCategories());
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const reload = async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [prods, cats] = await Promise.all([api.getProducts(), fetchCategoriesFromBackend()]);
+      setProducts(Array.isArray(prods) ? prods : []);
+      setCategoriesState(cats);
+    } catch (err) {
+      setLoadError(errorMessage(err, "ติดต่อเซิร์ฟเวอร์ไม่ได้"));
+    } finally {
       setLoading(false);
-    });
+    }
+  };
+
+  useEffect(() => {
+    void reload();
   }, []);
 
   const productCountMap = useMemo(() => {
@@ -65,11 +77,6 @@ export default function CategoriesPage() {
     return categories.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
   }, [categories, search]);
 
-  const updateAndSaveCategories = (next: CategoryItem[]) => {
-    setCategoriesState(next);
-    saveCategories(next);
-  };
-
   const handleOpenAdd = () => {
     setName("");
     setIcon("📦");
@@ -86,38 +93,40 @@ export default function CategoriesPage() {
     setDialogMode("edit");
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) {
       toast.error("กรุณาระบุชื่อหมวดหมู่");
       return;
     }
-
-    if (dialogMode === "add") {
-      const newCat: CategoryItem = {
-        id: "cat_" + Date.now(),
-        name: name.trim(),
-        icon,
-        color,
-      };
-      updateAndSaveCategories([...categories, newCat]);
-      toast.success(`เพิ่มหมวดหมู่ "${newCat.name}" เรียบร้อยแล้ว`);
-    } else if (dialogMode === "edit" && editingCategory) {
-      const updated = categories.map(c =>
-        c.id === editingCategory.id ? { ...c, name: name.trim(), icon, color } : c
-      );
-      updateAndSaveCategories(updated);
-      toast.success(`บันทึกการแก้ไขหมวดหมู่ "${name}" เรียบร้อยแล้ว`);
+    if (saving) return;
+    setSaving(true);
+    try {
+      if (dialogMode === "add") {
+        await api.categories.create({ name: name.trim(), icon, color, sortOrder: categories.length });
+        toast.success(`เพิ่มหมวดหมู่ "${name.trim()}" เรียบร้อยแล้ว`);
+      } else if (dialogMode === "edit" && editingCategory) {
+        await api.categories.update(editingCategory.id, { name: name.trim(), icon, color });
+        toast.success(`บันทึกการแก้ไขหมวดหมู่ "${name}" เรียบร้อยแล้ว`);
+      }
+      setDialogMode(null);
+      setCategoriesState(await fetchCategoriesFromBackend());
+    } catch (err) {
+      toast.error(errorMessage(err, "บันทึกหมวดหมู่ไม่สำเร็จ"));
+    } finally {
+      setSaving(false);
     }
-
-    setDialogMode(null);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deletingCat) return;
-    const next = categories.filter(c => c.id !== deletingCat.id);
-    updateAndSaveCategories(next);
-    toast.success(`ลบหมวดหมู่ "${deletingCat.name}" เรียบร้อยแล้ว`);
-    setDeletingCat(null);
+    try {
+      await api.categories.delete(deletingCat.id);
+      toast.success(`ลบหมวดหมู่ "${deletingCat.name}" เรียบร้อยแล้ว`);
+      setDeletingCat(null);
+      setCategoriesState(await fetchCategoriesFromBackend());
+    } catch (err) {
+      toast.error(errorMessage(err, "ลบหมวดหมู่ไม่สำเร็จ"));
+    }
   };
 
   return (
@@ -174,6 +183,10 @@ export default function CategoriesPage() {
               {loading ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center h-32 text-slate-500">กำลังโหลด...</TableCell>
+                </TableRow>
+              ) : loadError ? (
+                <TableRow>
+                  <TableCell colSpan={5}><LoadErrorState message={loadError} onRetry={() => void reload()} /></TableCell>
                 </TableRow>
               ) : filteredCategories.length === 0 ? (
                 <TableRow>

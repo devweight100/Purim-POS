@@ -57,8 +57,8 @@ import { useShiftStore } from "@/lib/store/shift-store";
 import { ReturnItemsDialog } from "@/components/orders/ReturnItemsDialog";
 import { useCartStore } from "@/lib/store/cart-store";
 import { useProductStore } from "@/lib/store/product-store";
-import { getCustomerById, rollbackCustomerSale } from "@/lib/customer-service";
-import { restoreVoidOrderStock } from "@/lib/stock-service";
+import { getCustomerById, fetchCustomers } from "@/lib/customer-service";
+
 import { fetchAllClaimRecords } from "@/lib/claim-service";
 import { loadAllDebtRecords, getDebtRecordByOrderId } from "@/lib/debt-service";
 import { DebtRecord, DebtPaymentInstallment } from "@/lib/types";
@@ -68,6 +68,8 @@ import { orderToA4Data, orderToReceiptData, paymentMethodLabel } from "@/lib/rec
 import { DebtHistoryModal } from "@/components/debts/DebtHistoryModal";
 import { DebtReceiptPdfModal } from "@/components/debts/DebtReceiptPdfModal";
 import { syncPendingOrders } from "@/lib/order-sync-service";
+import { useConnectionStatus } from "@/lib/connection-status";
+import { LoadErrorState, errorMessage } from "@/components/common/LoadErrorState";
 import { toast } from "sonner";
 
 export default function OrdersPage() {
@@ -75,6 +77,7 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<any[]>([]);
   const [productsMap, setProductsMap] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusTab, setStatusTab] = useState<"all" | "completed" | "voided">("all");
   const [startDate, setStartDate] = useState("");
@@ -168,18 +171,8 @@ export default function OrdersPage() {
         }
       }
 
-      if (typeof window !== "undefined") {
-        try {
-          const savedCustom = localStorage.getItem("custom_products");
-          if (savedCustom) {
-            const parsed = JSON.parse(savedCustom);
-            if (Array.isArray(parsed) && parsed.length > 0) prods = parsed;
-          }
-        } catch {}
-      }
-
       const map: Record<string, any> = {};
-      prods.forEach((p) => {
+      (Array.isArray(prods) ? prods : []).forEach((p) => {
         if (p.id) map[p.id] = p;
         if (p.sku) map[p.sku] = p;
       });
@@ -194,7 +187,7 @@ export default function OrdersPage() {
     try {
       let fetchedBackend: any[] = [];
       let allClaims: any[] = [];
-      try {
+      {
         let url = "/orders";
         const params = new URLSearchParams();
         if (startDate) params.append("startDate", startDate);
@@ -208,8 +201,6 @@ export default function OrdersPage() {
         ]);
         fetchedBackend = ordersRes?.data || (Array.isArray(ordersRes) ? ordersRes : []);
         allClaims = claimsRes || [];
-      } catch (e) {
-        // Fallback gracefully
       }
 
       const claimedOrderMap = new Set<string>();
@@ -218,53 +209,13 @@ export default function OrdersPage() {
         if (c.orderNumber) claimedOrderMap.add(c.orderNumber);
       });
 
-      // 1. Get orders completed in local shift store
-      const localOrders = useShiftStore.getState().completedOrders || [];
-
-      // Merge and deduplicate
+      // Orders come from the server only (unsent offline bills live in the outbox, see the banner)
       const combinedMap = new Map<string, any>();
-
-      // Overlay local completed orders from POS checkouts
-      localOrders
-        .forEach((o) => {
-          const key = o.orderNumber || o.id;
-          const hasClaims = claimedOrderMap.has(key) || claimedOrderMap.has(o.id) || claimedOrderMap.has(o.orderNumber);
-          if (key) {
-            combinedMap.set(key, {
-              ...o,
-              hasClaims,
-              isSynced: o.isSynced ?? false,
-            });
-          }
-        });
 
       if (Array.isArray(fetchedBackend) && fetchedBackend.length > 0) {
         fetchedBackend.forEach((bOrder) => {
           const key = bOrder.orderNumber || bOrder.id;
-          let matchedKey = key;
-          if (!combinedMap.has(key)) {
-            const bTime = new Date(bOrder.createdAt).getTime();
-            const bTotal = Number(bOrder.totalAmount || 0);
-
-            for (const [lKey, lOrder] of Array.from(combinedMap.entries())) {
-              const lTime = new Date(lOrder.createdAt).getTime();
-              const lTotal = Number(lOrder.totalAmount || lOrder.total || 0);
-
-              if (
-                Math.abs(bTime - lTime) < 30000 &&
-                Math.abs(bTotal - lTotal) < 0.01 &&
-                (lOrder.items?.length || 0) === (bOrder.items?.length || 0)
-              ) {
-                matchedKey = lKey;
-                break;
-              }
-            }
-          }
-
-          const existingLocal = combinedMap.get(matchedKey);
-          if (matchedKey !== key) {
-            combinedMap.delete(matchedKey);
-          }
+          const existingLocal: any = undefined;
 
           const hasClaims =
             (Array.isArray(bOrder.claims) && bOrder.claims.length > 0) ||
@@ -296,8 +247,10 @@ export default function OrdersPage() {
       );
 
       setOrders(all);
+      setLoadError(null);
     } catch (error) {
-      toast.error("ดึงข้อมูลออเดอร์ไม่สำเร็จ");
+      setOrders([]);
+      setLoadError(errorMessage(error, "ดึงข้อมูลออเดอร์ไม่สำเร็จ"));
     } finally {
       setLoading(false);
     }
@@ -313,13 +266,8 @@ export default function OrdersPage() {
     });
   }, [startDate, endDate]);
 
-  // Unsynced offline orders count
-  const unsyncedCount = useMemo(() => {
-    const local = shiftStore.completedOrders || [];
-    return local.filter(
-      (o) => o.isSynced === false || (o.orderNumber && o.orderNumber.startsWith("ORD-OFFLINE"))
-    ).length;
-  }, [shiftStore.completedOrders]);
+  // Unsynced offline orders count (bills waiting in this device's outbox)
+  const unsyncedCount = useConnectionStatus((s) => s.pending);
 
   // Statistics Summary
   const stats = useMemo(() => {
@@ -529,7 +477,7 @@ export default function OrdersPage() {
   const handleConfirmEditPayment = async () => {
     if (!editPaymentOrder) return;
     const orderId = editPaymentOrder.orderNumber || editPaymentOrder.id;
-    const oldMethod = editPaymentOrder.paymentMethod || editPaymentOrder.payments?.[0]?.method || "CASH";
+
 
     try {
       await apiFetch(`/orders/${editPaymentOrder.id}`, {
@@ -537,12 +485,7 @@ export default function OrdersPage() {
         body: JSON.stringify({ paymentMethod: newPaymentMethod }),
       });
 
-      shiftStore.updateOrderPaymentMethod(
-        orderId,
-        oldMethod,
-        [{ method: newPaymentMethod as any, amount: editPaymentOrder.totalAmount || editPaymentOrder.total || 0 }],
-        editPaymentOrder.totalAmount || editPaymentOrder.total || 0
-      );
+      void shiftStore.fetchCurrentShift();
 
       const methodNames: Record<string, string> = {
         CASH: "เงินสด (Cash)",
@@ -579,7 +522,6 @@ export default function OrdersPage() {
         body: JSON.stringify({ note: newNoteValue.trim() }),
       });
 
-      shiftStore.updateOrderNote(orderId, newNoteValue);
 
       toast.success(`📝 อัปเดตหมายเหตุบิล #${orderId} เรียบร้อยแล้ว`);
       setIsEditNoteOpen(false);
@@ -611,30 +553,12 @@ export default function OrdersPage() {
         body: JSON.stringify({ reason: voidReason }),
       });
 
-      shiftStore.voidOrder(voidTargetOrder.orderNumber || voidTargetOrder.id, voidReason);
-      restoreVoidOrderStock(
-        (voidTargetOrder.items || []).map((item: any) => ({
-          productId: item.productId,
-          quantity: item.quantity || 1,
-          conversionFactor: item.conversionFactor || 1,
-          name: item.name || item.productName,
-          sku: item.sku,
-          unitName: item.unitName,
-        })),
-        voidTargetOrder.orderNumber || voidTargetOrder.id,
-        voidReason,
-        voidTargetOrder.userName || "พนักงาน POS"
-      );
+      void shiftStore.fetchCurrentShift();
+      // the server returned the stock in the void transaction
+      void useProductStore.getState().fetchProducts();
 
-      const isCreditSale = Array.isArray(voidTargetOrder.payments)
-        ? voidTargetOrder.payments.some((p: any) => p.method === "CREDIT_NOTE" || p.method === "CREDIT")
-        : String(voidTargetOrder.paymentMethod || "").includes("เชื่อ") || String(voidTargetOrder.paymentMethod || "").includes("เครดิต");
-      rollbackCustomerSale(
-        voidTargetOrder.customerId,
-        Number(voidTargetOrder.totalAmount || voidTargetOrder.total || 0),
-        isCreditSale,
-        Number(voidTargetOrder.pointsUsed || 0)
-      );
+      // the server already reversed points / credit debt; refresh the customer list from it
+      void fetchCustomers().catch(() => undefined);
 
       toast.success(`✅ ยกเลิกบิล #${voidTargetOrder.orderNumber} คืนสต็อก และปรับแต้ม/หนี้สมาชิกเรียบร้อยแล้ว`);
       setIsVoidOpen(false);
@@ -882,6 +806,12 @@ export default function OrdersPage() {
                   <TableCell colSpan={9} className="text-center py-12 text-slate-400 text-sm">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
                     กำลังโหลดข้อมูลออเดอร์...
+                  </TableCell>
+                </TableRow>
+              ) : loadError ? (
+                <TableRow>
+                  <TableCell colSpan={9}>
+                    <LoadErrorState message={loadError} onRetry={() => void fetchOrders()} />
                   </TableCell>
                 </TableRow>
               ) : paginatedOrders.length === 0 ? (

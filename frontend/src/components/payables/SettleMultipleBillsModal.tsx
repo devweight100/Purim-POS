@@ -294,16 +294,18 @@ export function SettleMultipleBillsModal({
   };
 
   // Save inline invoice no
-  const handleSaveInvoiceNo = (poId: string) => {
+  const handleSaveInvoiceNo = async (poId: string) => {
     if (!tempInvoiceNo.trim()) {
       setEditingPoId(null);
       return;
     }
-    const res = updateBillInvoiceNo(poId, tempInvoiceNo.trim());
+    const res = await updateBillInvoiceNo(poId, tempInvoiceNo.trim());
     if (res.success) {
       toast.success(res.message);
       const bill = allBills.find(b => b.poId === poId);
       if (bill) bill.supplierInvoiceNo = tempInvoiceNo.trim();
+    } else {
+      toast.error(res.message);
     }
     setEditingPoId(null);
   };

@@ -15,7 +15,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { ShiftSummaryData, ShiftSummaryPdfModal } from '@/components/pos/ShiftSummaryPdfModal';
-import { loadAllShiftSummaries } from '@/lib/shift-service';
+import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 import { apiFetch } from '@/lib/api';
 import { useAuthStore } from '@/lib/store/auth-store';
 
@@ -23,6 +23,7 @@ export default function ShiftsHistoryPage() {
   const [shifts, setShifts] = useState<ShiftSummaryData[]>([]);
   const [usersList, setUsersList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [userFilter, setUserFilter] = useState('ALL');
   const [dateFilter, setDateFilter] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | '7DAYS' | '30DAYS' | 'CUSTOM'>('ALL');
@@ -41,16 +42,11 @@ export default function ShiftsHistoryPage() {
     try {
       const res = await apiFetch('/shifts/history');
       const list = res?.data || (Array.isArray(res) ? res : []);
-      if (Array.isArray(list) && list.length > 0) {
-        setShifts(list);
-      } else {
-        const data = loadAllShiftSummaries();
-        setShifts(data);
-      }
+      setShifts(Array.isArray(list) ? list : []);
+      setLoadError(null);
     } catch (err) {
-      console.warn('Failed to fetch shifts from backend, using local:', err);
-      const data = loadAllShiftSummaries();
-      setShifts(data);
+      setShifts([]);
+      setLoadError(errorMessage(err, 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     } finally {
       setLoading(false);
     }
@@ -450,7 +446,9 @@ export default function ShiftsHistoryPage() {
       </div>
 
       {/* ─── DAILY SHIFTS LIST ─── */}
-      {groupedByDay.length === 0 ? (
+      {loadError ? (
+        <LoadErrorState message={loadError} onRetry={() => void fetchShifts()} retrying={loading} />
+      ) : groupedByDay.length === 0 ? (
         <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 space-y-3 shadow-2xs">
           <History className="w-12 h-12 text-slate-300 mx-auto" />
           <p className="text-base font-bold text-slate-700">ไม่พบประวัติการปิดกะตามเงื่อนไขที่เลือก</p>

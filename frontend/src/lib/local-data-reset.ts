@@ -44,3 +44,59 @@ export async function clearLocalShopData(): Promise<number> {
   });
   return removed;
 }
+
+/**
+ * Keys older versions used to keep their own copies of shop data (customers, debts, purchase
+ * orders, claims, shifts, …). The server is now the only source of truth, so an upgraded device
+ * drops them once at start-up. Device preferences, the order outbox and the cart are not here.
+ */
+export const LEGACY_KEYS: string[] = [
+  'custom_products',
+  'custom_categories',
+  'custom_bank_accounts',
+  'custom_customers',
+  'custom_loyalty_config',
+  'custom_suppliers',
+  'custom_purchase_orders',
+  'custom_stock_movements',
+  'pos_confirmed_debts',
+  'pos_debt_payments_history',
+  'pos_manual_debt_records',
+  'pos_payment_vouchers',
+  'pos_supplier_returns',
+  'pos_product_claims',
+  'pos_replacement_warranties',
+  'pos_claim_inventory_cache',
+  'pos_orders',
+  'pos_cash_transactions',
+  'pos_current_shift', // now 'purim-cache:current-shift' (server-written only)
+  'pos_shifts_history',
+  'pos_shift_summaries_history',
+  'pos_last_shift_summary',
+  'product_packaging_units',
+  'offline_orders',
+  // 'pos_completed_orders' is imported into the order outbox and then removed by order-sync-service
+];
+
+/** Per-product local copies of images / packaging / wholesale steps (`img_<id>`, `pkg_<id>`, `ws_<id>`). */
+export const LEGACY_KEY_PREFIXES: string[] = ['img_', 'pkg_', 'ws_'];
+
+const LEGACY_CLEANED_FLAG = 'purim-legacy-cleaned:v1';
+
+/** Remove LEGACY_KEYS once per device (cheap to call on every app start). */
+export function clearLegacyLocalData(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (localStorage.getItem(LEGACY_CLEANED_FLAG) === '1') return;
+    LEGACY_KEYS.forEach((k) => localStorage.removeItem(k));
+    const prefixed: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && LEGACY_KEY_PREFIXES.some((p) => k.startsWith(p))) prefixed.push(k);
+    }
+    prefixed.forEach((k) => localStorage.removeItem(k));
+    localStorage.setItem(LEGACY_CLEANED_FLAG, '1');
+  } catch {
+    /* storage unavailable */
+  }
+}

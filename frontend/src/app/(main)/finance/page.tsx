@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 import {
   Wallet, Landmark, Banknote, CreditCard, ArrowDownToLine, ArrowUpFromLine, ArrowLeftRight,
   Receipt, PiggyBank, RefreshCw, Scale, Plus, Ban,
@@ -91,6 +92,7 @@ export default function FinancePage() {
   const [tab, setTab] = useState<'ledger' | 'expenses' | 'categories'>('ledger');
   const [accountFilter, setAccountFilter] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // dialogs
   const [transferMode, setTransferMode] = useState<null | 'deposit' | 'withdraw' | 'other'>(null);
@@ -114,8 +116,14 @@ export default function FinancePage() {
       setRows(tx.data || []);
       setExpenses(exp.data || []);
       setCategories(cats || []);
+      setLoadError(null);
     } catch (err: any) {
-      toast.error('โหลดข้อมูลการเงินไม่สำเร็จ: ' + (err?.message || ''));
+      // never show ฿0 / an old ledger as if it came from the server
+      setOverview(null);
+      setSummary(null);
+      setRows([]);
+      setExpenses([]);
+      setLoadError(errorMessage(err, 'โหลดข้อมูลการเงินไม่สำเร็จ'));
     } finally {
       setLoading(false);
     }
@@ -143,6 +151,14 @@ export default function FinancePage() {
   };
 
   const b = summary?.balances;
+  if (loadError) {
+    return (
+      <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto">
+        <LoadErrorState message={loadError} onRetry={() => void load()} retrying={loading} />
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-3">
