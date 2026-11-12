@@ -56,6 +56,7 @@ export const ItemClaimModal: React.FC<ItemClaimModalProps> = ({
         })
         .catch((err) => {
           console.error('Failed to get customer quota:', err);
+          toast.error('ตรวจสิทธิเคลมจากเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่');
         })
         .finally(() => setLoading(false));
     } else {

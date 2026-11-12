@@ -44,10 +44,12 @@ import {
 import { ProductClaimModal } from '@/components/pos/ProductClaimModal';
 import { ClaimReceiptPdfModal } from '@/components/claims/ClaimReceiptPdfModal';
 import { toast } from 'sonner';
+import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 
 export default function ClaimsPage() {
   const [claims, setClaims] = useState<ClaimRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [resolutionFilter, setResolutionFilter] = useState<string>('ALL');
   const [startDate, setStartDate] = useState('');
@@ -67,8 +69,10 @@ export default function ClaimsPage() {
     try {
       const records = await fetchAllClaimRecords();
       setClaims(records);
+      setLoadError(null);
     } catch (err) {
-      toast.error('ไม่สามารถโหลดข้อมูลรายการเคลมได้');
+      setClaims([]);
+      setLoadError(errorMessage(err, 'ไม่สามารถโหลดข้อมูลรายการเคลมได้'));
     } finally {
       setLoading(false);
     }
@@ -180,6 +184,7 @@ export default function ClaimsPage() {
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7 font-sans">
+      {loadError && <LoadErrorState message={loadError} onRetry={() => void fetchClaims()} retrying={loading} />}
       {/* ─── PAGE HEADER ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-3xl border border-slate-200 shadow-xs">
         <div>

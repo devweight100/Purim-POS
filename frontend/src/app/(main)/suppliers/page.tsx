@@ -8,10 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Search, Plus, Edit, Trash2, Building2 } from "lucide-react";
 import { toast } from "sonner";
+import { LoadErrorState, errorMessage } from "@/components/common/LoadErrorState";
 
 export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -33,9 +35,11 @@ export default function SuppliersPage() {
       } else {
         setSuppliers([]);
       }
+      setLoadError(null);
     } catch (err: any) {
       console.warn("Failed to fetch suppliers:", err);
       setSuppliers([]);
+      setLoadError(errorMessage(err, "ติดต่อเซิร์ฟเวอร์ไม่ได้"));
     } finally {
       setLoading(false);
     }
@@ -151,6 +155,7 @@ export default function SuppliersPage() {
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
+      {loadError && <LoadErrorState message={loadError} onRetry={() => void fetchSuppliers()} retrying={loading} />}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">

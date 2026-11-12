@@ -2,7 +2,6 @@ import { fetchClaimEligibleItems } from './claim-service';
 import { ClaimEligibleItem } from './types';
 import { apiFetch } from './api';
 
-const STORAGE_KEY_CLAIM_INVENTORY = 'pos_claim_inventory_cache';
 
 export interface CustomerClaimStockItem {
   id: string;
@@ -26,33 +25,13 @@ export interface CustomerClaimStockItem {
   updatedAt?: string;
 }
 
-export function loadCustomerClaimStockItems(): CustomerClaimStockItem[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_CLAIM_INVENTORY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (err) {
-    console.error('Failed to load claim inventory:', err);
-    return [];
-  }
-}
-
-export function saveCustomerClaimStockItems(items: CustomerClaimStockItem[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY_CLAIM_INVENTORY, JSON.stringify(items));
-  } catch (err) {
-    console.error('Failed to save claim inventory:', err);
-  }
-}
-
+/** Claim inventory from the server. Throws when the server cannot be reached (no local copy). */
 export async function fetchCustomerClaimStockItems(): Promise<CustomerClaimStockItem[]> {
-  try {
+  {
     const res = await apiFetch('/claims/inventory/list');
     const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : null);
-    if (Array.isArray(list)) {
+    if (!Array.isArray(list)) throw new Error('ข้อมูลคลังของเคลมจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+    {
       const mapped: CustomerClaimStockItem[] = list.map((item: any) => ({
         id: item.id,
         productId: item.productId || item.product?.id || '',
@@ -74,13 +53,9 @@ export async function fetchCustomerClaimStockItems(): Promise<CustomerClaimStock
         createdAt: item.createdAt,
         updatedAt: item.updatedAt,
       }));
-      saveCustomerClaimStockItems(mapped);
       return mapped;
     }
-  } catch (err) {
-    console.warn('[CustomerClaimStockService] Failed to fetch claim inventory from backend:', err);
   }
-  return loadCustomerClaimStockItems();
 }
 
 export async function createCustomerClaimStockItem(
@@ -106,8 +81,6 @@ export async function updateCustomerClaimStockItem(
   return res;
 }
 
-export const loadClaimInventory = loadCustomerClaimStockItems;
-export const saveClaimInventory = saveCustomerClaimStockItems;
 export const fetchClaimInventory = fetchCustomerClaimStockItems;
 
 export interface CustomerProductStock {
