@@ -67,7 +67,10 @@ export function SettlePayableModal({
     }
   }, [open]);
 
-  useEffect(() => {
+  // fresh form whenever the modal opens for a bill (adjusted while rendering)
+  const [seen, setSeen] = useState<{ open: boolean; bill: typeof bill } | null>(null);
+  if (!seen || seen.open !== open || seen.bill !== bill) {
+    setSeen({ open, bill });
     if (open && bill) {
       const notes = getAvailableReturnNotesForSupplier(bill.supplierId);
       setAvailableDebitNotes(notes);
@@ -85,7 +88,7 @@ export function SettlePayableModal({
       setReferenceNo('');
       setNote('');
     }
-  }, [open, bill]);
+  }
 
   if (!bill) return null;
 

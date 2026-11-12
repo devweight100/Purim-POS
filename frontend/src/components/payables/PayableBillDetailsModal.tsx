@@ -27,6 +27,18 @@ interface PayableBillDetailsModalProps {
   onReload: () => void;
 }
 
+/** A line of the bill as shown here (payable-service keeps them untyped). */
+type PayableBillItem = {
+  productName?: string;
+  sku?: string;
+  unitName?: string;
+  quantity?: number | string;
+  receivedQuantity?: number | string;
+  unitPrice?: number | string;
+  costPrice?: number | string;
+  [extra: string]: unknown;
+};
+
 export function PayableBillDetailsModal({
   open,
   onOpenChange,
@@ -198,7 +210,7 @@ export function PayableBillDetailsModal({
                       </td>
                     </tr>
                   ) : (
-                    bill.items.map((item: any, idx: number) => {
+                    bill.items.map((item: PayableBillItem, idx: number) => {
                       const qty = Number(item.quantity || 0);
                       const cost = Number(item.unitPrice || item.costPrice || 0);
                       return (

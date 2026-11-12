@@ -30,6 +30,9 @@ import { loadSupplierReturnNotes } from '@/lib/supplier-return-service';
 import { SupplierReturnNote } from '@/lib/types';
 import { toast } from 'sonner';
 
+/** Stable default, so "no preselected bills" does not look like a new list on every render. */
+const NO_PO_IDS: string[] = [];
+
 interface SettleMultipleBillsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -44,7 +47,7 @@ export function SettleMultipleBillsModal({
   onOpenChange,
   allBills,
   initialSupplierId,
-  preSelectedPoIds = [],
+  preSelectedPoIds = NO_PO_IDS,
   onSuccess,
 }: SettleMultipleBillsModalProps) {
   // Available suppliers with pending bills
@@ -93,14 +96,15 @@ export function SettleMultipleBillsModal({
   useEffect(() => {
     if (!open) return;
     apiFetch('/finance/accounts')
-      .then((rows: any[]) => setMoneyAccounts((rows || []).filter((a) => a.isActive && a.type !== 'CASH_DRAWER')))
+      .then((rows: Array<{ id: string; name: string; type: string; balance: number; isActive?: boolean }>) => setMoneyAccounts((rows || []).filter((a) => a.isActive && a.type !== 'CASH_DRAWER')))
       .catch(() => setMoneyAccounts([])); // no finance permission: server picks the account
-    setMoneyAccountId('');
   }, [open]);
   const accountChoices = moneyAccounts.filter((a) => (paymentMethod === 'CASH' ? a.type === 'CASH_SAFE' : a.type === 'BANK'));
   const [bankAccountLabel, setBankAccountLabel] = useState<string>('กสิกรไทย (KBANK) - 123-4-56789-0 (บัญชีหลักร้านค้า)');
   const [referenceNo, setReferenceNo] = useState<string>('');
   const [paymentDate, setPaymentDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  // latest allowed payment date (local today), fixed when the dialog is created like the default date
+  const [maxPaymentDate] = useState(() => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10));
   const [note, setNote] = useState<string>('');
   const [cashierName, setCashierName] = useState<string>('เจ้าหน้าที่การเงิน');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -131,8 +135,12 @@ export function SettleMultipleBillsModal({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Initialize or reset state when modal opens
-  useEffect(() => {
+  // Initialize or reset state when modal opens (adjusted while rendering)
+  const [seen, setSeen] = useState<{ open: boolean; initialSupplierId?: string; preSelectedPoIds: string[]; allBills: SupplierPayableBill[]; availableSuppliers: typeof availableSuppliers } | null>(null);
+  if (!seen || seen.open !== open || seen.initialSupplierId !== initialSupplierId || seen.preSelectedPoIds !== preSelectedPoIds || seen.allBills !== allBills || seen.availableSuppliers !== availableSuppliers) {
+    // opening: the money account starts at the server default again
+    if (open && (!seen || !seen.open)) setMoneyAccountId('');
+    setSeen({ open, initialSupplierId, preSelectedPoIds, allBills, availableSuppliers });
     if (open) {
       const targetSuppId = initialSupplierId || (preSelectedPoIds.length > 0 ? allBills.find(b => preSelectedPoIds.includes(b.poId))?.supplierId : '') || '';
       setSelectedSupplierId(targetSuppId);
@@ -160,7 +168,7 @@ export function SettleMultipleBillsModal({
       setReferenceNo('');
       setNote('');
     }
-  }, [open, initialSupplierId, preSelectedPoIds, allBills, availableSuppliers]);
+  }
 
   // Filtered suppliers for search
   const filteredSuppliers = useMemo(() => {
@@ -182,20 +190,22 @@ export function SettleMultipleBillsModal({
     );
   }, [allBills, selectedSupplierId]);
 
-  // Load debit notes for selected supplier
-  useEffect(() => {
+  // Load debit notes for selected supplier (adjusted while rendering when the supplier changes)
+  const [notesSupplierId, setNotesSupplierId] = useState<string | null>(null);
+  if (notesSupplierId !== selectedSupplierId) {
+    setNotesSupplierId(selectedSupplierId);
     if (!selectedSupplierId) {
       setAvailableDebitNotes([]);
       setMatchedDebitNotes({});
-      return;
+    } else {
+      const allNotes = loadSupplierReturnNotes();
+      const notes = allNotes.filter(
+        (n) => n.supplierId === selectedSupplierId && n.remainingCreditAmount > 0
+      );
+      setAvailableDebitNotes(notes);
+      setMatchedDebitNotes({});
     }
-    const allNotes = loadSupplierReturnNotes();
-    const notes = allNotes.filter(
-      (n) => n.supplierId === selectedSupplierId && n.remainingCreditAmount > 0
-    );
-    setAvailableDebitNotes(notes);
-    setMatchedDebitNotes({});
-  }, [selectedSupplierId]);
+  }
 
   // Handle supplier change
   const handleSupplierChange = (newSuppId: string) => {
@@ -967,7 +977,7 @@ export function SettleMultipleBillsModal({
                       <Input
                         type="date"
                         value={paymentDate}
-                        max={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)}
+                        max={maxPaymentDate}
                         onChange={(e) => setPaymentDate(e.target.value)}
                         className="h-8.5 text-xs bg-slate-50 border-slate-300 rounded-xl"
                       />
