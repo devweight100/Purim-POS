@@ -103,7 +103,11 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}): Pro
         window.dispatchEvent(new CustomEvent('purim:forbidden', { detail: { endpoint: cleanEndpoint, message: errBody?.message } }));
       }
       reportConnection(res.status >= 500);
-      throw new ApiError(Array.isArray(errBody?.message) ? errBody.message.join(', ') : errBody?.message || `HTTP ${res.status}: ${res.statusText}`, res.status, errBody);
+      const fallbackMessage =
+        res.status >= 500 && !errBody?.message
+          ? `ติดต่อเซิร์ฟเวอร์ไม่ได้ (HTTP ${res.status}) กรุณาลองใหม่`
+          : `HTTP ${res.status}: ${res.statusText}`;
+      throw new ApiError(Array.isArray(errBody?.message) ? errBody.message.join(', ') : errBody?.message || fallbackMessage, res.status, errBody);
     }
 
     reportConnection(false);
