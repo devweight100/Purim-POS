@@ -51,7 +51,7 @@ import { PayableBillDetailsModal } from '@/components/payables/PayableBillDetail
 
 export default function PayablesPage() {
   const [bills, setBills] = useState<SupplierPayableBill[]>([]);
-  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string; contactName?: string; phone?: string }>>([]);
   const [returnNotes, setReturnNotes] = useState<SupplierReturnNote[]>([]);
   const [paymentVouchers, setPaymentVouchers] = useState<PaymentVoucher[]>([]);
   const [loading, setLoading] = useState(true);

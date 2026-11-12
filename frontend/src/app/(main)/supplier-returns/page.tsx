@@ -15,6 +15,7 @@ import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 import { fetchAllClaimRecords } from '@/lib/claim-service';
+import type { ClaimRecord } from '@/lib/types';
 import { 
   loadSuppliers,
   fetchSuppliers, 
@@ -33,9 +34,9 @@ import { ChangeReturnStatusModal } from '@/components/supplier-returns/ChangeRet
 
 export default function SupplierReturnsPage() {
   const [returnNotes, setReturnNotes] = useState<SupplierReturnNote[]>([]);
-  const [suppliers, setSuppliers] = useState<any[]>([]);
-  const [pos, setPos] = useState<any[]>([]);
-  const [pendingClaims, setPendingClaims] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string }>>([]);
+  const [pos, setPos] = useState<unknown[]>([]);
+  const [pendingClaims, setPendingClaims] = useState<ClaimRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 

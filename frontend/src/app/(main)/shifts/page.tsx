@@ -21,7 +21,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 
 export default function ShiftsHistoryPage() {
   const [shifts, setShifts] = useState<ShiftSummaryData[]>([]);
-  const [usersList, setUsersList] = useState<any[]>([]);
+  const [usersList, setUsersList] = useState<Array<{ id?: string; username?: string; fullName?: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -36,6 +36,8 @@ export default function ShiftsHistoryPage() {
 
   // Active current shift in store
   const { currentShift, isShiftOpen } = useShiftStore();
+  // "today" of the date filter: when the shifts were (re)loaded
+  const [loadedAt, setLoadedAt] = useState(() => Date.now());
 
   /** Loads the data; state is only updated after the request. */
   const loadShifts = async () => {
@@ -48,6 +50,7 @@ export default function ShiftsHistoryPage() {
       setShifts([]);
       setLoadError(errorMessage(err, 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     } finally {
+      setLoadedAt(Date.now());
       setLoading(false);
     }
   };
@@ -104,7 +107,7 @@ export default function ShiftsHistoryPage() {
   // Filter shifts based on Cashier, Date, Search, and Status
   const filteredShifts = useMemo(() => {
     // Bangkok calendar days (not UTC / device TZ)
-    const now = Date.now();
+    const now = loadedAt;
     const today = bangkokDayKey(now);
     const yesterday = bangkokDayKey(now - DAY_MS);
     const sevenDaysAgo = bangkokDayKey(now - 6 * DAY_MS);
@@ -156,7 +159,7 @@ export default function ShiftsHistoryPage() {
 
       return true;
     });
-  }, [shifts, userFilter, dateFilter, customDate, statusFilter, search]);
+  }, [shifts, userFilter, dateFilter, customDate, statusFilter, search, loadedAt]);
 
   // Group filtered shifts by Calendar Day (Date string 'YYYY-MM-DD')
   const groupedByDay = useMemo(() => {

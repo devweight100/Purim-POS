@@ -133,7 +133,7 @@ export default function UsersManagementPage() {
       setSubmitting(true);
       if (editingUser) {
         // Update user
-        const payload: any = {
+        const payload: { fullName: string; role: typeof formRole; permissions: typeof formPermissions; password?: string; pinCode?: string } = {
           fullName: formFullName.trim(),
           role: formRole,
           permissions: formPermissions,

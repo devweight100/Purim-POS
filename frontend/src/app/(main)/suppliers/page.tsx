@@ -10,14 +10,25 @@ import { Search, Plus, Edit, Trash2, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { LoadErrorState, errorMessage } from "@/components/common/LoadErrorState";
 
+/** Supplier as listed / edited here (creditTerms is "" while its input is empty). */
+interface SupplierForm {
+  id?: string;
+  name?: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  creditTerms?: number | string | null;
+}
+
 export default function SuppliersPage() {
-  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<Array<SupplierForm & { id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [currentSupplier, setCurrentSupplier] = useState<any>({
+  const [currentSupplier, setCurrentSupplier] = useState<SupplierForm>({
     name: "",
     contactName: "",
     phone: "",
@@ -68,7 +79,7 @@ export default function SuppliersPage() {
     setIsDialogOpen(true);
   };
 
-  const handleOpenEdit = (supp: any) => {
+  const handleOpenEdit = (supp: SupplierForm) => {
     setIsEditMode(true);
     // null columns (e.g. address) must not reach controlled inputs as null
     setCurrentSupplier({
