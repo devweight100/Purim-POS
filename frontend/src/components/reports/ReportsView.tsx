@@ -1,31 +1,21 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   ReportTimeRange,
-  loadAllOrders,
-  filterOrdersByDateRange,
-  calculateSalesAndProfitReport,
-  calculateBestSellingProducts,
-  calculateInventoryValuationReport,
-  calculatePaymentsAndShiftsReport,
-  calculateCustomerAndDebtsReport,
-  calculatePurchasesAndClaimsReport,
-  calculateVatSummary,
-  returnsInRange,
-  reportRangeBounds,
-  PurchasesData,
+  ReportTabsResponse,
+  fetchReportTabs,
+  EMPTY_SALES,
+  EMPTY_CLAIMS_AND_VAT,
+  EMPTY_BESTSELLERS,
+  EMPTY_INVENTORY,
+  EMPTY_PAYMENTS,
+  EMPTY_CUSTOMERS,
+  EMPTY_PURCHASES,
 } from '@/lib/reports-service';
 import { downloadReport, ExportColumn } from './report-export';
-import { useProductStore } from '@/lib/store/product-store';
-import { loadPurchaseOrders, loadSuppliers } from '@/lib/supplier-return-service';
-import { loadAllClaimRecords } from '@/lib/claim-service';
-import { loadAllDebtRecords } from '@/lib/debt-service';
-import { loadCustomers } from '@/lib/customer-service';
-import { loadAllShiftSummaries } from '@/lib/shift-service';
-import { apiFetch } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -220,25 +210,8 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Raw data collections
-  const [rawOrders, setRawOrders] = useState<any[]>([]);
-  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
-  const [claims, setClaims] = useState<any[]>([]);
-  const [debts, setDebts] = useState<any[]>([]);
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [shifts, setShifts] = useState<any[]>([]);
-  const [suppliers, setSuppliers] = useState<any[]>([]);
-  const [claimAccounting, setClaimAccounting] = useState<{
-    events: { createdAt: string; claimNumber: string; replacementCost: number; refundPaid: number }[];
-    supplierRecoveries: { createdAt: string; returnNumber: string; amount: number }[];
-  }>({ events: [], supplierRecoveries: [] });
-  const [purchasesData, setPurchasesData] = useState<PurchasesData>({ receipts: [], open: [], payable: [] });
-  const [lowStockThreshold, setLowStockThreshold] = useState<number>(5);
-  const [lastReceivedAtByProduct, setLastReceivedAtByProduct] = useState<Record<string, string | null>>({});
-  const [debtReceipts, setDebtReceipts] = useState<{ amount: number; method?: string; createdAt: string }[]>([]);
-  const [batchValuationByProduct, setBatchValuationByProduct] = useState<
-    Record<string, { quantityRemaining: number; totalCostValue: number; averageUnitCost: number }>
-  >({});
+  // Figures of the tab on screen for the selected period, computed by the server (GET /reports/tabs)
+  const [report, setReport] = useState<ReportTabsResponse | null>(null);
 
   // Sub-filter for inventory (all / deadstock / lowstock)
   const [inventorySubFilter, setInventorySubFilter] = useState<'all' | 'deadstock' | 'lowstock'>('all');
@@ -248,93 +221,31 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     setCurrentPage(1);
   }, [activeTab, timeRange, search, customStartDate, customEndDate, inventorySubFilter]);
 
-  const { products, fetchProducts } = useProductStore();
-
-  // Load all raw data
+  // Load the figures of the active tab for the period (the newest request wins)
+  const requestSeq = useRef(0);
   const loadData = async () => {
+    const seq = ++requestSeq.current;
     setLoading(true);
     try {
-      const [
-        analyticsRes,
-        ordersRes,
-        posRes,
-        claimsRes,
-        debtsRes,
-        custsRes,
-        shiftsRes,
-        suppsRes,
-      ] = await Promise.allSettled([
-        apiFetch('/reports/analytics'),
-        apiFetch('/orders?limit=10000'),
-        apiFetch('/purchase-orders?limit=5000'),
-        apiFetch('/claims?limit=5000'),
-        apiFetch('/debts?limit=5000'),
-        apiFetch('/customers?limit=5000'),
-        apiFetch('/shifts/history?limit=1000'),
-        apiFetch('/suppliers'),
-      ]);
-
-      const unwrap = (res: any, fallback: () => any) => {
-        if (res.status === 'fulfilled') {
-          const val = res.value;
-          if (val?.data && Array.isArray(val.data)) return val.data;
-          if (Array.isArray(val)) return val;
-          return [];
-        }
-        return fallback();
-      };
-
-      const analyticsData =
-        analyticsRes.status === 'fulfilled' && analyticsRes.value
-          ? analyticsRes.value
-          : null;
-
-      const realOrders =
-        analyticsData && Array.isArray(analyticsData.orders)
-          ? analyticsData.orders
-          : unwrap(ordersRes, loadAllOrders);
-      const realPOs = unwrap(posRes, loadPurchaseOrders);
-      const realClaims = unwrap(claimsRes, loadAllClaimRecords);
-      const realDebts = unwrap(debtsRes, loadAllDebtRecords);
-      const realCusts = unwrap(custsRes, loadCustomers);
-      const realShifts = unwrap(shiftsRes, loadAllShiftSummaries);
-      const realSupps = unwrap(suppsRes, loadSuppliers);
-
-      if (analyticsData?.claimAccounting) {
-        setClaimAccounting({
-          events: Array.isArray(analyticsData.claimAccounting.events) ? analyticsData.claimAccounting.events : [],
-          supplierRecoveries: Array.isArray(analyticsData.claimAccounting.supplierRecoveries) ? analyticsData.claimAccounting.supplierRecoveries : [],
-        });
-      }
-      if (analyticsData?.stockBatchValuation?.byProductId) {
-        setBatchValuationByProduct(analyticsData.stockBatchValuation.byProductId);
-      }
-      if (analyticsData?.purchases) setPurchasesData(analyticsData.purchases);
-      if (Number.isFinite(Number(analyticsData?.lowStockThreshold))) setLowStockThreshold(Number(analyticsData.lowStockThreshold));
-      if (analyticsData?.lastReceivedAtByProduct) setLastReceivedAtByProduct(analyticsData.lastReceivedAtByProduct);
-      if (Array.isArray(analyticsData?.debtReceipts)) setDebtReceipts(analyticsData.debtReceipts);
-
-      setRawOrders(realOrders);
-      setPurchaseOrders(realPOs);
-      setClaims(realClaims);
-      setDebts(realDebts);
-      setCustomers(realCusts);
-      setShifts(realShifts);
-      setSuppliers(realSupps);
-      await fetchProducts();
+      const data = await fetchReportTabs({ range: timeRange, start: customStartDate, end: customEndDate, tab: activeTab });
+      if (seq === requestSeq.current) setReport(data);
     } catch (err) {
       console.error('Failed to load reports data:', err);
-      toast.error('ไม่สามารถโหลดข้อมูลรายงานได้');
+      if (seq === requestSeq.current) toast.error('ไม่สามารถโหลดข้อมูลรายงานได้');
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
   };
+  const loadDataRef = useRef(loadData);
+  loadDataRef.current = loadData;
 
   useEffect(() => {
     loadData();
-    const handleSynced = () => {
-      loadData();
-    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, timeRange, customStartDate, customEndDate]);
+
+  useEffect(() => {
+    const handleSynced = () => loadDataRef.current();
     window.addEventListener('purim:data-synced', handleSynced);
     return () => {
       window.removeEventListener('purim:data-synced', handleSynced);
@@ -358,97 +269,14 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     }
   };
 
-  // Filter orders by date range
-  const filteredOrders = useMemo(() => {
-    return filterOrdersByDateRange(rawOrders, timeRange, customStartDate, customEndDate);
-  }, [rawOrders, timeRange, customStartDate, customEndDate]);
-
-  // Returns MADE in the selected range (any bill date) -- same netting rule as the P&L
-  const rangeReturns = useMemo(
-    () => returnsInRange(rawOrders, timeRange, customStartDate, customEndDate),
-    [rawOrders, timeRange, customStartDate, customEndDate]
-  );
-  const inRange = useMemo(() => {
-    const { start, end } = reportRangeBounds(timeRange, customStartDate, customEndDate);
-    return (iso: string) => {
-      const t = new Date(iso).getTime();
-      return isNaN(t) || (t >= start && t < end);
-    };
-  }, [timeRange, customStartDate, customEndDate]);
-
-  // 1. Sales & Profit (Lazy)
-  const salesProfitReport = useMemo(() => {
-    if (activeTab !== 'sales') {
-      return { totalOrders: 0, totalGrossSales: 0, totalDiscounts: 0, totalNetSales: 0, totalReturns: 0, totalCogs: 0, totalGrossProfit: 0, overallMargin: 0, dailyBreakdown: [] };
-    }
-    return calculateSalesAndProfitReport(filteredOrders, products, rangeReturns);
-  }, [activeTab, filteredOrders, products, rangeReturns]);
-
-  // Claims & VAT for the same period (net profit after claims, output VAT)
-  const claimsAndVat = useMemo(() => {
-    const events = filterOrdersByDateRange(claimAccounting.events, timeRange, customStartDate, customEndDate);
-    const recoveries = filterOrdersByDateRange(claimAccounting.supplierRecoveries, timeRange, customStartDate, customEndDate);
-    const replacementCost = events.reduce((sum: number, e: any) => sum + (Number(e.replacementCost) || 0), 0);
-    const refundsPaid = events.reduce((sum: number, e: any) => sum + (Number(e.refundPaid) || 0), 0);
-    const supplierRecovery = recoveries.reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0);
-    const claimNetCost = replacementCost + refundsPaid - supplierRecovery;
-    // output VAT of bills in the range minus VAT of returns made in the range (matches the P&L)
-    const vat = calculateVatSummary(filteredOrders, rangeReturns);
-    return { replacementCost, refundsPaid, supplierRecovery, claimNetCost, ...vat };
-  }, [claimAccounting, timeRange, customStartDate, customEndDate, filteredOrders, rangeReturns]);
-
-  // 2. Best Sellers (Lazy)
-  const bestSellersReport = useMemo(() => {
-    if (activeTab !== 'bestsellers') {
-      return { allProducts: [], topByQuantity: [], topByProfit: [], topByRevenue: [] };
-    }
-    return calculateBestSellingProducts(filteredOrders, products, rangeReturns);
-  }, [activeTab, filteredOrders, products, rangeReturns]);
-
-  // 3. Inventory Valuation & Deadstock (Lazy)
-  const inventoryReport = useMemo(() => {
-    if (activeTab !== 'inventory') {
-      return { totalProducts: 0, totalStockPieces: 0, totalCostVal: 0, totalRetailVal: 0, totalPotentialProfit: 0, deadstockPieces: 0, deadstockCostVal: 0, lowStockCount: 0, lowStockThreshold, items: [], deadstockList: [], lowStockList: [] };
-    }
-    return calculateInventoryValuationReport(products, rawOrders, batchValuationByProduct, { lowStockThreshold, lastReceivedAtByProduct });
-  }, [activeTab, products, rawOrders, batchValuationByProduct, lowStockThreshold, lastReceivedAtByProduct]);
-
-  // 4. Payments & Shifts (Lazy)
-  const paymentsShiftsReport = useMemo(() => {
-    if (activeTab !== 'payments') {
-      return { totalCollected: 0, salesCollected: 0, debtReceived: 0, creditSales: 0, refunds: 0, channels: [], shifts: { totalShiftsCount: 0, totalExpectedCash: 0, totalActualCash: 0, totalCashDiscrepancy: 0, balancedShifts: 0, shortShifts: 0, overShifts: 0, list: [] } };
-    }
-    return calculatePaymentsAndShiftsReport(filteredOrders, shifts, { returns: rangeReturns, debtReceipts, inRange });
-  }, [activeTab, filteredOrders, shifts, rangeReturns, debtReceipts, inRange]);
-
-  // 5. Customers & Debts Aging (Lazy)
-  const customerDebtsReport = useMemo(() => {
-    if (activeTab !== 'customers') {
-      return { 
-        totalOutstandingDebt: 0, 
-        unpaidBillsCount: 0, 
-        agingBuckets: [
-          { bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }, 
-          { bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }, 
-          { bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }, 
-          { bucketName: '', rangeDays: '', billCount: 0, totalAmount: 0 }
-        ], 
-        allCustomers: [],
-        topCustomers: [], 
-        unpaidDebtsList: [] 
-      };
-    }
-    return calculateCustomerAndDebtsReport(filteredOrders, debts, customers);
-  }, [activeTab, filteredOrders, debts, customers]);
-
-  // 6. Purchases & Claims (Lazy)
-  const purchasesClaimsReport = useMemo(() => {
-    if (activeTab !== 'purchases') {
-      return { totalPurchasesOverall: 0, totalOrderedNotReceived: 0, totalRemainingPayable: 0, totalClaimsCostOverall: 0, supplierBreakdown: [] };
-    }
-    const claimsInRange = filterOrdersByDateRange(claims, timeRange, customStartDate, customEndDate);
-    return calculatePurchasesAndClaimsReport(purchasesData, claimsInRange, suppliers, inRange);
-  }, [activeTab, purchasesData, claims, suppliers, inRange, timeRange, customStartDate, customEndDate]);
+  // Report figures (server-computed); placeholders until the tab's data has arrived
+  const salesProfitReport = report?.sales ?? EMPTY_SALES;
+  const claimsAndVat = report?.claimsAndVat ?? EMPTY_CLAIMS_AND_VAT;
+  const bestSellersReport = report?.bestsellers ?? EMPTY_BESTSELLERS;
+  const inventoryReport = report?.inventory ?? EMPTY_INVENTORY;
+  const paymentsShiftsReport = report?.payments ?? EMPTY_PAYMENTS;
+  const customerDebtsReport = report?.customers ?? EMPTY_CUSTOMERS;
+  const purchasesClaimsReport = report?.purchases ?? EMPTY_PURCHASES;
 
   // ─── PAGINATED & FILTERED DATASETS FOR ALL REPORT TABLES ───
   // 1. Sales
