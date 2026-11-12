@@ -1042,7 +1042,7 @@ export interface SupplierWriteRequest {
 
 export interface ApiPurchaseOrderItem {
   id?: string;
-  productId?: string;
+  productId: string;
   product?: { id?: string; name?: string; sku?: string; unit?: string | null } | null;
   productName?: string;
   name?: string;
@@ -1182,7 +1182,7 @@ export interface SettleMultipleResponse {
 
 /** GET /supplier-returns row (server note + metadata kept by the frontend) */
 export interface ApiSupplierReturnNote {
-  id?: string;
+  id: string;
   returnNumber?: string;
   noteNumber?: string;
   returnDate?: string;
