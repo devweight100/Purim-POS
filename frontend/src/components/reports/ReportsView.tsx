@@ -79,10 +79,10 @@ export type ReportTabKey = 'sales' | 'bestsellers' | 'inventory' | 'payments' | 
 
 const CHART_COLORS = ['#4f46e5', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#64748b'];
 
-function formatCategory(cat: any): string {
+function formatCategory(cat: unknown): string {
   if (!cat) return 'ทั่วไป';
   if (typeof cat === 'string') return cat;
-  if (typeof cat === 'object' && cat.name) return String(cat.name);
+  if (typeof cat === 'object' && (cat as { name?: unknown }).name) return String((cat as { name?: unknown }).name);
   return 'ทั่วไป';
 }
 
@@ -227,9 +227,8 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
 
   // Load the figures of the active tab for the period (the newest request wins)
   const requestSeq = useRef(0);
-  const loadData = async () => {
-    const seq = ++requestSeq.current;
-    setLoading(true);
+  /** Request `seq`: state is only updated after the request, and only if it is still the newest. */
+  const fetchTab = async (seq: number) => {
     try {
       const data = await fetchReportTabs({ range: timeRange, start: customStartDate, end: customEndDate, tab: activeTab });
       if (seq === requestSeq.current) setReport(data);
@@ -240,11 +239,28 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       if (seq === requestSeq.current) setLoading(false);
     }
   };
+  const loadData = async () => {
+    const seq = ++requestSeq.current;
+    setLoading(true);
+    await fetchTab(seq);
+  };
   const loadDataRef = useRef(loadData);
-  loadDataRef.current = loadData;
+  useEffect(() => {
+    loadDataRef.current = loadData;
+  });
+
+  // a new tab / period shows the spinner at once (adjusted while rendering); the effect below loads it
+  const loadKey = JSON.stringify([activeTab, timeRange, customStartDate, customEndDate]);
+  const [loadKeySeen, setLoadKeySeen] = useState<string | null>(null);
+  if (loadKeySeen !== loadKey) {
+    setLoadKeySeen(loadKey);
+    setLoading(true);
+  }
 
   useEffect(() => {
-    loadData();
+    const seq = ++requestSeq.current;
+    const run = async () => { await fetchTab(seq); };
+    void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, timeRange, customStartDate, customEndDate]);
 
@@ -257,11 +273,14 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
   }, []);
 
   // Sync tab with props when navigating between sub-routes
-  useEffect(() => {
+  // (adjusted while rendering)
+  const [seenInitialTab, setSeenInitialTab] = useState(initialTab);
+  if (seenInitialTab !== initialTab) {
+    setSeenInitialTab(initialTab);
     if (initialTab) {
       setActiveTab(initialTab);
     }
-  }, [initialTab]);
+  }
 
   // Handle Tab Switch
   const handleTabChange = (tab: ReportTabKey) => {
@@ -330,7 +349,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
 
   // 4. Customers
   const filteredCustomers = useMemo(() => {
-    let list = customerDebtsReport.allCustomers || [];
+    const list = customerDebtsReport.allCustomers || [];
     if (!search.trim()) return list;
     const q = search.toLowerCase().trim();
     return list.filter(c =>
@@ -346,7 +365,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
 
   // 5. Purchases / Suppliers
   const filteredSuppliers = useMemo(() => {
-    let list = purchasesClaimsReport.supplierBreakdown || [];
+    const list = purchasesClaimsReport.supplierBreakdown || [];
     if (!search.trim()) return list;
     const q = search.toLowerCase().trim();
     return list.filter(s =>
@@ -366,11 +385,11 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
   // Export (Excel .xlsx or CSV) of the active tab
   const handleExport = async (format: 'csv' | 'xlsx') => {
     const base = `report_${activeTab}_${timeRange === 'custom' ? `${customStartDate || 'start'}_${customEndDate || 'end'}` : timeRange}`;
-    const no = { header: 'ลำดับ', value: (_r: any, i: number) => i + 1 };
+    const no = { header: 'ลำดับ', value: (_r: unknown, i: number) => i + 1 };
     let file = '';
     try {
       if (activeTab === 'sales') {
-        const cols: ExportColumn<any>[] = [
+        const cols: ExportColumn<(typeof salesProfitReport.dailyBreakdown)[number]>[] = [
           no,
           { header: 'วันที่', value: (r) => r.date },
           { header: 'จำนวนออเดอร์', value: (r) => r.orderCount },
@@ -383,7 +402,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
         ];
         file = await downloadReport(format, base, 'ยอดขาย', salesProfitReport.dailyBreakdown, cols);
       } else if (activeTab === 'bestsellers') {
-        const cols: ExportColumn<any>[] = [
+        const cols: ExportColumn<(typeof bestSellersReport.allProducts)[number]>[] = [
           no,
           { header: 'รหัส/บาร์โค้ด', value: (r) => r.sku },
           { header: 'ชื่อสินค้า', value: (r) => r.name },
@@ -396,7 +415,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
         ];
         file = await downloadReport(format, base, 'สินค้าขายดี', bestSellersReport.allProducts, cols);
       } else if (activeTab === 'inventory') {
-        const cols: ExportColumn<any>[] = [
+        const cols: ExportColumn<(typeof inventoryReport.items)[number]>[] = [
           no,
           { header: 'รหัส/บาร์โค้ด', value: (r) => r.sku },
           { header: 'ชื่อสินค้า', value: (r) => r.name },
@@ -416,7 +435,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           { label: 'เงินรับจริง (รวมรับชำระหนี้ ไม่รวมขายเชื่อ)', count: null, amount: paymentsShiftsReport.totalCollected, pct: null },
           { label: `ผลต่างปิดกะสะสม (${paymentsShiftsReport.shifts.totalShiftsCount} กะ)`, count: paymentsShiftsReport.shifts.totalShiftsCount, amount: paymentsShiftsReport.shifts.totalCashDiscrepancy, pct: null },
         ];
-        const cols: ExportColumn<any>[] = [
+        const cols: ExportColumn<(typeof rows)[number]>[] = [
           no,
           { header: 'ช่องทาง / รายการ', value: (r) => r.label },
           { header: 'จำนวนรายการ', value: (r) => r.count },
@@ -425,7 +444,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
         ];
         file = await downloadReport(format, base, 'ช่องทางชำระ', rows, cols);
       } else if (activeTab === 'customers') {
-        const cols: ExportColumn<any>[] = [
+        const cols: ExportColumn<(typeof customerDebtsReport.allCustomers)[number]>[] = [
           no,
           { header: 'รหัสลูกค้า', value: (r) => r.code },
           { header: 'ชื่อลูกค้า', value: (r) => r.name },
@@ -439,7 +458,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
         ];
         file = await downloadReport(format, base, 'ลูกค้า', customerDebtsReport.allCustomers, cols);
       } else if (activeTab === 'purchases') {
-        const cols: ExportColumn<any>[] = [
+        const cols: ExportColumn<(typeof purchasesClaimsReport.supplierBreakdown)[number]>[] = [
           no,
           { header: 'บริษัทคู่ค้า', value: (r) => r.supplierName },
           { header: 'PO ที่รับของในช่วงนี้', value: (r) => r.poCount },
@@ -711,7 +730,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                     <XAxis dataKey="date" tick={{ fontSize: 11 }} tickLine={false} />
                     <YAxis tick={{ fontSize: 11 }} tickLine={false} tickFormatter={(v) => `฿${v >= 1000 ? (v/1000).toFixed(0) + 'k' : v}`} />
-                    <Tooltip formatter={(value: any) => formatCurrency(Number(value))} />
+                    <Tooltip formatter={(value) => formatCurrency(Number(value))} />
                     <Legend wrapperStyle={{ fontSize: 12, paddingTop: 6 }} />
                     <Bar dataKey="netSales" name="ยอดขายสุทธิ" fill="#0ea5e9" radius={[4, 4, 0, 0]} isAnimationActive={false} />
                     <Bar dataKey="cogs" name="ต้นทุนสินค้า" fill="#f59e0b" radius={[4, 4, 0, 0]} isAnimationActive={false} />
