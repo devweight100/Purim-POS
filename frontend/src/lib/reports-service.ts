@@ -4,7 +4,7 @@ import { loadPurchaseOrders, loadSuppliers } from './supplier-return-service';
 import { loadAllDebtRecords } from './debt-service';
 import { loadCustomers } from './customer-service';
 import { loadAllShiftSummaries } from './shift-service';
-import { bangkokDate, bangkokDayKey, bangkokDayStart, bangkokParts, bangkokStartOfDay, DAY_MS } from './bangkok-date';
+import { bangkokDate, bangkokDayKey, bangkokDayStart, bangkokParts, bangkokStartOfDay, DAY_MS } from '@shared/bangkok-date';
 import { addQty } from './qty';
 
 export type ReportTimeRange = 'today' | 'yesterday' | '7days' | '30days' | 'thisMonth' | 'lastMonth' | 'thisYear' | 'all' | 'custom';

@@ -1,35 +1,32 @@
 import { BadRequestException } from '@nestjs/common';
+import * as bkk from '../../../shared/src/bangkok-date';
 
 /**
  * Store calendar = Asia/Bangkok (UTC+7, no DST), whatever TZ the server process runs in.
- * Every "day" bucket and date-only filter in reports / finance goes through these helpers.
+ * The calendar maths is shared/src/bangkok-date.ts (also used by the screens); this file returns
+ * Date objects and turns bad request parameters into 400 errors.
  */
-export const BANGKOK_OFFSET_MS = 7 * 3600 * 1000;
-export const DAY_MS = 86400000;
-const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+export const BANGKOK_OFFSET_MS = bkk.BANGKOK_OFFSET_MS;
+export const DAY_MS = bkk.DAY_MS;
+const DATE_ONLY = bkk.DATE_ONLY;
 
 /** YYYY-MM-DD of the Bangkok calendar day that contains `d`. */
-export function bangkokDayKey(d: Date | string | number): string {
-  return new Date(new Date(d).getTime() + BANGKOK_OFFSET_MS).toISOString().slice(0, 10);
-}
+export const bangkokDayKey = bkk.bangkokDayKey;
 
 /** Instant of Bangkok 00:00 of the day containing `d`. */
 export function bangkokStartOfDay(d: Date | string | number = new Date()): Date {
-  const t = new Date(d).getTime() + BANGKOK_OFFSET_MS;
-  return new Date(t - (((t % DAY_MS) + DAY_MS) % DAY_MS) - BANGKOK_OFFSET_MS);
+  return new Date(bkk.bangkokStartOfDay(d));
 }
 
 /** Bangkok 00:00 of the 1st of the month containing `d`. */
 export function bangkokStartOfMonth(d: Date | string | number = new Date()): Date {
-  const local = new Date(new Date(d).getTime() + BANGKOK_OFFSET_MS);
-  return new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), 1) - BANGKOK_OFFSET_MS);
+  return new Date(bkk.bangkokStartOfMonth(d));
 }
 
-/** Bangkok 00:00 of a YYYY-MM-DD day key. */
+/** Bangkok 00:00 of a YYYY-MM-DD day key (400 when the key is not a real date). */
 export function bangkokDayStart(key: string): Date {
-  const m = DATE_ONLY.exec(key);
-  if (!m) throw new BadRequestException(`รูปแบบวันที่ไม่ถูกต้อง: ${key}`);
-  const t = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - BANGKOK_OFFSET_MS;
+  const t = bkk.bangkokDayStart(key);
+  if (isNaN(t)) throw new BadRequestException(`รูปแบบวันที่ไม่ถูกต้อง: ${key}`);
   if (bangkokDayKey(t) !== key) throw new BadRequestException(`วันที่ไม่ถูกต้อง: ${key}`);
   return new Date(t);
 }

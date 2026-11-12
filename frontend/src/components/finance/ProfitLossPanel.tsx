@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { bangkokDate, bangkokDayKey, bangkokParts } from '@/lib/bangkok-date';
+import { bangkokDate, bangkokDayKey, bangkokParts } from '@shared/bangkok-date';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';

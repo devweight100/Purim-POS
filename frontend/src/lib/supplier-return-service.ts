@@ -2,7 +2,7 @@ import { ClaimRecord, SupplierReturnNote, SupplierReturnItem, SupplierReturnItem
 import { loadAllClaimRecords, saveClaimRecords, markClaimsAsReturnedToSupplier, updateClaimStatus } from './claim-service';
 import { useProductStore } from './store/product-store';
 import { apiFetch, api } from './api';
-import { grossPerUnit } from './po-calc';
+import { grossPerUnit } from '@shared/po-calc';
 
 const STORAGE_KEY_RETURNS = 'pos_supplier_returns';
 const STORAGE_KEY_SUPPLIERS = 'custom_suppliers';

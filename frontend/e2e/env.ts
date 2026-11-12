@@ -16,8 +16,8 @@ export const FRONTEND_PORT = Number(process.env.E2E_FRONTEND_PORT || 3000);
 export const BACKEND_URL = `http://127.0.0.1:${BACKEND_PORT}`;
 export const FRONTEND_URL = `http://127.0.0.1:${FRONTEND_PORT}`;
 
-/** Compiled backend entry (`npm run build` in backend/ -> dist/src/main.js). */
-export const BACKEND_MAIN = process.env.E2E_BACKEND_MAIN || path.join(BACKEND_DIR, 'dist', 'src', 'main.js');
+/** Compiled backend entry (`npm run build` in backend/ -> dist/backend/src/main.js; shared/ is compiled alongside). */
+export const BACKEND_MAIN = process.env.E2E_BACKEND_MAIN || path.join(BACKEND_DIR, 'dist', 'backend', 'src', 'main.js');
 
 /** Accounts. admin's default password is changed by the global setup; cashier1 keeps the default
  *  so the forced password change can be tested in the browser. */

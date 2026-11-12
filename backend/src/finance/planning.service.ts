@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { grossPerUnit } from '../purchase-orders/po-calc';
+import { grossPerUnit } from '../../../shared/src/po-calc';
 import { PrismaService } from '../prisma/prisma.service';
 import { businessTransaction } from '../prisma/business-transaction';
 import * as ledger from './ledger';

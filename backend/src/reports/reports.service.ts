@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrderStatus } from '@prisma/client';
-import { grossPerUnit } from '../purchase-orders/po-calc';
+import { grossPerUnit } from '../../../shared/src/po-calc';
 import { addDays, bangkokDayKey, bangkokStartOfDay, bangkokStartOfMonth, dateRangeFilter, DAY_MS } from '../common/bangkok-date';
 import { DateRange, paymentChannels, salesTotals, sqlRange } from './sales-math';
 

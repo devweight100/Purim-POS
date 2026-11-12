@@ -264,7 +264,7 @@ try {
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $src = Join-Path $work 'x'
 try { [IO.Compression.ZipFile]::ExtractToDirectory($zip, $src) } catch { Done 1 "แตกไฟล์ไม่สำเร็จ: $($_.Exception.Message)" 'Red' }
-foreach ($need in @('VERSION.json', 'backend\package.json', 'frontend\package.json', 'Installer\Server\setup\install-server.ps1')) {
+foreach ($need in @('VERSION.json', 'backend\package.json', 'frontend\package.json', 'shared\src', 'Installer\Server\setup\install-server.ps1')) {
   if (-not (Test-Path (Join-Path $src $need))) { Done 1 "ไฟล์ที่ดาวน์โหลดไม่ครบ (ไม่พบ $need)" 'Red' }
 }
 $newVersion = Read-JsonFile (Join-Path $src 'VERSION.json')
@@ -274,11 +274,13 @@ Say '[2/3] หยุดเซิร์ฟเวอร์ และแทนท�
 $node = (Get-Command node -ErrorAction SilentlyContinue).Source
 $launcher = Join-Path $InstallDir 'Installer\Server\setup\purim-server.js'
 if ($node -and (Test-Path $launcher)) { & $node $launcher --stop | Out-Null }
-foreach ($d in @('backend\src', 'backend\prisma', 'backend\scripts', 'backend\test', 'backend\dist', 'frontend\src', 'frontend\public', 'frontend\.next', 'Installer\Server\setup')) {
+foreach ($d in @('backend\src', 'backend\prisma', 'backend\scripts', 'backend\test', 'backend\dist', 'frontend\src', 'frontend\public', 'frontend\.next', 'shared', 'Installer\Server\setup')) {
   Remove-Item (Join-Path $InstallDir $d) -Recurse -Force -ErrorAction SilentlyContinue
 }
 & robocopy (Join-Path $src 'backend') (Join-Path $InstallDir 'backend') /E /NFL /NDL /NJH /NJS /NP | Out-Null
 & robocopy (Join-Path $src 'frontend') (Join-Path $InstallDir 'frontend') /E /NFL /NDL /NJH /NJS /NP | Out-Null
+# calculations shared by backend and frontend (both builds compile ..\shared)
+& robocopy (Join-Path $src 'shared') (Join-Path $InstallDir 'shared') /E /NFL /NDL /NJH /NJS /NP | Out-Null
 & robocopy (Join-Path $src 'Installer\Server\setup') (Join-Path $InstallDir 'Installer\Server\setup') /E /NFL /NDL /NJH /NJS /NP | Out-Null
 # control panel (source + exe); install-server.ps1 copies the exe next to the install folder
 & robocopy (Join-Path $src 'Installer\Server\control') (Join-Path $InstallDir 'Installer\Server\control') /E /NFL /NDL /NJH /NJS /NP | Out-Null

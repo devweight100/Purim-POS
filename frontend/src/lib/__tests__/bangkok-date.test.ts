@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bangkokDate, bangkokDayKey, bangkokDayStart, bangkokParts, bangkokStartOfDay } from '@/lib/bangkok-date';
+import { bangkokDate, bangkokDayKey, bangkokDayStart, bangkokParts, bangkokStartOfDay } from '@shared/bangkok-date';
 
 describe('bangkok-date', () => {
   it('bangkokDayKey uses the Bangkok calendar day', () => {

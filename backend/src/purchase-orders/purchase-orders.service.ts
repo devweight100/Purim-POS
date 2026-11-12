@@ -1,5 +1,5 @@
 import { businessTransaction } from '../prisma/business-transaction';
-import { calculatePurchaseBill, stockCostPerUnit } from './po-calc';
+import { calculatePurchaseBill, stockCostPerUnit } from '../../../shared/src/po-calc';
 import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { clampInt, rethrowPrismaError } from '../products/prisma-errors';
 import { PrismaService } from '../prisma/prisma.service';

@@ -20,6 +20,8 @@ const startedAt = new Date().toISOString();
 
 function loadBuildInfo(): VersionInfo | null {
   for (const p of [
+    // dist/backend/src/version -> dist/build-info.json (written by `npm run build`)
+    path.join(__dirname, '..', '..', '..', 'build-info.json'),
     path.join(__dirname, '..', 'build-info.json'),
     path.join(process.cwd(), 'dist', 'build-info.json'),
   ]) {

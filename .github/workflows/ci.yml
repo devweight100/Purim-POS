@@ -36,8 +36,12 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: npx prisma generate
+      # shared/ (repo root) has no dependencies of its own: type-check it standalone (no Node or
+      # DOM types), then the backend build compiles it into dist/shared
+      - name: Type check shared/
+        run: npx tsc -p ../shared
       - run: npm run build
-      - name: Unit tests
+      - name: Unit tests (backend + shared)
         run: npx jest
       - name: End-to-end tests (fresh database)
         run: npx jest --config ./test/jest-e2e.json

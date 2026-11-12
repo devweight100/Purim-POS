@@ -43,6 +43,7 @@ $Required = @(
   'VERSION.json', 'docker-compose.yml', 'Purim POS Server.exe',
   'backend\package.json', 'backend\package-lock.json', 'backend\prisma\schema.prisma', 'backend\src\main.ts', 'backend\scripts\prepare-database.js',
   'frontend\package.json', 'frontend\package-lock.json', 'frontend\next.config.ts',
+  'shared\src\po-calc.ts', 'shared\tsconfig.json',
   'Installer\Server\setup\install-server.ps1', 'Installer\Server\setup\update-from-github.ps1', 'Installer\Server\setup\purim-server.js',
   'Installer\Server\control\Purim POS Server.exe'
 )

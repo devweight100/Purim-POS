@@ -13,6 +13,8 @@
     "target": "ES2023",
     "sourceMap": true,
     "outDir": "./dist",
+    // shared/ (repo root) is compiled with the backend: dist/backend/src/main.js + dist/shared/src/*.js
+    "rootDir": "..",
     "baseUrl": "./",
     "incremental": true,
     "skipLibCheck": true,

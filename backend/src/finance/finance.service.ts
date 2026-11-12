@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { grossPerUnit } from '../purchase-orders/po-calc';
+import { grossPerUnit } from '../../../shared/src/po-calc';
 import { MoneyAccountType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';

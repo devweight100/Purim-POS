@@ -1,5 +1,5 @@
 import { businessTransaction } from '../prisma/business-transaction';
-import { grossPerUnit } from '../purchase-orders/po-calc';
+import { grossPerUnit } from '../../../shared/src/po-calc';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentStatus, VoucherStatus, PaymentMethod, ReturnNoteStatus, POStatus } from '@prisma/client';

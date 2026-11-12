@@ -1,5 +1,6 @@
 /**
- * Purchase bill arithmetic (frontend/src/lib/po-calc.ts is a copy — keep both identical).
+ * Purchase bill arithmetic: the one implementation used by the server (purchase-orders,
+ * payables, finance, reports) and the purchase-order screens.
  *
  * Per line:  quantity x unitCost (price as written on the supplier's bill)
  *            - line discount (baht or %)
@@ -155,4 +156,36 @@ export function stockCostPerUnit(
   const amount = shopVatRegistered ? Number(line.netAmount) : Number(line.total);
   const v = Number.isFinite(amount) ? amount / qty : Number(line.unitCost) || 0;
   return Math.round(v * 10000) / 10000;
+}
+
+/**
+ * A purchase line ordered in a pack unit (e.g. 2 โหล x12 @ 120) expressed in BASE units for the
+ * server, which stores and receives base units only: 24 units @ 10. When the pack price does not
+ * divide into whole satang (100 / 12), the unit cost is rounded UP to the satang and the extra is
+ * given back as a baht line discount, so the line amount, VAT and bill totals stay exactly the same.
+ */
+export function toBaseUnitLine(line: {
+  quantity: number | string;
+  unitCost: number | string;
+  multiplier?: number | string | null;
+  discountType?: string | null;
+  discountValue?: number | string | null;
+}): { quantity: number; unitCost: number; discountType: DiscountType; discountValue: number } {
+  const mult = Math.max(1, Math.round(Number(line.multiplier) || 1));
+  const quantity = Number(line.quantity) || 0;
+  const unitCost = Number(line.unitCost) || 0;
+  const discountType = normDiscountType(line.discountType);
+  const discountValue = Math.max(0, Number(line.discountValue) || 0);
+  if (mult === 1) return { quantity, unitCost, discountType, discountValue };
+
+  const baseQty = quantity * mult;
+  const costCents = Math.round(unitCost * 100);
+  if (costCents % mult === 0) {
+    return { quantity: baseQty, unitCost: costCents / mult / 100, discountType, discountValue };
+  }
+  const baseCost = Math.ceil(costCents / mult) / 100;
+  const originalBase = r2(quantity * unitCost);
+  const lineDiscount = r2(Math.min(originalBase, discountType === 'percent' ? (originalBase * Math.min(discountValue, 100)) / 100 : discountValue));
+  const extra = r2(baseQty * baseCost - originalBase);
+  return { quantity: baseQty, unitCost: baseCost, discountType: 'baht', discountValue: r2(lineDiscount + extra) };
 }

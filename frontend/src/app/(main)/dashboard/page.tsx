@@ -56,7 +56,7 @@ import {
 } from "lucide-react";
 import { fetchAllClaimRecords, loadAllClaimRecords } from "@/lib/claim-service";
 import { ClaimRecord } from "@/lib/types";
-import { bangkokDate, bangkokParts, bangkokStartOfDay, DAY_MS } from "@/lib/bangkok-date";
+import { bangkokDate, bangkokParts, bangkokStartOfDay, DAY_MS } from "@shared/bangkok-date";
 
 // Palette colors for charts
 const COLORS = ["#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#64748b"];

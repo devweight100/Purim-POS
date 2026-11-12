@@ -104,6 +104,14 @@ if ($isAdmin) {
   Warn 'โหมดอัปเดต (ไม่มีสิทธิ์ Administrator): ข้ามการตั้งค่า Firewall/ทางลัด'
 }
 
+# ---------------------------------------------------------------- 0. Program files complete?
+# shared\ holds the calculations compiled into both the backend and the frontend (since v1.6).
+# The "อัปเดตระบบ (GitHub)" button of older versions did not copy it: stop here, before the running
+# server is touched, and ask for a second click (the updater copied by the first click copies it).
+if (-not (Test-Path (Join-Path $InstallDir 'shared\src'))) {
+  Fail 'ไม่พบโฟลเดอร์ shared ในไฟล์โปรแกรม — กด "อัปเดตระบบ (GitHub)" อีกครั้ง หรือรันตัวติดตั้งเครื่องแม่ใหม่ (ข้อมูลร้านไม่ได้รับผลกระทบ)'
+}
+
 # ---------------------------------------------------------------- 1. Node.js
 Step '1/8' 'ตรวจสอบ Node.js'
 Refresh-Path
