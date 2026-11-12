@@ -55,20 +55,28 @@ import { formatCurrency } from "@/lib/utils";
 import { VersionDetails } from "@/components/common/VersionInfo";
 import { clearLocalShopData } from '@/lib/local-data-reset';
 
+/** Printer reported by the desktop (Electron) app. */
+type InstalledPrinter = { name: string; isDefault?: boolean };
+/** The part of the desktop app's preload bridge used here. */
+type ElectronBridge = { getPrinters?: () => Promise<InstalledPrinter[]> };
+const electronBridge = (): ElectronBridge | undefined =>
+  typeof window !== "undefined" ? (window as Window & { electronAPI?: ElectronBridge }).electronAPI : undefined;
+
 function BackupSection() {
   const role = useAuthStore((s) => s.user?.role);
   const allowed = role === "ADMIN" || role === "MANAGER";
   const [files, setFiles] = useState<BackupFile[]>([]);
   const [status, setStatus] = useState<BackupStatus | null>(null);
-  const [loading, setLoading] = useState(false);
+  // shows the spinner from the start when the list is about to load
+  const [loading, setLoading] = useState(allowed);
   const [creating, setCreating] = useState(false);
   const [verifying, setVerifying] = useState<string | null>(null);
   const [verifyMsg, setVerifyMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [offsiteDir, setOffsiteDir] = useState("");
   const [savingOffsite, setSavingOffsite] = useState(false);
 
-  const load = async () => {
-    setLoading(true);
+  /** Loads the backup list; state is only updated after the requests. */
+  const fetchBackups = async () => {
     try {
       const [list, st] = await Promise.all([backupService.list(), backupService.status()]);
       setFiles(list);
@@ -81,9 +89,22 @@ function BackupSection() {
     }
   };
 
+  const load = async () => {
+    setLoading(true);
+    await fetchBackups();
+  };
+
+  // once the role allows it (e.g. after sign-in restored), show the spinner right away
+  const [seenAllowed, setSeenAllowed] = useState(allowed);
+  if (seenAllowed !== allowed) {
+    setSeenAllowed(allowed);
+    if (allowed) setLoading(true);
+  }
+
   useEffect(() => {
-    if (allowed) void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!allowed) return;
+    const run = async () => { await fetchBackups(); };
+    void run();
   }, [allowed]);
 
   if (!allowed) return null;
@@ -250,7 +271,7 @@ export default function SettingsPage() {
 
   // Hardware / Printer detection state
   const [isDesktopApp, setIsDesktopApp] = useState(false);
-  const [installedPrinters, setInstalledPrinters] = useState<any[]>([]);
+  const [installedPrinters, setInstalledPrinters] = useState<InstalledPrinter[]>([]);
   const [loadingPrinters, setLoadingPrinters] = useState(false);
   const [testingKick, setTestingKick] = useState(false);
   const [lastKickResult, setLastKickResult] = useState<{
@@ -260,31 +281,6 @@ export default function SettingsPage() {
     time: string;
   } | null>(null);
 
-  useEffect(() => {
-    let mounted = true;
-    void reloadStoreSettings(() => mounted);
-    setDrawerConfig(getCashDrawerConfig());
-
-    // Check if running inside Electron desktop app and fetch Windows printers
-    if (typeof window !== "undefined" && (window as any).electronAPI) {
-      setIsDesktopApp(true);
-      if ((window as any).electronAPI.getPrinters) {
-        setLoadingPrinters(true);
-        (window as any).electronAPI.getPrinters().then((printers: any[]) => {
-          if (mounted) {
-            setInstalledPrinters(printers || []);
-          }
-        }).catch((e: any) => {
-          console.warn("Failed to load printers:", e);
-        }).finally(() => {
-          if (mounted) setLoadingPrinters(false);
-        });
-      }
-    }
-
-    setLoading(false);
-    return () => { mounted = false; };
-  }, []);
 
   const reloadStoreSettings = async (alive: () => boolean = () => true) => {
     try {
@@ -296,6 +292,37 @@ export default function SettingsPage() {
       if (alive()) setStoreLoadError(errorMessage(err, "ติดต่อเซิร์ฟเวอร์ไม่ได้"));
     }
   };
+
+  useEffect(() => {
+    let mounted = true;
+    const run = async () => { await reloadStoreSettings(() => mounted); };
+    void run();
+    // Browser-only values (drawer config in localStorage, the Electron bridge) exist only after hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from the browser after hydration
+    setDrawerConfig(getCashDrawerConfig());
+
+    // Check if running inside Electron desktop app and fetch Windows printers
+    const bridge = electronBridge();
+    if (bridge) {
+      setIsDesktopApp(true);
+      if (bridge.getPrinters) {
+        setLoadingPrinters(true);
+        bridge.getPrinters().then((printers) => {
+          if (mounted) {
+            setInstalledPrinters(printers || []);
+          }
+        }).catch((e: unknown) => {
+          console.warn("Failed to load printers:", e);
+        }).finally(() => {
+          if (mounted) setLoadingPrinters(false);
+        });
+      }
+    }
+
+    setLoading(false);
+    return () => { mounted = false; };
+  }, []);
+
 
   const handleResetAllData = async () => {
     if (confirmText.trim() !== "RESET") {
@@ -381,10 +408,11 @@ export default function SettingsPage() {
   };
 
   const handleRefreshPrinters = async () => {
-    if (typeof window !== "undefined" && (window as any).electronAPI?.getPrinters) {
+    const bridge = electronBridge();
+    if (bridge?.getPrinters) {
       setLoadingPrinters(true);
       try {
-        const printers = await (window as any).electronAPI.getPrinters();
+        const printers = await bridge.getPrinters();
         setInstalledPrinters(printers || []);
         toast.success(`ค้นพบเครื่องพิมพ์ใน Windows ทั้งหมด ${printers?.length || 0} รายการ`);
       } catch (e) {
@@ -793,7 +821,7 @@ export default function SettingsPage() {
                       className="flex-1 h-9 px-3 text-xs bg-white border border-sky-300 rounded-xl font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
                     >
                       <option value="">-- ตรวจหาอัตโนมัติ (EPSON TM-T82 / Slip / Thermal Receipt) --</option>
-                      {installedPrinters.map((p: any) => (
+                      {installedPrinters.map((p) => (
                         <option key={p.name} value={p.name}>
                           {p.name} {p.isDefault ? '⭐ (เครื่องเริ่มต้น Windows)' : ''}
                         </option>
@@ -808,7 +836,7 @@ export default function SettingsPage() {
                       className="flex-1 h-9 px-3 text-xs bg-white border border-sky-300 rounded-xl font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
                     >
                       <option value="">-- ไม่ระบุ (แสดงหน้าต่างเลือกเครื่องพิมพ์ของ Windows) --</option>
-                      {installedPrinters.map((p: any) => (
+                      {installedPrinters.map((p) => (
                         <option key={p.name} value={p.name}>
                           {p.name} {p.isDefault ? '⭐ (เครื่องเริ่มต้น Windows)' : ''}
                         </option>
