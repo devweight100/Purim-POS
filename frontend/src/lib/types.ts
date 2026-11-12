@@ -1093,8 +1093,30 @@ export interface ApiPurchaseOrder {
   createdAt?: string;
   items?: ApiPurchaseOrderItem[];
   deductedReturns?: ApiPoDeductedReturn[];
-  /** legacy local payment entries (see payable-service PayablePaymentEntry) */
-  payments?: Array<{ netCashOrTransferPaid?: number; discountAmount?: number }>;
+  /** legacy local payment entries */
+  payments?: PayablePaymentEntry[];
+}
+
+/** One payment of a supplier bill (cash/transfer, credit notes and discount of one voucher). */
+export interface PayablePaymentEntry {
+  id: string;
+  voucherId?: string;
+  voucherNumber?: string;
+  paymentDate: string;
+  paymentMethod: 'CASH' | 'TRANSFER' | 'CHEQUE' | 'OTHER';
+  totalBillAmount: number;
+  deductedCreditAmount: number;
+  discountAmount?: number;
+  netCashOrTransferPaid: number;
+  deductedNotes: Array<{
+    returnNoteId: string;
+    amount: number;
+  }>;
+  bankAccountId?: string;
+  bankAccountLabel?: string;
+  referenceNo?: string;
+  note?: string;
+  cashierName: string;
 }
 
 export interface PurchaseOrderWriteRequest {

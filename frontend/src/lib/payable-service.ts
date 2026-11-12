@@ -6,27 +6,13 @@ import {
   fetchSupplierReturnNotes,
 } from './supplier-return-service';
 import { apiFetch, api } from './api';
+import { errorText } from './api-error';
+import {
+  PayablePaymentEntry, ApiPaymentVoucher, ApiPurchaseOrder, ApiPurchaseOrderItem, ApiSupplier, ApiListResponse,
+  apiListRows,
+} from './types';
 
-export interface PayablePaymentEntry {
-  id: string;
-  voucherId?: string;
-  voucherNumber?: string;
-  paymentDate: string;
-  paymentMethod: 'CASH' | 'TRANSFER' | 'CHEQUE' | 'OTHER';
-  totalBillAmount: number;
-  deductedCreditAmount: number;
-  discountAmount?: number;
-  netCashOrTransferPaid: number;
-  deductedNotes: Array<{
-    returnNoteId: string;
-    amount: number;
-  }>;
-  bankAccountId?: string;
-  bankAccountLabel?: string;
-  referenceNo?: string;
-  note?: string;
-  cashierName: string;
-}
+export type { PayablePaymentEntry } from './types';
 
 export interface SupplierPayableBill {
   poId: string;
@@ -48,7 +34,7 @@ export interface SupplierPayableBill {
   alreadyDiscountAmount: number;
   remainingPayable: number;
   itemsCount: number;
-  items?: any[];
+  items?: ApiPurchaseOrderItem[];
   deductedReturns: Array<{
     returnNoteId: string;
     returnNumber: string;
@@ -104,11 +90,11 @@ let vouchersMem: PaymentVoucher[] = [];
 let lastVoucherSyncAt = 0;
 let lastBillsSyncAt = 0;
 
-function normalizeVoucherRow(v: any): PaymentVoucher {
+function normalizeVoucherRow(v: ApiPaymentVoucher | null | undefined): PaymentVoucher {
   const bills: PaymentVoucherBillItem[] = Array.isArray(v?.bills)
     ? v.bills
     : Array.isArray(v?.items)
-    ? v.items.map((item: any) => ({
+    ? v.items.map((item) => ({
         poId: item.purchaseOrderId || item.poId || item.purchaseOrder?.id || '',
         poNumber: item.purchaseOrder?.poNumber || item.poNumber || '',
         supplierInvoiceNo:
@@ -131,7 +117,7 @@ function normalizeVoucherRow(v: any): PaymentVoucher {
   const deductedNotes = Array.isArray(v?.deductedNotes)
     ? v.deductedNotes
     : Array.isArray(v?.debitNotes)
-    ? v.debitNotes.map((dn: any) => ({
+    ? v.debitNotes.map((dn) => ({
         returnNoteId: dn.returnNoteId || dn.returnNote?.id || '',
         amount: Number(dn.amountDeducted ?? dn.amount ?? 0),
       }))
@@ -158,7 +144,7 @@ function normalizeVoucherRow(v: any): PaymentVoucher {
         ? Number(v.discountAmount)
         : undefined,
     netPaidAmount: Number(v?.netPaidAmount ?? 0),
-    paymentMethod: (v?.paymentMethod || 'CASH') as any,
+    paymentMethod: (v?.paymentMethod || 'CASH') as PaymentVoucher['paymentMethod'],
     bankAccountId: v?.bankAccountId || undefined,
     bankAccountLabel: v?.bankAccountLabel || undefined,
     referenceNo: v?.referenceNo || undefined,
@@ -170,11 +156,11 @@ function normalizeVoucherRow(v: any): PaymentVoucher {
 
 /** Payment vouchers from the server. Throws when the server cannot be reached. */
 export async function fetchPaymentVouchers(): Promise<PaymentVoucher[]> {
-  const res = await apiFetch('/payables/vouchers?limit=200');
-  const list = res?.data ?? (Array.isArray(res) ? res : null);
+  const res = await apiFetch<ApiListResponse<ApiPaymentVoucher> | null>('/payables/vouchers?limit=200');
+  const list = apiListRows(res);
   if (!Array.isArray(list)) throw new Error('ข้อมูลใบสำคัญจ่ายจากเซิร์ฟเวอร์ไม่ถูกต้อง');
   lastVoucherSyncAt = Date.now();
-  vouchersMem = list.map((v: any) => normalizeVoucherRow(v));
+  vouchersMem = list.map((v) => normalizeVoucherRow(v));
   return vouchersMem;
 }
 
@@ -203,8 +189,8 @@ export async function updateBillInvoiceNo(
       supplierInvoiceNo: cleanNo,
       ...(supplierInvoiceDate ? { billDate: supplierInvoiceDate } : {}),
     });
-  } catch (err: any) {
-    return { success: false, message: err?.message || 'บันทึกเลขที่บิลผู้จำหน่ายไม่สำเร็จ' };
+  } catch (err) {
+    return { success: false, message: errorText(err) || 'บันทึกเลขที่บิลผู้จำหน่ายไม่สำเร็จ' };
   }
   await fetchPurchaseOrders().catch(() => undefined);
   return { success: true, message: 'บันทึกเลขที่บิลผู้จำหน่ายเรียบร้อยแล้ว' };
@@ -217,11 +203,11 @@ async function refreshAfterPayableWrite(): Promise<void> {
 
 const PAYABLE_PO_STATUSES = ['PARTIALLY_RECEIVED', 'RECEIVED', 'COMPLETED'];
 
-function receivedValueOf(po: any): number {
+function receivedValueOf(po: ApiPurchaseOrder): number {
   const items = Array.isArray(po.items) ? po.items : [];
   if (!items.length) return Number(po.totalAmount || 0);
   return items.reduce(
-    (sum: number, i: any) => sum + (Number(i.receivedQty ?? i.receivedQuantity) || 0) * (Number(i.unitCost) || 0),
+    (sum: number, i) => sum + (Number(i.receivedQty ?? i.receivedQuantity) || 0) * (Number(i.unitCost) || 0),
     0,
   );
 }
@@ -239,8 +225,8 @@ function toBackendPaymentMethod(method: string, note?: string): { paymentMethod:
 }
 
 function mapPosToPayableBills(
-  pos: any[],
-  suppliers: any[],
+  pos: ApiPurchaseOrder[],
+  suppliers: ApiSupplier[],
   vouchers: PaymentVoucher[],
 ): SupplierPayableBill[] {
   const activeVouchers = Array.isArray(vouchers)
@@ -249,13 +235,13 @@ function mapPosToPayableBills(
 
   return pos
     // A supplier bill becomes payable only once goods were actually received.
-    .filter((po: any) => PAYABLE_PO_STATUSES.includes(po.status))
-    .map((po: any) => {
+    .filter((po) => PAYABLE_PO_STATUSES.includes(po.status))
+    .map((po) => {
       const totalAmount = Number(po.totalAmount || 0);
 
       const deductedReturns = Array.isArray(po.deductedReturns) ? po.deductedReturns : [];
       const alreadyDeducted = deductedReturns.reduce(
-        (sum: number, r: any) => sum + Number(r.amount || 0),
+        (sum: number, r) => sum + Number(r.amount || 0),
         0,
       );
 
@@ -291,13 +277,13 @@ function mapPosToPayableBills(
       }
 
       const paymentsPaidSum = payments.reduce(
-        (sum: number, p: any) => sum + Number(p.netCashOrTransferPaid || 0),
+        (sum: number, p) => sum + Number(p.netCashOrTransferPaid || 0),
         0,
       );
       const alreadyPaid =
         paymentsPaidSum > 0 ? paymentsPaidSum : Number(po.paidAmount || 0);
       const alreadyDiscount = payments.reduce(
-        (sum: number, p: any) => sum + Number(p.discountAmount || 0),
+        (sum: number, p) => sum + Number(p.discountAmount || 0),
         0,
       );
 
@@ -329,8 +315,8 @@ function mapPosToPayableBills(
         paymentStatus = po.paymentStatus;
       }
 
-      const supp =
-        suppliers.find((s: any) => s.id === (po.supplierId || po.supplier?.id)) ||
+      const supp: Partial<ApiSupplier> =
+        suppliers.find((s) => s.id === (po.supplierId || po.supplier?.id)) ||
         po.supplier ||
         {};
 
@@ -341,9 +327,9 @@ function mapPosToPayableBills(
         supplierInvoiceDate: po.supplierInvoiceDate || po.invoiceDate || '',
         supplierId: po.supplierId || supp.id || '',
         supplierName: po.supplierName || supp.name || 'ไม่ระบุผู้จำหน่าย',
-        supplierContact: supp.contactName,
-        supplierPhone: supp.phone,
-        supplierAddress: supp.address,
+        supplierContact: supp.contactName ?? undefined,
+        supplierPhone: supp.phone ?? undefined,
+        supplierAddress: supp.address ?? undefined,
         billDate:
           po.billDate || po.createdAt || po.issueDate || po.issuedAt || new Date().toISOString(),
         status: po.status,
@@ -414,7 +400,7 @@ export async function settlePayableBill(params: SettlePayableParams): Promise<{
   }
 
   // Settlement is recorded in the database first; nothing is saved locally if the backend refuses it.
-  let backendVoucher: any = null;
+  let backendVoucher: ApiPaymentVoucher | null = null;
   const supplierId = targetPo.supplierId || targetPo.supplier?.id;
   if (!supplierId) return { success: false, message: 'บิลนี้ไม่มีข้อมูลผู้จำหน่าย' };
   {
@@ -447,17 +433,18 @@ export async function settlePayableBill(params: SettlePayableParams): Promise<{
       if (res && res.voucher) {
         backendVoucher = res.voucher;
       }
-    } catch (apiErr: any) {
-      return { success: false, message: apiErr?.message || 'บันทึกการชำระเงินลงฐานข้อมูลไม่สำเร็จ' };
+    } catch (apiErr) {
+      return { success: false, message: errorText(apiErr) || 'บันทึกการชำระเงินลงฐานข้อมูลไม่สำเร็จ' };
     }
-    if (!backendVoucher) return { success: false, message: 'เซิร์ฟเวอร์ไม่ได้ออกใบสำคัญจ่าย กรุณาลองใหม่' };
   }
+  if (!backendVoucher) return { success: false, message: 'เซิร์ฟเวอร์ไม่ได้ออกใบสำคัญจ่าย กรุณาลองใหม่' };
+  const savedVoucher: ApiPaymentVoucher = backendVoucher;
 
   // The database committed the payment (and the credit-note deductions); show its record.
   await refreshAfterPayableWrite();
   const voucher =
-    vouchersMem.find((v) => v.id === backendVoucher.id || v.voucherNumber === backendVoucher.voucherNumber) ||
-    normalizeVoucherRow(backendVoucher);
+    vouchersMem.find((v) => v.id === savedVoucher.id || v.voucherNumber === savedVoucher.voucherNumber) ||
+    normalizeVoucherRow(savedVoucher);
   const billItem = voucher.bills.find((b) => b.poId === targetPo.id || b.poNumber === targetPo.poNumber);
   const paymentEntry: PayablePaymentEntry = {
     id: `PAY-${voucher.id}-${targetPo.id}`,
@@ -516,7 +503,7 @@ export async function settleMultipleBills(params: SettleMultipleBillsParams): Pr
   message: string;
   voucher?: PaymentVoucher;
 }> {
-  let backendVoucher: any = null;
+  let backendVoucher: ApiPaymentVoucher | null = null;
   const method = toBackendPaymentMethod(params.paymentMethod, params.note);
   try {
     const payload = {
@@ -545,17 +532,18 @@ export async function settleMultipleBills(params: SettleMultipleBillsParams): Pr
     if (res && res.voucher) {
       backendVoucher = res.voucher;
     }
-  } catch (apiErr: any) {
+  } catch (apiErr) {
     // No local fallback: a voucher that exists only in this browser would desync payables.
-    return { success: false, message: apiErr?.message || 'บันทึกใบสำคัญจ่ายลงฐานข้อมูลไม่สำเร็จ' };
+    return { success: false, message: errorText(apiErr) || 'บันทึกใบสำคัญจ่ายลงฐานข้อมูลไม่สำเร็จ' };
   }
   if (!backendVoucher) return { success: false, message: 'เซิร์ฟเวอร์ไม่ได้ออกใบสำคัญจ่าย กรุณาลองใหม่' };
+  const savedVoucher: ApiPaymentVoucher = backendVoucher;
 
   // The database committed the voucher; show its record (nothing is bookkept locally).
   await refreshAfterPayableWrite();
   const voucher =
-    vouchersMem.find((v) => v.id === backendVoucher.id || v.voucherNumber === backendVoucher.voucherNumber) ||
-    normalizeVoucherRow(backendVoucher);
+    vouchersMem.find((v) => v.id === savedVoucher.id || v.voucherNumber === savedVoucher.voucherNumber) ||
+    normalizeVoucherRow(savedVoucher);
   return {
     success: true,
     message: `สร้างใบชำระหนี้ ${voucher.voucherNumber} สำเร็จ (${voucher.bills.length || params.billsToSettle.length} บิล)`,
@@ -598,8 +586,8 @@ export async function cancelPayableBill(
       method: 'POST',
       body: JSON.stringify({ reason: reason || 'ยกเลิกบิลเจ้าหนี้โดยผู้ใช้งาน' }),
     });
-  } catch (err: any) {
-    return { success: false, message: err?.message || 'ยกเลิกบิลไม่สำเร็จ' };
+  } catch (err) {
+    return { success: false, message: errorText(err) || 'ยกเลิกบิลไม่สำเร็จ' };
   }
   await refreshAfterPayableWrite();
   return { success: true, message: `ยกเลิกบิล ${po?.poNumber || ''} เรียบร้อยแล้ว` };
@@ -616,8 +604,8 @@ export async function cancelPaymentVoucher(
   }
   try {
     await api.payables.cancelVoucher(voucher?.id || voucherId, cancelReason?.trim() || 'ยกเลิกใบสำคัญจ่ายโดยผู้ใช้');
-  } catch (apiErr: any) {
-    return { success: false, message: apiErr?.message || 'ยกเลิกใบสำคัญจ่ายในฐานข้อมูลไม่สำเร็จ' };
+  } catch (apiErr) {
+    return { success: false, message: errorText(apiErr) || 'ยกเลิกใบสำคัญจ่ายในฐานข้อมูลไม่สำเร็จ' };
   }
   await refreshAfterPayableWrite();
   return {
