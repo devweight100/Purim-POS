@@ -1,55 +1,27 @@
 'use client';
 
 import { DebtRecord, DebtPaymentInstallment, DebtStatus, Order, PaymentMethodType } from './types';
-import { loadCustomers, Customer } from './customer-service';
 import { apiFetch } from './api';
 import { isRetryableError } from './api-error';
 import { newOperationId } from './order-sync-service';
 import { useShiftStore } from './store/shift-store';
 
-const STORAGE_KEY_DEBT_PAYMENTS = 'pos_debt_payments_history';
-const STORAGE_KEY_MANUAL_DEBTS = 'pos_manual_debt_records';
-const STORAGE_KEY_CONFIRMED_DEBTS = 'pos_confirmed_debts';
-
 let lastDebtSyncAt = 0;
+/** Last debt list the server returned in this session (memory only, never localStorage). */
+let lastServerDebts: DebtRecord[] = [];
 
 /**
- * Initial sample credit orders for mock customers with initial debt
- */
-const INITIAL_SAMPLE_DEBTS: DebtRecord[] = [];
-
-function getStoredInstallments(): Record<string, DebtPaymentInstallment[]> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_DEBT_PAYMENTS);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Load all credit orders & customer debts from confirmed backend mirror (or offline fallback)
+ * Debts the server returned most recently in this session (empty until the first fetch) and a
+ * background refresh. Pages that show debts call fetchDebtRecords() and handle its errors.
  */
 export function loadAllDebtRecords(): DebtRecord[] {
-  if (typeof window === 'undefined') return INITIAL_SAMPLE_DEBTS;
+  if (typeof window === 'undefined') return [];
 
   if (Date.now() - lastDebtSyncAt > 10000) {
     lastDebtSyncAt = Date.now();
     void fetchDebtRecords().catch(() => {});
   }
-
-  try {
-    const confirmed = localStorage.getItem(STORAGE_KEY_CONFIRMED_DEBTS);
-    if (confirmed !== null) {
-      const parsed = JSON.parse(confirmed);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {}
-
-  // Debts exist only in the database. Never derive "debts" from bills cached in this browser
-  // (they could be voided / unsynced and would show phantom balances).
-  return [];
+  return lastServerDebts;
 }
 
 function mapDebt(row: any): DebtRecord {
@@ -116,11 +88,7 @@ export async function fetchDebtRecords(): Promise<DebtRecord[]> {
     page++;
   }
   lastDebtSyncAt = Date.now();
-  try {
-    // Always overwrite localStorage mirror even when rows is empty []
-    localStorage.setItem(STORAGE_KEY_CONFIRMED_DEBTS, JSON.stringify(rows));
-    localStorage.removeItem(STORAGE_KEY_MANUAL_DEBTS);
-  } catch {}
+  lastServerDebts = rows;
   return rows;
 }
 
@@ -176,14 +144,8 @@ export async function recordDebtPayment(
   const installment = debtRecord.installments.find((row) => row.id === response.payment.id);
   try {
     localStorage.removeItem(key);
-    const cached: DebtRecord[] = JSON.parse(
-      localStorage.getItem(STORAGE_KEY_CONFIRMED_DEBTS) || '[]',
-    );
-    localStorage.setItem(
-      STORAGE_KEY_CONFIRMED_DEBTS,
-      JSON.stringify([...cached.filter((row) => row.orderId !== orderId), debtRecord]),
-    );
   } catch {}
+  lastServerDebts = [...lastServerDebts.filter((row) => row.orderId !== orderId), debtRecord];
   void useShiftStore.getState().fetchCurrentShift();
   return { success: true, debtRecord, installment };
 }

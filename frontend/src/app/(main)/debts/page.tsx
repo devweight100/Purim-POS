@@ -48,6 +48,7 @@ import { DebtReceiptPdfModal } from '@/components/debts/DebtReceiptPdfModal';
 import { DebtHistoryModal } from '@/components/debts/DebtHistoryModal';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { toast } from 'sonner';
+import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 
 function DebtsContent() {
   const router = useRouter();
@@ -86,16 +87,17 @@ function DebtsContent() {
   const [receiptDebtRecord, setReceiptDebtRecord] = useState<DebtRecord | null>(null);
   const [receiptInstallment, setReceiptInstallment] = useState<DebtPaymentInstallment | null>(null);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
   const reloadData = async () => {
     setLoading(true);
     try {
       const records = await fetchDebtRecords();
       setDebts(records);
+      setLoadError(null);
     } catch (err: any) {
       console.warn('Failed to load debt records:', err);
-      if (err?.status !== 401) {
-        toast.error('ไม่สามารถโหลดข้อมูลบิลค้างชำระได้');
-      }
+      setDebts([]);
+      setLoadError(errorMessage(err, 'ไม่สามารถโหลดข้อมูลบิลค้างชำระได้'));
     } finally {
       setLoading(false);
     }
@@ -452,6 +454,12 @@ function DebtsContent() {
                   <TableCell colSpan={10} className="text-center py-8 text-slate-400 text-sm">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-1.5 text-indigo-500" />
                     กำลังโหลดข้อมูลลูกหนี้และบิลค้างชำระ...
+                  </TableCell>
+                </TableRow>
+              ) : loadError ? (
+                <TableRow>
+                  <TableCell colSpan={10}>
+                    <LoadErrorState message={loadError} onRetry={() => void reloadData()} />
                   </TableCell>
                 </TableRow>
               ) : paginatedDebts.length === 0 ? (
