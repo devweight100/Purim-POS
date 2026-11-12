@@ -2,7 +2,7 @@ import { getLowStockThreshold } from '@/lib/store-settings-storage';
 import { create } from 'zustand';
 import { api, apiFetch } from '../api';
 import { Product, Category, ProductUnit } from '../types';
-import { mirrorCategoriesToStorage } from '../category-storage';
+import { cacheServerCategories, readCachedCategories } from '../category-storage';
 import { addQty } from '../qty';
 
 interface ProductStore {
@@ -35,7 +35,7 @@ export const useProductStore = create<ProductStore>((set, get) => ({
       try {
         const fetchedCats = await apiFetch('/categories');
         if (Array.isArray(fetchedCats)) {
-          loadedCategories = mirrorCategoriesToStorage(fetchedCats);
+          loadedCategories = cacheServerCategories(fetchedCats);
         }
       } catch (e) {
         console.warn('[ProductStore] Failed to fetch categories from backend:', e);

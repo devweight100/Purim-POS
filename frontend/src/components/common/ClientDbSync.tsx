@@ -14,6 +14,7 @@ import { fetchCustomers } from '@/lib/customer-service';
 import { api, apiFetch, getAuthToken } from '@/lib/api';
 import { getTerminalId } from '@/lib/terminal-id';
 import { startRealtime, RealtimeEvent } from '@/lib/realtime';
+import { clearLegacyLocalData } from '@/lib/local-data-reset';
 
 export function ClientDbSync() {
   const status = useConnectionStatus();
@@ -21,6 +22,10 @@ export function ClientDbSync() {
   const userId = useAuthStore((s) => s.user?.id);
   const [expanded, setExpanded] = useState(false);
   const [rows, setRows] = useState<OfflineOrder[]>([]);
+
+  useEffect(() => {
+    clearLegacyLocalData();
+  }, []);
 
   useEffect(() => {
     let disposed = false;
