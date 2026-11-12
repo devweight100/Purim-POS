@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { MoneyAccountType, MoneyDirection, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import { round2 } from '../../../shared/src/money';
 
 /**
  * Money ledger helpers. Every function takes the caller's transaction client so the money
@@ -27,7 +28,6 @@ export interface PostInput {
   occurredAt?: Date;
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
  * Date of a sale's ledger rows = the bill date. Offline bills synced later (back-dated createdAt) are

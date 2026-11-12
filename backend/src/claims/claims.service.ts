@@ -6,6 +6,7 @@ import { CashMovementType, ClaimStatus, ClaimType, OrderStatus, ShiftStatus } fr
 import { ShiftsService } from '../shifts/shifts.service';
 import { userHasPermission } from '../auth/permissions';
 import { addQty, assertQtyAllowed, decimalQtyAllowed, fromHund, hasMax2Decimals, mulQty, qn, roundQty, subQty, toHund } from '../common/qty';
+import { round2 } from '../../../shared/src/money';
 
 export interface ClaimActor {
   id: string;
@@ -48,7 +49,6 @@ export function canTransition(from: FrontendStatus, to: FrontendStatus) {
   return from === to || CLAIM_TRANSITIONS[from].includes(to);
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** Claim stock quantity: never negative, at most 2 decimals (whole units unless the store allows decimals). */
 export function parseClaimStockQuantity(raw: unknown): number {

@@ -1,3 +1,4 @@
+import { round2 } from '@shared/money';
 /**
  * One mapping from an order (backend response or a locally kept POS order) to the data the
  * printed documents need. Every reprint entry point (orders page, POS order history, document
@@ -58,7 +59,6 @@ const num = (v: unknown): number => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 function mapPayments(order: any): MappedPayment[] {
   if (Array.isArray(order?.payments)) {

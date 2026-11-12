@@ -14,6 +14,7 @@ import { randomUUID } from 'crypto';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaClient } from '@prisma/client';
+import * as legacy from './legacy/reports-client-legacy';
 
 const dbName = (() => { try { return new URL(process.env.DATABASE_URL || '').pathname.slice(1); } catch { return ''; } })();
 const enabled = /test/i.test(dbName);
@@ -245,6 +246,88 @@ d('store flow (e2e)', () => {
     it('cash forecast ends at start + in - out', async () => {
       const fc = (await api('get', '/finance/forecast?days=30', A)).body;
       expect(fc.endCash).toBeCloseTo(fc.startCash + fc.totals.in - fc.totals.out, 2);
+    });
+  });
+  describe('reports: GET /reports/tabs equals what the Reports page computed in the browser', () => {
+    const day = 86400000;
+    const bkkDay = (t: number) => new Date(t + 7 * 3600000).toISOString().slice(0, 10);
+    it('adds back-dated and discounted bills, a transfer sale and a return in another period', async () => {
+      state.shift3 = (await api('post', '/shifts/open', A, { startingCash: 0, terminalId: 'e2e-term-3' }).expect(201)).body.shift;
+      const sell = (createdAt: string, qty: number, extra: any, method = 'CASH') =>
+        api('post', '/orders/checkout', A, {
+          clientOrderId: randomUUID(), shiftId: state.shift3.id, createdAt,
+          items: [{ productId: state.p.id, quantity: qty, unitPrice: state.price, ...(extra.line || {}) }],
+          payments: [{ method, amount: Math.round((state.price * qty - (extra.line?.discountAmount || 0) - (extra.discountAmount || 0)) * 100) / 100 }],
+          ...(extra.discountAmount ? { discountAmount: extra.discountAmount } : {}),
+        }).expect(201);
+      const old = (await sell(new Date(Date.now() - 40 * day).toISOString(), 3, { discountAmount: 2.5, line: { discountAmount: 1.25 } }, 'TRANSFER')).body;
+      await sell(new Date(Date.now() - 400 * day).toISOString(), 1, {});
+      await sell(new Date(Date.now() - 3 * day).toISOString(), 2, { discountAmount: 1 }, 'QR_PROMPTPAY');
+      // returned today, sold 40 days ago: counts in today's period, not the bill's
+      await api('post', `/orders/${old.id}/returns`, A, { clientReturnId: randomUUID(), items: [{ orderItemId: old.items[0].id, quantity: 1 }], refundMethod: 'CASH', shiftId: state.shift3.id, reason: 'e2e parity' }).expect(201);
+    });
+
+    it('every tab, every period: same numbers as the old client-side functions', async () => {
+      const unwrap = (b: any) => (Array.isArray(b?.data) ? b.data : Array.isArray(b) ? b : []);
+      // what the old page downloaded
+      const analytics = (await api('get', '/reports/analytics', A).expect(200)).body;
+      const [claims, debts, customers, shifts, suppliers, rawProducts] = await Promise.all(
+        ['/claims?limit=5000', '/debts?limit=5000', '/customers?limit=5000', '/shifts/history?limit=1000', '/suppliers', '/products'].map(async (p) => unwrap((await api('get', p, A).expect(200)).body)),
+      );
+      const products = legacy.legacyFormatProducts(rawProducts);
+      const rawOrders = analytics.orders;
+      expect(rawOrders.length).toBeGreaterThan(5);
+
+      const periods: [string, string?, string?][] = [
+        ['today'], ['yesterday'], ['7days'], ['30days'], ['thisMonth'], ['lastMonth'], ['thisYear'], ['all'],
+        ['custom', bkkDay(Date.now() - 45 * day), bkkDay(Date.now() - day)],
+        ['custom', bkkDay(Date.now() - 45 * day)],
+      ];
+      for (const [timeRange, customStart, customEnd] of periods) {
+        const tr = timeRange as any;
+        // ReportsView.tsx (before): the same memo chain
+        const filteredOrders = legacy.filterOrdersByDateRange(rawOrders, tr, customStart, customEnd);
+        const rangeReturns = legacy.returnsInRange(rawOrders, tr, customStart, customEnd);
+        const { start, end } = legacy.reportRangeBounds(tr, customStart, customEnd);
+        const inRange = (iso: string) => { const t = new Date(iso).getTime(); return isNaN(t) || (t >= start && t < end); };
+        const events = legacy.filterOrdersByDateRange(analytics.claimAccounting.events, tr, customStart, customEnd);
+        const recoveries = legacy.filterOrdersByDateRange(analytics.claimAccounting.supplierRecoveries, tr, customStart, customEnd);
+        const replacementCost = events.reduce((sum: number, e: any) => sum + (Number(e.replacementCost) || 0), 0);
+        const refundsPaid = events.reduce((sum: number, e: any) => sum + (Number(e.refundPaid) || 0), 0);
+        const supplierRecovery = recoveries.reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0);
+        const expected = {
+          sales: legacy.calculateSalesAndProfitReport(filteredOrders, products, rangeReturns),
+          claimsAndVat: { replacementCost, refundsPaid, supplierRecovery, claimNetCost: replacementCost + refundsPaid - supplierRecovery, ...legacy.calculateVatSummary(filteredOrders, rangeReturns) },
+          bestsellers: legacy.calculateBestSellingProducts(filteredOrders, products, rangeReturns),
+          inventory: legacy.calculateInventoryValuationReport(products, rawOrders, analytics.stockBatchValuation.byProductId, { lowStockThreshold: analytics.lowStockThreshold, lastReceivedAtByProduct: analytics.lastReceivedAtByProduct }),
+          payments: legacy.calculatePaymentsAndShiftsReport(filteredOrders, shifts, { returns: rangeReturns, debtReceipts: analytics.debtReceipts, inRange }),
+          customers: legacy.calculateCustomerAndDebtsReport(filteredOrders, debts, customers),
+          purchases: legacy.calculatePurchasesAndClaimsReport(analytics.purchases, legacy.filterOrdersByDateRange(claims, tr, customStart, customEnd), suppliers, inRange),
+        };
+        const q = new URLSearchParams({ range: timeRange, ...(customStart ? { start: customStart } : {}), ...(customEnd ? { end: customEnd } : {}) });
+        const got = (await api('get', `/reports/tabs?${q}`, A).expect(200)).body;
+        const label = `${timeRange} ${customStart || ''} ${customEnd || ''}`;
+        for (const k of Object.keys(expected) as (keyof typeof expected)[]) {
+          expect({ label, tab: k, value: got[k] }).toEqual({ label, tab: k, value: JSON.parse(JSON.stringify(expected[k])) });
+        }
+        // one tab at a time (what the page asks for) gives the same figures
+        const one = (await api('get', `/reports/tabs?${q}&tab=payments`, A).expect(200)).body;
+        expect(one.payments).toEqual(got.payments);
+        expect(one.sales).toBeUndefined();
+      }
+      // the data really exercised the netting rules
+      const all = (await api('get', '/reports/tabs?range=all', A)).body;
+      expect(all.sales.totalReturns).toBeGreaterThan(0);
+      expect(all.sales.totalDiscounts).toBeGreaterThan(0);
+      expect(all.purchases.totalPurchasesOverall).toBeGreaterThan(0);
+      expect(all.customers.totalOutstandingDebt).toBeGreaterThan(0);
+      expect(all.payments.shifts.totalShiftsCount).toBeGreaterThan(0);
+    });
+
+    it('rejects bad parameters with 400', async () => {
+      await api('get', '/reports/tabs?range=week', A).expect(400);
+      await api('get', '/reports/tabs?range=custom&start=2026-02-30', A).expect(400);
+      await api('get', '/reports/tabs?tab=nope', A).expect(400);
     });
   });
 });

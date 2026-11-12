@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { calculatePurchaseBill } from '@/lib/po-calc';
+import { calculatePurchaseBill } from '@shared/po-calc';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Printer, Download, FileText, CheckCircle2, Store, Building2, Calendar, FileCheck } from 'lucide-react';
@@ -97,7 +97,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
   const rawItems = poData.items || poData.orderItems || poData.purchaseOrderItems || [];
   const items = Array.isArray(rawItems) ? rawItems : [];
 
-  // Same arithmetic as the server (lib/po-calc.ts): per-line discount, bill discount, per-line VAT.
+  // Same arithmetic as the server (shared/src/po-calc.ts): per-line discount, bill discount, per-line VAT.
   // Old local-only POs had one VAT setting for the whole bill.
   const legacyVat = poData.vatType || (poData.hasVat ? 'include' : 'none');
   const calc = calculatePurchaseBill(

@@ -6,7 +6,7 @@ import {
   normVatType,
   stockCostPerUnit,
   toBaseUnitLine,
-} from '@/lib/po-calc';
+} from '@shared/po-calc';
 
 describe('normalisers', () => {
   it('maps VAT type spellings', () => {

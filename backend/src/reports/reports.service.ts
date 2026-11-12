@@ -2,12 +2,41 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrderStatus } from '@prisma/client';
-import { grossPerUnit } from '../purchase-orders/po-calc';
-import { addDays, bangkokDayKey, bangkokStartOfDay, bangkokStartOfMonth, dateRangeFilter, DAY_MS } from '../common/bangkok-date';
+import { grossPerUnit } from '../../../shared/src/po-calc';
+import { addDays, bangkokDayKey, bangkokDayStart, bangkokStartOfDay, bangkokStartOfMonth, dateRangeFilter, DAY_MS } from '../common/bangkok-date';
 import { DateRange, paymentChannels, salesTotals, sqlRange } from './sales-math';
+import { round2 } from '../../../shared/src/money';
+import { REPORT_TIME_RANGES, reportRangeBounds, type ReportTimeRange } from '../../../shared/src/bangkok-date';
+import { quantitiesToNumbers } from '../common/qty';
+import { costFilterFor } from '../products/cost-visibility';
+import { ProductsService } from '../products/products.service';
+import { ShiftsService } from '../shifts/shifts.service';
+import { DebtsService } from '../debts/debts.service';
+import { ClaimsService } from '../claims/claims.service';
+import {
+  calculateBestSellingProducts,
+  calculateClaimsAndVat,
+  calculateCustomerAndDebtsReport,
+  calculateInventoryValuationReport,
+  calculatePaymentsAndShiftsReport,
+  calculatePurchasesAndClaimsReport,
+  calculateSalesAndProfitReport,
+  type ClaimAccountingRows,
+  DEFAULT_LOW_STOCK_THRESHOLD,
+  filterOrdersByDateRange,
+  returnsInRange,
+  toReportProduct,
+} from './report-tabs';
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
-export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
+export { DEFAULT_LOW_STOCK_THRESHOLD };
+export const REPORT_TABS = ['sales', 'bestsellers', 'inventory', 'payments', 'customers', 'purchases'] as const;
+export type ReportTab = (typeof REPORT_TABS)[number];
+
+/**
+ * Data exactly as the API sends it (QtyResponseInterceptor + JSON): Decimal quantities -> numbers,
+ * money Decimals -> strings, Dates -> ISO strings. The report functions read this shape.
+ */
+const toWire = <T>(value: T): any => JSON.parse(JSON.stringify(quantitiesToNumbers(value)));
 const DASHBOARD_RANGES = ['today', '7days', '30days', 'month', 'all'] as const;
 type DashboardRange = (typeof DASHBOARD_RANGES)[number];
 
@@ -35,7 +64,13 @@ export function valueStock(batches: { productId: string; quantityRemaining: unkn
 
 @Injectable()
 export class ReportsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private products: ProductsService,
+    private shifts: ShiftsService,
+    private debts: DebtsService,
+    private claims: ClaimsService,
+  ) {}
 
   async lowStockThreshold(): Promise<number> {
     const s = await this.prisma.storeSettings.findFirst({ select: { lowStockThreshold: true } });
@@ -282,8 +317,148 @@ export class ReportsService {
       }
     }
 
-    // Claim accounting: cost of replacement goods handed out, cash/transfer refunds paid to
-    // customers, and value recovered from suppliers via credit notes for defective goods.
+    const claimAccounting = await this.claimAccounting(range);
+
+    return {
+      orders,
+      lowStockThreshold: threshold,
+      lastReceivedAtByProduct: Object.fromEntries(lastReceipts.map((r) => [r.productId, r._max.receivedAt?.toISOString() ?? null])),
+      debtReceipts: debtPayments.map((d) => ({ amount: Number(d.amount), method: d.paymentMethod, createdAt: d.paymentDate.toISOString() })),
+      purchases: await this.purchasesData(range),
+      claimAccounting,
+      stockBatchValuation: { byProductId: batchValuationByProduct, totalInventoryCostValue },
+    };
+  }
+
+  /** Orders as the reports read them (items + product, payments, customer, cashier, partial returns). */
+  private static readonly REPORT_ORDER_INCLUDE = {
+    items: { include: { product: true } },
+    payments: true,
+    customer: { select: { id: true, name: true, phone: true } },
+    user: { select: { id: true, fullName: true } },
+    returns: {
+      select: {
+        refundAmount: true, vatAmount: true, cogsReturned: true, refundMethod: true, createdAt: true,
+        items: { select: { orderItemId: true, productId: true, quantity: true, baseQuantity: true, refundAmount: true, unitCost: true, restock: true } },
+      },
+    },
+  } satisfies Prisma.OrderInclude;
+
+  /**
+   * Every figure of the Reports page for one period (GET /reports/tabs). The page no longer
+   * downloads orders / claims / debts / shifts to add them up itself: all report numbers are
+   * computed here, with the functions in report-tabs.ts.
+   *
+   * range: today | yesterday | 7days | 30days (default) | thisMonth | lastMonth | thisYear | all | custom
+   * (custom: start / end = YYYY-MM-DD Bangkok days, end inclusive). tab: one of REPORT_TABS to
+   * compute only that tab (the page asks for the tab on screen); omitted = all tabs.
+   */
+  async getReportTabs(q: { range?: string; start?: string; end?: string; tab?: string }, user?: any) {
+    const timeRange = (q.range || '30days') as ReportTimeRange;
+    if (!REPORT_TIME_RANGES.includes(timeRange)) throw new BadRequestException(`ช่วงเวลาไม่ถูกต้อง (${REPORT_TIME_RANGES.join(', ')})`);
+    const customStart = timeRange === 'custom' ? q.start || undefined : undefined;
+    const customEnd = timeRange === 'custom' ? q.end || undefined : undefined;
+    if (customStart) bangkokDayStart(customStart); // 400 on a malformed date
+    if (customEnd) bangkokDayStart(customEnd);
+    const tabs: ReportTab[] = q.tab ? [q.tab as ReportTab] : [...REPORT_TABS];
+    if (tabs.some((t) => !REPORT_TABS.includes(t))) throw new BadRequestException(`tab ไม่ถูกต้อง (${REPORT_TABS.join(', ')})`);
+    const want = (t: ReportTab) => tabs.includes(t);
+
+    const now = Date.now();
+    const { start, end } = reportRangeBounds(timeRange, customStart, customEnd, now);
+    const range: DateRange = Number.isFinite(start) || Number.isFinite(end)
+      ? { ...(Number.isFinite(start) ? { gte: new Date(start) } : {}), ...(Number.isFinite(end) ? { lt: new Date(end) } : {}) }
+      : undefined;
+    const inRange = (iso: string) => {
+      const t = new Date(iso).getTime();
+      return isNaN(t) || (t >= start && t < end);
+    };
+    const created = range ? { createdAt: range } : {};
+    const needOrders = want('sales') || want('bestsellers') || want('payments') || want('customers');
+    const needReturns = want('sales') || want('bestsellers') || want('payments');
+    const needProducts = want('sales') || want('bestsellers') || want('inventory');
+
+    const [orders, ordersWithReturns, products] = await Promise.all([
+      needOrders
+        ? this.prisma.order.findMany({ where: created, orderBy: { createdAt: 'desc' }, include: ReportsService.REPORT_ORDER_INCLUDE }).then(toWire)
+        : [],
+      // returns MADE in the period, whatever the bill date (same netting rule as the P&L)
+      needReturns
+        ? this.prisma.order
+            .findMany({ where: { returns: { some: range ? { createdAt: range } : {} } }, orderBy: { createdAt: 'desc' }, include: ReportsService.REPORT_ORDER_INCLUDE })
+            .then(toWire)
+        : [],
+      needProducts ? this.products.findAll().then((rows) => toWire(costFilterFor(user)(rows)).map(toReportProduct)) : [],
+    ]);
+    const rangeReturns = needReturns ? returnsInRange(ordersWithReturns, timeRange, customStart, customEnd, now) : [];
+
+    const out: Record<string, any> = {
+      period: {
+        range: timeRange,
+        start: Number.isFinite(start) ? new Date(start).toISOString() : null,
+        end: Number.isFinite(end) ? new Date(end).toISOString() : null,
+        endExclusive: true,
+        timezone: 'Asia/Bangkok',
+      },
+    };
+
+    if (want('sales')) {
+      out.sales = calculateSalesAndProfitReport(orders, products, rangeReturns);
+      out.claimsAndVat = calculateClaimsAndVat(await this.claimAccounting(range), orders, rangeReturns);
+    }
+    if (want('bestsellers')) out.bestsellers = calculateBestSellingProducts(orders, products, rangeReturns);
+    if (want('inventory')) {
+      const [threshold, batches, lastReceipts, lastSales] = await Promise.all([
+        this.lowStockThreshold(),
+        this.prisma.stockBatch.findMany({ where: { quantityRemaining: { not: 0 } }, select: { productId: true, quantityRemaining: true, unitCost: true } }),
+        this.prisma.stockBatch.groupBy({ by: ['productId'], where: { quantityReceived: { gt: 0 } }, _max: { receivedAt: true } }),
+        // last sale per product over all bills that are not voided (deadstock)
+        this.prisma.$queryRaw<{ product_id: string; last: Date }[]>(Prisma.sql`
+          SELECT oi.product_id, MAX(o.created_at) AS last
+          FROM order_items oi JOIN orders o ON o.id = oi.order_id
+          WHERE o.status::text NOT IN ('VOIDED', 'REFUNDED', 'CANCELLED')
+          GROUP BY oi.product_id`),
+      ]);
+      const lastSaleOrders = lastSales.map((r) => ({ status: 'COMPLETED', createdAt: new Date(r.last).toISOString(), items: [{ productId: r.product_id }] }));
+      out.inventory = calculateInventoryValuationReport(products, lastSaleOrders, toWire(valueStock(batches)), {
+        lowStockThreshold: threshold,
+        lastReceivedAtByProduct: Object.fromEntries(lastReceipts.map((r) => [r.productId, r._max.receivedAt?.toISOString() ?? null])),
+      });
+    }
+    if (want('payments')) {
+      const [shifts, debtPayments] = await Promise.all([
+        this.shifts.getShiftHistory(1, 100000, undefined, range).then((r) => toWire(r.data)),
+        this.prisma.debtPayment.findMany({ where: { cancelledAt: null, ...(range ? { paymentDate: range } : {}) }, select: { amount: true, paymentMethod: true, paymentDate: true } }),
+      ]);
+      const debtReceipts = debtPayments.map((d) => ({ amount: Number(d.amount), method: d.paymentMethod, createdAt: d.paymentDate.toISOString() }));
+      out.payments = calculatePaymentsAndShiftsReport(orders, shifts, { returns: rangeReturns, debtReceipts, inRange });
+    }
+    if (want('customers')) {
+      const [debts, customers] = await Promise.all([
+        this.debts.getAllDebts(1, 5000).then((r) => toWire(r.data)),
+        this.prisma.customer.findMany({ include: { debts: true } }).then((rows) =>
+          toWire(rows.map((row) => ({ ...((row.profile as any) || {}), ...row, phone: row.phone || '', currentDebt: row.debts.reduce((sum, d) => sum + Number(d.remainingAmount), 0) }))),
+        ),
+      ]);
+      out.customers = calculateCustomerAndDebtsReport(orders, debts, customers);
+    }
+    if (want('purchases')) {
+      const [purchases, claims, suppliers] = await Promise.all([
+        this.purchasesData(range),
+        this.claims.getAllClaims(1, 5000).then((r: any) => toWire(r.data)),
+        this.prisma.supplier.findMany({ where: { isActive: true } }).then(toWire),
+      ]);
+      const claimsInRange = filterOrdersByDateRange(claims, timeRange, customStart, customEnd, now);
+      out.purchases = calculatePurchasesAndClaimsReport(purchases, claimsInRange, suppliers, inRange);
+    }
+    return out;
+  }
+
+  /**
+   * Claim accounting of the period: cost of replacement goods handed out, cash/transfer refunds paid
+   * to customers, and value recovered from suppliers via credit notes for defective goods.
+   */
+  private async claimAccounting(range: DateRange): Promise<ClaimAccountingRows> {
     const claimDateWhere = range ? { createdAt: range } : {};
     const [claimRows, defectiveReturnItems] = await Promise.all([
       this.prisma.customerClaim.findMany({ where: claimDateWhere, select: { claimNumber: true, createdAt: true, metadata: true } }),
@@ -292,23 +467,14 @@ export class ReportsService {
         select: { total: true, note: { select: { returnNumber: true, createdAt: true } } },
       }),
     ]);
-    const claimEvents = claimRows
+    const events = claimRows
       .map((c) => {
         const acc = ((c.metadata as any) || {}).accounting || {};
         return { createdAt: c.createdAt.toISOString(), claimNumber: c.claimNumber, replacementCost: Number(acc.replacementCost) || 0, refundPaid: Number(acc.refundPaid) || 0 };
       })
       .filter((e) => e.replacementCost > 0 || e.refundPaid > 0);
     const supplierRecoveries = defectiveReturnItems.map((i) => ({ createdAt: i.note.createdAt.toISOString(), returnNumber: i.note.returnNumber, amount: Number(i.total) || 0 }));
-
-    return {
-      orders,
-      lowStockThreshold: threshold,
-      lastReceivedAtByProduct: Object.fromEntries(lastReceipts.map((r) => [r.productId, r._max.receivedAt?.toISOString() ?? null])),
-      debtReceipts: debtPayments.map((d) => ({ amount: Number(d.amount), method: d.paymentMethod, createdAt: d.paymentDate.toISOString() })),
-      purchases: await this.purchasesData(range),
-      claimAccounting: { events: claimEvents, supplierRecoveries },
-      stockBatchValuation: { byProductId: batchValuationByProduct, totalInventoryCostValue },
-    };
+    return { events, supplierRecoveries };
   }
 
   /**

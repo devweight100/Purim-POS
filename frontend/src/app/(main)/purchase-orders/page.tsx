@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { calculatePurchaseBill, normVatType, toBaseUnitLine, type PoVatType } from '@/lib/po-calc';
+import { calculatePurchaseBill, normVatType, toBaseUnitLine, type PoVatType } from '@shared/po-calc';
 
 /** Default purchase cost of a product: its last purchase / reference cost, never the selling price. */
 function defaultUnitCost(product: any): number {
@@ -498,7 +498,7 @@ export default function PurchaseOrdersPage() {
       return;
     }
 
-    // same arithmetic as the server (lib/po-calc.ts); the server recalculates and stores the result
+    // same arithmetic as the server (shared/src/po-calc.ts); the server recalculates and stores the result
     const bill = calculatePurchaseBill(cartItems, { type: billDiscountType, value: billDiscountValue });
     const totalBeforeDiscount = Math.round((bill.baseAmount - bill.lineDiscountAmount) * 100) / 100;
     const calculatedVat = bill.vatAmount;
@@ -1011,7 +1011,7 @@ export default function PurchaseOrdersPage() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [viewMode, createStep]);
 
-  // Live totals with the same arithmetic as the server (lib/po-calc.ts)
+  // Live totals with the same arithmetic as the server (shared/src/po-calc.ts)
   const liveBill = calculatePurchaseBill(cartItems, { type: billDiscountType, value: billDiscountValue });
   // per-row amount: after the line discount, incl. that line's VAT (bill discount shown separately)
   const rowBill = calculatePurchaseBill(cartItems);

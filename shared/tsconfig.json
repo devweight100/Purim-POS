@@ -1,0 +1,16 @@
+{
+  // Type check only (no output): `cd backend && npx tsc -p ../shared`. The backend compiles these
+  // files into its dist (dist/shared/src), the frontend bundles them (import '@shared/...').
+  // No "types" and no DOM lib: shared code must not depend on Node, the browser or any package.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "types": []
+  },
+  "include": ["src/**/*.ts"]
+}

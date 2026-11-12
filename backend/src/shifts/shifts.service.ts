@@ -5,6 +5,7 @@ import { ApprovalsService } from '../approvals/approvals.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CashMovementType, ShiftStatus, PaymentMethod } from '@prisma/client';
 import * as ledger from '../finance/ledger';
+import { roundSatang as round2 } from '../../../shared/src/money';
 
 const CASH_CATEGORIES = ['GENERAL', 'REFUND', 'DEBT_PAYMENT'];
 /**
@@ -22,7 +23,6 @@ function assertShiftActor(shift: { userId: string }, actor?: { id?: string; role
   if (shift.userId !== actor.id) throw new ForbiddenException('ทำรายการได้เฉพาะกะของตัวเอง (หรือผู้จัดการ)');
 }
 
-const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const SHIFT_ORDER_INCLUDE = {
   payments: true,
   items: { select: { discountAmount: true } },
@@ -404,7 +404,8 @@ export class ShiftsService {
     throw new ConflictException({ statusCode: 409, code: 'APPROVAL_REQUIRED', message: 'รายการนี้ต้องให้ผู้จัดการอนุมัติ: ' + message, reasons, ticket });
   }
 
-  async getShiftHistory(page = 1, limit = 20, search?: string) {
+  /** `closedIn`: only shifts closed in the range, or still open and opened in it (reports). */
+  async getShiftHistory(page = 1, limit = 20, search?: string, closedIn?: { gte?: Date; lt?: Date }) {
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -413,6 +414,9 @@ export class ShiftsService {
         { shiftNumber: { contains: search.trim(), mode: 'insensitive' } },
         { user: { fullName: { contains: search.trim(), mode: 'insensitive' } } },
       ];
+    }
+    if (closedIn) {
+      where.AND = [{ OR: [{ closedAt: closedIn }, { closedAt: null, openedAt: closedIn }] }];
     }
 
     const [shifts, total] = await Promise.all([

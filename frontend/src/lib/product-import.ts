@@ -1,3 +1,4 @@
+import { round2 } from '@shared/money';
 /**
  * Product import / export file, "one row per unit" format.
  *
@@ -125,7 +126,6 @@ const splitBarcodes = (v: unknown) =>
     .map((s) => s.trim())
     .filter(Boolean);
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /**
  * Rows (objects keyed by the header text, as from XLSX sheet_to_json) -> products.

@@ -99,7 +99,7 @@ function Build-Server {
   try {
     # Tracked + new (not git-ignored) source files only: no node_modules, .env, builds or backups.
     # quotepath=off: non-ASCII (Thai) names come out as plain UTF-8, one per line
-    $files = & git -c core.quotepath=off ls-files -co --exclude-standard -- backend frontend docker-compose.yml Installer/Server/setup Installer/Server/control
+    $files = & git -c core.quotepath=off ls-files -co --exclude-standard -- backend frontend shared docker-compose.yml Installer/Server/setup Installer/Server/control
     if ($LASTEXITCODE -ne 0) { throw 'git ls-files failed' }
     $files = @($files | Where-Object { $_ -and $_ -notmatch '\.nsi$' -and $_ -notmatch '\.exe$' })
     foreach ($f in $files) {
@@ -114,7 +114,7 @@ function Build-Server {
     Copy-Item -LiteralPath $ControlExe -Destination (Join-Path $stage 'Installer\Server\control\Purim POS Server.exe') -Force
 
     # Version of the code inside (read by the version screen, the monitor page and the updater)
-    $modified = [bool](& git status --porcelain --untracked-files=no -- backend frontend desktop Installer/Server/setup)
+    $modified = [bool](& git status --porcelain --untracked-files=no -- backend frontend shared desktop Installer/Server/setup)
     if ($modified) { Write-Warning 'uncommitted changes are included; the version will show as modified' }
     $iso = ([datetime]::Parse((& git log -1 --format=%cI), [Globalization.CultureInfo]::InvariantCulture)).ToUniversalTime()
     $ver = [ordered]@{

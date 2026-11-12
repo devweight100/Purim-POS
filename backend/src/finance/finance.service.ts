@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { grossPerUnit } from '../purchase-orders/po-calc';
+import { grossPerUnit } from '../../../shared/src/po-calc';
 import { MoneyAccountType } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,9 +7,9 @@ import { businessTransaction } from '../prisma/business-transaction';
 import * as ledger from './ledger';
 import { PlanningService } from './planning.service';
 import { addDays, bangkokDayKey, bangkokStartOfDay, dateRangeFilter, DAY_MS, parseDateParam } from '../common/bangkok-date';
+import { round2 } from '../../../shared/src/money';
 
 type Actor = { id?: string; fullName?: string; username?: string } | undefined;
-const round2 = (n: number) => Math.round(n * 100) / 100;
 const CLIENT_ID = /^[a-zA-Z0-9-]{16,80}$/;
 
 function money(value: unknown, field = 'จำนวนเงิน'): number {

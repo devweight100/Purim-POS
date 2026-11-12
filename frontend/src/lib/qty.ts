@@ -5,29 +5,18 @@
  * quantity input / display instead of ad-hoc parseInt / Math.round / Number.isInteger.
  */
 import { useEffect, useState } from 'react';
+import { DECIMAL_QTY_DISABLED, hasMax2Decimals, MAX_QTY, roundQty } from '@shared/qty';
 import { loadStoreSettings } from './store-settings-storage';
 
-export const MAX_QTY = 10_000_000;
-export const DECIMAL_QTY_DISABLED_MESSAGE = 'ร้านไม่ได้เปิดใช้จำนวนทศนิยม';
+// The arithmetic is the server's own implementation (shared/src/qty.ts); this file adds parsing of
+// what the user typed, display and the store-setting hook.
+export { MAX_QTY, toHund, roundQty, addQty, subQty, mulQty } from '@shared/qty';
+export const DECIMAL_QTY_DISABLED_MESSAGE = DECIMAL_QTY_DISABLED;
 
 /** Store setting (mirrored from the backend into localStorage by ClientDbSync / the settings page). */
 export function decimalQtyEnabled(): boolean {
   return loadStoreSettings().allowDecimalQty === true;
 }
-
-/** Whole hundredths of a quantity (1.25 -> 125), safe against float noise. */
-export const toHund = (n: unknown): number => {
-  const v = Number(n) || 0;
-  return Math.round(v * 100 + (v >= 0 ? 1e-7 : -1e-7));
-};
-/** Round to 2 decimals without float residue. */
-export const roundQty = (n: unknown): number => toHund(n) / 100;
-export const addQty = (...vals: unknown[]): number => vals.reduce<number>((s, v) => s + toHund(v), 0) / 100;
-export const subQty = (a: unknown, b: unknown): number => (toHund(a) - toHund(b)) / 100;
-/** qty x unit factor (pack size), rounded to 2 decimals. */
-export const mulQty = (a: unknown, factor: unknown): number => roundQty((Number(a) || 0) * (Number(factor) || 0));
-
-const hasMax2Decimals = (n: number) => Number.isFinite(n) && Math.abs(n * 100 - Math.round(n * 100)) < 1e-6;
 
 /**
  * Parse what the user typed. Decimal mode: up to 2 decimals (more are rounded to 2), "," accepted

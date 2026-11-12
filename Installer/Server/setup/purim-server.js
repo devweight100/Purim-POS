@@ -242,7 +242,10 @@ async function main() {
     return;
   }
 
-  if (!fs.existsSync(path.join(backendDir, 'dist', 'src', 'main.js'))) {
+  // dist/backend/src/main.js since the backend also compiles ../shared; dist/src/main.js before that
+  const backendMain = [path.join('dist', 'backend', 'src', 'main.js'), path.join('dist', 'src', 'main.js')]
+    .find((rel) => fs.existsSync(path.join(backendDir, rel)));
+  if (!backendMain) {
     say('❌ ยังไม่ได้ติดตั้ง/build ระบบ — กรุณารัน "ติดตั้งหรือซ่อมระบบ Purim POS" ก่อน');
     process.exit(1);
   }
@@ -263,7 +266,7 @@ async function main() {
   freePort(BACK_PORT);
   freePort(FRONT_PORT);
 
-  startService('backend', backendDir, [path.join('dist', 'src', 'main.js')], {
+  startService('backend', backendDir, [backendMain], {
     NODE_ENV: 'production',
     PORT: String(BACK_PORT),
     TZ: process.env.TZ || 'Asia/Bangkok',

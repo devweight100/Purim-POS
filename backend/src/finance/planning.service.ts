@@ -1,14 +1,14 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { grossPerUnit } from '../purchase-orders/po-calc';
+import { grossPerUnit } from '../../../shared/src/po-calc';
 import { PrismaService } from '../prisma/prisma.service';
 import { businessTransaction } from '../prisma/business-transaction';
 import * as ledger from './ledger';
 import { bangkokDayKey, bangkokStartOfMonth, dateRangeFilter, parseDateParam } from '../common/bangkok-date';
 import { salesTotals } from '../reports/sales-math';
+import { round2 } from '../../../shared/src/money';
 
 type Actor = { id?: string } | undefined;
 const DAY = 86400000;
-const round2 = (n: number) => Math.round(n * 100) / 100;
 const CLIENT_ID = /^[a-zA-Z0-9-]{16,80}$/;
 const FREQUENCIES = ['MONTHLY', 'WEEKLY', 'YEARLY'];
 const startOfDay = (d: Date) => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; };

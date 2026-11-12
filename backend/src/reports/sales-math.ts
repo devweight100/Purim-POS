@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { round2 } from '../../../shared/src/money';
 
 /**
  * One definition of "sales" for every report (P&L, /reports/sales-summary, /reports/dashboard):
@@ -10,7 +11,6 @@ import { Prisma } from '@prisma/client';
  */
 export type DateRange = { gte?: Date; lt?: Date; lte?: Date } | undefined;
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** SQL conditions for a timestamp column (stored as UTC `timestamp without time zone`). */
 export function sqlRange(column: Prisma.Sql, r: DateRange): Prisma.Sql {

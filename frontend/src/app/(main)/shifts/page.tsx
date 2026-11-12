@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { bangkokDayKey, DAY_MS } from '@/lib/bangkok-date';
+import { bangkokDayKey, DAY_MS } from '@shared/bangkok-date';
 import Link from 'next/link';
 import { 
   History, Clock, Calendar, Search, Filter, Printer, Eye, 

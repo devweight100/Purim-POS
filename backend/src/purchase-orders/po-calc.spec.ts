@@ -1,4 +1,4 @@
-import { calculatePurchaseBill, grossPerUnit, stockCostPerUnit } from './po-calc';
+import { calculatePurchaseBill, grossPerUnit, stockCostPerUnit } from '../../../shared/src/po-calc';
 
 describe('purchase bill arithmetic', () => {
   it('no VAT: total = qty x cost', () => {

@@ -40,7 +40,7 @@ build_server() {
   trap 'rm -rf "$stage"' RETURN
   cd "$ROOT"
   # Tracked + new (not git-ignored) source files only: no node_modules, .env, builds or backups.
-  git -c core.quotepath=off ls-files -co --exclude-standard -- backend frontend docker-compose.yml Installer/Server/setup Installer/Server/control \
+  git -c core.quotepath=off ls-files -co --exclude-standard -- backend frontend shared docker-compose.yml Installer/Server/setup Installer/Server/control \
     | grep -v -E '\.(nsi|exe)$' \
     | while IFS= read -r f; do
         [ -f "$f" ] || continue
@@ -52,7 +52,7 @@ build_server() {
   cp "$CONTROL_EXE" "$stage/Installer/Server/control/Purim POS Server.exe"
   # Version of the code inside this installer (read by the version screen and the updater).
   local modified=false
-  if [ -n "$(git status --porcelain --untracked-files=no -- backend frontend desktop Installer/Server/setup)" ]; then
+  if [ -n "$(git status --porcelain --untracked-files=no -- backend frontend shared desktop Installer/Server/setup)" ]; then
     modified=true
     echo "WARNING: uncommitted changes are included; the version will show as modified"
   fi

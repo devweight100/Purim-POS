@@ -166,7 +166,8 @@ describe('VAT (prices include VAT)', () => {
     settings.vatRate = 10;
     expect(cart().getVatAmount()).toBeCloseTo(10, 10);
     settings.vatRate = 'x';
-    expect(cart().getVatAmount()).toBeCloseTo((110 * 7) / 107, 10);
+    // rounded to the satang, as the server stores it (orders.vat_amount)
+    expect(cart().getVatAmount()).toBe(Math.round(((110 * 7) / 107) * 100) / 100);
   });
 
   it('rounds to the satang when printed: 3 x 33.33 with VAT', () => {

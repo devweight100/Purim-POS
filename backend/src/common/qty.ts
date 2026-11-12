@@ -1,35 +1,13 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { DECIMAL_QTY_DISABLED, hasMax2Decimals, isWholeQty, MAX_QTY, roundQty } from '../../../shared/src/qty';
 
 /**
- * Quantities (stock, sales, purchases, returns, claims) are DECIMAL(12,2) in the database: up to
- * 2 decimals when the store turns on StoreSettings.allowDecimalQty (sell rope by the metre, nails by
- * the kg). Do quantity arithmetic through these helpers: they work in whole hundredths so FIFO
- * deductions and unit conversions never leave 0.0000001 residues.
+ * Server side of the quantity rules. The arithmetic (hundredths, rounding, add/sub/mul) is the
+ * shared implementation in shared/src/qty.ts, re-exported here; this file adds request validation
+ * (400 errors) and the Prisma Decimal -> number response conversion.
  */
-export const MAX_QTY = 10_000_000;
-export const DECIMAL_QTY_DISABLED = 'ร้านไม่ได้เปิดใช้จำนวนทศนิยม';
-
-/** Prisma Decimal / string / number / null -> number (null -> 0). */
-export const qn = (v: unknown): number => {
-  if (v === null || v === undefined || v === '') return 0;
-  const n = Number(v as any);
-  return Number.isFinite(n) ? n : 0;
-};
-
-/** Whole hundredths of a quantity (1.25 -> 125). */
-export const toHund = (v: unknown): number => Math.round(qn(v) * 100 + (qn(v) >= 0 ? 1e-7 : -1e-7));
-export const fromHund = (h: number): number => h / 100;
-/** Round to 2 decimals without float residue. */
-export const roundQty = (v: unknown): number => fromHund(toHund(v));
-/** a + b, a - b, a * factor rounded to 2 decimals. */
-export const addQty = (...vals: unknown[]): number => fromHund(vals.reduce<number>((s, v) => s + toHund(v), 0));
-export const subQty = (a: unknown, b: unknown): number => fromHund(toHund(a) - toHund(b));
-export const mulQty = (a: unknown, factor: unknown): number => roundQty(qn(a) * qn(factor));
-
-/** True when n has at most 2 decimals. */
-export const hasMax2Decimals = (n: number): boolean => Number.isFinite(n) && Math.abs(n * 100 - Math.round(n * 100)) < 1e-6;
-export const isWholeQty = (n: unknown): boolean => Math.abs(qn(n) - Math.round(qn(n))) < 1e-9;
+export { MAX_QTY, DECIMAL_QTY_DISABLED, qn, toHund, fromHund, roundQty, addQty, subQty, mulQty, hasMax2Decimals, isWholeQty } from '../../../shared/src/qty';
 
 export interface QtyRule {
   /** StoreSettings.allowDecimalQty */

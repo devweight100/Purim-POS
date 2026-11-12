@@ -18,6 +18,10 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_BUILD_INFO: JSON.stringify(buildInfo()),
   },
   distDir: process.env.PURIM_BUILD_DIR || '.next',
+  // Business calculations shared with the backend live in ../shared (imported as @shared/*, see
+  // tsconfig.json). The repo root is the project root so Turbopack compiles those files too.
+  turbopack: { root: path.join(__dirname, '..') },
+  outputFileTracingRoot: path.join(__dirname, '..'),
   // Allow LAN access from local network devices (e.g. 192.168.1.131, phones, tablets)
   allowedDevOrigins: [
     "localhost",

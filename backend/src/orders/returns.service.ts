@@ -3,8 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { businessTransaction } from '../prisma/business-transaction';
 import * as ledger from '../finance/ledger';
 import { addQty, decimalQtyAllowed, mulQty, parseQty, qn, roundQty, subQty } from '../common/qty';
+import { round2 } from '../../../shared/src/money';
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 const CLIENT_ID = /^[a-zA-Z0-9-]{16,80}$/;
 const REFUND_METHODS = ['CASH', 'TRANSFER', 'DEBT_REDUCTION'];
 

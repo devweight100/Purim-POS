@@ -3,10 +3,44 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { CartItem, HeldBill, Product, ProductUnit, ClaimRecord, PendingClaimItem } from '../types';
 import { calculateSmartRollupAndPricing } from '../cart-pricing';
 import { loadStoreSettings } from '../store-settings-storage';
-import { addQty, mulQty, roundQty, subQty } from '../qty';
+import { addQty, mulQty, roundQty } from '../qty';
+import { cartLineDiscount, cartLineTotal, cartTotals, normVatRate, type CartLineInput } from '@shared/pricing';
 
-/** Money to the satang (line totals with decimal quantities, e.g. 2.33 m x 15.50 = 36.12). */
-const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+/** A cart line in the shape of the shared pricing functions. */
+function toPricingLine(item: CartItem): CartLineInput {
+  return {
+    unitPrice: item.customPrice ?? item.originalPrice,
+    quantity: item.quantity,
+    claimQuantity: item.claimQuantity || 0,
+    discountType: item.discountType,
+    discountValue: item.discountValue,
+    hasVat: item.hasVat,
+  };
+}
+
+/** Claim credit requested by the attached claim and the STORE_DISCOUNT pending claims. */
+function claimCredit(s: Pick<CartStore, 'attachedClaim' | 'pendingClaims'>): number {
+  let total = 0;
+  if (s.attachedClaim) total += s.attachedClaim.discountAmount ?? (s.attachedClaim.quantity * s.attachedClaim.unitPrice);
+  for (const c of (s.pendingClaims || []).filter((p) => p.resolutionType === 'STORE_DISCOUNT')) {
+    total += c.discountAmount ?? (c.quantity * c.unitPrice);
+  }
+  return total;
+}
+
+/** Bill totals of the cart (VAT only when the store charges VAT, at the store rate). */
+function totalsOf(s: CartStore) {
+  const settings = loadStoreSettings();
+  const vatOn = s.isVatEnabled && settings.vatEnabled === true;
+  return cartTotals({
+    lines: s.items.map(toPricingLine),
+    billDiscountType: s.billDiscountType,
+    billDiscountValue: s.billDiscountValue,
+    pointsDiscount: s.pointsDiscountValue,
+    claimDiscount: claimCredit(s),
+    vatRate: vatOn ? normVatRate(settings.vatRate) : 0,
+  });
+}
 
 interface CartStore {
   items: CartItem[];
@@ -445,89 +479,23 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
     return item.customPrice ?? item.originalPrice;
   },
 
-  getItemDiscountAmount: (item: CartItem) => {
-    const price = item.customPrice ?? item.originalPrice;
-    const chargeableQty = Math.max(0, subQty(item.quantity, item.claimQuantity || 0));
-    const lineBefore = round2(price * chargeableQty);
-    if (item.discountType === 'baht') return Math.min(item.discountValue, lineBefore);
-    if (item.discountType === 'percent') return lineBefore * (item.discountValue / 100);
-    return 0;
-  },
+  // Prices, discounts, VAT and the total come from shared/src/pricing.ts, the same functions the
+  // server's checkout uses, so the preview is exactly what the server stores and charges.
+  getItemDiscountAmount: (item: CartItem) => cartLineDiscount(toPricingLine(item)),
 
-  getItemLineTotal: (item: CartItem) => {
-    const price = item.customPrice ?? item.originalPrice;
-    const chargeableQty = Math.max(0, subQty(item.quantity, item.claimQuantity || 0));
-    const discount = get().getItemDiscountAmount(item);
-    // same rounding as the server: round2(quantity x price - discount)
-    return Math.max(0, round2(price * chargeableQty - discount));
-  },
+  getItemLineTotal: (item: CartItem) => cartLineTotal(toPricingLine(item)),
 
-  getSubtotal: () => {
-    return get().items.reduce((sum, item) => sum + get().getItemLineTotal(item), 0);
-  },
+  getSubtotal: () => totalsOf(get()).subtotal,
 
-  getBillDiscountAmount: () => {
-    const { billDiscountType, billDiscountValue } = get();
-    const subtotal = get().getSubtotal();
-    if (billDiscountType === 'baht') return Math.min(billDiscountValue, subtotal);
-    if (billDiscountType === 'percent') return subtotal * (billDiscountValue / 100);
-    return 0;
-  },
+  getBillDiscountAmount: () => totalsOf(get()).billDiscountAmount,
 
-  getPointsDiscountAmount: () => {
-    const subtotal = get().getSubtotal();
-    const billDiscount = get().getBillDiscountAmount();
-    const remaining = Math.max(0, subtotal - billDiscount);
-    return Math.min(get().pointsDiscountValue || 0, remaining);
-  },
+  getPointsDiscountAmount: () => totalsOf(get()).pointsDiscountAmount,
 
-  getClaimDiscountAmount: () => {
-    const attachedClaim = get().attachedClaim;
-    const pendingClaims = get().pendingClaims || [];
-    const discountPendingClaims = pendingClaims.filter((c) => c.resolutionType === 'STORE_DISCOUNT');
+  getClaimDiscountAmount: () => totalsOf(get()).claimDiscountAmount,
 
-    let totalClaimVal = 0;
-    if (attachedClaim) {
-      totalClaimVal += attachedClaim.discountAmount ?? (attachedClaim.quantity * attachedClaim.unitPrice);
-    }
-    for (const c of discountPendingClaims) {
-      totalClaimVal += c.discountAmount ?? (c.quantity * c.unitPrice);
-    }
+  getVatAmount: () => totalsOf(get()).vatAmount,
 
-    if (totalClaimVal === 0) return 0;
-    const subtotal = get().getSubtotal();
-    const priorDiscounts = get().getBillDiscountAmount() + get().getPointsDiscountAmount();
-    const remaining = Math.max(0, subtotal - priorDiscounts);
-    return Math.min(totalClaimVal, remaining);
-  },
-
-  getVatAmount: () => {
-    if (!get().isVatEnabled || !loadStoreSettings().vatEnabled) return 0;
-    const items = get().items;
-    const subtotal = get().getSubtotal();
-    if (subtotal === 0) return 0;
-
-    const totalDiscounts = get().getBillDiscountAmount() + get().getPointsDiscountAmount() + get().getClaimDiscountAmount();
-    const discountRate = totalDiscounts / subtotal;
-
-    // VAT-inclusive prices: vat = amount × rate / (100 + rate), rate from store settings
-    const rate = Number(loadStoreSettings().vatRate);
-    const vatRate = Number.isFinite(rate) && rate >= 0 ? rate : 7;
-    let vatTotal = 0;
-    for (const item of items) {
-      if (item.hasVat) {
-        const lineTotal = get().getItemLineTotal(item);
-        const afterDiscount = lineTotal * (1 - discountRate);
-        vatTotal += afterDiscount * (vatRate / (100 + vatRate));
-      }
-    }
-    return vatTotal;
-  },
-
-  getTotal: () => {
-    const total = get().getSubtotal() - get().getBillDiscountAmount() - get().getPointsDiscountAmount() - get().getClaimDiscountAmount();
-    return Math.max(0, total);
-  },
+  getTotal: () => totalsOf(get()).totalAmount,
 
   getItemCount: () => {
     return addQty(...get().items.map((i) => i.quantity));
