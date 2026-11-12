@@ -19,7 +19,7 @@ export function ForecastPanel() {
   const [days, setDays] = useState(30);
   const [data, setData] = useState<Forecast | null>(null);
   useEffect(() => {
-    apiFetch(`/finance/forecast?days=${days}`).then(setData).catch((err: any) => toast.error(err?.message || 'โหลดไม่สำเร็จ'));
+    apiFetch(`/finance/forecast?days=${days}`).then(setData).catch((err: unknown) => toast.error((err as Error | undefined)?.message || 'โหลดไม่สำเร็จ'));
   }, [days]);
   if (!data) return <div className="p-6 text-slate-400">กำลังคำนวณ...</div>;
   const min = Math.min(0, ...data.series.map((s) => s.balance));

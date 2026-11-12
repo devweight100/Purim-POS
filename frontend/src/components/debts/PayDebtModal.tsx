@@ -45,8 +45,11 @@ export function PayDebtModal({
   const submitting = useRef(false);
   const bankAccounts = useMemo(() => loadBankAccounts(), []);
 
-  // Initialize form state whenever modal opens with a debt record
-  useEffect(() => {
+  // Initialize form state whenever modal opens with a debt record (adjusted while rendering)
+  // (null until the first render, so a modal mounted already open is filled in too)
+  const [seen, setSeen] = useState<{ debtRecord: typeof debtRecord; open: boolean; bankAccounts: typeof bankAccounts } | null>(null);
+  if (!seen || seen.debtRecord !== debtRecord || seen.open !== open || seen.bankAccounts !== bankAccounts) {
+    setSeen({ debtRecord, open, bankAccounts });
     if (debtRecord && open) {
       setPayMode('FULL');
       setAmountInput(debtRecord.remainingDebt.toString());
@@ -65,7 +68,7 @@ export function PayDebtModal({
       setReferenceNo('');
       setNote('');
     }
-  }, [debtRecord, open, bankAccounts]);
+  }
 
   if (!debtRecord) return null;
 

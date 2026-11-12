@@ -30,7 +30,11 @@ export function RecurringPanel({ accounts, categories, onChanged }: { accounts: 
   const load = useCallback(async () => {
     try { setRows(await apiFetch('/finance/recurring')); } catch (err) { toast.error((err as Error | undefined)?.message || 'โหลดไม่สำเร็จ'); }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    // load() only updates state after its request
+    const run = async () => { await load(); };
+    void run();
+  }, [load]);
 
   const skip = async (r: Recurring) => {
     const reason = window.prompt(`ข้ามงวด ${thaiDate(r.nextDueDate)} ของ "${r.name}" เพราะ?`);
@@ -104,7 +108,12 @@ function CreateDialog({ open, accounts, categories, onClose, onDone }: { open: b
   const [monthOfYear, setMonthOfYear] = useState('1');
   const [remindDays, setRemindDays] = useState('3');
   const [saving, setSaving] = useState(false);
-  useEffect(() => { if (open) { setName(''); setAmount(''); setCategoryId(''); setAccountId(accounts[0]?.id || ''); } }, [open, accounts]);
+  // fresh form when the dialog opens (or its accounts change), adjusted while rendering
+  const [seen, setSeen] = useState({ open, accounts });
+  if (seen.open !== open || seen.accounts !== accounts) {
+    setSeen({ open, accounts });
+    if (open) { setName(''); setAmount(''); setCategoryId(''); setAccountId(accounts[0]?.id || ''); }
+  }
   const submit = async () => {
     if (!name.trim() || !categoryId || !(Number(amount) > 0)) return toast.error('กรุณากรอกชื่อ หมวด และจำนวนเงิน');
     setSaving(true);
@@ -169,11 +178,15 @@ function PayDialog({ target, accounts, onClose, onDone }: { target: Recurring | 
   const [note, setNote] = useState('');
   const [clientId, setClientId] = useState(newClientId());
   const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    if (!target) return;
-    setClientId(newClientId()); setAmount(String(target.amount)); setNote('');
-    setAccountId(target.account?.id || accounts[0]?.id || '');
-  }, [target, accounts]);
+  // fresh form for each bill to pay (or when its accounts change), adjusted while rendering
+  const [seen, setSeen] = useState({ target, accounts });
+  if (seen.target !== target || seen.accounts !== accounts) {
+    setSeen({ target, accounts });
+    if (target) {
+      setClientId(newClientId()); setAmount(String(target.amount)); setNote('');
+      setAccountId(target.account?.id || accounts[0]?.id || '');
+    }
+  }
   if (!target) return null;
   const submit = async () => {
     setSaving(true);

@@ -39,7 +39,7 @@ export function ReturnItemsDialog({ orderId, onClose, onDone }: { orderId: strin
   useEffect(() => {
     if (!orderId) return;
     setOrder(null); setQty({}); setRestock({}); setReason(''); setClientId(newId()); setMethod('CASH');
-    apiFetch(`/orders/${orderId}`).then(setOrder).catch((err: any) => toast.error(err?.message || 'โหลดบิลไม่สำเร็จ'));
+    apiFetch(`/orders/${orderId}`).then(setOrder).catch((err: unknown) => toast.error((err as Error | undefined)?.message || 'โหลดบิลไม่สำเร็จ'));
     api.bankAccounts.getAll().then((rows: any[]) => { setBanks(rows || []); setBankAccountId(rows?.find((b) => b.isDefault)?.id || rows?.[0]?.id || ''); }).catch(() => setBanks([]));
   }, [orderId]);
 

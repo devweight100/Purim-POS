@@ -22,7 +22,12 @@ export function ApprovalDialog({ request, onApproved, onCancel }: { request: App
   const [pin, setPin] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (request) { setPin(''); setNote(''); } }, [request]);
+  // fresh PIN / note for each request (adjusted while rendering)
+  const [seenRequest, setSeenRequest] = useState(request);
+  if (seenRequest !== request) {
+    setSeenRequest(request);
+    if (request) { setPin(''); setNote(''); }
+  }
 
   const submit = async () => {
     if (!/^\d{4,6}$/.test(pin)) return toast.error('กรุณาใส่ PIN 4-6 หลักของผู้อนุมัติ');
