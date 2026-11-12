@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
+import { LoadErrorState } from "@/components/common/LoadErrorState";
 import { parseProductCSV, csvRowsToProducts, CsvImportError } from "@/lib/csv-parser";
 import { useProductStore } from "@/lib/store/product-store";
 import * as XLSX from "xlsx";
@@ -71,16 +72,6 @@ function compressImage(file: File, maxPx = 900): Promise<string> {
   });
 }
 
-function saveImages(productId: string, images: ProductImage[]) {
-  try {
-    const slim = images.map(img => ({ ...img, dataUrl: img.dataUrl.slice(0, 5) === "data:" ? img.dataUrl : "" }));
-    localStorage.setItem(`img_${productId}`, JSON.stringify(images));
-  } catch { toast.warning("พื้นที่ localStorage เต็ม ไม่สามารถบันทึกรูปได้"); }
-}
-
-function loadImages(productId: string): ProductImage[] {
-  try { const r = localStorage.getItem(`img_${productId}`); return r ? JSON.parse(r) : []; } catch { return []; }
-}
 
 // ─── Types ────────────────────────────────────────────────────────────
 interface ProductBarcode {
@@ -112,29 +103,6 @@ function computeMultipliers(units: PackagingUnit[]): number[] {
   return units.map(u => { cum *= parseInt(u.qtyPerPrev) || 1; return cum; });
 }
 
-function savePackaging(productId: string, units: PackagingUnit[]) {
-  try { localStorage.setItem(`pkg_${productId}`, JSON.stringify(units)); } catch {}
-}
-
-function loadPackaging(productId: string): PackagingUnit[] {
-  try { const r = localStorage.getItem(`pkg_${productId}`); return r ? JSON.parse(r) : []; } catch { return []; }
-}
-
-function saveWholesale(productId: string, steps: any[]) {
-  try { localStorage.setItem(`ws_${productId}`, JSON.stringify(steps)); } catch {}
-}
-
-function loadWholesale(productId: string): any[] {
-  try { const r = localStorage.getItem(`ws_${productId}`); return r ? JSON.parse(r) : []; } catch { return []; }
-}
-
-function saveSavedProducts(prods: any[]) {
-  try { localStorage.setItem("custom_products", JSON.stringify(prods)); } catch {}
-}
-
-function clearSavedProducts() {
-  try { localStorage.removeItem("custom_products"); } catch {}
-}
 
 function normalizeKey(value: unknown): string {
   return String(value ?? '').trim().toLowerCase();
@@ -166,7 +134,7 @@ function getProductBarcodes(product: any): string[] {
 function getProductPackagingUnits(product: any): PackagingUnit[] {
   const units = Array.isArray(product?.packagingUnits) && product.packagingUnits.length > 0
     ? product.packagingUnits
-    : product?.id ? loadPackaging(product.id) : [];
+    : [];
 
   return units.map((unit: any) => ({
     name: unit.name || unit.unitName || '',
@@ -191,13 +159,13 @@ function getProductImages(product: any): ProductImage[] {
         isCover: Boolean(image.isCover),
       }));
   }
-  return product?.id ? loadImages(product.id) : [];
+  return [];
 }
 
 function getProductWholesaleSteps(product: any) {
   const prices = Array.isArray(product?.wholesalePrices) && product.wholesalePrices.length > 0
     ? product.wholesalePrices
-    : product?.id ? loadWholesale(product.id) : [];
+    : [];
 
   const rows = prices.map((price: any) => ({
     minQuantity: price.minQuantity != null ? String(price.minQuantity) : '',
@@ -328,17 +296,6 @@ function productToApiPayload(product: any, conflictingBarcodeKeys = new Set<stri
   };
 }
 
-function loadSuppliersFromStorage(): any[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem('custom_suppliers');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch {}
-  return [];
-}
 
 // ─── Initial form ─────────────────────────────────────────────────────
 const makeInitialForm = () => ({
@@ -380,6 +337,7 @@ export default function ProductsPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [allPackaging, setAllPackaging] = useState<Record<string, PackagingUnit[]>>({});
   const [allImages, setAllImages] = useState<Record<string, ProductImage[]>>({});
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
@@ -773,7 +731,6 @@ export default function ProductsPage() {
           }
         }
 
-        clearSavedProducts();
         await useProductStore.getState().fetchProducts();
         setProducts(useProductStore.getState().products);
 
@@ -797,6 +754,7 @@ export default function ProductsPage() {
     useProductStore.getState().fetchProducts().then(async () => {
       const storeProducts = useProductStore.getState().products;
       const storeCategories = useProductStore.getState().categories;
+      setLoadError(useProductStore.getState().error);
       setProducts(storeProducts);
       setCategories(storeCategories);
 
@@ -817,8 +775,9 @@ export default function ProductsPage() {
         } else {
           setSuppliers([]);
         }
-      } catch {
+      } catch (err: any) {
         setSuppliers([]);
+        setLoadError((prev) => prev || err?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้');
       }
 
       setLoading(false);
@@ -922,27 +881,24 @@ export default function ProductsPage() {
       toast.info("กรุณาเลือกสินค้าที่ต้องการลบ");
       return;
     }
-    const ok = window.confirm(`ยืนยันลบสินค้า ${ids.length} รายการ? การลบนี้จะเอาออกจากรายการสินค้าและข้อมูลรูป/ขนาดบรรจุในเครื่อง`);
+    const ok = window.confirm(`ยืนยันลบสินค้า ${ids.length} รายการ? การลบนี้จะลบสินค้าออกจากฐานข้อมูล`);
     if (!ok) return;
 
     setIsBulkDeleting(true);
     let apiFailed = 0;
+    let lastError = '';
     for (const id of ids) {
       try {
         await api.products.delete(id);
-      } catch {
+      } catch (err: any) {
         apiFailed++;
+        lastError = err?.message || lastError;
       }
-      try {
-        localStorage.removeItem(`pkg_${id}`);
-        localStorage.removeItem(`img_${id}`);
-        localStorage.removeItem(`ws_${id}`);
-      } catch {}
     }
 
-    const nextProducts = products.filter((p: any) => !selectedProductIds.has(p.id));
-    setProducts(nextProducts);
-    saveSavedProducts(nextProducts);
+    // show what the server now has (products it refused to delete stay in the list)
+    await useProductStore.getState().fetchProducts();
+    setProducts(useProductStore.getState().products);
     setAllPackaging((prev) => {
       const next = { ...prev };
       ids.forEach((id) => delete next[id]);
@@ -962,7 +918,7 @@ export default function ProductsPage() {
     setIsBulkDeleting(false);
 
     if (apiFailed > 0) {
-      toast.warning(`ลบออกจากหน้าร้านแล้ว ${ids.length} รายการ แต่ API ลบไม่สำเร็จ ${apiFailed} รายการ`);
+      toast.error(`ลบสินค้าได้ ${ids.length - apiFailed} รายการ ลบไม่สำเร็จ ${apiFailed} รายการ${lastError ? `: ${lastError}` : ''}`);
     } else {
       toast.success(`ลบสินค้าเรียบร้อย ${ids.length} รายการ`);
     }
@@ -1119,7 +1075,6 @@ export default function ProductsPage() {
         ? await api.products.update(editingProduct.id, payload)
         : await api.products.create(payload);
       targetId = persistedProduct?.id || targetId;
-      clearSavedProducts();
     } catch (err: any) {
       // Not saved: keep the dialog open with the form as typed, never add a local-only product
       const offline = !(Number(err?.status) > 0); // ApiError status 0 = no answer from the server
@@ -1145,17 +1100,11 @@ export default function ProductsPage() {
     }
 
     setProducts(newProductsList);
-    if (!persistedProduct) {
-      saveSavedProducts(newProductsList);
-    }
     await useProductStore.getState().fetchProducts();
 
-    if (!persistedProduct) savePackaging(targetId, form.packagingUnits);
     setAllPackaging(prev => ({ ...prev, [targetId]: form.packagingUnits }));
     if (form.packagingUnits.length > 0) setExpandedRows(prev => new Set([...prev, targetId]));
-    if (!persistedProduct) saveImages(targetId, form.images);
     setAllImages(prev => ({ ...prev, [targetId]: form.images }));
-    if (!persistedProduct) saveWholesale(targetId, form.wholesaleSteps);
 
     toast.success(`${dialogMode === "edit" ? "แก้ไข" : "เพิ่ม"}สินค้าสำเร็จ`);
     setDialogMode(null);
@@ -1267,7 +1216,7 @@ export default function ProductsPage() {
 
           <div className="flex items-start gap-2 rounded-lg bg-sky-50 border border-sky-100 px-3 py-2 text-xs text-sky-700">
             <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            <p>ลากวางรูปที่นี่ได้เลย · รูปถูกบีบอัดและเก็บในเครื่องชั่วคราว · เมื่อเชื่อมต่อ backend จะอัปโหลดถาวร</p>
+            <p>ลากวางรูปที่นี่ได้เลย · รูปถูกบีบอัดและบันทึกลงฐานข้อมูลเมื่อกดบันทึกสินค้า</p>
           </div>
         </section>
 
@@ -1960,6 +1909,8 @@ export default function ProductsPage() {
             <TableBody>
               {loading ? (
                 <TableRow><TableCell colSpan={15} className="text-center h-32 text-slate-500">กำลังโหลด...</TableCell></TableRow>
+              ) : loadError ? (
+                <TableRow><TableCell colSpan={15}><LoadErrorState message={loadError} onRetry={() => loadData()} /></TableCell></TableRow>
               ) : filtered.length === 0 ? (
                 <TableRow><TableCell colSpan={15} className="text-center h-40 text-slate-400">ไม่พบสินค้าที่ตรงกับเงื่อนไข</TableCell></TableRow>
               ) : paginatedList.map((p: any) => {
