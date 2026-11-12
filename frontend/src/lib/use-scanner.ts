@@ -67,8 +67,7 @@ export function findProductByScannedCode(
     const product = products.find(p => {
       if (p.sku?.toLowerCase().trim() === code) return true;
       if (p.units?.some(u => u.barcode?.toLowerCase().trim() === code)) return true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if ((p as any).barcodes?.some((b: any) => b.barcode?.toLowerCase().trim() === code)) return true;
+      if (p.barcodes?.some((b) => b.barcode?.toLowerCase().trim() === code)) return true;
       return getProductPackagingUnits(p.id).some(u => u.barcode?.toLowerCase().trim() === code);
     });
     if (product) return { product, code };

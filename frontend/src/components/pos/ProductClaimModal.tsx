@@ -111,9 +111,9 @@ export function ProductClaimModal({
         searchKeyword: trimmed,
       });
       setEligibleItems(results);
-    } catch (err: any) {
+    } catch (err) {
       setEligibleItems([]);
-      toast.error('ค้นหาบิลจากเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่: ' + (err?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
+      toast.error('ค้นหาบิลจากเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่: ' + ((err as { message?: string } | null)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     }
   };
 
@@ -355,7 +355,7 @@ export function ProductClaimModal({
       }
     } catch (err) {
       console.error('Failed to process claim:', err);
-      toast.error(`บันทึกการรับเคลมไม่สำเร็จ: ${(err as any)?.message || 'เกิดข้อผิดพลาด'}`);
+      toast.error(`บันทึกการรับเคลมไม่สำเร็จ: ${(err as { message?: string } | null)?.message || 'เกิดข้อผิดพลาด'}`);
     } finally {
       claimSubmitting.current = false;
       setIsSubmitting(false);

@@ -35,6 +35,56 @@ import {
 import { toast } from 'sonner';
 import { addQty } from '@/lib/qty';
 
+/** A bill line as the history shows it (server order item plus display name / SKU). */
+interface HistoryOrderItem {
+  productId?: string;
+  unitId?: string;
+  unitName?: string;
+  name?: string;
+  productName?: string;
+  sku?: string;
+  quantity: number;
+  price?: number;
+  unitPrice?: number;
+  lineTotal?: number;
+  customPrice?: number | null;
+  discountValue: number;
+  discountType?: 'baht' | 'percent';
+  itemNote?: string;
+  note?: string;
+  product?: { name?: string; sku?: string } | null;
+  [field: string]: unknown;
+}
+
+interface HistoryPayment {
+  method: string;
+  amount: number;
+  referenceNo?: string;
+}
+
+/** A bill of the sales history (the server's order plus a few display fields). */
+interface HistoryOrder {
+  id: string;
+  orderNumber?: string;
+  status?: string;
+  customerId?: string | null;
+  customerName?: string;
+  createdAt: string;
+  total: number;
+  totalAmount: number;
+  subtotal: number;
+  paymentMethod?: string;
+  payments: HistoryPayment[];
+  items: HistoryOrderItem[];
+  claims: unknown[];
+  hasClaims?: boolean;
+  isSynced?: boolean;
+  [field: string]: unknown;
+}
+
+/** Order as /orders returns it (only what is read here). */
+type ServerOrder = Partial<HistoryOrder> & { id: string; createdAt: string };
+
 interface OrderHistoryModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -42,7 +92,7 @@ interface OrderHistoryModalProps {
 }
 
 export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: OrderHistoryModalProps) {
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<HistoryOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'completed' | 'cancelled'>('completed');
@@ -58,20 +108,20 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
 
   // 1. View Items Breakdown Modal State
-  const [viewItemsOrder, setViewItemsOrder] = useState<any | null>(null);
+  const [viewItemsOrder, setViewItemsOrder] = useState<HistoryOrder | null>(null);
 
   // 2. Repeat Order Confirmation State (Warning before clearing cart)
-  const [repeatConfirmOrder, setRepeatConfirmOrder] = useState<any | null>(null);
+  const [repeatConfirmOrder, setRepeatConfirmOrder] = useState<HistoryOrder | null>(null);
 
   // 3. Edit Payment Method State
-  const [editPaymentOrder, setEditPaymentOrder] = useState<any | null>(null);
+  const [editPaymentOrder, setEditPaymentOrder] = useState<HistoryOrder | null>(null);
   const [newPaymentMethod, setNewPaymentMethod] = useState<string>('CASH');
 
   // 4. Edit Line Items & Re-checkout Confirmation State
-  const [editItemsTargetOrder, setEditItemsTargetOrder] = useState<any | null>(null);
+  const [editItemsTargetOrder, setEditItemsTargetOrder] = useState<HistoryOrder | null>(null);
 
   // Void confirmation state
-  const [voidTargetOrder, setVoidTargetOrder] = useState<any | null>(null);
+  const [voidTargetOrder, setVoidTargetOrder] = useState<HistoryOrder | null>(null);
   const [voidReason, setVoidReason] = useState('');
 
   const cart = useCartStore();
@@ -85,8 +135,8 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
         apiFetch('/orders?limit=100'),
         fetchAllClaimRecords().catch(() => []),
       ]);
-      const fetchedBackend: any[] = ordersRes?.data || (Array.isArray(ordersRes) ? ordersRes : []);
-      const allClaims: any[] = claimsRes || [];
+      const fetchedBackend: ServerOrder[] = ordersRes?.data || (Array.isArray(ordersRes) ? ordersRes : []);
+      const allClaims = claimsRes || [];
 
       const claimedOrderMap = new Set<string>();
       allClaims.forEach((c) => {
@@ -95,7 +145,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
       });
 
       // Orders come from the server only (unsent offline bills wait in the outbox)
-      const combinedMap = new Map<string, any>();
+      const combinedMap = new Map<string, HistoryOrder>();
 
       fetchedBackend.forEach((bOrder) => {
         const key = bOrder.orderNumber || bOrder.id;
@@ -104,10 +154,10 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
           (Array.isArray(bOrder.claims) && bOrder.claims.length > 0) ||
           claimedOrderMap.has(key) ||
           claimedOrderMap.has(bOrder.id) ||
-          claimedOrderMap.has(bOrder.orderNumber);
+          (!!bOrder.orderNumber && claimedOrderMap.has(bOrder.orderNumber));
 
         const bItems = Array.isArray(bOrder.items)
-          ? bOrder.items.map((it: any) => ({
+          ? bOrder.items.map((it) => ({
               ...it,
               name: it.product?.name || it.name || 'สินค้า',
               sku: it.product?.sku || it.sku || '',
@@ -176,7 +226,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
         const q = search.toLowerCase().trim();
         const numMatch = order.orderNumber?.toLowerCase().includes(q);
         const custMatch = order.customerName?.toLowerCase().includes(q);
-        const itemMatch = order.items?.some((i: any) => i.name?.toLowerCase().includes(q));
+        const itemMatch = order.items?.some((i) => i.name?.toLowerCase().includes(q));
         if (!numMatch && !custMatch && !itemMatch) return false;
       }
 
@@ -216,7 +266,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
   }, [filteredOrders, currentPage, pageSize]);
 
   // Handle viewing receipt PDF
-  const handleViewReceipt = (order: any) => {
+  const handleViewReceipt = (order: HistoryOrder) => {
     const receiptData: ReceiptData = orderToReceiptData(order, { isReprint: true });
 
     setSelectedReceipt(receiptData);
@@ -224,12 +274,12 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
   };
 
   // Populate items into cart for Repeat Order or Edit Order
-  const populateOrderToCart = (order: any) => {
+  const populateOrderToCart = (order: HistoryOrder) => {
     cart.clearCart();
     if (!order.items || order.items.length === 0) return;
 
     let addedCount = 0;
-    order.items.forEach((item: any) => {
+    order.items.forEach((item) => {
       const product = products.find(p => p.id === item.productId || p.sku === item.sku);
       if (product) {
         const unit = product.units.find(u => u.id === item.unitId || u.unitName === item.unitName) || product.units[0];
@@ -242,20 +292,21 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
         if (item.discountValue > 0) {
           cart.setItemDiscount(product.id, item.discountType || 'baht', item.discountValue, unit.id);
         }
-        if (item.itemNote || item.note) {
-          cart.setItemNote(product.id, item.itemNote || item.note, unit.id);
+        const itemNote = item.itemNote || item.note;
+        if (itemNote) {
+          cart.setItemNote(product.id, itemNote, unit.id);
         }
         addedCount++;
       }
     });
 
     if (order.customerId) {
-      cart.setCustomer(order.customerId, order.customerName);
+      cart.setCustomer(order.customerId, order.customerName ?? null);
     }
   };
 
   // Handle Repeat Order click (Check if cart has items first!)
-  const handleRepeatOrderClick = (order: any) => {
+  const handleRepeatOrderClick = (order: HistoryOrder) => {
     if (cart.items.length > 0) {
       setRepeatConfirmOrder(order);
     } else {
@@ -345,7 +396,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
     }
   };
 
-  const getPaymentBadge = (methodStr?: string, payments?: any[]) => {
+  const getPaymentBadge = (methodStr?: string, payments?: HistoryPayment[]) => {
     if (payments && payments.length > 1) {
       const details = payments.map(p => {
         const name = p.method === 'CASH' ? 'เงินสด' : p.method === 'QR_PROMPTPAY' ? 'QR' : 'โอน';
@@ -430,7 +481,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
               <Calendar className="w-4 h-4 text-slate-400 hidden sm:block" />
               <select
                 value={dateRange}
-                onChange={(e) => { setDateRange(e.target.value as any); setCurrentPage(1); }}
+                onChange={(e) => { setDateRange(e.target.value as typeof dateRange); setCurrentPage(1); }}
                 className="h-10 bg-slate-50 border border-slate-300 text-slate-800 text-sm font-bold rounded-xl px-3 outline-none cursor-pointer hover:bg-slate-100"
               >
                 <option value="today">วันนี้</option>
@@ -474,7 +525,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {paginatedOrders.map((order) => {
                     const isCancelled = order.status === 'CANCELLED' || order.status === 'VOIDED';
-                    const itemCount = (order.items?.length ? addQty(...order.items.map((i: any) => i.quantity || 1)) : 0) || order.items?.length || 0;
+                    const itemCount = (order.items?.length ? addQty(...order.items.map((i) => i.quantity || 1)) : 0) || order.items?.length || 0;
 
                     return (
                       <tr 
@@ -712,7 +763,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {(viewItemsOrder?.items || []).map((item: any, idx: number) => {
+                  {(viewItemsOrder?.items || []).map((item, idx: number) => {
                     const price = item.unitPrice || item.price || 0;
                     const total = item.lineTotal || (item.quantity * price);
                     return (
