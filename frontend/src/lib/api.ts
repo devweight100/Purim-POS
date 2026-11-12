@@ -9,9 +9,29 @@ import {
   getCachedProducts,
   findCachedProductByBarcode,
 } from './offline-db';
-import { ApiError, isRetryableError } from './api-error';
+import { ApiError, isRetryableError, type UntypedJson } from './api-error';
 import { reportConnection } from './connection-status';
+import type {
+  ApiAuthUser, ApiCategory, ApiClaim, ApiClaimInventoryItem, ApiCustomer, ApiDebt, ApiDebtPayment, ApiDocumentSearchResult,
+  ApiListResponse, ApiPage, ApiPaymentVoucher, ApiProduct, ApiPurchaseOrder, ApiShiftLike, ApiShiftRecord,
+  ApiShiftSummary, ApiStoreSettings, ApiSupplier, ApiSupplierReturnNote, ApiUserRow, ApiCashMovement,
+  ApiBankAccount, BankAccountWriteRequest, BulkUpsertResponse, CashMovementRequest, CategoryWriteRequest,
+  CheckoutRequest, CheckoutResult, Customer, DebtPayRequest, DebtPayResponse, LoginRequest, LoginResponse,
+  ProductWriteRequest, PurchaseOrderWriteRequest, PurchaseReceiveRequest, QueryParams, SettleMultipleRequest,
+  SettleMultipleResponse, SupplierReturnWriteRequest, SupplierWriteRequest, UpdateUserRequest, ApiOrderLike,
+} from './types';
+import type { CachedProduct } from './offline-db';
 export { ApiError, isRetryableError } from './api-error';
+export type { UntypedJson } from './api-error';
+
+/** JSON error body the backend sends with a non-2xx status. */
+interface ApiErrorBody {
+  message?: string | string[];
+  code?: string;
+}
+
+/** A product list from the server, or (POS only) from the offline cache when the server is unreachable. */
+export type ProductListResult = (ApiProduct | CachedProduct)[] & { fromOfflineCache?: boolean };
 
 export function getApiBaseUrl(): string {
   if (typeof window === 'undefined') {
@@ -49,7 +69,11 @@ export function getAuthToken(): string | null {
   return inMemoryAuthToken;
 }
 
-export async function apiFetch(endpoint: string, options: RequestInit = {}): Promise<any> {
+/**
+ * Call the backend and parse its JSON answer as T. An empty body resolves to null, so endpoints
+ * that can answer without a body should include null in T.
+ */
+export async function apiFetch<T = UntypedJson>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const apiBase = getApiBaseUrl();
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const url = endpoint.startsWith('http') ? endpoint : `${apiBase}${cleanEndpoint}`;
@@ -95,7 +119,7 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}): Pro
         } catch {}
         window.dispatchEvent(new CustomEvent('purim:unauthorized'));
       }
-      const errBody = await res.json().catch(() => null);
+      const errBody: ApiErrorBody | null = await res.json().catch(() => null);
       if (res.status === 403 && errBody?.code === 'MUST_CHANGE_PASSWORD' && typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('purim:must-change-password'));
       } else if (res.status === 403 && typeof window !== 'undefined') {
@@ -114,10 +138,10 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}): Pro
 
     const text = await res.text();
     if (!text || !text.trim()) {
-      return null;
+      return null as T;
     }
     try {
-      return JSON.parse(text);
+      return JSON.parse(text) as T;
     } catch {
       throw new ApiError('คำตอบจากเซิร์ฟเวอร์ไม่สมบูรณ์ กรุณาตรวจสอบสถานะรายการ', 502);
     }
@@ -134,30 +158,30 @@ export async function apiFetch(endpoint: string, options: RequestInit = {}): Pro
 export const api = {
   // 1. Auth & Users (Admin Panel ready)
   auth: {
-    login: (loginDto: any) => apiFetch('/auth/login', { method: 'POST', body: JSON.stringify(loginDto) }),
-    loginWithPin: (pin: string) => apiFetch('/auth/login-pin', { method: 'POST', body: JSON.stringify({ pin }) }),
-    getProfile: () => apiFetch('/auth/me'),
-    getUsers: () => apiFetch('/auth/users'),
-    updateUser: (id: string, data: any) => apiFetch(`/auth/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-    toggleUserActive: (id: string) => apiFetch(`/auth/users/${id}/toggle-active`, { method: 'PATCH' }),
+    login: (loginDto: LoginRequest) => apiFetch<LoginResponse>('/auth/login', { method: 'POST', body: JSON.stringify(loginDto) }),
+    loginWithPin: (pin: string) => apiFetch<LoginResponse>('/auth/login-pin', { method: 'POST', body: JSON.stringify({ pin }) }),
+    getProfile: () => apiFetch<ApiAuthUser>('/auth/me'),
+    getUsers: () => apiFetch<ApiUserRow[]>('/auth/users'),
+    updateUser: (id: string, data: UpdateUserRequest) => apiFetch<ApiUserRow>(`/auth/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    toggleUserActive: (id: string) => apiFetch<ApiUserRow>(`/auth/users/${id}/toggle-active`, { method: 'PATCH' }),
   },
 
   // 2. Shifts
   shifts: {
-    getCurrent: () => apiFetch('/shifts/current?terminalId=' + encodeURIComponent(getTerminalId())),
+    getCurrent: () => apiFetch<ApiShiftSummary | null>('/shifts/current?terminalId=' + encodeURIComponent(getTerminalId())),
     open: (startingCash: number, note?: string) =>
-      apiFetch('/shifts/open', { method: 'POST', body: JSON.stringify({ startingCash, note, terminalId: getTerminalId() }) }),
+      apiFetch<ApiShiftSummary>('/shifts/open', { method: 'POST', body: JSON.stringify({ startingCash, note, terminalId: getTerminalId() }) }),
     close: (shiftId: string, actualCash: number, note?: string) =>
-      apiFetch(`/shifts/${shiftId}/close`, { method: 'POST', body: JSON.stringify({ actualCash, note }) }),
-    getSummary: (shiftId: string) => apiFetch(`/shifts/${shiftId}/summary`),
-    addCashMovement: (shiftId: string, p1: any, p2?: number, p3?: string) => {
+      apiFetch<ApiShiftRecord>(`/shifts/${shiftId}/close`, { method: 'POST', body: JSON.stringify({ actualCash, note }) }),
+    getSummary: (shiftId: string) => apiFetch<ApiShiftSummary>(`/shifts/${shiftId}/summary`),
+    addCashMovement: (shiftId: string, p1: CashMovementRequest | 'in' | 'out', p2?: number, p3?: string) => {
       const body = typeof p1 === 'object' ? p1 : { type: p1, amount: p2, reason: p3 };
-      return apiFetch(`/shifts/${shiftId}/cash-movements`, { method: 'POST', body: JSON.stringify(body) });
+      return apiFetch<ApiCashMovement>(`/shifts/${shiftId}/cash-movements`, { method: 'POST', body: JSON.stringify(body) });
     },
     getHistory: (page = 1, limit = 20, search?: string) => {
       const q = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (search) q.append('search', search);
-      return apiFetch(`/shifts/history?${q.toString()}`);
+      return apiFetch<ApiPage<ApiShiftLike>>(`/shifts/history?${q.toString()}`);
     },
   },
 
@@ -166,12 +190,12 @@ export const api = {
   // cache is read back only when the caller asks for it (the POS, so selling keeps working
   // offline); back-office pages get the error instead of stale data.
   products: {
-    getAll: async (search?: string, categoryId?: string, opts?: { offlineCache?: boolean }) => {
+    getAll: async (search?: string, categoryId?: string, opts?: { offlineCache?: boolean }): Promise<ProductListResult> => {
       try {
         const q = new URLSearchParams();
         if (search) q.append('search', search);
         if (categoryId) q.append('categoryId', categoryId);
-        const data = await apiFetch(`/products${q.toString() ? `?${q.toString()}` : ''}`);
+        const data = await apiFetch<ApiProduct[]>(`/products${q.toString() ? `?${q.toString()}` : ''}`);
         // Cache to IndexedDB in background
         if (Array.isArray(data)) {
           if (!search && !categoryId) void cacheProducts(data);
@@ -185,42 +209,43 @@ export const api = {
         return Object.assign(cached, { fromOfflineCache: true });
       }
     },
-    getByBarcode: async (barcode: string) => {
+    getByBarcode: async (barcode: string): Promise<ApiProduct | CachedProduct | null> => {
       try {
-        return await apiFetch(`/products/barcode/${barcode}`);
+        return await apiFetch<ApiProduct | null>(`/products/barcode/${barcode}`);
       } catch (err) {
         if (!isRetryableError(err)) throw err;
         return await findCachedProductByBarcode(barcode);
       }
     },
-    getOne: (id: string) => apiFetch(`/products/${id}`),
-    create: (data: any) => apiFetch('/products', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: any) => apiFetch(`/products/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-    bulkUpsert: (products: any[]) => apiFetch('/products/bulk-upsert', { method: 'POST', body: JSON.stringify({ products }) }),
-    delete: (id: string) => apiFetch(`/products/${id}`, { method: 'DELETE' }),
-    deleteAll: () => apiFetch('/products', { method: 'DELETE' }),
-    getStock: (id: string) => apiFetch(`/products/${id}/stock`),
+    getOne: (id: string) => apiFetch<ApiProduct>(`/products/${id}`),
+    // generic so callers can read the saved product into their own view type (default: the server shape)
+    create: <T = ApiProduct>(data: ProductWriteRequest) => apiFetch<T>('/products', { method: 'POST', body: JSON.stringify(data) }),
+    update: <T = ApiProduct>(id: string, data: ProductWriteRequest) => apiFetch<T>(`/products/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    bulkUpsert: (products: ProductWriteRequest[]) => apiFetch<BulkUpsertResponse>('/products/bulk-upsert', { method: 'POST', body: JSON.stringify({ products }) }),
+    delete: (id: string) => apiFetch<ApiProduct>(`/products/${id}`, { method: 'DELETE' }),
+    deleteAll: () => apiFetch<{ deleted: number }>('/products', { method: 'DELETE' }),
+    getStock: (id: string) => apiFetch<{ productId: string; computedStock?: number }>(`/products/${id}/stock`),
   },
 
   categories: {
-    getAll: () => apiFetch('/categories'),
-    create: (data: any) => apiFetch('/categories', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: any) => apiFetch(`/categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-    delete: (id: string) => apiFetch(`/categories/${id}`, { method: 'DELETE' }),
+    getAll: () => apiFetch<ApiCategory[]>('/categories'),
+    create: (data: CategoryWriteRequest) => apiFetch<ApiCategory>('/categories', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: CategoryWriteRequest) => apiFetch<ApiCategory>(`/categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    delete: (id: string) => apiFetch<ApiCategory>(`/categories/${id}`, { method: 'DELETE' }),
   },
 
   // 4. Orders & Offline-First POS Checkout
   orders: {
-    checkout: async (orderData: any) => {
+    checkout: async (orderData: CheckoutRequest): Promise<CheckoutResult> => {
       return (await import('./order-sync-service')).submitOrder(orderData);
     },
     void: (id: string, reason: string) =>
-      apiFetch(`/orders/${id}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
-    getAll: (query: any = {}) => {
+      apiFetch<ApiOrderLike>(`/orders/${id}/void`, { method: 'POST', body: JSON.stringify({ reason }) }),
+    getAll: (query: QueryParams = {}) => {
       const q = new URLSearchParams(query);
-      return apiFetch(`/orders?${q.toString()}`);
+      return apiFetch<ApiListResponse<ApiOrderLike>>(`/orders?${q.toString()}`);
     },
-    getOne: (id: string) => apiFetch(`/orders/${id}`),
+    getOne: (id: string) => apiFetch<ApiOrderLike>(`/orders/${id}`),
     syncOffline: async () => (await import('./order-sync-service')).syncPendingOrders(),
   },
 
@@ -230,106 +255,106 @@ export const api = {
       const q = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (search) q.append('search', search);
       if (status) q.append('status', status);
-      return apiFetch(`/debts?${q.toString()}`);
+      return apiFetch<ApiPage<ApiDebt>>(`/debts?${q.toString()}`);
     },
-    getOne: (id: string) => apiFetch(`/debts/${id}`),
-    pay: (id: string, data: { amount: number; paymentMethod?: string; referenceNo?: string; cashierName?: string; note?: string }) =>
-      apiFetch(`/debts/${id}/pay`, { method: 'POST', body: JSON.stringify(data) }),
+    getOne: (id: string) => apiFetch<ApiDebt>(`/debts/${id}`),
+    pay: (id: string, data: DebtPayRequest) =>
+      apiFetch<DebtPayResponse>(`/debts/${id}/pay`, { method: 'POST', body: JSON.stringify(data) }),
     getPaymentsHistory: (page = 1, limit = 20, search?: string) => {
       const q = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (search) q.append('search', search);
-      return apiFetch(`/debts/payments-history?${q.toString()}`);
+      return apiFetch<ApiPage<ApiDebtPayment>>(`/debts/payments-history?${q.toString()}`);
     },
   },
 
   // 6. Payables & Payment Vouchers (เจ้าหนี้การค้า & ใบสำคัญจ่าย)
   payables: {
-    getBills: (params: any = {}) => {
+    getBills: (params: QueryParams = {}) => {
       const q = new URLSearchParams(params);
-      return apiFetch(`/payables/bills?${q.toString()}`);
+      return apiFetch<ApiPage<ApiPurchaseOrder>>(`/payables/bills?${q.toString()}`);
     },
-    getSuppliersSummary: () => apiFetch('/payables/suppliers-summary'),
-    settleMultiple: (dto: any) => apiFetch('/payables/settle-multiple', { method: 'POST', body: JSON.stringify(dto) }),
-    getVouchers: (params: any = {}) => {
+    getSuppliersSummary: () => apiFetch<unknown[]>('/payables/suppliers-summary'),
+    settleMultiple: (dto: SettleMultipleRequest) => apiFetch<SettleMultipleResponse>('/payables/settle-multiple', { method: 'POST', body: JSON.stringify(dto) }),
+    getVouchers: (params: QueryParams = {}) => {
       const q = new URLSearchParams(params);
-      return apiFetch(`/payables/vouchers?${q.toString()}`);
+      return apiFetch<ApiPage<ApiPaymentVoucher>>(`/payables/vouchers?${q.toString()}`);
     },
-    getVoucher: (id: string) => apiFetch(`/payables/vouchers/${id}`),
+    getVoucher: (id: string) => apiFetch<ApiPaymentVoucher>(`/payables/vouchers/${id}`),
     cancelVoucher: (id: string, reason: string) =>
-      apiFetch(`/payables/vouchers/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
+      apiFetch<ApiPaymentVoucher>(`/payables/vouchers/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
   },
 
   // 7. Supplier Returns (ใบลดหนี้ส่งเคลมคู่ค้า)
   supplierReturns: {
-    getAll: (params: any = {}) => {
+    getAll: (params: QueryParams = {}) => {
       const q = new URLSearchParams(params);
-      return apiFetch(`/supplier-returns?${q.toString()}`);
+      return apiFetch<ApiListResponse<ApiSupplierReturnNote>>(`/supplier-returns?${q.toString()}`);
     },
-    getOne: (id: string) => apiFetch(`/supplier-returns/${id}`),
-    create: (data: any) => apiFetch('/supplier-returns', { method: 'POST', body: JSON.stringify(data) }),
+    getOne: (id: string) => apiFetch<ApiSupplierReturnNote>(`/supplier-returns/${id}`),
+    create: (data: SupplierReturnWriteRequest) => apiFetch<ApiSupplierReturnNote>('/supplier-returns', { method: 'POST', body: JSON.stringify(data) }),
   },
 
   // 8. Claims & Claim Inventory (เคลมลูกค้า & คลังสต๊อกของเคลม)
   claims: {
-    getAll: (params: any = {}) => {
+    getAll: (params: QueryParams = {}) => {
       const q = new URLSearchParams(params);
-      return apiFetch(`/claims?${q.toString()}`);
+      return apiFetch<ApiListResponse<ApiClaim>>(`/claims?${q.toString()}`);
     },
-    getOne: (id: string) => apiFetch(`/claims/${id}`),
-    create: (data: any) => apiFetch('/claims', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: any) => apiFetch(`/claims/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-    getInventory: () => apiFetch('/claims/inventory'),
-    updateInventory: (id: string, data: any) =>
-      apiFetch(`/claims/inventory/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    getOne: (id: string) => apiFetch<ApiClaim>(`/claims/${id}`),
+    create: (data: Partial<ApiClaim>) => apiFetch<ApiClaim>('/claims', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<ApiClaim>) => apiFetch<ApiClaim>(`/claims/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    getInventory: () => apiFetch<ApiListResponse<ApiClaimInventoryItem>>('/claims/inventory'),
+    updateInventory: (id: string, data: Partial<ApiClaimInventoryItem>) =>
+      apiFetch<ApiClaimInventoryItem>(`/claims/inventory/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   },
 
   // 9. Suppliers & Purchase Orders (ผู้จำหน่าย & จัดซื้อ)
   suppliers: {
-    getAll: () => apiFetch('/suppliers'),
-    getOne: (id: string) => apiFetch(`/suppliers/${id}`),
-    create: (data: any) => apiFetch('/suppliers', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: any) => apiFetch(`/suppliers/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-    delete: (id: string) => apiFetch(`/suppliers/${id}`, { method: 'DELETE' }),
+    getAll: () => apiFetch<ApiSupplier[]>('/suppliers'),
+    getOne: (id: string) => apiFetch<ApiSupplier>(`/suppliers/${id}`),
+    create: (data: SupplierWriteRequest) => apiFetch<ApiSupplier>('/suppliers', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: SupplierWriteRequest) => apiFetch<ApiSupplier>(`/suppliers/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    delete: (id: string) => apiFetch<ApiSupplier>(`/suppliers/${id}`, { method: 'DELETE' }),
   },
 
   purchaseOrders: {
-    getAll: (params: any = {}) => {
+    getAll: (params: QueryParams = {}) => {
       const q = new URLSearchParams(params);
-      return apiFetch(`/purchase-orders?${q.toString()}`);
+      return apiFetch<ApiListResponse<ApiPurchaseOrder>>(`/purchase-orders?${q.toString()}`);
     },
-    getOne: (id: string) => apiFetch(`/purchase-orders/${id}`),
-    create: (data: any) => apiFetch('/purchase-orders', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: any) => apiFetch(`/purchase-orders/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-    issue: (id: string) => apiFetch(`/purchase-orders/${id}/issue`, { method: 'POST' }),
-    receive: (id: string, data: any) => apiFetch(`/purchase-orders/${id}/receive`, { method: 'POST', body: JSON.stringify(data) }),
+    getOne: (id: string) => apiFetch<ApiPurchaseOrder>(`/purchase-orders/${id}`),
+    create: (data: PurchaseOrderWriteRequest) => apiFetch<ApiPurchaseOrder>('/purchase-orders', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: PurchaseOrderWriteRequest) => apiFetch<ApiPurchaseOrder>(`/purchase-orders/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    issue: (id: string) => apiFetch<ApiPurchaseOrder>(`/purchase-orders/${id}/issue`, { method: 'POST' }),
+    receive: (id: string, data: PurchaseReceiveRequest) => apiFetch<ApiPurchaseOrder>(`/purchase-orders/${id}/receive`, { method: 'POST', body: JSON.stringify(data) }),
   },
 
   // 10. Customers
   customers: {
     getAll: (search?: string) => {
       const q = search ? `?search=${encodeURIComponent(search)}` : '';
-      return apiFetch(`/customers${q}`);
+      return apiFetch<ApiCustomer[]>(`/customers${q}`);
     },
-    getOne: (id: string) => apiFetch(`/customers/${id}`),
-    create: (data: any) => apiFetch('/customers', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: any) => apiFetch(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-    delete: (id: string) => apiFetch(`/customers/${id}`, { method: 'DELETE' }),
+    getOne: (id: string) => apiFetch<ApiCustomer>(`/customers/${id}`),
+    create: (data: Partial<Customer>) => apiFetch<ApiCustomer>('/customers', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: Partial<Customer>) => apiFetch<ApiCustomer>(`/customers/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    delete: (id: string) => apiFetch<ApiCustomer>(`/customers/${id}`, { method: 'DELETE' }),
   },
 
   // 11. Bank Accounts
   bankAccounts: {
-    getAll: async () => { return rememberServerBankAccounts(await apiFetch('/bank-accounts')); },
-    create: (data: any) => apiFetch('/bank-accounts', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: any) => apiFetch(`/bank-accounts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-    setDefault: (id: string) => apiFetch(`/bank-accounts/${id}/set-default`, { method: 'PATCH' }),
-    delete: (id: string) => apiFetch(`/bank-accounts/${id}`, { method: 'DELETE' }),
+    getAll: async () => { return rememberServerBankAccounts(await apiFetch<ApiBankAccount[]>('/bank-accounts')); },
+    create: (data: BankAccountWriteRequest) => apiFetch<ApiBankAccount>('/bank-accounts', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: BankAccountWriteRequest) => apiFetch<ApiBankAccount>(`/bank-accounts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    setDefault: (id: string) => apiFetch<ApiBankAccount>(`/bank-accounts/${id}/set-default`, { method: 'PATCH' }),
+    delete: (id: string) => apiFetch<ApiBankAccount>(`/bank-accounts/${id}`, { method: 'DELETE' }),
   },
 
   // 12. Settings & Reports
   settings: {
-    get: () => apiFetch('/settings'),
-    update: (data: any) => apiFetch('/settings', { method: 'PATCH', body: JSON.stringify(data) }),
-    resetDatabase: () => apiFetch('/settings/reset-database', { method: 'POST' }),
+    get: () => apiFetch<ApiStoreSettings>('/settings'),
+    update: (data: ApiStoreSettings) => apiFetch<ApiStoreSettings>('/settings', { method: 'PATCH', body: JSON.stringify(data) }),
+    resetDatabase: () => apiFetch<{ success?: boolean; message?: string }>('/settings/reset-database', { method: 'POST' }),
   },
 
   reports: {
@@ -337,18 +362,18 @@ export const api = {
       const q = new URLSearchParams();
       if (startDate) q.append('startDate', startDate);
       if (endDate) q.append('endDate', endDate);
-      return apiFetch(`/reports/dashboard${q.toString() ? `?${q.toString()}` : ''}`);
+      return apiFetch<Record<string, unknown>>(`/reports/dashboard${q.toString() ? `?${q.toString()}` : ''}`);
     },
   },
 
   // 13. Universal Document Search (ค้นหาเอกสารทุกประเภทผ่านบาร์โค้ดหรือเลขที่เอกสาร)
   documents: {
-    search: (query: string) => apiFetch(`/documents/search?q=${encodeURIComponent(query)}`),
+    search: (query: string) => apiFetch<ApiDocumentSearchResult[]>(`/documents/search?q=${encodeURIComponent(query)}`),
   },
 
   // Legacy convenience aliases
   getProducts: () => api.products.getAll(),
-  getOrders: (query: any = {}) => api.orders.getAll(query),
+  getOrders: (query: QueryParams = {}) => api.orders.getAll(query),
   getCategories: () => api.categories.getAll(),
   getCustomers: (search?: string) => api.customers.getAll(search),
   getDashboardData: () => api.reports.getDashboard(),

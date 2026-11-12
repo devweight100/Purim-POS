@@ -16,7 +16,7 @@ export interface ProductPackagingUnit {
   id?: string;
   name: string;
   qtyPerPrev: number | string;
-  barcode?: string;
+  barcode?: string | null;
   priceLevel1?: number | string | null;
   priceLevel2?: number | string | null;
   priceLevel3?: number | string | null;
@@ -68,6 +68,14 @@ export interface Product {
   supplierId?: string | null;
   barcodes?: Array<{ barcode?: string; supplierId?: string; label?: string }>;
   supplierEntries?: Array<{ supplierId?: string; lastCost?: number | string; notes?: string }>;
+  /** same as basePrice / costPrice (product-store sets both names) */
+  price?: number;
+  cost?: number;
+  /** supplier links as the server sent them */
+  suppliers?: Array<{ id?: string; supplierId?: string; supplierSku?: string | null; unitCost?: number | string | null; isPreferred?: boolean; supplier?: { id?: string; name?: string } | null }>;
+  /** older product shapes: supplier object or name */
+  supplier?: string | { id?: string; name?: string } | null;
+  supplierName?: string;
   packagingUnits?: ProductPackagingUnit[];
   images?: ProductImage[];
   wholesalePrices?: ProductWholesalePrice[];
@@ -252,6 +260,17 @@ export interface OrderPayment {
   changeAmount?: number;
 }
 
+/** The warranty claim a sale settled (shown on the receipt). */
+export interface OrderClaimInfo {
+  claimId: string;
+  originalOrderNumber?: string;
+  productName: string;
+  quantity: number;
+  unitName?: string;
+  defectReason?: string;
+  discountAmount: number;
+}
+
 export interface Order {
   outboxVersion?: number;
   id: string;
@@ -266,7 +285,7 @@ export interface Order {
   pointsDiscountAmount?: number;
   pointsUsed?: number;
   claimDiscountAmount?: number;
-  claimInfo?: any;
+  claimInfo?: OrderClaimInfo;
   vatAmount: number;
   vatEnabled?: boolean;
   totalAmount: number;
@@ -447,6 +466,7 @@ export interface SupplierReturnDeduction {
 
 export interface SupplierReturnNote {
   id: string;                  // RTN-YYYYMMDD-XXXX
+  noteNumber?: string;         // same as id (document number)
   returnDate: string;          // ISO date string
   supplierId: string;
   supplierName: string;
@@ -490,4 +510,897 @@ export interface ClaimEligibleItem {
   unitPrice: number;
   isReplacementWarranty?: boolean;
   originalClaimId?: string;
+}
+
+// =============================================
+// Server (API) JSON shapes
+// =============================================
+// What the NestJS backend actually sends. Quantity columns are converted to JSON numbers by the
+// backend (QtyResponseInterceptor); other Prisma Decimal columns (money) are serialised as
+// strings ("12.50"), so raw rows type them as DecimalJson and readers wrap them in Number().
+// Computed/formatted fields are plain numbers. Most raw rows list only the fields the frontend
+// reads, as optional, because the same mappers also accept older/local shapes.
+
+/** A Prisma Decimal money column as JSON ("12.50"), or a number where the server computed it. */
+export type DecimalJson = number | string;
+
+/** Paginated list envelope (`{ data, meta }`). */
+export interface ApiPage<T> {
+  data: T[];
+  meta?: { total: number; page: number; limit: number; totalPages: number };
+}
+
+/** Endpoints read by code that accepts both a bare array and a `{ data }` envelope. */
+export type ApiListResponse<T> = T[] | ApiPage<T>;
+
+/** Query-string parameters (passed to URLSearchParams). */
+export type QueryParams = Record<string, string>;
+
+/** Rows of an ApiListResponse, or null when the body is neither shape. */
+export function apiListRows<T>(res: ApiListResponse<T> | null | undefined): T[] | null {
+  if (Array.isArray(res)) return res;
+  if (res && Array.isArray(res.data)) return res.data;
+  return null;
+}
+
+// --- Auth ---
+
+export type UserRole = 'ADMIN' | 'MANAGER' | 'CASHIER' | 'WAREHOUSE';
+
+export interface ApiAuthUser {
+  id: string;
+  username: string;
+  fullName: string;
+  name?: string;
+  role: UserRole;
+  permissions?: string[];
+  isActive?: boolean;
+  mustChangePassword?: boolean;
+}
+
+export interface LoginRequest {
+  username: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  user: ApiAuthUser;
+}
+
+/** GET /auth/users row */
+export interface ApiUserRow {
+  id: string;
+  username: string;
+  fullName: string;
+  role: UserRole;
+  permissions: string[] | null;
+  isActive: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface UpdateUserRequest {
+  fullName?: string;
+  role?: UserRole;
+  permissions?: string[];
+  password?: string;
+  pinCode?: string;
+  isActive?: boolean;
+}
+
+// --- Shifts ---
+
+export interface ApiCashMovement {
+  id: string;
+  shiftId?: string;
+  type: string; // 'IN' | 'OUT'
+  amount: DecimalJson;
+  reason?: string | null;
+  category?: string;
+  createdAt: string;
+}
+
+/** Shift row (GET /shifts/:id/summary -> shift) */
+export interface ApiShiftRecord {
+  id: string;
+  shiftNumber?: string | null;
+  userId?: string;
+  terminalId?: string | null;
+  status?: string; // 'OPEN' | 'CLOSED'
+  openedAt: string;
+  closedAt: string | null;
+  startingCash?: DecimalJson;
+  actualCash?: DecimalJson | null;
+  note?: string | null;
+  user?: { id?: string; fullName?: string } | null;
+  cashMovements?: ApiCashMovement[];
+  orders?: unknown[];
+  // older servers sent the totals on the shift row itself
+  cashSales?: DecimalJson;
+  promptpaySales?: DecimalJson;
+  creditCardSales?: DecimalJson;
+  debtSales?: DecimalJson;
+  cashIn?: DecimalJson;
+  cashOut?: DecimalJson;
+}
+
+/** Totals the server computes for a shift (backend shiftFigures). */
+export interface ApiShiftFigures {
+  startingCash?: number;
+  cashSales?: number;
+  qrSales?: number;
+  transferSales?: number;
+  promptpaySales?: number;
+  creditCardSales?: number;
+  cardSales?: number;
+  debtSales?: number;
+  creditSales?: number;
+  creditNoteSales?: number;
+  otherSales?: number;
+  totalSales?: number;
+  returnsTotal?: number;
+  returnCount?: number;
+  netSales?: number;
+  discountTotal?: number;
+  cashIn?: number;
+  otherCashIn?: number;
+  cashOut?: number;
+  debtCollectionCash?: number;
+  debtCollectionCount?: number;
+  debtCollectionQrTransfer?: number;
+  debtCollectionTotal?: number;
+  cashRefunds?: number;
+  returnRefundAmount?: number;
+  returnRefundCount?: number;
+  voidRefundAmount?: number;
+  voidRefundCount?: number;
+  claimRefundAmount?: number;
+  claimRefundCount?: number;
+  expectedCash?: number;
+  orderCount?: number;
+  voidCount?: number;
+}
+
+/** GET /shifts/current, POST /shifts/open, GET /shifts/:id/summary */
+export interface ApiShiftSummary extends ApiShiftFigures {
+  shift: ApiShiftRecord;
+  shiftCode?: string | null;
+  status?: string;
+}
+
+/**
+ * One shift as read by mapServerShiftToSummary: a /shifts/history row, or a summary flattened
+ * onto its shift row. Every field is optional; legacy names are accepted.
+ */
+export interface ApiShiftLike extends ApiShiftFigures {
+  id: string;
+  shiftId?: string;
+  shiftNumber?: string | null;
+  shiftCode?: string | null;
+  code?: string;
+  userId?: string;
+  userName?: string;
+  user?: { id?: string; fullName?: string } | null;
+  status?: string;
+  shiftStatus?: string;
+  isOpen?: boolean;
+  openedAt: string;
+  closedAt?: string | null;
+  openingCash?: DecimalJson;
+  actualCash?: DecimalJson | null;
+  ordersCount?: number;
+  cashInAmount?: number;
+  cashOutAmount?: number;
+  cashRefundAmount?: number;
+  billDiscountsTotal?: number;
+  pointsDiscountsTotal?: number;
+  bankAccountBreakdown?: Array<{ accountLabel: string; amount: number }>;
+  /** callers flattening an ApiShiftSummary blank out its nested shift */
+  shift?: undefined;
+}
+
+export interface CashMovementRequest {
+  type: 'in' | 'out';
+  amount: number;
+  reason: string;
+  clientMovementId: string;
+  purpose?: string;
+  expenseCategoryId?: string;
+  bankAccountId?: string;
+  approvalId?: string;
+  category?: string;
+}
+
+// --- Products ---
+
+export interface ApiProductBarcode {
+  id?: string;
+  barcode?: string;
+  label?: string | null;
+  supplierId?: string;
+}
+
+/** products.packagingUnits row (name / qtyPerPrev / barcode / priceLevel1-5); older shapes used unitName / factor / price. */
+export interface ApiProductPackagingUnit extends ProductPackagingUnit {
+  unitName?: string;
+  factor?: number;
+  price?: DecimalJson;
+}
+
+export interface ApiProductSupplierLink {
+  id?: string;
+  supplierId?: string;
+  supplierName?: string;
+  supplierSku?: string | null;
+  unitCost?: DecimalJson | null;
+  lastCost?: DecimalJson;
+  isPreferred?: boolean;
+  notes?: string;
+  supplier?: { id?: string; name?: string } | null;
+}
+
+/** Product as the server sends it (GET /products, /products/:id, /products/barcode/:code). */
+export interface ApiProduct {
+  id: string;
+  name?: string;
+  sku: string;
+  categoryId?: string | null;
+  category?: string;
+  description?: string | null;
+  unit?: string | null;
+  price?: DecimalJson;
+  basePrice?: DecimalJson;
+  costPrice?: DecimalJson;
+  cost?: DecimalJson;
+  priceLevel1?: DecimalJson | null;
+  priceLevel2?: DecimalJson | null;
+  priceLevel3?: DecimalJson | null;
+  priceLevel4?: DecimalJson | null;
+  priceLevel5?: DecimalJson | null;
+  imageUrl?: string | null;
+  image?: string | null;
+  hasVat?: boolean;
+  isBundle?: boolean;
+  isActive?: boolean;
+  minStockAlert?: number | null;
+  stock?: number;
+  computedStock?: number;
+  stockBatches?: Array<{ quantityRemaining?: number }>;
+  barcode?: string;
+  barcodes?: Array<ApiProductBarcode | string>;
+  units?: Array<{ id?: string; unitName?: string; name?: string; factor?: number; price?: DecimalJson; barcode?: string }>;
+  packagingUnits?: ApiProductPackagingUnit[];
+  images?: ProductImage[];
+  wholesalePrices?: ProductWholesalePrice[];
+  suppliers?: ApiProductSupplierLink[];
+  supplierEntries?: ApiProductSupplierLink[];
+  supplierId?: string | null;
+  bundleItems?: ProductBundleItem[];
+}
+
+/** Body of POST/PATCH /products and of each /products/bulk-upsert row. */
+export interface ProductWriteRequest {
+  id?: string;
+  name?: string;
+  sku?: string;
+  categoryId?: string | null;
+  unit?: string | null;
+  basePrice?: number | string | null;
+  costPrice?: number | string | null;
+  priceLevel1?: number | string | null;
+  priceLevel2?: number | string | null;
+  priceLevel3?: number | string | null;
+  priceLevel4?: number | string | null;
+  priceLevel5?: number | string | null;
+  imageUrl?: string | null;
+  isBundle?: boolean;
+  isActive?: boolean;
+  minStockAlert?: number | string | null;
+  supplierId?: string | null;
+  barcodes?: Array<{ barcode?: string; supplierId?: string; label?: string } | string>;
+  packagingUnits?: Array<{ name?: string; qtyPerPrev?: number | string; barcode?: string | null; priceLevel1?: number | string | null; priceLevel2?: number | string | null; priceLevel3?: number | string | null; priceLevel4?: number | string | null; priceLevel5?: number | string | null }>;
+  images?: Array<{ dataUrl?: string; name?: string; isCover?: boolean }>; // rows without dataUrl are dropped by the server
+  wholesalePrices?: Array<{ minQuantity?: number | string | null; unitPrice?: number | string | null }>;
+  bundleItems?: Array<{ childProductId?: string; quantity?: number | string }>;
+  supplierEntries?: Array<{ supplierId?: string; supplierSku?: string; unitCost?: number | string | null; lastCost?: number | string; isPreferred?: boolean; notes?: string }>;
+}
+
+export interface BulkUpsertResponse {
+  success: boolean;
+  created: number;
+  updated: number;
+  skipped: number;
+  total: number;
+}
+
+export interface ApiCategory {
+  id?: string;
+  name?: string;
+  color?: string | null;
+  icon?: string | null;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+export interface CategoryWriteRequest {
+  name?: string;
+  color?: string;
+  icon?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+// --- Orders ---
+
+export interface ApiOrderItem {
+  id?: string;
+  productId?: string;
+  product?: { id?: string; name?: string; sku?: string; unit?: string | null } | null;
+  name?: string;
+  productName?: string;
+  sku?: string;
+  code?: string;
+  unitName?: string;
+  unitId?: string;
+  conversionFactor?: number;
+  quantity?: number;
+  unitPrice?: DecimalJson;
+  price?: DecimalJson;
+  discountAmount?: DecimalJson | null;
+  total?: DecimalJson | null;
+  lineTotal?: DecimalJson | null;
+  itemNote?: string | null;
+  note?: string | null;
+  bundleData?: unknown;
+}
+
+export interface ApiOrderPayment {
+  method?: string;
+  amount?: DecimalJson;
+  referenceNo?: string | null;
+  bankAccountId?: string | null;
+  cashReceived?: DecimalJson | null;
+  changeAmount?: DecimalJson | null;
+}
+
+export interface ApiOrderCustomer {
+  id?: string;
+  name?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  taxId?: string | null;
+  companyName?: string | null;
+  branchName?: string | null;
+}
+
+/**
+ * An order as the receipt / claim mappers read it: a server order (GET /orders) or a local POS
+ * Order. Every field is optional and read defensively.
+ */
+export interface ApiOrderLike {
+  id?: string;
+  orderNumber?: string;
+  status?: string;
+  createdAt?: string;
+  customerId?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  customerAddress?: string | null;
+  customerTaxId?: string | null;
+  customer?: string | ApiOrderCustomer | null;
+  user?: { fullName?: string; username?: string } | null;
+  userName?: string;
+  items?: ApiOrderItem[];
+  payments?: ApiOrderPayment[];
+  paymentMethod?: string | null;
+  subtotal?: DecimalJson;
+  discountAmount?: DecimalJson | null;
+  billDiscountAmount?: number;
+  pointsDiscountAmount?: number;
+  claimDiscountAmount?: number;
+  vatAmount?: DecimalJson | null;
+  totalAmount?: DecimalJson;
+  total?: DecimalJson;
+  cashReceived?: DecimalJson | null;
+  changeAmount?: DecimalJson | null;
+  pointsUsed?: number | null;
+  pointsEarned?: number | null;
+  customerPointsEarned?: number | null;
+  customerPointsBalance?: number | null;
+  debt?: { remainingAmount?: DecimalJson } | null;
+  note?: string | null;
+  remarks?: string | null;
+}
+
+/** Body of POST /orders/checkout (also kept in the offline outbox). */
+export interface CheckoutRequest {
+  clientOrderId: string;
+  approvalId?: string;
+  terminalId?: string;
+  orderNumber?: string;
+  customerId?: string | null;
+  shiftId?: string;
+  createdAt?: string;
+  discountAmount?: number;
+  claimDiscountAmount?: number;
+  claimRefs?: { claimId?: string; pending?: Array<{ orderId: string; productId: string; quantity: number }> };
+  pointsUsed?: number;
+  pointsDiscountAmount?: number;
+  vatAmount?: number;
+  vatEnabled?: boolean;
+  totalAmount: number;
+  note?: string;
+  items: Array<{
+    productId: string;
+    quantity: number;
+    unitPrice: number;
+    productName?: string;
+    unitId?: string;
+    unitName?: string;
+    conversionFactor?: number;
+    discountAmount?: number;
+    isClaimReplacement?: boolean;
+    claimQuantity?: number;
+  }>;
+  payments: Array<{
+    method: string;
+    amount: number;
+    referenceNo?: string;
+    bankAccountId?: string;
+    cashReceived?: number;
+    changeAmount?: number;
+  }>;
+}
+
+/** POST /orders/checkout result (the saved order), or the offline-outbox placeholder. */
+export interface CheckoutResult extends ApiOrderLike {
+  id: string;
+  orderNumber: string;
+  isOfflineSaved?: boolean;
+}
+
+// --- Debts ---
+
+export interface ApiDebtPayment {
+  id: string;
+  receiptNo?: string;
+  paymentDate: string;
+  amount: DecimalJson;
+  paymentMethod: PaymentMethodType;
+  referenceNo?: string;
+  cashierName: string;
+  note?: string;
+  cancelledAt?: string | null;
+}
+
+/** GET /debts row */
+export interface ApiDebt {
+  id?: string;
+  orderId: string;
+  customerId: string;
+  totalDebt: DecimalJson;
+  paidAmount: DecimalJson;
+  remainingAmount: DecimalJson;
+  dueDate?: string;
+  createdAt: string;
+  status?: string;
+  order?: { id?: string; orderNumber?: string; createdAt?: string } | null;
+  customer?: {
+    id?: string;
+    name?: string;
+    phone?: string;
+    address?: string | null;
+    code?: string;
+    profile?: { code?: string; type?: 'INDIVIDUAL' | 'COMPANY'; companyName?: string; taxId?: string; taxAddress?: string } | null;
+  } | null;
+  payments?: ApiDebtPayment[];
+}
+
+export interface DebtPayRequest {
+  amount: number;
+  paymentMethod?: string;
+  referenceNo?: string;
+  cashierName?: string;
+  note?: string;
+  shiftId?: string;
+  bankAccountId?: string;
+  clientPaymentId?: string;
+}
+
+export interface DebtPayResponse {
+  success: boolean;
+  payment?: ApiDebtPayment;
+  debt?: ApiDebt;
+}
+
+// --- Suppliers, purchase orders, payables ---
+
+export interface ApiSupplier {
+  id: string;
+  name: string;
+  contactName?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  taxId?: string | null;
+  creditTerms?: number | null;
+  isActive?: boolean;
+}
+
+export interface SupplierWriteRequest {
+  name?: string;
+  contactName?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  taxId?: string | null;
+  creditTerms?: number | null;
+  isActive?: boolean;
+}
+
+export interface ApiPurchaseOrderItem {
+  id?: string;
+  productId: string;
+  product?: { id?: string; name?: string; sku?: string; unit?: string | null } | null;
+  productName?: string;
+  name?: string;
+  sku?: string;
+  unitName?: string;
+  quantity?: number;
+  receivedQty?: number;
+  receivedQuantity?: number;
+  unitCost?: DecimalJson;
+  unitPrice?: DecimalJson;
+  costPrice?: DecimalJson;
+  total?: DecimalJson | null;
+  discountType?: string;
+  discountValue?: DecimalJson;
+  vatRate?: DecimalJson;
+  netAmount?: DecimalJson;
+  vatAmount?: DecimalJson;
+}
+
+/** A credit note amount already taken off a PO (legacy local bookkeeping). */
+export interface ApiPoDeductedReturn {
+  returnNoteId: string;
+  returnNumber: string;
+  amount: number;
+  deductedAt: string;
+  note?: string;
+}
+
+/** GET /purchase-orders row (with supplier and items) */
+export interface ApiPurchaseOrder {
+  id: string;
+  poNumber: string;
+  supplierId?: string;
+  supplier?: ApiSupplier | null;
+  supplierName?: string;
+  status: string;
+  paymentStatus?: string;
+  totalAmount?: DecimalJson;
+  paidAmount?: DecimalJson;
+  remainingPayable?: DecimalJson | null;
+  supplierInvoiceNo?: string | null;
+  supplierInvoiceDate?: string;
+  invoiceNo?: string;
+  invoiceDate?: string;
+  billDate?: string;
+  issueDate?: string;
+  issuedAt?: string;
+  createdAt?: string;
+  items?: ApiPurchaseOrderItem[];
+  deductedReturns?: ApiPoDeductedReturn[];
+  /** legacy local payment entries */
+  payments?: PayablePaymentEntry[];
+}
+
+/** One payment of a supplier bill (cash/transfer, credit notes and discount of one voucher). */
+export interface PayablePaymentEntry {
+  id: string;
+  voucherId?: string;
+  voucherNumber?: string;
+  paymentDate: string;
+  paymentMethod: 'CASH' | 'TRANSFER' | 'CHEQUE' | 'OTHER';
+  totalBillAmount: number;
+  deductedCreditAmount: number;
+  discountAmount?: number;
+  netCashOrTransferPaid: number;
+  deductedNotes: Array<{
+    returnNoteId: string;
+    amount: number;
+  }>;
+  bankAccountId?: string;
+  bankAccountLabel?: string;
+  referenceNo?: string;
+  note?: string;
+  cashierName: string;
+}
+
+export interface PurchaseOrderWriteRequest {
+  supplierId?: string;
+  supplierInvoiceNo?: string;
+  billDate?: string;
+  dueDate?: string | null;
+  notes?: string | null;
+  status?: string;
+  billDiscountType?: string;
+  billDiscountValue?: number;
+  items?: Array<{ productId: string; quantity: number; unitCost: number; discountType?: string; discountValue?: number; vatRate?: number }>;
+}
+
+export interface PurchaseReceiveRequest {
+  clientReceiptId?: string;
+  adjustAndComplete?: boolean;
+  supplierInvoiceNo?: string;
+  items: Array<{ purchaseOrderItemId: string; receivedQty: number; unitCost: number }>;
+}
+
+/** GET /payables/vouchers row */
+export interface ApiPaymentVoucher {
+  id?: string;
+  voucherNumber?: string;
+  status?: string;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  supplierId?: string;
+  supplierName?: string;
+  supplierContact?: string;
+  supplierPhone?: string;
+  supplierAddress?: string;
+  supplier?: ApiSupplier | null;
+  paymentDate?: string;
+  createdAt?: string;
+  totalBillsAmount?: DecimalJson;
+  deductedCreditAmount?: DecimalJson;
+  debitDeducted?: DecimalJson;
+  discountAmount?: DecimalJson;
+  netPaidAmount?: DecimalJson;
+  paymentMethod?: string;
+  bankAccountId?: string | null;
+  bankAccountLabel?: string | null;
+  referenceNo?: string | null;
+  note?: string | null;
+  cashierName?: string;
+  bills?: Array<{ poId: string; poNumber: string; supplierInvoiceNo?: string; billDate: string; totalBillAmount: number; remainingBeforePay: number; amountPaid: number }>;
+  items?: Array<{
+    purchaseOrderId?: string;
+    poId?: string;
+    poNumber?: string;
+    supplierInvoiceNo?: string;
+    totalBillAmount?: DecimalJson;
+    remainingBeforePay?: DecimalJson;
+    amountPaid?: DecimalJson;
+    purchaseOrder?: { id?: string; poNumber?: string; supplierInvoiceNo?: string | null; billDate?: string; createdAt?: string; totalAmount?: DecimalJson } | null;
+  }>;
+  deductedNotes?: Array<{ returnNoteId: string; amount: number }>;
+  debitNotes?: Array<{ returnNoteId?: string; returnNote?: { id?: string } | null; amountDeducted?: DecimalJson; amount?: DecimalJson }>;
+}
+
+/** Body of POST /payables/settle-multiple */
+export interface SettleMultipleRequest {
+  clientVoucherId: string;
+  supplierId: string;
+  moneyAccountId?: string;
+  billsToSettle: Array<{ poId: string; amountToPay: number }>;
+  matchedDebitNotes?: Array<{ returnNoteId: string; amountToDeduct: number }>;
+  discountAmount?: number;
+  paymentMethod: string;
+  bankAccountLabel?: string;
+  referenceNo?: string;
+  note?: string;
+  cashierName?: string;
+  paymentDate?: string;
+}
+
+export interface SettleMultipleResponse {
+  success?: boolean;
+  voucher?: ApiPaymentVoucher;
+}
+
+// --- Supplier returns ---
+
+/** GET /supplier-returns row (server note + metadata kept by the frontend) */
+export interface ApiSupplierReturnNote {
+  id: string;
+  returnNumber?: string;
+  noteNumber?: string;
+  returnDate?: string;
+  createdAt?: string;
+  supplierId?: string;
+  supplierName?: string;
+  supplierPhone?: string;
+  supplierContact?: string;
+  supplierAddress?: string;
+  supplier?: ApiSupplier | null;
+  linkedPoId?: string;
+  linkedPoNumber?: string;
+  items?: SupplierReturnItem[];
+  totalQuantity?: number;
+  defectiveTotalCost?: DecimalJson;
+  overstockTotalCost?: DecimalJson;
+  totalCreditAmount?: DecimalJson;
+  totalAmount?: DecimalJson;
+  remainingCreditAmount?: DecimalJson;
+  status?: string;
+  frontendStatus?: string;
+  notes?: string | null;
+  note?: string | null;
+  reason?: string | null;
+  deductions?: SupplierReturnDeduction[];
+  createdBy?: string;
+}
+
+/** Body of POST /supplier-returns */
+export interface SupplierReturnWriteRequest extends Omit<Partial<SupplierReturnNote>, 'status'> {
+  returnNumber?: string;
+  noteNumber?: string;
+  status?: string;
+  totalAmount?: number;
+  reason?: string;
+  deductStock?: boolean;
+}
+
+// --- Claims ---
+
+/** GET /claims row: the server claim plus the metadata the frontend stored with it. */
+export interface ApiClaim {
+  id: string;
+  claimNumber?: string;
+  orderId?: string | null;
+  order?: { id?: string; orderNumber?: string; createdAt?: string } | null;
+  orderNumber?: string;
+  orderDate?: string;
+  claimDate?: string;
+  receivedDate?: string;
+  createdAt?: string;
+  customerId?: string | null;
+  customer?: { id?: string; name?: string; phone?: string | null } | null;
+  customerName?: string;
+  customerPhone?: string | null;
+  productId: string;
+  product?: { id?: string; name?: string; sku?: string; unit?: string | null; costPrice?: DecimalJson } | null;
+  productName?: string;
+  sku?: string;
+  unitName?: string;
+  quantity?: number;
+  conversionFactor?: number;
+  baseQuantity?: number;
+  unitPrice?: number; // claim metadata (JSON number)
+  totalClaimValue?: number;
+  refundAmount?: number;
+  refundAccountId?: string;
+  refundAccountLabel?: string;
+  refundAccountNumber?: string;
+  discountAmount?: number;
+  replacementProductId?: string;
+  replacementProductName?: string;
+  replacementSku?: string;
+  replacementUnitName?: string;
+  replacementConversionFactor?: number;
+  defectReason?: string;
+  problemDescription?: string;
+  resolutionType?: ClaimResolutionType;
+  claimType?: string;
+  frontendStatus?: string;
+  claimStatus?: string;
+  status?: string;
+  cashierName?: string;
+  note?: string;
+  resolutionNote?: string;
+  isReplacementItem?: boolean;
+  parentClaimId?: string;
+  claimedInOrderNumber?: string;
+  supplierId?: string;
+  supplierName?: string;
+  supplierTrackingNo?: string;
+  costPrice?: number;
+  totalCostValue?: number;
+  returnDocId?: string;
+  settledInBillNumber?: string;
+  completedDate?: string;
+}
+
+/** GET /claims/inventory/list row */
+export interface ApiClaimInventoryItem {
+  id: string;
+  productId?: string;
+  product?: { id?: string; name?: string; sku?: string; unit?: string | null; costPrice?: DecimalJson } | null;
+  productName?: string;
+  sku?: string;
+  unitName?: string;
+  quantity?: number;
+  unitCost?: DecimalJson;
+  condition?: string;
+  location?: string;
+  note?: string | null;
+  claimId?: string;
+  customerId?: string | null;
+  customerName?: string;
+  customerPhone?: string | null;
+  supplierId?: string;
+  supplierName?: string;
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// --- Customers, bank accounts, settings ---
+
+/** GET /customers row: Customer fields, older rows keep some of them in `profile`. */
+export interface ApiCustomer extends Partial<Omit<Customer, 'priceLevel'>> {
+  priceLevel?: number | string;
+  profile?: Partial<Customer> | null;
+}
+
+export interface ApiBankAccount {
+  id?: string;
+  bankName?: string;
+  accountName?: string;
+  accountNumber?: string;
+  branch?: string | null;
+  qrImageUrl?: string | null;
+  qrCodeUrl?: string | null;
+  color?: string | null;
+  isDefault?: boolean;
+}
+
+export interface BankAccountWriteRequest {
+  bankName?: string;
+  accountName?: string;
+  accountNumber?: string;
+  branch?: string | null;
+  qrCodeUrl?: string | null;
+  color?: string;
+  isDefault?: boolean;
+}
+
+/** GET /settings (camelCase store settings; older servers may send other keys too). */
+export interface ApiStoreSettings {
+  storeName?: string;
+  branchName?: string;
+  taxId?: string;
+  storePhone?: string;
+  storeEmail?: string;
+  storeAddress?: string;
+  receiptHeader?: string;
+  receiptFooter?: string;
+  logoUrl?: string | null;
+  qrImageUrl?: string | null;
+  qrLabel?: string;
+  vatRate?: number | string;
+  vatEnabled?: boolean;
+  lowStockThreshold?: number | string;
+  cashMovementApprovalLimit?: number | string;
+  allowDecimalQty?: boolean;
+  loyaltyConfig?: LoyaltyConfigJson | null;
+}
+
+/** store_settings.loyalty_config (see customer-service LoyaltySystemConfig) */
+export interface LoyaltyConfigJson {
+  defaultPointEarnRateBaht?: number;
+  defaultPointEarnUnits?: number;
+  defaultPointRedeemRatePoints?: number;
+  defaultPointRedeemDiscountBaht?: number;
+  isLoyaltyEnabled?: boolean;
+}
+
+// --- Documents ---
+
+export type DocumentType = 'ORDER' | 'CLAIM' | 'SHIFT' | 'DEBT' | 'PURCHASE_ORDER' | 'SUPPLIER_RETURN' | 'PAYMENT_VOUCHER';
+
+/** GET /documents/search row; rawData is the server record of that document type. */
+export interface ApiDocumentSearchResult {
+  type: DocumentType;
+  typeName: string;
+  id: string;
+  docNumber: string;
+  date: string | Date;
+  status: string;
+  amount?: number;
+  customerName?: string;
+  description: string;
+  rawData: unknown;
 }

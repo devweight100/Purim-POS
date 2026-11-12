@@ -3,6 +3,7 @@ import { VersionBadge } from '@/components/common/VersionInfo';
 
 import { useState } from "react";
 import { useAuthStore } from "@/lib/store/auth-store";
+import { errorText } from "@/lib/api-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,8 +31,8 @@ export default function LoginPage() {
       } else {
         toast.error(res?.error || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
       }
-    } catch (err: any) {
-      toast.error(err?.message || "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้");
+    } catch (err) {
+      toast.error(errorText(err) || "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้");
     } finally {
       setIsLoading(false);
     }

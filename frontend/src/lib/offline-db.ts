@@ -8,53 +8,28 @@
 //    โดยมี Idempotency Key ป้องกันข้อมูลซ้ำ ข้อมูลไม่มั่ว ไม่ซ้ำ และไม่ทับ
 // ==============================================================================
 import { addQty } from './qty';
+import type { ApiProduct, CheckoutRequest, CheckoutResult } from './types';
 
 const DB_NAME = 'purim_pos_offline_db';
 const DB_VERSION = 1;
 
-export interface CachedProduct {
-  id: string;
-  name: string;
-  sku: string;
+/** A server product as kept in IndexedDB: prices as numbers and a flat barcode index. */
+export interface CachedProduct extends Omit<ApiProduct, 'barcodes' | 'basePrice' | 'costPrice'> {
   basePrice: number;
-  costPrice?: number;
-  categoryId?: string;
+  costPrice: number;
   barcodes: string[];
   stockRemaining?: number;
 }
 
-export interface OfflineOrder {
+/** A checkout request kept in the outbox until the server confirms it. */
+export interface OfflineOrder extends CheckoutRequest {
   ownerId?: string;
-  note?: string;
-  pointsUsed?: number;
-  pointsDiscountAmount?: number;
-  vatAmount?: number;
-  vatEnabled?: boolean;
   payloadVersion?: number;
   clientOrderId: string; // UUID Idempotency Key
   orderNumber: string;
-  items: Array<{
-    productId: string;
-    quantity: number;
-    unitPrice: number;
-    productName?: string;
-    unitId?: string;
-    unitName?: string;
-    conversionFactor?: number;
-    discountAmount?: number;
-  }>;
-  payments: Array<{
-    method: string;
-    amount: number;
-    referenceNo?: string;
-  }>;
-  customerId?: string;
-  shiftId?: string;
-  discountAmount?: number;
-  totalAmount: number;
   createdAt: string;
   syncStatus: 'pending' | 'syncing' | 'failed' | 'confirmed';
-  serverOrder?: any;
+  serverOrder?: CheckoutResult;
   retryCount: number;
   lastError?: string;
 }
@@ -99,7 +74,7 @@ function openDB(): Promise<IDBDatabase> {
 // PRODUCT CACHE METHODS
 // ──────────────────────────────────────────────
 
-export async function cacheProducts(products: any[]): Promise<void> {
+export async function cacheProducts(products: ApiProduct[]): Promise<void> {
   try {
     const db = await openDB();
     const tx = db.transaction('products', 'readwrite');
@@ -125,7 +100,7 @@ export async function cacheProducts(products: any[]): Promise<void> {
         costPrice: Number(p.costPrice) || 0,
         categoryId: p.categoryId,
         barcodes,
-        stockRemaining: p.stockBatches ? addQty(...p.stockBatches.map((b: any) => b.quantityRemaining || 0)) : p.stock,
+        stockRemaining: p.stockBatches ? addQty(...p.stockBatches.map((b) => b.quantityRemaining || 0)) : p.stock,
       };
 
       store.put(cachedItem);

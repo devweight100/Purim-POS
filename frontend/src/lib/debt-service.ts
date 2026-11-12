@@ -1,6 +1,6 @@
 'use client';
 
-import { DebtRecord, DebtPaymentInstallment, DebtStatus, Order, PaymentMethodType } from './types';
+import { DebtRecord, DebtPaymentInstallment, PaymentMethodType, ApiDebt, ApiDebtPayment, ApiPage, DebtPayResponse } from './types';
 import { apiFetch } from './api';
 import { isRetryableError } from './api-error';
 import { newOperationId } from './order-sync-service';
@@ -24,12 +24,14 @@ export function loadAllDebtRecords(): DebtRecord[] {
   return lastServerDebts;
 }
 
-function mapDebt(row: any): DebtRecord {
+type DebtCustomerProfile = NonNullable<NonNullable<ApiDebt['customer']>['profile']>;
+
+function mapDebt(row: ApiDebt): DebtRecord {
   const totalAmount = Number(row.totalDebt);
   const paidAmount = Number(row.paidAmount);
   let previousPaid = 0;
   // cancelled receipts no longer count as paid
-  const installments: DebtPaymentInstallment[] = [...(row.payments || [])].filter((p: any) => !p.cancelledAt)
+  const installments: DebtPaymentInstallment[] = [...(row.payments || [])].filter((p) => !p.cancelledAt)
     .sort((a, b) => new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime())
     .map((payment, index) => {
       const amountPaid = Number(payment.amount);
@@ -49,10 +51,8 @@ function mapDebt(row: any): DebtRecord {
       previousPaid += amountPaid;
       return result;
     });
-  const custProfile =
-    typeof row.customer?.profile === 'object' && row.customer?.profile !== null
-      ? row.customer.profile
-      : {};
+  const profile = row.customer?.profile;
+  const custProfile: DebtCustomerProfile = typeof profile === 'object' && profile !== null ? profile : {};
   return {
     orderId: row.orderId,
     orderNumber: row.order?.orderNumber || row.orderId,
@@ -81,7 +81,7 @@ export async function fetchDebtRecords(): Promise<DebtRecord[]> {
   const rows: DebtRecord[] = [];
   let page = 1;
   while (true) {
-    const result = await apiFetch('/debts?limit=100&page=' + page);
+    const result = await apiFetch<ApiPage<ApiDebt> | null>('/debts?limit=100&page=' + page);
     if (!Array.isArray(result?.data)) throw new Error('ข้อมูลหนี้จากฐานข้อมูลไม่ถูกต้อง');
     rows.push(...result.data.map(mapDebt));
     if (page >= (result.meta?.totalPages || 1)) break;
@@ -128,9 +128,9 @@ export async function recordDebtPayment(
     );
   // Persist only retry identity; receipt and balances are always supplied by the DB.
   localStorage.setItem(key, JSON.stringify(attempt));
-  let response: any;
+  let response: DebtPayResponse | null;
   try {
-    response = await apiFetch('/debts/' + orderId + '/pay', {
+    response = await apiFetch<DebtPayResponse | null>('/debts/' + orderId + '/pay', {
       method: 'POST',
       body: JSON.stringify({ ...body, bankAccountId, clientPaymentId: attempt.clientPaymentId }),
     });
@@ -141,7 +141,8 @@ export async function recordDebtPayment(
   if (!response?.success || !response.payment?.id || !response.debt)
     throw new Error('ยังไม่ได้รับการยืนยันจากฐานข้อมูล กรุณาตรวจสอบหรือส่งซ้ำด้วยข้อมูลเดิม');
   const debtRecord = mapDebt(response.debt);
-  const installment = debtRecord.installments.find((row) => row.id === response.payment.id);
+  const paymentId = response.payment.id;
+  const installment = debtRecord.installments.find((row) => row.id === paymentId);
   try {
     localStorage.removeItem(key);
   } catch {}
@@ -174,7 +175,7 @@ export function getShiftDebtCollections(
   let total = 0;
   let cashTotal = 0;
   let qrTransferTotal = 0;
-  const list: any[] = [];
+  const list: Array<{ orderNumber?: string; customerName?: string; amount: number; method: string; time: string }> = [];
 
   allDebts.forEach((debt) => {
     (debt.installments || []).forEach((inst) => {
@@ -218,7 +219,7 @@ export function getDebtRecordByOrderId(orderId: string): DebtRecord | null {
 
 /** Cancel a debt receipt recorded by mistake (ADMIN / MANAGER). The debt goes back up. */
 export async function cancelDebtPayment(paymentId: string, reason: string) {
-  const res = await apiFetch(`/debts/payments/${encodeURIComponent(paymentId)}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) });
+  const res = await apiFetch<ApiDebtPayment>(`/debts/payments/${encodeURIComponent(paymentId)}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) });
   try { await fetchDebtRecords(); } catch {}
   return res;
 }

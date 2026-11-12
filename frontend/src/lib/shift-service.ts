@@ -2,8 +2,9 @@
 
 import { ShiftSummaryData } from '@/components/pos/ShiftSummaryPdfModal';
 import { api } from '@/lib/api';
+import type { ApiShiftLike } from '@/lib/types';
 
-export function mapServerShiftToSummary(s: any): ShiftSummaryData {
+export function mapServerShiftToSummary(s: ApiShiftLike): ShiftSummaryData {
   const openingCash = Number(s.openingCash ?? s.startingCash) || 0;
   const cashSales = Number(s.cashSales) || 0;
   const qrSales = Number(s.qrSales ?? s.promptpaySales) || 0;

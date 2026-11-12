@@ -1,6 +1,7 @@
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { getCashDrawerConfig } from './cash-drawer-service';
+import { getElectronAPI } from './electron-api';
 
 /**
  * Universal Print & PDF Export Utility for Purim POS
@@ -231,14 +232,15 @@ export function printDocumentIframe(
 
   // 1. Desktop app: print without the browser preview. Thermal -> receipt printer;
   //    A4 -> A4 printer from settings, or the system print dialog when none is set.
-  if (typeof window !== 'undefined' && (window as any).electronAPI?.printSilent) {
+  const electron = getElectronAPI();
+  if (electron?.printSilent) {
     const target = electronPrintTarget(format);
-    (window as any).electronAPI.printSilent({
+    electron.printSilent({
       html: fullHtml,
       printerName: target.printerName,
       showDialog: target.showDialog,
       format,
-    }).catch((err: any) => console.error('Electron silent print failed:', err));
+    }).catch((err: unknown) => console.error('Electron silent print failed:', err));
     return;
   }
 

@@ -41,6 +41,6 @@ export function LoadErrorState({
 }
 
 export function errorMessage(err: unknown, fallback = 'เกิดข้อผิดพลาด'): string {
-  const msg = (err as any)?.message;
+  const msg = err && typeof err === 'object' && 'message' in err ? err.message : undefined;
   return typeof msg === 'string' && msg.trim() ? msg : fallback;
 }

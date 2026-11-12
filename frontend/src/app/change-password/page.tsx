@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/store/auth-store";
 import { apiFetch } from "@/lib/api";
+import { errorText } from "@/lib/api-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,7 +37,7 @@ export default function ChangePasswordPage() {
     if (newPin && !/^\d{4,6}$/.test(newPin)) return toast.error("PIN ต้องเป็นตัวเลข 4-6 หลัก");
     setSaving(true);
     try {
-      const res = await apiFetch("/auth/change-password", {
+      const res = await apiFetch<{ success?: boolean; message?: string; access_token?: string } | null>("/auth/change-password", {
         method: "POST",
         body: JSON.stringify({ currentPassword, newPassword: newPassword.trim(), newPin: newPin || undefined }),
       });
@@ -45,8 +46,8 @@ export default function ChangePasswordPage() {
       useAuthStore.setState((s) => ({ user: s.user ? { ...s.user, mustChangePassword: false } : s.user }));
       toast.success("เปลี่ยนรหัสผ่านเรียบร้อยแล้ว");
       router.replace("/pos");
-    } catch (err: any) {
-      toast.error(err?.message || "เปลี่ยนรหัสผ่านไม่สำเร็จ");
+    } catch (err) {
+      toast.error(errorText(err) || "เปลี่ยนรหัสผ่านไม่สำเร็จ");
     } finally {
       setSaving(false);
     }

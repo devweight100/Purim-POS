@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useSyncExternalStore } from 'react';
 import { Download, Monitor, CheckCircle2, Laptop, Info, X, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -10,17 +10,28 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
+/** Running as an installed app (standalone window; iOS sets navigator.standalone). */
+function isStandaloneDisplay(): boolean {
+  return window.matchMedia('(display-mode: standalone)').matches || Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+}
+
+function subscribeDisplayMode(onChange: () => void): () => void {
+  const query = window.matchMedia('(display-mode: standalone)');
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+}
+
 export function PwaInstallButton({ className = '' }: { className?: string }) {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstalled, setIsInstalled] = useState(false);
+  // false during SSR / hydration, then the real display mode
+  const isStandalone = useSyncExternalStore(subscribeDisplayMode, isStandaloneDisplay, () => false);
+  const [installedNow, setIsInstalled] = useState(false);
+  const isInstalled = isStandalone || installedNow;
   const [showGuideModal, setShowGuideModal] = useState(false);
 
   useEffect(() => {
-    // Check if already in standalone mode (installed)
-    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
-      setIsInstalled(true);
-      return;
-    }
+    // Already installed (standalone mode): no install prompt to listen for
+    if (isStandalone) return;
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
@@ -39,7 +50,7 @@ export function PwaInstallButton({ className = '' }: { className?: string }) {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
-  }, []);
+  }, [isStandalone]);
 
   if (isInstalled) {
     return null; // Already running as installed Desktop App!
@@ -85,7 +96,7 @@ export function PwaInstallButton({ className = '' }: { className?: string }) {
           </DialogHeader>
 
           <p className="text-xs text-slate-500 leading-relaxed">
-            คุณสามารถติดตั้งระบบขายหน้าร้าน <b>"ร้านปุริม POS"</b> เป็นโปรแกรมเดสก์ท็อปที่มีไอคอนบนหน้าจอคอมพิวเตอร์ได้ง่ายๆ ใน 2 คลิก:
+            คุณสามารถติดตั้งระบบขายหน้าร้าน <b>&quot;ร้านปุริม POS&quot;</b> เป็นโปรแกรมเดสก์ท็อปที่มีไอคอนบนหน้าจอคอมพิวเตอร์ได้ง่ายๆ ใน 2 คลิก:
           </p>
 
           <div className="space-y-3 text-xs">
@@ -97,8 +108,8 @@ export function PwaInstallButton({ className = '' }: { className?: string }) {
               </p>
               <div className="pl-6 space-y-1 text-slate-600">
                 <p>• คลิกที่ปุ่ม <b>จุดสามจุด (⋮)</b> ที่มุมขวาบนของเบราว์เซอร์</p>
-                <p>• เลือกเมนู <b>"บันทึกและแชร์ (Save & share)"</b> หรือ <b>"แคสต์ บันทึก และแชร์"</b></p>
-                <p>• กดเลือก <b>"ติดตั้งหน้าเว็บนี้เป็นแอป (Install this page as an app)"</b> หรือ <b>"สร้างทางลัด (Create shortcut)"</b> แล้วติ๊กถูกที่ <i>"เปิดเป็นหน้าต่าง (Open as window)"</i></p>
+                <p>• เลือกเมนู <b>&quot;บันทึกและแชร์ (Save & share)&quot;</b> หรือ <b>&quot;แคสต์ บันทึก และแชร์&quot;</b></p>
+                <p>• กดเลือก <b>&quot;ติดตั้งหน้าเว็บนี้เป็นแอป (Install this page as an app)&quot;</b> หรือ <b>&quot;สร้างทางลัด (Create shortcut)&quot;</b> แล้วติ๊กถูกที่ <i>&quot;เปิดเป็นหน้าต่าง (Open as window)&quot;</i></p>
               </div>
             </div>
 
@@ -110,14 +121,14 @@ export function PwaInstallButton({ className = '' }: { className?: string }) {
               </p>
               <div className="pl-6 space-y-1 text-sky-800">
                 <p>• คลิกที่ปุ่ม <b>จุดสามจุด (...)</b> ที่มุมขวาบน</p>
-                <p>• เลือกเมนู <b>"แอป (Apps)"</b> 👉 กด <b>"ติดตั้งไซต์นี้เป็นแอป (Install this site as an app)"</b></p>
+                <p>• เลือกเมนู <b>&quot;แอป (Apps)&quot;</b> 👉 กด <b>&quot;ติดตั้งไซต์นี้เป็นแอป (Install this site as an app)&quot;</b></p>
               </div>
             </div>
           </div>
 
           <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-2xl flex items-center gap-2.5 text-xs text-emerald-800">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>เมื่อติดตั้งเสร็จ จะมีไอคอน <b>"ปุริม POS"</b> บนหน้าจอ Desktop ดับเบิ้ลคลิกเปิดขายได้ทันที!</span>
+            <span>เมื่อติดตั้งเสร็จ จะมีไอคอน <b>&quot;ปุริม POS&quot;</b> บนหน้าจอ Desktop ดับเบิ้ลคลิกเปิดขายได้ทันที!</span>
           </div>
 
           <Button

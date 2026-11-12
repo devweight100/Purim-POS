@@ -4,7 +4,7 @@
  * the metre, nails by the kg. Off = whole units only, exactly as before. Use these helpers for every
  * quantity input / display instead of ad-hoc parseInt / Math.round / Number.isInteger.
  */
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { DECIMAL_QTY_DISABLED, hasMax2Decimals, MAX_QTY, roundQty } from '@shared/qty';
 import { loadStoreSettings } from './store-settings-storage';
 
@@ -54,14 +54,13 @@ export const qtyInputMode = (allowDecimal: boolean = decimalQtyEnabled()): 'deci
 /** Smallest quantity a "-" button may leave. */
 export const minQty = (allowDecimal: boolean = decimalQtyEnabled()): number => (allowDecimal ? 0.01 : 1);
 
-/** React hook: the store's allowDecimalQty, updated live when the settings change. */
+/** 'purim:store-settings' fires after the new settings were mirrored to localStorage. */
+function subscribeStoreSettings(onChange: () => void): () => void {
+  window.addEventListener('purim:store-settings', onChange);
+  return () => window.removeEventListener('purim:store-settings', onChange);
+}
+
+/** React hook: the store's allowDecimalQty, updated live when the settings change (false during SSR/hydration). */
 export function useAllowDecimalQty(): boolean {
-  const [allow, setAllow] = useState(false);
-  useEffect(() => {
-    setAllow(decimalQtyEnabled());
-    const onChange = (e: Event) => setAllow((e as CustomEvent).detail?.allowDecimalQty === true);
-    window.addEventListener('purim:store-settings', onChange);
-    return () => window.removeEventListener('purim:store-settings', onChange);
-  }, []);
-  return allow;
+  return useSyncExternalStore(subscribeStoreSettings, decimalQtyEnabled, () => false);
 }

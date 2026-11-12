@@ -10,6 +10,9 @@ import { round2 } from '@shared/money';
  */
 import type { ReceiptData } from '@/components/pos/ThermalReceiptView';
 import type { ReceiptA4Data } from '@/components/pos/ReceiptA4PdfModal';
+import type { ApiOrderCustomer, ApiOrderLike } from './types';
+
+type ReceiptBundleData = ReceiptData['items'][number]['bundleData'];
 
 /** Thai labels for every payment method the system knows (backend enum + POS aliases). */
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -60,11 +63,11 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-function mapPayments(order: any): MappedPayment[] {
+function mapPayments(order: ApiOrderLike | null | undefined): MappedPayment[] {
   if (Array.isArray(order?.payments)) {
     return order.payments
-      .filter((p: any) => p && typeof p === 'object')
-      .map((p: any) => ({
+      .filter((p) => p && typeof p === 'object')
+      .map((p) => ({
         method: String(p.method || 'CASH'),
         amount: num(p.amount),
         referenceNo: p.referenceNo || undefined,
@@ -82,11 +85,11 @@ interface MappedLine {
   discountAmount: number;
   lineTotal: number;
   itemNote?: string;
-  bundleData?: any;
+  bundleData?: ReceiptBundleData;
 }
 
-function mapItems(order: any): MappedLine[] {
-  return (order?.items || []).map((it: any) => {
+function mapItems(order: ApiOrderLike | null | undefined): MappedLine[] {
+  return (order?.items || []).map((it) => {
     const quantity = num(it.quantity) || 1;
     const unitPrice = num(it.unitPrice ?? it.price);
     const discountAmount = num(it.discountAmount);
@@ -104,7 +107,8 @@ function mapItems(order: any): MappedLine[] {
       discountAmount,
       lineTotal,
       itemNote: it.itemNote || it.note || undefined,
-      bundleData: it.bundleData && typeof it.bundleData === 'object' ? it.bundleData : undefined,
+      // the bundle breakdown the POS stored with the sale line (JSON column)
+      bundleData: it.bundleData && typeof it.bundleData === 'object' ? (it.bundleData as ReceiptBundleData) : undefined,
     };
   });
 }
@@ -115,7 +119,7 @@ export interface ReceiptMapOptions {
   /** when the reprint is made (defaults to now) */
   reprintedAt?: string;
   /** customer record with address / tax id (A4) */
-  customer?: any;
+  customer?: ApiOrderCustomer | null;
   /** override what the payments were (payment edit) */
   payments?: MappedPayment[];
   cashReceived?: number;
@@ -123,7 +127,7 @@ export interface ReceiptMapOptions {
 }
 
 /** Common fields of thermal + A4 receipts. */
-function mapCommon(order: any, opts: ReceiptMapOptions) {
+function mapCommon(order: ApiOrderLike | null | undefined, opts: ReceiptMapOptions) {
   const items = mapItems(order);
   const payments = opts.payments ?? mapPayments(order);
   const totalAmount = round2(num(order?.totalAmount ?? order?.total));
@@ -188,7 +192,7 @@ function mapCommon(order: any, opts: ReceiptMapOptions) {
 }
 
 /** Order -> 80mm thermal receipt */
-export function orderToReceiptData(order: any, opts: ReceiptMapOptions = {}): ReceiptData {
+export function orderToReceiptData(order: ApiOrderLike | null | undefined, opts: ReceiptMapOptions = {}): ReceiptData {
   const c = mapCommon(order, opts);
   return {
     ...c,
@@ -206,7 +210,7 @@ export function orderToReceiptData(order: any, opts: ReceiptMapOptions = {}): Re
 }
 
 /** Order -> A4 receipt / tax invoice */
-export function orderToA4Data(order: any, opts: ReceiptMapOptions = {}): ReceiptA4Data {
+export function orderToA4Data(order: ApiOrderLike | null | undefined, opts: ReceiptMapOptions = {}): ReceiptA4Data {
   const c = mapCommon(order, opts);
   const customer = opts.customer || (order?.customer && typeof order.customer === 'object' ? order.customer : null);
   return {

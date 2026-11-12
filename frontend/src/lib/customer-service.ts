@@ -1,6 +1,7 @@
 'use client';
 import { useSyncExternalStore } from 'react';
 import { api } from './api';
+import type { ApiCustomer } from './types';
 
 export type CustomerType = 'INDIVIDUAL' | 'COMPANY';
 
@@ -78,7 +79,7 @@ export const DEFAULT_LOYALTY_CONFIG: LoyaltySystemConfig = {
   isLoyaltyEnabled: true,
 };
 
-export function normalizeCustomerRow(c: any, idx = 0): Customer {
+export function normalizeCustomerRow(c: ApiCustomer | null | undefined, idx = 0): Customer {
   const profile = typeof c?.profile === 'object' && c?.profile !== null ? c.profile : {};
   const merged = { ...profile, ...c };
   return {
@@ -124,7 +125,7 @@ export function loadCustomers(): Customer[] {
 /** Customers from the server. Throws when the server cannot be reached. */
 export async function fetchCustomers(): Promise<Customer[]> {
   const rows = await api.customers.getAll();
-  const normalized = (Array.isArray(rows) ? rows : []).map((c: any, idx: number) => normalizeCustomerRow(c, idx));
+  const normalized = (Array.isArray(rows) ? rows : []).map((c, idx: number) => normalizeCustomerRow(c, idx));
   publishCustomers(normalized);
   return normalized;
 }

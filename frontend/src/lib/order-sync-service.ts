@@ -1,6 +1,7 @@
 import { apiFetch, getAuthToken } from './api';
 import { ApiError, isRetryableError } from './api-error';
 import { getPendingOfflineOrders, saveOfflineOrder, removeOfflineOrder, OfflineOrder } from './offline-db';
+import type { CheckoutRequest, CheckoutResult, Order } from './types';
 
 import { useConnectionStatus } from './connection-status';
 import { toast } from 'sonner';
@@ -34,7 +35,7 @@ function payload(order: OfflineOrder) {
   const { syncStatus, retryCount, lastError, serverOrder, ownerId: owner, orderNumber, ...data } = order;
   return { ...data, orderNumber: orderNumber && !/^(ORD-OFFLINE|OFFLINE)/.test(orderNumber) ? orderNumber : undefined };
 }
-async function confirm(order: OfflineOrder, response: any) {
+async function confirm(order: OfflineOrder, response: CheckoutResult | null): Promise<CheckoutResult> {
   if (!response?.id || !response?.orderNumber) throw new ApiError('เซิร์ฟเวอร์ยังไม่ยืนยันเลขบิล', 502);
   // Once the server acknowledges a committed sale, local cleanup is best effort.
   try {
@@ -45,7 +46,7 @@ async function confirm(order: OfflineOrder, response: any) {
   }
   return response;
 }
-export async function submitOrder(data: any) {
+export async function submitOrder(data: CheckoutRequest): Promise<CheckoutResult> {
   return exclusively(async () => {
     const userId = ownerId();
     if (!userId || !getAuthToken()) throw new ApiError('กรุณาเข้าสู่ระบบก่อนบันทึกการขาย', 401);
@@ -53,7 +54,8 @@ export async function submitOrder(data: any) {
     if (!data.clientOrderId) throw new Error('ไม่พบรหัสธุรกรรม กรุณาเปิดหน้าชำระเงินใหม่');
     const rows = await getPendingOfflineOrders();
     const previous = rows.find(o => o.clientOrderId === data.clientOrderId);
-    if (previous?.syncStatus === 'confirmed') return previous.serverOrder;
+    // confirm() stores the server's order on every confirmed row
+    if (previous?.syncStatus === 'confirmed') return previous.serverOrder as CheckoutResult;
     if (previous && previous.ownerId !== userId) throw new ApiError('ต้องเข้าสู่ระบบด้วยผู้ขายเจ้าของบิล', 403);
     // Freeze the original request after an uncertain network result.
     const order: OfflineOrder = previous || {
@@ -63,7 +65,7 @@ export async function submitOrder(data: any) {
     };
     await saveOfflineOrder(order);
     try {
-      const response = await apiFetch('/orders/checkout', { method: 'POST', body: JSON.stringify(payload(order)) });
+      const response = await apiFetch<CheckoutResult | null>('/orders/checkout', { method: 'POST', body: JSON.stringify(payload(order)) });
       return await confirm(order, response);
     } catch (error) {
       const retryable = isRetryableError(error);
@@ -82,7 +84,7 @@ async function importLegacyOrders() {
   const raw = localStorage.getItem(LEGACY_ORDERS_KEY);
   if (raw === null) return;
   const known = new Set((await getPendingOfflineOrders()).map(o => o.clientOrderId));
-  let orders: any[] = [];
+  let orders: Order[] = [];
   try { orders = JSON.parse(raw || '[]'); } catch { orders = []; }
   for (const order of Array.isArray(orders) ? orders : []) {
     if (order.isSynced !== false || order.outboxVersion === 2 || known.has(order.id)) continue;
@@ -110,7 +112,7 @@ export async function syncPendingOrders(silent = false): Promise<{ synced: numbe
           failed++; continue;
         }
         try {
-          const response = await apiFetch('/orders/checkout', { method: 'POST', body: JSON.stringify(payload(order)) });
+          const response = await apiFetch<CheckoutResult | null>('/orders/checkout', { method: 'POST', body: JSON.stringify(payload(order)) });
           await confirm(order, response);
           synced++;
         } catch (error) {

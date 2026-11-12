@@ -1,38 +1,42 @@
-import { ClaimRecord, SupplierReturnNote, SupplierReturnItem, SupplierReturnItemType } from './types';
+import {
+  ClaimRecord, SupplierReturnNote, SupplierReturnItem, SupplierReturnItemType, Product,
+  ApiSupplier, ApiPurchaseOrder, ApiSupplierReturnNote, ApiListResponse, apiListRows,
+} from './types';
 import { loadAllClaimRecords, fetchAllClaimRecords } from './claim-service';
 import { useProductStore } from './store/product-store';
 import { apiFetch, api } from './api';
 import { grossPerUnit } from '@shared/po-calc';
+import { errorText } from './api-error';
 
 /**
  * Suppliers, purchase orders and supplier return notes live on the server only. The last server
  * response of each is kept in memory (never in localStorage) so helpers can read them
  * synchronously; fetch* refresh them and throw when the server cannot be reached.
  */
-let suppliersMem: any[] = [];
-let purchaseOrdersMem: any[] = [];
+let suppliersMem: ApiSupplier[] = [];
+let purchaseOrdersMem: ApiPurchaseOrder[] = [];
 let returnNotesMem: SupplierReturnNote[] = [];
 
 // ─── Suppliers ───
-export const DEFAULT_SUPPLIERS: any[] = [];
+export const DEFAULT_SUPPLIERS: ApiSupplier[] = [];
 
 /** Suppliers from the server. Throws when the server cannot be reached. */
-export async function fetchSuppliers(): Promise<any[]> {
-  const data = await apiFetch('/suppliers');
+export async function fetchSuppliers(): Promise<ApiSupplier[]> {
+  const data = await apiFetch<ApiSupplier[] | null>('/suppliers');
   if (!Array.isArray(data)) throw new Error('ข้อมูลผู้จำหน่ายจากเซิร์ฟเวอร์ไม่ถูกต้อง');
   suppliersMem = data;
   return data;
 }
 
 /** Last suppliers the server returned in this session. */
-export function loadSuppliers(): any[] {
+export function loadSuppliers(): ApiSupplier[] {
   return suppliersMem;
 }
 
 // ─── Purchase Orders ───
 /** Purchase orders from the server. Throws when the server cannot be reached. */
-export async function fetchPurchaseOrders(): Promise<any[]> {
-  const data = await apiFetch('/purchase-orders?limit=1000');
+export async function fetchPurchaseOrders(): Promise<ApiPurchaseOrder[]> {
+  const data = await apiFetch<ApiListResponse<ApiPurchaseOrder> | null>('/purchase-orders?limit=1000');
   const list = Array.isArray(data) ? data : data?.data;
   if (!Array.isArray(list)) throw new Error('ข้อมูลใบสั่งซื้อจากเซิร์ฟเวอร์ไม่ถูกต้อง');
   purchaseOrdersMem = list;
@@ -40,11 +44,11 @@ export async function fetchPurchaseOrders(): Promise<any[]> {
 }
 
 /** Last purchase orders the server returned in this session (with supplier names filled in). */
-export function loadPurchaseOrders(): any[] {
+export function loadPurchaseOrders(): ApiPurchaseOrder[] {
   const supps = suppliersMem;
-  return purchaseOrdersMem.map((po: any) => {
+  return purchaseOrdersMem.map((po) => {
     if (!po.supplier || !po.supplier.name) {
-      const supp = supps.find((s: any) => s.id === (po.supplierId || po.supplier?.id));
+      const supp = supps.find((s) => s.id === (po.supplierId || po.supplier?.id));
       if (supp) {
         return { ...po, supplier: supp, supplierName: supp.name };
       }
@@ -54,7 +58,7 @@ export function loadPurchaseOrders(): any[] {
 }
 
 // ─── Supplier Return Notes ───
-function mapReturnNote(item: any): SupplierReturnNote {
+function mapReturnNote(item: ApiSupplierReturnNote): SupplierReturnNote {
   const docNum = item.returnNumber || item.noteNumber || item.id;
   const rawStatus = item.frontendStatus || item.status;
   const resolvedStatus =
@@ -83,17 +87,17 @@ function mapReturnNote(item: any): SupplierReturnNote {
     overstockTotalCost: Number(item.overstockTotalCost ?? 0),
     totalCreditAmount: Number(item.totalCreditAmount ?? item.totalAmount ?? 0),
     remainingCreditAmount: Number(item.remainingCreditAmount ?? item.totalAmount ?? 0),
-    status: resolvedStatus as any,
+    status: resolvedStatus as SupplierReturnNote['status'],
     notes: item.notes ?? item.note ?? item.reason ?? '',
     deductions: Array.isArray(item.deductions) ? item.deductions : [],
     createdBy: item.createdBy || 'เจ้าหน้าที่ฝ่ายส่งคืน/เคลม',
-  } as SupplierReturnNote;
+  };
 }
 
 /** Supplier return notes from the server. Throws when the server cannot be reached. */
 export async function fetchSupplierReturnNotes(): Promise<SupplierReturnNote[]> {
-  const res = await apiFetch('/supplier-returns?limit=200');
-  const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : null);
+  const res = await apiFetch<ApiListResponse<ApiSupplierReturnNote> | null>('/supplier-returns?limit=200');
+  const list = apiListRows(res);
   if (!Array.isArray(list)) throw new Error('ข้อมูลใบส่งคืนจากเซิร์ฟเวอร์ไม่ถูกต้อง');
   returnNotesMem = list.map(mapReturnNote);
   return returnNotesMem;
@@ -110,7 +114,7 @@ export function generateReturnDocNumber(): string {
   const mm = (now.getMonth() + 1).toString().padStart(2, '0');
   const prefix = `SRN-${yy}${mm}`;
   const existing = loadSupplierReturnNotes();
-  const monthNotes = existing.filter((n) => (n.id || (n as any).returnNumber || '').startsWith(prefix));
+  const monthNotes = existing.filter((n) => (n.id || '').startsWith(prefix));
   const seq = (monthNotes.length + 1).toString().padStart(5, '0');
   return `${prefix}${seq}`;
 }
@@ -121,33 +125,38 @@ export function resolveProductSupplierAndCost(productId: string, sku?: string): 
   supplierName: string;
   costPrice: number;
 } {
-  const storeProducts: any[] = useProductStore.getState().products || [];
+  const storeProducts: Product[] = useProductStore.getState().products || [];
   const suppliers = loadSuppliers();
 
   const prod = storeProducts.find((p) => p.id === productId || p.sku === sku || p.sku === productId);
 
   const supplierEntry = Array.isArray(prod?.supplierEntries)
-    ? prod.supplierEntries.find((entry: any) => entry?.supplierId)
+    ? prod.supplierEntries.find((entry) => entry?.supplierId)
     : undefined;
   const barcodeSupplier = Array.isArray(prod?.barcodes)
-    ? prod.barcodes.find((entry: any) => entry?.supplierId)
+    ? prod.barcodes.find((entry) => entry?.supplierId)
     : undefined;
 
-  let supplierId = prod?.supplierId || barcodeSupplier?.supplierId || supplierEntry?.supplierId;
-  let supplier = suppliers.find((s) => s.id === supplierId);
+  const supplierId = prod?.supplierId || barcodeSupplier?.supplierId || supplierEntry?.supplierId;
+  let supplier: ApiSupplier | null | undefined = suppliers.find((s) => s.id === supplierId);
 
   // Check product.supplier if object or string
-  if (!supplier && prod?.supplier) {
-    if (typeof prod.supplier === 'object' && prod.supplier?.id) {
-      supplier = suppliers.find((s) => s.id === prod.supplier.id);
-    } else if (typeof prod.supplier === 'string') {
-      supplier = suppliers.find((s) => s.name.trim().toLowerCase() === prod.supplier.trim().toLowerCase());
+  const productSupplier = prod?.supplier;
+  if (!supplier && productSupplier) {
+    if (typeof productSupplier === 'object' && productSupplier?.id) {
+      const refId = productSupplier.id;
+      supplier = suppliers.find((s) => s.id === refId);
+    } else if (typeof productSupplier === 'string') {
+      const refName = productSupplier.trim().toLowerCase();
+      supplier = suppliers.find((s) => s.name.trim().toLowerCase() === refName);
     }
   }
 
   // Check product.supplierName
-  if (!supplier && prod?.supplierName) {
-    supplier = suppliers.find((s) => s.name.trim().toLowerCase() === prod.supplierName.trim().toLowerCase());
+  const productSupplierName = prod?.supplierName;
+  if (!supplier && productSupplierName) {
+    const refName = productSupplierName.trim().toLowerCase();
+    supplier = suppliers.find((s) => s.name.trim().toLowerCase() === refName);
   }
 
   // Check purchase orders
@@ -155,13 +164,15 @@ export function resolveProductSupplierAndCost(productId: string, sku?: string): 
     try {
       const pos = loadPurchaseOrders();
       const poWithItem = pos.find((po) =>
-        (po.items || []).some((i: any) => i.productId === productId || (i.sku || i.product?.sku) === sku || (prod?.name && (i.productName || i.product?.name) === prod.name))
+        (po.items || []).some((i) => i.productId === productId || (i.sku || i.product?.sku) === sku || (prod?.name && (i.productName || i.product?.name) === prod.name))
       );
       if (poWithItem) {
         const poSuppId = poWithItem.supplierId || poWithItem.supplier?.id;
         supplier = suppliers.find((s) => s.id === poSuppId);
-        if (!supplier && poWithItem.supplierName) {
-          supplier = suppliers.find((s) => s.name.trim().toLowerCase() === poWithItem.supplierName.trim().toLowerCase());
+        const poSupplierName = poWithItem.supplierName;
+        if (!supplier && poSupplierName) {
+          const refName = poSupplierName.trim().toLowerCase();
+          supplier = suppliers.find((s) => s.name.trim().toLowerCase() === refName);
         }
       }
     } catch {}
@@ -190,8 +201,8 @@ export function resolveProductSupplierAndCost(productId: string, sku?: string): 
 }
 
 // ─── Query Products that Belong to a Specific Supplier ───
-export function getProductsBySupplier(supplierId: string): any[] {
-  const storeProducts: any[] = useProductStore.getState().products || [];
+export function getProductsBySupplier(supplierId: string): Product[] {
+  const storeProducts: Product[] = useProductStore.getState().products || [];
 
   const pos = loadPurchaseOrders();
   const supplierPos = pos.filter(
@@ -199,15 +210,15 @@ export function getProductsBySupplier(supplierId: string): any[] {
   );
   const orderedProductIds = new Set<string>();
   supplierPos.forEach((po) => {
-    (po.items || []).forEach((item: any) => {
+    (po.items || []).forEach((item) => {
       if (item.productId) orderedProductIds.add(item.productId);
     });
   });
 
   return storeProducts.filter((p) => {
     const directSupplier = p.supplierId === supplierId;
-    const inSupplierEntries = Array.isArray(p.supplierEntries) && p.supplierEntries.some((e: any) => e.supplierId === supplierId);
-    const inBarcodes = Array.isArray(p.barcodes) && p.barcodes.some((b: any) => b.supplierId === supplierId);
+    const inSupplierEntries = Array.isArray(p.supplierEntries) && p.supplierEntries.some((e) => e.supplierId === supplierId);
+    const inBarcodes = Array.isArray(p.barcodes) && p.barcodes.some((b) => b.supplierId === supplierId);
     const inOrderedPos = orderedProductIds.has(p.id) || orderedProductIds.has(p.sku);
     return directSupplier || inSupplierEntries || inBarcodes || inOrderedPos;
   });
@@ -247,16 +258,16 @@ export function getPayablePOsBySupplier(supplierId: string): PayablePO[] {
     .map((po) => {
       const totalAmount = Number(po.totalAmount || 0);
       const alreadyDeducted = (po.deductedReturns || []).reduce(
-        (sum: number, r: any) => sum + Number(r.amount || 0),
+        (sum: number, r) => sum + Number(r.amount || 0),
         0
       );
       const payments = Array.isArray(po.payments) ? po.payments : [];
       const alreadyPaid = payments.reduce(
-        (sum: number, p: any) => sum + Number(p.netCashOrTransferPaid || 0),
+        (sum: number, p) => sum + Number(p.netCashOrTransferPaid || 0),
         0
       );
       const alreadyDiscount = payments.reduce(
-        (sum: number, p: any) => sum + Number(p.discountAmount || 0),
+        (sum: number, p) => sum + Number(p.discountAmount || 0),
         0
       );
       const remainingPayable = Math.max(
@@ -273,7 +284,7 @@ export function getPayablePOsBySupplier(supplierId: string): PayablePO[] {
         alreadyDeducted,
         remainingPayable,
         // backend PO items carry product.{name,sku}, unitCost and total (not productName/unitPrice)
-        items: (po.items || []).map((i: any) => {
+        items: (po.items || []).map((i) => {
           const quantity = Number(i.quantity || 0);
           const explicit = Number(i.unitPrice ?? i.costPrice);
           const unitPrice = Number.isFinite(explicit) && explicit > 0
@@ -281,7 +292,7 @@ export function getPayablePOsBySupplier(supplierId: string): PayablePO[] {
             : Math.round(grossPerUnit({ quantity, total: i.total ?? undefined, unitCost: i.unitCost }) * 100) / 100;
           return {
             id: i.id,
-            productId: i.productId || i.product?.id,
+            productId: i.productId || i.product?.id || '',
             productName: i.productName || i.product?.name || i.name || 'สินค้า',
             sku: i.sku || i.product?.sku || '',
             quantity,
@@ -301,7 +312,7 @@ export function getEligibleClaimsForReturn(supplierId?: string): ClaimRecord[] {
   const suppliers = loadSuppliers();
   const pos = loadPurchaseOrders();
 
-  const storeProducts: any[] = useProductStore.getState().products || [];
+  const storeProducts: Product[] = useProductStore.getState().products || [];
 
   const targetSupplier = supplierId ? suppliers.find((s) => s.id === supplierId) : undefined;
 
@@ -335,10 +346,10 @@ export function getEligibleClaimsForReturn(supplierId?: string): ClaimRecord[] {
       if (targetSupplier && prod.supplierName && prod.supplierName.trim().toLowerCase() === targetSupplier.name.trim().toLowerCase()) {
         return true;
       }
-      if (Array.isArray(prod.barcodes) && prod.barcodes.some((b: any) => b.supplierId === targetId)) {
+      if (Array.isArray(prod.barcodes) && prod.barcodes.some((b) => b.supplierId === targetId)) {
         return true;
       }
-      if (Array.isArray(prod.supplierEntries) && prod.supplierEntries.some((s: any) => s.supplierId === targetId)) {
+      if (Array.isArray(prod.supplierEntries) && prod.supplierEntries.some((s) => s.supplierId === targetId)) {
         return true;
       }
     }
@@ -349,7 +360,7 @@ export function getEligibleClaimsForReturn(supplierId?: string): ClaimRecord[] {
     );
     const inPo = supplierPos.some((po) =>
       (po.items || []).some(
-        (i: any) => i.productId === claim.productId || (i.sku || i.product?.sku) === claim.sku || (claim.productName && (i.productName || i.product?.name) === claim.productName)
+        (i) => i.productId === claim.productId || (i.sku || i.product?.sku) === claim.sku || (claim.productName && (i.productName || i.product?.name) === claim.productName)
       )
     );
     if (inPo) return true;
@@ -408,8 +419,8 @@ export function getEligibleClaimsForReturn(supplierId?: string): ClaimRecord[] {
 export interface PendingSupplierGroup {
   supplierId: string;
   supplierName: string;
-  supplierPhone?: string;
-  supplierContact?: string;
+  supplierPhone?: string | null;
+  supplierContact?: string | null;
   pendingCount: number;
   totalItemsQuantity: number;
   totalCostValue: number;
@@ -582,7 +593,10 @@ async function refreshAfterReturnWrite(): Promise<void> {
   }
 }
 
-const failMessage = (err: any, fallback: string) => (err && err.message) ? `${fallback}: ${err.message}` : fallback;
+const failMessage = (err: unknown, fallback: string) => {
+  const message = errorText(err);
+  return message ? `${fallback}: ${message}` : fallback;
+};
 
 // ─── Create Supplier Return Note (RTN) ───
 // The server links the claims, deducts overstock stock and stores the note in one transaction;
@@ -593,7 +607,7 @@ export async function createSupplierReturnNote(params: CreateReturnNoteParams): 
   const nowIso = new Date().toISOString();
   const content = buildReturnContent(params);
   const createdBy = params.createdBy || 'เจ้าหน้าที่ฝ่ายส่งคืน/เคลม';
-  let saved: any;
+  let saved: ApiSupplierReturnNote;
   try {
     saved = await api.supplierReturns.create({
       returnNumber: returnId,

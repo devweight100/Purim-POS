@@ -11,6 +11,12 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
+import { errorText } from '@/lib/api-error';
+import type {
+  ApiDebt, ApiDocumentSearchResult, ApiOrderLike, ApiShiftRecord, ClaimRecord, DebtPaymentInstallment, DebtRecord,
+  SupplierReturnNote,
+} from '@/lib/types';
+import type { PaymentVoucher } from '@/lib/payable-service';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -26,17 +32,26 @@ import { PaymentVoucherModal } from '@/components/payables/PaymentVoucherModal';
 
 import { useDocumentSearchStore } from '@/lib/store/document-search-store';
 
-export interface UnifiedDocumentSearchResult {
-  type: 'ORDER' | 'CLAIM' | 'SHIFT' | 'DEBT' | 'PURCHASE_ORDER' | 'SUPPLIER_RETURN' | 'PAYMENT_VOUCHER';
-  typeName: string;
-  id: string;
-  docNumber: string;
-  date: string | Date;
-  status: string;
-  amount?: number;
-  customerName?: string;
-  description: string;
-  rawData: any;
+export type UnifiedDocumentSearchResult = ApiDocumentSearchResult;
+
+/** rawData of a SHIFT result: the shift row with its user, orders and cash movements. */
+type ShiftDocument = Omit<ApiShiftRecord, 'user'> & {
+  shiftCode?: string;
+  code?: string;
+  totalSales?: string | number;
+  expectedCash?: string | number;
+  user?: { fullName?: string; username?: string } | null;
+};
+
+/** Result of one server search: the documents found, or the error. */
+type SearchOutcome = { results: UnifiedDocumentSearchResult[] } | { error: unknown };
+
+async function searchDocuments(query: string): Promise<SearchOutcome> {
+  try {
+    return { results: (await api.documents.search(query)) || [] };
+  } catch (error) {
+    return { error };
+  }
 }
 
 interface UniversalDocumentSearchModalProps {
@@ -61,112 +76,38 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
   // Modal Preview States
   const [activeOrder, setActiveOrder] = useState<ReceiptData | null>(null);
   const [activeShift, setActiveShift] = useState<ShiftSummaryData | null>(null);
-  const [activeClaim, setActiveClaim] = useState<any | null>(null);
-  const [activeDebt, setActiveDebt] = useState<{ debt: any; installment: any } | null>(null);
+  // Claim / debt / return note / voucher previews get the server record as the search returned it
+  // (the preview modals read the fields both shapes share), hence the casts where they are set.
+  const [activeClaim, setActiveClaim] = useState<ClaimRecord | null>(null);
+  const [activeDebt, setActiveDebt] = useState<{ debt: DebtRecord; installment: DebtPaymentInstallment } | null>(null);
   const [activePo, setActivePo] = useState<PurchaseOrderData | null>(null);
-  const [activeReturnNote, setActiveReturnNote] = useState<any | null>(null);
-  const [activeVoucher, setActiveVoucher] = useState<any | null>(null);
-
-  // Sync initial query from store if present
-  useEffect(() => {
-    if (isOpen) {
-      if (docStore.initialQuery) {
-        setSearchTerm(docStore.initialQuery);
-        performSearch(docStore.initialQuery, true);
-      }
-      setTimeout(() => {
-        inputRef.current?.focus();
-        inputRef.current?.select();
-      }, 100);
-    } else {
-      setSearchTerm('');
-      setResults([]);
-    }
-  }, [isOpen, docStore.initialQuery]);
-
-  // Global F3 shortcut listener
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // F3 has a single owner: if another handler (e.g. POS item discount, which runs first on
-      // document) already handled it, it calls preventDefault and the document search stays closed.
-      if (e.key === 'F3' && !e.defaultPrevented) {
-        e.preventDefault();
-        setOpen(true);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  // Debounced search
-  useEffect(() => {
-    const trimmed = searchTerm.trim();
-    if (!trimmed) {
-      setResults([]);
-      setIsLoading(false);
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      performSearch(trimmed);
-    }, 280);
-
-    return () => clearTimeout(timer);
-  }, [searchTerm]);
-
-  const performSearch = async (query: string, autoOpenIfSingle = false) => {
-    setIsLoading(true);
-    try {
-      const serverResults: UnifiedDocumentSearchResult[] = await api.documents.search(query);
-      setResults(serverResults || []);
-
-      if (autoOpenIfSingle && serverResults && serverResults.length === 1) {
-        handleOpenDocument(serverResults[0]);
-      }
-    } catch (err) {
-      console.error('Document search error:', err);
-      // documents are searched on the server only
-      setResults([]);
-      toast.error('ค้นหาเอกสารจากเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่: ' + ((err as any)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const trimmed = searchTerm.trim();
-      if (trimmed) {
-        performSearch(trimmed, true);
-      }
-    }
-  };
+  const [activeReturnNote, setActiveReturnNote] = useState<SupplierReturnNote | null>(null);
+  const [activeVoucher, setActiveVoucher] = useState<PaymentVoucher | null>(null);
 
   const handleOpenDocument = (doc: UnifiedDocumentSearchResult) => {
     switch (doc.type) {
       case 'ORDER': {
-        const ord = doc.rawData;
+        const ord = doc.rawData as ApiOrderLike;
         // same mapping as the orders page / POS history reprint
         const receipt: ReceiptData = orderToReceiptData(
-          { ...ord, orderNumber: ord.orderNumber || doc.docNumber, createdAt: ord.createdAt || doc.date },
+          { ...ord, orderNumber: ord.orderNumber || doc.docNumber, createdAt: ord.createdAt || String(doc.date) },
           { isReprint: true },
         );
         setActiveOrder(receipt);
         break;
       }
       case 'SHIFT': {
-        const sh = doc.rawData;
+        const sh = doc.rawData as ShiftDocument;
         const totalIn = (sh.cashMovements || [])
-          .filter((m: any) => m.type === 'IN')
-          .reduce((sum: number, m: any) => sum + Number(m.amount || 0), 0);
+          .filter((m) => m.type === 'IN')
+          .reduce((sum: number, m) => sum + Number(m.amount || 0), 0);
         const totalOut = (sh.cashMovements || [])
-          .filter((m: any) => m.type === 'OUT')
-          .reduce((sum: number, m: any) => sum + Number(m.amount || 0), 0);
+          .filter((m) => m.type === 'OUT')
+          .reduce((sum: number, m) => sum + Number(m.amount || 0), 0);
 
         const shiftData: ShiftSummaryData = {
           shiftId: sh.shiftNumber || sh.id,
-          shiftCode: sh.shiftCode || sh.code || sh.shiftNumber,
+          shiftCode: sh.shiftCode || sh.code || sh.shiftNumber || undefined,
           status: sh.status,
           userName: sh.user?.fullName || sh.user?.username || 'แคชเชียร์',
           openedAt: String(sh.openedAt || new Date().toISOString()),
@@ -188,11 +129,11 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
         break;
       }
       case 'CLAIM': {
-        setActiveClaim(doc.rawData);
+        setActiveClaim(doc.rawData as ClaimRecord);
         break;
       }
       case 'DEBT': {
-        const debt = doc.rawData;
+        const debt = doc.rawData as ApiDebt;
         const latestInstallment = (debt.payments && debt.payments.length > 0)
           ? debt.payments[debt.payments.length - 1]
           : {
@@ -207,7 +148,7 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
             };
 
         setActiveDebt({
-          debt: {
+          debt: ({
             id: debt.id,
             orderNumber: debt.order?.orderNumber || debt.id,
             orderDate: debt.createdAt,
@@ -216,22 +157,120 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
             totalAmount: Number(debt.totalDebt),
             paidAmount: Number(debt.paidAmount),
             remainingAmount: Number(debt.remainingAmount),
-          },
-          installment: latestInstallment,
+          } as unknown as DebtRecord),
+          installment: latestInstallment as unknown as DebtPaymentInstallment,
         });
         break;
       }
       case 'PURCHASE_ORDER': {
-        setActivePo(doc.rawData);
+        setActivePo(doc.rawData as PurchaseOrderData);
         break;
       }
       case 'SUPPLIER_RETURN': {
-        setActiveReturnNote(doc.rawData);
+        setActiveReturnNote(doc.rawData as SupplierReturnNote);
         break;
       }
       case 'PAYMENT_VOUCHER': {
-        setActiveVoucher(doc.rawData);
+        setActiveVoucher(doc.rawData as PaymentVoucher);
         break;
+      }
+    }
+  };
+
+  /** Show a search outcome (opening the only document found when asked) and end the loading state. */
+  const showSearchOutcome = (outcome: SearchOutcome, autoOpenIfSingle: boolean) => {
+    try {
+      if ('error' in outcome) throw outcome.error;
+      setResults(outcome.results);
+      if (autoOpenIfSingle && outcome.results.length === 1) {
+        handleOpenDocument(outcome.results[0]);
+      }
+    } catch (err) {
+      console.error('Document search error:', err);
+      // documents are searched on the server only
+      setResults([]);
+      toast.error('ค้นหาเอกสารจากเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่: ' + (errorText(err) || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
+    }
+    setIsLoading(false);
+  };
+
+  const performSearch = async (query: string, autoOpenIfSingle = false) => {
+    setIsLoading(true);
+    showSearchOutcome(await searchDocuments(query), autoOpenIfSingle);
+  };
+
+  // Opening / closing the modal (or a new query from the store): adjust the search state during
+  // render (React's "state from changed props" pattern); the effect below runs the search.
+  const [openSync, setOpenSync] = useState<{ isOpen: boolean; initialQuery: string | null }>({ isOpen: false, initialQuery: null });
+  if (openSync.isOpen !== isOpen || openSync.initialQuery !== docStore.initialQuery) {
+    setOpenSync({ isOpen, initialQuery: docStore.initialQuery });
+    if (isOpen) {
+      if (docStore.initialQuery) {
+        setSearchTerm(docStore.initialQuery);
+        setIsLoading(true);
+      }
+    } else {
+      setSearchTerm('');
+      setResults([]);
+    }
+  }
+
+  // An empty search box shows no results (also adjusted during render)
+  const [syncedTerm, setSyncedTerm] = useState(searchTerm);
+  if (syncedTerm !== searchTerm) {
+    setSyncedTerm(searchTerm);
+    if (!searchTerm.trim()) {
+      setResults([]);
+      setIsLoading(false);
+    }
+  }
+
+  // Search the store's initial query right away and focus the input
+  useEffect(() => {
+    if (!isOpen) return;
+    if (docStore.initialQuery) {
+      const query = docStore.initialQuery;
+      const run = async () => showSearchOutcome(await searchDocuments(query), true);
+      void run();
+    }
+    setTimeout(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }, 100);
+  }, [isOpen, docStore.initialQuery]);
+
+  // Global F3 shortcut listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // F3 has a single owner: if another handler (e.g. POS item discount, which runs first on
+      // document) already handled it, it calls preventDefault and the document search stays closed.
+      if (e.key === 'F3' && !e.defaultPrevented) {
+        e.preventDefault();
+        setOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Debounced search
+  useEffect(() => {
+    const trimmed = searchTerm.trim();
+    if (!trimmed) return;
+
+    const timer = setTimeout(() => {
+      performSearch(trimmed);
+    }, 280);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const trimmed = searchTerm.trim();
+      if (trimmed) {
+        performSearch(trimmed, true);
       }
     }
   };
@@ -398,7 +437,7 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
             ) : searchTerm ? (
               <div className="py-16 text-center space-y-3">
                 <AlertCircle className="w-10 h-10 text-slate-400 mx-auto" />
-                <p className="text-sm font-bold text-slate-700">ไม่พบเอกสารที่ตรงกับ "{searchTerm}"</p>
+                <p className="text-sm font-bold text-slate-700">ไม่พบเอกสารที่ตรงกับ &quot;{searchTerm}&quot;</p>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
                   ตรวจสอบให้แน่ใจว่าตัวเลขบาร์โค้ดถูกต้อง หรือลองสแกนใหม่อีกครั้ง โดยไม่ต้องเลือกว่าเป็นเอกสารประเภทใด
                 </p>
