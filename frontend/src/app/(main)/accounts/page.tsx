@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { 
-  BankAccount, loadBankAccounts, saveBankAccounts 
-} from '@/lib/bank-account-storage';
+import { BankAccount, fetchBankAccountsFromBackend } from '@/lib/bank-account-storage';
+import { api } from '@/lib/api';
+import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -42,8 +42,25 @@ export default function AccountsPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const reload = async () => {
+    setLoading(true);
+    try {
+      setAccounts(await fetchBankAccountsFromBackend());
+      setLoadError(null);
+    } catch (err) {
+      setAccounts([]);
+      setLoadError(errorMessage(err, 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    setAccounts(loadBankAccounts());
+    void reload();
   }, []);
 
   const handleOpenAdd = () => {
@@ -96,67 +113,62 @@ export default function AccountsPage() {
     reader.readAsDataURL(file);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!accountName.trim()) { toast.error('กรุณาระบุชื่อบัญชี'); return; }
     if (!accountNumber.trim()) { toast.error('กรุณาระบุเลขที่บัญชี / เบอร์พร้อมเพย์'); return; }
+    if (saving) return;
 
-    let updatedList: BankAccount[];
-    const newId = editingAccount?.id || `bank_${Date.now()}`;
-
-    const newObj: BankAccount = {
-      id: newId,
+    const body = {
       bankName: bankName.trim(),
       accountName: accountName.trim(),
       accountNumber: accountNumber.trim(),
-      qrImageUrl: qrImageUrl,
-      color: color,
-      isDefault: isDefault,
+      qrCodeUrl: qrImageUrl || null,
+      // the first account always becomes the default one
+      // (and the shop always keeps one default account)
+      isDefault: isDefault || accounts.length === 0 || !!editingAccount?.isDefault,
     };
 
-    if (isDefault) {
-      // Unset other defaults
-      accounts.forEach(a => a.isDefault = false);
+    setSaving(true);
+    try {
+      if (editingAccount) await api.bankAccounts.update(editingAccount.id, body);
+      else await api.bankAccounts.create({ ...body, qrCodeUrl: body.qrCodeUrl || undefined });
+      toast.success(`${editingAccount ? 'แก้ไข' : 'เพิ่ม'}บัญชีการเงินสำเร็จ`);
+      setIsDialogOpen(false);
+      await reload();
+    } catch (err) {
+      toast.error(errorMessage(err, 'บันทึกบัญชีการเงินไม่สำเร็จ'));
+    } finally {
+      setSaving(false);
     }
-
-    if (editingAccount) {
-      updatedList = accounts.map(a => a.id === editingAccount.id ? newObj : a);
-    } else {
-      updatedList = [newObj, ...accounts];
-    }
-
-    // Ensure at least 1 default exists
-    if (!updatedList.some(a => a.isDefault) && updatedList.length > 0) {
-      updatedList[0].isDefault = true;
-    }
-
-    setAccounts(updatedList);
-    saveBankAccounts(updatedList);
-    toast.success(`${editingAccount ? 'แก้ไข' : 'เพิ่ม'}บัญชีการเงินสำเร็จ`);
-    setIsDialogOpen(false);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (accounts.length <= 1) {
       toast.error('ต้องมีบัญชีการเงินอย่างน้อย 1 บัญชี');
       return;
     }
-    const filtered = accounts.filter(a => a.id !== id);
-    if (!filtered.some(a => a.isDefault) && filtered.length > 0) {
-      filtered[0].isDefault = true;
+    try {
+      const deleting = accounts.find(a => a.id === id);
+      await api.bankAccounts.delete(id);
+      if (deleting?.isDefault) {
+        const next = accounts.find(a => a.id !== id);
+        if (next) await api.bankAccounts.setDefault(next.id);
+      }
+      toast.success('ลบบัญชีการเงินเรียบร้อย');
+    } catch (err) {
+      toast.error(errorMessage(err, 'ลบบัญชีการเงินไม่สำเร็จ'));
     }
-    setAccounts(filtered);
-    saveBankAccounts(filtered);
-    toast.success('ลบบัญชีการเงินเรียบร้อย');
+    await reload();
   };
 
-  const handleSetDefault = (id: string) => {
-    const updated = accounts.map(a => ({
-      ...a,
-      isDefault: a.id === id
-    }));
-    setAccounts(updated);
-    saveBankAccounts(updated);
-    toast.success('ตั้งเป็นบัญชีหลักเรียบร้อย');
+  const handleSetDefault = async (id: string) => {
+    try {
+      await api.bankAccounts.setDefault(id);
+      toast.success('ตั้งเป็นบัญชีหลักเรียบร้อย');
+    } catch (err) {
+      toast.error(errorMessage(err, 'ตั้งบัญชีหลักไม่สำเร็จ'));
+    }
+    await reload();
   };
 
   return (
@@ -172,6 +184,8 @@ export default function AccountsPage() {
           <Plus className="w-4 h-4 mr-1.5" /> เพิ่มบัญชีการเงิน
         </Button>
       </div>
+
+      {loadError && <LoadErrorState message={loadError} onRetry={() => void reload()} retrying={loading} />}
 
       {/* Account Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

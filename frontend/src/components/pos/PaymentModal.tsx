@@ -552,7 +552,7 @@ export function PaymentModal({
       void api.bankAccounts.getAll().then(accs => {
         setBankAccounts(accs);
         setSelectedBank(accs.find((a: BankAccount) => a.isDefault) || accs[0] || null);
-      }).catch(() => toast.warning('โหลดบัญชีจากฐานข้อมูลไม่ได้ กำลังใช้ข้อมูลล่าสุดในเครื่อง'));
+      }).catch(() => toast.warning('โหลดบัญชีธนาคารจากเซิร์ฟเวอร์ไม่ได้'));
       const accs = loadBankAccounts();
       setBankAccounts(accs);
       const def = accs.find(a => a.isDefault) || accs[0] || null;

@@ -23,6 +23,11 @@ export interface StoreSettings {
   allowDecimalQty?: boolean;
 }
 
+/**
+ * READ-ONLY OFFLINE CACHE of the server's store settings (receipt header, VAT, decimal qty…),
+ * kept only so the POS and its receipts keep working when the network drops. It is overwritten
+ * by every successful server response and never written by local edits.
+ */
 const STORAGE_KEY = 'pos_store_settings_v2';
 
 export const DEFAULT_STORE_SETTINGS: StoreSettings = {
@@ -78,28 +83,11 @@ function mirrorStoreSettings(settings: StoreSettings) {
   }
 }
 
+/** Store settings from the server (refreshes the offline cache). Throws when unreachable. */
 export async function loadStoreSettingsFromBackend(): Promise<StoreSettings> {
-  try {
-    const settings = normalizeStoreSettings(await api.settings.get());
-    mirrorStoreSettings(settings);
-    return settings;
-  } catch (err) {
-    console.warn('Failed to load store settings from backend:', err);
-    return loadStoreSettings();
-  }
-}
-
-export function saveStoreSettings(settings: Partial<StoreSettings>): StoreSettings {
-  if (typeof window === 'undefined') return DEFAULT_STORE_SETTINGS;
-  try {
-    const current = loadStoreSettings();
-    const updated: StoreSettings = { ...current, ...settings };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    return updated;
-  } catch (err) {
-    console.error('Failed to save store settings to localStorage:', err);
-    return DEFAULT_STORE_SETTINGS;
-  }
+  const settings = normalizeStoreSettings(await api.settings.get());
+  mirrorStoreSettings(settings);
+  return settings;
 }
 
 export async function saveStoreSettingsToBackend(settings: Partial<StoreSettings>): Promise<StoreSettings> {

@@ -1,4 +1,4 @@
-import { saveBankAccounts } from './bank-account-storage';
+import { rememberServerBankAccounts } from './bank-account-storage';
 import { getTerminalId } from './terminal-id';
 // ==============================================================================
 // Purim POS - Unified Real API Client with Offline-First Resilience
@@ -311,7 +311,7 @@ export const api = {
 
   // 11. Bank Accounts
   bankAccounts: {
-    getAll: async () => { const rows = await apiFetch('/bank-accounts'); saveBankAccounts(rows); return rows; },
+    getAll: async () => { return rememberServerBankAccounts(await apiFetch('/bank-accounts')); },
     create: (data: any) => apiFetch('/bank-accounts', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: string, data: any) => apiFetch(`/bank-accounts/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     setDefault: (id: string) => apiFetch(`/bank-accounts/${id}/set-default`, { method: 'PATCH' }),
