@@ -97,11 +97,13 @@ export default function FinancePage() {
   // dialogs
   const [transferMode, setTransferMode] = useState<null | 'deposit' | 'withdraw' | 'other'>(null);
   const [expenseOpen, setExpenseOpen] = useState(false);
+  // Bangkok day when the expense dialog was opened (default date / no future dates)
+  const [expenseToday, setExpenseToday] = useState(() => bangkokDayKey(Date.now()));
   const [ownerOpen, setOwnerOpen] = useState(false);
   const [amountDialog, setAmountDialog] = useState<null | { kind: 'opening' | 'adjust'; account: MoneyAccount }>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  /** Loads the figures of the period; state is only updated after the requests. */
+  const fetchFinance = useCallback(async () => {
     const { from, to } = rangeDates(range);
     try {
       const [sum, tx, exp, cats, ov] = await Promise.all([
@@ -129,7 +131,25 @@ export default function FinancePage() {
     }
   }, [range, accountFilter]);
 
-  useEffect(() => { void load(); }, [load]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    await fetchFinance();
+  }, [fetchFinance]);
+
+  // a new period / account shows the spinner at once; the effect below loads it
+  const changeRange = (r: Range) => {
+    if (r !== range) setLoading(true);
+    setRange(r);
+  };
+  const changeAccountFilter = (id: string) => {
+    if (id !== accountFilter) setLoading(true);
+    setAccountFilter(id);
+  };
+
+  useEffect(() => {
+    const run = async () => { await fetchFinance(); };
+    void run();
+  }, [fetchFinance]);
 
   const accounts = useMemo(() => (summary?.accounts || []).filter((a) => a.isActive), [summary]);
   const needsOpening = accounts.filter((a) => a.type !== 'CASH_DRAWER' && !a.hasOpeningBalance);
@@ -170,7 +190,7 @@ export default function FinancePage() {
           <Button onClick={() => setTransferMode('deposit')} className="bg-sky-600 hover:bg-sky-700 text-white gap-1.5"><ArrowDownToLine className="w-4 h-4" /> ฝากเงินสดเข้าบัญชี</Button>
           <Button onClick={() => setTransferMode('withdraw')} className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"><ArrowUpFromLine className="w-4 h-4" /> ถอนเงินจากบัญชีเป็นเงินสด</Button>
           <Button variant="outline" onClick={() => setTransferMode('other')} className="gap-1.5"><ArrowLeftRight className="w-4 h-4" /> ย้าย / แลกเงิน</Button>
-          <Button onClick={() => setExpenseOpen(true)} className="bg-rose-600 hover:bg-rose-700 text-white gap-1.5"><Receipt className="w-4 h-4" /> บันทึกค่าใช้จ่าย</Button>
+          <Button onClick={() => { setExpenseToday(bangkokDayKey(Date.now())); setExpenseOpen(true); }} className="bg-rose-600 hover:bg-rose-700 text-white gap-1.5"><Receipt className="w-4 h-4" /> บันทึกค่าใช้จ่าย</Button>
           <Button variant="outline" onClick={() => setOwnerOpen(true)} className="gap-1.5"><PiggyBank className="w-4 h-4" /> เงินทุน / ถอนใช้</Button>
           <Button variant="ghost" onClick={() => void load()} title="รีเฟรช"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></Button>
         </div>
@@ -242,7 +262,7 @@ export default function FinancePage() {
                 {a.type !== 'CASH_DRAWER' && a.hasOpeningBalance && (
                   <Button size="sm" variant="outline" className="gap-1" onClick={() => setAmountDialog({ kind: 'adjust', account: a })}><Scale className="w-3.5 h-3.5" /> ปรับยอดตามจริง</Button>
                 )}
-                <Button size="sm" variant="ghost" onClick={() => { setAccountFilter(a.id); setTab('ledger'); }}>ดูรายการ</Button>
+                <Button size="sm" variant="ghost" onClick={() => { changeAccountFilter(a.id); setTab('ledger'); }}>ดูรายการ</Button>
               </div>
             </div>
           );
@@ -347,7 +367,7 @@ export default function FinancePage() {
           <h2 className="font-bold text-slate-900">เงินเข้า - ออก</h2>
           <div className="flex gap-1">
             {([['today', 'วันนี้'], ['7d', '7 วัน'], ['month', 'เดือนนี้']] as [Range, string][]).map(([r, l]) => (
-              <Button key={r} size="sm" variant={range === r ? 'default' : 'outline'} onClick={() => setRange(r)}>{l}</Button>
+              <Button key={r} size="sm" variant={range === r ? 'default' : 'outline'} onClick={() => changeRange(r)}>{l}</Button>
             ))}
           </div>
         </div>
@@ -399,7 +419,7 @@ export default function FinancePage() {
             <Button key={k} size="sm" variant={tab === k ? 'default' : 'ghost'} onClick={() => setTab(k)}>{l}</Button>
           ))}
           {tab === 'ledger' && (
-            <select className="ml-auto h-9 rounded-lg border border-slate-300 px-2 text-sm" value={accountFilter} onChange={(e) => setAccountFilter(e.target.value)}>
+            <select className="ml-auto h-9 rounded-lg border border-slate-300 px-2 text-sm" value={accountFilter} onChange={(e) => changeAccountFilter(e.target.value)}>
               <option value="">ทุกบัญชี</option>
               {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
@@ -476,7 +496,7 @@ export default function FinancePage() {
       )}
 
       <TransferDialog mode={transferMode} accounts={accounts} onClose={() => setTransferMode(null)} onDone={load} />
-      <ExpenseDialog open={expenseOpen} accounts={accounts} categories={categories.filter((c) => c.isActive)} onClose={() => setExpenseOpen(false)} onDone={load} />
+      <ExpenseDialog open={expenseOpen} today={expenseToday} accounts={accounts} categories={categories.filter((c) => c.isActive)} onClose={() => setExpenseOpen(false)} onDone={load} />
       <OwnerDialog open={ownerOpen} accounts={accounts} onClose={() => setOwnerOpen(false)} onDone={load} />
       <AmountDialog state={amountDialog} onClose={() => setAmountDialog(null)} onDone={load} />
     </div>
@@ -493,16 +513,20 @@ function TransferDialog({ mode, accounts, onClose, onDone }: { mode: null | 'dep
   const fromList = accounts.filter((a) => (mode === 'deposit' ? isCash(a.type) : mode === 'withdraw' ? a.type === 'BANK' || a.type === 'CARD_CLEARING' : true));
   const toList = accounts.filter((a) => (mode === 'deposit' ? a.type === 'BANK' : mode === 'withdraw' ? isCash(a.type) : true) && a.id !== fromId);
 
-  useEffect(() => {
-    if (!mode) return;
-    setClientId(newId());
-    setAmount('');
-    setNote(mode === 'deposit' ? 'ฝากเงินสดเข้าธนาคาร' : mode === 'withdraw' ? 'ถอนเงินสดจากธนาคาร' : '');
-    const f = accounts.find((a) => (mode === 'deposit' ? a.type === 'CASH_SAFE' : mode === 'withdraw' ? a.type === 'BANK' : false));
-    const t = accounts.find((a) => (mode === 'deposit' ? a.type === 'BANK' : mode === 'withdraw' ? a.type === 'CASH_SAFE' : false));
-    setFromId(f?.id || '');
-    setToId(t?.id || '');
-  }, [mode, accounts]);
+  // fresh form when the dialog opens (or its accounts change), adjusted while rendering
+  const [seen, setSeen] = useState({ mode, accounts });
+  if (seen.mode !== mode || seen.accounts !== accounts) {
+    setSeen({ mode, accounts });
+    if (mode) {
+      setClientId(newId());
+      setAmount('');
+      setNote(mode === 'deposit' ? 'ฝากเงินสดเข้าธนาคาร' : mode === 'withdraw' ? 'ถอนเงินสดจากธนาคาร' : '');
+      const f = accounts.find((a) => (mode === 'deposit' ? a.type === 'CASH_SAFE' : mode === 'withdraw' ? a.type === 'BANK' : false));
+      const t = accounts.find((a) => (mode === 'deposit' ? a.type === 'BANK' : mode === 'withdraw' ? a.type === 'CASH_SAFE' : false));
+      setFromId(f?.id || '');
+      setToId(t?.id || '');
+    }
+  }
 
   const from = accounts.find((a) => a.id === fromId);
   const submit = async () => {
@@ -555,8 +579,7 @@ function TransferDialog({ mode, accounts, onClose, onDone }: { mode: null | 'dep
   );
 }
 
-function ExpenseDialog({ open, accounts, categories, onClose, onDone }: { open: boolean; accounts: MoneyAccount[]; categories: Category[]; onClose: () => void; onDone: () => void }) {
-  const today = bangkokDayKey(Date.now());
+function ExpenseDialog({ open, today, accounts, categories, onClose, onDone }: { open: boolean; today: string; accounts: MoneyAccount[]; categories: Category[]; onClose: () => void; onDone: () => void }) {
   const [categoryId, setCategoryId] = useState('');
   const [accountId, setAccountId] = useState('');
   const [amount, setAmount] = useState('');
@@ -567,13 +590,17 @@ function ExpenseDialog({ open, accounts, categories, onClose, onDone }: { open: 
   const [clientId, setClientId] = useState(newId());
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-    setClientId(newId());
-    setAmount(''); setDescription(''); setVendor(''); setReceipt(undefined); setPaidAt(bangkokDayKey(Date.now()));
-    setAccountId(accounts.find((a) => a.type === 'CASH_SAFE')?.id || accounts[0]?.id || '');
-    setCategoryId(categories[0]?.id || '');
-  }, [open, accounts, categories]);
+  // fresh form when the dialog opens (or its lists change), adjusted while rendering
+  const [seen, setSeen] = useState({ open, accounts, categories });
+  if (seen.open !== open || seen.accounts !== accounts || seen.categories !== categories) {
+    setSeen({ open, accounts, categories });
+    if (open) {
+      setClientId(newId());
+      setAmount(''); setDescription(''); setVendor(''); setReceipt(undefined); setPaidAt(today);
+      setAccountId(accounts.find((a) => a.type === 'CASH_SAFE')?.id || accounts[0]?.id || '');
+      setCategoryId(categories[0]?.id || '');
+    }
+  }
 
   const onFile = (file?: File) => {
     if (!file) return setReceipt(undefined);
@@ -653,11 +680,15 @@ function OwnerDialog({ open, accounts, onClose, onDone }: { open: boolean; accou
   const [note, setNote] = useState('');
   const [clientId, setClientId] = useState(newId());
   const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    if (!open) return;
-    setClientId(newId()); setAmount(''); setNote('');
-    setAccountId(accounts.find((a) => a.type === 'CASH_SAFE')?.id || accounts[0]?.id || '');
-  }, [open, accounts]);
+  // fresh form when the dialog opens (or its accounts change), adjusted while rendering
+  const [seen, setSeen] = useState({ open, accounts });
+  if (seen.open !== open || seen.accounts !== accounts) {
+    setSeen({ open, accounts });
+    if (open) {
+      setClientId(newId()); setAmount(''); setNote('');
+      setAccountId(accounts.find((a) => a.type === 'CASH_SAFE')?.id || accounts[0]?.id || '');
+    }
+  }
   const submit = async () => {
     if (!(Number(amount) > 0)) return toast.error('กรุณาระบุจำนวนเงิน');
     setSaving(true);
@@ -704,7 +735,12 @@ function AmountDialog({ state, onClose, onDone }: { state: null | { kind: 'openi
   const [reason, setReason] = useState('');
   const [clientId, setClientId] = useState(newId());
   const [saving, setSaving] = useState(false);
-  useEffect(() => { if (state) { setClientId(newId()); setValue(''); setReason(''); } }, [state]);
+  // fresh form for each account opened, adjusted while rendering
+  const [seenState, setSeenState] = useState(state);
+  if (seenState !== state) {
+    setSeenState(state);
+    if (state) { setClientId(newId()); setValue(''); setReason(''); }
+  }
   if (!state) return null;
   const opening = state.kind === 'opening';
   const submit = async () => {

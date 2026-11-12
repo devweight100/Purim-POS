@@ -122,7 +122,7 @@ export default function ClaimInventoryPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [claimItems, setClaimItems] = useState<ClaimStockItem[]>([]);
-  const [suppliersList, setSuppliersList] = useState<any[]>([]);
+  const [suppliersList, setSuppliersList] = useState<Array<{ id: string; name: string; phone?: string }>>([]);
   
   // Filters
   const [search, setSearch] = useState('');
@@ -176,7 +176,7 @@ export default function ClaimInventoryPage() {
         const matchedProduct = storeProducts.find(
           (p) => p.id === c.productId || p.sku === c.sku
         );
-        const rawCategory: any = matchedProduct?.category;
+        const rawCategory = matchedProduct?.category as string | { name?: string } | null | undefined;
         const category = typeof rawCategory === 'object' && rawCategory !== null
           ? (rawCategory.name || 'ทั่วไป')
           : (rawCategory || 'ทั่วไป');

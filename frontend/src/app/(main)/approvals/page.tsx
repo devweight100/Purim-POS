@@ -32,7 +32,11 @@ export default function ApprovalsPage() {
       setRows(list.data || []); setRules(r);
     } catch (err) { toast.error((err as Error | undefined)?.message || 'โหลดไม่สำเร็จ'); }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    // load() only updates state after its requests
+    const run = async () => { await load(); };
+    void run();
+  }, [load]);
 
   const saveRules = async () => {
     if (!rules) return;

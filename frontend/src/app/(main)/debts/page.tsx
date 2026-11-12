@@ -59,6 +59,8 @@ function DebtsContent() {
   const { user } = useAuthStore();
   const [debts, setDebts] = useState<DebtRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  // "now" for overdue checks: the time the debts were (re)loaded
+  const [now, setNow] = useState(() => Date.now());
   const [search, setSearch] = useState<string>('');
   const [statusTab, setStatusTab] = useState<'all' | 'unpaid' | 'overdue' | 'paid'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'INDIVIDUAL' | 'COMPANY'>('all');
@@ -66,11 +68,14 @@ function DebtsContent() {
   // Specific customer filter from URL params
   const [activeCustomerIdFilter, setActiveCustomerIdFilter] = useState<string | null>(customerIdParam);
 
-  useEffect(() => {
+  // follow a new ?customerId= (adjusted while rendering instead of an effect)
+  const [seenCustomerIdParam, setSeenCustomerIdParam] = useState(customerIdParam);
+  if (seenCustomerIdParam !== customerIdParam) {
+    setSeenCustomerIdParam(customerIdParam);
     if (customerIdParam) {
       setActiveCustomerIdFilter(customerIdParam);
     }
-  }, [customerIdParam]);
+  }
 
   // Pagination
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -99,6 +104,7 @@ function DebtsContent() {
       setDebts([]);
       setLoadError(errorMessage(err, 'ไม่สามารถโหลดข้อมูลบิลค้างชำระได้'));
     } finally {
+      setNow(Date.now());
       setLoading(false);
     }
   };
@@ -121,8 +127,6 @@ function DebtsContent() {
     let unpaidCount = 0;
     let paidCount = 0;
     let overdueCount = 0;
-
-    const now = Date.now();
 
     debts.forEach((d) => {
       totalDebtValue += d.totalAmount;
@@ -149,11 +153,10 @@ function DebtsContent() {
       overdueCount,
       totalBills: debts.length,
     };
-  }, [debts]);
+  }, [debts, now]);
 
   // Filtered debts based on search, status tab, customer type, and activeCustomerIdFilter
   const filteredDebts = useMemo(() => {
-    const now = Date.now();
     return debts.filter((d) => {
       // 0. Filter by active customer ID from URL
       if (activeCustomerIdFilter && d.customerId !== activeCustomerIdFilter) {
@@ -486,7 +489,7 @@ function DebtsContent() {
                 paginatedDebts.map((debt, idx) => {
                   const isPaid = debt.status === 'PAID' || debt.remainingDebt <= 0;
                   const isPartial = debt.status === 'PARTIAL' || (debt.paidAmount > 0 && debt.remainingDebt > 0);
-                  const isOverdue = !!(debt.dueDate && new Date(debt.dueDate).getTime() < Date.now() && debt.remainingDebt > 0);
+                  const isOverdue = !!(debt.dueDate && new Date(debt.dueDate).getTime() < now && debt.remainingDebt > 0);
                   const progressPct = debt.progressPercent;
 
                   return (

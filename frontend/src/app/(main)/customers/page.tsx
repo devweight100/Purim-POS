@@ -134,7 +134,7 @@ export default function CustomersPage() {
 
   // Summary Stats
   const stats = useMemo(() => {
-    let total = customers.length;
+    const total = customers.length;
     let individualCount = 0;
     let companyCount = 0;
     let totalCreditCustomers = 0;
@@ -269,7 +269,7 @@ export default function CustomersPage() {
     }
 
     try {
-      const payload: any = {
+      const payload: Record<string, unknown> & { name: string } = {
         name: formData.name.trim(),
         phone: formData.phone.trim(),
         email: formData.email?.trim() || null,
@@ -849,7 +849,7 @@ export default function CustomersPage() {
                     <label className="font-bold text-slate-700">ประเภทสาขา</label>
                     <select
                       value={formData.branchType || 'HEAD_OFFICE'}
-                      onChange={(e) => setFormData({ ...formData, branchType: e.target.value as any })}
+                      onChange={(e) => setFormData({ ...formData, branchType: e.target.value as Customer['branchType'] })}
                       className="w-full h-9 rounded-lg border border-slate-300 bg-white px-2.5 font-bold text-slate-800 outline-none"
                     >
                       <option value="HEAD_OFFICE">สำนักงานใหญ่ (00000)</option>
@@ -924,7 +924,7 @@ export default function CustomersPage() {
                       <button
                         key={lv.level}
                         type="button"
-                        onClick={() => setFormData({ ...formData, priceLevel: lv.level as any })}
+                        onClick={() => setFormData({ ...formData, priceLevel: lv.level as Customer['priceLevel'] })}
                         className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 transition-all ${
                           formData.priceLevel === lv.level
                             ? 'border-sky-500 bg-sky-50 text-sky-800 ring-2 ring-sky-400/40 shadow-xs'

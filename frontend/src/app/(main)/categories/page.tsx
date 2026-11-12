@@ -27,7 +27,7 @@ const colorPresets = [
 
 export default function CategoriesPage() {
   const [categories, setCategoriesState] = useState<CategoryItem[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<Array<{ categoryId?: string | null }>>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
