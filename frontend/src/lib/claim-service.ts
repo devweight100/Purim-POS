@@ -1,8 +1,11 @@
-import { ClaimRecord, ClaimEligibleItem, ClaimStatus, ClaimResolutionType } from './types';
+import {
+  ClaimRecord, ClaimEligibleItem, ClaimStatus, ClaimResolutionType, Product, ApiClaim, ApiListResponse, ApiOrderItem,
+  ApiOrderLike, apiListRows,
+} from './types';
 import { useShiftStore } from './store/shift-store';
 import { useProductStore } from './store/product-store';
 import { newOperationId } from './order-sync-service';
-import { isRetryableError } from './api-error';
+import { isRetryableError, errorText } from './api-error';
 import { toast } from 'sonner';
 import { getProductPackagingUnits } from './cart-pricing';
 import { apiFetch } from './api';
@@ -14,6 +17,23 @@ import { apiFetch } from './api';
  */
 let claimsMem: ClaimRecord[] = [];
 let warrantiesMem: ReplacementWarrantyRecord[] = [];
+
+const CLAIM_STATUSES: readonly string[] = ['COMPLETED', 'PENDING_CHECKOUT', 'PENDING_SUPPLIER', 'SENT_TO_SUPPLIER', 'SUPPLIER_REPLACED', 'SCRAPPED'];
+
+/** An order as the claim checks read it (server order with names filled in). */
+type ClaimOrderRow = ApiOrderLike & { orderNumber: string };
+/** A sold line; bundle children carry where they came from. */
+type ClaimOrderLine = ApiOrderItem & { isFromBundle?: boolean; parentBundleName?: string };
+/** One child of a bundle line (OrderItem.bundleData entry, or built from the product's bundleItems). */
+interface BundleComponent {
+  productId?: string;
+  childProductId?: string;
+  productName?: string;
+  sku?: string;
+  quantityPerBundle?: number;
+  totalQuantity?: number;
+  unitPrice?: number;
+}
 
 export interface ReplacementWarrantyRecord {
   id: string; // RWM-XXXX
@@ -40,19 +60,19 @@ export async function fetchAllClaimRecords(): Promise<ClaimRecord[]> {
   // Hydrate replacement warranties in background
   void fetchReplacementWarranties().catch(() => {});
 
-  const res = await apiFetch('/claims?limit=500');
-  const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : null);
+  const res = await apiFetch<ApiListResponse<ApiClaim> | null>('/claims?limit=500');
+  const list = apiListRows(res);
   if (!Array.isArray(list)) throw new Error('ข้อมูลเคลมจากเซิร์ฟเวอร์ไม่ถูกต้อง');
   {
     {
-      const storeProducts: any[] = useProductStore.getState().products || [];
+      const storeProducts: Product[] = useProductStore.getState().products || [];
 
-      const mapped: ClaimRecord[] = list.map((c: any) => {
+      const mapped: ClaimRecord[] = list.map((c) => {
         const claimId = c.claimNumber || c.id;
         const ordNum = c.order?.orderNumber || c.orderNumber || '-';
-        const pId = c.productId || c.product?.id;
+        const pId = (c.productId || c.product?.id) ?? '';
 
-        const matchedProd = storeProducts.find((p: any) => p.id === pId || p.sku === c.product?.sku || p.sku === c.sku);
+        const matchedProd = storeProducts.find((p) => p.id === pId || p.sku === c.product?.sku || p.sku === c.sku);
         const resolvedUnitPrice = Number(c.unitPrice ?? matchedProd?.priceLevel1 ?? matchedProd?.basePrice ?? 0);
         const resolvedQty = Number(c.quantity ?? 1);
         const resolvedClaimValue = Number(c.totalClaimValue ?? c.refundAmount ?? (resolvedUnitPrice * resolvedQty));
@@ -66,11 +86,7 @@ export async function fetchAllClaimRecords(): Promise<ClaimRecord[]> {
 
         let resolvedStatus: ClaimStatus = 'COMPLETED';
         const rawStatus = c.frontendStatus || c.claimStatus || c.status;
-        if (
-          ['COMPLETED', 'PENDING_CHECKOUT', 'PENDING_SUPPLIER', 'SENT_TO_SUPPLIER', 'SUPPLIER_REPLACED', 'SCRAPPED'].includes(
-            rawStatus
-          )
-        ) {
+        if (rawStatus !== undefined && CLAIM_STATUSES.includes(rawStatus)) {
           resolvedStatus = rawStatus as ClaimStatus;
         } else if (rawStatus === 'IN_PROGRESS') {
           resolvedStatus = c.returnDocId ? 'SENT_TO_SUPPLIER' : 'PENDING_SUPPLIER';
@@ -135,8 +151,8 @@ export async function fetchAllClaimRecords(): Promise<ClaimRecord[]> {
 
 /** Replacement warranties from the server. Throws when the server cannot be reached. */
 export async function fetchReplacementWarranties(): Promise<ReplacementWarrantyRecord[]> {
-  const res = await apiFetch('/claims/warranties/list');
-  const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : null);
+  const res = await apiFetch<ApiListResponse<ReplacementWarrantyRecord> | null>('/claims/warranties/list');
+  const list = apiListRows(res);
   if (!Array.isArray(list)) throw new Error('ข้อมูลการรับประกันจากเซิร์ฟเวอร์ไม่ถูกต้อง');
   warrantiesMem = list;
   return list;
@@ -182,21 +198,22 @@ export interface ClaimVerificationQuery {
  */
 export async function fetchClaimEligibleItems(query: ClaimVerificationQuery): Promise<ClaimEligibleItem[]> {
   const [res, claims] = await Promise.all([
-    apiFetch('/orders?limit=500'),
+    apiFetch<ApiListResponse<ApiOrderLike> | null>('/orders?limit=500'),
     fetchAllClaimRecords(),
     fetchReplacementWarranties(),
   ]);
-  const backendOrders: any[] = res?.data || (Array.isArray(res) ? res : []);
+  const backendOrders: ApiOrderLike[] = (res && !Array.isArray(res) ? res.data : undefined) || (Array.isArray(res) ? res : []);
   const allClaims: ClaimRecord[] = claims || [];
 
-  const orderMap = new Map<string, any>();
+  const orderMap = new Map<string, ClaimOrderRow>();
 
   // Orders from the server
   backendOrders.forEach((b) => {
-    const key = b.orderNumber || b.id;
+    const key = (b.orderNumber || b.id) ?? '';
+    const customer = typeof b.customer === 'object' ? b.customer : undefined;
     const existing = orderMap.get(key);
     const bItems = Array.isArray(b.items)
-      ? b.items.map((it: any) => ({
+      ? b.items.map((it): ApiOrderItem => ({
           ...it,
           productId: it.productId || it.product?.id,
           name: it.product?.name || it.name || 'สินค้า',
@@ -213,8 +230,8 @@ export async function fetchClaimEligibleItems(query: ClaimVerificationQuery): Pr
       ...b,
       ...(existing || {}),
       items: existing?.items && existing.items.length > 0 ? existing.items : bItems,
-      customerName: b.customer?.name || b.customerName || existing?.customerName || 'ลูกค้าทั่วไป',
-      customerPhone: b.customer?.phone || b.customerPhone || existing?.customerPhone || '',
+      customerName: customer?.name || b.customerName || existing?.customerName || 'ลูกค้าทั่วไป',
+      customerPhone: customer?.phone || b.customerPhone || existing?.customerPhone || '',
       orderNumber: b.orderNumber || key,
       status: b.status,
       createdAt: b.createdAt,
@@ -226,7 +243,7 @@ export async function fetchClaimEligibleItems(query: ClaimVerificationQuery): Pr
 
 export function verifyClaimEligibility(
   query: ClaimVerificationQuery,
-  customOrders?: any[],
+  customOrders?: ClaimOrderRow[],
   customClaims?: ClaimRecord[]
 ): ClaimEligibleItem[] {
   const keyword = (query.searchKeyword || '').trim().toLowerCase();
@@ -237,7 +254,7 @@ export function verifyClaimEligibility(
   const targetProductId = query.productId;
 
   // 1. The server's orders (see fetchClaimEligibleItems); no local bill history exists
-  const allOrders: any[] = Array.isArray(customOrders) ? customOrders : [];
+  const allOrders: ClaimOrderRow[] = Array.isArray(customOrders) ? customOrders : [];
   const allExistingClaims = customClaims || loadAllClaimRecords();
   const replacementWarranties = loadReplacementWarranties();
 
@@ -249,7 +266,7 @@ export function verifyClaimEligibility(
     if (order.status === 'VOIDED' || order.status === 'CANCELLED') return;
 
     const ordNum = (order.orderNumber || order.id || '').toLowerCase();
-    const custName = (order.customerName || order.customer || 'ลูกค้าทั่วไป').toLowerCase();
+    const custName = (order.customerName || (typeof order.customer === 'string' ? order.customer : '') || 'ลูกค้าทั่วไป').toLowerCase();
     const custPhone = (order.customerPhone || '').toLowerCase();
 
     // Check header level filters
@@ -258,24 +275,24 @@ export function verifyClaimEligibility(
     if (targetName && !custName.includes(targetName)) return;
 
     // Master products (from the server) to resolve units and conversion factors
-    const allCatalogProducts: any[] = useProductStore.getState().products || [];
+    const allCatalogProducts: Product[] = useProductStore.getState().products || [];
 
     // 2. Unpack bundle items if any, so that child components can be claimed individually
-    const flattenedOrderItems: any[] = [];
-    (order.items || []).forEach((item: any) => {
+    const flattenedOrderItems: ClaimOrderLine[] = [];
+    (order.items || []).forEach((item) => {
       const pId = item.productId || item.id;
       const prodSku = (item.sku || item.code || '').toLowerCase();
       const matchedProd = allCatalogProducts.find(
-        (p: any) => p.id === pId || p.sku === prodSku || p.sku === pId || p.id === prodSku
+        (p) => p.id === pId || p.sku === prodSku || p.sku === pId || p.id === prodSku
       );
 
       const hasBundleData = Array.isArray(item.bundleData) && item.bundleData.length > 0;
       const isBundleProd = Boolean(matchedProd && matchedProd.isBundle && Array.isArray(matchedProd.bundleItems) && matchedProd.bundleItems.length > 0);
 
       if (hasBundleData || isBundleProd) {
-        const bundleComponents = hasBundleData
-          ? item.bundleData
-          : (matchedProd?.bundleItems || []).map((bi: any) => ({
+        const bundleComponents: BundleComponent[] = hasBundleData
+          ? (item.bundleData as BundleComponent[])
+          : (matchedProd?.bundleItems || []).map((bi) => ({
               productId: bi.childProductId,
               productName: bi.childProduct?.name,
               sku: bi.childProduct?.sku,
@@ -284,10 +301,10 @@ export function verifyClaimEligibility(
               unitPrice: Number(bi.childProduct?.basePrice || bi.childProduct?.priceLevel1 || 0),
             }));
 
-        bundleComponents.forEach((child: any) => {
+        bundleComponents.forEach((child) => {
           const childId = child.productId || child.childProductId;
-          const childProd = allCatalogProducts.find((p: any) => p.id === childId || p.sku === child.sku);
-          const childBoughtQty = Number(child.totalQuantity || (child.quantityPerBundle * Number(item.quantity || 1)) || 1);
+          const childProd = allCatalogProducts.find((p) => p.id === childId || p.sku === child.sku);
+          const childBoughtQty = Number(child.totalQuantity || (Number(child.quantityPerBundle) * Number(item.quantity || 1)) || 1);
           const childUnitPrice = Number(child.unitPrice || childProd?.priceLevel1 || childProd?.basePrice || 0);
 
           flattenedOrderItems.push({
@@ -307,10 +324,10 @@ export function verifyClaimEligibility(
       }
     });
 
-    flattenedOrderItems.forEach((item: any) => {
+    flattenedOrderItems.forEach((item) => {
       const prodName = (item.name || item.productName || 'สินค้า').toLowerCase();
       const prodSku = (item.sku || item.code || '').toLowerCase();
-      const pId = item.productId || item.id;
+      const pId = (item.productId || item.id) ?? '';
 
       if (targetSku && !prodSku.includes(targetSku)) return;
       if (targetProductId && pId !== targetProductId) return;
@@ -329,7 +346,7 @@ export function verifyClaimEligibility(
 
       // Match with catalog product
       const matchedProd = allCatalogProducts.find(
-        (p: any) => p.id === pId || p.sku === prodSku || p.sku === pId || p.id === prodSku
+        (p) => p.id === pId || p.sku === prodSku || p.sku === pId || p.id === prodSku
       );
 
       // 1. Get real packaging unit configurations for this product
@@ -351,7 +368,7 @@ export function verifyClaimEligibility(
           purchasedFactor = Number(matchedPkg.multiplier);
         } else if (matchedProd && Array.isArray(matchedProd.units)) {
           const u = matchedProd.units.find(
-            (u: any) => (u.unitName || u.name || '').trim().toLowerCase() === itemUName.toLowerCase()
+            (u) => (u.unitName || '').trim().toLowerCase() === itemUName.toLowerCase()
           );
           if (u && Number(u.factor) > 0) {
             purchasedFactor = Number(u.factor);
@@ -403,8 +420,8 @@ export function verifyClaimEligibility(
           .sort((a: { factor: number }, b: { factor: number }) => b.factor - a.factor);
       } else if (matchedProd && Array.isArray(matchedProd.units) && matchedProd.units.length > 0) {
         availableUnits = matchedProd.units
-          .filter((u: any) => Number(u.factor || 1) <= purchasedFactor)
-          .map((u: any) => {
+          .filter((u) => Number(u.factor || 1) <= purchasedFactor)
+          .map((u) => {
             const uFactor = Number(u.factor || 1);
             let uPrice = Number(u.price || 0);
             if (!uPrice || uPrice <= 0) {
@@ -412,7 +429,7 @@ export function verifyClaimEligibility(
             }
             return {
               id: u.id || `u-${u.unitName}`,
-              unitName: u.unitName || u.name || 'ชิ้น',
+              unitName: u.unitName || 'ชิ้น',
               factor: uFactor,
               price: uPrice,
               barcode: u.barcode || '',
@@ -470,10 +487,10 @@ export function verifyClaimEligibility(
 
       results.push({
         orderId: order.id || order.orderNumber,
-        orderNumber: order.orderNumber || order.id,
+        orderNumber: (order.orderNumber || order.id) ?? '',
         orderDate: order.createdAt || new Date().toISOString(),
         customerId: order.customerId,
-        customerName: order.customerName || order.customer || 'ลูกค้าทั่วไป',
+        customerName: order.customerName || (typeof order.customer === 'string' ? order.customer : '') || 'ลูกค้าทั่วไป',
         customerPhone: order.customerPhone,
         productId: pId,
         productName: item.name || item.productName || 'สินค้า',
@@ -641,8 +658,8 @@ export async function processClaim(params: ProcessClaimParams): Promise<ClaimRec
   };
 
   try {
-    // Dynamic lookup of supplier and cost price
-    const { resolveProductSupplierAndCost } = require('./supplier-return-service');
+    // Dynamic lookup of supplier and cost price (imported lazily: supplier-return-service imports this module)
+    const { resolveProductSupplierAndCost } = await import('./supplier-return-service');
     const suppCost = resolveProductSupplierAndCost(params.item.productId, params.item.sku);
     claimRecord.supplierId = suppCost.supplierId;
     claimRecord.supplierName = suppCost.supplierName;
@@ -701,7 +718,7 @@ export async function processClaim(params: ProcessClaimParams): Promise<ClaimRec
     fulfilledInOrderId: params.fulfilledInOrderId,
   };
   let attemptKey: string | undefined;
-  let requestBody: any = richPayload;
+  let requestBody: typeof richPayload & { clientClaimId?: string } = richPayload;
   if (params.resolutionType === 'REPLACE_ITEM') {
     const owner = JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.user?.id;
     if (!owner) throw new Error('กรุณาเข้าสู่ระบบก่อนเปลี่ยนสินค้า');
@@ -714,9 +731,9 @@ export async function processClaim(params: ProcessClaimParams): Promise<ClaimRec
     localStorage.setItem(attemptKey, JSON.stringify(attempt));
     requestBody = { ...richPayload, clientClaimId: attempt.clientClaimId };
   }
-  let confirmed: any;
+  let confirmed: ApiClaim | null;
   try {
-    confirmed = await apiFetch('/claims', { method: 'POST', body: JSON.stringify(requestBody) });
+    confirmed = await apiFetch<ApiClaim | null>('/claims', { method: 'POST', body: JSON.stringify(requestBody) });
   } catch (error) {
     if (attemptKey && !isRetryableError(error)) localStorage.removeItem(attemptKey);
     throw error;
@@ -789,7 +806,7 @@ export function updateClaimStatus(
     // The server enforces permissions and the claim workflow; tell the user instead of silently
     // keeping a status the database refused.
     console.warn('[ClaimService] Failed to sync claim status update to backend:', err);
-    toast.error(`อัปเดตสถานะเคลม #${claimId} ในฐานข้อมูลไม่สำเร็จ: ${err?.message || 'เกิดข้อผิดพลาด'}`);
+    toast.error(`อัปเดตสถานะเคลม #${claimId} ในฐานข้อมูลไม่สำเร็จ: ${errorText(err) || 'เกิดข้อผิดพลาด'}`);
     window.dispatchEvent(new Event('pos-data-synced'));
   });
 
@@ -802,7 +819,7 @@ export function updateClaimStatus(
 export function getClaimStockSummary(customClaims?: ClaimRecord[]) {
   const claims = customClaims !== undefined ? customClaims : loadAllClaimRecords();
 
-  let totalClaims = claims.length;
+  const totalClaims = claims.length;
   let totalClaimValue = 0;
   let pendingSupplierCount = 0;
   let completedCount = 0;

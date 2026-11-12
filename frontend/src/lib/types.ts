@@ -1260,7 +1260,7 @@ export interface ApiClaim {
   customer?: { id?: string; name?: string; phone?: string | null } | null;
   customerName?: string;
   customerPhone?: string | null;
-  productId?: string;
+  productId: string;
   product?: { id?: string; name?: string; sku?: string; unit?: string | null; costPrice?: DecimalJson } | null;
   productName?: string;
   sku?: string;
@@ -1268,9 +1268,9 @@ export interface ApiClaim {
   quantity?: number;
   conversionFactor?: number;
   baseQuantity?: number;
-  unitPrice?: DecimalJson;
-  totalClaimValue?: DecimalJson;
-  refundAmount?: DecimalJson | null;
+  unitPrice?: number; // claim metadata (JSON number)
+  totalClaimValue?: number;
+  refundAmount?: number;
   refundAccountId?: string;
   refundAccountLabel?: string;
   refundAccountNumber?: string;
@@ -1296,8 +1296,8 @@ export interface ApiClaim {
   supplierId?: string;
   supplierName?: string;
   supplierTrackingNo?: string;
-  costPrice?: DecimalJson;
-  totalCostValue?: DecimalJson;
+  costPrice?: number;
+  totalCostValue?: number;
   returnDocId?: string;
   settledInBillNumber?: string;
   completedDate?: string;
