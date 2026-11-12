@@ -202,7 +202,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
           return i;
         });
       } else {
-        let bundleSnapshot: any = undefined;
+        let bundleSnapshot: CartItem['bundleData'] = undefined;
         if (product.isBundle && product.bundleItems && product.bundleItems.length > 0) {
           bundleSnapshot = product.bundleItems.map((bi) => ({
             productId: bi.childProductId,

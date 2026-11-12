@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { useShiftStore, CashPurposeInput } from '@/lib/store/shift-store';
 import { apiFetch, api, ApiError } from '@/lib/api';
 import { ApprovalDialog, ApprovalNeeded } from '@/components/approvals/ApprovalDialog';
@@ -48,15 +49,20 @@ export function CashDrawerModal({
   const [expenseCategories, setExpenseCategories] = useState<{ id: string; name: string; isActive: boolean }[]>([]);
   const [banks, setBanks] = useState<{ id: string; bankName: string; accountNumber: string; isDefault?: boolean }[]>([]);
 
-  // Reset state when opening
+  // Reset the form when opening
+  const openChanged = useHasChanged(open);
+  if (openChanged && open) {
+    setAmountStr('');
+    setReason('');
+    setMode('in');
+    setPurpose('FROM_SAFE');
+    setExpenseCategoryId(''); // cashier must pick the category every time
+    setIsSubmitting(false);
+  }
+
+  // Load expense categories, bank accounts and the shift when opening
   useEffect(() => {
     if (open) {
-      setAmountStr('');
-      setReason('');
-      setMode('in');
-      setPurpose('FROM_SAFE');
-      setExpenseCategoryId(''); // cashier must pick the category every time
-      setIsSubmitting(false);
       apiFetch('/finance/expense-categories')
         .then((rows: { id: string; name: string; isActive: boolean }[]) => {
           const active = (rows || []).filter((c) => c.isActive);

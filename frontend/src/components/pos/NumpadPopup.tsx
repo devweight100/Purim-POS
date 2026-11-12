@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -38,15 +39,15 @@ export function NumpadPopup({
   const [value, setValue] = useState(initialValue >= 0 ? Math.floor(initialValue).toString() : '');
   const [isFirstKey, setIsFirstKey] = useState(true);
 
-  useEffect(() => {
-    if (open) {
-      const initStr = allowDecimals
-        ? (initialValue >= 0 ? initialValue.toString() : '')
-        : (initialValue >= 0 ? Math.floor(initialValue).toString() : '');
-      setValue(initStr);
-      setIsFirstKey(true); // First keypress after opening will REPLACE value instead of appending
-    }
-  }, [open, initialValue, allowDecimals]);
+  // Opening (or a new initial value while open) starts from the initial value
+  const syncChanged = useHasChanged(`${open}|${initialValue}|${allowDecimals}`);
+  if (syncChanged && open) {
+    const initStr = allowDecimals
+      ? (initialValue >= 0 ? initialValue.toString() : '')
+      : (initialValue >= 0 ? Math.floor(initialValue).toString() : '');
+    setValue(initStr);
+    setIsFirstKey(true); // First keypress after opening will REPLACE value instead of appending
+  }
 
   const handleKey = (key: string) => {
     if (key === 'C') {

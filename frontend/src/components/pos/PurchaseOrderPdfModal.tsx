@@ -45,6 +45,62 @@ export interface PurchaseOrderData {
   }>;
 }
 
+type Num = number | string | null;
+
+/** A PO line in any shape this document accepts (server PO, older local POs): every field optional. */
+interface PoLikeItem {
+  name?: string;
+  productName?: string;
+  sku?: string;
+  unit?: string;
+  unitName?: string;
+  quantity?: Num;
+  qty?: Num;
+  unitCost?: Num;
+  cost?: Num;
+  price?: Num;
+  discountType?: string | null;
+  discountValue?: Num;
+  vatType?: string | null;
+  vatRate?: Num;
+  product?: { name?: string; sku?: string; unit?: string } | null;
+}
+
+/** A purchase order in any shape this document accepts. */
+interface PoLike {
+  id?: string;
+  poNumber?: string;
+  poCode?: string;
+  createdAt?: string;
+  date?: string;
+  status?: string;
+  supplier?: string | {
+    name?: string;
+    contactName?: string;
+    contact?: string;
+    phone?: string;
+    tel?: string;
+    email?: string;
+    address?: string;
+    creditTerms?: Num;
+  } | null;
+  supplierName?: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  creditTerms?: Num;
+  items?: PoLikeItem[];
+  orderItems?: PoLikeItem[];
+  purchaseOrderItems?: PoLikeItem[];
+  vatType?: string | null;
+  hasVat?: boolean;
+  billDiscountType?: string | null;
+  billDiscountValue?: Num;
+  discountType?: string | null;
+  discountValue?: Num;
+}
+
 interface PurchaseOrderPdfModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -76,10 +132,10 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
   if (!po) return null;
 
   // Safeguard: Unpack if po was passed as an array or object
-  const poData: any = Array.isArray(po) ? (po.length > 0 ? po[0] : null) : po;
+  const poData = (Array.isArray(po) ? (po.length > 0 ? po[0] : null) : po) as PoLike | null;
   if (!poData || typeof poData !== 'object' || Object.keys(poData).length === 0) return null;
 
-  const supplierObj = (poData.supplier && typeof poData.supplier === 'object') ? poData.supplier : {};
+  const supplierObj = (poData.supplier && typeof poData.supplier === 'object') ? poData.supplier : {} as Exclude<PoLike['supplier'], string | null | undefined>;
   const supplierName = supplierObj.name || poData.supplierName || (typeof poData.supplier === 'string' ? poData.supplier : '') || 'ไม่ระบุผู้จำหน่าย';
   const supplierContact = supplierObj.contactName || supplierObj.contact || poData.contactName || '-';
   const supplierPhone = supplierObj.phone || supplierObj.tel || poData.phone || '-';
@@ -95,13 +151,13 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
 
   // Item calculations
   const rawItems = poData.items || poData.orderItems || poData.purchaseOrderItems || [];
-  const items = Array.isArray(rawItems) ? rawItems : [];
+  const items: PoLikeItem[] = Array.isArray(rawItems) ? rawItems : [];
 
   // Same arithmetic as the server (shared/src/po-calc.ts): per-line discount, bill discount, per-line VAT.
   // Old local-only POs had one VAT setting for the whole bill.
   const legacyVat = poData.vatType || (poData.hasVat ? 'include' : 'none');
   const calc = calculatePurchaseBill(
-    items.map((item: any) => ({
+    items.map((item) => ({
       quantity: Number(item.quantity) || Number(item.qty) || 0,
       unitCost: Number(item.unitCost) || Number(item.cost) || Number(item.price) || 0,
       discountType: item.discountType,
@@ -285,7 +341,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                         </td>
                       </tr>
                     ) : (
-                      items.map((item: any, idx: number) => {
+                      items.map((item, idx: number) => {
                         const name = item.name || item.product?.name || item.productName || 'สินค้า';
                         const sku = item.sku || item.product?.sku || '-';
                         const qty = Number(item.quantity) || Number(item.qty) || 0;

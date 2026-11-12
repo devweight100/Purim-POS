@@ -4,9 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { ShieldCheck, AlertCircle, X, Check, Info } from 'lucide-react';
 import { CartItem } from '../../lib/types';
 import { useCartStore } from '../../lib/store/cart-store';
-import { getCustomerQuotaForProduct } from '../../lib/customer-claim-stock-service';
+import { getCustomerQuotaForProduct, type CustomerProductStock } from '../../lib/customer-claim-stock-service';
 import { formatCurrency } from '../../lib/utils';
 import { toast } from 'sonner';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { addQty, parseQty, qtyInputMode, qtyStep, subQty, useAllowDecimalQty } from '@/lib/qty';
 
 interface ItemClaimModalProps {
@@ -27,42 +28,52 @@ export const ItemClaimModal: React.FC<ItemClaimModalProps> = ({
   const [loading, setLoading] = useState(false);
   const allowDecimalQty = useAllowDecimalQty();
   const [availableQuota, setAvailableQuota] = useState<number>(0);
-  const [latestOrder, setLatestOrder] = useState<any>(null);
+  const [latestOrder, setLatestOrder] = useState<CustomerProductStock['orders'][number] | null>(null);
   const [claimQty, setClaimQty] = useState<number>(0);
   const [reason, setReason] = useState<string>('สินค้าชำรุด/มีปัญหาจากการใช้งาน');
 
-  useEffect(() => {
+  const hasCustomer = !!(customerId || customerName);
+
+  // Opening, another cart row or another customer: start from the row's claim (or empty when closed)
+  const openChanged = useHasChanged(isOpen);
+  const itemChanged = useHasChanged(item);
+  const customerIdChanged = useHasChanged(customerId);
+  const customerNameChanged = useHasChanged(customerName);
+  if (openChanged || itemChanged || customerIdChanged || customerNameChanged) {
     if (!isOpen || !item) {
       setClaimQty(0);
       setReason('สินค้าชำรุด/มีปัญหาจากการใช้งาน');
       setAvailableQuota(0);
       setLatestOrder(null);
-      return;
-    }
-
-    setClaimQty(item.claimQuantity || 0);
-    setReason(item.claimDefectReason || 'สินค้าชำรุด/มีปัญหาจากการใช้งาน');
-
-    if (customerId || customerName) {
-      setLoading(true);
-      getCustomerQuotaForProduct(item.productId, { customerId, customerName })
-        .then((res) => {
-          setAvailableQuota(res.availableQuota);
-          setLatestOrder(res.latestOrder);
-          if (!item.claimQuantity && res.availableQuota > 0) {
-            // default to 1 if available
-            setClaimQty(1);
-          }
-        })
-        .catch((err) => {
-          console.error('Failed to get customer quota:', err);
-          toast.error('ตรวจสิทธิเคลมจากเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่');
-        })
-        .finally(() => setLoading(false));
     } else {
-      setAvailableQuota(0);
-      setLatestOrder(null);
+      setClaimQty(item.claimQuantity || 0);
+      setReason(item.claimDefectReason || 'สินค้าชำรุด/มีปัญหาจากการใช้งาน');
+      if (hasCustomer) {
+        setLoading(true);
+      } else {
+        setAvailableQuota(0);
+        setLatestOrder(null);
+      }
     }
+  }
+
+  // The customer's remaining claim quota for this product (from the server)
+  useEffect(() => {
+    if (!isOpen || !item || !(customerId || customerName)) return;
+    getCustomerQuotaForProduct(item.productId, { customerId, customerName })
+      .then((res) => {
+        setAvailableQuota(res.availableQuota);
+        setLatestOrder(res.latestOrder ?? null);
+        if (!item.claimQuantity && res.availableQuota > 0) {
+          // default to 1 if available
+          setClaimQty(1);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to get customer quota:', err);
+        toast.error('ตรวจสิทธิเคลมจากเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่');
+      })
+      .finally(() => setLoading(false));
   }, [isOpen, item, customerId, customerName]);
 
   if (!isOpen || !item) return null;

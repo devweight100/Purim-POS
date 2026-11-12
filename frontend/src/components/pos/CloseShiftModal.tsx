@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -34,27 +35,26 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
   const [summaryData, setSummaryData] = useState<ShiftSummaryData | null>(null);
   const [showSummaryPdf, setShowSummaryPdf] = useState(false);
 
-  // Reset and fetch live shift data when dialog opens
+  // Reset the form when the dialog opens or closes
+  const openChanged = useHasChanged(open);
+  if (openChanged) {
+    setActualCash(null);
+    setShowCountCashModal(false);
+    // NOTE: do not hide the shift summary on close: closing this dialog is exactly when it is shown
+    if (open) setShowSummaryPdf(false);
+  }
+
+  // Fetch live shift data when the dialog opens
   useEffect(() => {
-    if (open) {
-      setActualCash(null);
-      setShowSummaryPdf(false);
-      setShowCountCashModal(false);
-      useShiftStore.getState().fetchCurrentShift();
-    } else {
-      // NOTE: do not hide the shift summary here: closing this dialog is exactly when it is shown
-      setActualCash(null);
-      setShowCountCashModal(false);
-    }
+    if (open) void useShiftStore.getState().fetchCurrentShift();
   }, [open]);
 
   // When a shift is active or newly opened, ensure old summary PDF popup is cleared
-  useEffect(() => {
-    if (currentShift?.isOpen) {
-      setShowSummaryPdf(false);
-      setSummaryData(null);
-    }
-  }, [currentShift?.id, currentShift?.isOpen]);
+  const shiftChanged = useHasChanged(`${currentShift?.id}|${currentShift?.isOpen}`);
+  if (shiftChanged && currentShift?.isOpen) {
+    setShowSummaryPdf(false);
+    setSummaryData(null);
+  }
 
   const expectedCash = getExpectedCash();
   const diff = actualCash !== null ? actualCash - expectedCash : 0;
@@ -74,73 +74,24 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
     // Bills are not kept on this device; the slip is filled from the server's shift summary
     // below (this local draft is only used when the summary cannot be read).
     const shiftStartTime = new Date(currentShift.openedAt).getTime();
-    const shiftOrders: any[] = [];
-
-    const bankMap = new Map<string, number>();
 
     const availableBanks = loadBankAccounts();
     const defaultBankLabel = availableBanks.length > 0
       ? `${availableBanks[0].bankName} (${availableBanks[0].accountNumber})`
       : 'บัญชีโอนเงิน / QR (หลัก)';
 
-    shiftOrders.forEach((order: any) => {
-      if ((order as any).status === 'CANCELLED' || (order as any).status === 'VOIDED') return;
-
-      if (Array.isArray(order.payments) && order.payments.length > 0) {
-        order.payments.forEach((p: any) => {
-          if (p.method === 'QR_PROMPTPAY' || p.method === 'TRANSFER') {
-            const label = p.referenceNo || defaultBankLabel;
-            const currentAmt = bankMap.get(label) || 0;
-            bankMap.set(label, currentAmt + (p.amount || 0));
-          }
-        });
-      } else {
-        const method = (order as any).paymentMethod || '';
-        if (method === 'QR_PROMPTPAY' || method.includes('QR') || method.includes('พร้อมเพย์') || method.includes('โอน')) {
-          const label = defaultBankLabel;
-          const currentAmt = bankMap.get(label) || 0;
-          bankMap.set(label, currentAmt + (order.totalAmount || 0));
-        }
-      }
-    });
-
+    // QR / transfer sales of the shift, shown under the default bank account
     const totalQrTransferSales = (currentShift.qrSales || 0) + (currentShift.transferSales || 0);
-    if (totalQrTransferSales > 0 && bankMap.size === 0) {
-      bankMap.set(defaultBankLabel, totalQrTransferSales);
-    }
+    const bankAccountBreakdown: BankAccountBreakdownItem[] = totalQrTransferSales > 0
+      ? [{ accountLabel: defaultBankLabel, amount: totalQrTransferSales }]
+      : [];
 
-    const bankAccountBreakdown: BankAccountBreakdownItem[] = Array.from(bankMap.entries()).map(([accountLabel, amount]) => ({
-      accountLabel,
-      amount,
-    }));
-
-    // Calculate discount totals and credit sales during shift
-    let billDiscountsTotal = 0;
-    let pointsDiscountsTotal = 0;
-    let creditSalesCalculated = 0;
-
-    shiftOrders.forEach((order: any) => {
-      if ((order as any).status === 'CANCELLED' || (order as any).status === 'VOIDED') return;
-      billDiscountsTotal += order.billDiscountAmount || 0;
-      pointsDiscountsTotal += order.pointsDiscountAmount || 0;
-
-      if (Array.isArray(order.payments) && order.payments.length > 0) {
-        order.payments.forEach((p: any) => {
-          if ((p.method as string) === 'CREDIT_DEBT' || p.method === 'CREDIT_NOTE' || (p.method as any) === 'CREDIT') {
-            creditSalesCalculated += (p.amount || 0);
-          }
-        });
-      } else {
-        const method = (order as any).paymentMethod || '';
-        if (method.includes('เชื่อ') || method.includes('เครดิต') || method === 'CREDIT') {
-          creditSalesCalculated += (order.totalAmount || 0);
-        }
-      }
-    });
-
+    // Discount totals and credit sales come from the server's summary below
+    const billDiscountsTotal = 0;
+    const pointsDiscountsTotal = 0;
     const finalCreditSales = currentShift.creditSales !== undefined && currentShift.creditSales > 0
       ? currentShift.creditSales
-      : creditSalesCalculated;
+      : 0;
 
     // Calculate Debt Payment Collections made during shift
     const debtCollections = getShiftDebtCollections(shiftStartTime, new Date(closedTime).getTime());
@@ -180,7 +131,7 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
 
     // The server's figures for the closed shift (discounts, debt collections, returns, voids) win
     try {
-      const srv: any = await api.shifts.getSummary(currentShift.id);
+      const srv = (await api.shifts.getSummary(currentShift.id)) as ({ shift?: Record<string, unknown> } & Record<string, unknown>) | null;
       if (srv?.shift) {
         const fromServer = mapServerShiftToSummary({ ...srv.shift, ...srv, shift: undefined, userName: dataForReport.userName });
         dataForReport = { ...fromServer, bankAccountBreakdown: dataForReport.bankAccountBreakdown, isOpen: false };

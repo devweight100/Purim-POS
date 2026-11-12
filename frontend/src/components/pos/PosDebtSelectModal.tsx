@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { DebtRecord, DebtPaymentInstallment, Customer } from '@/lib/types';
 import { fetchDebtRecords } from '@/lib/debt-service';
 import { useShiftStore } from '@/lib/store/shift-store';
@@ -60,17 +61,21 @@ export function PosDebtSelectModal({
     }
   };
 
+  // Opening (or another target customer) searches for that customer; closing clears the search
+  const openChanged = useHasChanged(open);
+  const targetChanged = useHasChanged(targetCustomer);
+  if (openChanged || targetChanged) {
+    setSearch(open && targetCustomer ? targetCustomer.name || targetCustomer.phone || '' : '');
+    if (open) setLoading(true);
+  }
+
+  // load the debts from the server when opening
   useEffect(() => {
-    if (open) {
-      reloadDebts();
-      if (targetCustomer) {
-        setSearch(targetCustomer.name || targetCustomer.phone || '');
-      } else {
-        setSearch('');
-      }
-    } else {
-      setSearch('');
-    }
+    if (!open) return;
+    const load = async () => {
+      await reloadDebts();
+    };
+    void load();
   }, [open, targetCustomer]);
 
   // Filter only unpaid debts matching search or target customer

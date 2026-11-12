@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { useCartStore } from '@/lib/store/cart-store';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -22,7 +23,9 @@ export function BillDiscountPopup({ open, onOpenChange }: BillDiscountPopupProps
   const [discountType, setDiscountType] = useState<'none' | 'baht' | 'percent'>('none');
   const [discountValue, setDiscountValue] = useState<string>('');
 
-  useEffect(() => {
+  // Opening (or a bill discount change while open) shows the cart's discount; closing clears the form
+  const syncChanged = useHasChanged(`${open}|${cart.billDiscountType}|${cart.billDiscountValue}`);
+  if (syncChanged) {
     if (open) {
       setDiscountType(cart.billDiscountType);
       setDiscountValue(cart.billDiscountValue > 0 ? cart.billDiscountValue.toString() : '');
@@ -30,7 +33,7 @@ export function BillDiscountPopup({ open, onOpenChange }: BillDiscountPopupProps
       setDiscountType('none');
       setDiscountValue('');
     }
-  }, [open, cart.billDiscountType, cart.billDiscountValue]);
+  }
 
   const subtotal = cart.getSubtotal();
   // Validation: percent within 0-100; baht discount not above the bill amount

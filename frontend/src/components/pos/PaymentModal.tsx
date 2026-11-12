@@ -2,6 +2,7 @@
 import { newOperationId } from '@/lib/order-sync-service';
 
 import { useState, useEffect, useRef } from 'react';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { useProductStore } from '@/lib/store/product-store';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useShiftStore } from '@/lib/store/shift-store';
@@ -25,16 +26,40 @@ import { kickCashDrawer, getCashDrawerConfig } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
 import { ApprovalDialog, ApprovalNeeded } from '@/components/approvals/ApprovalDialog';
 import { getTerminalId } from '@/lib/terminal-id';
+import type { OrderPayment } from '@/lib/types';
 
 type Step = 'METHOD' | 'PROCESS' | 'SUCCESS';
 type Method = 'CASH' | 'QR' | 'CARD' | 'SPLIT' | 'CREDIT';
 type NumpadTarget = 'NONE' | 'CASH' | 'QR' | 'SPLIT_CASH' | 'SPLIT_QR';
 
+/** A payment line sent to checkout (lib/types PaymentMethodType has no CREDIT_DEBT yet). */
+type PosPaymentLine = Omit<OrderPayment, 'method'> & { method: OrderPayment['method'] | 'CREDIT_DEBT' };
+
+/** A saved bill whose payment is being changed (from the sales history); passed on to the receipt mapper. */
+export interface EditablePaymentOrder {
+  id: string;
+  orderNumber?: string;
+  totalAmount?: number;
+  userName?: string;
+  [field: string]: unknown;
+}
+
+/** What checkout answers (only the fields read here). */
+interface CheckoutResult {
+  id: string;
+  orderNumber: string;
+  isOfflineSaved?: boolean;
+  createdAt?: string;
+  pointsEarned?: number | string;
+  pointsUsed?: number | string;
+  customer?: { points?: number | string } | null;
+}
+
 interface PaymentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialMethod?: Method | null;
-  orderToEditPayment?: any | null;
+  orderToEditPayment?: EditablePaymentOrder | null;
   onPaymentEditSuccess?: () => void;
 }
 
@@ -97,24 +122,27 @@ export function PaymentModal({
   const [countdown, setCountdown] = useState<number>(5);
 
   // Reset all state when closed
-  useEffect(() => {
-    if (!open) {
-      setCashReceived(0);
-      setQrReceived(0);
-      setNumpadTarget('NONE');
-      setStep('METHOD');
-      setMethod(null);
-      setShowReceiptPdf(false);
-      setReceiptData(null);
-    }
-  }, [open]);
+  const openChangedForClose = useHasChanged(open);
+  if (openChangedForClose && !open) {
+    setCashReceived(0);
+    setQrReceived(0);
+    setNumpadTarget('NONE');
+    setStep('METHOD');
+    setMethod(null);
+    setShowReceiptPdf(false);
+    setReceiptData(null);
+  }
+
+  // The success screen counts down from 5 each time it is shown
+  const countingDown = open && step === 'SUCCESS' && !showReceiptPdf;
+  const countingDownChanged = useHasChanged(countingDown);
+  if (countingDownChanged && countingDown) setCountdown(5);
 
   useEffect(() => {
-    let timer: any = null;
-    let interval: any = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
 
     if (open && step === 'SUCCESS' && !showReceiptPdf) {
-      setCountdown(5);
       interval = setInterval(() => {
         setCountdown((prev) => Math.max(0, prev - 1));
       }, 1000);
@@ -166,7 +194,7 @@ export function PaymentModal({
     submitting.current = true;
     setIsSubmitting(true);
     try {
-    let payments = [];
+    const payments: PosPaymentLine[] = [];
     let recordedCashReceived = 0;
     let recordedChangeAmount = 0;
     const attachedClaim = cart.attachedClaim;
@@ -233,7 +261,7 @@ export function PaymentModal({
         { ...orderToEditPayment, orderNumber: orderId, userName: orderToEditPayment.userName || shiftStore.currentShift?.userName },
         {
           isReprint: true,
-          payments: payments.map((p: any) => ({ method: p.method, amount: Number(p.amount) || 0, referenceNo: p.referenceNo })),
+          payments: payments.map((p) => ({ method: p.method, amount: Number(p.amount) || 0, referenceNo: p.referenceNo })),
           cashReceived: recordedCashReceived || undefined,
           changeAmount: recordedChangeAmount || undefined,
         },
@@ -257,10 +285,10 @@ export function PaymentModal({
     }
 
     let isSynced = false;
-    let backendOrder: any = null;
+    let backendOrder: CheckoutResult | null = null;
     try {
       operationId.current ||= newOperationId();
-      backendOrder = await api.orders.checkout({
+      const checkedOut: CheckoutResult = await api.orders.checkout({
         clientOrderId: operationId.current,
         approvalId: approvalIdRef.current || undefined,
         terminalId: getTerminalId(),
@@ -299,11 +327,12 @@ export function PaymentModal({
         }),
         payments,
       });
+      backendOrder = checkedOut;
       approvalIdRef.current = null;
-      isSynced = !backendOrder.isOfflineSaved;
+      isSynced = !checkedOut.isOfflineSaved;
       setPendingReceipt(!isSynced);
-      const finalOrderNumber = backendOrder.orderNumber;
-      const finalOrderId = backendOrder.id;
+      const finalOrderNumber = checkedOut.orderNumber;
+      const finalOrderId = checkedOut.id;
 
       const previousEditingId = cart.editingOrderId;
       if (previousEditingId) {
@@ -360,7 +389,7 @@ export function PaymentModal({
         vatAmount: cart.getVatAmount(),
         vatEnabled: cart.isVatEnabled,
         totalAmount: total,
-        payments: payments as any,
+        payments: payments as OrderPayment[],
         cashReceived: recordedCashReceived,
         changeAmount: recordedChangeAmount,
         status: 'COMPLETED',
@@ -455,9 +484,9 @@ export function PaymentModal({
       if (isSynced) void useProductStore.getState().fetchProducts({ offlineCache: true });
 
       const custSaleRes = {
-        earnedPoints: isSynced ? Number(backendOrder.pointsEarned || 0) : 0,
-        pointsUsed: isSynced ? Number(backendOrder.pointsUsed || 0) : 0,
-        newTotalPoints: isSynced ? Number(backendOrder.customer?.points || 0) : 0,
+        earnedPoints: isSynced ? Number(checkedOut.pointsEarned || 0) : 0,
+        pointsUsed: isSynced ? Number(checkedOut.pointsUsed || 0) : 0,
+        newTotalPoints: isSynced ? Number(checkedOut.customer?.points || 0) : 0,
       };
 
       // Automatically kick cash drawer open if cash payment was received (and total > 0)!
@@ -500,8 +529,8 @@ export function PaymentModal({
         totalAmount: total,
         paymentMethod: total === 0 ? 'เคลมสินค้า / ฟรี (฿0.00)' : summarizePaymentMethods(payments),
         outstandingAmount: payments
-          .filter((p: any) => isCreditMethod(p.method))
-          .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0) || undefined,
+          .filter((p) => isCreditMethod(p.method))
+          .reduce((sum: number, p) => sum + Number(p.amount || 0), 0) || undefined,
         payments: payments,
         cashReceived: recordedCashReceived,
         changeAmount: recordedChangeAmount
@@ -528,45 +557,47 @@ export function PaymentModal({
     } finally { submitting.current = false; setIsSubmitting(false); }
   };
 
-  useEffect(() => {
-    if (open) {
-      const cartItemCount = useCartStore.getState().items.length;
-      if (!orderToEditPayment && cartItemCount === 0) {
-        toast.warning('ไม่มีสินค้าในตะกร้า ไม่สามารถชำระเงินได้');
-        onOpenChangeRef.current(false);
-        return;
-      }
+  // Opening (or a new total / start method / bill to edit while open) starts the payment from scratch
+  const cartItemCount = cart.items.length;
+  const emptyCart = !orderToEditPayment && cartItemCount === 0;
+  const startKeyChanged = useHasChanged(`${open}|${initialMethod}|${total}`);
+  const editOrderChanged = useHasChanged(orderToEditPayment);
+  if ((startKeyChanged || editOrderChanged) && open && !emptyCart) {
+    setPendingReceipt(false);
+    const accs = loadBankAccounts();
+    setBankAccounts(accs);
+    setSelectedBank(accs.find(a => a.isDefault) || accs[0] || null);
 
-      setPendingReceipt(false);
-      void api.bankAccounts.getAll().then(accs => {
-        setBankAccounts(accs);
-        setSelectedBank(accs.find((a: BankAccount) => a.isDefault) || accs[0] || null);
-      }).catch(() => toast.warning('โหลดบัญชีธนาคารจากเซิร์ฟเวอร์ไม่ได้'));
-      const accs = loadBankAccounts();
-      setBankAccounts(accs);
-      const def = accs.find(a => a.isDefault) || accs[0] || null;
-      setSelectedBank(def);
+    setCashReceived(0);
+    setQrReceived(0);
+    setNumpadTarget('NONE');
 
-      setCashReceived(0);
-      setQrReceived(0);
-      setNumpadTarget('NONE');
-
+    if (total === 0 && cartItemCount > 0 && !orderToEditPayment) {
       // ฿0 bill (claim replacement / 100% discount): never saved automatically - the
       // cashier must confirm it explicitly on the next screen.
-      if (total === 0 && cartItemCount > 0 && !orderToEditPayment) {
-        setMethod('CASH');
-        setStep('PROCESS');
-        return;
-      }
-
-      if (initialMethod) {
-        setMethod(initialMethod);
-        setStep('PROCESS');
-      } else {
-        setStep('METHOD');
-        setMethod(null);
-      }
+      setMethod('CASH');
+      setStep('PROCESS');
+    } else if (initialMethod) {
+      setMethod(initialMethod);
+      setStep('PROCESS');
+    } else {
+      setStep('METHOD');
+      setMethod(null);
     }
+  }
+
+  // An empty cart cannot be paid: warn and close. Otherwise refresh the bank accounts from the server.
+  useEffect(() => {
+    if (!open) return;
+    if (!orderToEditPayment && useCartStore.getState().items.length === 0) {
+      toast.warning('ไม่มีสินค้าในตะกร้า ไม่สามารถชำระเงินได้');
+      onOpenChangeRef.current(false);
+      return;
+    }
+    void api.bankAccounts.getAll().then(accs => {
+      setBankAccounts(accs);
+      setSelectedBank(accs.find((a: BankAccount) => a.isDefault) || accs[0] || null);
+    }).catch(() => toast.warning('โหลดบัญชีธนาคารจากเซิร์ฟเวอร์ไม่ได้'));
   }, [open, initialMethod, total, orderToEditPayment]);
 
   const handleFinish = () => {

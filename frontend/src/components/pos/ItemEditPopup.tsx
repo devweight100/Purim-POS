@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { useCartStore } from '@/lib/store/cart-store';
 import { CartItem } from '@/lib/types';
 import { formatCurrency } from '@/lib/utils';
@@ -27,7 +28,10 @@ export function ItemEditPopup({ item, open, onOpenChange }: ItemEditPopupProps) 
   const [discountValue, setDiscountValue] = useState<string>('');
   const [itemNote, setItemNote] = useState<string>('');
 
-  useEffect(() => {
+  // Opening (or another row) shows the row's price / discount / note; closing clears the form
+  const itemChanged = useHasChanged(item);
+  const openChanged = useHasChanged(open);
+  if (itemChanged || openChanged) {
     if (item && open) {
       setCustomPrice(item.customPrice !== null ? item.customPrice.toString() : item.originalPrice.toString());
       setDiscountType(item.discountType);
@@ -39,7 +43,7 @@ export function ItemEditPopup({ item, open, onOpenChange }: ItemEditPopupProps) 
       setDiscountValue('');
       setItemNote('');
     }
-  }, [item, open]);
+  }
 
   // Validation: price >= 0; percent discount within 0-100; baht discount not above the line amount
   const parsedPrice = parseFloat(customPrice);

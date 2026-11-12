@@ -81,13 +81,8 @@ export function PosListLayout({
   const [unitModalProduct, setUnitModalProduct] = useState<Product | null>(null);
   const [showUnitModal, setShowUnitModal] = useState(false);
   const [showRedeemModal, setShowRedeemModal] = useState(false);
-  const [currentCustomer, setCurrentCustomer] = useState<Customer | null>(null);
-
   // re-evaluated whenever the server's customer list is refreshed
-  const syncedCustomer = useCustomerById(cart.customerId);
-  useEffect(() => {
-    setCurrentCustomer(syncedCustomer);
-  }, [syncedCustomer]);
+  const currentCustomer = useCustomerById(cart.customerId);
 
   const earnedPointsFromCart = currentCustomer ? calculateEarnedPoints(currentCustomer, cart.getTotal()) : 0;
 
@@ -117,7 +112,7 @@ export function PosListLayout({
     return products.find(p => {
       const matchSku = p.sku?.toLowerCase().trim() === code;
       const matchUnitBarcode = p.units?.some(u => u.barcode?.toLowerCase().trim() === code);
-      const matchProductBarcodes = (p as any).barcodes?.some((b: any) => b.barcode?.toLowerCase().trim() === code);
+      const matchProductBarcodes = p.barcodes?.some((b) => b.barcode?.toLowerCase().trim() === code);
       const availableUnits = getProductAvailableUnits(p);
       const matchAvailBarcode = availableUnits.some(u => u.barcode?.toLowerCase().trim() === code);
       return matchSku || matchUnitBarcode || matchProductBarcodes || matchAvailBarcode;

@@ -8,6 +8,7 @@ import { useProductStore } from '@/lib/store/product-store';
 import { getProductPackagingUnits } from '@/lib/cart-pricing';
 import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
 import { toast } from 'sonner';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 
 interface BarcodeScanModalProps {
   open: boolean;
@@ -20,12 +21,12 @@ export function BarcodeScanModal({ open, onOpenChange }: BarcodeScanModalProps) 
   const cart = useCartStore();
   const { products } = useProductStore();
 
+  // closing clears the typed code
+  const openChanged = useHasChanged(open);
+  if (openChanged && !open && barcode !== '') setBarcode('');
+
   useEffect(() => {
-    if (open) {
-      setTimeout(() => inputRef.current?.focus(), 100);
-    } else {
-      setBarcode('');
-    }
+    if (open) setTimeout(() => inputRef.current?.focus(), 100);
   }, [open]);
 
   const handleScan = (e: React.FormEvent) => {

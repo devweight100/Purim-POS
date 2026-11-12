@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -66,11 +67,9 @@ export function CountCashModal({ open, onOpenChange, onConfirm }: CountCashModal
     setCounts({});
   };
 
-  useEffect(() => {
-    if (!open) {
-      setCounts({});
-    }
-  }, [open]);
+  // closing clears the counts
+  const openChanged = useHasChanged(open);
+  if (openChanged && !open) setCounts({});
 
   const handleConfirm = () => {
     onConfirm(calculatedTotal);
