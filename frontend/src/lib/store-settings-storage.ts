@@ -1,4 +1,5 @@
 import { api } from './api';
+import type { ApiStoreSettings } from './types';
 
 export interface StoreSettings {
   storeName: string;
@@ -18,7 +19,7 @@ export interface StoreSettings {
   /** one "low stock" level for every page (StoreSettings.lowStockThreshold, default 5) */
   lowStockThreshold?: number;
   /** drawer cash in/out above this needs a manager PIN (0 = always) */
-  cashMovementApprovalLimit?: number;
+  cashMovementApprovalLimit?: number | string; // Decimal column: the server sends it as a string
   /** quantities may have up to 2 decimals (sell by metre / kg); off = whole units only */
   allowDecimalQty?: boolean;
 }
@@ -62,7 +63,7 @@ export function loadStoreSettings(): StoreSettings {
   }
 }
 
-function normalizeStoreSettings(settings: Partial<StoreSettings> | null | undefined): StoreSettings {
+function normalizeStoreSettings(settings: Partial<StoreSettings> | ApiStoreSettings | null | undefined): StoreSettings {
   return {
     ...DEFAULT_STORE_SETTINGS,
     ...(settings || {}),
