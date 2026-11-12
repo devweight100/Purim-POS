@@ -6,7 +6,7 @@ import { getPendingOfflineOrders, OfflineOrder } from '@/lib/offline-db';
 import { useProductStore } from '@/lib/store/product-store';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { useAuthStore } from '@/lib/store/auth-store';
-import { syncPurchaseReceipts, useReceiptSyncStatus } from '@/lib/purchase-receipt-sync';
+import { syncPurchaseReceipts, useReceiptSyncStatus, refreshReceiptSyncStatus } from '@/lib/purchase-receipt-sync';
 import { fetchCategoriesFromBackend } from '@/lib/category-storage';
 import { fetchBankAccountsFromBackend } from '@/lib/bank-account-storage';
 import { loadStoreSettingsFromBackend } from '@/lib/store-settings-storage';
@@ -25,6 +25,7 @@ export function ClientDbSync() {
 
   useEffect(() => {
     clearLegacyLocalData();
+    refreshReceiptSyncStatus();
   }, []);
 
   useEffect(() => {
@@ -39,11 +40,8 @@ export function ClientDbSync() {
       clearTimeout(outboxTimer);
       outboxRunning = true;
       try {
-        try {
-          await syncPurchaseReceipts();
-        } catch {
-          /* Sales must still sync if receipt storage is unavailable. */
-        }
+        // Only sales are replayed in the background (offline outbox). Goods receipts whose
+        // result is unknown are re-sent by the user (status bar button / receive again).
         const result = await syncPendingOrders(true);
         if (!disposed) setRows(await getPendingOfflineOrders());
         delay = result.failed ? Math.min(delay * 2, 30000) : 3000;
@@ -100,10 +98,7 @@ export function ClientDbSync() {
           return;
         }
 
-        // 3. Flush any pending offline orders & receipts first
-        try {
-          await syncPurchaseReceipts();
-        } catch {}
+        // 3. Flush any pending offline orders first
         try {
           await syncPendingOrders(true);
           if (!disposed) setRows(await getPendingOfflineOrders());
@@ -238,7 +233,7 @@ export function ClientDbSync() {
             ? 'กรุณาเข้าสู่ระบบด้วยบัญชีเจ้าของรายการ'
             : row.failed
             ? 'ต้องเปิดใบสั่งซื้อเพื่อตรวจสอบและแก้ไข'
-            : 'จะส่งซ้ำอัตโนมัติ'}{' '}
+            : 'ยังไม่ทราบผล กดลองส่งอีกครั้ง (ใช้รหัสเดิม ไม่รับซ้ำ)'}{' '}
           {row.error}
         </p>
       ))}
