@@ -1,7 +1,7 @@
 import { apiFetch, getAuthToken } from './api';
 import { ApiError, isRetryableError } from './api-error';
 import { getPendingOfflineOrders, saveOfflineOrder, removeOfflineOrder, OfflineOrder } from './offline-db';
-import { useShiftStore } from './store/shift-store';
+
 import { useConnectionStatus } from './connection-status';
 import { toast } from 'sonner';
 
@@ -39,7 +39,6 @@ async function confirm(order: OfflineOrder, response: any) {
   // Once the server acknowledges a committed sale, local cleanup is best effort.
   try {
     await saveOfflineOrder({ ...order, syncStatus: 'confirmed', serverOrder: response });
-    useShiftStore.getState().updateOrderAfterSync(order.clientOrderId, response.orderNumber, response.id);
     await removeOfflineOrder(order.clientOrderId);
   } catch {
     useConnectionStatus.setState({ error: 'ฐานข้อมูลบันทึกบิลแล้ว แต่ปรับสถานะในเครื่องไม่สำเร็จ ระบบจะตรวจซ้ำด้วยรหัสเดิม' });
@@ -75,17 +74,24 @@ export async function submitOrder(data: any) {
     } finally { await refreshOutboxStatus().catch(() => useConnectionStatus.setState({ error: 'อ่านสถานะคิวไม่ได้ กรุณาตรวจสอบพื้นที่จัดเก็บ' })); }
   });
 }
-// Legacy IDs were created AFTER sending, so automatic resubmission could duplicate sales.
+// Older versions kept a bill history in localStorage ('pos_completed_orders'); its unsent bills
+// are moved into the outbox once (as "failed", to be checked by hand: legacy IDs were created
+// AFTER sending, so automatic resubmission could duplicate sales), then the old copy is dropped.
+const LEGACY_ORDERS_KEY = 'pos_completed_orders';
 async function importLegacyOrders() {
+  const raw = localStorage.getItem(LEGACY_ORDERS_KEY);
+  if (raw === null) return;
   const known = new Set((await getPendingOfflineOrders()).map(o => o.clientOrderId));
-  const orders = JSON.parse(localStorage.getItem('pos_completed_orders') || '[]');
-  for (const order of orders) {
+  let orders: any[] = [];
+  try { orders = JSON.parse(raw || '[]'); } catch { orders = []; }
+  for (const order of Array.isArray(orders) ? orders : []) {
     if (order.isSynced !== false || order.outboxVersion === 2 || known.has(order.id)) continue;
     await saveOfflineOrder({ ...order, clientOrderId: order.id, ownerId: order.userId,
       syncStatus: 'failed', retryCount: 0,
       lastError: 'บิลจากระบบเดิม ต้องตรวจว่าฐานข้อมูลมีบิลนี้แล้วหรือไม่ก่อนส่งซ้ำ',
     });
   }
+  localStorage.removeItem(LEGACY_ORDERS_KEY);
 }
 export async function syncPendingOrders(silent = false): Promise<{ synced: number; failed: number }> {
   if (typeof window === 'undefined') return { synced: 0, failed: 0 };

@@ -1,15 +1,7 @@
 'use client';
 
 import { ShiftSummaryData } from '@/components/pos/ShiftSummaryPdfModal';
-import { Shift } from '@/lib/types';
 import { api } from '@/lib/api';
-
-export const STORAGE_KEY_SHIFT_SUMMARIES = 'pos_shift_summaries_history';
-
-// Mock/Initial sample shifts - cleaned (return empty array)
-const getMockShiftSummaries = (): ShiftSummaryData[] => {
-  return [];
-};
 
 export function mapServerShiftToSummary(s: any): ShiftSummaryData {
   const openingCash = Number(s.openingCash ?? s.startingCash) || 0;
@@ -81,113 +73,28 @@ export function mapServerShiftToSummary(s: any): ShiftSummaryData {
   };
 }
 
-function readOfflineCachedShiftSummaries(): ShiftSummaryData[] {
-  if (typeof window === 'undefined') return getMockShiftSummaries();
-
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_SHIFT_SUMMARIES);
-    if (raw) {
-      const parsed: ShiftSummaryData[] = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return parsed.sort((a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime());
-      }
-    }
-
-    // If pos_shift_summaries_history is not set yet, check pos_last_shift_summary
-    const lastRaw = localStorage.getItem('pos_last_shift_summary');
-    if (lastRaw) {
-      const lastSummary: ShiftSummaryData = JSON.parse(lastRaw);
-      const mocks = getMockShiftSummaries();
-      const combined = [lastSummary, ...mocks.filter((m) => m.shiftId !== lastSummary.shiftId)];
-      localStorage.setItem(STORAGE_KEY_SHIFT_SUMMARIES, JSON.stringify(combined));
-      return combined;
-    }
-
-    // Check pos_shifts_history from shift-store
-    const oldHistoryRaw = localStorage.getItem('pos_shifts_history');
-    if (oldHistoryRaw) {
-      const oldShifts: Shift[] = JSON.parse(oldHistoryRaw);
-      if (Array.isArray(oldShifts) && oldShifts.length > 0) {
-        const converted: ShiftSummaryData[] = oldShifts.map((s) => ({
-          shiftId: s.shiftId || s.id,
-          userId: s.userId,
-          userName: s.userName || 'พนักงานขาย',
-          openedAt: s.openedAt,
-          closedAt: s.closedAt || new Date().toISOString(),
-          openingCash: s.openingCash || 0,
-          cashSales: s.cashSales || 0,
-          qrSales: s.qrSales || 0,
-          cardSales: s.cardSales || 0,
-          transferSales: s.transferSales || 0,
-          creditSales: s.creditSales || 0,
-          totalSales: (s.cashSales || 0) + (s.qrSales || 0) + (s.cardSales || 0) + (s.transferSales || 0) + (s.creditSales || 0),
-          cashIn: s.cashIn || 0,
-          cashOut: s.cashOut || 0,
-          cashRefunds: s.cashRefunds || 0,
-          claimRefundCount: s.claimRefundCount || 0,
-          orderCount: s.orderCount || 0,
-          voidCount: s.voidCount || 0,
-          expectedCash: (s.openingCash || 0) + (s.cashSales || 0) + (s.cashIn || 0) - (s.cashOut || 0) - (s.cashRefunds || 0),
-          actualCash: (s as any).actualCash !== undefined ? (s as any).actualCash : ((s.openingCash || 0) + (s.cashSales || 0) + (s.cashIn || 0) - (s.cashOut || 0) - (s.cashRefunds || 0)),
-        }));
-        localStorage.setItem(STORAGE_KEY_SHIFT_SUMMARIES, JSON.stringify(converted));
-        return converted;
-      }
-    }
-
-    return getMockShiftSummaries();
-  } catch (error) {
-    console.error('Failed to load shift summaries from offline cache:', error);
-    return getMockShiftSummaries();
-  }
-}
+/** Last shift history the server returned in this session (memory only, never localStorage). */
+let lastServerSummaries: ShiftSummaryData[] = [];
 
 /**
- * Fetch shift summaries from backend (/shifts/history) first, using localStorage only as an offline cache mirror.
+ * Shift summaries from the server (/shifts/history). Throws when the server cannot be reached.
  */
 export async function fetchShiftSummaries(limit = 100, search?: string): Promise<ShiftSummaryData[]> {
-  try {
-    const res = await api.shifts.getHistory(1, limit, search);
-    const rows = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : null;
-    if (rows) {
-      const mapped = rows
-        .map(mapServerShiftToSummary)
-        .sort((a: ShiftSummaryData, b: ShiftSummaryData) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime());
-      if (typeof window !== 'undefined' && !search) {
-        try {
-          localStorage.setItem(STORAGE_KEY_SHIFT_SUMMARIES, JSON.stringify(mapped));
-        } catch {}
-      }
-      return mapped;
-    }
-  } catch (err) {
-    console.warn('[ShiftService] Failed to fetch shift history from backend, falling back to local cache:', err);
-  }
-  return readOfflineCachedShiftSummaries();
+  const res = await api.shifts.getHistory(1, limit, search);
+  const rows = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : null;
+  if (!rows) throw new Error('ข้อมูลประวัติกะจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+  const mapped = rows
+    .map(mapServerShiftToSummary)
+    .sort((a: ShiftSummaryData, b: ShiftSummaryData) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime());
+  if (!search) lastServerSummaries = mapped;
+  return mapped;
 }
 
 /**
- * Load all shift closure summaries (refreshes from backend /shifts/history in background and returns cached mirror)
+ * Shift summaries the server returned most recently in this session, plus a background refresh.
  */
 export function loadAllShiftSummaries(): ShiftSummaryData[] {
-  if (typeof window === 'undefined') return getMockShiftSummaries();
+  if (typeof window === 'undefined') return [];
   void fetchShiftSummaries().catch(() => {});
-  return readOfflineCachedShiftSummaries();
-}
-
-/**
- * Save a new shift summary into offline cache mirror
- */
-export function saveShiftSummary(summary: ShiftSummaryData): void {
-  if (typeof window === 'undefined') return;
-
-  try {
-    const list = readOfflineCachedShiftSummaries();
-    // Prepend new summary, remove duplicates by shiftId
-    const nextList = [summary, ...list.filter((s) => s.shiftId !== summary.shiftId)].slice(0, 100);
-    localStorage.setItem(STORAGE_KEY_SHIFT_SUMMARIES, JSON.stringify(nextList));
-    localStorage.setItem('pos_last_shift_summary', JSON.stringify(summary));
-  } catch (error) {
-    console.error('Failed to save shift summary:', error);
-  }
+  return lastServerSummaries;
 }

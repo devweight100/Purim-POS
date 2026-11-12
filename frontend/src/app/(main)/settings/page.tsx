@@ -312,7 +312,7 @@ export default function SettingsPage() {
 
       // Reset stores
       await useProductStore.getState().fetchProducts();
-      useShiftStore.setState({ currentShift: null, completedOrders: [], cashTransactions: [] });
+      useShiftStore.setState({ currentShift: null, cashTransactions: [] });
       useCartStore.setState({ items: [], heldBills: [] });
       useCartStore.getState().clearCart();
 

@@ -7,8 +7,13 @@ import { toast } from 'sonner';
 import { getProductPackagingUnits } from './cart-pricing';
 import { apiFetch } from './api';
 
-const STORAGE_KEY_CLAIMS = 'pos_product_claims';
-const STORAGE_KEY_REPLACEMENTS = 'pos_replacement_warranties';
+/**
+ * Claims and replacement warranties live on the server only. The last server response is kept
+ * in memory (never in localStorage) for synchronous lookups; fetch* refresh it and throw when
+ * the server cannot be reached.
+ */
+let claimsMem: ClaimRecord[] = [];
+let warrantiesMem: ReplacementWarrantyRecord[] = [];
 
 export interface ReplacementWarrantyRecord {
   id: string; // RWM-XXXX
@@ -28,48 +33,36 @@ export interface ReplacementWarrantyRecord {
   claimId?: string;
 }
 
-// ─── Local Storage Handlers ───
+// ─── Server reads ───
 
+/** All claims from the server. Throws when the server cannot be reached. */
 export async function fetchAllClaimRecords(): Promise<ClaimRecord[]> {
-  const localClaims = loadAllClaimRecords();
-  const localMap = new Map<string, ClaimRecord>();
-  localClaims.forEach((c) => {
-    if (c.id) localMap.set(c.id, c);
-    if (c.orderNumber && c.productId) localMap.set(`${c.orderNumber}_${c.productId}`, c);
-  });
-
   // Hydrate replacement warranties in background
   void fetchReplacementWarranties().catch(() => {});
 
-  try {
-    const res = await apiFetch('/claims?limit=500');
-    const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : null);
-    if (Array.isArray(list)) {
-      let storeProducts: any[] = useProductStore.getState().products || [];
-      if (!storeProducts.length && typeof window !== 'undefined') {
-        try {
-          const raw = localStorage.getItem('custom_products');
-          if (raw) storeProducts = JSON.parse(raw);
-        } catch {}
-      }
+  const res = await apiFetch('/claims?limit=500');
+  const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : null);
+  if (!Array.isArray(list)) throw new Error('ข้อมูลเคลมจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+  {
+    {
+      const storeProducts: any[] = useProductStore.getState().products || [];
 
       const mapped: ClaimRecord[] = list.map((c: any) => {
         const claimId = c.claimNumber || c.id;
         const ordNum = c.order?.orderNumber || c.orderNumber || '-';
         const pId = c.productId || c.product?.id;
-        const local = localMap.get(claimId) || localMap.get(`${ordNum}_${pId}`);
 
         const matchedProd = storeProducts.find((p: any) => p.id === pId || p.sku === c.product?.sku || p.sku === c.sku);
-        const resolvedUnitPrice = Number(c.unitPrice ?? local?.unitPrice ?? matchedProd?.priceLevel1 ?? matchedProd?.basePrice ?? 0);
-        const resolvedQty = Number(c.quantity ?? local?.quantity ?? 1);
-        const resolvedClaimValue = Number(c.totalClaimValue ?? c.refundAmount ?? local?.totalClaimValue ?? (resolvedUnitPrice * resolvedQty));
+        const resolvedUnitPrice = Number(c.unitPrice ?? matchedProd?.priceLevel1 ?? matchedProd?.basePrice ?? 0);
+        const resolvedQty = Number(c.quantity ?? 1);
+        const resolvedClaimValue = Number(c.totalClaimValue ?? c.refundAmount ?? (resolvedUnitPrice * resolvedQty));
 
         const resolvedResType = (c.resolutionType ||
           (c.claimType === 'REFUND'
             ? 'REFUND_CASH'
             : c.claimType === 'EXCHANGE'
               ? 'REPLACE_ITEM'
-              : local?.resolutionType || 'REPLACE_ITEM')) as ClaimResolutionType;
+              : 'REPLACE_ITEM')) as ClaimResolutionType;
 
         let resolvedStatus: ClaimStatus = 'COMPLETED';
         const rawStatus = c.frontendStatus || c.claimStatus || c.status;
@@ -80,161 +73,83 @@ export async function fetchAllClaimRecords(): Promise<ClaimRecord[]> {
         ) {
           resolvedStatus = rawStatus as ClaimStatus;
         } else if (rawStatus === 'IN_PROGRESS') {
-          resolvedStatus = c.returnDocId || local?.returnDocId ? 'SENT_TO_SUPPLIER' : 'PENDING_SUPPLIER';
+          resolvedStatus = c.returnDocId ? 'SENT_TO_SUPPLIER' : 'PENDING_SUPPLIER';
         } else if (rawStatus === 'PENDING') {
           resolvedStatus = resolvedResType === 'STORE_DISCOUNT' ? 'PENDING_CHECKOUT' : 'PENDING_SUPPLIER';
         } else if (rawStatus === 'REJECTED') {
           resolvedStatus = 'SCRAPPED';
-        } else if (local?.status) {
-          resolvedStatus = local.status;
         }
 
         return {
           id: claimId,
-          orderId: c.orderId || c.order?.id || local?.orderId || '',
-          orderNumber: ordNum !== '-' ? ordNum : (local?.orderNumber || '-'),
-          orderDate: c.orderDate || c.order?.createdAt || c.createdAt || local?.orderDate || new Date().toISOString(),
-          claimDate: c.claimDate || c.receivedDate || c.createdAt || local?.claimDate || new Date().toISOString(),
-          customerId: c.customerId ?? c.customer?.id ?? local?.customerId ?? null,
-          customerName: c.customer?.name || c.customerName || local?.customerName || 'ลูกค้าทั่วไป',
-          customerPhone: c.customer?.phone || c.customerPhone || local?.customerPhone || '-',
+          orderId: c.orderId || c.order?.id || '',
+          orderNumber: ordNum !== '-' ? ordNum : '-',
+          orderDate: c.orderDate || c.order?.createdAt || c.createdAt || new Date().toISOString(),
+          claimDate: c.claimDate || c.receivedDate || c.createdAt || new Date().toISOString(),
+          customerId: c.customerId ?? c.customer?.id ?? null,
+          customerName: c.customer?.name || c.customerName || 'ลูกค้าทั่วไป',
+          customerPhone: c.customer?.phone || c.customerPhone || '-',
           productId: pId,
-          productName: c.product?.name || c.productName || matchedProd?.name || local?.productName || 'สินค้า',
-          sku: c.product?.sku || c.sku || matchedProd?.sku || local?.sku || '-',
-          unitName: c.unitName || local?.unitName || matchedProd?.unit || 'ชิ้น',
+          productName: c.product?.name || c.productName || matchedProd?.name || 'สินค้า',
+          sku: c.product?.sku || c.sku || matchedProd?.sku || '-',
+          unitName: c.unitName || matchedProd?.unit || 'ชิ้น',
           quantity: resolvedQty,
-          conversionFactor: Number(c.conversionFactor ?? local?.conversionFactor ?? 1),
-          baseQuantity: Number(c.baseQuantity ?? local?.baseQuantity ?? resolvedQty),
-          replacementProductId: c.replacementProductId ?? local?.replacementProductId,
-          replacementProductName: c.replacementProductName ?? local?.replacementProductName,
-          replacementSku: c.replacementSku ?? local?.replacementSku,
-          replacementUnitName: c.replacementUnitName ?? local?.replacementUnitName,
-          replacementConversionFactor: c.replacementConversionFactor ?? local?.replacementConversionFactor,
+          conversionFactor: Number(c.conversionFactor ?? 1),
+          baseQuantity: Number(c.baseQuantity ?? resolvedQty),
+          replacementProductId: c.replacementProductId,
+          replacementProductName: c.replacementProductName,
+          replacementSku: c.replacementSku,
+          replacementUnitName: c.replacementUnitName,
+          replacementConversionFactor: c.replacementConversionFactor,
           unitPrice: resolvedUnitPrice,
           totalClaimValue: resolvedClaimValue,
-          refundAmount: c.refundAmount ?? local?.refundAmount,
-          refundAccountId: c.refundAccountId ?? local?.refundAccountId,
-          refundAccountLabel: c.refundAccountLabel ?? local?.refundAccountLabel,
-          refundAccountNumber: c.refundAccountNumber ?? local?.refundAccountNumber,
-          discountAmount: c.discountAmount ?? local?.discountAmount,
-          defectReason: c.defectReason || c.problemDescription || local?.defectReason || '-',
+          refundAmount: c.refundAmount,
+          refundAccountId: c.refundAccountId,
+          refundAccountLabel: c.refundAccountLabel,
+          refundAccountNumber: c.refundAccountNumber,
+          discountAmount: c.discountAmount,
+          defectReason: c.defectReason || c.problemDescription || '-',
           resolutionType: resolvedResType,
           status: resolvedStatus,
-          cashierName: c.cashierName || local?.cashierName || 'พนักงาน POS',
-          note: c.note ?? c.resolutionNote ?? local?.note,
-          isReplacementItem: c.isReplacementItem ?? local?.isReplacementItem,
-          parentClaimId: c.parentClaimId ?? local?.parentClaimId,
-          claimedInOrderNumber: c.claimedInOrderNumber ?? local?.claimedInOrderNumber,
-          supplierId: c.supplierId ?? local?.supplierId,
-          supplierName: c.supplierName ?? local?.supplierName,
-          supplierTrackingNo: c.supplierTrackingNo ?? local?.supplierTrackingNo,
-          costPrice: c.costPrice !== undefined ? Number(c.costPrice) : local?.costPrice,
-          totalCostValue: c.totalCostValue !== undefined ? Number(c.totalCostValue) : local?.totalCostValue,
-          returnDocId: c.returnDocId ?? local?.returnDocId,
-          settledInBillNumber: c.settledInBillNumber ?? local?.settledInBillNumber,
-          completedDate: c.completedDate ?? local?.completedDate,
+          cashierName: c.cashierName || 'พนักงาน POS',
+          note: c.note ?? c.resolutionNote,
+          isReplacementItem: c.isReplacementItem,
+          parentClaimId: c.parentClaimId,
+          claimedInOrderNumber: c.claimedInOrderNumber,
+          supplierId: c.supplierId,
+          supplierName: c.supplierName,
+          supplierTrackingNo: c.supplierTrackingNo,
+          costPrice: c.costPrice !== undefined ? Number(c.costPrice) : undefined,
+          totalCostValue: c.totalCostValue !== undefined ? Number(c.totalCostValue) : undefined,
+          returnDocId: c.returnDocId,
+          settledInBillNumber: c.settledInBillNumber,
+          completedDate: c.completedDate,
         };
       });
 
-      saveClaimRecords(mapped);
+      claimsMem = mapped;
       return mapped;
     }
-  } catch (err) {
-    console.warn('[ClaimService] Failed to fetch claims from backend:', err);
   }
-  return loadAllClaimRecords();
 }
 
+/** Replacement warranties from the server. Throws when the server cannot be reached. */
 export async function fetchReplacementWarranties(): Promise<ReplacementWarrantyRecord[]> {
-  try {
-    const res = await apiFetch('/claims/warranties/list');
-    const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : null);
-    if (Array.isArray(list)) {
-      saveReplacementWarranties(list);
-      return list;
-    }
-  } catch (err) {
-    console.warn('[ClaimService] Failed to fetch replacement warranties from backend:', err);
-  }
-  return loadReplacementWarranties();
+  const res = await apiFetch('/claims/warranties/list');
+  const list = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : null);
+  if (!Array.isArray(list)) throw new Error('ข้อมูลการรับประกันจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+  warrantiesMem = list;
+  return list;
 }
 
-export async function createReplacementWarranty(record: ReplacementWarrantyRecord): Promise<ReplacementWarrantyRecord> {
-  const list = loadReplacementWarranties().filter((r) => r.id !== record.id && r.originalClaimId !== record.originalClaimId);
-  list.unshift(record);
-  saveReplacementWarranties(list);
-  try {
-    const saved = await apiFetch('/claims/warranties', {
-      method: 'POST',
-      body: JSON.stringify(record),
-    });
-    if (saved && saved.id) {
-      return saved;
-    }
-  } catch (err) {
-    console.warn('[ClaimService] Failed to sync replacement warranty to backend:', err);
-  }
-  return record;
-}
-
-export async function markReplacementWarrantyClaimed(idOrOriginalClaimId: string, claimId: string): Promise<void> {
-  const rwList = loadReplacementWarranties();
-  const targetRw = rwList.find((r) => r.id === idOrOriginalClaimId || r.originalClaimId === idOrOriginalClaimId);
-  if (targetRw) {
-    targetRw.isClaimed = true;
-    targetRw.claimId = claimId;
-    saveReplacementWarranties(rwList);
-  }
-  try {
-    await apiFetch(`/claims/warranties/${encodeURIComponent(targetRw?.id || idOrOriginalClaimId)}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ isClaimed: true, claimId }),
-    });
-  } catch (err) {
-    console.warn('[ClaimService] Failed to update replacement warranty on backend:', err);
-  }
-}
-
+/** Last claims the server returned in this session (empty until the first fetch). */
 export function loadAllClaimRecords(): ClaimRecord[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_CLAIMS);
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch (err) {
-    console.error('Failed to load claims:', err);
-    return [];
-  }
+  return claimsMem;
 }
 
-export function saveClaimRecords(claims: ClaimRecord[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY_CLAIMS, JSON.stringify(claims));
-  } catch (err) {
-    console.error('Failed to save claims:', err);
-  }
-}
-
+/** Last replacement warranties the server returned in this session. */
 export function loadReplacementWarranties(): ReplacementWarrantyRecord[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_REPLACEMENTS);
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch (err) {
-    console.error('Failed to load replacement warranties:', err);
-    return [];
-  }
-}
-
-export function saveReplacementWarranties(records: ReplacementWarrantyRecord[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY_REPLACEMENTS, JSON.stringify(records));
-  } catch (err) {
-    console.error('Failed to save replacement warranties:', err);
-  }
+  return warrantiesMem;
 }
 
 // ─── Generate Unique Claim Number (CLM-YYMMxxxxx) ───
@@ -261,31 +176,22 @@ export interface ClaimVerificationQuery {
   searchKeyword?: string;
 }
 
+/**
+ * Bills that can still be claimed, from the server's orders, claims and warranties.
+ * Throws when the server cannot be reached (claim quotas must never come from stale data).
+ */
 export async function fetchClaimEligibleItems(query: ClaimVerificationQuery): Promise<ClaimEligibleItem[]> {
-  let backendOrders: any[] = [];
-  let allClaims: ClaimRecord[] = [];
-  try {
-    const [res, claims] = await Promise.all([
-      apiFetch('/orders?limit=500'),
-      fetchAllClaimRecords().catch(() => []),
-      fetchReplacementWarranties().catch(() => []),
-    ]);
-    backendOrders = res?.data || (Array.isArray(res) ? res : []);
-    allClaims = claims || [];
-  } catch (err) {
-    console.warn('[ClaimService] Failed to fetch orders from backend:', err);
-  }
+  const [res, claims] = await Promise.all([
+    apiFetch('/orders?limit=500'),
+    fetchAllClaimRecords(),
+    fetchReplacementWarranties(),
+  ]);
+  const backendOrders: any[] = res?.data || (Array.isArray(res) ? res : []);
+  const allClaims: ClaimRecord[] = claims || [];
 
-  const localOrders = useShiftStore.getState().completedOrders || [];
   const orderMap = new Map<string, any>();
 
-  // Overlay local orders
-  localOrders.forEach((o) => {
-    const key = o.orderNumber || o.id;
-    if (key) orderMap.set(key, o);
-  });
-
-  // Merge backend orders
+  // Orders from the server
   backendOrders.forEach((b) => {
     const key = b.orderNumber || b.id;
     const existing = orderMap.get(key);
@@ -330,21 +236,8 @@ export function verifyClaimEligibility(
   const targetSku = (query.sku || '').trim().toLowerCase();
   const targetProductId = query.productId;
 
-  // 1. Collect all completed orders from customOrders or Shift Store
-  let allOrders: any[] = [];
-  if (customOrders && Array.isArray(customOrders)) {
-    allOrders = customOrders;
-  } else {
-    const localOrders = useShiftStore.getState().completedOrders || [];
-    const orderMap = new Map<string, any>();
-
-    localOrders.forEach((o) => {
-      const key = o.orderNumber || o.id;
-      if (key) orderMap.set(key, o);
-    });
-
-    allOrders = Array.from(orderMap.values());
-  }
+  // 1. The server's orders (see fetchClaimEligibleItems); no local bill history exists
+  const allOrders: any[] = Array.isArray(customOrders) ? customOrders : [];
   const allExistingClaims = customClaims || loadAllClaimRecords();
   const replacementWarranties = loadReplacementWarranties();
 
@@ -364,17 +257,8 @@ export function verifyClaimEligibility(
     if (targetPhone && !custPhone.includes(targetPhone)) return;
     if (targetName && !custName.includes(targetName)) return;
 
-    // Load master products to resolve units and conversion factors
-    let allCatalogProducts: any[] = [];
-    if (typeof window !== 'undefined') {
-      try {
-        const rawCustom = localStorage.getItem('custom_products');
-        if (rawCustom) allCatalogProducts = JSON.parse(rawCustom);
-      } catch {}
-    }
-    if (!allCatalogProducts || allCatalogProducts.length === 0) {
-      allCatalogProducts = useProductStore.getState().products || [];
-    }
+    // Master products (from the server) to resolve units and conversion factors
+    const allCatalogProducts: any[] = useProductStore.getState().products || [];
 
     // 2. Unpack bundle items if any, so that child components can be claimed individually
     const flattenedOrderItems: any[] = [];
@@ -842,48 +726,19 @@ export async function processClaim(params: ProcessClaimParams): Promise<ClaimRec
   claimRecord.id = claimId;
   if (confirmed.refundAmount !== undefined && confirmed.refundAmount !== null) claimRecord.refundAmount = Number(confirmed.refundAmount);
   if (confirmed.cashierName) claimRecord.cashierName = confirmed.cashierName;
-  // From here on, the DB transaction has committed; cache failures cannot undo it.
-  try {
-  const existingClaims = loadAllClaimRecords().filter(row => row.id !== claimId);
-  existingClaims.unshift(claimRecord);
-  saveClaimRecords(existingClaims);
+  // From here on, the DB transaction has committed. The server also marks a claimed replacement
+  // warranty and creates the new one for an exchange (same transaction), so nothing is
+  // bookkept locally; refresh the in-memory lists from the server instead.
+  claimsMem = [claimRecord, ...claimsMem.filter((row) => row.id !== claimId)];
+  void fetchAllClaimRecords().catch(() => undefined);
 
-  // 2. If this claim was for an existing replacement warranty, mark it as claimed
-  if (params.item.isReplacementWarranty && params.item.originalClaimId) {
-    void markReplacementWarrantyClaimed(params.item.originalClaimId, claimId);
-  }
-
-  // 3. If resolution is 'REPLACE_ITEM', establish a NEW Replacement Warranty for the new unit!
-  if (params.resolutionType === 'REPLACE_ITEM') {
-    const newRw: ReplacementWarrantyRecord = {
-      id: `RWM-${Date.now()}`,
-      originalClaimId: claimId,
-      originalOrderId: params.item.orderId,
-      originalOrderNumber: params.item.orderNumber,
-      replacementDate: nowStr,
-      customerId: params.item.customerId,
-      customerName: params.item.customerName,
-      customerPhone: params.item.customerPhone,
-      productId: params.replacementProductId || params.item.productId,
-      productName: params.replacementProductName || params.item.productName,
-      sku: params.replacementSku || params.item.sku,
-      unitName: params.replacementUnitName || claimUnitName,
-      unitPrice: claimUnitPrice,
-      isClaimed: false,
-    };
-    void createReplacementWarranty(newRw);
-  }
-
-  // 4. REFUND_CASH: the server already took the cash out of this user's shift drawer (cash
-  // movement + ledger, same transaction as the claim). Only refresh the local shift view here;
+  // REFUND_CASH: the server already took the cash out of this user's shift drawer (cash
+  // movement + ledger, same transaction as the claim). Only refresh the shift view here;
   // posting another cash movement would count the refund twice.
   if (params.resolutionType === 'REFUND_CASH') {
     void useShiftStore.getState().fetchCurrentShift().catch(() => undefined);
   }
 
-  } catch {
-    toast.warning('ฐานข้อมูลบันทึกเคลมแล้ว แต่ปรับข้อมูลสำรองในเครื่องไม่สำเร็จ กรุณาโหลดข้อมูลใหม่');
-  }
   if (attemptKey) { try { localStorage.removeItem(attemptKey); } catch {} }
   void useProductStore.getState().fetchProducts();
   window.dispatchEvent(new Event('pos-data-synced'));
@@ -905,28 +760,14 @@ export function updateClaimStatus(
     settledInBillNumber?: string;
   }
 ): ClaimRecord | null {
-  const claims = loadAllClaimRecords();
-  const target = claims.find((c) => c.id === claimId);
-
+  // Only the server changes a claim; compute the request from the last server copy.
+  const current = claimsMem.find((c) => c.id === claimId);
+  const target: ClaimRecord | undefined = current ? { ...current } : undefined;
   if (target) {
-    target.status = newStatus;
-    if (options?.supplierId !== undefined) target.supplierId = options.supplierId;
-    if (options?.supplierName !== undefined) target.supplierName = options.supplierName;
-    if (options?.supplierTrackingNo !== undefined) target.supplierTrackingNo = options.supplierTrackingNo;
-    if (options?.claimedInOrderNumber !== undefined) target.claimedInOrderNumber = options.claimedInOrderNumber;
-    if (options?.returnDocId !== undefined) {
-      target.returnDocId = options.returnDocId || undefined;
-    }
-    if (options?.settledInBillNumber !== undefined) {
-      target.settledInBillNumber = options.settledInBillNumber;
-    }
     if (options?.note) target.note = `${target.note ? target.note + '\n' : ''}${options.note}`;
-
     if (newStatus === 'COMPLETED' || newStatus === 'SUPPLIER_REPLACED') {
       target.completedDate = new Date().toISOString();
     }
-
-    saveClaimRecords(claims);
   }
 
   void apiFetch(`/claims/${encodeURIComponent(claimId)}`, {
@@ -944,7 +785,7 @@ export function updateClaimStatus(
       resolutionNote: target?.note ?? options?.note,
       completedDate: target?.completedDate,
     }),
-  }).catch((err) => {
+  }).then(() => fetchAllClaimRecords()).catch((err) => {
     // The server enforces permissions and the claim workflow; tell the user instead of silently
     // keeping a status the database refused.
     console.warn('[ClaimService] Failed to sync claim status update to backend:', err);
@@ -955,41 +796,6 @@ export function updateClaimStatus(
   return target || null;
 }
 
-export async function markClaimsAsReturnedToSupplier(
-  claimIds: string[],
-  returnDocId: string,
-  supplierId?: string,
-  supplierName?: string
-): Promise<void> {
-  const uniqueIds = Array.from(new Set(claimIds.filter(Boolean)));
-  if (uniqueIds.length === 0) return;
-
-  const claims = loadAllClaimRecords();
-  claims.forEach((c) => {
-    if (uniqueIds.includes(c.id)) {
-      c.returnDocId = returnDocId;
-      c.status = 'SENT_TO_SUPPLIER';
-      if (supplierId) c.supplierId = supplierId;
-      if (supplierName) c.supplierName = supplierName;
-    }
-  });
-  saveClaimRecords(claims);
-
-  await Promise.allSettled(
-    uniqueIds.map((cid) =>
-      apiFetch(`/claims/${encodeURIComponent(cid)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          status: 'SENT_TO_SUPPLIER',
-          frontendStatus: 'SENT_TO_SUPPLIER',
-          returnDocId,
-          supplierId,
-          supplierName,
-        }),
-      })
-    )
-  );
-}
 
 // ─── Get Summary KPI for Claims & Defective Stock ───
 

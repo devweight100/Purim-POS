@@ -218,7 +218,6 @@ export function PaymentModal({
     // Direct Payment Method Edit for existing order (without touching cart!)
     if (orderToEditPayment) {
       const orderId = orderToEditPayment.orderNumber || orderToEditPayment.id;
-      const oldPayments = orderToEditPayment.payments || [orderToEditPayment.paymentMethod || 'CASH'];
       const primaryNewMethod = payments.length > 1 ? 'SPLIT' : (payments[0]?.method || 'CASH');
 
       await apiFetch(`/orders/${orderToEditPayment.id}`, {
@@ -226,7 +225,7 @@ export function PaymentModal({
         body: JSON.stringify({ paymentMethod: primaryNewMethod, payments: payments })
       });
 
-      shiftStore.updateOrderPaymentMethod(orderId, oldPayments, payments, total);
+      void shiftStore.fetchCurrentShift();
 
       // same mapping as every other reprint; only the payments changed
       const completedReceipt: ReceiptData = orderToReceiptData(
@@ -307,7 +306,7 @@ export function PaymentModal({
 
       const previousEditingId = cart.editingOrderId;
       if (previousEditingId) {
-        shiftStore.voidOrder(previousEditingId, "แก้ไขรายการสินค้าและชำระเงินใหม่แทนบิลเดิม");
+        void shiftStore.fetchCurrentShift();
         cart.setEditingOrderId(null);
       }
 

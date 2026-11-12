@@ -14,7 +14,7 @@ import { CountCashModal } from './CountCashModal';
 import { ShiftSummaryPdfModal, ShiftSummaryData, BankAccountBreakdownItem } from './ShiftSummaryPdfModal';
 import { loadBankAccounts } from '@/lib/bank-account-storage';
 import { getShiftDebtCollections } from '@/lib/debt-service';
-import { saveShiftSummary, mapServerShiftToSummary } from '@/lib/shift-service';
+import { mapServerShiftToSummary } from '@/lib/shift-service';
 import { api } from '@/lib/api';
 import { kickCashDrawer } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
@@ -71,15 +71,10 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
     const finalActualCash = Math.round((actualCash as number) * 100) / 100;
     const closedTime = new Date().toISOString();
 
-    // Calculate bank account breakdown for QR & Transfer payments
-    const completedOrders = useShiftStore.getState().completedOrders || [];
+    // Bills are not kept on this device; the slip is filled from the server's shift summary
+    // below (this local draft is only used when the summary cannot be read).
     const shiftStartTime = new Date(currentShift.openedAt).getTime();
-    const shiftOrders = completedOrders.filter(o => {
-      if (o.shiftId) {
-        return o.shiftId === currentShift.id;
-      }
-      return new Date(o.createdAt).getTime() >= shiftStartTime;
-    });
+    const shiftOrders: any[] = [];
 
     const bankMap = new Map<string, number>();
 
@@ -88,11 +83,11 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
       ? `${availableBanks[0].bankName} (${availableBanks[0].accountNumber})`
       : 'บัญชีโอนเงิน / QR (หลัก)';
 
-    shiftOrders.forEach(order => {
+    shiftOrders.forEach((order: any) => {
       if ((order as any).status === 'CANCELLED' || (order as any).status === 'VOIDED') return;
 
       if (Array.isArray(order.payments) && order.payments.length > 0) {
-        order.payments.forEach(p => {
+        order.payments.forEach((p: any) => {
           if (p.method === 'QR_PROMPTPAY' || p.method === 'TRANSFER') {
             const label = p.referenceNo || defaultBankLabel;
             const currentAmt = bankMap.get(label) || 0;
@@ -124,13 +119,13 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
     let pointsDiscountsTotal = 0;
     let creditSalesCalculated = 0;
 
-    shiftOrders.forEach(order => {
+    shiftOrders.forEach((order: any) => {
       if ((order as any).status === 'CANCELLED' || (order as any).status === 'VOIDED') return;
       billDiscountsTotal += order.billDiscountAmount || 0;
       pointsDiscountsTotal += order.pointsDiscountAmount || 0;
 
       if (Array.isArray(order.payments) && order.payments.length > 0) {
-        order.payments.forEach(p => {
+        order.payments.forEach((p: any) => {
           if ((p.method as string) === 'CREDIT_DEBT' || p.method === 'CREDIT_NOTE' || (p.method as any) === 'CREDIT') {
             creditSalesCalculated += (p.amount || 0);
           }
@@ -194,8 +189,6 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
       // offline: keep the figures computed on this terminal
     }
 
-    // Save rich shift summary to history
-    saveShiftSummary(dataForReport);
 
     setSummaryData(dataForReport);
     setShowSummaryPdf(true);

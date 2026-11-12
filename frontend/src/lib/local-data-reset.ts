@@ -67,10 +67,9 @@ export const LEGACY_KEYS: string[] = [
   'pos_product_claims',
   'pos_replacement_warranties',
   'pos_claim_inventory_cache',
-  'pos_completed_orders',
   'pos_orders',
   'pos_cash_transactions',
-  'pos_current_shift',
+  'pos_current_shift', // now 'purim-cache:current-shift' (server-written only)
   'pos_shifts_history',
   'pos_shift_summaries_history',
   'pos_last_shift_summary',
