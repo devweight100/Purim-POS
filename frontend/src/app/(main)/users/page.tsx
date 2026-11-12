@@ -191,17 +191,7 @@ export default function UsersManagementPage() {
   const clearLocalProductData = async () => {
     if (typeof window === 'undefined') return;
 
-    try {
-      localStorage.removeItem('custom_products');
-      Object.keys(localStorage).forEach((key) => {
-        if (key.startsWith('pkg_') || key.startsWith('img_') || key.startsWith('ws_')) {
-          localStorage.removeItem(key);
-        }
-      });
-    } catch (err) {
-      console.warn('[Admin] Failed to clear product localStorage:', err);
-    }
-
+    // the only local product data is the POS offline cache
     await clearCachedProducts();
     useProductStore.setState({ products: [] });
   };
