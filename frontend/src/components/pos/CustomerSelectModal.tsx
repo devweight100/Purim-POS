@@ -11,6 +11,7 @@ import { Customer, fetchCustomers, upsertCustomer } from '@/lib/customer-service
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 
 interface CustomerSelectModalProps {
   open: boolean;
@@ -50,13 +51,13 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
     setQuickPriceLevel(1);
   };
 
+  // opening or closing clears the search and the quick-add form
+  const openChanged = useHasChanged(open);
+  if (openChanged) resetForm();
+
+  // load the customer list from the server when opening
   useEffect(() => {
-    if (open) {
-      reloadData();
-      resetForm();
-    } else {
-      resetForm();
-    }
+    if (open) void reloadData();
   }, [open]);
 
   const handleModalClose = (isOpen: boolean) => {
@@ -108,7 +109,7 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
       name: quickName.trim(),
       phone: quickPhone.trim(),
       taxId: quickTaxId.trim(),
-      priceLevel: quickPriceLevel as any,
+      priceLevel: quickPriceLevel as Customer['priceLevel'],
     });
 
     if (res.success) {
@@ -221,7 +222,7 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
 
                 {!loadError && filtered.length === 0 && (
                   <div className="p-8 text-center text-slate-500 text-sm">
-                    ไม่พบข้อมูลลูกค้าที่ค้นหา สามารถกดปุ่ม <b>"เพิ่มด่วน"</b> ด้านบนเพื่อสมัครสมาชิกได้ทันที
+                    ไม่พบข้อมูลลูกค้าที่ค้นหา สามารถกดปุ่ม <b>&quot;เพิ่มด่วน&quot;</b> ด้านบนเพื่อสมัครสมาชิกได้ทันที
                   </div>
                 )}
               </div>

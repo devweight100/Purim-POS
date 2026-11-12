@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -26,11 +27,9 @@ export function ItemNotePopup({
 }: ItemNotePopupProps) {
   const [note, setNote] = useState(initialNote);
 
-  useEffect(() => {
-    if (open) {
-      setNote(initialNote || '');
-    }
-  }, [open, initialNote]);
+  // Opening (or a new initial note while open) starts from the initial note
+  const syncChanged = useHasChanged(`${open}|${initialNote}`);
+  if (syncChanged && open) setNote(initialNote || '');
 
   const handleQuickAdd = (tag: string) => {
     setNote(prev => (prev ? `${prev}, ${tag}` : tag));
