@@ -3,8 +3,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { ClaimStatus, ReturnNoteStatus } from '@prisma/client';
 import { addQty, decimalQtyAllowed, fromHund, hasMax2Decimals, isWholeQty, DECIMAL_QTY_DISABLED, qn, roundQty, subQty, toHund } from '../common/qty';
+import { round2 } from '../../../shared/src/money';
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 const isMoney = (n: number) => Number.isFinite(n) && n >= 0 && Math.abs(n * 100 - Math.round(n * 100)) < 0.00001;
 
 export interface NormalizedReturnItem {

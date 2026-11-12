@@ -1,5 +1,9 @@
 import { BadRequestException } from '@nestjs/common';
 import { hasMax2Decimals, qn } from '../common/qty';
+import { roundSatang } from '../../../shared/src/money';
+
+// Bill arithmetic is shared with the POS cart preview (shared/src/pricing.ts)
+export { lineAmounts } from '../../../shared/src/pricing';
 
 /** Upper bounds that keep every amount inside the Decimal columns (unit price Decimal(10,2), totals Decimal(12,2)). */
 export const MAX_ITEM_QTY = 100000;
@@ -7,7 +11,7 @@ export const MAX_UNIT_PRICE = 10_000_000;
 export const MAX_BILL_AMOUNT = 1_000_000_000;
 const ORDER_NUMBER = /^[A-Za-z0-9_-]{1,40}$/;
 
-export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+export const round2 = roundSatang;
 
 const isPlainObject = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
 const optString = (v: unknown, max = 100) => v === undefined || v === null || v === '' || (typeof v === 'string' && v.length <= max);
@@ -66,20 +70,6 @@ export function validateCheckoutInput(data: any): void {
   }
   if (data.createdAt !== undefined && data.createdAt !== null && typeof data.createdAt !== 'string') throw new BadRequestException('วันเวลาขายไม่ถูกต้อง');
   if (data.note !== undefined && data.note !== null && typeof data.note !== 'string') throw new BadRequestException('หมายเหตุไม่ถูกต้อง');
-}
-
-/**
- * Line amounts. The line total is computed from the price the cashier saw (possibly with more than
- * 2 decimals after a % discount) so it matches the payment, while the stored unit price is rounded
- * UP to the cent and the difference goes into the stored line discount, so that
- * quantity * unitPrice - discountAmount === total holds exactly for every stored row.
- */
-export function lineAmounts(quantity: number, unitPrice: number, lineDiscount: number) {
-  const cents = Math.round(unitPrice * 100 * 10000) / 10000; // drop float noise below 1/10000 cent
-  const storedUnitPrice = Math.ceil(cents - 1e-6) / 100;
-  const total = round2(quantity * unitPrice - lineDiscount);
-  const storedDiscount = Math.max(0, round2(quantity * storedUnitPrice - total));
-  return { storedUnitPrice, total, storedDiscount };
 }
 
 /**

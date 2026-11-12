@@ -1,3 +1,4 @@
+import { round2 } from '@shared/money';
 /**
  * Report export: real .xlsx (SheetJS, already a dependency) or CSV.
  * - CSV: RFC 4180 quoting (quotes, commas, newlines), UTF-8 BOM so Excel shows Thai,
@@ -10,7 +11,6 @@ export interface ExportColumn<T> {
   value: (row: T, index: number) => string | number | null | undefined;
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 
 function cellValue(v: unknown): string | number {
   if (v === null || v === undefined) return '';

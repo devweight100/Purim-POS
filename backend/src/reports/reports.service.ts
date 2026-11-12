@@ -5,8 +5,8 @@ import { OrderStatus } from '@prisma/client';
 import { grossPerUnit } from '../../../shared/src/po-calc';
 import { addDays, bangkokDayKey, bangkokStartOfDay, bangkokStartOfMonth, dateRangeFilter, DAY_MS } from '../common/bangkok-date';
 import { DateRange, paymentChannels, salesTotals, sqlRange } from './sales-math';
+import { round2 } from '../../../shared/src/money';
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
 export const DEFAULT_LOW_STOCK_THRESHOLD = 5;
 const DASHBOARD_RANGES = ['today', '7days', '30days', 'month', 'all'] as const;
 type DashboardRange = (typeof DASHBOARD_RANGES)[number];

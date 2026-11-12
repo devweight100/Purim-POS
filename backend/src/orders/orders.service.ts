@@ -8,6 +8,7 @@ import { createHash } from 'crypto';
 import { ApprovalsService, ApprovalReason } from '../approvals/approvals.service';
 import * as ledger from '../finance/ledger';
 import { validateCheckoutInput, lineAmounts, checkPointsDiscount, claimableBaseQty, paidPerBaseUnit, round2, MAX_ITEM_QTY } from './checkout-guards';
+import { billTotals, earnedPoints, normVatRate, vatIncluded } from '../../../shared/src/pricing';
 import { addQty, decimalQtyAllowed, hasMax2Decimals, mulQty, parseQty, qn, subQty } from '../common/qty';
 
 @Injectable()
@@ -81,6 +82,7 @@ export class OrdersService {
       let totalCogs = 0;
       const orderItems: any[] = [];
       let subtotal = 0;
+      const lineTotals: number[] = [];
 
       const cashierUser = userId
         ? await tx.user.findUnique({ where: { id: userId }, select: { fullName: true, username: true, role: true, permissions: true } })
@@ -235,6 +237,7 @@ export class OrdersService {
 
         const { storedUnitPrice, total: itemTotal, storedDiscount } = lineAmounts(item.quantity, Number(item.unitPrice), lineDiscount);
         subtotal += itemTotal;
+        lineTotals.push(itemTotal);
         totalCogs += itemCogs;
 
         const unitCost = baseQuantity > 0 ? itemCogs / baseQuantity : 0;
@@ -265,11 +268,13 @@ export class OrdersService {
         });
       }
 
-      subtotal = round2(subtotal);
+      // same arithmetic as the POS cart preview (shared/src/pricing.ts cartTotals)
+      const billed = billTotals(lineTotals, Number(data.discountAmount) || 0, 0);
+      subtotal = billed.subtotal;
       if (subtotal > 1_000_000_000) throw new BadRequestException('ยอดบิลสูงเกินกว่าที่ระบบรองรับ');
-      const discountAmount = round2(Number(data.discountAmount) || 0);
+      const discountAmount = billed.discountAmount;
       if (!Number.isFinite(discountAmount) || discountAmount < 0 || discountAmount > subtotal) throw new BadRequestException('ส่วนลดบิลไม่ถูกต้อง');
-      const totalAmount = Math.round((subtotal - discountAmount) * 100) / 100;
+      const totalAmount = billed.totalAmount;
       const paid = data.payments.reduce((sum: number, p: any) => sum + Number(p.amount), 0);
       if (Math.abs(paid - totalAmount) > 0.01 || (data.totalAmount != null && Math.abs(Number(data.totalAmount) - totalAmount) > 0.01)) throw new BadRequestException('ยอดชำระไม่ตรงกับยอดบิล');
       const creditAmount = data.payments.filter((p: any) => p.method === PaymentMethod.CREDIT_DEBT).reduce((sum: number, p: any) => sum + Number(p.amount), 0);
@@ -337,7 +342,7 @@ export class OrdersService {
           verifiedClaimDiscount = Math.min(requestedClaimDiscount, round2(allowance));
         }
       }
-      const pointsEarned = customer && config.isLoyaltyEnabled !== false ? Math.floor(totalAmount / rate) * units : 0;
+      const pointsEarned = customer && config.isLoyaltyEnabled !== false ? earnedPoints(totalAmount, rate, units) : 0;
       if (customer) await tx.customer.update({ where: { id: customer.id }, data: { points: { increment: pointsEarned - pointsUsed } } });
       if (creditAmount > 0 && profile.isCreditBlocked) throw new BadRequestException('ลูกค้าถูกระงับเครดิต');
       if (creditAmount > 0 && Number(profile.creditLimit) > 0) {
@@ -398,8 +403,8 @@ export class OrdersService {
 
       // VAT (prices are VAT-inclusive). Store settings decide whether the shop charges VAT at all.
       const vatEnabled = (settings as { vatEnabled?: boolean } | null)?.vatEnabled === true;
-      const vatRate = vatEnabled ? Number(settings?.vatRate ?? 7) : 0;
-      const vatAmount = vatRate > 0 ? Math.round((totalAmount * vatRate / (100 + vatRate)) * 100) / 100 : 0;
+      const vatRate = vatEnabled ? normVatRate(settings?.vatRate) : 0;
+      const vatAmount = vatIncluded(totalAmount, vatRate);
 
       // Bank that received each QR / transfer payment (unknown ids are ignored -> default bank)
       const knownBankIds = new Set((await tx.bankAccount.findMany({ select: { id: true } })).map((b: { id: string }) => b.id));

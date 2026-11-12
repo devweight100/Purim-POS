@@ -12,7 +12,9 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.{ts,tsx}'],
+    // shared/test/*.spec.ts (business calculations shared with the backend) run here and in backend jest
+    include: ['src/**/*.test.{ts,tsx}', '../shared/test/**/*.spec.ts'],
+    globals: true,
     exclude: ['node_modules', '.next', 'e2e'],
   },
 });

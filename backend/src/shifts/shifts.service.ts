@@ -5,6 +5,7 @@ import { ApprovalsService } from '../approvals/approvals.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CashMovementType, ShiftStatus, PaymentMethod } from '@prisma/client';
 import * as ledger from '../finance/ledger';
+import { roundSatang as round2 } from '../../../shared/src/money';
 
 const CASH_CATEGORIES = ['GENERAL', 'REFUND', 'DEBT_PAYMENT'];
 /**
@@ -22,7 +23,6 @@ function assertShiftActor(shift: { userId: string }, actor?: { id?: string; role
   if (shift.userId !== actor.id) throw new ForbiddenException('ทำรายการได้เฉพาะกะของตัวเอง (หรือผู้จัดการ)');
 }
 
-const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const SHIFT_ORDER_INCLUDE = {
   payments: true,
   items: { select: { discountAmount: true } },
