@@ -1,28 +1,8 @@
-import { useProductStore } from './store/product-store';
-import { loadAllClaimRecords } from './claim-service';
-import { loadPurchaseOrders, loadSuppliers } from './supplier-return-service';
-import { loadAllDebtRecords } from './debt-service';
-import { loadCustomers } from './customer-service';
-import { loadAllShiftSummaries } from './shift-service';
 import { bangkokDate, bangkokDayKey, bangkokDayStart, bangkokParts, bangkokStartOfDay, DAY_MS } from './bangkok-date';
 import { addQty } from './qty';
 
 export type ReportTimeRange = 'today' | 'yesterday' | '7days' | '30days' | 'thisMonth' | 'lastMonth' | 'thisYear' | 'all' | 'custom';
 
-// ─── Helper to Load Orders ───
-export function loadAllOrders(): any[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem('pos_orders');
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    }
-  } catch {}
-  return [];
-}
 
 // ─── Time ranges (Asia/Bangkok calendar, end exclusive) ───
 /** [start, end) in epoch ms for a report range, using the Bangkok calendar whatever the device TZ. */

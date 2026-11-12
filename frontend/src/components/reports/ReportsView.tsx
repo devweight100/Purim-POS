@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import {
   ReportTimeRange,
-  loadAllOrders,
   filterOrdersByDateRange,
   calculateSalesAndProfitReport,
   calculateBestSellingProducts,
@@ -20,11 +19,7 @@ import {
 } from '@/lib/reports-service';
 import { downloadReport, ExportColumn } from './report-export';
 import { useProductStore } from '@/lib/store/product-store';
-import { loadPurchaseOrders, loadSuppliers } from '@/lib/supplier-return-service';
-import { loadAllClaimRecords } from '@/lib/claim-service';
-import { loadAllDebtRecords } from '@/lib/debt-service';
-import { loadCustomers } from '@/lib/customer-service';
-import { loadAllShiftSummaries } from '@/lib/shift-service';
+import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 import { apiFetch } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -219,6 +214,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
   // Search in tables
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Raw data collections
   const [rawOrders, setRawOrders] = useState<any[]>([]);
@@ -274,14 +270,17 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
         apiFetch('/suppliers'),
       ]);
 
-      const unwrap = (res: any, fallback: () => any) => {
+      // Reports are built from server data only: any request that failed fails the page.
+      const unwrap = (res: any) => {
         if (res.status === 'fulfilled') {
           const val = res.value;
           if (val?.data && Array.isArray(val.data)) return val.data;
           if (Array.isArray(val)) return val;
           return [];
         }
-        return fallback();
+        // 403: this user may not see that list (the server said so) - leave it empty
+        if (Number(res.reason?.status) === 403) return [];
+        throw res.reason;
       };
 
       const analyticsData =
@@ -292,13 +291,13 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       const realOrders =
         analyticsData && Array.isArray(analyticsData.orders)
           ? analyticsData.orders
-          : unwrap(ordersRes, loadAllOrders);
-      const realPOs = unwrap(posRes, loadPurchaseOrders);
-      const realClaims = unwrap(claimsRes, loadAllClaimRecords);
-      const realDebts = unwrap(debtsRes, loadAllDebtRecords);
-      const realCusts = unwrap(custsRes, loadCustomers);
-      const realShifts = unwrap(shiftsRes, loadAllShiftSummaries);
-      const realSupps = unwrap(suppsRes, loadSuppliers);
+          : unwrap(ordersRes);
+      const realPOs = unwrap(posRes);
+      const realClaims = unwrap(claimsRes);
+      const realDebts = unwrap(debtsRes);
+      const realCusts = unwrap(custsRes);
+      const realShifts = unwrap(shiftsRes);
+      const realSupps = unwrap(suppsRes);
 
       if (analyticsData?.claimAccounting) {
         setClaimAccounting({
@@ -322,9 +321,19 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       setShifts(realShifts);
       setSuppliers(realSupps);
       await fetchProducts();
+      const productsError = useProductStore.getState().error;
+      if (productsError) throw new Error(productsError);
+      setLoadError(null);
     } catch (err) {
       console.error('Failed to load reports data:', err);
-      toast.error('ไม่สามารถโหลดข้อมูลรายงานได้');
+      setRawOrders([]);
+      setPurchaseOrders([]);
+      setClaims([]);
+      setDebts([]);
+      setCustomers([]);
+      setShifts([]);
+      setSuppliers([]);
+      setLoadError(errorMessage(err, 'ไม่สามารถโหลดข้อมูลรายงานได้'));
     } finally {
       setLoading(false);
     }
@@ -629,6 +638,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-3 p-3 sm:p-4 lg:p-5 font-sans">
+      {loadError && <LoadErrorState message={loadError} onRetry={() => void loadData()} retrying={loading} />}
       {/* ─── PAGE HEADER ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
