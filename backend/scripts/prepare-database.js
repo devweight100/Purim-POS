@@ -19,6 +19,15 @@ const path = require('path');
 const fs = require('fs');
 const { spawnSync } = require('child_process');
 
+// `prisma db seed` runs "ts-node prisma/seed.ts" through the shell: make sure this backend's
+// node_modules/.bin is on PATH even when the script is started from another folder (e2e setup, installer).
+{
+  const bin = require('path').join(__dirname, '..', 'node_modules', '.bin');
+  const key = Object.keys(process.env).find((k) => k.toUpperCase() === 'PATH') || 'PATH';
+  const parts = String(process.env[key] || '').split(require('path').delimiter);
+  if (!parts.includes(bin)) process.env[key] = [bin, ...parts].filter(Boolean).join(require('path').delimiter);
+}
+
 const backendDir = path.resolve(__dirname, '..');
 process.chdir(backendDir);
 
