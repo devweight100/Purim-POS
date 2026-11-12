@@ -2,6 +2,7 @@
 import { newOperationId } from '@/lib/order-sync-service';
 
 import { useState, useEffect, useRef } from 'react';
+import { useProductStore } from '@/lib/store/product-store';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { formatCurrency } from '@/lib/utils';
@@ -18,7 +19,7 @@ import { ThermalReceiptView, printThermalReceiptDirect } from './ThermalReceiptV
 import { loadBankAccounts, BankAccount } from '@/lib/bank-account-storage';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe } from '@/lib/pdf-print-service';
-import { deductPosSaleStock } from '@/lib/stock-service';
+
 import { updateClaimStatus, processClaim } from '@/lib/claim-service';
 import { kickCashDrawer, getCashDrawerConfig } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
@@ -449,19 +450,9 @@ export function PaymentModal({
         }
       }
 
-      // Deduct stock from inventory and log stock movement
-      deductPosSaleStock(
-        cart.items.map(i => ({
-          productId: i.productId,
-          quantity: i.quantity,
-          conversionFactor: i.conversionFactor || 1,
-          name: i.name,
-          sku: i.sku,
-          unitName: i.unitName,
-        })),
-        finalOrderNumber,
-        shiftStore.currentShift?.userName || 'พนักงาน POS'
-      );
+      // Stock is deducted by the server when it records the bill (also for outbox replays);
+      // refresh the product list so the POS shows the server's stock.
+      if (isSynced) void useProductStore.getState().fetchProducts({ offlineCache: true });
 
       const custSaleRes = {
         earnedPoints: isSynced ? Number(backendOrder.pointsEarned || 0) : 0,

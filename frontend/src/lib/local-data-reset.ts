@@ -73,7 +73,13 @@ export const LEGACY_KEYS: string[] = [
   'pos_shifts_history',
   'pos_shift_summaries_history',
   'pos_last_shift_summary',
+  'product_packaging_units',
+  'offline_orders',
+  // 'pos_completed_orders' is imported into the order outbox and then removed by order-sync-service
 ];
+
+/** Per-product local copies of images / packaging / wholesale steps (`img_<id>`, `pkg_<id>`, `ws_<id>`). */
+export const LEGACY_KEY_PREFIXES: string[] = ['img_', 'pkg_', 'ws_'];
 
 const LEGACY_CLEANED_FLAG = 'purim-legacy-cleaned:v1';
 
@@ -83,6 +89,12 @@ export function clearLegacyLocalData(): void {
   try {
     if (localStorage.getItem(LEGACY_CLEANED_FLAG) === '1') return;
     LEGACY_KEYS.forEach((k) => localStorage.removeItem(k));
+    const prefixed: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && LEGACY_KEY_PREFIXES.some((p) => k.startsWith(p))) prefixed.push(k);
+    }
+    prefixed.forEach((k) => localStorage.removeItem(k));
     localStorage.setItem(LEGACY_CLEANED_FLAG, '1');
   } catch {
     /* storage unavailable */

@@ -53,11 +53,11 @@ import {
 } from 'lucide-react';
 import {
   StockMovement,
-  loadStockMovements,
   fetchStockMovements,
   adjustSingleProductStock,
 } from '@/lib/stock-service';
 import { toast } from 'sonner';
+import { LoadErrorState } from '@/components/common/LoadErrorState';
 import { addQty, formatQty, isValidQty, qtyInputMode, qtyStep, subQty, useAllowDecimalQty } from '@/lib/qty';
 
 export default function InventoryPage() {
@@ -91,12 +91,20 @@ export default function InventoryPage() {
   const [isStockCardOpen, setIsStockCardOpen] = useState(false);
   const [stockCardProduct, setStockCardProduct] = useState<any>(null);
 
-  const { products, categories: storeCategories, fetchProducts, isLoading } = useProductStore();
+  const { products, categories: storeCategories, fetchProducts, isLoading, error: productsError } = useProductStore();
+  const [movementsError, setMovementsError] = useState<string | null>(null);
+  const loadError = productsError || movementsError;
 
   const reloadData = async () => {
     await fetchProducts();
-    const movs = await fetchStockMovements();
-    setMovements(movs);
+    try {
+      const movs = await fetchStockMovements();
+      setMovements(movs);
+      setMovementsError(null);
+    } catch (err: any) {
+      setMovements([]);
+      setMovementsError(err?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้');
+    }
   };
 
   useEffect(() => {
@@ -114,16 +122,8 @@ export default function InventoryPage() {
 
   const getCategoryName = (id: string) => storeCategories.find((c) => c.id === id)?.name || 'ไม่ระบุ';
 
-  // Load custom packaging from localStorage
-  const allPackaging: Record<string, any[]> = useMemo(() => {
-    if (typeof window === 'undefined') return {};
-    try {
-      const raw = localStorage.getItem('product_packaging_units');
-      return raw ? JSON.parse(raw) : {};
-    } catch {
-      return {};
-    }
-  }, []);
+  // Packaging units come with each product from the server (prod.units)
+  const allPackaging: Record<string, any[]> = {};
 
   // Format stock breakdown into packaging units (e.g. 10 ลัง 5 ชิ้น)
   const formatPackagingBreakdown = (prod: any) => {
@@ -330,12 +330,7 @@ export default function InventoryPage() {
       return;
     }
 
-    if (res.success && res.offline) {
-      toast.warning(
-        `เชื่อมต่อเซิร์ฟเวอร์ไม่ได้: ปรับสต็อก ${targetProduct.name} ไว้ในเครื่องนี้เท่านั้น (${res.previousStock} ➔ ${res.newStock}) ยังไม่ถูกบันทึกในฐานข้อมูล กรุณาปรับใหม่เมื่อเชื่อมต่อได้`
-      );
-      setIsAdjustModalOpen(false);
-    } else if (res.success) {
+    if (res.success) {
       toast.success(
         `ปรับสต็อก ${targetProduct.name} เรียบร้อย: ${res.previousStock} ➔ ${res.newStock} (${res.delta >= 0 ? '+' : ''}${res.delta} ${targetProduct.unit || 'ชิ้น'})`
       );
@@ -392,6 +387,7 @@ export default function InventoryPage() {
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
+      {loadError && <LoadErrorState message={loadError} onRetry={() => void reloadData()} retrying={isLoading} />}
       {/* Sleek Compact Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>

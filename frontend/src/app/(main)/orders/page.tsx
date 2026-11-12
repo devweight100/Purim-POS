@@ -58,7 +58,7 @@ import { ReturnItemsDialog } from "@/components/orders/ReturnItemsDialog";
 import { useCartStore } from "@/lib/store/cart-store";
 import { useProductStore } from "@/lib/store/product-store";
 import { getCustomerById, fetchCustomers } from "@/lib/customer-service";
-import { restoreVoidOrderStock } from "@/lib/stock-service";
+
 import { fetchAllClaimRecords } from "@/lib/claim-service";
 import { loadAllDebtRecords, getDebtRecordByOrderId } from "@/lib/debt-service";
 import { DebtRecord, DebtPaymentInstallment } from "@/lib/types";
@@ -554,19 +554,8 @@ export default function OrdersPage() {
       });
 
       void shiftStore.fetchCurrentShift();
-      restoreVoidOrderStock(
-        (voidTargetOrder.items || []).map((item: any) => ({
-          productId: item.productId,
-          quantity: item.quantity || 1,
-          conversionFactor: item.conversionFactor || 1,
-          name: item.name || item.productName,
-          sku: item.sku,
-          unitName: item.unitName,
-        })),
-        voidTargetOrder.orderNumber || voidTargetOrder.id,
-        voidReason,
-        voidTargetOrder.userName || "พนักงาน POS"
-      );
+      // the server returned the stock in the void transaction
+      void useProductStore.getState().fetchProducts();
 
       // the server already reversed points / credit debt; refresh the customer list from it
       void fetchCustomers().catch(() => undefined);

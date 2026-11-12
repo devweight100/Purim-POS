@@ -157,9 +157,12 @@ export const api = {
     },
   },
 
-  // 3. Products & Categories (With automatic offline caching)
+  // 3. Products & Categories
+  // Every full server response refreshes the READ-ONLY offline product cache (IndexedDB). The
+  // cache is read back only when the caller asks for it (the POS, so selling keeps working
+  // offline); back-office pages get the error instead of stale data.
   products: {
-    getAll: async (search?: string, categoryId?: string) => {
+    getAll: async (search?: string, categoryId?: string, opts?: { offlineCache?: boolean }) => {
       try {
         const q = new URLSearchParams();
         if (search) q.append('search', search);
@@ -171,11 +174,11 @@ export const api = {
         }
         return data;
       } catch (err) {
-        // Fallback to IndexedDB
-        if (!isRetryableError(err)) throw err;
+        // POS only: fall back to the offline cache when the server cannot be reached
+        if (!opts?.offlineCache || !isRetryableError(err)) throw err;
         const cached = await getCachedProducts();
         if (!cached.length) throw err;
-        return cached;
+        return Object.assign(cached, { fromOfflineCache: true });
       }
     },
     getByBarcode: async (barcode: string) => {
