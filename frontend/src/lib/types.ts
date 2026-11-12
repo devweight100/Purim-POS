@@ -799,11 +799,11 @@ export interface ProductWriteRequest {
   isActive?: boolean;
   minStockAlert?: number | string | null;
   supplierId?: string | null;
-  barcodes?: Array<{ barcode: string; supplierId?: string; label?: string } | string>;
-  packagingUnits?: ProductPackagingUnit[];
-  images?: ProductImage[];
-  wholesalePrices?: ProductWholesalePrice[];
-  bundleItems?: Array<{ childProductId: string; quantity: number }>;
+  barcodes?: Array<{ barcode?: string; supplierId?: string; label?: string } | string>;
+  packagingUnits?: Array<{ name?: string; qtyPerPrev?: number | string; barcode?: string | null; priceLevel1?: number | string | null; priceLevel2?: number | string | null; priceLevel3?: number | string | null; priceLevel4?: number | string | null; priceLevel5?: number | string | null }>;
+  images?: Array<{ dataUrl?: string; name?: string; isCover?: boolean }>; // rows without dataUrl are dropped by the server
+  wholesalePrices?: Array<{ minQuantity?: number | string | null; unitPrice?: number | string | null }>;
+  bundleItems?: Array<{ childProductId?: string; quantity?: number | string }>;
   supplierEntries?: Array<{ supplierId?: string; supplierSku?: string; unitCost?: number | string | null; lastCost?: number | string; isPreferred?: boolean; notes?: string }>;
 }
 

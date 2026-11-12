@@ -218,8 +218,9 @@ export const api = {
       }
     },
     getOne: (id: string) => apiFetch<ApiProduct>(`/products/${id}`),
-    create: (data: ProductWriteRequest) => apiFetch<ApiProduct>('/products', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: ProductWriteRequest) => apiFetch<ApiProduct>(`/products/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    // generic so callers can read the saved product into their own view type (default: the server shape)
+    create: <T = ApiProduct>(data: ProductWriteRequest) => apiFetch<T>('/products', { method: 'POST', body: JSON.stringify(data) }),
+    update: <T = ApiProduct>(id: string, data: ProductWriteRequest) => apiFetch<T>(`/products/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     bulkUpsert: (products: ProductWriteRequest[]) => apiFetch<BulkUpsertResponse>('/products/bulk-upsert', { method: 'POST', body: JSON.stringify({ products }) }),
     delete: (id: string) => apiFetch<ApiProduct>(`/products/${id}`, { method: 'DELETE' }),
     deleteAll: () => apiFetch<{ deleted: number }>('/products', { method: 'DELETE' }),
