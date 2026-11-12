@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../api';
-import { Shift, CashTransaction, Order } from '../types';
+import { Shift, CashTransaction, Order, ApiCashMovement, ApiShiftRecord, ApiShiftSummary } from '../types';
 
 /** Why cash goes in/out of the drawer (posted to the finance ledger by the server). */
 export interface CashPurposeInput {
@@ -47,6 +47,21 @@ const loadCachedShift = (): Shift | null => {
   }
 };
 
+/** The shift row of a /shifts/current or /shifts/open reply (older servers sent the row itself). */
+function shiftRowOf(res: ApiShiftSummary | null): ApiShiftRecord | null {
+  if (!res) return null;
+  return res.shift || (res as unknown as ApiShiftRecord);
+}
+
+const toCashTransaction = (shiftId: string) => (m: ApiCashMovement): CashTransaction => ({
+  id: m.id,
+  shiftId,
+  type: (m.type || '').toLowerCase() === 'out' ? 'out' : 'in',
+  amount: Number(m.amount) || 0,
+  reason: m.reason || '',
+  createdAt: m.createdAt,
+});
+
 const cacheServerShift = (shift: Shift | null) => {
   if (typeof window === 'undefined') return;
   try {
@@ -65,18 +80,11 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
 
   fetchCurrentShift: async () => {
     try {
-      const res: any = await api.shifts.getCurrent();
-      const s = res?.shift || res;
-      if (s && (s.status === 'OPEN' || res?.status === 'OPEN')) {
+      const res = await api.shifts.getCurrent();
+      const s = shiftRowOf(res);
+      if (res && s && (s.status === 'OPEN' || res.status === 'OPEN')) {
         const cashMovements: CashTransaction[] = Array.isArray(s.cashMovements)
-          ? s.cashMovements.map((m: any) => ({
-              id: m.id,
-              shiftId: s.id,
-              type: (m.type || '').toLowerCase() === 'out' ? 'out' : 'in',
-              amount: Number(m.amount) || 0,
-              reason: m.reason || '',
-              createdAt: m.createdAt,
-            }))
+          ? s.cashMovements.map(toCashTransaction(s.id))
           : get().cashTransactions;
 
         const mapped: Shift = {
@@ -116,18 +124,11 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
 
   openShift: async (userName: string, openingCash: number) => {
     try {
-      const serverRes: any = await api.shifts.open(openingCash);
-      const s = serverRes?.shift || serverRes;
-      if (s?.id) {
+      const serverRes = await api.shifts.open(openingCash);
+      const s = shiftRowOf(serverRes);
+      if (serverRes && s?.id) {
         const cashMovements: CashTransaction[] = Array.isArray(s.cashMovements)
-          ? s.cashMovements.map((m: any) => ({
-              id: m.id,
-              shiftId: s.id,
-              type: (m.type || '').toLowerCase() === 'out' ? 'out' : 'in',
-              amount: Number(m.amount) || 0,
-              reason: m.reason || '',
-              createdAt: m.createdAt,
-            }))
+          ? s.cashMovements.map(toCashTransaction(s.id))
           : [];
         const mapped: Shift = {
           id: s.id,
@@ -232,14 +233,16 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
       let creditAdd = 0;
 
       for (const p of order.payments) {
-        switch (p.method) {
+        // the server also sends CREDIT_DEBT / CREDIT for credit sales
+        const method: string = p.method;
+        switch (method) {
           case 'CASH': cashAdd += p.amount; break;
           case 'QR_PROMPTPAY': qrAdd += p.amount; break;
           case 'CREDIT_CARD': cardAdd += p.amount; break;
           case 'TRANSFER': transferAdd += p.amount; break;
-          case 'CREDIT_DEBT' as any:
-          case 'CREDIT_NOTE' as any:
-          case 'CREDIT' as any:
+          case 'CREDIT_DEBT':
+          case 'CREDIT_NOTE':
+          case 'CREDIT':
             creditAdd += p.amount;
             break;
         }

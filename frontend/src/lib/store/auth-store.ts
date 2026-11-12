@@ -46,9 +46,9 @@ export const useAuthStore = create<AuthStore>()(
             return { success: true };
           }
           return { success: false, error: 'เข้าสู่ระบบไม่สำเร็จ' };
-        } catch (error: any) {
+        } catch (error) {
           console.warn('Login error:', error);
-          return { success: false, error: error.message || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' };
+          return { success: false, error: (error instanceof Error && error.message) || 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' };
         }
       },
 
@@ -66,9 +66,9 @@ export const useAuthStore = create<AuthStore>()(
             return { success: true };
           }
           return { success: false, error: 'รหัส PIN ไม่ถูกต้อง' };
-        } catch (error: any) {
+        } catch (error) {
           console.warn('PIN Login error:', error);
-          return { success: false, error: error.message || 'รหัส PIN ไม่ถูกต้อง' };
+          return { success: false, error: (error instanceof Error && error.message) || 'รหัส PIN ไม่ถูกต้อง' };
         }
       },
 

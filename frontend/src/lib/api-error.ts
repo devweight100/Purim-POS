@@ -14,6 +14,12 @@ export class ApiError extends Error {
   }
 }
 
+/** `err.message` of a thrown value (Error, ApiError or an object with a message), else undefined. */
+export function errorText(err: unknown): string | undefined {
+  if (!err || typeof err !== 'object' || !('message' in err)) return undefined;
+  return typeof err.message === 'string' ? err.message : undefined;
+}
+
 export function isRetryableError(error: unknown): boolean {
   return error instanceof ApiError && (error.status === 0 || error.status === 408 || error.status === 429 || error.status >= 500);
 }

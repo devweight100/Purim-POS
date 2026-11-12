@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import type { ApiBankAccount } from './types';
 
 export interface BankAccount {
   id: string;
@@ -19,7 +20,7 @@ export interface BankAccount {
 let lastServerAccounts: BankAccount[] = [];
 let syncPromise: Promise<BankAccount[]> | null = null;
 
-export function normalizeBankAccount(a: any, idx = 0): BankAccount {
+export function normalizeBankAccount(a: ApiBankAccount | null | undefined, idx = 0): BankAccount {
   const qr = a?.qrImageUrl ?? a?.qrCodeUrl ?? null;
   return {
     id: String(a?.id || `bank_${idx}`),
@@ -35,7 +36,7 @@ export function normalizeBankAccount(a: any, idx = 0): BankAccount {
 }
 
 /** Remember a server response (called by api.bankAccounts.getAll). */
-export function rememberServerBankAccounts(rows: any[]): BankAccount[] {
+export function rememberServerBankAccounts(rows: ApiBankAccount[] | null | undefined): BankAccount[] {
   lastServerAccounts = Array.isArray(rows) ? rows.map((a, idx) => normalizeBankAccount(a, idx)) : [];
   return lastServerAccounts;
 }
@@ -45,7 +46,7 @@ export async function fetchBankAccountsFromBackend(): Promise<BankAccount[]> {
   if (syncPromise) return syncPromise;
   syncPromise = (async () => {
     try {
-      return rememberServerBankAccounts(await apiFetch('/bank-accounts'));
+      return rememberServerBankAccounts(await apiFetch<ApiBankAccount[] | null>('/bank-accounts'));
     } finally {
       syncPromise = null;
     }

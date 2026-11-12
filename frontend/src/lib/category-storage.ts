@@ -1,4 +1,5 @@
 import { apiFetch } from './api';
+import type { ApiCategory } from './types';
 
 export interface CategoryItem {
   id: string;
@@ -17,7 +18,7 @@ export interface CategoryItem {
 const CACHE_KEY = 'purim-cache:categories';
 let syncPromise: Promise<CategoryItem[]> | null = null;
 
-function normalizeCategory(c: any, idx = 0): CategoryItem {
+function normalizeCategory(c: ApiCategory | null | undefined, idx = 0): CategoryItem {
   return {
     id: String(c?.id || `cat_${idx}`),
     name: String(c?.name || 'ทั่วไป'),
@@ -32,15 +33,15 @@ function normalizeCategory(c: any, idx = 0): CategoryItem {
 export function readCachedCategories(): CategoryItem[] {
   if (typeof window === 'undefined') return [];
   try {
-    const parsed = JSON.parse(localStorage.getItem(CACHE_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed.map((c, idx) => normalizeCategory(c, idx)) : [];
+    const parsed: unknown = JSON.parse(localStorage.getItem(CACHE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed.map((c: ApiCategory, idx) => normalizeCategory(c, idx)) : [];
   } catch {
     return [];
   }
 }
 
 /** Normalise a server response and overwrite the offline cache with it. */
-export function cacheServerCategories(cats: any[]): CategoryItem[] {
+export function cacheServerCategories(cats: ApiCategory[] | null | undefined): CategoryItem[] {
   const normalized = Array.isArray(cats) ? cats.map((c, idx) => normalizeCategory(c, idx)) : [];
   if (typeof window !== 'undefined') {
     try {
@@ -55,7 +56,7 @@ export async function fetchCategoriesFromBackend(): Promise<CategoryItem[]> {
   if (syncPromise) return syncPromise;
   syncPromise = (async () => {
     try {
-      const data = await apiFetch('/categories');
+      const data = await apiFetch<ApiCategory[] | null>('/categories');
       return cacheServerCategories(Array.isArray(data) ? data : []);
     } finally {
       syncPromise = null;

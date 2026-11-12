@@ -16,7 +16,7 @@ export interface ProductPackagingUnit {
   id?: string;
   name: string;
   qtyPerPrev: number | string;
-  barcode?: string;
+  barcode?: string | null;
   priceLevel1?: number | string | null;
   priceLevel2?: number | string | null;
   priceLevel3?: number | string | null;
@@ -675,7 +675,7 @@ export interface ApiShiftSummary extends ApiShiftFigures {
  * onto its shift row. Every field is optional; legacy names are accepted.
  */
 export interface ApiShiftLike extends ApiShiftFigures {
-  id?: string;
+  id: string;
   shiftId?: string;
   shiftNumber?: string | null;
   shiftCode?: string | null;
@@ -686,7 +686,7 @@ export interface ApiShiftLike extends ApiShiftFigures {
   status?: string;
   shiftStatus?: string;
   isOpen?: boolean;
-  openedAt?: string;
+  openedAt: string;
   closedAt?: string | null;
   openingCash?: DecimalJson;
   actualCash?: DecimalJson | null;
@@ -696,7 +696,9 @@ export interface ApiShiftLike extends ApiShiftFigures {
   cashRefundAmount?: number;
   billDiscountsTotal?: number;
   pointsDiscountsTotal?: number;
-  bankAccountBreakdown?: Array<{ bankName: string; accountNumber: string; accountName?: string; amount: number; count?: number }>;
+  bankAccountBreakdown?: Array<{ accountLabel: string; amount: number }>;
+  /** callers flattening an ApiShiftSummary blank out its nested shift */
+  shift?: undefined;
 }
 
 export interface CashMovementRequest {
@@ -720,19 +722,11 @@ export interface ApiProductBarcode {
   supplierId?: string;
 }
 
-export interface ApiProductPackagingUnit {
-  id?: string;
-  name?: string;
+/** products.packagingUnits row (name / qtyPerPrev / barcode / priceLevel1-5); older shapes used unitName / factor / price. */
+export interface ApiProductPackagingUnit extends ProductPackagingUnit {
   unitName?: string;
-  qtyPerPrev?: number | string;
   factor?: number;
-  barcode?: string | null;
   price?: DecimalJson;
-  priceLevel1?: DecimalJson | null;
-  priceLevel2?: DecimalJson | null;
-  priceLevel3?: DecimalJson | null;
-  priceLevel4?: DecimalJson | null;
-  priceLevel5?: DecimalJson | null;
 }
 
 export interface ApiProductSupplierLink {
@@ -743,7 +737,7 @@ export interface ApiProductSupplierLink {
   unitCost?: DecimalJson | null;
   lastCost?: DecimalJson;
   isPreferred?: boolean;
-  notes?: string | null;
+  notes?: string;
   supplier?: { id?: string; name?: string } | null;
 }
 
