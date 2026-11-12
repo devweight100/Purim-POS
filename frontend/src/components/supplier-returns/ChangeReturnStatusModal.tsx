@@ -31,11 +31,14 @@ export function ChangeReturnStatusModal({
   const [selectedStatus, setSelectedStatus] = useState<SupplierReturnNote['status']>('PENDING_DEDUCTION');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
+  // show the note's current status when a note is opened (adjusted while rendering)
+  const [seenNote, setSeenNote] = useState<{ returnNote: typeof returnNote } | null>(null);
+  if (!seenNote || seenNote.returnNote !== returnNote) {
+    setSeenNote({ returnNote });
     if (returnNote) {
       setSelectedStatus(returnNote.status);
     }
-  }, [returnNote]);
+  }
 
   if (!returnNote) return null;
 
@@ -129,7 +132,7 @@ export function ChangeReturnStatusModal({
             <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3.5 space-y-1.5 text-xs text-amber-900">
               <div className="font-bold flex items-center gap-1.5 text-amber-950">
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>ตรวจพบการย้อนสถานะจาก "หักหนี้แล้ว"</span>
+                <span>ตรวจพบการย้อนสถานะจาก &quot;หักหนี้แล้ว&quot;</span>
               </div>
               <p className="text-[11px] leading-relaxed text-amber-800">
                 เอกสารนี้เคยถูกหักลดยอดหนี้ในใบสั่งซื้อ (PO) แล้ว หากย้อนสถานะกลับเป็น <b>รอหักลดหนี้</b> ระบบจะทำการ <b>คืนยอดหนี้ค้างชำระในใบ PO</b> ให้โดยอัตโนมัติ

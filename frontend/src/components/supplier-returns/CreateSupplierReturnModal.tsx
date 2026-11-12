@@ -104,6 +104,20 @@ interface CreateSupplierReturnModalProps {
   onSuccess: (returnNote: SupplierReturnNote) => void;
 }
 
+/** Supplier as kept by supplier-return-service (local shape). */
+type ReturnSupplier = { id: string; name: string; contactName?: string; phone?: string; address?: string };
+/** Product of the selected supplier (local shape of getProductsBySupplier). */
+type ReturnProduct = {
+  id: string;
+  name: string;
+  sku: string;
+  stock?: number;
+  unit?: string;
+  units?: Array<{ name?: string }>;
+  basePrice?: number | null;
+  costPrice?: number | null;
+};
+
 export function CreateSupplierReturnModal({
   open,
   onOpenChange,
@@ -112,7 +126,7 @@ export function CreateSupplierReturnModal({
   editingNote,
   onSuccess,
 }: CreateSupplierReturnModalProps) {
-  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<ReturnSupplier[]>([]);
   const allowDecimalQty = useAllowDecimalQty();
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('');
   
@@ -123,7 +137,7 @@ export function CreateSupplierReturnModal({
   const [availableClaims, setAvailableClaims] = useState<ClaimRecord[]>([]);
   const [allStoreClaims, setAllStoreClaims] = useState<ClaimRecord[]>([]);
   const [showOtherClaims, setShowOtherClaims] = useState(false);
-  const [supplierProducts, setSupplierProducts] = useState<any[]>([]);
+  const [supplierProducts, setSupplierProducts] = useState<ReturnProduct[]>([]);
   
   // Items chosen for return
   const [returnItems, setReturnItems] = useState<CreateSupplierReturnItemInput[]>([]);
@@ -133,7 +147,7 @@ export function CreateSupplierReturnModal({
 
   // Overstock product selection state
   const [productSearch, setProductSearch] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<ReturnProduct | null>(null);
   const [overstockQty, setOverstockQty] = useState<string>('1');
   const [overstockCost, setOverstockCost] = useState<string>('0');
   const [overstockReason, setOverstockReason] = useState<string>('สินค้าปกติขายไม่ออก / คืนสต็อก');
@@ -147,7 +161,10 @@ export function CreateSupplierReturnModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Load suppliers on open
-  useEffect(() => {
+  // load suppliers / reset the form when the modal opens (adjusted while rendering)
+  const [seenOpen, setSeenOpen] = useState<{ open: typeof open; initialSupplierId: typeof initialSupplierId; initialPoId: typeof initialPoId; editingNote: typeof editingNote } | null>(null);
+  if (!seenOpen || seenOpen.open !== open || seenOpen.initialSupplierId !== initialSupplierId || seenOpen.initialPoId !== initialPoId || seenOpen.editingNote !== editingNote) {
+    setSeenOpen({ open, initialSupplierId, initialPoId, editingNote });
     if (open) {
       const supps = loadSuppliers();
       setSuppliers(supps);
@@ -168,10 +185,13 @@ export function CreateSupplierReturnModal({
         setIsCustomEdited(false);
       }
     }
-  }, [open, initialSupplierId, initialPoId, editingNote]);
+  }
 
   // Load supplier-specific claims, POs, and products when supplier changes
-  useEffect(() => {
+  // load supplier-specific claims, POs and products when the supplier changes (adjusted while rendering)
+  const [seenSupplier, setSeenSupplier] = useState<{ selectedSupplierId: typeof selectedSupplierId; editingNote: typeof editingNote } | null>(null);
+  if (!seenSupplier || seenSupplier.selectedSupplierId !== selectedSupplierId || seenSupplier.editingNote !== editingNote) {
+    setSeenSupplier({ selectedSupplierId, editingNote });
     if (selectedSupplierId) {
       const pos = getPayablePOsBySupplier(selectedSupplierId);
       setPayablePOs(pos);
@@ -193,7 +213,7 @@ export function CreateSupplierReturnModal({
         setIsCustomEdited(false);
       }
     }
-  }, [selectedSupplierId, editingNote]);
+  }
 
   const currentSupplier = suppliers.find((s) => s.id === selectedSupplierId);
   const selectedPO = payablePOs.find((p) => p.id === selectedPoId);
@@ -218,11 +238,14 @@ export function CreateSupplierReturnModal({
   const grandTotalCost = Math.round((defectiveTotal + overstockTotal) * 100) / 100;
 
   // Auto-sync custom deduction amount if user hasn't manually overridden it
-  useEffect(() => {
+  // auto-sync the deduction amount unless the user overrode it (adjusted while rendering)
+  const [seenTotal, setSeenTotal] = useState<{ grandTotalCost: typeof grandTotalCost; isCustomEdited: typeof isCustomEdited } | null>(null);
+  if (!seenTotal || seenTotal.grandTotalCost !== grandTotalCost || seenTotal.isCustomEdited !== isCustomEdited) {
+    setSeenTotal({ grandTotalCost, isCustomEdited });
     if (!isCustomEdited) {
       setCustomDeductAmountStr(grandTotalCost > 0 ? String(grandTotalCost) : '');
     }
-  }, [grandTotalCost, isCustomEdited]);
+  }
 
   const parsedCustomAmount = parseFloat(customDeductAmountStr);
   const finalEffectiveCredit = (!isNaN(parsedCustomAmount) && parsedCustomAmount >= 0)
@@ -392,9 +415,9 @@ export function CreateSupplierReturnModal({
       toast.error('กรุณาเลือกหรือเพิ่มรายการสินค้าที่ต้องการส่งคืนอย่างน้อย 1 รายการ');
       return;
     }
-    const badItem = returnItems.find((i: any) => !isValidQty(Number(i.quantity), { allowDecimal: allowDecimalQty }) || !Number.isFinite(Number(i.unitCost)) || Number(i.unitCost) < 0);
+    const badItem = returnItems.find((i) => !isValidQty(Number(i.quantity), { allowDecimal: allowDecimalQty }) || !Number.isFinite(Number(i.unitCost)) || Number(i.unitCost) < 0);
     if (badItem) {
-      toast.error(`รายการ "${(badItem as any).productName || ''}" ต้องมีจำนวน${allowDecimalQty ? 'มากกว่า 0 (ทศนิยมไม่เกิน 2 ตำแหน่ง)' : 'เป็นจำนวนเต็มมากกว่า 0'} และต้นทุนไม่ติดลบ`);
+      toast.error(`รายการ "${badItem.productName || ''}" ต้องมีจำนวน${allowDecimalQty ? 'มากกว่า 0 (ทศนิยมไม่เกิน 2 ตำแหน่ง)' : 'เป็นจำนวนเต็มมากกว่า 0'} และต้นทุนไม่ติดลบ`);
       return;
     }
     if (finalEffectiveCredit > grandTotalCost + 0.001) {
