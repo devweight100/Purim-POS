@@ -147,7 +147,7 @@ export default function ClaimInventoryPage() {
         fetchAllClaimRecords(),
         fetchSuppliers(),
       ]);
-      setSuppliersList(loadedSuppliers || []);
+      setSuppliersList((loadedSuppliers || []).map((s) => ({ id: s.id, name: s.name, phone: s.phone ?? undefined })));
 
       let storeProducts = useProductStore.getState().products || [];
       if (!storeProducts.length) {

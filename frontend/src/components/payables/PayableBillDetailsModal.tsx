@@ -17,6 +17,7 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import { SupplierPayableBill, PayablePaymentEntry, rollbackPayableBillPayment } from '@/lib/payable-service';
 import { toast } from 'sonner';
+import type { ApiPurchaseOrderItem } from '@/lib/types';
 
 interface PayableBillDetailsModalProps {
   open: boolean;
@@ -28,16 +29,8 @@ interface PayableBillDetailsModalProps {
 }
 
 /** A line of the bill as shown here (payable-service keeps them untyped). */
-type PayableBillItem = {
-  productName?: string;
-  sku?: string;
-  unitName?: string;
-  quantity?: number | string;
-  receivedQuantity?: number | string;
-  unitPrice?: number | string;
-  costPrice?: number | string;
-  [extra: string]: unknown;
-};
+/** One PO line of the bill, as the server sends it. */
+type PayableBillItem = ApiPurchaseOrderItem;
 
 export function PayableBillDetailsModal({
   open,

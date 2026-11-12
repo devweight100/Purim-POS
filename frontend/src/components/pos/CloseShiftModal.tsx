@@ -19,6 +19,7 @@ import { mapServerShiftToSummary } from '@/lib/shift-service';
 import { api } from '@/lib/api';
 import { kickCashDrawer } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
+import type { ApiShiftLike } from '@/lib/types';
 
 interface CloseShiftModalProps {
   open: boolean;
@@ -131,9 +132,12 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
 
     // The server's figures for the closed shift (discounts, debt collections, returns, voids) win
     try {
-      const srv = (await api.shifts.getSummary(currentShift.id)) as ({ shift?: Record<string, unknown> } & Record<string, unknown>) | null;
+      const srv = await api.shifts.getSummary(currentShift.id);
       if (srv?.shift) {
-        const fromServer = mapServerShiftToSummary({ ...srv.shift, ...srv, shift: undefined, userName: dataForReport.userName });
+        const { shift, ...figures } = srv;
+        // the raw shift row carries Decimal strings; mapServerShiftToSummary converts every figure with Number()
+        const flat: ApiShiftLike = { ...(shift as unknown as ApiShiftLike), ...figures, userName: dataForReport.userName };
+        const fromServer = mapServerShiftToSummary(flat);
         dataForReport = { ...fromServer, bankAccountBreakdown: dataForReport.bankAccountBreakdown, isOpen: false };
       }
     } catch {

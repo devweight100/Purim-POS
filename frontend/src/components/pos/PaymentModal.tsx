@@ -50,9 +50,9 @@ interface CheckoutResult {
   orderNumber: string;
   isOfflineSaved?: boolean;
   createdAt?: string;
-  pointsEarned?: number | string;
-  pointsUsed?: number | string;
-  customer?: { points?: number | string } | null;
+  pointsEarned?: number | string | null;
+  pointsUsed?: number | string | null;
+  customer?: string | { points?: number | string | null } | null;
 }
 
 interface PaymentModalProps {
@@ -486,7 +486,7 @@ export function PaymentModal({
       const custSaleRes = {
         earnedPoints: isSynced ? Number(checkedOut.pointsEarned || 0) : 0,
         pointsUsed: isSynced ? Number(checkedOut.pointsUsed || 0) : 0,
-        newTotalPoints: isSynced ? Number(checkedOut.customer?.points || 0) : 0,
+        newTotalPoints: isSynced ? Number((typeof checkedOut.customer === 'object' ? checkedOut.customer?.points : 0) || 0) : 0,
       };
 
       // Automatically kick cash drawer open if cash payment was received (and total > 0)!

@@ -475,7 +475,7 @@ export default function PurchaseOrdersPage() {
       const result = await submitPurchaseReceipt(currentPo.id, {
         adjustAndComplete,
         supplierInvoiceNo: receiveSupplierInvoiceNo.trim(),
-        items: receiveItems.map((item) => ({
+        items: receiveItems.filter((item): item is typeof item & { id: string } => !!item.id).map((item) => ({
           purchaseOrderItemId: item.id,
           receivedQty: parseQty(item.toReceive, allowDecimalQty) || 0,
           unitCost: Number(item.unitCost),

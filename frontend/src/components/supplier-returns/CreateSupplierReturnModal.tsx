@@ -113,7 +113,7 @@ type ReturnProduct = {
   sku: string;
   stock?: number;
   unit?: string;
-  units?: Array<{ name?: string }>;
+  units?: Array<{ name?: string; unitName?: string }>;
   basePrice?: number | null;
   costPrice?: number | null;
 };
@@ -167,7 +167,7 @@ export function CreateSupplierReturnModal({
     setSeenOpen({ open, initialSupplierId, initialPoId, editingNote });
     if (open) {
       const supps = loadSuppliers();
-      setSuppliers(supps);
+      setSuppliers(supps.map((s) => ({ id: s.id, name: s.name, contactName: s.contactName ?? undefined, phone: s.phone ?? undefined, address: s.address ?? undefined })));
       if (editingNote) {
         setSelectedSupplierId(editingNote.supplierId);
         setSelectedPoId(editingNote.linkedPoId || '');
@@ -370,7 +370,7 @@ export function CreateSupplierReturnModal({
       productId: selectedProduct.id,
       productName: selectedProduct.name,
       sku: selectedProduct.sku,
-      unitName: selectedProduct.unit || selectedProduct.units?.[0]?.name || 'ชิ้น',
+      unitName: selectedProduct.unit || selectedProduct.units?.[0]?.unitName || selectedProduct.units?.[0]?.name || 'ชิ้น',
       quantity: qty,
       unitCost: cost,
       itemType: 'OVERSTOCK',

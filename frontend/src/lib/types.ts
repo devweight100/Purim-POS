@@ -868,6 +868,8 @@ export interface ApiOrderPayment {
 export interface ApiOrderCustomer {
   id?: string;
   name?: string | null;
+  /** the customer's points balance after the sale (checkout response) */
+  points?: DecimalJson | null;
   phone?: string | null;
   address?: string | null;
   taxId?: string | null;
