@@ -215,8 +215,8 @@ export default function UsersManagementPage() {
       await clearLocalProductData();
       toast.success(`ล้างข้อมูลสินค้าเรียบร้อย${backendCount > 0 ? ` ${backendCount} รายการ` : ''}`);
     } catch (err: any) {
-      await clearLocalProductData();
-      toast.warning('ล้างข้อมูลสินค้าในเครื่องแล้ว แต่เชื่อมต่อฐานข้อมูลไม่สำเร็จ: ' + (err.message || 'Server error'));
+      // the server still has the products: change nothing here
+      toast.error('ล้างข้อมูลสินค้าไม่สำเร็จ: ' + (err.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     } finally {
       setClearingProducts(false);
     }
