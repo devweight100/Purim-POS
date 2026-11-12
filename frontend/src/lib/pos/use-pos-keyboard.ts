@@ -127,7 +127,7 @@ export function usePosKeyboard({ dialogs, selection, scannerInputRef }: PosKeybo
       holdBillOrToggleHeld(dialogs.setShowHeldBills);
     } else if (keyIs(e, 'F12', 'f12')) {
       e.preventDefault();
-      dialogs.togglePayment();
+      dialogs.openPaymentIfItems();
     } else if (e.ctrlKey && keyIs(e, 'KeyH', 'h')) {
       e.preventDefault();
       dialogs.setShowOrderHistoryModal((prev) => !prev);

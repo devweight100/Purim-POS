@@ -56,12 +56,12 @@ export function usePosDialogs() {
     setShowPayment(true);
   };
 
-  /** F12: close the payment dialog, or open it when the cart has items (silently does nothing otherwise). */
-  const togglePayment = () => {
-    if (showPayment) {
-      setShowPayment(false);
-      return;
-    }
+  /**
+   * F12: open the payment dialog when the cart has items (silently does nothing otherwise).
+   * Not a toggle: in list mode the list layout's own F12 handler calls this too, and a toggle run twice
+   * by one key press used to open and immediately close the dialog.
+   */
+  const openPaymentIfItems = () => {
     if (useCartStore.getState().items.length > 0) {
       setPaymentInitialMethod(null);
       setShowPayment(true);
@@ -103,7 +103,7 @@ export function usePosDialogs() {
     openPayment: () => openPaymentWith(null),
     /** split payment: warns when the cart is empty */
     openSplitPayment: () => openPaymentWith('SPLIT'),
-    togglePayment,
+    openPaymentIfItems,
     openDebtPay,
   };
 }

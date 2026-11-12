@@ -36,7 +36,7 @@ export default function POSPage() {
         <PosListLayout
           viewMode={pos.viewMode}
           onViewModeChange={pos.changeViewMode}
-          onOpenPayment={d.togglePayment}
+          onOpenPayment={d.openPaymentIfItems}
           onOpenSplitPayment={d.openSplitPayment}
           onOpenBillDiscount={() => d.setShowBillDiscount((prev) => !prev)}
           onEditItem={(item) => d.setEditItem(item)}
