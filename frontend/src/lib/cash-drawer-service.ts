@@ -6,6 +6,17 @@
  * 3. Audio cash register chime feedback
  */
 
+import { getElectronAPI } from './electron-api';
+import { errorText } from './api-error';
+
+/** The part of the Web Serial API (Chrome / Edge, not in the TS DOM lib) used here. */
+interface SerialPortLike {
+  open(options: { baudRate: number }): Promise<void>;
+  writable: WritableStream<Uint8Array>;
+}
+type NavigatorWithSerial = Navigator & { serial: { requestPort(): Promise<SerialPortLike> } };
+type WindowWithWebkitAudio = Window & { webkitAudioContext?: typeof AudioContext };
+
 export interface CashDrawerConfig {
   enabled: boolean;
   method: 'desktop_native' | 'print_pulse' | 'web_serial';
@@ -48,11 +59,12 @@ export function saveCashDrawerConfig(config: Partial<CashDrawerConfig>): CashDra
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
 
     // Also sync printer name and kick method to Electron app config if running in desktop
-    if ((window as any).electronAPI?.saveConfig) {
-      (window as any).electronAPI.saveConfig({
+    const electron = getElectronAPI();
+    if (electron?.saveConfig) {
+      electron.saveConfig({
         printerName: updated.selectedPrinter || '',
         kickMethod: updated.kickTechnique || 'auto'
-      }).catch((e: any) => console.warn('Failed to sync config to Electron:', e));
+      }).catch((e: unknown) => console.warn('Failed to sync config to Electron:', e));
     }
 
     return updated;
@@ -62,7 +74,7 @@ export function saveCashDrawerConfig(config: Partial<CashDrawerConfig>): CashDra
 }
 
 // Active Serial Port reference for direct Web Serial ESC/POS communication
-let activeSerialPort: any = null;
+let activeSerialPort: SerialPortLike | null = null;
 
 /**
  * Check if Web Serial API is supported in current browser (Chrome / Edge)
@@ -83,15 +95,15 @@ export async function connectWebSerialPrinter(): Promise<{ success: boolean; mes
   }
 
   try {
-    const port = await (navigator as any).serial.requestPort();
+    const port = await (navigator as NavigatorWithSerial).serial.requestPort();
     await port.open({ baudRate: 9600 });
     activeSerialPort = port;
     return { success: true, message: 'เชื่อมต่อเครื่องพิมพ์ผ่าน Serial Port สำเร็จ' };
-  } catch (err: any) {
-    if (err.name === 'NotFoundError') {
+  } catch (err) {
+    if (err && typeof err === 'object' && 'name' in err && err.name === 'NotFoundError') {
       return { success: false, message: 'ยกเลิกการเลือกอุปกรณ์' };
     }
-    return { success: false, message: err.message || 'ไม่สามารถเชื่อมต่อพอร์ตได้' };
+    return { success: false, message: errorText(err) || 'ไม่สามารถเชื่อมต่อพอร์ตได้' };
   }
 }
 
@@ -118,8 +130,8 @@ export async function triggerSerialKick(): Promise<boolean> {
  */
 export function playCashDrawerChime() {
   try {
-    if (typeof window !== 'undefined' && ('AudioContext' in window || (window as any).webkitAudioContext)) {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (typeof window !== 'undefined' && ('AudioContext' in window || (window as WindowWithWebkitAudio).webkitAudioContext)) {
+      const AudioCtx = window.AudioContext || (window as WindowWithWebkitAudio).webkitAudioContext;
       const ctx = new AudioCtx();
 
       // Main ding (B5 note)
@@ -191,11 +203,12 @@ export async function kickCashDrawer(options?: {
   }
 
   // 1.5. If running inside Electron Native Desktop App -> kick drawer natively
-  if (typeof window !== 'undefined' && (window as any).electronAPI?.kickDrawer) {
+  const electron = getElectronAPI();
+  if (electron?.kickDrawer) {
     try {
       const printer = options?.printerName || config.selectedPrinter || undefined;
       const method = options?.technique || config.kickTechnique || 'auto';
-      const res = await (window as any).electronAPI.kickDrawer({
+      const res = await electron.kickDrawer({
         printerName: printer,
         method: method
       });
@@ -215,12 +228,12 @@ export async function kickCashDrawer(options?: {
           error: res?.error || res?.output || 'ไม่สามารถส่งสัญญาณเตะลิ้นชักไปยังเครื่องพิมพ์ได้' 
         };
       }
-    } catch (e: any) {
+    } catch (e) {
       console.warn('Electron native kickDrawer error:', e);
       return { 
         success: false, 
         methodUsed: 'electron_native', 
-        error: e?.message || 'เกิดข้อผิดพลาดในการสั่งเตะลิ้นชักผ่าน Electron' 
+        error: errorText(e) || 'เกิดข้อผิดพลาดในการสั่งเตะลิ้นชักผ่าน Electron' 
       };
     }
   }
