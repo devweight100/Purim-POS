@@ -140,8 +140,8 @@ export default function ClaimInventoryPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   // Load and enrich all claim stock data
-  const fetchData = async () => {
-    setLoading(true);
+  /** Loads the data; state is only updated after the request. */
+  const loadData = async () => {
     try {
       const [rawClaims, loadedSuppliers] = await Promise.all([
         fetchAllClaimRecords(),
@@ -228,8 +228,14 @@ export default function ClaimInventoryPage() {
     }
   };
 
+  const fetchData = async () => {
+    setLoading(true);
+    await loadData();
+  };
+
   useEffect(() => {
-    fetchData();
+    const run = async () => { await loadData(); };
+    void run();
   }, []);
 
   // Filter claim items
@@ -391,9 +397,13 @@ export default function ClaimInventoryPage() {
   }, [claimItems]);
 
   // Reset page when filters change
-  useEffect(() => {
+  const currentPageResetKey = JSON.stringify([search, selectedSupplierId, statusFilter, categoryFilter, activeTab]);
+  const [currentPageResetKeySeen, setCurrentPageResetKeySeen] = useState(currentPageResetKey);
+  if (currentPageResetKeySeen !== currentPageResetKey) {
+    // a filter changed: back to page 1 (adjusted while rendering, no extra effect pass)
+    setCurrentPageResetKeySeen(currentPageResetKey);
     setCurrentPage(1);
-  }, [search, selectedSupplierId, statusFilter, categoryFilter, activeTab]);
+  }
 
   // Paginated Products
   const paginatedProducts = useMemo(() => {

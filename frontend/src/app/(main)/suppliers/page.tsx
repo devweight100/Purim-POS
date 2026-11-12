@@ -26,8 +26,8 @@ export default function SuppliersPage() {
     creditTerms: 0,
   });
 
-  const fetchSuppliers = async () => {
-    setLoading(true);
+  /** Loads the data; state is only updated after the request. */
+  const loadSuppliers = async () => {
     try {
       const data = await apiFetch("/suppliers");
       if (Array.isArray(data)) {
@@ -45,8 +45,14 @@ export default function SuppliersPage() {
     }
   };
 
+  const fetchSuppliers = async () => {
+    setLoading(true);
+    await loadSuppliers();
+  };
+
   useEffect(() => {
-    fetchSuppliers();
+    const run = async () => { await loadSuppliers(); };
+    void run();
   }, []);
 
   const handleOpenAdd = () => {

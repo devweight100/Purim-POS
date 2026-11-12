@@ -37,8 +37,8 @@ export default function ShiftsHistoryPage() {
   // Active current shift in store
   const { currentShift, isShiftOpen } = useShiftStore();
 
-  const fetchShifts = async () => {
-    setLoading(true);
+  /** Loads the data; state is only updated after the request. */
+  const loadShifts = async () => {
     try {
       const res = await apiFetch('/shifts/history');
       const list = res?.data || (Array.isArray(res) ? res : []);
@@ -52,8 +52,14 @@ export default function ShiftsHistoryPage() {
     }
   };
 
+  const fetchShifts = async () => {
+    setLoading(true);
+    await loadShifts();
+  };
+
   useEffect(() => {
-    fetchShifts();
+    const run = async () => { await loadShifts(); };
+    void run();
     useShiftStore.getState().fetchCurrentShift();
     // The staff list (GET /auth/users) is limited to ADMIN/MANAGER; for others the cashier filter is built from the names stored on
     // each shift (see uniqueCashiers) instead of firing a request that can only return 403.

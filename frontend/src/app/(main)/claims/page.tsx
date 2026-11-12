@@ -64,8 +64,8 @@ export default function ClaimsPage() {
   const [selectedClaimForPdf, setSelectedClaimForPdf] = useState<ClaimRecord | null>(null);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
 
-  const fetchClaims = async () => {
-    setLoading(true);
+  /** Loads the data; state is only updated after the request. */
+  const loadClaims = async () => {
     try {
       const records = await fetchAllClaimRecords();
       setClaims(records);
@@ -78,8 +78,14 @@ export default function ClaimsPage() {
     }
   };
 
+  const fetchClaims = async () => {
+    setLoading(true);
+    await loadClaims();
+  };
+
   useEffect(() => {
-    fetchClaims();
+    const run = async () => { await loadClaims(); };
+    void run();
   }, []);
 
   // Summary statistics
@@ -133,9 +139,13 @@ export default function ClaimsPage() {
     return filteredClaims.slice(start, start + pageSize);
   }, [filteredClaims, currentPage, pageSize]);
 
-  useEffect(() => {
+  const currentPageResetKey = JSON.stringify([search, resolutionFilter, pageSize]);
+  const [currentPageResetKeySeen, setCurrentPageResetKeySeen] = useState(currentPageResetKey);
+  if (currentPageResetKeySeen !== currentPageResetKey) {
+    // a filter changed: back to page 1 (adjusted while rendering, no extra effect pass)
+    setCurrentPageResetKeySeen(currentPageResetKey);
     setCurrentPage(1);
-  }, [search, resolutionFilter, pageSize]);
+  }
 
   // Resolution Badge Helper
   const getResolutionBadge = (res: ClaimResolutionType) => {

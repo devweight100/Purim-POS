@@ -60,9 +60,9 @@ export default function UsersManagementPage() {
   const [submitting, setSubmitting] = useState(false);
   const [clearingProducts, setClearingProducts] = useState(false);
 
-  const fetchUsers = async () => {
+  /** Loads the staff list; state is only updated after the request. */
+  const loadUsers = async () => {
     try {
-      setLoading(true);
       const data = await api.auth.getUsers();
       if (Array.isArray(data)) {
         setUsers(data);
@@ -74,8 +74,14 @@ export default function UsersManagementPage() {
     }
   };
 
+  const fetchUsers = async () => {
+    setLoading(true);
+    await loadUsers();
+  };
+
   useEffect(() => {
-    fetchUsers();
+    const run = async () => { await loadUsers(); };
+    void run();
   }, []);
 
   const openCreateModal = () => {

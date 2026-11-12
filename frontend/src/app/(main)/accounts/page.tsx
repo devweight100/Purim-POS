@@ -46,8 +46,8 @@ export default function AccountsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const reload = async () => {
-    setLoading(true);
+  /** Loads the data; state is only updated after the request. */
+  const load = async () => {
     try {
       setAccounts(await fetchBankAccountsFromBackend());
       setLoadError(null);
@@ -59,8 +59,14 @@ export default function AccountsPage() {
     }
   };
 
+  const reload = async () => {
+    setLoading(true);
+    await load();
+  };
+
   useEffect(() => {
-    void reload();
+    const run = async () => { await load(); };
+    void run();
   }, []);
 
   const handleOpenAdd = () => {

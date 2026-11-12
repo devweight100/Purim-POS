@@ -108,17 +108,26 @@ export default function InventoryPage() {
   };
 
   useEffect(() => {
-    reloadData();
+    const run = async () => { await reloadData(); };
+    void run();
   }, []);
 
   // Reset pagination when filters change
-  useEffect(() => {
+  const inventoryPageResetKey = JSON.stringify([search, activeCategory, stockStatusFilter, inventoryPageSize]);
+  const [inventoryPageResetKeySeen, setInventoryPageResetKeySeen] = useState(inventoryPageResetKey);
+  if (inventoryPageResetKeySeen !== inventoryPageResetKey) {
+    // a filter changed: back to page 1 (adjusted while rendering, no extra effect pass)
+    setInventoryPageResetKeySeen(inventoryPageResetKey);
     setInventoryPage(1);
-  }, [search, activeCategory, stockStatusFilter, inventoryPageSize]);
+  }
 
-  useEffect(() => {
+  const movementPageResetKey = JSON.stringify([movementSearch, movementTypeFilter, movementDateFilter, movementPageSize]);
+  const [movementPageResetKeySeen, setMovementPageResetKeySeen] = useState(movementPageResetKey);
+  if (movementPageResetKeySeen !== movementPageResetKey) {
+    // a filter changed: back to page 1 (adjusted while rendering, no extra effect pass)
+    setMovementPageResetKeySeen(movementPageResetKey);
     setMovementPage(1);
-  }, [movementSearch, movementTypeFilter, movementDateFilter, movementPageSize]);
+  }
 
   const getCategoryName = (id: string) => storeCategories.find((c) => c.id === id)?.name || 'ไม่ระบุ';
 

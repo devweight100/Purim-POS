@@ -56,8 +56,8 @@ export default function SupplierReturnsPage() {
   const [statusChangeNote, setStatusChangeNote] = useState<SupplierReturnNote | null>(null);
   const [isStatusChangeModalOpen, setIsStatusChangeModalOpen] = useState(false);
 
-  const refreshData = async () => {
-    setLoading(true);
+  /** Loads the data; state is only updated after the request. */
+  const loadData = async () => {
     try {
       const [notes, supps, purchaseOrders] = await Promise.all([
         fetchSupplierReturnNotes(),
@@ -85,8 +85,14 @@ export default function SupplierReturnsPage() {
     }
   };
 
+  const refreshData = async () => {
+    setLoading(true);
+    await loadData();
+  };
+
   useEffect(() => {
-    refreshData();
+    const run = async () => { await loadData(); };
+    void run();
   }, []);
 
   // Open create modal with optional preset

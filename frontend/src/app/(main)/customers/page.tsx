@@ -107,8 +107,8 @@ export default function CustomersPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const reloadData = async () => {
-    setIsLoading(true);
+  /** Loads the data; state is only updated after the request. */
+  const loadData = async () => {
     try {
       const [list, config] = await Promise.all([fetchCustomers(), fetchLoyaltyConfig()]);
       setCustomers(list);
@@ -122,8 +122,14 @@ export default function CustomersPage() {
     }
   };
 
+  const reloadData = async () => {
+    setIsLoading(true);
+    await loadData();
+  };
+
   useEffect(() => {
-    reloadData();
+    const run = async () => { await loadData(); };
+    void run();
   }, []);
 
   // Summary Stats

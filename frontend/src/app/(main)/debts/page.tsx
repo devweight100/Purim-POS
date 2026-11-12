@@ -88,8 +88,8 @@ function DebtsContent() {
   const [receiptInstallment, setReceiptInstallment] = useState<DebtPaymentInstallment | null>(null);
 
   const [loadError, setLoadError] = useState<string | null>(null);
-  const reloadData = async () => {
-    setLoading(true);
+  /** Loads the data; state is only updated after the request. */
+  const loadData = async () => {
     try {
       const records = await fetchDebtRecords();
       setDebts(records);
@@ -103,8 +103,14 @@ function DebtsContent() {
     }
   };
 
+  const reloadData = async () => {
+    setLoading(true);
+    await loadData();
+  };
+
   useEffect(() => {
-    reloadData();
+    const run = async () => { await loadData(); };
+    void run();
   }, []);
 
   // Summary statistics across all debts
@@ -181,9 +187,13 @@ function DebtsContent() {
   }, [debts, activeCustomerIdFilter, statusTab, typeFilter, search]);
 
   // Reset pagination when search or filters change
-  useEffect(() => {
+  const currentPageResetKey = JSON.stringify([search, statusTab, typeFilter, activeCustomerIdFilter, pageSize]);
+  const [currentPageResetKeySeen, setCurrentPageResetKeySeen] = useState(currentPageResetKey);
+  if (currentPageResetKeySeen !== currentPageResetKey) {
+    // a filter changed: back to page 1 (adjusted while rendering, no extra effect pass)
+    setCurrentPageResetKeySeen(currentPageResetKey);
     setCurrentPage(1);
-  }, [search, statusTab, typeFilter, activeCustomerIdFilter, pageSize]);
+  }
 
   // Paginated records
   const totalPages = Math.max(1, Math.ceil(filteredDebts.length / pageSize));

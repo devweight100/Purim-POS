@@ -217,9 +217,13 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
   const [inventorySubFilter, setInventorySubFilter] = useState<'all' | 'deadstock' | 'lowstock'>('all');
 
   // Reset pagination on filter or tab change
-  useEffect(() => {
+  const currentPageResetKey = JSON.stringify([activeTab, timeRange, search, customStartDate, customEndDate, inventorySubFilter]);
+  const [currentPageResetKeySeen, setCurrentPageResetKeySeen] = useState(currentPageResetKey);
+  if (currentPageResetKeySeen !== currentPageResetKey) {
+    // a filter changed: back to page 1 (adjusted while rendering, no extra effect pass)
+    setCurrentPageResetKeySeen(currentPageResetKey);
     setCurrentPage(1);
-  }, [activeTab, timeRange, search, customStartDate, customEndDate, inventorySubFilter]);
+  }
 
   // Load the figures of the active tab for the period (the newest request wins)
   const requestSeq = useRef(0);
