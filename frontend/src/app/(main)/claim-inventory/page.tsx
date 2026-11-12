@@ -122,7 +122,7 @@ export default function ClaimInventoryPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [claimItems, setClaimItems] = useState<ClaimStockItem[]>([]);
-  const [suppliersList, setSuppliersList] = useState<any[]>([]);
+  const [suppliersList, setSuppliersList] = useState<Array<{ id: string; name: string; phone?: string }>>([]);
   
   // Filters
   const [search, setSearch] = useState('');
@@ -140,8 +140,8 @@ export default function ClaimInventoryPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
   // Load and enrich all claim stock data
-  const fetchData = async () => {
-    setLoading(true);
+  /** Loads the data; state is only updated after the request. */
+  const loadData = async () => {
     try {
       const [rawClaims, loadedSuppliers] = await Promise.all([
         fetchAllClaimRecords(),
@@ -176,7 +176,7 @@ export default function ClaimInventoryPage() {
         const matchedProduct = storeProducts.find(
           (p) => p.id === c.productId || p.sku === c.sku
         );
-        const rawCategory: any = matchedProduct?.category;
+        const rawCategory = matchedProduct?.category as string | { name?: string } | null | undefined;
         const category = typeof rawCategory === 'object' && rawCategory !== null
           ? (rawCategory.name || 'ทั่วไป')
           : (rawCategory || 'ทั่วไป');
@@ -228,8 +228,14 @@ export default function ClaimInventoryPage() {
     }
   };
 
+  const fetchData = async () => {
+    setLoading(true);
+    await loadData();
+  };
+
   useEffect(() => {
-    fetchData();
+    const run = async () => { await loadData(); };
+    void run();
   }, []);
 
   // Filter claim items
@@ -391,9 +397,13 @@ export default function ClaimInventoryPage() {
   }, [claimItems]);
 
   // Reset page when filters change
-  useEffect(() => {
+  const currentPageResetKey = JSON.stringify([search, selectedSupplierId, statusFilter, categoryFilter, activeTab]);
+  const [currentPageResetKeySeen, setCurrentPageResetKeySeen] = useState(currentPageResetKey);
+  if (currentPageResetKeySeen !== currentPageResetKey) {
+    // a filter changed: back to page 1 (adjusted while rendering, no extra effect pass)
+    setCurrentPageResetKeySeen(currentPageResetKey);
     setCurrentPage(1);
-  }, [search, selectedSupplierId, statusFilter, categoryFilter, activeTab]);
+  }
 
   // Paginated Products
   const paginatedProducts = useMemo(() => {
@@ -573,7 +583,7 @@ export default function ClaimInventoryPage() {
               <label className="text-xs font-bold text-slate-600 shrink-0">สถานะสต็อก:</label>
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
+                onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
                 className="h-9 px-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800 outline-none focus:border-indigo-500 shadow-2xs"
               >
                 <option value="IN_STOCK">📦 ของเคลมรอส่งคืน (ในสต็อก)</option>
@@ -626,7 +636,7 @@ export default function ClaimInventoryPage() {
       </div>
 
       {/* ─── MAIN TABS CONTENT ─── */}
-      <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="w-full space-y-3">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-full space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-200 pb-2">
           <TabsList className="bg-slate-100 p-1 rounded-xl h-auto">
             <TabsTrigger

@@ -60,22 +60,28 @@ export default function UsersManagementPage() {
   const [submitting, setSubmitting] = useState(false);
   const [clearingProducts, setClearingProducts] = useState(false);
 
-  const fetchUsers = async () => {
+  /** Loads the staff list; state is only updated after the request. */
+  const loadUsers = async () => {
     try {
-      setLoading(true);
       const data = await api.auth.getUsers();
       if (Array.isArray(data)) {
         setUsers(data);
       }
-    } catch (err: any) {
-      toast.error('ไม่สามารถโหลดรายชื่อพนักงานได้: ' + (err.message || 'Server error'));
+    } catch (err) {
+      toast.error('ไม่สามารถโหลดรายชื่อพนักงานได้: ' + ((err as Error).message || 'Server error'));
     } finally {
       setLoading(false);
     }
   };
 
+  const fetchUsers = async () => {
+    setLoading(true);
+    await loadUsers();
+  };
+
   useEffect(() => {
-    fetchUsers();
+    const run = async () => { await loadUsers(); };
+    void run();
   }, []);
 
   const openCreateModal = () => {
@@ -127,7 +133,7 @@ export default function UsersManagementPage() {
       setSubmitting(true);
       if (editingUser) {
         // Update user
-        const payload: any = {
+        const payload: { fullName: string; role: typeof formRole; permissions: typeof formPermissions; password?: string; pinCode?: string } = {
           fullName: formFullName.trim(),
           role: formRole,
           permissions: formPermissions,
@@ -161,8 +167,8 @@ export default function UsersManagementPage() {
 
       setModalOpen(false);
       fetchUsers();
-    } catch (err: any) {
-      toast.error('เกิดข้อผิดพลาด: ' + (err.message || 'ไม่สามารถบันทึกได้'));
+    } catch (err) {
+      toast.error('เกิดข้อผิดพลาด: ' + ((err as Error).message || 'ไม่สามารถบันทึกได้'));
     } finally {
       setSubmitting(false);
     }
@@ -183,8 +189,8 @@ export default function UsersManagementPage() {
       await api.auth.toggleUserActive(u.id);
       toast.success(`${u.isActive ? 'ระงับ' : 'เปิดใช้งาน'}บัญชี ${u.fullName} เรียบร้อย`);
       fetchUsers();
-    } catch (err: any) {
-      toast.error('เกิดข้อผิดพลาด: ' + err.message);
+    } catch (err) {
+      toast.error('เกิดข้อผิดพลาด: ' + (err as Error).message);
     }
   };
 
@@ -214,9 +220,9 @@ export default function UsersManagementPage() {
 
       await clearLocalProductData();
       toast.success(`ล้างข้อมูลสินค้าเรียบร้อย${backendCount > 0 ? ` ${backendCount} รายการ` : ''}`);
-    } catch (err: any) {
+    } catch (err) {
       // the server still has the products: change nothing here
-      toast.error('ล้างข้อมูลสินค้าไม่สำเร็จ: ' + (err.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
+      toast.error('ล้างข้อมูลสินค้าไม่สำเร็จ: ' + ((err as Error).message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     } finally {
       setClearingProducts(false);
     }
@@ -494,7 +500,7 @@ export default function UsersManagementPage() {
                   </label>
                   <select
                     value={formRole}
-                    onChange={(e) => setFormRole(e.target.value as any)}
+                    onChange={(e) => setFormRole(e.target.value as typeof formRole)}
                     className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   >
                     <option value="CASHIER">CASHIER (แคชเชียร์หน้าร้าน)</option>

@@ -71,16 +71,54 @@ function bucketLabel(key: string) {
   return new Date(`${key}T00:00:00Z`).toLocaleDateString("th-TH", { day: "numeric", month: "short", timeZone: "UTC" });
 }
 
+type Num = number | string | null | undefined;
+
+/** One bill in the dashboard's recent-orders list. */
+interface DashboardOrder {
+  id?: string;
+  orderNumber?: string;
+  status?: string;
+  payments?: Array<{ method: string }>;
+  customerName?: string | null;
+  customer?: string | { name?: string } | null;
+  createdAt: string;
+  totalAmount?: number;
+  total?: number;
+  itemCount?: number;
+  items?: unknown[];
+}
+
+/** Response of GET /reports/dashboard (local shape; candidate for lib/types.ts). */
+interface DashboardReport {
+  sales?: {
+    voidedAmount?: Num; returnsAmount?: Num; billsInclVat?: Num; netSales?: Num; completedCount?: Num;
+    voidedCount?: Num; returnCount?: Num; unitsSoldNet?: Num; averageBasket?: Num;
+  };
+  payments?: { cash?: Num; qrTransfer?: Num; credit?: Num; card?: Num; other?: Num };
+  inventory?: {
+    lowStockCount?: Num; outOfStockCount?: Num; lowStockThreshold?: Num; totalProducts?: Num;
+    stockCostValue?: Num; stockRetailValue?: Num;
+  };
+  receivables?: { totalPending?: Num };
+  totalCustomers?: Num;
+  timeline?: Array<{ date: string; sales?: Num; voided?: Num; returns?: Num; netSales?: Num; orders?: Num }>;
+  topProducts?: Array<{ name: string; sku?: string; quantity?: Num; revenue?: Num }>;
+  recentOrders?: DashboardOrder[];
+}
+
 export default function DashboardPage() {
   const [timeFilter, setTimeFilter] = useState<DashboardRange>("7days");
-  const [loading, setLoading] = useState(false);
-  const [dash, setDash] = useState<any>(null);
+  // starts as loading: the first load runs right after mount
+  const [loading, setLoading] = useState(true);
+  const [dash, setDash] = useState<DashboardReport | null>(null);
   const [claims, setClaims] = useState<ClaimRecord[]>([]);
+  // when the figures were loaded (the claims period is counted from it)
+  const [loadedAt, setLoadedAt] = useState(() => Date.now());
 
   // All figures come from the server aggregate (/reports/dashboard): no row cap for "all",
   // returns netted like the P&L, Bangkok days, one low-stock threshold (StoreSettings).
-  const loadDashboardData = async (range: DashboardRange = timeFilter) => {
-    setLoading(true);
+  /** Loads the figures; state is only updated after the requests. */
+  const fetchDashboard = async (range: DashboardRange) => {
     try {
       const [dashRes, claimsRes] = await Promise.allSettled([
         apiFetch(`/reports/dashboard?range=${range}`),
@@ -89,22 +127,34 @@ export default function DashboardPage() {
       if (dashRes.status === "fulfilled") setDash(dashRes.value);
       else setDash(null);
       if (claimsRes.status === "fulfilled") {
-        const val: any = claimsRes.value;
+        const val = claimsRes.value as ClaimRecord[] | { data?: ClaimRecord[] };
         setClaims(Array.isArray(val) ? val : Array.isArray(val?.data) ? val.data : []);
       }
+      setLoadedAt(Date.now());
     } finally {
       setLoading(false);
     }
   };
 
+  const loadDashboardData = async (range: DashboardRange = timeFilter) => {
+    setLoading(true);
+    await fetchDashboard(range);
+  };
+
+  const changeTimeFilter = (range: DashboardRange) => {
+    if (range !== timeFilter) setLoading(true);
+    setTimeFilter(range);
+  };
+
   useEffect(() => {
-    loadDashboardData(timeFilter);
+    const run = async () => { await fetchDashboard(timeFilter); };
+    void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeFilter]);
 
   // Claim refunds of the same period (Bangkok calendar) -- shown separately, like the P&L
   const filteredClaims = useMemo(() => {
-    const now = Date.now();
+    const now = loadedAt;
     const today = bangkokStartOfDay(now);
     const { year, month } = bangkokParts(now);
     const from =
@@ -118,17 +168,17 @@ export default function DashboardPage() {
       if (!claimTime) return true;
       return claimTime >= from;
     });
-  }, [claims, timeFilter]);
+  }, [claims, timeFilter, loadedAt]);
 
   const kpi = useMemo(() => {
-    const s = dash?.sales || {};
-    const pay = dash?.payments || {};
-    const inv = dash?.inventory || {};
+    const s: NonNullable<DashboardReport["sales"]> = dash?.sales || {};
+    const pay: NonNullable<DashboardReport["payments"]> = dash?.payments || {};
+    const inv: NonNullable<DashboardReport["inventory"]> = dash?.inventory || {};
 
     let claimRefundAmount = 0;
     let claimRefundCount = 0;
     filteredClaims.forEach((c) => {
-      const isRefund = c.resolutionType === "REFUND_CASH" || c.resolutionType === "REFUND_TRANSFER" || (c as any).claimType === "REFUND";
+      const isRefund = c.resolutionType === "REFUND_CASH" || c.resolutionType === "REFUND_TRANSFER" || (c as ClaimRecord & { claimType?: string }).claimType === "REFUND";
       if (isRefund) {
         claimRefundCount++;
         claimRefundAmount += Number(c.totalClaimValue || c.refundAmount || 0);
@@ -178,7 +228,7 @@ export default function DashboardPage() {
 
   // Timeline (Bangkok days, or months for long ranges)
   const salesTimelineData = useMemo(() => {
-    return (dash?.timeline || []).map((t: any) => ({
+    return (dash?.timeline || []).map((t) => ({
       date: bucketLabel(t.date),
       fullDate: t.date,
       grossSales: Number(t.sales || 0) + Number(t.voided || 0),
@@ -206,12 +256,12 @@ export default function DashboardPage() {
 
   // Top 5 products by net revenue (after bill discounts and returns)
   const topProductsData = useMemo(() => {
-    return (dash?.topProducts || []).map((p: any) => ({ name: p.name, sku: p.sku, quantity: Number(p.quantity || 0), revenue: Number(p.revenue || 0) })) as {
+    return (dash?.topProducts || []).map((p) => ({ name: p.name, sku: p.sku, quantity: Number(p.quantity || 0), revenue: Number(p.revenue || 0) })) as {
       name: string; sku?: string; quantity: number; revenue: number;
     }[];
   }, [dash]);
 
-  const recentOrders: any[] = useMemo(() => dash?.recentOrders || [], [dash]);
+  const recentOrders: DashboardOrder[] = useMemo(() => dash?.recentOrders || [], [dash]);
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-5 p-4 sm:p-6 lg:p-7 font-sans">
@@ -242,7 +292,7 @@ export default function DashboardPage() {
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setTimeFilter(tab.id as any)}
+                onClick={() => changeTimeFilter(tab.id as typeof timeFilter)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   timeFilter === tab.id
                     ? "bg-indigo-600 text-white shadow-xs"
@@ -613,7 +663,7 @@ export default function DashboardPage() {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value: any) => [formatCurrency(Number(value)), "ยอดรวม"]}
+                    formatter={(value) => [formatCurrency(Number(value)), "ยอดรวม"]}
                     contentStyle={{
                       backgroundColor: "#0f172a",
                       color: "#ffffff",
@@ -762,7 +812,7 @@ export default function DashboardPage() {
                 const isVoid = ord.status === "VOIDED" || ord.status === "CANCELLED";
                 const isCredit =
                   Array.isArray(ord.payments) &&
-                  ord.payments.some((p: any) => p.method === "CREDIT_DEBT");
+                  ord.payments.some((p) => p.method === "CREDIT_DEBT");
 
                 return (
                   <div

@@ -47,16 +47,21 @@ export function ReconcilePanel({ accounts, onChanged }: { accounts: FinAccount[]
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [adjustReason, setAdjustReason] = useState('');
   const [saving, setSaving] = useState(false);
-  useEffect(() => { if (!accountId && banks[0]) setAccountId(banks[0].id); }, [banks, accountId]);
+  // default to the first account (adjusted while rendering; stops once one is chosen)
+  if (!accountId && banks[0]) setAccountId(banks[0].id);
 
   const load = useCallback(async () => {
     if (!accountId) return;
     try {
       const s = await apiFetch(`/finance/reconcile/${accountId}?to=${encodeURIComponent(statementDate)}`);
       setState(s); setChecked(new Set());
-    } catch (err: any) { toast.error(err?.message || 'โหลดไม่สำเร็จ'); }
-  }, [accountId, statementDate]);
-  useEffect(() => { void load(); }, [load]);
+    } catch (err) { toast.error((err as Error | undefined)?.message || 'โหลดไม่สำเร็จ'); }
+  }, [accountId, statementDate, setChecked]);
+  useEffect(() => {
+    // load() only updates state after its request
+    const run = async () => { await load(); };
+    void run();
+  }, [load]);
 
   const signed = (r: Row) => (r.direction === 'IN' ? 1 : -1) * r.amount;
   const cleared = useMemo(() => (state ? state.clearedBalance + state.unreconciled.filter((r) => checked.has(r.id)).reduce((s, r) => s + signed(r), 0) : 0), [state, checked]);
@@ -90,7 +95,7 @@ export function ReconcilePanel({ accounts, onChanged }: { accounts: FinAccount[]
       });
       toast.success(res.difference === 0 ? `กระทบยอดตรงกันแล้ว (${res.matched} รายการ)` : `บันทึกแล้ว ยังต่างอยู่ ${formatCurrency(res.difference)}`);
       setAdjustReason(''); void load(); onChanged();
-    } catch (err: any) { toast.error(err?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
+    } catch (err) { toast.error((err as Error | undefined)?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
   };
 
   return (

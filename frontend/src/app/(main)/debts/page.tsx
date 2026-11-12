@@ -59,6 +59,8 @@ function DebtsContent() {
   const { user } = useAuthStore();
   const [debts, setDebts] = useState<DebtRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  // "now" for overdue checks: the time the debts were (re)loaded
+  const [now, setNow] = useState(() => Date.now());
   const [search, setSearch] = useState<string>('');
   const [statusTab, setStatusTab] = useState<'all' | 'unpaid' | 'overdue' | 'paid'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'INDIVIDUAL' | 'COMPANY'>('all');
@@ -66,11 +68,14 @@ function DebtsContent() {
   // Specific customer filter from URL params
   const [activeCustomerIdFilter, setActiveCustomerIdFilter] = useState<string | null>(customerIdParam);
 
-  useEffect(() => {
+  // follow a new ?customerId= (adjusted while rendering instead of an effect)
+  const [seenCustomerIdParam, setSeenCustomerIdParam] = useState(customerIdParam);
+  if (seenCustomerIdParam !== customerIdParam) {
+    setSeenCustomerIdParam(customerIdParam);
     if (customerIdParam) {
       setActiveCustomerIdFilter(customerIdParam);
     }
-  }, [customerIdParam]);
+  }
 
   // Pagination
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -88,23 +93,30 @@ function DebtsContent() {
   const [receiptInstallment, setReceiptInstallment] = useState<DebtPaymentInstallment | null>(null);
 
   const [loadError, setLoadError] = useState<string | null>(null);
-  const reloadData = async () => {
-    setLoading(true);
+  /** Loads the data; state is only updated after the request. */
+  const loadData = async () => {
     try {
       const records = await fetchDebtRecords();
       setDebts(records);
       setLoadError(null);
-    } catch (err: any) {
+    } catch (err) {
       console.warn('Failed to load debt records:', err);
       setDebts([]);
       setLoadError(errorMessage(err, 'ไม่สามารถโหลดข้อมูลบิลค้างชำระได้'));
     } finally {
+      setNow(Date.now());
       setLoading(false);
     }
   };
 
+  const reloadData = async () => {
+    setLoading(true);
+    await loadData();
+  };
+
   useEffect(() => {
-    reloadData();
+    const run = async () => { await loadData(); };
+    void run();
   }, []);
 
   // Summary statistics across all debts
@@ -115,8 +127,6 @@ function DebtsContent() {
     let unpaidCount = 0;
     let paidCount = 0;
     let overdueCount = 0;
-
-    const now = Date.now();
 
     debts.forEach((d) => {
       totalDebtValue += d.totalAmount;
@@ -143,11 +153,10 @@ function DebtsContent() {
       overdueCount,
       totalBills: debts.length,
     };
-  }, [debts]);
+  }, [debts, now]);
 
   // Filtered debts based on search, status tab, customer type, and activeCustomerIdFilter
   const filteredDebts = useMemo(() => {
-    const now = Date.now();
     return debts.filter((d) => {
       // 0. Filter by active customer ID from URL
       if (activeCustomerIdFilter && d.customerId !== activeCustomerIdFilter) {
@@ -181,9 +190,13 @@ function DebtsContent() {
   }, [debts, activeCustomerIdFilter, statusTab, typeFilter, search]);
 
   // Reset pagination when search or filters change
-  useEffect(() => {
+  const currentPageResetKey = JSON.stringify([search, statusTab, typeFilter, activeCustomerIdFilter, pageSize]);
+  const [currentPageResetKeySeen, setCurrentPageResetKeySeen] = useState(currentPageResetKey);
+  if (currentPageResetKeySeen !== currentPageResetKey) {
+    // a filter changed: back to page 1 (adjusted while rendering, no extra effect pass)
+    setCurrentPageResetKeySeen(currentPageResetKey);
     setCurrentPage(1);
-  }, [search, statusTab, typeFilter, activeCustomerIdFilter, pageSize]);
+  }
 
   // Paginated records
   const totalPages = Math.max(1, Math.ceil(filteredDebts.length / pageSize));
@@ -393,7 +406,7 @@ function DebtsContent() {
             <span className="font-semibold text-slate-500">ประเภทลูกค้า:</span>
             <select
               value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as any)}
+              onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}
               className="h-8 rounded-lg border border-slate-300 bg-white px-2 font-bold text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500 shadow-2xs"
             >
               <option value="all">ทั้งหมด</option>
@@ -476,7 +489,7 @@ function DebtsContent() {
                 paginatedDebts.map((debt, idx) => {
                   const isPaid = debt.status === 'PAID' || debt.remainingDebt <= 0;
                   const isPartial = debt.status === 'PARTIAL' || (debt.paidAmount > 0 && debt.remainingDebt > 0);
-                  const isOverdue = !!(debt.dueDate && new Date(debt.dueDate).getTime() < Date.now() && debt.remainingDebt > 0);
+                  const isOverdue = !!(debt.dueDate && new Date(debt.dueDate).getTime() < now && debt.remainingDebt > 0);
                   const progressPct = debt.progressPercent;
 
                   return (
@@ -735,8 +748,8 @@ function DebtsContent() {
             toast.success('ยกเลิกใบรับชำระแล้ว ยอดหนี้กลับมาค้างชำระ');
             setHistoryModalOpen(false);
             void reloadData();
-          } catch (err: any) {
-            toast.error(err?.message || 'ยกเลิกไม่สำเร็จ');
+          } catch (err) {
+            toast.error((err as Error | undefined)?.message || 'ยกเลิกไม่สำเร็จ');
           }
         } : undefined}
       />

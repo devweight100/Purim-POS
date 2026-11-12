@@ -30,15 +30,19 @@ export default function ApprovalsPage() {
     try {
       const [list, r] = await Promise.all([apiFetch('/approvals?limit=200'), apiFetch('/approvals/rules/current')]);
       setRows(list.data || []); setRules(r);
-    } catch (err: any) { toast.error(err?.message || 'โหลดไม่สำเร็จ'); }
+    } catch (err) { toast.error((err as Error | undefined)?.message || 'โหลดไม่สำเร็จ'); }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    // load() only updates state after its requests
+    const run = async () => { await load(); };
+    void run();
+  }, [load]);
 
   const saveRules = async () => {
     if (!rules) return;
     setSaving(true);
     try { setRules(await apiFetch('/approvals/rules/current', { method: 'PUT', body: JSON.stringify(rules) })); toast.success('บันทึกกฎการอนุมัติแล้ว'); }
-    catch (err: any) { toast.error(err?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
+    catch (err) { toast.error((err as Error | undefined)?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
   };
 
   return (

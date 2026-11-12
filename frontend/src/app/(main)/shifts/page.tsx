@@ -21,7 +21,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 
 export default function ShiftsHistoryPage() {
   const [shifts, setShifts] = useState<ShiftSummaryData[]>([]);
-  const [usersList, setUsersList] = useState<any[]>([]);
+  const [usersList, setUsersList] = useState<Array<{ id?: string; username?: string; fullName?: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -36,9 +36,11 @@ export default function ShiftsHistoryPage() {
 
   // Active current shift in store
   const { currentShift, isShiftOpen } = useShiftStore();
+  // "today" of the date filter: when the shifts were (re)loaded
+  const [loadedAt, setLoadedAt] = useState(() => Date.now());
 
-  const fetchShifts = async () => {
-    setLoading(true);
+  /** Loads the data; state is only updated after the request. */
+  const loadShifts = async () => {
     try {
       const res = await apiFetch('/shifts/history');
       const list = res?.data || (Array.isArray(res) ? res : []);
@@ -48,12 +50,19 @@ export default function ShiftsHistoryPage() {
       setShifts([]);
       setLoadError(errorMessage(err, 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     } finally {
+      setLoadedAt(Date.now());
       setLoading(false);
     }
   };
 
+  const fetchShifts = async () => {
+    setLoading(true);
+    await loadShifts();
+  };
+
   useEffect(() => {
-    fetchShifts();
+    const run = async () => { await loadShifts(); };
+    void run();
     useShiftStore.getState().fetchCurrentShift();
     // The staff list (GET /auth/users) is limited to ADMIN/MANAGER; for others the cashier filter is built from the names stored on
     // each shift (see uniqueCashiers) instead of firing a request that can only return 403.
@@ -98,7 +107,7 @@ export default function ShiftsHistoryPage() {
   // Filter shifts based on Cashier, Date, Search, and Status
   const filteredShifts = useMemo(() => {
     // Bangkok calendar days (not UTC / device TZ)
-    const now = Date.now();
+    const now = loadedAt;
     const today = bangkokDayKey(now);
     const yesterday = bangkokDayKey(now - DAY_MS);
     const sevenDaysAgo = bangkokDayKey(now - 6 * DAY_MS);
@@ -150,7 +159,7 @@ export default function ShiftsHistoryPage() {
 
       return true;
     });
-  }, [shifts, userFilter, dateFilter, customDate, statusFilter, search]);
+  }, [shifts, userFilter, dateFilter, customDate, statusFilter, search, loadedAt]);
 
   // Group filtered shifts by Calendar Day (Date string 'YYYY-MM-DD')
   const groupedByDay = useMemo(() => {
@@ -411,7 +420,7 @@ export default function ShiftsHistoryPage() {
           {/* Quick Date Filters */}
           <select
             value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value as any)}
+            onChange={(e) => setDateFilter(e.target.value as typeof dateFilter)}
             className="h-11 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:border-indigo-500"
           >
             <option value="ALL">📅 ทุกช่วงวันที่</option>
@@ -434,7 +443,7 @@ export default function ShiftsHistoryPage() {
           {/* Status Discrepancy Filter */}
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
+            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
             className="h-11 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:border-indigo-500"
           >
             <option value="ALL">ทุกผลการปิดกะ</option>

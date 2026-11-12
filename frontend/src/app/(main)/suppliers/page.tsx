@@ -10,14 +10,25 @@ import { Search, Plus, Edit, Trash2, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { LoadErrorState, errorMessage } from "@/components/common/LoadErrorState";
 
+/** Supplier as listed / edited here (creditTerms is "" while its input is empty). */
+interface SupplierForm {
+  id?: string;
+  name?: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  creditTerms?: number | string | null;
+}
+
 export default function SuppliersPage() {
-  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<Array<SupplierForm & { id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [currentSupplier, setCurrentSupplier] = useState<any>({
+  const [currentSupplier, setCurrentSupplier] = useState<SupplierForm>({
     name: "",
     contactName: "",
     phone: "",
@@ -26,8 +37,8 @@ export default function SuppliersPage() {
     creditTerms: 0,
   });
 
-  const fetchSuppliers = async () => {
-    setLoading(true);
+  /** Loads the data; state is only updated after the request. */
+  const loadSuppliers = async () => {
     try {
       const data = await apiFetch("/suppliers");
       if (Array.isArray(data)) {
@@ -36,7 +47,7 @@ export default function SuppliersPage() {
         setSuppliers([]);
       }
       setLoadError(null);
-    } catch (err: any) {
+    } catch (err) {
       console.warn("Failed to fetch suppliers:", err);
       setSuppliers([]);
       setLoadError(errorMessage(err, "ติดต่อเซิร์ฟเวอร์ไม่ได้"));
@@ -45,8 +56,14 @@ export default function SuppliersPage() {
     }
   };
 
+  const fetchSuppliers = async () => {
+    setLoading(true);
+    await loadSuppliers();
+  };
+
   useEffect(() => {
-    fetchSuppliers();
+    const run = async () => { await loadSuppliers(); };
+    void run();
   }, []);
 
   const handleOpenAdd = () => {
@@ -62,7 +79,7 @@ export default function SuppliersPage() {
     setIsDialogOpen(true);
   };
 
-  const handleOpenEdit = (supp: any) => {
+  const handleOpenEdit = (supp: SupplierForm) => {
     setIsEditMode(true);
     // null columns (e.g. address) must not reach controlled inputs as null
     setCurrentSupplier({
@@ -128,8 +145,8 @@ export default function SuppliersPage() {
       }
       setIsDialogOpen(false);
       fetchSuppliers();
-    } catch (err: any) {
-      toast.error(err?.message || "บันทึกข้อมูลผู้จำหน่ายไม่สำเร็จ");
+    } catch (err) {
+      toast.error((err as Error | undefined)?.message || "บันทึกข้อมูลผู้จำหน่ายไม่สำเร็จ");
     }
   };
 
@@ -139,8 +156,8 @@ export default function SuppliersPage() {
       await apiFetch(`/suppliers/${id}`, { method: "DELETE" });
       toast.success("ลบผู้จำหน่ายสำเร็จ");
       fetchSuppliers();
-    } catch (err: any) {
-      toast.error(err?.message || "ลบผู้จำหน่ายไม่สำเร็จ");
+    } catch (err) {
+      toast.error((err as Error | undefined)?.message || "ลบผู้จำหน่ายไม่สำเร็จ");
     }
   };
 

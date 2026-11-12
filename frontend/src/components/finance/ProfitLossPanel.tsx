@@ -18,6 +18,14 @@ interface PL {
 }
 const iso = (d: Date) => bangkokDayKey(d); // Bangkok calendar day
 
+/** One line of the statement. */
+const Row = ({ label, value, strong, indent, sign }: { label: string; value: number; strong?: boolean; indent?: boolean; sign?: '-' | '+' }) => (
+  <div className={`flex justify-between py-1 ${strong ? 'font-black border-t border-slate-300 mt-1 pt-2' : ''} ${indent ? 'pl-5 text-slate-600' : ''}`}>
+    <span>{label}</span>
+    <span className={`font-mono ${value < 0 ? 'text-rose-600' : ''}`}>{sign === '-' && value ? `(${formatCurrency(value)})` : formatCurrency(value)}</span>
+  </div>
+);
+
 export function ProfitLossPanel() {
   const now = new Date();
   const bk = bangkokParts(now);
@@ -28,7 +36,7 @@ export function ProfitLossPanel() {
     // date-only = whole Bangkok day on the server (to is inclusive, up to next day 00:00)
     const f = from;
     const t = to;
-    apiFetch(`/finance/profit-loss?from=${encodeURIComponent(f)}&to=${encodeURIComponent(t)}`).then(setData).catch((err: any) => toast.error(err?.message || 'โหลดไม่สำเร็จ'));
+    apiFetch(`/finance/profit-loss?from=${encodeURIComponent(f)}&to=${encodeURIComponent(t)}`).then(setData).catch((err: unknown) => toast.error((err as Error | undefined)?.message || 'โหลดไม่สำเร็จ'));
   }, [from, to]);
   const preset = (kind: 'this' | 'last' | 'year') => {
     const n = new Date();
@@ -38,12 +46,6 @@ export function ProfitLossPanel() {
     if (kind === 'last') { setFrom(at(year, month - 1, 1)); setTo(at(year, month, 0)); }
     if (kind === 'year') { setFrom(at(year, 0, 1)); setTo(iso(n)); }
   };
-  const Row = ({ label, value, strong, indent, sign }: { label: string; value: number; strong?: boolean; indent?: boolean; sign?: '-' | '+' }) => (
-    <div className={`flex justify-between py-1 ${strong ? 'font-black border-t border-slate-300 mt-1 pt-2' : ''} ${indent ? 'pl-5 text-slate-600' : ''}`}>
-      <span>{label}</span>
-      <span className={`font-mono ${value < 0 ? 'text-rose-600' : ''}`}>{sign === '-' && value ? `(${formatCurrency(value)})` : formatCurrency(value)}</span>
-    </div>
-  );
   const exportCsv = () => {
     if (!data) return;
     const lines = [

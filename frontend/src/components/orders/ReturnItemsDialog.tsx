@@ -17,6 +17,7 @@ interface OrderDetail {
   items: OrderItem[]; debt?: { remainingAmount: number | string } | null;
   returns?: { returnNumber: string; refundAmount: number | string; createdAt: string; items: { orderItemId: string; quantity: number }[] }[];
 }
+type BankRow = { id: string; bankName: string; accountNumber: string; isDefault?: boolean };
 type Method = 'CASH' | 'TRANSFER' | 'DEBT_REDUCTION';
 const newId = () => (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `ret-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`);
 
@@ -30,17 +31,23 @@ export function ReturnItemsDialog({ orderId, onClose, onDone }: { orderId: strin
   const qtyOf = (id: string) => Math.max(0, parseQty(qty[id] ?? '', allowDecimalQty) || 0);
   const [restock, setRestock] = useState<Record<string, boolean>>({});
   const [method, setMethod] = useState<Method>('CASH');
-  const [banks, setBanks] = useState<{ id: string; bankName: string; accountNumber: string; isDefault?: boolean }[]>([]);
+  const [banks, setBanks] = useState<BankRow[]>([]);
   const [bankAccountId, setBankAccountId] = useState('');
   const [reason, setReason] = useState('');
   const [clientId, setClientId] = useState(newId());
   const [saving, setSaving] = useState(false);
 
+  // a new bill: clear the form (adjusted while rendering), then load it in the effect below
+  const [seenOrderId, setSeenOrderId] = useState<string | null>(null);
+  if (seenOrderId !== orderId) {
+    setSeenOrderId(orderId);
+    if (orderId) { setOrder(null); setQty({}); setRestock({}); setReason(''); setClientId(newId()); setMethod('CASH'); }
+  }
+
   useEffect(() => {
     if (!orderId) return;
-    setOrder(null); setQty({}); setRestock({}); setReason(''); setClientId(newId()); setMethod('CASH');
-    apiFetch(`/orders/${orderId}`).then(setOrder).catch((err: any) => toast.error(err?.message || 'โหลดบิลไม่สำเร็จ'));
-    api.bankAccounts.getAll().then((rows: any[]) => { setBanks(rows || []); setBankAccountId(rows?.find((b) => b.isDefault)?.id || rows?.[0]?.id || ''); }).catch(() => setBanks([]));
+    apiFetch(`/orders/${orderId}`).then(setOrder).catch((err: unknown) => toast.error((err as Error | undefined)?.message || 'โหลดบิลไม่สำเร็จ'));
+    api.bankAccounts.getAll().then((rows: BankRow[]) => { setBanks(rows || []); setBankAccountId(rows?.find((b) => b.isDefault)?.id || rows?.[0]?.id || ''); }).catch(() => setBanks([]));
   }, [orderId]);
 
   const returned = useMemo(() => {
@@ -72,7 +79,7 @@ export function ReturnItemsDialog({ orderId, onClose, onDone }: { orderId: strin
       toast.success(`บันทึกรับคืน ${res.returnNumber} คืนเงิน ${formatCurrency(res.refundAmount)} แล้ว`);
       if (method === 'CASH') void useShiftStore.getState().fetchCurrentShift();
       onClose(); onDone();
-    } catch (err: any) { toast.error(err?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
+    } catch (err) { toast.error((err as Error | undefined)?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
   };
 
   return (

@@ -27,7 +27,7 @@ const colorPresets = [
 
 export default function CategoriesPage() {
   const [categories, setCategoriesState] = useState<CategoryItem[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<Array<{ categoryId?: string | null }>>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
@@ -44,9 +44,8 @@ export default function CategoriesPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const reload = async () => {
-    setLoading(true);
-    setLoadError(null);
+  /** Loads the data; state is only updated after the request. */
+  const load = async () => {
     try {
       const [prods, cats] = await Promise.all([api.getProducts(), fetchCategoriesFromBackend()]);
       setProducts(Array.isArray(prods) ? prods : []);
@@ -58,8 +57,15 @@ export default function CategoriesPage() {
     }
   };
 
+  const reload = async () => {
+    setLoading(true);
+    setLoadError(null);
+    await load();
+  };
+
   useEffect(() => {
-    void reload();
+    const run = async () => { await load(); };
+    void run();
   }, []);
 
   const productCountMap = useMemo(() => {

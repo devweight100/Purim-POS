@@ -1,134 +1,80 @@
 'use client';
 
-import { useEffect, useState, useRef, useMemo } from 'react';
-import { calculatePurchaseBill, normVatType, toBaseUnitLine, type PoVatType } from '@shared/po-calc';
-
-/** Default purchase cost of a product: its last purchase / reference cost, never the selling price. */
-function defaultUnitCost(product: any): number {
-  const preferred = Array.isArray(product?.supplierEntries) ? (product.supplierEntries.find((s: any) => s?.isPreferred) || product.supplierEntries[0]) : null;
-  for (const v of [product?.unitCost, product?.lastCost, preferred?.lastCost, preferred?.unitCost, product?.costPrice, product?.cost]) {
-    const n = Number(v);
-    if (v !== undefined && v !== null && v !== '' && Number.isFinite(n) && n > 0) return n;
-  }
-  return 0;
-}
-
-/** VAT rate of a line: an explicit 0 stays 0, only a missing rate defaults to 7%. */
-function lineVatRate(v: unknown): number {
-  if (v === undefined || v === null || v === '') return 7;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 7;
-}
+import { useCallback, useEffect, useState, useRef } from 'react';
+import { normVatType, type PoVatType } from '@shared/po-calc';
 import { apiFetch } from '@/lib/api';
-import { useRouter } from 'next/navigation';
 import { CreateSupplierReturnModal } from '@/components/supplier-returns/CreateSupplierReturnModal';
 import { submitPurchaseReceipt } from '@/lib/purchase-receipt-sync';
-import { formatCurrency, formatDate } from '@/lib/utils';
-import {
-  Table, TableBody, TableCell, TableHead,
-  TableHeader, TableRow
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog, DialogContent, DialogHeader,
-  DialogTitle, DialogFooter
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Plus, Eye, CheckCircle, PackageOpen,
-  Trash2, Search, ChevronLeft, Building2, Package,
-  Image as ImageIcon, Keyboard, ArrowDown, ArrowUp, X, Sparkles, Printer,
-  Pencil, Ban, AlertTriangle, Info, RotateCcw, ArrowLeftRight, CheckCircle2, History
-} from 'lucide-react';
+import { Plus, PackageOpen } from 'lucide-react';
 import { toast } from 'sonner';
-import { LoadErrorState } from '@/components/common/LoadErrorState';
 
 import { useProductStore } from '@/lib/store/product-store';
-import { addQty, formatQty, mulQty, parseQty, qtyInputMode, qtyStep, subQty, useAllowDecimalQty } from '@/lib/qty';
+import { addQty, parseQty, subQty, useAllowDecimalQty } from '@/lib/qty';
 
 import PurchaseOrderPdfModal, { PurchaseOrderData } from '@/components/pos/PurchaseOrderPdfModal';
+import {
+  lineVatRate, loadProductImages,
+  type PoCartItem, type PoProductLike, type PoReceiveItem, type PoSupplier, type PreviewTarget, type PurchaseOrder,
+} from './_components/po-shared';
+import { PoCreateView, type PoCreateInit } from './_components/PoCreateView';
+import { ProductImagePreviewDialog } from './_components/ProductImagePreviewDialog';
+import { PoListTable } from './_components/PoListTable';
+import { PoReceiveDialog, PoUnderReceiveDialog } from './_components/PoReceiveDialogs';
+import { PoDetailDialog } from './_components/PoDetailDialog';
+import { PoIssueDialog, PoStatusChangeDialog, PoCancelDialog } from './_components/PoActionDialogs';
 
-/** Product images from the server's product list (cover first). */
-function loadProductImages(productId: string): string[] {
-  const product: any = (useProductStore.getState().products || []).find((p: any) => p.id === productId);
-  const images: any[] = Array.isArray(product?.images) ? product.images.filter((i: any) => i?.dataUrl) : [];
-  const cover = images.find((i: any) => i.isCover)?.dataUrl;
-  const others = images.filter((i: any) => !i.isCover).map((i: any) => i.dataUrl);
-  return cover ? [cover, ...others] : images.map((i: any) => i.dataUrl);
-}
-
-const isBoundToSupplier = (product: any, supplierId: string) => {
-  if (!supplierId) return false;
-  if (product.supplierId === supplierId) return true;
-  if (Array.isArray(product.barcodes) && product.barcodes.some((b: any) => b.supplierId === supplierId)) return true;
-  if (Array.isArray(product.supplierEntries) && product.supplierEntries.some((s: any) => s.supplierId === supplierId)) return true;
-  return false;
-};
-
-function getProductUnits(product: any): { name: string; mult: number }[] {
-  const baseUnit = product.unit || 'ชิ้น';
-  const units = [{ name: baseUnit, mult: 1 }];
-  // packaging units come with the product from the server
-  const pkg: any[] = Array.isArray(product?.packagingUnits) ? product.packagingUnits : [];
-  let currentMult = 1;
-  pkg.forEach(u => {
-    const q = parseFloat(u.qtyPerPrev) || 1;
-    currentMult = currentMult * q;
-    if (u.name) units.push({ name: u.name, mult: currentMult });
-  });
-  return units;
+/** The server's product list (loaded once into the product store). */
+async function loadAllProducts(): Promise<PoProductLike[]> {
+  let prods = useProductStore.getState().products;
+  if (!prods || prods.length === 0) {
+    await useProductStore.getState().fetchProducts();
+    prods = useProductStore.getState().products;
+  }
+  if (!prods || prods.length === 0) {
+    const err = useProductStore.getState().error;
+    if (err) toast.error('โหลดสินค้าจากเซิร์ฟเวอร์ไม่ได้: ' + err);
+    return [];
+  }
+  return prods || [];
 }
 
 export default function PurchaseOrdersPage() {
-  const router = useRouter();
   const allowDecimalQty = useAllowDecimalQty();
-  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState("ALL");
 
   const [viewMode, setViewMode] = useState<'list' | 'create'>('list');
-  const [createStep, setCreateStep] = useState<'supplier' | 'items'>('supplier');
-  const [suppliers, setSuppliers] = useState<any[]>([]);
-  const [searchSupplier, setSearchSupplier] = useState('');
-  const [selectedSupplier, setSelectedSupplier] = useState<any>(null);
-  const [supplierProducts, setSupplierProducts] = useState<any[]>([]);
+  // what the create / edit screen starts from; the screen keeps its own state while open
+  const [createInit, setCreateInit] = useState<PoCreateInit | null>(null);
+  const [suppliers, setSuppliers] = useState<PoSupplier[]>([]);
   const [searchScope, setSearchScope] = useState<'supplier' | 'all'>('supplier');
-  const [searchProduct, setSearchProduct] = useState('');
-  const [cartItems, setCartItems] = useState<any[]>([]);
-  const [billDiscountType, setBillDiscountType] = useState<'baht' | 'percent'>('baht');
-  const [billDiscountValue, setBillDiscountValue] = useState<number>(0);
-  const [vatType, setVatType] = useState<'none' | 'include' | 'exclude'>('none');
-  const [isSupplierCatalogOpen, setIsSupplierCatalogOpen] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState('');
 
-  // Keyboard navigation & Image preview state
-  const [highlightIndex, setHighlightIndex] = useState(0);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const [previewProduct, setPreviewProduct] = useState<any | null>(null);
+  // Image preview state
+  const [previewProduct, setPreviewProduct] = useState<PreviewTarget | null>(null);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [selectedImageIdx, setSelectedImageIdx] = useState(0);
 
   // Detail Dialog
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   // Return received goods to the supplier (creates a credit note, deducted when paying the supplier)
-  const [returnPo, setReturnPo] = useState<any | null>(null);
-  const [currentPo, setCurrentPo] = useState<any>(null);
+  const [returnPo, setReturnPo] = useState<PurchaseOrder | null>(null);
+  const [currentPo, setCurrentPo] = useState<PurchaseOrder | null>(null);
 
   // Professional PDF / Print Dialog
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [pdfPoData, setPdfPoData] = useState<PurchaseOrderData | null>(null);
 
-  // Edit and Cancel State
-  const [editingPo, setEditingPo] = useState<any | null>(null);
+  // Cancel State
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
-  const [targetCancelPo, setTargetCancelPo] = useState<any | null>(null);
+  const [targetCancelPo, setTargetCancelPo] = useState<PurchaseOrder | null>(null);
   const [cancelReason, setCancelReason] = useState('ผู้จำหน่ายแจ้งสินค้าหมด/ยกเลิก');
   const [cancelCustomReason, setCancelCustomReason] = useState('');
 
-  const openPdfModal = (poData: any, e?: any) => {
+  const openPdfModal = (poData: PurchaseOrderData, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setPdfPoData(poData);
     setIsPdfModalOpen(true);
@@ -136,17 +82,17 @@ export default function PurchaseOrdersPage() {
 
   // Issue Confirmation State
   const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
-  const [targetIssuePo, setTargetIssuePo] = useState<any | null>(null);
+  const [targetIssuePo, setTargetIssuePo] = useState<PurchaseOrder | null>(null);
 
   // Status Change and Rollback State
   const [isStatusChangeModalOpen, setIsStatusChangeModalOpen] = useState(false);
-  const [targetStatusChangePo, setTargetStatusChangePo] = useState<any | null>(null);
+  const [targetStatusChangePo, setTargetStatusChangePo] = useState<PurchaseOrder | null>(null);
   const [newSelectedStatus, setNewSelectedStatus] = useState<string>('DRAFT');
   const [statusChangeNote, setStatusChangeNote] = useState<string>('');
 
   // Receive Dialog
   const [isReceiveOpen, setIsReceiveOpen] = useState(false);
-  const [receiveItems, setReceiveItems] = useState<any[]>([]);
+  const [receiveItems, setReceiveItems] = useState<PoReceiveItem[]>([]);
   const [receiveSupplierInvoiceNo, setReceiveSupplierInvoiceNo] = useState<string>('');
   const [receiveSupplierInvoiceDate, setReceiveSupplierInvoiceDate] = useState<string>('');
 
@@ -154,10 +100,9 @@ export default function PurchaseOrdersPage() {
   const [isUnderReceiveModalOpen, setIsUnderReceiveModalOpen] = useState(false);
   const [underReceiveAction, setUnderReceiveAction] = useState<'ADJUST_AND_COMPLETE' | 'PARTIAL'>('ADJUST_AND_COMPLETE');
 
-
-  const fetchPOs = async () => {
-    setLoading(true);
-    let list: any[] = [];
+  /** Load the list (state is only set after the request finished). */
+  const loadPOs = useCallback(async () => {
+    let list: PurchaseOrder[] = [];
     try {
       const data = await apiFetch("/purchase-orders?limit=1000");
       list = Array.isArray(data) ? data : data.data;
@@ -170,61 +115,55 @@ export default function PurchaseOrdersPage() {
 
     setPurchaseOrders(list);
     setLoading(false);
-  };
+  }, []);
+
+  const fetchPOs = useCallback(async () => {
+    setLoading(true);
+    await loadPOs();
+  }, [loadPOs]);
 
   useEffect(() => {
     const refresh = () => { void fetchPOs(); };
     window.addEventListener('pos-data-synced', refresh);
     return () => window.removeEventListener('pos-data-synced', refresh);
-  }, []);
+  }, [fetchPOs]);
 
-  const loadAllProducts = async () => {
-    let prods = useProductStore.getState().products;
-    if (!prods || prods.length === 0) {
-      await useProductStore.getState().fetchProducts();
-      prods = useProductStore.getState().products;
-    }
-    if (!prods || prods.length === 0) {
-      const err = useProductStore.getState().error;
-      if (err) toast.error('โหลดสินค้าจากเซิร์ฟเวอร์ไม่ได้: ' + err);
-      return [];
-    }
-    return prods || [];
-  };
 
   useEffect(() => {
-    fetchPOs();
-    loadAllProducts().then(prods => setSupplierProducts(prods));
-  }, []);
+    // initial load (loading already starts as true, state is set after the request);
+    // also warms up the product list for the order table
+    const run = async () => { await loadPOs(); };
+    void run();
+    void loadAllProducts();
+  }, [loadPOs]);
 
   const openCreateDialog = async () => {
-    let supps: any[] = [];
+    let supps: PoSupplier[] = [];
     try {
       const data = await apiFetch("/suppliers");
       if (Array.isArray(data)) supps = data;
-    } catch (error: any) {
-      toast.error('โหลดรายชื่อผู้จำหน่ายจากเซิร์ฟเวอร์ไม่ได้: ' + (error?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
+    } catch (error) {
+      toast.error('โหลดรายชื่อผู้จำหน่ายจากเซิร์ฟเวอร์ไม่ได้: ' + ((error as Error | undefined)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
       return;
     }
 
     const prods = await loadAllProducts();
-    setSupplierProducts(prods);
-    setEditingPo(null);
     setSuppliers(supps);
-    setCreateStep('supplier');
-    setSelectedSupplier(null);
-    setCartItems([]);
-    setBillDiscountType('baht');
-    setBillDiscountValue(0);
-    setVatType('none');
-    setIsSupplierCatalogOpen(false);
-    setSearchSupplier('');
-    setSearchProduct('');
-    setHighlightIndex(0);
+    setCreateInit({
+      editingPo: null,
+      suppliers: supps,
+      supplierProducts: prods,
+      createStep: 'supplier',
+      selectedSupplier: null,
+      cartItems: [],
+      billDiscountType: 'baht',
+      billDiscountValue: 0,
+      vatType: 'none',
+    });
     setViewMode('create');
   };
 
-  const openEditDialog = async (po: any, e?: any) => {
+  const openEditDialog = async (po: PurchaseOrder, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (po.status === 'COMPLETED') {
       toast.error("ไม่สามารถแก้ไขใบสั่งซื้อที่รับสินค้าครบแล้วได้");
@@ -235,17 +174,17 @@ export default function PurchaseOrdersPage() {
       return;
     }
 
-    let supps: any[] = [];
+    let supps: PoSupplier[] = [];
     try {
       const data = await apiFetch("/suppliers");
       if (Array.isArray(data)) supps = data;
-    } catch (error: any) {
-      toast.error('โหลดรายชื่อผู้จำหน่ายจากเซิร์ฟเวอร์ไม่ได้: ' + (error?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
+    } catch (error) {
+      toast.error('โหลดรายชื่อผู้จำหน่ายจากเซิร์ฟเวอร์ไม่ได้: ' + ((error as Error | undefined)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
       return;
     }
     setSuppliers(supps);
 
-    const supp = po.supplier || supps.find((s: any) => s.id === (po.supplierId || po.supplier?.id)) || {
+    const supp: PoSupplier = po.supplier || supps.find((s) => s.id === (po.supplierId || po.supplier?.id)) || {
       id: po.supplierId || '',
       name: po.supplierName || 'ผู้จำหน่าย',
       contactName: '-',
@@ -254,18 +193,16 @@ export default function PurchaseOrdersPage() {
       address: '-',
       creditTerms: 30,
     };
-    setSelectedSupplier(supp);
 
     const prods = await loadAllProducts();
-    setSupplierProducts(prods);
 
     // Map existing PO items to cart items
-    const mappedCartItems = (po.items || []).map((i: any) => {
+    const mappedCartItems: PoCartItem[] = (po.items || []).map((i) => {
       const uName = i.unitName || i.unit || i.baseUnit || 'ชิ้น';
       return {
         id: i.id,
         cartKey: `${i.productId || i.id}_${uName}`,
-        productId: i.productId || i.id,
+        productId: (i.productId || i.id) as string,
         name: i.name || i.product?.name || 'สินค้า',
         sku: i.sku || i.product?.sku || '-',
         stock: i.stock || 0,
@@ -284,23 +221,24 @@ export default function PurchaseOrdersPage() {
       };
     });
 
-    setEditingPo(po);
-    setCartItems(mappedCartItems);
-    setBillDiscountType(((po.billDiscountType ?? po.discountType) as 'baht' | 'percent') || 'baht');
-    setBillDiscountValue(Number(po.billDiscountValue ?? po.discountValue) || 0);
-    {
-      const first = mappedCartItems[0]?.vatType;
-      setVatType(first === 'INCLUDED' ? 'include' : first === 'EXCLUDED' ? 'exclude' : 'none');
-    }
-    setSearchProduct('');
-    setHighlightIndex(0);
-    setCreateStep('items');
+    const first = mappedCartItems[0]?.vatType;
+    setCreateInit({
+      editingPo: po,
+      suppliers: supps,
+      supplierProducts: prods,
+      createStep: 'items',
+      selectedSupplier: supp,
+      cartItems: mappedCartItems,
+      billDiscountType: ((po.billDiscountType ?? po.discountType) as 'baht' | 'percent') || 'baht',
+      billDiscountValue: Number(po.billDiscountValue ?? po.discountValue) || 0,
+      vatType: first === 'INCLUDED' ? 'include' : first === 'EXCLUDED' ? 'exclude' : 'none',
+    });
     setViewMode('create');
     setIsDetailOpen(false);
     setIsPdfModalOpen(false);
   };
 
-  const openCancelDialog = (po: any, e?: any) => {
+  const openCancelDialog = (po: PurchaseOrder, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (po.status === 'COMPLETED') {
       toast.error("ไม่สามารถยกเลิกใบสั่งซื้อที่รับสินค้าครบแล้วได้");
@@ -325,7 +263,7 @@ export default function PurchaseOrdersPage() {
         method: 'POST',
         body: JSON.stringify({ reason: finalReason }),
       });
-    } catch (error) {
+    } catch {
       toast.error("ยกเลิกใบสั่งซื้อไม่สำเร็จ");
       return;
     }
@@ -343,255 +281,16 @@ export default function PurchaseOrdersPage() {
     setTargetCancelPo(null);
   };
 
-  const handleSelectSupplier = async (supplier: any) => {
-    setSelectedSupplier(supplier);
-    const prods = await loadAllProducts();
-    setSupplierProducts(prods);
-    setSearchProduct('');
-    setHighlightIndex(0);
-    setCreateStep('items');
-    setTimeout(() => searchInputRef.current?.focus(), 150);
-  };
-
-  const openImagePreview = (product: any, e?: React.MouseEvent) => {
+  const openImagePreview = (product: PreviewTarget, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const imgs = loadProductImages(product.id || product.productId);
+    const imgs = loadProductImages((product.id || product.productId) as string);
     if (imgs.length === 0 && product.imageUrl) imgs.push(product.imageUrl);
     setPreviewImages(imgs);
     setSelectedImageIdx(0);
     setPreviewProduct(product);
   };
 
-  const createCartItemFromProduct = (product: any, quantity = 1) => ({
-    productId: product.id,
-    name: product.name,
-    sku: product.sku,
-    stock: product.stock,
-    unitCost: defaultUnitCost(product),
-    quantity,
-    discountType: 'baht' as 'baht' | 'percent',
-    discountValue: 0,
-    vatType: normVatType(vatType) as PoVatType,
-    vatRate: 7,
-    imageUrl: product.imageUrl || null,
-  });
-
-  const getCartItem = (productId: string) => cartItems.find(item => item.productId === productId);
-
-  const updateProductQuantity = (product: any, quantity: number) => {
-    const safeQuantity = Math.max(0, parseQty(quantity, allowDecimalQty) || 0);
-    setCartItems(prev => {
-      const existing = prev.find(item => item.productId === product.id);
-      if (safeQuantity === 0) {
-        return prev.filter(item => item.productId !== product.id);
-      }
-      if (existing) {
-        return prev.map(item =>
-          item.productId === product.id ? { ...item, quantity: safeQuantity } : item
-        );
-      }
-      return [...prev, createCartItemFromProduct(product, safeQuantity)];
-    });
-  };
-
-  const updateProductUnitCost = (product: any, cost: number) => {
-    const safeCost = Math.max(0, Number(cost) || 0);
-    setCartItems(prev => {
-      const existing = prev.find(item => item.productId === product.id);
-      if (existing) {
-        return prev.map(item =>
-          item.productId === product.id ? { ...item, unitCost: safeCost } : item
-        );
-      }
-      return [...prev, { ...createCartItemFromProduct(product), unitCost: safeCost }];
-    });
-  };
-
-  const updateProductDiscount = (product: any, key: 'discountType' | 'discountValue', value: 'baht' | 'percent' | number) => {
-    setCartItems(prev => {
-      const existing = prev.find(item => item.productId === product.id);
-      if (existing) {
-        return prev.map(item =>
-          item.productId === product.id ? { ...item, [key]: value } : item
-        );
-      }
-      return [...prev, { ...createCartItemFromProduct(product), [key]: value }];
-    });
-  };
-
-  const removeCartItem = (productId: string) => {
-    setCartItems(prev => prev.filter(item => item.productId !== productId));
-  };
-
-  const handleCreatePO = async () => {
-    if (!selectedSupplier || cartItems.length === 0) {
-      toast.error("กรุณาเลือกผู้จำหน่ายและเพิ่มสินค้าอย่างน้อย 1 รายการ");
-      return;
-    }
-
-    // same arithmetic as the server (shared/src/po-calc.ts); the server recalculates and stores the result
-    const bill = calculatePurchaseBill(cartItems, { type: billDiscountType, value: billDiscountValue });
-    const totalBeforeDiscount = Math.round((bill.baseAmount - bill.lineDiscountAmount) * 100) / 100;
-    const calculatedVat = bill.vatAmount;
-    const netAmount = bill.subtotalAmount;
-    const finalTotal = bill.totalAmount;
-    // The server stores, receives and costs stock in BASE units only: a line ordered in a pack unit
-    // (2 โหล x12 @ 120) is sent as 24 units @ 10 with the same line total (see toBaseUnitLine).
-    const baseLines = cartItems.map((i: any) => {
-      const base = toBaseUnitLine(i);
-      return {
-        ...i,
-        ...base,
-        unitName: (Number(i.multiplier) || 1) > 1 ? (i.baseUnit || 'ชิ้น') : (i.unitName || i.baseUnit || 'ชิ้น'),
-        multiplier: 1,
-      };
-    });
-    const apiItems = baseLines.map((i: any) => ({
-      productId: i.productId,
-      quantity: Number(i.quantity),
-      unitCost: Number(i.unitCost),
-      discountType: i.discountType || 'baht',
-      discountValue: Number(i.discountValue) || 0,
-      vatType: normVatType(i.vatType),
-      vatRate: lineVatRate(i.vatRate),
-    }));
-
-    if (editingPo) {
-      const updatedPO = {
-        ...editingPo,
-        supplierId: selectedSupplier.id,
-        supplier: selectedSupplier,
-        supplierName: selectedSupplier.name,
-        totalAmount: finalTotal,
-        subtotal: totalBeforeDiscount,
-        discountType: billDiscountType,
-        discountValue: billDiscountValue,
-        vatType,
-        vatAmount: calculatedVat,
-        netAmount,
-        updatedAt: new Date().toISOString(),
-        items: baseLines.map((i: any) => ({
-          id: i.id || "poi_" + Math.random().toString(36).substring(2, 7),
-          productId: i.productId,
-          name: i.name,
-          sku: i.sku,
-          quantity: Number(i.quantity) || 1,
-          receivedQuantity: Number(i.receivedQuantity) || 0,
-          unitCost: Number(i.unitCost) || 0,
-          unitName: i.unitName || i.baseUnit || 'ชิ้น',
-          multiplier: i.multiplier || 1,
-          discountType: i.discountType || 'baht',
-          discountValue: Number(i.discountValue) || 0,
-          vatType: normVatType(i.vatType),
-          vatRate: lineVatRate(i.vatRate),
-        })),
-      };
-
-      // Database first: the backend accepts only these fields (status/payment changes have their own endpoints)
-      try {
-        await apiFetch(`/purchase-orders/${editingPo.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            supplierId: updatedPO.supplierId,
-            notes: updatedPO.notes,
-            billDiscountType,
-            billDiscountValue,
-            items: apiItems,
-          }),
-        });
-      } catch (error: any) {
-        toast.error(`บันทึกการแก้ไขไม่สำเร็จ: ${error?.message || 'เชื่อมต่อฐานข้อมูลไม่ได้'}`);
-        return;
-      }
-      void fetchPOs();
-
-      toast.success(`บันทึกการแก้ไขใบสั่งซื้อ ${editingPo.poNumber} สำเร็จ`);
-      setEditingPo(null);
-      setViewMode('list');
-      setCurrentPo(updatedPO);
-      setPdfPoData(updatedPO);
-      setIsPdfModalOpen(true);
-      return;
-    }
-
-    const poNumber = "PO" + Date.now().toString().slice(-6);
-
-    const newPO = {
-      id: "po_" + Date.now(),
-      poNumber,
-      supplierId: selectedSupplier.id,
-      supplier: selectedSupplier,
-      supplierName: selectedSupplier.name,
-      status: "DRAFT",
-      createdAt: new Date().toISOString(),
-      totalAmount: finalTotal,
-      subtotal: totalBeforeDiscount,
-      discountType: billDiscountType,
-      discountValue: billDiscountValue,
-      vatType,
-      vatAmount: calculatedVat,
-      netAmount,
-      items: baseLines.map((i: any) => ({
-        id: "poi_" + Math.random().toString(36).substring(2, 7),
-        productId: i.productId,
-        name: i.name,
-        sku: i.sku,
-        quantity: Number(i.quantity) || 1,
-        receivedQuantity: 0,
-        unitCost: Number(i.unitCost) || 0,
-        unitName: i.unitName || i.baseUnit || 'ชิ้น',
-        multiplier: i.multiplier || 1,
-        discountType: i.discountType || 'baht',
-        discountValue: Number(i.discountValue) || 0,
-        vatType: normVatType(i.vatType),
-        vatRate: lineVatRate(i.vatRate),
-      })),
-    };
-
-    let createdPoObj = newPO;
-    try {
-      const serverRes = await apiFetch("/purchase-orders", {
-        method: "POST",
-        body: JSON.stringify({
-          supplierId: selectedSupplier.id,
-          billDiscountType,
-          billDiscountValue,
-          items: apiItems,
-        })
-      });
-      if (serverRes && serverRes.id) {
-        createdPoObj = {
-          ...newPO,
-          id: serverRes.id,
-          poNumber: serverRes.poNumber || newPO.poNumber,
-          items: Array.isArray(serverRes.items) && serverRes.items.length > 0
-            ? serverRes.items.map((srvItem: any, idx: number) => ({
-                ...newPO.items[idx],
-                id: srvItem.id,
-                purchaseOrderItemId: srvItem.id,
-                productId: srvItem.productId,
-                quantity: Number(srvItem.quantity) || newPO.items[idx]?.quantity,
-                unitCost: Number(srvItem.unitCost) || newPO.items[idx]?.unitCost,
-              }))
-            : newPO.items
-        };
-      }
-    } catch (error: any) {
-      // No local-only purchase orders: they would never reach payables / receiving
-      toast.error(`สร้างใบสั่งซื้อไม่สำเร็จ: ${error?.message || 'เชื่อมต่อฐานข้อมูลไม่ได้'}`);
-      return;
-    }
-
-    await fetchPOs();
-
-    toast.success("สร้างใบสั่งซื้อสำเร็จ");
-    setViewMode('list');
-    setCurrentPo(createdPoObj);
-    setPdfPoData(createdPoObj);
-    setIsPdfModalOpen(true);
-  };
-
-  const openIssueConfirmDialog = (po: any, e?: any) => {
+  const openIssueConfirmDialog = (po: PurchaseOrder, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setTargetIssuePo(po);
     setIsIssueModalOpen(true);
@@ -602,8 +301,8 @@ export default function PurchaseOrdersPage() {
     const id = targetIssuePo.id;
     try {
       await apiFetch(`/purchase-orders/${id}/issue`, { method: "POST" });
-    } catch (error: any) {
-      toast.error(`ออกใบสั่งซื้อไม่สำเร็จ: ${error?.message || 'เชื่อมต่อฐานข้อมูลไม่ได้'}`);
+    } catch (error) {
+      toast.error(`ออกใบสั่งซื้อไม่สำเร็จ: ${(error as Error | undefined)?.message || 'เชื่อมต่อฐานข้อมูลไม่ได้'}`);
       return;
     }
     void fetchPOs();
@@ -616,7 +315,7 @@ export default function PurchaseOrdersPage() {
     setTargetIssuePo(null);
   };
 
-  const openStatusChangeDialog = (po: any, e?: any) => {
+  const openStatusChangeDialog = (po: PurchaseOrder, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setTargetStatusChangePo(po);
     setNewSelectedStatus(po.status);
@@ -648,8 +347,8 @@ export default function PurchaseOrdersPage() {
         toast.error('เปลี่ยนสถานะนี้ไม่ได้: รับสินค้าใช้ปุ่ม "รับสินค้า (GRN)" ส่วนสินค้าที่รับแล้วต้องทำเอกสารส่งคืนบริษัท');
         return;
       }
-    } catch (error: any) {
-      toast.error(`เปลี่ยนสถานะไม่สำเร็จ: ${error?.message || 'เชื่อมต่อฐานข้อมูลไม่ได้'}`);
+    } catch (error) {
+      toast.error(`เปลี่ยนสถานะไม่สำเร็จ: ${(error as Error | undefined)?.message || 'เชื่อมต่อฐานข้อมูลไม่ได้'}`);
       return;
     }
     await fetchPOs();
@@ -664,7 +363,7 @@ export default function PurchaseOrdersPage() {
 
   const handleViewDetail = async (id: string, mode: 'detail' | 'pdf' = 'detail') => {
     // 1. Database first so paid / remaining / received quantities are current
-    let poData: any = null;
+    let poData: PurchaseOrder | null | undefined = null;
     try {
       const resp = await apiFetch(`/purchase-orders/${id}`);
       if (resp && typeof resp === 'object' && !Array.isArray(resp) && (resp.id || resp.poNumber)) {
@@ -674,14 +373,14 @@ export default function PurchaseOrdersPage() {
 
     // 2. The list this page loaded from the server
     if (!poData) {
-      poData = purchaseOrders.find((p: any) => p.id === id || p.poNumber === id);
+      poData = purchaseOrders.find((p) => p.id === id || p.poNumber === id);
     }
 
     if (poData) {
       // Hydrate supplier info if missing
       if (!poData.supplier || !poData.supplier.name) {
         const allSuppliers = suppliers;
-        const supp = allSuppliers.find((s: any) => s.id === (poData.supplierId || poData.supplier?.id));
+        const supp = allSuppliers.find((s) => s.id === (poData!.supplierId || poData!.supplier?.id));
         if (supp) {
           poData = { ...poData, supplier: supp, supplierName: supp.name };
         }
@@ -698,7 +397,7 @@ export default function PurchaseOrdersPage() {
     }
   };
 
-  const openReceiveDialog = (po: any, e?: any) => {
+  const openReceiveDialog = (po: PurchaseOrder, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (po.status === 'COMPLETED') {
       toast.info("ใบสั่งซื้อนี้รับสินค้าครบถ้วนแล้ว");
@@ -712,10 +411,10 @@ export default function PurchaseOrdersPage() {
     setCurrentPo(po);
 
     // Get current inventory products (from the server) to display live stock
-    const allProds: any[] = useProductStore.getState().products || [];
+    const allProds = useProductStore.getState().products || [];
 
-    const items = (po.items || []).map((item: any) => {
-      const prod = allProds.find((p: any) => (p.id === item.productId || p.sku === item.productId || p.sku === item.sku));
+    const items: PoReceiveItem[] = (po.items || []).map((item) => {
+      const prod = allProds.find((p) => (p.id === item.productId || p.sku === item.productId || p.sku === item.sku));
       const currentStock = Number(prod?.stock !== undefined && prod?.stock !== null ? prod.stock : (item.stock || 0));
       const ordered = Number(item.quantity) || 1;
       const received = Number(item.receivedQty ?? item.receivedQuantity) || 0;
@@ -755,7 +454,7 @@ export default function PurchaseOrdersPage() {
     }
 
     // Check if there are items under-received (total received < ordered)
-    const hasIncompleteItems = receiveItems.some((i: any) => {
+    const hasIncompleteItems = receiveItems.some((i) => {
       const totalRec = addQty(Number(i.receivedQty) || 0, Number(i.toReceive) || 0);
       return totalRec < Number(i.orderedQty);
     });
@@ -776,11 +475,11 @@ export default function PurchaseOrdersPage() {
       const result = await submitPurchaseReceipt(currentPo.id, {
         adjustAndComplete,
         supplierInvoiceNo: receiveSupplierInvoiceNo.trim(),
-        items: receiveItems.map((item: any) => ({
+        items: receiveItems.map((item) => ({
           purchaseOrderItemId: item.id,
           receivedQty: parseQty(item.toReceive, allowDecimalQty) || 0,
           unitCost: Number(item.unitCost),
-        })).filter((item: any) => item.receivedQty > 0),
+        })).filter((item) => item.receivedQty > 0),
       });
       setCurrentPo(result);
       setPdfPoData(result);
@@ -798,901 +497,40 @@ export default function PurchaseOrdersPage() {
     statusFilter === "ALL" ? true : po.status === statusFilter
   );
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'DRAFT': return <Badge className="bg-slate-100 text-slate-600 hover:bg-slate-200">DRAFT</Badge>;
-      case 'ISSUED': return <Badge className="bg-sky-50 text-sky-700 hover:bg-sky-100">ISSUED</Badge>;
-      case 'PARTIALLY_RECEIVED': return <Badge className="bg-amber-50 text-amber-700 hover:bg-amber-100">PARTIAL</Badge>;
-      case 'COMPLETED': return <Badge className="bg-green-50 text-green-700 hover:bg-green-100">COMPLETED</Badge>;
-      case 'CANCELLED': return <Badge className="bg-red-50 text-red-600 hover:bg-red-100">CANCELLED</Badge>;
-      default: return <Badge className="bg-slate-100 text-slate-800">{status}</Badge>;
-    }
-  };
 
-  const filteredSuppliers = suppliers.filter(s => 
-    s.name.toLowerCase().includes(searchSupplier.toLowerCase()) || 
-    (s.phone && s.phone.includes(searchSupplier))
+  const imagePreview = (
+    <ProductImagePreviewDialog
+      previewProduct={previewProduct}
+      setPreviewProduct={setPreviewProduct}
+      previewImages={previewImages}
+      selectedImageIdx={selectedImageIdx}
+      setSelectedImageIdx={setSelectedImageIdx}
+    />
   );
 
-  const addCartItemWithUnit = (product: any, unitName: string, multiplier: number, deltaQty = 1) => {
-    const targetUnit = unitName || product.unit || 'ชิ้น';
-    const cartKey = `${product.id}_${targetUnit}`;
-    const baseCost = defaultUnitCost(product);
-    const unitCost = Math.round(baseCost * multiplier * 100) / 100;
-
-    setCartItems(prev => {
-      const existingIndex = prev.findIndex(item => (item.cartKey ? item.cartKey === cartKey : (item.productId === product.id && item.unitName === targetUnit)));
-      if (existingIndex >= 0) {
-        const existing = prev[existingIndex];
-        const newQty = addQty(existing.quantity, deltaQty);
-        if (newQty <= 0) return prev.filter((_, idx) => idx !== existingIndex);
-        const updated = [...prev];
-        updated[existingIndex] = { ...existing, quantity: newQty };
-        return updated;
-      }
-      const newItem = {
-        cartKey,
-        productId: product.id,
-        name: product.name,
-        sku: product.sku,
-        stock: product.stock,
-        baseUnit: product.unit || 'ชิ้น',
-        unitName: targetUnit,
-        multiplier: multiplier,
-        unitCost: unitCost,
-        quantity: deltaQty,
-        discountType: 'baht' as 'baht' | 'percent',
-        discountValue: 0,
-        vatType: normVatType(vatType) as PoVatType,
-        vatRate: 7,
-        imageUrl: product.imageUrl || null,
-      };
-      return [...prev, newItem];
-    });
-    toast.success(`เพิ่ม "${product.name}" (${targetUnit}) ลงตารางเรียบร้อยแล้ว`);
-  };
-
-  const filteredSupplierProducts = useMemo(() => {
-    let list = supplierProducts;
-    if (searchScope === 'supplier' && selectedSupplier) {
-      list = list.filter(p => isBoundToSupplier(p, selectedSupplier.id));
-    }
-    const q = searchProduct.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(p =>
-      (p.name || '').toLowerCase().includes(q) ||
-      (p.sku || '').toLowerCase().includes(q) ||
-      (p.barcodes && p.barcodes.some((b: any) => (b.barcode || '').includes(q)))
-    );
-  }, [supplierProducts, searchScope, selectedSupplier, searchProduct]);
-
-  const filteredCatalogProducts = useMemo(() => {
-    if (!selectedSupplier) return [];
-    const bound = supplierProducts.filter(p => isBoundToSupplier(p, selectedSupplier.id));
-    const q = catalogSearch.trim().toLowerCase();
-    if (!q) return bound;
-    return bound.filter(p =>
-      (p.name || '').toLowerCase().includes(q) ||
-      (p.sku || '').toLowerCase().includes(q) ||
-      (p.barcodes && p.barcodes.some((b: any) => (b.barcode || '').includes(q)))
-    );
-  }, [supplierProducts, selectedSupplier, catalogSearch]);
-
-  // Keyboard navigation inside search dropdown
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    const list = filteredSupplierProducts.slice(0, 8);
-    if (list.length === 0) return;
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setHighlightIndex(prev => (prev + 1) % list.length);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setHighlightIndex(prev => (prev - 1 + list.length) % list.length);
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      const selectedProd = list[highlightIndex] || list[0];
-      if (selectedProd) {
-        const units = getProductUnits(selectedProd);
-        addCartItemWithUnit(selectedProd, units[0].name, units[0].mult, 1);
-        setSearchProduct('');
-        setHighlightIndex(0);
-      }
-    } else if (e.key === 'Escape') {
-      setSearchProduct('');
-    }
-  };
-
-  // Ref to always hold latest handleCreatePO function for shortcuts
-  const handleCreatePORef = useRef(handleCreatePO);
-  useEffect(() => {
-    handleCreatePORef.current = handleCreatePO;
-  });
-
-  // Global keyboard shortcuts (Ctrl+Enter to save)
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (viewMode === 'create' && createStep === 'items') {
-        if (e.ctrlKey && e.key === 'Enter') {
-          e.preventDefault();
-          handleCreatePORef.current?.();
-        }
-      }
-    };
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [viewMode, createStep]);
-
-  // Live totals with the same arithmetic as the server (shared/src/po-calc.ts)
-  const liveBill = calculatePurchaseBill(cartItems, { type: billDiscountType, value: billDiscountValue });
-  // per-row amount: after the line discount, incl. that line's VAT (bill discount shown separately)
-  const rowBill = calculatePurchaseBill(cartItems);
-  const getItemTotal = (item: any) => rowBill.lines[cartItems.indexOf(item)]?.total ?? 0;
-  const subtotalBeforeDiscount = liveBill.baseAmount;
-  const itemDiscountTotal = liveBill.lineDiscountAmount;
-  const billDiscountAmount = liveBill.billDiscountAmount;
-  const vatAmount = liveBill.vatAmount;
-  const netBeforeVat = liveBill.subtotalAmount;
-  const cartTotal = liveBill.totalAmount;
-  // value of goods received so far, incl. each line's discounts and VAT (what the supplier can bill)
-  const receivedValue = (po: any) =>
-    Math.round(
-      (po?.items || []).reduce((sum: number, i: any) => {
-        const qty = Number(i.quantity) || 0;
-        const perUnit = qty > 0 && i.total !== undefined && i.total !== null ? Number(i.total) / qty : Number(i.unitCost) || 0;
-        return sum + (Number(i.receivedQty ?? i.receivedQuantity) || 0) * perUnit;
-      }, 0) * 100,
-    ) / 100;
-  const updateItemVat = (productId: string, patch: { vatType?: PoVatType; vatRate?: number }) =>
-    setCartItems((prev) => prev.map((it) => (it.productId === productId ? { ...it, ...patch } : it)));
-  const applyVatToAll = (t: 'none' | 'include' | 'exclude') => {
-    setVatType(t);
-    setCartItems((prev) => prev.map((it) => ({ ...it, vatType: normVatType(t) })));
-  };
-
-  if (viewMode === 'create') {
+  if (viewMode === 'create' && createInit) {
     return (
-      <div className="flex h-[calc(100dvh-3.5rem)] w-full max-w-full flex-col overflow-hidden bg-slate-50 lg:h-dvh">
-        {createStep === 'supplier' ? (
-          <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex shrink-0 flex-col gap-3 border-b border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                  <Building2 className="w-6 h-6 text-primary" />
-                  {editingPo ? `แก้ไขใบสั่งซื้อ (PO: ${editingPo.poNumber})` : 'เปิดใบสั่งซื้อ (PO) ใหม่'}
-                  {editingPo && (
-                    <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold ml-2">
-                      กำลังแก้ไข
-                    </Badge>
-                  )}
-                </h1>
-                <p className="text-slate-500 text-sm mt-1">
-                  {editingPo ? 'ขั้นตอนที่ 1: เปลี่ยนผู้จำหน่าย (หรือกดปุ่มเพื่อข้ามไปขั้นตอนถัดไป)' : 'ขั้นตอนที่ 1: เลือกผู้จำหน่ายที่ต้องการสั่งซื้อสินค้า'}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {editingPo && (
-                  <Button variant="outline" onClick={() => setCreateStep('items')} className="border-slate-300 text-slate-700">
-                    ข้ามไปตารางสินค้า →
-                  </Button>
-                )}
-                <Button variant="ghost" onClick={() => { setEditingPo(null); setViewMode('list'); }} className="text-slate-500 hover:bg-slate-100">
-                  ยกเลิก (Esc)
-                </Button>
-              </div>
-            </div>
-            <div className="bg-white px-4 py-4 border-b border-slate-200 shrink-0 sm:px-6">
-              <div className="relative max-w-2xl mx-auto">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
-                <Input 
-                  placeholder="ค้นหาชื่อผู้จำหน่าย หรือ เบอร์โทร..." 
-                  className="pl-12 bg-slate-50 border-slate-300 focus-visible:ring-sky-500 h-12 text-lg rounded-full"
-                  value={searchSupplier}
-                  onChange={(e) => setSearchSupplier(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto bg-slate-50 p-4 sm:p-6">
-              <div className="mx-auto grid max-w-7xl grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4 sm:gap-6">
-                {filteredSuppliers.map((supplier) => (
-                  <div 
-                    key={supplier.id}
-                    className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-sky-400 cursor-pointer transition-all flex flex-col items-center text-center group"
-                    onClick={() => handleSelectSupplier(supplier)}
-                  >
-                    <div className="w-14 h-14 bg-sky-100 text-sky-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-inner">
-                      <Building2 className="w-7 h-7" />
-                    </div>
-                    <h3 className="font-semibold text-slate-900 text-lg mb-1">{supplier.name}</h3>
-                    <p className="text-slate-500 text-sm">{supplier.phone || 'ไม่มีเบอร์ติดต่อ'}</p>
-                    {supplier.creditTerms && (
-                      <Badge variant="outline" className="mt-3 text-xs text-sky-700 border-sky-200 bg-sky-50">
-                        เครดิต {supplier.creditTerms} วัน
-                      </Badge>
-                    )}
-                  </div>
-                ))}
-                {filteredSuppliers.length === 0 && (
-                  <div className="col-span-full py-12 text-center text-slate-500">
-                    ไม่พบผู้จำหน่ายที่ค้นหา
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex min-h-0 flex-1 flex-col">
-            <div className="z-10 flex shrink-0 flex-col gap-3 border-b border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
-                <Button variant="ghost" size="sm" onClick={() => setCreateStep('supplier')} className="text-slate-500 hover:text-slate-900 hover:bg-slate-100">
-                  <ChevronLeft className="w-4 h-4 mr-1" /> เปลี่ยนผู้จำหน่าย
-                </Button>
-                <div className="hidden h-4 w-px bg-slate-200 mx-1 sm:block"></div>
-                <h2 className="flex min-w-0 items-center gap-2 font-semibold text-slate-900 text-lg">
-                  <Building2 className="w-5 h-5 text-sky-500" />
-                  <span className="truncate">{selectedSupplier?.name}</span>
-                  {editingPo && (
-                    <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold ml-1.5 shrink-0">
-                      กำลังแก้ไข ({editingPo.poNumber})
-                    </Badge>
-                  )}
-                </h2>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => { setEditingPo(null); setViewMode('list'); }} className="text-slate-500 hover:bg-slate-100">
-                {editingPo ? 'ยกเลิกการแก้ไข' : 'ยกเลิก'}
-              </Button>
-            </div>
-            
-            <div className="flex min-h-0 w-full max-w-full flex-1 flex-col overflow-hidden bg-slate-50">
-              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3 sm:p-4">
-                <div className="mb-4 flex shrink-0 flex-col gap-3 px-1 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-amber-500" /> ตารางสั่งของ
-                    </h3>
-                    <p className="mt-1 text-xs text-slate-500">เลือกขอบเขตค้นหา สั่งสินค้าตามหน่วยบรรจุ แล้วกด [Enter] หรือคลิกเพิ่มสินค้าอย่างสะดวกรวดเร็ว</p>
-                  </div>
-                  <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
-                    {/* Radio Options */}
-                    <div className="flex items-center gap-3 bg-white px-3 py-2 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 shadow-sm shrink-0">
-                      <span className="font-bold text-slate-500">ค้นหา:</span>
-                      <label className="flex items-center gap-1.5 cursor-pointer hover:text-sky-600 font-semibold">
-                        <input
-                          type="radio"
-                          name="searchScope"
-                          value="supplier"
-                          checked={searchScope === 'supplier'}
-                          onChange={() => setSearchScope('supplier')}
-                          className="accent-sky-600 h-3.5 w-3.5"
-                        />
-                        <span>เฉพาะผู้จำหน่ายนี้ ({selectedSupplier?.name || 'ซัพพลายเออร์'})</span>
-                      </label>
-                      <label className="flex items-center gap-1.5 cursor-pointer hover:text-sky-600 font-semibold">
-                        <input
-                          type="radio"
-                          name="searchScope"
-                          value="all"
-                          checked={searchScope === 'all'}
-                          onChange={() => setSearchScope('all')}
-                          className="accent-sky-600 h-3.5 w-3.5"
-                        />
-                        <span>สินค้าทั้งหมดในระบบ</span>
-                      </label>
-                    </div>
-
-                    <div className="relative w-full sm:w-80">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                      <Input
-                        ref={searchInputRef}
-                        placeholder="พิมพ์ค้นหาสินค้า (↑/↓ เลื่อน, Enter เลือก)..."
-                        className="h-10 bg-white pl-9 pr-8 text-sm border-slate-300 focus-visible:ring-sky-500 shadow-sm"
-                        value={searchProduct}
-                        onChange={(e) => {
-                          setSearchProduct(e.target.value);
-                          setHighlightIndex(0);
-                        }}
-                        onKeyDown={handleSearchKeyDown}
-                      />
-                      {searchProduct.trim() && (
-                        <div className="absolute left-0 right-0 top-11 z-30 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl max-h-96 overflow-y-auto">
-                          {filteredSupplierProducts.slice(0, 10).length === 0 ? (
-                            <div className="p-4 text-sm text-slate-500 text-center space-y-2">
-                              <p>
-                                {searchScope === 'supplier' 
-                                  ? `ไม่พบสินค้าที่ผูกกับผู้จำหน่าย "${selectedSupplier?.name}" (ค้นหา: "${searchProduct}")` 
-                                  : `ไม่พบสินค้าที่ค้นหา "${searchProduct}"`}
-                              </p>
-                              {searchScope === 'supplier' && (
-                                <button
-                                  type="button"
-                                  onClick={() => setSearchScope('all')}
-                                  className="inline-flex items-center gap-1 text-xs text-sky-600 bg-sky-50 border border-sky-200 px-3 py-1.5 rounded-lg hover:bg-sky-100 font-semibold transition-colors"
-                                >
-                                  สลับไปค้นหา "สินค้าทั้งหมดในระบบ"
-                                </button>
-                              )}
-                            </div>
-                          ) : (
-                            filteredSupplierProducts.slice(0, 10).map((product: any, idx: number) => {
-                              const isHighlighted = idx === highlightIndex;
-                              const units = getProductUnits(product);
-
-                              return (
-                                <div
-                                  key={product.id}
-                                  className={`flex flex-col gap-2 border-b border-slate-100 px-4 py-3 text-left last:border-b-0 transition-colors ${
-                                    isHighlighted ? "bg-sky-50/90 border-sky-200" : "hover:bg-slate-50"
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-2.5 min-w-0">
-                                      <button
-                                        type="button"
-                                        onClick={(e) => openImagePreview(product, e)}
-                                        className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 hover:text-sky-600 hover:border-sky-300 transition-colors"
-                                        title="กดเพื่อดูรูปสินค้า"
-                                      >
-                                        <ImageIcon className="w-4 h-4" />
-                                      </button>
-                                      <div className="min-w-0">
-                                        <div className="truncate text-sm font-bold text-slate-900">{product.name}</div>
-                                        <div className="truncate text-xs text-slate-500 flex items-center gap-1.5">
-                                          <span>{product.sku}</span>
-                                          <span>·</span>
-                                          <span>คงเหลือ:</span>
-                                          {Number(product.stock ?? 0) < 0 ? (
-                                            <span className="font-extrabold text-rose-600 bg-rose-50 px-1 rounded border border-rose-200">
-                                              🔻 {product.stock} {product.unit || 'ชิ้น'}
-                                            </span>
-                                          ) : (
-                                            <b className="text-slate-700">{product.stock ?? '-'} {product.unit || 'ชิ้น'}</b>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                    {isHighlighted && (
-                                      <span className="text-[10px] bg-sky-500 text-white font-bold px-1.5 py-0.5 rounded shrink-0">
-                                        Enter ↵
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  {/* Packaging Units Selector Pills */}
-                                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                    <span className="text-[11px] text-slate-400 font-medium mr-1">สั่งเพิ่มหน่วย:</span>
-                                    {units.map((u, ui) => {
-                                      const isAdded = cartItems.some(i => i.productId === product.id && (i.unitName === u.name || (!i.unitName && u.name === (product.unit || 'ชิ้น'))));
-                                      return (
-                                        <button
-                                          key={ui}
-                                          type="button"
-                                          onClick={() => {
-                                            addCartItemWithUnit(product, u.name, u.mult, 1);
-                                            setSearchProduct('');
-                                            setHighlightIndex(0);
-                                          }}
-                                          className={`text-xs font-semibold px-2.5 py-1 rounded-md border transition-all flex items-center gap-1 ${
-                                            isAdded
-                                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
-                                              : 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-500 hover:text-white shadow-xs'
-                                          }`}
-                                        >
-                                          <span>+1 {u.name}</span>
-                                          {u.mult > 1 && <span className="text-[10px] opacity-75">(×{u.mult})</span>}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <Button
-                      variant="outline"
-                      className="h-10 border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 shadow-sm"
-                      onClick={() => setIsSupplierCatalogOpen(true)}
-                    >
-                      <Package className="mr-2 h-4 w-4 text-sky-500" />
-                      ดูสินค้าจากผู้จำหน่ายทั้งหมด
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Table */}
-                <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                  <div className="hidden grid-cols-[40px_minmax(0,1.6fr)_70px_96px_80px_140px_150px_112px_44px] items-center gap-3 border-b border-slate-200 bg-slate-100 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-slate-600 lg:grid">
-                    <div className="text-center">#</div>
-                    <div>สินค้า</div>
-                    <div className="text-right">คงเหลือ</div>
-                    <div className="text-right">ต้นทุน/หน่วย</div>
-                    <div className="text-right">จำนวน</div>
-                    <div>ส่วนลดรายการ</div>
-                    <div>VAT / อัตรา %</div>
-                    <div className="text-right">รวม (รวม VAT)</div>
-                    <div className="text-center">ลบ</div>
-                  </div>
-
-                  {cartItems.length === 0 ? (
-                    <div className="flex min-h-72 flex-col items-center justify-center text-center text-slate-500 space-y-3">
-                      <PackageOpen className="h-14 w-14 text-slate-300" />
-                      <p className="font-semibold text-base text-slate-700">ยังไม่มีสินค้าในตารางสั่งของ</p>
-                      <p className="text-sm text-slate-400">พิมพ์ค้นหาสินค้าด้านบนแล้วกด Enter หรือคลิก "ดูสินค้าจากผู้จำหน่ายทั้งหมด"</p>
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-slate-100">
-                      {cartItems.map((item, index) => {
-                        const product = supplierProducts.find(p => p.id === item.productId) || { ...item, id: item.productId };
-                        const unitCost = item.unitCost;
-                        const quantity = item.quantity;
-                        const discountType = item.discountType;
-                        const discountValue = item.discountValue;
-                        const rowTotal = getItemTotal(item);
-
-                        return (
-                          <div
-                            key={item.productId}
-                            className="grid grid-cols-1 gap-3 px-4 py-3 transition-colors hover:bg-sky-50/30 lg:grid-cols-[40px_minmax(0,1.6fr)_70px_96px_80px_140px_150px_112px_44px] lg:items-center"
-                          >
-                            {/* Col 1: ลำดับ */}
-                            <div className="hidden lg:block text-center font-semibold text-slate-400 text-sm">
-                              {index + 1}
-                            </div>
-
-                            {/* Col 2: สินค้า + รูป */}
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2.5">
-                                <span className="lg:hidden text-xs font-bold text-slate-400">#{index + 1}</span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => openImagePreview(product, e)}
-                                  className="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 hover:text-sky-600 hover:border-sky-300 transition-colors shadow-sm"
-                                  title="กดเพื่อดูรูปภาพสินค้า"
-                                >
-                                  <ImageIcon className="w-4 h-4" />
-                                </button>
-                                <div className="min-w-0">
-                                  <div className="truncate text-sm font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
-                                    <span>{product.name}</span>
-                                    <Badge className="bg-sky-100 text-sky-800 border-sky-300 text-xs font-bold shrink-0">
-                                      {item.unitName || item.baseUnit || 'ชิ้น'} {item.multiplier > 1 ? `(×${item.multiplier})` : ''}
-                                    </Badge>
-                                  </div>
-                                  <div className="truncate text-xs text-slate-500 font-mono">{product.sku}</div>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Col 3: คงเหลือ */}
-                            <div className="flex items-center justify-between text-sm text-slate-600 lg:block lg:text-right">
-                              <span className="text-xs font-medium text-slate-500 lg:hidden">คงเหลือ</span>
-                              <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200">
-                                {item.stock ?? product.stock ?? '-'}
-                              </Badge>
-                            </div>
-
-                            {/* Col 4: ต้นทุน */}
-                            <label className="grid grid-cols-[84px_1fr] items-center gap-2 text-xs font-medium text-slate-500 lg:block">
-                              <span className="lg:hidden">ต้นทุน</span>
-                              <Input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={unitCost}
-                                onChange={(e) => updateProductUnitCost(product, Number(e.target.value))}
-                                className="h-9 bg-white text-right text-sm border-slate-300 focus-visible:ring-sky-500 font-semibold text-slate-900"
-                              />
-                            </label>
-
-                            {/* Col 5: จำนวน */}
-                            <label className="grid grid-cols-[84px_1fr] items-center gap-2 text-xs font-medium text-slate-500 lg:block">
-                              <span className="lg:hidden">จำนวน</span>
-                              <Input
-                                type="number"
-                                min={qtyStep(allowDecimalQty)}
-                                step={qtyStep(allowDecimalQty)}
-                                inputMode={qtyInputMode(allowDecimalQty)}
-                                value={quantity}
-                                onChange={(e) => updateProductQuantity(product, Number(e.target.value))}
-                                className="h-9 bg-white text-right text-sm border-slate-300 focus-visible:ring-sky-500 font-bold text-sky-600"
-                              />
-                            </label>
-
-                            {/* Col 6: ส่วนลด */}
-                            <div className="grid grid-cols-[84px_1fr] items-center gap-2 lg:block">
-                              <span className="text-xs font-medium text-slate-500 lg:hidden">ส่วนลด</span>
-                              <div className="grid grid-cols-[1fr_54px] gap-1.5">
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={discountValue}
-                                  onChange={(e) => updateProductDiscount(product, 'discountValue', Number(e.target.value))}
-                                  className="h-9 bg-white text-right text-sm border-slate-300"
-                                />
-                                <select
-                                  value={discountType}
-                                  onChange={(e) => updateProductDiscount(product, 'discountType', e.target.value as 'baht' | 'percent')}
-                                  className="h-9 rounded-lg border border-slate-300 bg-white px-1.5 text-xs font-medium text-slate-700 outline-none focus:border-sky-500"
-                                >
-                                  <option value="baht">บาท</option>
-                                  <option value="percent">%</option>
-                                </select>
-                              </div>
-                            </div>
-
-                            {/* Col 6b: VAT ของรายการนี้ */}
-                            <div className="grid grid-cols-[84px_1fr] items-center gap-2 lg:block">
-                              <span className="text-xs font-medium text-slate-500 lg:hidden">VAT</span>
-                              <div className="grid grid-cols-[1fr_46px] gap-1.5">
-                                <select
-                                  value={normVatType(item.vatType)}
-                                  onChange={(e) => updateItemVat(item.productId, { vatType: e.target.value as PoVatType })}
-                                  className={`h-9 rounded-lg border px-1.5 text-xs font-bold outline-none focus:border-sky-500 ${normVatType(item.vatType) === 'NONE' ? 'border-slate-300 bg-white text-slate-600' : normVatType(item.vatType) === 'INCLUDED' ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-amber-300 bg-amber-50 text-amber-800'}`}
-                                  title="VAT ของรายการนี้ตามบิลผู้จำหน่าย"
-                                >
-                                  <option value="NONE">ไม่มี VAT</option>
-                                  <option value="INCLUDED">รวม VAT แล้ว</option>
-                                  <option value="EXCLUDED">+VAT แยก</option>
-                                </select>
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  max="30"
-                                  step="0.01"
-                                  disabled={normVatType(item.vatType) === 'NONE'}
-                                  value={normVatType(item.vatType) === 'NONE' ? '' : (item.vatRate ?? 7)}
-                                  onChange={(e) => updateItemVat(item.productId, { vatRate: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })}
-                                  className="h-9 bg-white text-right text-xs border-slate-300 px-1.5"
-                                  title="อัตรา VAT (%)"
-                                />
-                              </div>
-                            </div>
-
-                            {/* Col 7: รวมสุทธิ */}
-                            <div className="flex items-center justify-between text-base font-bold text-slate-900 lg:block lg:text-right">
-                              <span className="text-xs font-medium text-slate-500 lg:hidden">รวม</span>
-                              {formatCurrency(rowTotal)}
-                            </div>
-
-                            {/* Col 8: ปุ่มลบ */}
-                            <div className="text-center">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-red-400 hover:bg-red-50 hover:text-red-600"
-                                onClick={() => removeCartItem(item.productId)}
-                                title="ลบรายการนี้"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Bottom Summary Bar */}
-              <div className="shrink-0 border-t border-slate-200 bg-white p-4 shadow-lg">
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-                  <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
-                    <Badge className="bg-sky-500 text-white font-bold px-3 py-1 text-sm">
-                      เลือกสั่งรวม {cartItems.length} รายการ
-                    </Badge>
-                    <span>จำนวนชิ้นรวม: <b>{formatQty(addQty(...cartItems.map((i) => i.quantity || 0)))}</b> ชิ้น</span>
-                  </div>
-
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500">ยอดรวมก่อนส่วนลด</span>
-                      <span className="font-semibold text-slate-900">{formatCurrency(subtotalBeforeDiscount)}</span>
-                    </div>
-                    {itemDiscountTotal > 0 && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-slate-500">ส่วนลดรายการ</span>
-                        <span className="font-semibold text-red-600">-{formatCurrency(itemDiscountTotal)}</span>
-                      </div>
-                    )}
-                    <div className="grid grid-cols-[1fr_100px_68px] items-center gap-2 text-sm">
-                      <span className="text-slate-500">ส่วนลดท้ายบิล</span>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={billDiscountValue}
-                        onChange={(e) => setBillDiscountValue(Math.max(0, Number(e.target.value) || 0))}
-                        className="h-9 bg-white text-right text-sm border-slate-300 font-semibold"
-                      />
-                      <select
-                        value={billDiscountType}
-                        onChange={(e) => setBillDiscountType(e.target.value as 'baht' | 'percent')}
-                        className="h-9 rounded-lg border border-slate-300 bg-white px-2 text-xs font-medium text-slate-700 outline-none focus:border-sky-500"
-                      >
-                        <option value="baht">บาท</option>
-                        <option value="percent">%</option>
-                      </select>
-                    </div>
-
-                    {/* VAT Configuration Toggle */}
-                    <div className="space-y-1.5 pt-1.5 border-t border-slate-100">
-                      <div className="flex items-center justify-between text-xs text-slate-600">
-                        <span className="font-semibold text-slate-700">ตั้ง VAT ทุกรายการ:</span>
-                        <span className="text-[11px] text-slate-500 font-medium">แก้รายตัวได้ที่ช่อง VAT ของแต่ละรายการ</span>
-                      </div>
-                      <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs">
-                        <button
-                          type="button"
-                          onClick={() => applyVatToAll('none')}
-                          className={`py-1.5 px-2 rounded-md font-semibold text-center transition-all ${
-                            vatType === 'none'
-                              ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
-                              : 'text-slate-500 hover:text-slate-900'
-                          }`}
-                        >
-                          ไม่มี VAT (0%)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => applyVatToAll('include')}
-                          className={`py-1.5 px-2 rounded-md font-semibold text-center transition-all ${
-                            vatType === 'include'
-                              ? 'bg-sky-600 text-white shadow-sm'
-                              : 'text-slate-500 hover:text-slate-900'
-                          }`}
-                        >
-                          รวม VAT (7%)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => applyVatToAll('exclude')}
-                          className={`py-1.5 px-2 rounded-md font-semibold text-center transition-all ${
-                            vatType === 'exclude'
-                              ? 'bg-sky-600 text-white shadow-sm'
-                              : 'text-slate-500 hover:text-slate-900'
-                          }`}
-                        >
-                          แยก VAT (+7%)
-                        </button>
-                      </div>
-                    </div>
-
-                    {vatAmount > 0 && (
-                      <>
-                        <div className="flex items-center justify-between text-xs text-slate-500">
-                          <span>มูลค่าก่อนภาษี</span>
-                          <span className="font-medium text-slate-700">{formatCurrency(netBeforeVat)}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs text-slate-700">
-                          <span>
-                            ภาษีซื้อ (VAT) {liveBill.lines.filter((l) => l.vatType !== 'NONE' && l.baseAmount > 0).length}/{cartItems.length} รายการ
-                          </span>
-                          <span className="font-bold text-sky-700">{formatCurrency(vatAmount)}</span>
-                        </div>
-                      </>
-                    )}
-
-                    <div className="flex items-end justify-between border-t border-slate-200 pt-2">
-                      <span className="text-base font-bold text-slate-800">ยอดรวมสุทธิ</span>
-                      <span className="text-2xl font-bold text-sky-600">{formatCurrency(cartTotal)}</span>
-                    </div>
-                    <Button
-                      className={`h-12 w-full text-base font-bold text-white shadow-md ${
-                        editingPo 
-                          ? 'bg-amber-600 hover:bg-amber-700' 
-                          : 'bg-sky-500 hover:bg-sky-600'
-                      }`}
-                      disabled={cartItems.length === 0}
-                      onClick={handleCreatePO}
-                    >
-                      {editingPo ? 'บันทึกการแก้ไขใบสั่งซื้อ (Ctrl + Enter)' : 'สร้างใบสั่งซื้อ (Ctrl + Enter)'}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Keyboard Shortcut Hints Bar */}
-              <div className="bg-slate-900 text-slate-200 px-4 py-2 text-xs flex flex-wrap items-center justify-between gap-2 border-t border-slate-800 shrink-0">
-                <div className="flex items-center gap-4">
-                  <span className="flex items-center gap-1 font-semibold text-amber-400">
-                    <Keyboard className="w-4 h-4" /> ทางลัดคีย์บอร์ด:
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">↑ / ↓</kbd> เลื่อนเลือกสินค้า
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">Enter</kbd> เพิ่มสินค้าลงตาราง
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">Ctrl + Enter</kbd> บันทึกใบ PO
-                  </span>
-                </div>
-                <div className="text-slate-400">
-                  กด <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">Esc</kbd> เพื่อยกเลิก
-                </div>
-              </div>
-
-              {/* Larger Supplier Catalog Dialog */}
-              <Dialog open={isSupplierCatalogOpen} onOpenChange={setIsSupplierCatalogOpen}>
-                <DialogContent className="max-h-[92dvh] max-w-[95vw] lg:max-w-6xl xl:max-w-7xl overflow-hidden bg-white p-0 text-slate-900 flex flex-col border-slate-200">
-                  <DialogHeader className="border-b border-slate-200 px-6 py-4 flex flex-row items-center justify-between shrink-0">
-                    <DialogTitle className="flex items-center gap-2 text-xl font-bold text-slate-900">
-                      <Package className="h-6 w-6 text-sky-500" />
-                      รายการสินค้าจากผู้จำหน่าย: <span className="text-sky-600">{selectedSupplier?.name}</span>
-                    </DialogTitle>
-                  </DialogHeader>
-
-                  <div className="p-4 border-b border-slate-200 bg-slate-50 shrink-0">
-                    <div className="relative max-w-md">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                      <Input
-                        placeholder="ค้นหาชื่อ หรือ SKU สินค้า..."
-                        className="pl-9 bg-white border-slate-300 h-10 text-sm"
-                        value={catalogSearch}
-                        onChange={(e) => setCatalogSearch(e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="min-h-0 flex-1 overflow-y-auto p-6">
-                    <div className="hidden grid-cols-[48px_minmax(0,1.8fr)_110px_120px_130px_140px] items-center gap-4 rounded-t-xl border border-slate-200 bg-slate-100 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-600 lg:grid">
-                      <div className="text-center">ลำดับ</div>
-                      <div>สินค้า</div>
-                      <div className="text-right">คงเหลือ</div>
-                      <div className="text-right">ต้นทุน/หน่วย</div>
-                      <div className="text-center">สถานะสั่งซื้อ</div>
-                      <div className="text-right">จัดการ</div>
-                    </div>
-
-                    <div className="overflow-hidden rounded-xl border border-slate-200 lg:rounded-t-none lg:border-t-0 bg-white">
-                      {filteredCatalogProducts.length === 0 ? (
-                        <div className="flex min-h-64 flex-col items-center justify-center text-center text-slate-500 space-y-2 p-6">
-                          <PackageOpen className="h-12 w-12 text-slate-300" />
-                          <p className="font-bold text-base text-slate-800">ไม่พบสินค้าที่ผูกกับผู้จำหน่าย "{selectedSupplier?.name}"</p>
-                          <p className="text-xs text-slate-400 max-w-md">
-                            คำแนะนำ: ท่านสามารถผูกผู้จำหน่ายกับสินค้าได้ใน <b>หน้ารายละเอียดสินค้า (การจัดการสินค้า)</b> โดยระบุผู้จำหน่ายในช่องบาร์โค้ดหรือต้นทุนสินค้า
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="divide-y divide-slate-100">
-                          {filteredCatalogProducts.map((product: any, idx: number) => {
-                            const units = getProductUnits(product);
-                            return (
-                              <div
-                                key={product.id}
-                                className="grid grid-cols-1 gap-3 px-4 py-3.5 hover:bg-sky-50/40 transition-colors lg:grid-cols-[48px_minmax(0,1.8fr)_110px_120px_auto] lg:items-center"
-                              >
-                                <div className="hidden lg:block text-center font-semibold text-slate-400 text-sm">
-                                  {idx + 1}
-                                </div>
-
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-3">
-                                    <button
-                                      type="button"
-                                      onClick={(e) => openImagePreview(product, e)}
-                                      className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 hover:text-sky-600 hover:border-sky-300 transition-colors shadow-sm"
-                                      title="กดเพื่อดูรูปสินค้า"
-                                    >
-                                      <ImageIcon className="w-5 h-5" />
-                                    </button>
-                                    <div className="min-w-0">
-                                      <div className="truncate text-base font-semibold text-slate-900">{product.name}</div>
-                                      <div className="truncate text-xs text-slate-500 font-mono">{product.sku}</div>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center justify-between text-sm font-semibold text-slate-700 lg:block lg:text-right">
-                                  <span className="text-xs font-medium text-slate-500 lg:hidden">คงเหลือ</span>
-                                  {Number(product.stock ?? 0) < 0 ? (
-                                    <span className="inline-flex items-center gap-1 font-extrabold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                                      🔻 {product.stock} {product.unit || 'ชิ้น'}
-                                    </span>
-                                  ) : (
-                                    <span>{product.stock ?? '-'} {product.unit || 'ชิ้น'}</span>
-                                  )}
-                                </div>
-
-                                <div className="flex items-center justify-between text-sm font-bold text-slate-900 lg:block lg:text-right">
-                                  <span className="text-xs font-medium text-slate-500 lg:hidden">ต้นทุน</span>
-                                  {formatCurrency(defaultUnitCost(product))}
-                                </div>
-
-                                <div className="flex flex-wrap items-center justify-end gap-1.5">
-                                  {units.map((u, ui) => {
-                                    const existing = cartItems.find(i => i.productId === product.id && (i.unitName === u.name || (!i.unitName && u.name === (product.unit || 'ชิ้น'))));
-                                    return (
-                                      <Button
-                                        key={ui}
-                                        size="sm"
-                                        className={`h-8 text-xs font-semibold px-2.5 ${
-                                          existing
-                                            ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                            : "bg-sky-500 text-white hover:bg-sky-600 shadow-xs"
-                                        }`}
-                                        onClick={() => addCartItemWithUnit(product, u.name, u.mult, 1)}
-                                      >
-                                        +1 {u.name} {u.mult > 1 ? `(×${u.mult})` : ''} {existing ? `[สั่งแล้ว ${formatQty(existing.quantity)}]` : ''}
-                                      </Button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <DialogFooter className="border-t border-slate-200 px-6 py-4 bg-slate-50 shrink-0">
-                    <Button onClick={() => setIsSupplierCatalogOpen(false)} className="bg-slate-900 text-white hover:bg-slate-800">
-                      ปิดหน้าต่าง (Esc)
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </div>
-        )}
-
-        {/* Product Image Preview Modal */}
-        <Dialog open={previewProduct !== null} onOpenChange={(open) => { if (!open) setPreviewProduct(null); }}>
-          <DialogContent className="bg-white border-slate-200 text-slate-900 max-w-md p-6">
-            <DialogHeader className="mb-2">
-              <DialogTitle className="flex items-center gap-2 text-lg font-bold text-slate-900">
-                <ImageIcon className="w-5 h-5 text-primary" />
-                รูปภาพสินค้า: <span className="text-sky-600">{previewProduct?.name}</span>
-              </DialogTitle>
-            </DialogHeader>
-
-            <div className="space-y-4 pt-2">
-              {previewImages.length > 0 ? (
-                <div className="space-y-3">
-                  <div className="aspect-square rounded-xl overflow-hidden border-2 border-slate-200 bg-slate-50 flex items-center justify-center shadow-inner">
-                    <img src={previewImages[selectedImageIdx] || previewImages[0]} alt={previewProduct?.name} className="w-full h-full object-cover" />
-                  </div>
-                  {previewImages.length > 1 && (
-                    <div className="flex gap-2 justify-center">
-                      {previewImages.map((img, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => setSelectedImageIdx(idx)}
-                          className={`w-14 h-14 rounded-lg overflow-hidden border-2 transition-all ${selectedImageIdx === idx ? "border-primary ring-2 ring-primary/20" : "border-slate-200 opacity-60 hover:opacity-100"}`}
-                        >
-                          <img src={img} alt="" className="w-full h-full object-cover" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="h-56 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-400 gap-2">
-                  <Package className="w-12 h-12 text-slate-300" />
-                  <p className="text-sm font-semibold text-slate-600">ไม่มีรูปภาพสินค้าสำหรับรายการนี้</p>
-                  <p className="text-xs text-slate-400">สามารถเพิ่มรูปได้ในหน้าแก้ไขสินค้า</p>
-                </div>
-              )}
-
-              <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-center justify-between">
-                <span>รหัส SKU: <b className="font-mono text-slate-700">{previewProduct?.sku}</b></span>
-                <span>คงเหลือ: <b className="text-slate-900">{previewProduct?.stock ?? '-'}</b></span>
-              </div>
-            </div>
-
-            <DialogFooter className="mt-4">
-              <Button variant="outline" onClick={() => setPreviewProduct(null)} className="w-full border-slate-300">
-                ปิดหน้าต่าง (Esc)
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+      <PoCreateView
+        init={createInit}
+        searchScope={searchScope}
+        setSearchScope={setSearchScope}
+        catalogSearch={catalogSearch}
+        setCatalogSearch={setCatalogSearch}
+        allowDecimalQty={allowDecimalQty}
+        loadAllProducts={loadAllProducts}
+        fetchPOs={fetchPOs}
+        openImagePreview={openImagePreview}
+        onCancel={() => { setCreateInit(null); setViewMode('list'); }}
+        onSaved={(po) => {
+          setCreateInit(null);
+          setViewMode('list');
+          setCurrentPo(po);
+          setPdfPoData(po);
+          setIsPdfModalOpen(true);
+        }}
+      >
+        {imagePreview}
+      </PoCreateView>
     );
   }
 
@@ -1705,7 +543,7 @@ export default function PurchaseOrdersPage() {
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">จัดการเอกสารใบสั่งซื้อสินค้า ตรวจรับของเข้าคลัง และเปิดใบ PO ถึงผู้จำหน่าย</p>
         </div>
-        <Button 
+        <Button
           className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-10 px-5 text-xs shadow-sm rounded-xl"
           onClick={openCreateDialog}
         >
@@ -1714,350 +552,36 @@ export default function PurchaseOrdersPage() {
         </Button>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 p-4">
-          <Tabs defaultValue="ALL" onValueChange={setStatusFilter}>
-            <TabsList className="bg-slate-100 border border-slate-200">
-              <TabsTrigger value="ALL" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">ทั้งหมด ({purchaseOrders.length})</TabsTrigger>
-              <TabsTrigger value="DRAFT" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                DRAFT ({purchaseOrders.filter(p => p.status === 'DRAFT').length})
-              </TabsTrigger>
-              <TabsTrigger value="ISSUED" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                ISSUED ({purchaseOrders.filter(p => p.status === 'ISSUED').length})
-              </TabsTrigger>
-              <TabsTrigger value="PARTIALLY_RECEIVED" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                PARTIAL ({purchaseOrders.filter(p => p.status === 'PARTIALLY_RECEIVED').length})
-              </TabsTrigger>
-              <TabsTrigger value="COMPLETED" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                COMPLETED ({purchaseOrders.filter(p => p.status === 'COMPLETED').length})
-              </TabsTrigger>
-              <TabsTrigger value="CANCELLED" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                CANCELLED ({purchaseOrders.filter(p => p.status === 'CANCELLED').length})
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader className="bg-slate-50 border-b border-slate-200">
-              <TableRow className="border-slate-200 hover:bg-transparent">
-                <TableHead className="text-slate-700 font-bold text-sm text-center w-16">ลำดับ</TableHead>
-                <TableHead className="text-slate-700 font-bold text-sm w-36">เลข PO</TableHead>
-                <TableHead className="text-slate-700 font-bold text-sm">ผู้จำหน่าย</TableHead>
-                <TableHead className="text-slate-700 font-bold text-sm text-center w-36">วันที่สร้าง</TableHead>
-                <TableHead className="text-slate-700 font-bold text-sm text-right">ยอดรวมสุทธิ</TableHead>
-                <TableHead className="text-slate-700 font-bold text-sm text-center">สถานะ</TableHead>
-                <TableHead className="text-slate-700 font-bold text-sm text-center">จัดการ</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center h-32 text-slate-500 text-sm">
-                    กำลังโหลดข้อมูล...
-                  </TableCell>
-                </TableRow>
-              ) : loadError ? (
-                <TableRow>
-                  <TableCell colSpan={7}>
-                    <LoadErrorState message={loadError} onRetry={() => void fetchPOs()} />
-                  </TableCell>
-                </TableRow>
-              ) : filteredPOs.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center h-32 text-slate-500 text-sm">
-                    ไม่พบข้อมูลใบสั่งซื้อ
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredPOs.map((po, idx) => (
-                  <TableRow key={po.id} className="border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors" onClick={() => handleViewDetail(po.id)}>
-                    <TableCell className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
-                      {idx + 1}
-                    </TableCell>
-                    <TableCell className="font-bold text-slate-900 text-[15px] font-mono">{po.poNumber}</TableCell>
-                    <TableCell className="text-slate-900 font-bold text-[15px]">{po.supplier?.name || po.supplierName || "-"}</TableCell>
-                    <TableCell className="text-slate-600 text-center font-mono text-xs">{formatDate(po.createdAt)}</TableCell>
-                    <TableCell className="text-right text-slate-900 font-black text-[15px] sm:text-base font-mono">
-                      <div>{formatCurrency(po.totalAmount)}</div>
-                      {po.deductedReturns && po.deductedReturns.length > 0 && (
-                        <div className="text-[10.5px] text-emerald-700 font-normal mt-0.5">
-                          <span className="bg-emerald-50 border border-emerald-200 px-1 py-0.2 rounded font-bold">
-                            หักเคลม -{formatCurrency(po.deductedReturns.reduce((s: number, r: any) => s + Number(r.amount || 0), 0))}
-                          </span>
-                          <span className="font-black block text-slate-900 font-mono mt-0.5">
-                            จ่ายจริง {formatCurrency(po.netAmountPayable ?? (po.totalAmount - po.deductedReturns.reduce((s: number, r: any) => s + Number(r.amount || 0), 0)))}
-                          </span>
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">{getStatusBadge(po.status)}</TableCell>
-                    <TableCell className="text-center">
-                      <div className="flex gap-1.5 justify-center items-center">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8 text-slate-500 hover:text-sky-600 hover:bg-sky-50" 
-                          title="ดู/พิมพ์ใบสั่งซื้อ PDF" 
-                          onClick={(e) => { e.stopPropagation(); handleViewDetail(po.id, 'pdf'); }}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        {po.status === 'DRAFT' && (
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-slate-500 hover:text-amber-600 hover:bg-amber-50" 
-                            title="แก้ไขใบสั่งซื้อ" 
-                            onClick={(e) => openEditDialog(po, e)}
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                        )}
-                        {po.status === 'DRAFT' && (
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50" 
-                            title="ออกใบสั่งซื้อ (Issue)" 
-                            onClick={(e) => openIssueConfirmDialog(po, e)}
-                          >
-                            <CheckCircle className="w-4 h-4" />
-                          </Button>
-                        )}
-                        {(po.status === 'ISSUED' || po.status === 'PARTIALLY_RECEIVED') && (
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-slate-500 hover:text-amber-600 hover:bg-amber-50" 
-                            title="รับสินค้าเข้าคลัง (GRN)" 
-                            onClick={(e) => openReceiveDialog(po, e)}
-                          >
-                            <PackageOpen className="w-4 h-4" />
-                          </Button>
-                        )}
-                        {/* Status Change / Rollback Action Button */}
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50" 
-                          title="เปลี่ยน / ย้อนสถานะใบสั่งซื้อ" 
-                          onClick={(e) => openStatusChangeDialog(po, e)}
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                        </Button>
-                        {po.status !== 'CANCELLED' && (
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="h-8 w-8 text-slate-500 hover:text-rose-600 hover:bg-rose-50" 
-                            title="ยกเลิกใบสั่งซื้อ" 
-                            onClick={(e) => openCancelDialog(po, e)}
-                          >
-                            <Ban className="w-4 h-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
+      <PoListTable
+        purchaseOrders={purchaseOrders}
+        filteredPOs={filteredPOs}
+        loading={loading}
+        loadError={loadError}
+        setStatusFilter={setStatusFilter}
+        fetchPOs={fetchPOs}
+        handleViewDetail={handleViewDetail}
+        openEditDialog={openEditDialog}
+        openIssueConfirmDialog={openIssueConfirmDialog}
+        openReceiveDialog={openReceiveDialog}
+        openStatusChangeDialog={openStatusChangeDialog}
+        openCancelDialog={openCancelDialog}
+      />
 
       {/* Receive Dialog (GRN) */}
-      <Dialog open={isReceiveOpen} onOpenChange={setIsReceiveOpen}>
-        <DialogContent className="bg-white border-slate-200 text-slate-900 w-[95vw] sm:w-[85vw] lg:w-[75vw] max-w-[75vw] h-[88vh] max-h-[90vh] flex flex-col p-0 overflow-hidden rounded-2xl shadow-2xl">
-          <DialogHeader className="border-b border-slate-200 px-8 py-5 bg-slate-50/80 shrink-0">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <DialogTitle className="text-2xl font-bold flex items-center gap-2.5 text-slate-900">
-                <PackageOpen className="w-7 h-7 text-amber-500" />
-                ตรวจนับและรับสินค้าเข้าคลัง (PO: {currentPo?.poNumber})
-              </DialogTitle>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setReceiveItems(prev => prev.map(i => ({ ...i, toReceive: i.remainingQty })))}
-                  className="text-xs border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-semibold h-8"
-                >
-                  ✓ รับครบทั้งหมด
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setReceiveItems(prev => prev.map(i => ({ ...i, toReceive: 0 })))}
-                  className="text-xs border-slate-300 text-slate-600 hover:bg-slate-100 font-semibold h-8"
-                >
-                  ล้างเป็น 0
-                </Button>
-              </div>
-            </div>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-y-auto px-8 py-6 pb-8 space-y-5">
-            <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-4 text-xs text-amber-900 flex items-start gap-2.5">
-              <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold">ขั้นตอนการตรวจรับสินค้า (GRN):</span> ตรวจสอบจำนวนสินค้าจริงที่มาส่ง หากจำนวนไม่ตรงกับใบสั่งซื้อ สามารถปรับแก้ตัวเลขในช่อง <b>"รับเพิ่มครั้งนี้"</b> ได้ทันที เมื่อกดยืนยันระบบจะนำจำนวนที่ได้รับจริงไป <b>เพิ่มสต็อกสินค้าในคลังให้อัตโนมัติ</b>
-              </div>
-            </div>
-
-            {/* Supplier Invoice Information Card */}
-            <div className="bg-slate-50/90 border border-slate-200 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-4 shadow-2xs">
-              <div>
-                <label className="text-xs font-bold text-slate-800 block mb-1">
-                  เลขที่บิล / ใบกำกับภาษี / ใบส่งของของผู้จำหน่าย (Supplier Invoice / DO No.)
-                </label>
-                <Input
-                  placeholder="เช่น INV-670123 หรือ DO-8899"
-                  value={receiveSupplierInvoiceNo}
-                  onChange={(e) => setReceiveSupplierInvoiceNo(e.target.value)}
-                  className="bg-white border-slate-300 h-9 text-xs font-mono font-bold text-slate-900"
-                />
-                <p className="text-[11px] text-slate-500 mt-1">ใช้ประกบคู่กับ PO เพื่อนำไปจับคู่ชำระเงินในระบบเจ้าหนี้การค้า</p>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-slate-800 block mb-1">
-                  วันที่ในบิลผู้จำหน่าย (Invoice Date)
-                </label>
-                <Input
-                  type="date"
-                  value={receiveSupplierInvoiceDate}
-                  onChange={(e) => setReceiveSupplierInvoiceDate(e.target.value)}
-                  className="bg-white border-slate-300 h-9 text-xs text-slate-800"
-                />
-              </div>
-            </div>
-
-            <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-              <Table>
-                <TableHeader className="bg-slate-50">
-                  <TableRow className="border-slate-200">
-                    <TableHead className="w-10 text-center text-slate-500 font-bold">#</TableHead>
-                    <TableHead className="text-slate-500 font-bold min-w-[200px]">สินค้า</TableHead>
-                    <TableHead className="text-center text-slate-500 font-bold">หน่วย</TableHead>
-                    <TableHead className="text-center text-slate-500 font-bold">สั่งซื้อ</TableHead>
-                    <TableHead className="text-center text-slate-500 font-bold">รับแล้ว</TableHead>
-                    <TableHead className="text-center text-slate-500 font-bold">ค้างรับ</TableHead>
-                    <TableHead className="text-right text-slate-500 font-bold w-32">รับเพิ่มครั้งนี้</TableHead>
-                    <TableHead className="text-right text-slate-500 font-bold min-w-[130px]">สต็อกในคลัง</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {receiveItems.map((item, idx) => {
-                    const toRec = Number(item.toReceive) || 0;
-                    const mult = Number(item.multiplier) || 1;
-                    const stockDelta = mulQty(toRec, mult);
-                    const currentStock = Number(item.currentStock || 0);
-                    const newStock = addQty(currentStock, stockDelta);
-
-                    return (
-                      <TableRow key={idx} className="border-slate-100 hover:bg-slate-50/70">
-                        <TableCell className="text-center text-slate-400 font-semibold text-xs">{idx + 1}</TableCell>
-                        <TableCell className="text-slate-900 font-bold">
-                          <div className="flex items-center gap-2.5">
-                            <button
-                              type="button"
-                              onClick={(e) => openImagePreview(item, e)}
-                              className="w-8 h-8 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-sky-600 shrink-0 shadow-2xs"
-                              title="ดูรูปภาพสินค้า"
-                            >
-                              <ImageIcon className="w-4 h-4" />
-                            </button>
-                            <div className="min-w-0">
-                              <div className="truncate text-sm">{item.name}</div>
-                              <div className="text-xs text-slate-400 font-mono font-normal">{item.sku}</div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-xs font-semibold">
-                            {item.unitName} {mult > 1 ? `(×${mult})` : ''}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center text-slate-700 font-semibold">{formatQty(item.orderedQty)}</TableCell>
-                        <TableCell className="text-center text-emerald-600 font-bold">{formatQty(item.receivedQty)}</TableCell>
-                        <TableCell className="text-center text-amber-700 font-bold">{formatQty(item.remainingQty)}</TableCell>
-                        <TableCell className="text-right">
-                          <Input 
-                            type="number" 
-                            min="0"
-                            step={qtyStep(allowDecimalQty)}
-                            inputMode={qtyInputMode(allowDecimalQty)}
-                            value={item.toReceive}
-                            onChange={(e) => {
-                              const val = Math.max(0, parseQty(e.target.value, allowDecimalQty) || 0);
-                              const newItems = [...receiveItems];
-                              newItems[idx].toReceive = val;
-                              setReceiveItems(newItems);
-                            }}
-                            className="bg-white border-slate-300 h-9 text-right font-bold text-sky-600 focus-visible:ring-sky-500 w-full"
-                          />
-                        </TableCell>
-                        <TableCell className="text-right text-xs">
-                          <div className="flex flex-col items-end">
-                            <span className="font-semibold text-slate-800">
-                              {formatQty(currentStock)} → <b className="text-emerald-600 font-bold">{formatQty(newStock)}</b>
-                            </span>
-                            {stockDelta > 0 && (
-                              <span className="text-[11px] font-bold text-emerald-600">
-                                (+{formatQty(stockDelta)} ชิ้น)
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-
-            {/* Status Preview Card */}
-            {(() => {
-              const isAllReceived = receiveItems.every((i) => addQty(i.receivedQty || 0, Number(i.toReceive) || 0) >= i.orderedQty);
-              const totalItemsReceiving = receiveItems.filter(i => Number(i.toReceive) > 0).length;
-              const totalUnitsReceiving = receiveItems.reduce((s, i) => s + (Number(i.toReceive) || 0) * (Number(i.multiplier) || 1), 0);
-
-              return (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-2">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                    <div className="text-xs text-slate-600">
-                      รายการที่จะรับเข้าครั้งนี้: <b className="text-slate-900">{totalItemsReceiving} รายการ</b> (เพิ่มเข้าสต็อกรวม <b className="text-emerald-600 font-bold">{totalUnitsReceiving} ชิ้น</b>)
-                    </div>
-                    <div>
-                      {isAllReceived ? (
-                        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs font-bold px-2.5 py-1">
-                          สถานะ PO จะเปลี่ยนเป็น: COMPLETED (รับครบถ้วน)
-                        </Badge>
-                      ) : (
-                        <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold px-2.5 py-1">
-                          สถานะ PO จะเปลี่ยนเป็น: PARTIALLY_RECEIVED (รับบางส่วน)
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-
-          <DialogFooter className="border-t border-slate-200 px-8 py-4.5 bg-slate-50 shrink-0 flex justify-between items-center w-full">
-            <Button variant="ghost" onClick={() => setIsReceiveOpen(false)} className="text-slate-600 hover:bg-slate-200/60 font-semibold">
-              ยกเลิก
-            </Button>
-            <Button onClick={handleTriggerReceivePO} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-7 h-11 shadow-sm text-sm">
-              <PackageOpen className="w-4 h-4 mr-2" /> ยืนยันรับสินค้าและปรับสต็อกเข้าคลัง
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PoReceiveDialog
+        isReceiveOpen={isReceiveOpen}
+        setIsReceiveOpen={setIsReceiveOpen}
+        currentPo={currentPo}
+        receiveItems={receiveItems}
+        setReceiveItems={setReceiveItems}
+        receiveSupplierInvoiceNo={receiveSupplierInvoiceNo}
+        setReceiveSupplierInvoiceNo={setReceiveSupplierInvoiceNo}
+        receiveSupplierInvoiceDate={receiveSupplierInvoiceDate}
+        setReceiveSupplierInvoiceDate={setReceiveSupplierInvoiceDate}
+        allowDecimalQty={allowDecimalQty}
+        openImagePreview={openImagePreview}
+        handleTriggerReceivePO={handleTriggerReceivePO}
+      />
 
       <CreateSupplierReturnModal
         open={!!returnPo}
@@ -2072,552 +596,62 @@ export default function PurchaseOrdersPage() {
       />
 
       {/* PO Detail Dialog */}
-      <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="bg-white border-slate-200 text-slate-900 max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-4 text-xl font-bold text-slate-900">
-              <span>รายละเอียดใบสั่งซื้อ {currentPo?.poNumber}</span>
-              {currentPo && getStatusBadge(currentPo.status)}
-            </DialogTitle>
-          </DialogHeader>
-          {currentPo && (
-            <div className="space-y-6 py-4">
-              <div className="grid grid-cols-2 gap-4 text-sm bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <div>
-                  <span className="text-slate-500 block mb-1">ผู้จำหน่าย</span>
-                  <span className="font-bold text-slate-900 text-base">{currentPo.supplier?.name || currentPo.supplierName}</span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block mb-1">วันที่สร้าง</span>
-                  <span className="font-bold text-slate-900 text-base">{formatDate(currentPo.createdAt)}</span>
-                </div>
-              </div>
-              
-              <div>
-                <h4 className="font-bold text-slate-900 mb-3 border-b border-slate-200 pb-2">รายการสินค้าสั่งซื้อ</h4>
-                <Table>
-                  <TableHeader className="bg-slate-50">
-                    <TableRow className="border-slate-200">
-                      <TableHead className="w-12 text-center text-slate-500 font-bold">ลำดับ</TableHead>
-                      <TableHead className="text-slate-500 font-bold">สินค้า</TableHead>
-                      <TableHead className="text-right text-slate-500 font-bold">สั่ง (ชิ้น)</TableHead>
-                      <TableHead className="text-right text-slate-500 font-bold">รับแล้ว (ชิ้น)</TableHead>
-                      <TableHead className="text-right text-slate-500 font-bold">ต้นทุน/หน่วย</TableHead>
-                      <TableHead className="text-right text-slate-500 font-bold">รวม (รวม VAT)</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {currentPo.items?.map((item: any, idx: number) => (
-                      <TableRow key={idx} className="border-slate-100 hover:bg-slate-50">
-                        <TableCell className="text-center text-slate-400 font-semibold">{idx + 1}</TableCell>
-                        <TableCell className="text-slate-900 font-bold flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={(e) => openImagePreview(item, e)}
-                            className="w-7 h-7 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-sky-600 shrink-0"
-                            title="ดูรูปภาพสินค้า"
-                          >
-                            <ImageIcon className="w-3.5 h-3.5" />
-                          </button>
-                          <span>{item.name || item.product?.name}</span>
-                        </TableCell>
-                        <TableCell className="text-right text-slate-700 font-semibold">{formatQty(item.quantity)}</TableCell>
-                        <TableCell className="text-right text-emerald-600 font-bold">{formatQty(Number(item.receivedQty ?? item.receivedQuantity) || 0)}</TableCell>
-                        <TableCell className="text-right text-slate-600">{formatCurrency(item.unitCost)}</TableCell>
-                        <TableCell className="text-right text-slate-900 font-bold">
-                          {formatCurrency(item.total !== undefined && item.total !== null ? Number(item.total) : item.quantity * item.unitCost)}
-                          {normVatType(item.vatType) !== 'NONE' && (
-                            <span className={`block text-[10px] font-semibold ${normVatType(item.vatType) === 'INCLUDED' ? 'text-emerald-700' : 'text-amber-700'}`}>
-                              {normVatType(item.vatType) === 'INCLUDED' ? 'รวม' : '+'}VAT {lineVatRate(item.vatRate)}% ({formatCurrency(Number(item.vatAmount) || 0)})
-                            </span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-                <div className="text-right mt-4 pt-4 border-t border-slate-200 flex justify-end">
-                  <div className="w-80 bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 text-left">
-                    {Number(currentPo.discountAmount) > 0 && (
-                      <div className="flex justify-between text-xs text-slate-600 font-medium">
-                        <span>ส่วนลดรวม:</span>
-                        <span className="font-mono font-bold text-rose-600">-{formatCurrency(Number(currentPo.discountAmount))}</span>
-                      </div>
-                    )}
-                    {Number(currentPo.vatAmount) > 0 && (
-                      <>
-                        <div className="flex justify-between text-xs text-slate-600 font-medium">
-                          <span>มูลค่าก่อนภาษี:</span>
-                          <span className="font-mono font-bold text-slate-800">{formatCurrency(Number(currentPo.subtotalAmount))}</span>
-                        </div>
-                        <div className="flex justify-between text-xs text-slate-600 font-medium">
-                          <span>ภาษีซื้อ (VAT):</span>
-                          <span className="font-mono font-bold text-sky-700">{formatCurrency(Number(currentPo.vatAmount))}</span>
-                        </div>
-                      </>
-                    )}
-                    <div className="flex justify-between text-xs text-slate-600 font-medium">
-                      <span>ยอดรวมบิลสั่งซื้อ:</span>
-                      <span className="font-mono font-bold text-slate-800">{formatCurrency(currentPo.totalAmount)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs text-slate-600 font-medium">
-                      <span>มูลค่าสินค้าที่รับแล้ว (ตั้งเป็นหนี้):</span>
-                      <span className="font-mono font-bold text-indigo-700">
-                        {formatCurrency(
-                          receivedValue(currentPo)
-                        )}
-                      </span>
-                    </div>
-
-                    {/* Paid / remaining come from the database (payment vouchers incl. credit-note deductions). */}
-                    <div className="flex justify-between text-xs text-slate-600 font-medium">
-                      <span>ชำระแล้ว (รวมหักใบลดหนี้):</span>
-                      <span className="font-mono font-bold text-emerald-700">{formatCurrency(Number(currentPo.paidAmount || 0))}</span>
-                    </div>
-                    <div className="border-t border-slate-200 pt-2 flex justify-between font-black text-lg text-slate-900">
-                      <span>ยอดค้างชำระ (ของที่รับแล้ว):</span>
-                      <span className="text-rose-700 font-mono font-black">
-                        {formatCurrency(
-                          Math.max(
-                            0,
-                            Math.min(
-                              Number(currentPo.remainingPayable ?? currentPo.totalAmount ?? 0),
-                              receivedValue(currentPo) - Number(currentPo.paidAmount || 0),
-                            ),
-                          )
-                        )}
-                      </span>
-                    </div>
-
-                    {currentPo.status !== 'CANCELLED' && Number(currentPo.remainingPayable ?? 0) > 0 && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => {
-                          setIsDetailOpen(false);
-                          router.push('/payables');
-                        }}
-                        className="mt-2 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-9 rounded-xl shadow-xs gap-1.5"
-                        title="ชำระเงินและหักใบลดหนี้ทำที่หน้าเจ้าหนี้การค้า เพื่อให้ยอดตรงกับฐานข้อมูล"
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>ชำระเงิน / หักใบลดหนี้ ที่หน้าเจ้าหนี้การค้า</span>
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          <DialogFooter className="flex justify-between items-center w-full sm:justify-between border-t border-slate-100 pt-4">
-             <div className="flex gap-2 flex-wrap items-center">
-                {currentPo?.status === 'DRAFT' && (
-                  <Button variant="outline" className="border-emerald-500 text-emerald-600 hover:bg-emerald-50 font-bold" onClick={(e) => openIssueConfirmDialog(currentPo, e)}>
-                    <CheckCircle className="w-4 h-4 mr-2" /> ออกใบสั่งซื้อ (Issue)
-                  </Button>
-                )}
-                {(currentPo?.status === 'ISSUED' || currentPo?.status === 'PARTIALLY_RECEIVED') && (
-                  <Button variant="outline" className="border-indigo-500 text-indigo-600 hover:bg-indigo-50 font-bold" onClick={(e) => { setIsDetailOpen(false); openReceiveDialog(currentPo, e); }}>
-                    <PackageOpen className="w-4 h-4 mr-2" /> รับสินค้า (GRN)
-                  </Button>
-                )}
-                {currentPo?.status === 'DRAFT' && (
-                  <Button variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-50 font-bold" onClick={() => openEditDialog(currentPo)}>
-                    <Pencil className="w-4 h-4 mr-2" /> แก้ไขใบสั่งซื้อ
-                  </Button>
-                )}
-                {/* Status Change / Rollback Button in Detail Modal */}
-                <Button variant="outline" className="border-indigo-400 text-indigo-700 hover:bg-indigo-50 font-bold" onClick={(e) => { setIsDetailOpen(false); openStatusChangeDialog(currentPo, e); }}>
-                  <RotateCcw className="w-4 h-4 mr-2" /> เปลี่ยน / ย้อนสถานะ
-                </Button>
-                {(currentPo?.status === 'PARTIALLY_RECEIVED' || currentPo?.status === 'COMPLETED' || currentPo?.status === 'RECEIVED') && (
-                  <Button variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-50 font-bold" onClick={() => { setIsDetailOpen(false); setReturnPo(currentPo); }}>
-                    <RotateCcw className="w-4 h-4 mr-2" /> คืนสินค้าให้บริษัท
-                  </Button>
-                )}
-                {currentPo?.status !== 'CANCELLED' && (
-                  <Button variant="outline" className="border-rose-300 text-rose-600 hover:bg-rose-50 font-bold" onClick={() => { setIsDetailOpen(false); openCancelDialog(currentPo); }}>
-                    <Ban className="w-4 h-4 mr-2" /> ยกเลิกใบสั่งซื้อ
-                  </Button>
-                )}
-             </div>
-             <div className="flex gap-2">
-               <Button variant="outline" className="font-bold" onClick={() => { if (currentPo) { setIsDetailOpen(false); openPdfModal(currentPo); } }}>
-                 <Eye className="w-4 h-4 mr-2" /> ดู/พิมพ์ PDF
-               </Button>
-               <Button variant="ghost" onClick={() => setIsDetailOpen(false)} className="text-slate-500 hover:text-slate-900 hover:bg-slate-100">ปิดหน้าต่าง</Button>
-             </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PoDetailDialog
+        isDetailOpen={isDetailOpen}
+        setIsDetailOpen={setIsDetailOpen}
+        currentPo={currentPo}
+        openImagePreview={openImagePreview}
+        openIssueConfirmDialog={openIssueConfirmDialog}
+        openReceiveDialog={openReceiveDialog}
+        openEditDialog={openEditDialog}
+        openStatusChangeDialog={openStatusChangeDialog}
+        openCancelDialog={openCancelDialog}
+        openPdfModal={openPdfModal}
+        setReturnPo={setReturnPo}
+      />
 
       {/* Issue PO Confirmation Dialog */}
-      <Dialog open={isIssueModalOpen} onOpenChange={setIsIssueModalOpen}>
-        <DialogContent className="bg-white border-slate-200 text-slate-900 max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl font-bold text-emerald-600">
-              <CheckCircle2 className="w-6 h-6 text-emerald-600" />
-              ยืนยันการออกใบสั่งซื้อ (Issue PO)
-            </DialogTitle>
-          </DialogHeader>
-          <div className="py-3 space-y-4 text-sm">
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-xs text-emerald-900 space-y-2">
-              <div className="font-bold text-sm text-emerald-800 flex items-center gap-1.5">
-                <CheckCircle className="w-4 h-4" /> ใบสั่งซื้อ: {targetIssuePo?.poNumber}
-              </div>
-              <div className="text-slate-600">
-                ผู้จำหน่าย: <b>{targetIssuePo?.supplier?.name || targetIssuePo?.supplierName || '-'}</b>
-              </div>
-              <div className="text-slate-600">
-                ยอดรวมทั้งสิ้น: <b className="text-emerald-700 font-bold text-sm">{formatCurrency(targetIssuePo?.totalAmount || 0)}</b>
-              </div>
-            </div>
-            <p className="text-xs text-slate-600">
-              เมื่อออกใบสั่งซื้อแล้ว สถานะจะเปลี่ยนจาก <b>DRAFT</b> เป็น <b>ISSUED</b> เพื่อเตรียมพร้อมส่งเอกสารให้ผู้จำหน่ายและตรวจรับสินค้าเข้าคลัง
-            </p>
-          </div>
-          <DialogFooter className="flex justify-between items-center gap-2 border-t border-slate-100 pt-3">
-            <Button variant="ghost" onClick={() => setIsIssueModalOpen(false)} className="text-slate-600 hover:bg-slate-100">
-              ยกเลิก
-            </Button>
-            <Button
-              onClick={handleConfirmIssue}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5"
-            >
-              <CheckCircle className="w-4 h-4 mr-1.5" /> ยืนยันออกใบสั่งซื้อ
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PoIssueDialog
+        isIssueModalOpen={isIssueModalOpen}
+        setIsIssueModalOpen={setIsIssueModalOpen}
+        targetIssuePo={targetIssuePo}
+        handleConfirmIssue={handleConfirmIssue}
+      />
 
       {/* Change / Rollback Status Modal */}
-      <Dialog open={isStatusChangeModalOpen} onOpenChange={setIsStatusChangeModalOpen}>
-        <DialogContent className="bg-white border-slate-200 text-slate-900 w-[95vw] sm:w-[580px] max-w-[580px] max-h-[92vh] flex flex-col p-0 overflow-hidden rounded-2xl shadow-2xl">
-          <DialogHeader className="border-b border-slate-200 px-8 py-5 bg-slate-50/80 shrink-0">
-            <DialogTitle className="flex items-center gap-2.5 text-xl font-bold text-indigo-700">
-              <RotateCcw className="w-6 h-6 text-indigo-600" />
-              เปลี่ยน / ย้อนสถานะใบสั่งซื้อ ({targetStatusChangePo?.poNumber})
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto px-8 pt-6 pb-12 space-y-6">
-            <div className="flex items-center justify-between bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
-              <span className="text-slate-500 font-semibold">สถานะปัจจุบันของเอกสาร:</span>
-              <span>{targetStatusChangePo && getStatusBadge(targetStatusChangePo.status)}</span>
-            </div>
-
-            <div className="space-y-2.5">
-              <label className="text-xs font-bold text-slate-700 block">เลือกสถานะใหม่ที่ต้องการเปลี่ยน / ย้อนกลับ:</label>
-              <div className="space-y-2.5 text-xs">
-                {[
-                  {
-                    value: 'DRAFT',
-                    label: 'DRAFT (ฉบับร่าง)',
-                    desc: 'ดึงกลับมาเป็นฉบับร่างเพื่อแก้ไขรายการสินค้าและราคาใหม่',
-                    color: 'text-slate-700',
-                  },
-                  {
-                    value: 'ISSUED',
-                    label: 'ISSUED (ออกเอกสารแล้ว)',
-                    desc: 'ส่งเอกสารให้ผู้จำหน่ายแล้ว อยู่ในขั้นตอนรอรับสินค้า',
-                    color: 'text-sky-700',
-                  },
-                  {
-                    value: 'PARTIALLY_RECEIVED',
-                    label: 'PARTIALLY_RECEIVED (รับบางส่วน)',
-                    desc: 'สินค้ามาส่งแล้วบางรายการ/บางจำนวน ยังรับไม่ครบ',
-                    color: 'text-amber-700',
-                  },
-                  {
-                    value: 'COMPLETED',
-                    label: 'COMPLETED (รับครบถ้วนสมบูรณ์)',
-                    desc: 'สินค้าตรวจรับครบทุกรายการแล้ว และเสร็จสิ้นกระบวนการสั่งซื้อ',
-                    color: 'text-emerald-700',
-                  },
-                  {
-                    value: 'CANCELLED',
-                    label: 'CANCELLED (ยกเลิกเอกสาร)',
-                    desc: 'ยกเลิกใบสั่งซื้อนี้ ไม่สามารถรับของเข้าคลังได้',
-                    color: 'text-rose-700',
-                  },
-                ]
-                  // Only transitions the backend supports: DRAFT -> ISSUED, and cancel (nothing received / paid)
-                  .filter((st) => st.value === targetStatusChangePo?.status || st.value === 'CANCELLED' || (st.value === 'ISSUED' && targetStatusChangePo?.status === 'DRAFT'))
-                  .map((st) => (
-                  <label
-                    key={st.value}
-                    className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all cursor-pointer ${
-                      newSelectedStatus === st.value
-                        ? 'border-indigo-500 bg-indigo-50/70 ring-1 ring-indigo-400 shadow-2xs'
-                        : 'border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="newSelectedStatus"
-                      value={st.value}
-                      checked={newSelectedStatus === st.value}
-                      onChange={() => setNewSelectedStatus(st.value)}
-                      className="accent-indigo-600 mt-0.5"
-                    />
-                    <div className="flex-1">
-                      <div className={`font-bold ${st.color}`}>{st.label}</div>
-                      <div className="text-slate-500 text-[11px] mt-0.5">{st.desc}</div>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {(targetStatusChangePo?.status === 'COMPLETED' || targetStatusChangePo?.status === 'PARTIALLY_RECEIVED') && (
-              <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-xs text-amber-900 flex gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>ใบสั่งซื้อนี้รับสินค้าเข้าคลังแล้ว จึงย้อนสถานะไม่ได้ หากต้องคืนสินค้าให้บริษัท ให้ทำเอกสารที่เมนู “ส่งเคลม &amp; ใบลดหนี้บริษัท”</span>
-              </div>
-            )}
-
-            <div className="space-y-2 pb-6">
-              <label className="text-xs font-bold text-slate-700 block">หมายเหตุ / เหตุผลในการเปลี่ยนสถานะ (ถ้ามี):</label>
-              <Input
-                placeholder="เช่น ตรวจนับสต็อกใหม่, ผู้จำหน่ายส่งของไม่ถูกต้อง, ลูกค้าเปลี่ยนใจ..."
-                value={statusChangeNote}
-                onChange={(e) => setStatusChangeNote(e.target.value)}
-                className="text-xs bg-white border-slate-300 h-10"
-              />
-            </div>
-          </div>
-
-          <DialogFooter className="border-t border-slate-200 px-8 py-5 bg-slate-50 shrink-0 flex justify-between items-center w-full">
-            <Button variant="ghost" onClick={() => setIsStatusChangeModalOpen(false)} className="text-slate-600 hover:bg-slate-200/60 font-semibold">
-              ยกเลิก
-            </Button>
-            <Button
-              onClick={handleConfirmStatusChange}
-              disabled={newSelectedStatus === targetStatusChangePo?.status}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-7 h-11 shadow-sm text-sm"
-            >
-              <ArrowLeftRight className="w-4 h-4 mr-2" /> ยืนยันการเปลี่ยนสถานะ
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PoStatusChangeDialog
+        isStatusChangeModalOpen={isStatusChangeModalOpen}
+        setIsStatusChangeModalOpen={setIsStatusChangeModalOpen}
+        targetStatusChangePo={targetStatusChangePo}
+        newSelectedStatus={newSelectedStatus}
+        setNewSelectedStatus={setNewSelectedStatus}
+        statusChangeNote={statusChangeNote}
+        setStatusChangeNote={setStatusChangeNote}
+        handleConfirmStatusChange={handleConfirmStatusChange}
+      />
 
       {/* Cancel PO Confirmation Dialog */}
-      <Dialog open={isCancelModalOpen} onOpenChange={setIsCancelModalOpen}>
-        <DialogContent className="bg-white border-slate-200 text-slate-900 max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl font-bold text-rose-600">
-              <Ban className="w-5 h-5 text-rose-600" />
-              ยกเลิกใบสั่งซื้อ {targetCancelPo?.poNumber}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="py-3 space-y-4">
-            <div className="bg-rose-50 border border-rose-200 rounded-xl p-3.5 text-xs text-rose-800 space-y-1">
-              <div className="font-bold flex items-center gap-1.5 text-rose-900">
-                <AlertTriangle className="w-4 h-4 text-rose-600" /> คำเตือนการยกเลิกเอกสาร
-              </div>
-              <p>เมื่อยกเลิกแล้ว สถานะเอกสารจะเปลี่ยนเป็น <b>CANCELLED</b> และไม่สามารถนำไปรับสินค้าเข้าคลังได้อีก</p>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-700 block">ระบุเหตุผลการยกเลิก:</label>
-              <div className="space-y-2 text-xs">
-                {[
-                  'ผู้จำหน่ายแจ้งสินค้าหมด/ยกเลิก',
-                  'สั่งซื้อซ้ำซ้อน / สั่งผิดรายการ',
-                  'เปลี่ยนผู้จำหน่ายรายอื่น',
-                  'ทางร้านขอยกเลิกรายการสั่งซื้อ',
-                ].map((reason) => (
-                  <label key={reason} className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
-                    <input
-                      type="radio"
-                      name="cancelReason"
-                      value={reason}
-                      checked={cancelReason === reason}
-                      onChange={() => setCancelReason(reason)}
-                      className="accent-rose-600"
-                    />
-                    <span className="text-slate-800 font-medium">{reason}</span>
-                  </label>
-                ))}
-                <label className="flex items-center gap-2 p-2 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="cancelReason"
-                    value="other"
-                    checked={cancelReason === 'other'}
-                    onChange={() => setCancelReason('other')}
-                    className="accent-rose-600"
-                  />
-                  <span className="text-slate-800 font-medium">ระบุเหตุผลอื่นๆ</span>
-                </label>
-              </div>
-
-              {cancelReason === 'other' && (
-                <Input
-                  placeholder="พิมพ์เหตุผลการยกเลิก..."
-                  value={cancelCustomReason}
-                  onChange={(e) => setCancelCustomReason(e.target.value)}
-                  className="mt-2 text-xs bg-slate-50 border-slate-300"
-                  autoFocus
-                />
-              )}
-            </div>
-          </div>
-          <DialogFooter className="flex justify-between items-center gap-2 border-t border-slate-100 pt-3">
-            <Button variant="ghost" onClick={() => setIsCancelModalOpen(false)} className="text-slate-600 hover:bg-slate-100">
-              ย้อนกลับ
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleConfirmCancelPO}
-              className="bg-rose-600 hover:bg-rose-700 text-white font-bold"
-            >
-              <Ban className="w-4 h-4 mr-1.5" /> ยืนยันยกเลิกใบสั่งซื้อ
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PoCancelDialog
+        isCancelModalOpen={isCancelModalOpen}
+        setIsCancelModalOpen={setIsCancelModalOpen}
+        targetCancelPo={targetCancelPo}
+        cancelReason={cancelReason}
+        setCancelReason={setCancelReason}
+        cancelCustomReason={cancelCustomReason}
+        setCancelCustomReason={setCancelCustomReason}
+        handleConfirmCancelPO={handleConfirmCancelPO}
+      />
 
       {/* Under-Receive / Shortfall Confirmation Modal */}
-      <Dialog open={isUnderReceiveModalOpen} onOpenChange={setIsUnderReceiveModalOpen}>
-        <DialogContent className="bg-white border-slate-200 text-slate-900 w-[95vw] sm:w-[620px] max-w-[620px] max-h-[92vh] flex flex-col p-0 overflow-hidden rounded-2xl shadow-2xl">
-          <DialogHeader className="border-b border-slate-200 px-8 py-5 bg-amber-50/70 shrink-0">
-            <DialogTitle className="flex items-center gap-2.5 text-xl font-bold text-amber-900">
-              <AlertTriangle className="w-6 h-6 text-amber-600 shrink-0" />
-              ตรวจพบการรับสินค้าไม่ครบตามใบสั่งซื้อ
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto px-8 pt-6 pb-10 space-y-5">
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-slate-700 space-y-2.5">
-              <div className="font-bold text-slate-900 text-sm flex items-center justify-between">
-                <span>ใบสั่งซื้อ: {currentPo?.poNumber}</span>
-                <span className="text-slate-500 font-normal">ผู้จำหน่าย: {currentPo?.supplier?.name || currentPo?.supplierName}</span>
-              </div>
-              <p className="text-slate-600">
-                รายการสินค้าด้านล่างนี้ มียอดรับจริงน้อยกว่าจำนวนที่ระบุในใบสั่งซื้อ:
-              </p>
-              <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-40 overflow-y-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
-                    <tr>
-                      <th className="p-2.5">สินค้า</th>
-                      <th className="p-2.5 text-center">สั่งซื้อ</th>
-                      <th className="p-2.5 text-center">รับรวมครั้งนี้</th>
-                      <th className="p-2.5 text-right text-rose-600">ค้างรับ/ขาด</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {receiveItems
-                      .filter(i => addQty(Number(i.receivedQty) || 0, Number(i.toReceive) || 0) < Number(i.orderedQty))
-                      .map((item, idx) => {
-                        const totalRec = addQty(Number(item.receivedQty) || 0, Number(item.toReceive) || 0);
-                        const diff = subQty(item.orderedQty, totalRec);
-                        return (
-                          <tr key={idx} className="hover:bg-slate-50">
-                            <td className="p-2.5 font-medium text-slate-900">{item.name}</td>
-                            <td className="p-2.5 text-center font-bold text-slate-700">{formatQty(item.orderedQty)} {item.unitName}</td>
-                            <td className="p-2.5 text-center font-bold text-emerald-700">{formatQty(totalRec)} {item.unitName}</td>
-                            <td className="p-2.5 text-right font-bold text-rose-600">-{formatQty(diff)} {item.unitName}</td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <label className="text-sm font-bold text-slate-900 block">
-                โปรดเลือกวิธีจัดการเอกสารใบสั่งซื้อ (PO):
-              </label>
-
-              <div className="space-y-3">
-                {/* Option 1: Adjust PO & Complete */}
-                <label
-                  onClick={() => setUnderReceiveAction('ADJUST_AND_COMPLETE')}
-                  className={`flex items-start gap-3.5 p-4 rounded-xl border transition-all cursor-pointer ${
-                    underReceiveAction === 'ADJUST_AND_COMPLETE'
-                      ? 'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-400/40 shadow-xs'
-                      : 'border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="underReceiveAction"
-                    value="ADJUST_AND_COMPLETE"
-                    checked={underReceiveAction === 'ADJUST_AND_COMPLETE'}
-                    onChange={() => setUnderReceiveAction('ADJUST_AND_COMPLETE')}
-                    className="accent-emerald-600 mt-1 h-4 w-4"
-                  />
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-emerald-900 text-sm">
-                        ปรับยอดในใบ PO ให้เท่ากับจำนวนที่รับจริง & ปิดเอกสารสมบูรณ์ (COMPLETED)
-                      </span>
-                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300">
-                        แนะนำ
-                      </span>
-                    </div>
-                    <p className="text-xs text-emerald-800 leading-relaxed">
-                      เหมาะสำหรับกรณีที่<b>สินค้ามาส่งแค่นี้และจะไม่มีการส่งเพิ่มอีกแล้ว</b> ระบบจะปรับลดจำนวนสินค้าและคำนวณยอดเงินรวม (Subtotal, VAT, ยอดสุทธิ) ในเอกสาร PO ใหม่โดยอัตโนมัติตามยอดรับจริง <b>เพื่อความถูกต้องในการนำไปจ่ายเงิน/ตัดยอดบัญชี</b>
-                    </p>
-                  </div>
-                </label>
-
-                {/* Option 2: Partial & Wait for remaining */}
-                <label
-                  onClick={() => setUnderReceiveAction('PARTIAL')}
-                  className={`flex items-start gap-3.5 p-4 rounded-xl border transition-all cursor-pointer ${
-                    underReceiveAction === 'PARTIAL'
-                      ? 'border-amber-500 bg-amber-50/70 ring-2 ring-amber-400/40 shadow-xs'
-                      : 'border-slate-200 hover:bg-slate-50'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="underReceiveAction"
-                    value="PARTIAL"
-                    checked={underReceiveAction === 'PARTIAL'}
-                    onChange={() => setUnderReceiveAction('PARTIAL')}
-                    className="accent-amber-600 mt-1 h-4 w-4"
-                  />
-                  <div className="flex-1 space-y-1">
-                    <div className="font-bold text-amber-900 text-sm">
-                      บันทึกเป็นรับบางส่วน (PARTIALLY_RECEIVED) & รอรับสินค้าส่วนที่เหลือ
-                    </div>
-                    <p className="text-xs text-amber-800 leading-relaxed">
-                      เหมาะสำหรับกรณีที่<b>ผู้จำหน่ายจะนำสินค้าที่ค้างส่งมาส่งเพิ่มในภายหลัง</b> ระบบจะคงยอดจำนวนสั่งซื้อเดิมไว้ และสามารถกลับมาตรวจรับสินค้าส่วนที่เหลือในครั้งต่อไปได้
-                    </p>
-                  </div>
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter className="border-t border-slate-200 px-8 py-5 bg-slate-50 shrink-0 flex justify-between items-center w-full">
-            <Button
-              variant="ghost"
-              onClick={() => setIsUnderReceiveModalOpen(false)}
-              className="text-slate-600 hover:bg-slate-200/60 font-semibold"
-            >
-              ย้อนกลับไปแก้ไขจำนวน
-            </Button>
-            <Button
-              onClick={() => executeReceivePO(underReceiveAction === 'ADJUST_AND_COMPLETE')}
-              className={`text-white font-bold px-7 h-11 shadow-sm text-sm ${
-                underReceiveAction === 'ADJUST_AND_COMPLETE'
-                  ? 'bg-emerald-600 hover:bg-emerald-700'
-                  : 'bg-amber-600 hover:bg-amber-700'
-              }`}
-            >
-              <CheckCircle className="w-4 h-4 mr-2" />
-              {underReceiveAction === 'ADJUST_AND_COMPLETE'
-                ? 'ยืนยันปรับยอด PO และปิดเอกสาร'
-                : 'ยืนยันบันทึกรับบางส่วน'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PoUnderReceiveDialog
+        isUnderReceiveModalOpen={isUnderReceiveModalOpen}
+        setIsUnderReceiveModalOpen={setIsUnderReceiveModalOpen}
+        currentPo={currentPo}
+        receiveItems={receiveItems}
+        underReceiveAction={underReceiveAction}
+        setUnderReceiveAction={setUnderReceiveAction}
+        executeReceivePO={executeReceivePO}
+      />
 
       {/* Professional Purchase Order PDF / Print Modal */}
       <PurchaseOrderPdfModal

@@ -4,6 +4,7 @@ import { getLowStockThreshold } from '@/lib/store-settings-storage';
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useProductStore } from '@/lib/store/product-store';
+import type { Product } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -60,6 +61,11 @@ import { toast } from 'sonner';
 import { LoadErrorState } from '@/components/common/LoadErrorState';
 import { addQty, formatQty, isValidQty, qtyInputMode, qtyStep, subQty, useAllowDecimalQty } from '@/lib/qty';
 
+/** Product as listed here (older rows may still carry cost / price). */
+type InvProduct = Product & { cost?: number; price?: number };
+/** A packaging unit of a product, whichever naming the row uses. */
+type PkgUnit = { name?: string; unitName?: string; multiplier?: number; factor?: number; qtyPerPrev?: number | string };
+
 export default function InventoryPage() {
   const allowDecimalQty = useAllowDecimalQty();
   const [search, setSearch] = useState('');
@@ -81,7 +87,7 @@ export default function InventoryPage() {
 
   // Modal State for Manual Adjustment
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
-  const [targetProduct, setTargetProduct] = useState<any>(null);
+  const [targetProduct, setTargetProduct] = useState<InvProduct | null>(null);
   const [adjustType, setAdjustType] = useState<'ADD' | 'SUB' | 'SET'>('ADD');
   const [adjustAmount, setAdjustAmount] = useState<number | string>('');
   const [adjustReason, setAdjustReason] = useState<string>('');
@@ -89,10 +95,12 @@ export default function InventoryPage() {
 
   // Modal State for Stock Card Detail
   const [isStockCardOpen, setIsStockCardOpen] = useState(false);
-  const [stockCardProduct, setStockCardProduct] = useState<any>(null);
+  const [stockCardProduct, setStockCardProduct] = useState<InvProduct | null>(null);
 
   const { products, categories: storeCategories, fetchProducts, isLoading, error: productsError } = useProductStore();
   const [movementsError, setMovementsError] = useState<string | null>(null);
+  // "now" for the movement date filter: when the movements were (re)loaded
+  const [movementsLoadedAt, setMovementsLoadedAt] = useState(() => Date.now());
   const loadError = productsError || movementsError;
 
   const reloadData = async () => {
@@ -101,35 +109,45 @@ export default function InventoryPage() {
       const movs = await fetchStockMovements();
       setMovements(movs);
       setMovementsError(null);
-    } catch (err: any) {
+    } catch (err) {
       setMovements([]);
-      setMovementsError(err?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้');
+      setMovementsError((err as Error | undefined)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้');
     }
+    setMovementsLoadedAt(Date.now());
   };
 
   useEffect(() => {
-    reloadData();
+    const run = async () => { await reloadData(); };
+    void run();
   }, []);
 
   // Reset pagination when filters change
-  useEffect(() => {
+  const inventoryPageResetKey = JSON.stringify([search, activeCategory, stockStatusFilter, inventoryPageSize]);
+  const [inventoryPageResetKeySeen, setInventoryPageResetKeySeen] = useState(inventoryPageResetKey);
+  if (inventoryPageResetKeySeen !== inventoryPageResetKey) {
+    // a filter changed: back to page 1 (adjusted while rendering, no extra effect pass)
+    setInventoryPageResetKeySeen(inventoryPageResetKey);
     setInventoryPage(1);
-  }, [search, activeCategory, stockStatusFilter, inventoryPageSize]);
+  }
 
-  useEffect(() => {
+  const movementPageResetKey = JSON.stringify([movementSearch, movementTypeFilter, movementDateFilter, movementPageSize]);
+  const [movementPageResetKeySeen, setMovementPageResetKeySeen] = useState(movementPageResetKey);
+  if (movementPageResetKeySeen !== movementPageResetKey) {
+    // a filter changed: back to page 1 (adjusted while rendering, no extra effect pass)
+    setMovementPageResetKeySeen(movementPageResetKey);
     setMovementPage(1);
-  }, [movementSearch, movementTypeFilter, movementDateFilter, movementPageSize]);
+  }
 
   const getCategoryName = (id: string) => storeCategories.find((c) => c.id === id)?.name || 'ไม่ระบุ';
 
   // Packaging units come with each product from the server (prod.units)
-  const allPackaging: Record<string, any[]> = {};
+  const allPackaging: Record<string, PkgUnit[]> = {};
 
   // Format stock breakdown into packaging units (e.g. 10 ลัง 5 ชิ้น)
-  const formatPackagingBreakdown = (prod: any) => {
+  const formatPackagingBreakdown = (prod: InvProduct) => {
     const stock = Number(prod.stock !== undefined && prod.stock !== null ? prod.stock : 0);
     const baseUnit = prod.unit || 'ชิ้น';
-    const pkgList = allPackaging[prod.id] || prod.units || [];
+    const pkgList: PkgUnit[] = allPackaging[prod.id] || prod.units || [];
 
     if (stock < 0) {
       return `ติดลบ ${Math.abs(stock).toLocaleString()} ${baseUnit}`;
@@ -141,7 +159,7 @@ export default function InventoryPage() {
 
     // Sort packaging descending by multiplier
     const sorted = [...pkgList]
-      .map((u: any) => ({
+      .map((u) => ({
         name: u.name || u.unitName,
         multiplier: Number(u.multiplier || u.factor || u.qtyPerPrev || 1),
       }))
@@ -174,14 +192,14 @@ export default function InventoryPage() {
 
   // Inventory stats summary
   const stats = useMemo(() => {
-    let totalItems = products.length;
+    const totalItems = products.length;
     let totalBaseUnits = 0;
     let totalValuation = 0;
     let lowStockCount = 0;
     let outOfStockCount = 0;
     let negativeStockCount = 0;
 
-    products.forEach((p: any) => {
+    products.forEach((p: InvProduct) => {
       const stock = Number(p.stock !== undefined && p.stock !== null ? p.stock : 0);
       const cost = Number(p.basePrice || p.cost || p.price || 0);
       const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
@@ -210,11 +228,11 @@ export default function InventoryPage() {
 
   // Filtered Products
   const filteredProducts = useMemo(() => {
-    return products.filter((p: any) => {
+    return products.filter((p: InvProduct) => {
       const matchSearch =
         p.name.toLowerCase().includes(search.toLowerCase()) ||
         (p.sku && p.sku.toLowerCase().includes(search.toLowerCase())) ||
-        (p.barcodes && p.barcodes.some((b: any) => b.barcode && b.barcode.toLowerCase().includes(search.toLowerCase())));
+        (p.barcodes && p.barcodes.some((b) => b.barcode && b.barcode.toLowerCase().includes(search.toLowerCase())));
 
       const matchCategory = activeCategory === 'all' || p.categoryId === activeCategory;
 
@@ -252,9 +270,9 @@ export default function InventoryPage() {
       let matchDate = true;
       if (movementDateFilter !== 'all') {
         const moveTime = new Date(m.createdAt).getTime();
-        const now = Date.now();
+        const now = movementsLoadedAt;
         if (movementDateFilter === 'today') {
-          const todayStart = new Date().setHours(0, 0, 0, 0);
+          const todayStart = new Date(now).setHours(0, 0, 0, 0);
           matchDate = moveTime >= todayStart;
         } else if (movementDateFilter === '7days') {
           matchDate = now - moveTime <= 7 * 24 * 60 * 60 * 1000;
@@ -265,7 +283,7 @@ export default function InventoryPage() {
 
       return matchSearch && matchType && matchDate;
     });
-  }, [movements, movementSearch, movementTypeFilter, movementDateFilter]);
+  }, [movements, movementSearch, movementTypeFilter, movementDateFilter, movementsLoadedAt]);
 
   // Paginated Movements
   const totalMovementPages = Math.max(1, Math.ceil(filteredMovements.length / movementPageSize));
@@ -275,7 +293,7 @@ export default function InventoryPage() {
   }, [filteredMovements, movementPage, movementPageSize]);
 
   // Handle Opening Adjustment Modal
-  const openAdjustDialog = (prod: any = null) => {
+  const openAdjustDialog = (prod: InvProduct | null = null) => {
     setTargetProduct(prod || products[0] || null);
     setAdjustType('ADD');
     setAdjustAmount('');
@@ -285,7 +303,7 @@ export default function InventoryPage() {
   };
 
   // Handle Opening Stock Card Modal
-  const openStockCardDialog = (prod: any) => {
+  const openStockCardDialog = (prod: InvProduct) => {
     setStockCardProduct(prod);
     setIsStockCardOpen(true);
   };
@@ -324,9 +342,9 @@ export default function InventoryPage() {
         amount: numAmount,
         reason: finalReason,
       });
-    } catch (err: any) {
+    } catch (err) {
       // rejected by the server (e.g. not enough stock, no permission): nothing was changed
-      toast.error(`ปรับสต็อกไม่สำเร็จ: ${err?.message || 'เกิดข้อผิดพลาด'}`);
+      toast.error(`ปรับสต็อกไม่สำเร็จ: ${(err as Error | undefined)?.message || 'เกิดข้อผิดพลาด'}`);
       return;
     }
 
@@ -541,7 +559,7 @@ export default function InventoryPage() {
                   key={st.value}
                   variant={stockStatusFilter === st.value ? 'secondary' : 'ghost'}
                   size="sm"
-                  onClick={() => setStockStatusFilter(st.value as any)}
+                  onClick={() => setStockStatusFilter(st.value as typeof stockStatusFilter)}
                   className={`h-8 px-3 text-xs font-bold rounded-lg transition-all ${
                     stockStatusFilter === st.value
                       ? st.value === 'negative'
@@ -598,7 +616,7 @@ export default function InventoryPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedProducts.map((p: any) => {
+                  paginatedProducts.map((p: InvProduct) => {
                     const stock = Number(p.stock !== undefined && p.stock !== null ? p.stock : 0);
                     const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
                     const isNegative = stock < 0;
@@ -840,7 +858,7 @@ export default function InventoryPage() {
 
               <select
                 value={movementDateFilter}
-                onChange={(e) => setMovementDateFilter(e.target.value as any)}
+                onChange={(e) => setMovementDateFilter(e.target.value as typeof movementDateFilter)}
                 className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 shadow-2xs"
               >
                 <option value="all">ช่วงเวลาทั้งหมด</option>
@@ -1023,12 +1041,12 @@ export default function InventoryPage() {
               </TableHeader>
               <TableBody>
                 {products
-                  .filter((p: any) => {
+                  .filter((p: InvProduct) => {
                     const stock = Number(p.stock !== undefined && p.stock !== null ? p.stock : 0);
                     const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
                     return stock <= minAlert;
                   })
-                  .map((p: any) => {
+                  .map((p: InvProduct) => {
                     const stock = Number(p.stock !== undefined && p.stock !== null ? p.stock : 0);
                     const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
                     const isNegative = stock < 0;
@@ -1110,12 +1128,12 @@ export default function InventoryPage() {
               <select
                 value={targetProduct?.id || ''}
                 onChange={(e) => {
-                  const found = products.find((p: any) => p.id === e.target.value);
+                  const found = products.find((p: InvProduct) => p.id === e.target.value);
                   setTargetProduct(found || null);
                 }}
                 className="w-full h-11 rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 shadow-2xs"
               >
-                {products.map((p: any) => (
+                {products.map((p: InvProduct) => (
                   <option key={p.id} value={p.id}>
                     [{p.sku || '-'}] {p.name} (คงเหลือ: {p.stock ?? 0} {p.unit || 'ชิ้น'})
                   </option>

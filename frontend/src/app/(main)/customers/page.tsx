@@ -107,14 +107,14 @@ export default function CustomersPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const reloadData = async () => {
-    setIsLoading(true);
+  /** Loads the data; state is only updated after the request. */
+  const loadData = async () => {
     try {
       const [list, config] = await Promise.all([fetchCustomers(), fetchLoyaltyConfig()]);
       setCustomers(list);
       setLoyaltyConfig(config);
       setLoadError(null);
-    } catch (err: any) {
+    } catch (err) {
       setCustomers([]);
       setLoadError(errorMessage(err, 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     } finally {
@@ -122,13 +122,19 @@ export default function CustomersPage() {
     }
   };
 
+  const reloadData = async () => {
+    setIsLoading(true);
+    await loadData();
+  };
+
   useEffect(() => {
-    reloadData();
+    const run = async () => { await loadData(); };
+    void run();
   }, []);
 
   // Summary Stats
   const stats = useMemo(() => {
-    let total = customers.length;
+    const total = customers.length;
     let individualCount = 0;
     let companyCount = 0;
     let totalCreditCustomers = 0;
@@ -263,7 +269,7 @@ export default function CustomersPage() {
     }
 
     try {
-      const payload: any = {
+      const payload: Record<string, unknown> & { name: string } = {
         name: formData.name.trim(),
         phone: formData.phone.trim(),
         email: formData.email?.trim() || null,
@@ -298,8 +304,8 @@ export default function CustomersPage() {
       }
       setIsFormOpen(false);
       reloadData();
-    } catch (err: any) {
-      toast.error(err?.message || 'บันทึกข้อมูลลูกค้าไม่สำเร็จ');
+    } catch (err) {
+      toast.error((err as Error | undefined)?.message || 'บันทึกข้อมูลลูกค้าไม่สำเร็จ');
     }
   };
 
@@ -310,8 +316,8 @@ export default function CustomersPage() {
         await apiFetch(`/customers/${cust.id}`, { method: 'DELETE' });
         toast.success(`ลบสมาชิก "${cust.name}" เรียบร้อยแล้ว`);
         reloadData();
-      } catch (err: any) {
-        toast.error(err?.message || 'ลบลูกค้าไม่สำเร็จ');
+      } catch (err) {
+        toast.error((err as Error | undefined)?.message || 'ลบลูกค้าไม่สำเร็จ');
       }
     }
   };
@@ -466,7 +472,7 @@ export default function CustomersPage() {
                 key={st.value}
                 variant={typeFilter === st.value ? 'secondary' : 'ghost'}
                 size="sm"
-                onClick={() => setTypeFilter(st.value as any)}
+                onClick={() => setTypeFilter(st.value as typeof typeFilter)}
                 className={`h-8 px-3 text-xs font-bold rounded-lg transition-all ${
                   typeFilter === st.value
                     ? 'bg-sky-50 text-sky-700 border border-sky-300 shadow-2xs'
@@ -682,7 +688,7 @@ export default function CustomersPage() {
                 <button
                   key={t.id}
                   type="button"
-                  onClick={() => setActiveFormTab(t.id as any)}
+                  onClick={() => setActiveFormTab(t.id as typeof activeFormTab)}
                   className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer ${
                     activeFormTab === t.id
                       ? 'border-sky-500 text-sky-700 bg-white rounded-t-lg shadow-2xs'
@@ -843,7 +849,7 @@ export default function CustomersPage() {
                     <label className="font-bold text-slate-700">ประเภทสาขา</label>
                     <select
                       value={formData.branchType || 'HEAD_OFFICE'}
-                      onChange={(e) => setFormData({ ...formData, branchType: e.target.value as any })}
+                      onChange={(e) => setFormData({ ...formData, branchType: e.target.value as Customer['branchType'] })}
                       className="w-full h-9 rounded-lg border border-slate-300 bg-white px-2.5 font-bold text-slate-800 outline-none"
                     >
                       <option value="HEAD_OFFICE">สำนักงานใหญ่ (00000)</option>
@@ -918,7 +924,7 @@ export default function CustomersPage() {
                       <button
                         key={lv.level}
                         type="button"
-                        onClick={() => setFormData({ ...formData, priceLevel: lv.level as any })}
+                        onClick={() => setFormData({ ...formData, priceLevel: lv.level as Customer['priceLevel'] })}
                         className={`p-2.5 rounded-xl border flex flex-col items-center gap-1 transition-all ${
                           formData.priceLevel === lv.level
                             ? 'border-sky-500 bg-sky-50 text-sky-800 ring-2 ring-sky-400/40 shadow-xs'

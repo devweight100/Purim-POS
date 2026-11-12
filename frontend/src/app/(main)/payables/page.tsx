@@ -51,7 +51,7 @@ import { PayableBillDetailsModal } from '@/components/payables/PayableBillDetail
 
 export default function PayablesPage() {
   const [bills, setBills] = useState<SupplierPayableBill[]>([]);
-  const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string; contactName?: string; phone?: string }>>([]);
   const [returnNotes, setReturnNotes] = useState<SupplierReturnNote[]>([]);
   const [paymentVouchers, setPaymentVouchers] = useState<PaymentVoucher[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,8 +85,8 @@ export default function PayablesPage() {
   const [editingInvoicePoId, setEditingInvoicePoId] = useState<string | null>(null);
   const [editingInvoiceValue, setEditingInvoiceValue] = useState<string>('');
 
-  const refreshData = async () => {
-    setLoading(true);
+  /** Loads the data; state is only updated after the request. */
+  const loadData = async () => {
     try {
       const [allBills, supps, notes, vouchers] = await Promise.all([
         fetchPayableBills(),
@@ -111,8 +111,14 @@ export default function PayablesPage() {
     }
   };
 
+  const refreshData = async () => {
+    setLoading(true);
+    await loadData();
+  };
+
   useEffect(() => {
-    refreshData();
+    const run = async () => { await loadData(); };
+    void run();
   }, []);
 
   const handleOpenSettle = (bill: SupplierPayableBill) => {
