@@ -660,6 +660,8 @@ export default function PurchaseOrdersPage() {
         po={pdfPoData}
       />
 
+      {/* image preview opened from the GRN / detail dialogs (was only rendered on the create screen) */}
+      {imagePreview}
     </div>
   );
 }
