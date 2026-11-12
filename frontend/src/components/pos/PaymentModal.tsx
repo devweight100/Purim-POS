@@ -2,6 +2,7 @@
 import { newOperationId } from '@/lib/order-sync-service';
 
 import { useState, useEffect, useRef } from 'react';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { useProductStore } from '@/lib/store/product-store';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useShiftStore } from '@/lib/store/shift-store';
@@ -97,24 +98,27 @@ export function PaymentModal({
   const [countdown, setCountdown] = useState<number>(5);
 
   // Reset all state when closed
-  useEffect(() => {
-    if (!open) {
-      setCashReceived(0);
-      setQrReceived(0);
-      setNumpadTarget('NONE');
-      setStep('METHOD');
-      setMethod(null);
-      setShowReceiptPdf(false);
-      setReceiptData(null);
-    }
-  }, [open]);
+  const openChangedForClose = useHasChanged(open);
+  if (openChangedForClose && !open) {
+    setCashReceived(0);
+    setQrReceived(0);
+    setNumpadTarget('NONE');
+    setStep('METHOD');
+    setMethod(null);
+    setShowReceiptPdf(false);
+    setReceiptData(null);
+  }
+
+  // The success screen counts down from 5 each time it is shown
+  const countingDown = open && step === 'SUCCESS' && !showReceiptPdf;
+  const countingDownChanged = useHasChanged(countingDown);
+  if (countingDownChanged && countingDown) setCountdown(5);
 
   useEffect(() => {
     let timer: any = null;
     let interval: any = null;
 
     if (open && step === 'SUCCESS' && !showReceiptPdf) {
-      setCountdown(5);
       interval = setInterval(() => {
         setCountdown((prev) => Math.max(0, prev - 1));
       }, 1000);
@@ -528,45 +532,47 @@ export function PaymentModal({
     } finally { submitting.current = false; setIsSubmitting(false); }
   };
 
-  useEffect(() => {
-    if (open) {
-      const cartItemCount = useCartStore.getState().items.length;
-      if (!orderToEditPayment && cartItemCount === 0) {
-        toast.warning('ไม่มีสินค้าในตะกร้า ไม่สามารถชำระเงินได้');
-        onOpenChangeRef.current(false);
-        return;
-      }
+  // Opening (or a new total / start method / bill to edit while open) starts the payment from scratch
+  const cartItemCount = cart.items.length;
+  const emptyCart = !orderToEditPayment && cartItemCount === 0;
+  const startKeyChanged = useHasChanged(`${open}|${initialMethod}|${total}`);
+  const editOrderChanged = useHasChanged(orderToEditPayment);
+  if ((startKeyChanged || editOrderChanged) && open && !emptyCart) {
+    setPendingReceipt(false);
+    const accs = loadBankAccounts();
+    setBankAccounts(accs);
+    setSelectedBank(accs.find(a => a.isDefault) || accs[0] || null);
 
-      setPendingReceipt(false);
-      void api.bankAccounts.getAll().then(accs => {
-        setBankAccounts(accs);
-        setSelectedBank(accs.find((a: BankAccount) => a.isDefault) || accs[0] || null);
-      }).catch(() => toast.warning('โหลดบัญชีธนาคารจากเซิร์ฟเวอร์ไม่ได้'));
-      const accs = loadBankAccounts();
-      setBankAccounts(accs);
-      const def = accs.find(a => a.isDefault) || accs[0] || null;
-      setSelectedBank(def);
+    setCashReceived(0);
+    setQrReceived(0);
+    setNumpadTarget('NONE');
 
-      setCashReceived(0);
-      setQrReceived(0);
-      setNumpadTarget('NONE');
-
+    if (total === 0 && cartItemCount > 0 && !orderToEditPayment) {
       // ฿0 bill (claim replacement / 100% discount): never saved automatically - the
       // cashier must confirm it explicitly on the next screen.
-      if (total === 0 && cartItemCount > 0 && !orderToEditPayment) {
-        setMethod('CASH');
-        setStep('PROCESS');
-        return;
-      }
-
-      if (initialMethod) {
-        setMethod(initialMethod);
-        setStep('PROCESS');
-      } else {
-        setStep('METHOD');
-        setMethod(null);
-      }
+      setMethod('CASH');
+      setStep('PROCESS');
+    } else if (initialMethod) {
+      setMethod(initialMethod);
+      setStep('PROCESS');
+    } else {
+      setStep('METHOD');
+      setMethod(null);
     }
+  }
+
+  // An empty cart cannot be paid: warn and close. Otherwise refresh the bank accounts from the server.
+  useEffect(() => {
+    if (!open) return;
+    if (!orderToEditPayment && useCartStore.getState().items.length === 0) {
+      toast.warning('ไม่มีสินค้าในตะกร้า ไม่สามารถชำระเงินได้');
+      onOpenChangeRef.current(false);
+      return;
+    }
+    void api.bankAccounts.getAll().then(accs => {
+      setBankAccounts(accs);
+      setSelectedBank(accs.find((a: BankAccount) => a.isDefault) || accs[0] || null);
+    }).catch(() => toast.warning('โหลดบัญชีธนาคารจากเซิร์ฟเวอร์ไม่ได้'));
   }, [open, initialMethod, total, orderToEditPayment]);
 
   const handleFinish = () => {
