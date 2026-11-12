@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,11 +26,9 @@ export function RedeemPointsModal({ open, onOpenChange, customer }: RedeemPoints
   const rateDiscount = customer?.pointRedeemDiscountBaht || 1;
   const availablePoints = customer?.points || 0;
 
-  useEffect(() => {
-    if (open) {
-      setPointsInput(cart.pointsUsed || 0);
-    }
-  }, [open, cart.pointsUsed]);
+  // Opening (or a change of the points used while open) starts from the points already used
+  const syncChanged = useHasChanged(`${open}|${cart.pointsUsed}`);
+  if (syncChanged && open) setPointsInput(cart.pointsUsed || 0);
 
   // Calculate valid points that are exact multiples of ratePoints
   const validPoints = useMemo(() => {
@@ -44,14 +43,14 @@ export function RedeemPointsModal({ open, onOpenChange, customer }: RedeemPoints
     return calculateRedemptionDiscount(customer, validPoints);
   }, [customer, validPoints]);
 
+  const subtotal = cart.getSubtotal();
   const maxRedeemablePoints = useMemo(() => {
     if (!customer) return 0;
-    const subtotal = cart.getSubtotal();
     // Maximum discount cannot exceed subtotal
     const maxPointsForSubtotal = Math.floor(subtotal / rateDiscount) * ratePoints;
     const maxPointsForBalance = Math.floor(availablePoints / ratePoints) * ratePoints;
     return Math.min(maxPointsForBalance, maxPointsForSubtotal);
-  }, [customer, cart.getSubtotal(), availablePoints, ratePoints, rateDiscount]);
+  }, [customer, subtotal, availablePoints, ratePoints, rateDiscount]);
 
   const hasRemainder = pointsInput > 0 && pointsInput % ratePoints !== 0;
 

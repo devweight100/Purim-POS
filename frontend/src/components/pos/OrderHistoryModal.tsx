@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { apiFetch } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useShiftStore } from '@/lib/store/shift-store';
@@ -141,11 +142,18 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
     }
   };
 
+  // Opening shows the first page with a loading state, then loads the bills from the server
+  const openChanged = useHasChanged(open);
+  if (openChanged && open) {
+    setCurrentPage(1);
+    setLoading(true);
+  }
   useEffect(() => {
-    if (open) {
-      fetchOrders();
-      setCurrentPage(1);
-    }
+    if (!open) return;
+    const load = async () => {
+      await fetchOrders();
+    };
+    void load();
   }, [open]);
 
   // Filter orders by date range and search query (without tab filter)

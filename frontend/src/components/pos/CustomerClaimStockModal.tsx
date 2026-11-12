@@ -127,7 +127,11 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
   }
   useEffect(() => {
     // reload only when the dialog opens or the customer changes, not on every keystroke of the search box
-    if (isOpen && hasStockQuery) void fetchStock();
+    if (!isOpen || !hasStockQuery) return;
+    const load = async () => {
+      await fetchStock(); // sets state only after the request
+    };
+    void load();
   }, [isOpen, customerId, customerName]);
 
   const handleClose = () => {

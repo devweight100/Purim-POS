@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { 
   verifyClaimEligibility,
   fetchClaimEligibleItems,
@@ -116,14 +117,11 @@ export function ProductClaimModal({
     }
   };
 
-  useEffect(() => {
+  // Opening, a new search keyword or another mode resets the replacement choice; closing clears the form
+  const formKeyChanged = useHasChanged(`${open}|${searchKeyword}|${isBackoffice}`);
+  if (formKeyChanged) {
     if (open) {
-      const trimmed = searchKeyword.trim();
-      if (trimmed) {
-        handleSearch();
-      } else {
-        setEligibleItems([]);
-      }
+      if (!searchKeyword.trim()) setEligibleItems([]);
       setReplacementMode('SAME_MODEL');
       setSelectedReplacementItem(null);
       setSelectedClaimUnit(null);
@@ -151,6 +149,15 @@ export function ProductClaimModal({
       setReplacementSearch('');
       setShowReplacementDropdown(false);
     }
+  }
+
+  // Search the server for claimable bills while the dialog is open
+  useEffect(() => {
+    if (!open || !searchKeyword.trim()) return;
+    const search = async () => {
+      await handleSearch(); // sets state only after the request
+    };
+    void search();
   }, [open, searchKeyword, isBackoffice]);
 
   // When an item is selected, initialize selectedClaimUnit and reset claim qty to 1

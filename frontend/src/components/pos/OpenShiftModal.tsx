@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { formatCurrency } from '@/lib/utils';
@@ -98,9 +99,9 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
     setIsDirectMode(false);
   };
 
-  useEffect(() => {
-    handleReset();
-  }, [open]);
+  // opening or closing clears the counted cash
+  const openChanged = useHasChanged(open);
+  if (openChanged) handleReset();
 
   const handleConfirmOpen = async () => {
     if (!(activeTotal >= 0)) {

@@ -57,7 +57,11 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
 
   // load the customer list from the server when opening
   useEffect(() => {
-    if (open) void reloadData();
+    if (!open) return;
+    const load = async () => {
+      await reloadData();
+    };
+    void load();
   }, [open]);
 
   const handleModalClose = (isOpen: boolean) => {
