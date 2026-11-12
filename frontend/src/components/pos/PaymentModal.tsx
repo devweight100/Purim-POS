@@ -26,16 +26,40 @@ import { kickCashDrawer, getCashDrawerConfig } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
 import { ApprovalDialog, ApprovalNeeded } from '@/components/approvals/ApprovalDialog';
 import { getTerminalId } from '@/lib/terminal-id';
+import type { OrderPayment } from '@/lib/types';
 
 type Step = 'METHOD' | 'PROCESS' | 'SUCCESS';
 type Method = 'CASH' | 'QR' | 'CARD' | 'SPLIT' | 'CREDIT';
 type NumpadTarget = 'NONE' | 'CASH' | 'QR' | 'SPLIT_CASH' | 'SPLIT_QR';
 
+/** A payment line sent to checkout (lib/types PaymentMethodType has no CREDIT_DEBT yet). */
+type PosPaymentLine = Omit<OrderPayment, 'method'> & { method: OrderPayment['method'] | 'CREDIT_DEBT' };
+
+/** A saved bill whose payment is being changed (from the sales history); passed on to the receipt mapper. */
+export interface EditablePaymentOrder {
+  id: string;
+  orderNumber?: string;
+  totalAmount?: number;
+  userName?: string;
+  [field: string]: unknown;
+}
+
+/** What checkout answers (only the fields read here). */
+interface CheckoutResult {
+  id: string;
+  orderNumber: string;
+  isOfflineSaved?: boolean;
+  createdAt?: string;
+  pointsEarned?: number | string;
+  pointsUsed?: number | string;
+  customer?: { points?: number | string } | null;
+}
+
 interface PaymentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialMethod?: Method | null;
-  orderToEditPayment?: any | null;
+  orderToEditPayment?: EditablePaymentOrder | null;
   onPaymentEditSuccess?: () => void;
 }
 
@@ -115,8 +139,8 @@ export function PaymentModal({
   if (countingDownChanged && countingDown) setCountdown(5);
 
   useEffect(() => {
-    let timer: any = null;
-    let interval: any = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
 
     if (open && step === 'SUCCESS' && !showReceiptPdf) {
       interval = setInterval(() => {
@@ -170,7 +194,7 @@ export function PaymentModal({
     submitting.current = true;
     setIsSubmitting(true);
     try {
-    let payments = [];
+    const payments: PosPaymentLine[] = [];
     let recordedCashReceived = 0;
     let recordedChangeAmount = 0;
     const attachedClaim = cart.attachedClaim;
@@ -237,7 +261,7 @@ export function PaymentModal({
         { ...orderToEditPayment, orderNumber: orderId, userName: orderToEditPayment.userName || shiftStore.currentShift?.userName },
         {
           isReprint: true,
-          payments: payments.map((p: any) => ({ method: p.method, amount: Number(p.amount) || 0, referenceNo: p.referenceNo })),
+          payments: payments.map((p) => ({ method: p.method, amount: Number(p.amount) || 0, referenceNo: p.referenceNo })),
           cashReceived: recordedCashReceived || undefined,
           changeAmount: recordedChangeAmount || undefined,
         },
@@ -261,10 +285,10 @@ export function PaymentModal({
     }
 
     let isSynced = false;
-    let backendOrder: any = null;
+    let backendOrder: CheckoutResult | null = null;
     try {
       operationId.current ||= newOperationId();
-      backendOrder = await api.orders.checkout({
+      const checkedOut: CheckoutResult = await api.orders.checkout({
         clientOrderId: operationId.current,
         approvalId: approvalIdRef.current || undefined,
         terminalId: getTerminalId(),
@@ -303,11 +327,12 @@ export function PaymentModal({
         }),
         payments,
       });
+      backendOrder = checkedOut;
       approvalIdRef.current = null;
-      isSynced = !backendOrder.isOfflineSaved;
+      isSynced = !checkedOut.isOfflineSaved;
       setPendingReceipt(!isSynced);
-      const finalOrderNumber = backendOrder.orderNumber;
-      const finalOrderId = backendOrder.id;
+      const finalOrderNumber = checkedOut.orderNumber;
+      const finalOrderId = checkedOut.id;
 
       const previousEditingId = cart.editingOrderId;
       if (previousEditingId) {
@@ -364,7 +389,7 @@ export function PaymentModal({
         vatAmount: cart.getVatAmount(),
         vatEnabled: cart.isVatEnabled,
         totalAmount: total,
-        payments: payments as any,
+        payments: payments as OrderPayment[],
         cashReceived: recordedCashReceived,
         changeAmount: recordedChangeAmount,
         status: 'COMPLETED',
@@ -459,9 +484,9 @@ export function PaymentModal({
       if (isSynced) void useProductStore.getState().fetchProducts({ offlineCache: true });
 
       const custSaleRes = {
-        earnedPoints: isSynced ? Number(backendOrder.pointsEarned || 0) : 0,
-        pointsUsed: isSynced ? Number(backendOrder.pointsUsed || 0) : 0,
-        newTotalPoints: isSynced ? Number(backendOrder.customer?.points || 0) : 0,
+        earnedPoints: isSynced ? Number(checkedOut.pointsEarned || 0) : 0,
+        pointsUsed: isSynced ? Number(checkedOut.pointsUsed || 0) : 0,
+        newTotalPoints: isSynced ? Number(checkedOut.customer?.points || 0) : 0,
       };
 
       // Automatically kick cash drawer open if cash payment was received (and total > 0)!
@@ -504,8 +529,8 @@ export function PaymentModal({
         totalAmount: total,
         paymentMethod: total === 0 ? 'เคลมสินค้า / ฟรี (฿0.00)' : summarizePaymentMethods(payments),
         outstandingAmount: payments
-          .filter((p: any) => isCreditMethod(p.method))
-          .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0) || undefined,
+          .filter((p) => isCreditMethod(p.method))
+          .reduce((sum: number, p) => sum + Number(p.amount || 0), 0) || undefined,
         payments: payments,
         cashReceived: recordedCashReceived,
         changeAmount: recordedChangeAmount
