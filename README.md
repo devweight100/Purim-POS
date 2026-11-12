@@ -65,7 +65,11 @@ Purim-POS/
 │   └── src/
 │       ├── app/        หน้าต่าง ๆ (pos, orders, products, finance, monitor, settings, ...)
 │       ├── components/ ชิ้นส่วนหน้าจอ แยกตามงาน
-│       └── lib/        การเชื่อม API, การคำนวณ, store ของหน้าจอ
+│       └── lib/        การเชื่อม API, store ของหน้าจอ
+├── shared/             สูตรคำนวณที่ backend และหน้าจอใช้ "ตัวเดียวกัน" (ไม่มี dependency ของตัวเอง)
+│   ├── src/            ราคา/ส่วนลด/VAT ของบิลขาย (pricing), บิลซื้อ (po-calc), จำนวนทศนิยม (qty),
+│   │                   ปฏิทินเวลาไทย (bangkok-date), การปัดเศษเงิน (money)
+│   └── test/           ทดสอบสูตร (รันทั้งใน jest ของ backend และ vitest ของ frontend)
 ├── desktop/            แอปเครื่องลูก (Electron): เปิดหน้าขาย, พิมพ์ใบเสร็จ, เปิดลิ้นชัก
 ├── Installer/          ซอร์สของตัวติดตั้ง (ตัว .exe อยู่ใน GitHub Releases ไม่อยู่ใน git)
 │   ├── Server/
@@ -106,6 +110,10 @@ cd frontend && npm ci && npm run dev
 บน Windows ใช้ `tools/dev/start-dev.bat` / `tools/dev/stop-dev.bat` ได้เลย
 
 - ทดสอบ: `cd backend && npx jest` (unit) และ `npm run test:e2e` (ต้องใช้ฐานข้อมูลเปล่าที่ชื่อมีคำว่า test)
+- สูตรคำนวณที่ใช้ทั้งสองฝั่งอยู่ใน `shared/src` เท่านั้น: backend import แบบ `../../../shared/src/...`
+  (build ได้ `dist/backend/src/main.js` + `dist/shared/src`), frontend import แบบ `@shared/...`
+  ตัวเลขรายงานทั้งหมดคำนวณที่เซิร์ฟเวอร์ (`GET /api/reports/tabs`) หน้าจอแค่แสดงผล
+  ตรวจ shared แยก: `cd backend && npx tsc -p ../shared`
 - ออกเวอร์ชัน/ตัวติดตั้ง: `git tag vX.Y.Z && git push origin vX.Y.Z` (ดู "ออกเวอร์ชันใหม่" ด้านบน) — **ห้าม commit ไฟล์ .exe**
 - ทดลอง build เองในเครื่อง: Windows `pwsh Installer/build-installers.ps1 -What all -Version 1.5.0`
   หรือ Linux `Installer/build-installers.sh all 1.5.0` (ต้องมี makensis, wine, mono-mcs, zip) ผลลัพธ์อยู่ที่ `Installer/dist/`
