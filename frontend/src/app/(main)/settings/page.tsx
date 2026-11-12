@@ -175,8 +175,8 @@ function BackupSection() {
                   await backupService.setOffsiteDir(offsiteDir);
                   toast.success(offsiteDir ? "บันทึกโฟลเดอร์และทดสอบเขียนไฟล์ผ่าน" : "ปิดการสำรองนอกเครื่องแล้ว");
                   await load();
-                } catch (err: any) {
-                  toast.error(err?.message || "ใช้โฟลเดอร์นี้ไม่ได้");
+                } catch (err) {
+                  toast.error((err as Error | undefined)?.message || "ใช้โฟลเดอร์นี้ไม่ได้");
                 } finally {
                   setSavingOffsite(false);
                 }
@@ -323,9 +323,9 @@ export default function SettingsPage() {
       setTimeout(() => {
         window.location.reload();
       }, 1000);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to reset database:", err);
-      toast.error(err?.message || "ไม่สามารถรีเซ็ตฐานข้อมูลได้");
+      toast.error((err as Error | undefined)?.message || "ไม่สามารถรีเซ็ตฐานข้อมูลได้");
     } finally {
       setIsResetting(false);
     }
@@ -387,8 +387,8 @@ export default function SettingsPage() {
         const printers = await (window as any).electronAPI.getPrinters();
         setInstalledPrinters(printers || []);
         toast.success(`ค้นพบเครื่องพิมพ์ใน Windows ทั้งหมด ${printers?.length || 0} รายการ`);
-      } catch (e: any) {
-        toast.error("ไม่สามารถค้นหาเครื่องพิมพ์ได้: " + (e?.message || ""));
+      } catch (e) {
+        toast.error("ไม่สามารถค้นหาเครื่องพิมพ์ได้: " + ((e as Error | undefined)?.message || ""));
       } finally {
         setLoadingPrinters(false);
       }
@@ -422,8 +422,8 @@ export default function SettingsPage() {
           time: nowStr
         });
       }
-    } catch (err: any) {
-      toast.error(`เกิดข้อผิดพลาด: ${err?.message || ''}`);
+    } catch (err) {
+      toast.error(`เกิดข้อผิดพลาด: ${(err as Error | undefined)?.message || ''}`);
     } finally {
       setTestingKick(false);
     }

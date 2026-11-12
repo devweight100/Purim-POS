@@ -57,8 +57,8 @@ export function PayableBillDetailsModal({
       } else {
         toast.error(res.message);
       }
-    } catch (e: any) {
-      toast.error(e.message || 'เกิดข้อผิดพลาดในการย้อนสถานะ');
+    } catch (e) {
+      toast.error((e as Error).message || 'เกิดข้อผิดพลาดในการย้อนสถานะ');
     } finally {
       setIsRollingBack(false);
     }

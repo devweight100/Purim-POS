@@ -101,9 +101,9 @@ export default function InventoryPage() {
       const movs = await fetchStockMovements();
       setMovements(movs);
       setMovementsError(null);
-    } catch (err: any) {
+    } catch (err) {
       setMovements([]);
-      setMovementsError(err?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้');
+      setMovementsError((err as Error | undefined)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้');
     }
   };
 
@@ -324,9 +324,9 @@ export default function InventoryPage() {
         amount: numAmount,
         reason: finalReason,
       });
-    } catch (err: any) {
+    } catch (err) {
       // rejected by the server (e.g. not enough stock, no permission): nothing was changed
-      toast.error(`ปรับสต็อกไม่สำเร็จ: ${err?.message || 'เกิดข้อผิดพลาด'}`);
+      toast.error(`ปรับสต็อกไม่สำเร็จ: ${(err as Error | undefined)?.message || 'เกิดข้อผิดพลาด'}`);
       return;
     }
 
@@ -541,7 +541,7 @@ export default function InventoryPage() {
                   key={st.value}
                   variant={stockStatusFilter === st.value ? 'secondary' : 'ghost'}
                   size="sm"
-                  onClick={() => setStockStatusFilter(st.value as any)}
+                  onClick={() => setStockStatusFilter(st.value as typeof stockStatusFilter)}
                   className={`h-8 px-3 text-xs font-bold rounded-lg transition-all ${
                     stockStatusFilter === st.value
                       ? st.value === 'negative'
@@ -840,7 +840,7 @@ export default function InventoryPage() {
 
               <select
                 value={movementDateFilter}
-                onChange={(e) => setMovementDateFilter(e.target.value as any)}
+                onChange={(e) => setMovementDateFilter(e.target.value as typeof movementDateFilter)}
                 className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 shadow-2xs"
               >
                 <option value="all">ช่วงเวลาทั้งหมด</option>

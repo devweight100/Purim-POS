@@ -54,7 +54,7 @@ export function ReconcilePanel({ accounts, onChanged }: { accounts: FinAccount[]
     try {
       const s = await apiFetch(`/finance/reconcile/${accountId}?to=${encodeURIComponent(statementDate)}`);
       setState(s); setChecked(new Set());
-    } catch (err: any) { toast.error(err?.message || 'โหลดไม่สำเร็จ'); }
+    } catch (err) { toast.error((err as Error | undefined)?.message || 'โหลดไม่สำเร็จ'); }
   }, [accountId, statementDate]);
   useEffect(() => { void load(); }, [load]);
 
@@ -90,7 +90,7 @@ export function ReconcilePanel({ accounts, onChanged }: { accounts: FinAccount[]
       });
       toast.success(res.difference === 0 ? `กระทบยอดตรงกันแล้ว (${res.matched} รายการ)` : `บันทึกแล้ว ยังต่างอยู่ ${formatCurrency(res.difference)}`);
       setAdjustReason(''); void load(); onChanged();
-    } catch (err: any) { toast.error(err?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
+    } catch (err) { toast.error((err as Error | undefined)?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
   };
 
   return (

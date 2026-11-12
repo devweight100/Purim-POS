@@ -50,8 +50,8 @@ export function ChangeReturnStatusModal({
       } else {
         toast.error(res.message);
       }
-    } catch (err: any) {
-      toast.error(err.message || 'เกิดข้อผิดพลาดในการเปลี่ยนสถานะ');
+    } catch (err) {
+      toast.error((err as Error).message || 'เกิดข้อผิดพลาดในการเปลี่ยนสถานะ');
     } finally {
       setIsSubmitting(false);
     }
@@ -112,7 +112,7 @@ export function ChangeReturnStatusModal({
                     name="returnNoteStatus"
                     value={item.value}
                     checked={selectedStatus === item.value}
-                    onChange={() => setSelectedStatus(item.value as any)}
+                    onChange={() => setSelectedStatus(item.value as typeof selectedStatus)}
                     className="accent-indigo-600 mt-0.5"
                   />
                   <div>

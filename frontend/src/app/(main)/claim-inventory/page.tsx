@@ -573,7 +573,7 @@ export default function ClaimInventoryPage() {
               <label className="text-xs font-bold text-slate-600 shrink-0">สถานะสต็อก:</label>
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
+                onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
                 className="h-9 px-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800 outline-none focus:border-indigo-500 shadow-2xs"
               >
                 <option value="IN_STOCK">📦 ของเคลมรอส่งคืน (ในสต็อก)</option>
@@ -626,7 +626,7 @@ export default function ClaimInventoryPage() {
       </div>
 
       {/* ─── MAIN TABS CONTENT ─── */}
-      <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)} className="w-full space-y-3">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-full space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-200 pb-2">
           <TabsList className="bg-slate-100 p-1 rounded-xl h-auto">
             <TabsTrigger

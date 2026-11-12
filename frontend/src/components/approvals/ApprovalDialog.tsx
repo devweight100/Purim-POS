@@ -31,9 +31,9 @@ export function ApprovalDialog({ request, onApproved, onCancel }: { request: App
       const res = await apiFetch('/approvals/pin', { method: 'POST', body: JSON.stringify({ ticket: request!.ticket, pin, note: note || undefined }) });
       toast.success(`อนุมัติโดย ${res.approvedBy}`);
       onApproved(res.approvalId, res.approvedBy);
-    } catch (err: any) {
+    } catch (err) {
       setPin('');
-      toast.error(err?.message || 'อนุมัติไม่สำเร็จ');
+      toast.error((err as Error | undefined)?.message || 'อนุมัติไม่สำเร็จ');
     } finally { setBusy(false); }
   };
   const press = (k: string) => setPin((p) => (k === 'del' ? p.slice(0, -1) : p.length < 6 ? p + k : p));

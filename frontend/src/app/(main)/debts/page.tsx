@@ -94,7 +94,7 @@ function DebtsContent() {
       const records = await fetchDebtRecords();
       setDebts(records);
       setLoadError(null);
-    } catch (err: any) {
+    } catch (err) {
       console.warn('Failed to load debt records:', err);
       setDebts([]);
       setLoadError(errorMessage(err, 'ไม่สามารถโหลดข้อมูลบิลค้างชำระได้'));
@@ -393,7 +393,7 @@ function DebtsContent() {
             <span className="font-semibold text-slate-500">ประเภทลูกค้า:</span>
             <select
               value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as any)}
+              onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}
               className="h-8 rounded-lg border border-slate-300 bg-white px-2 font-bold text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500 shadow-2xs"
             >
               <option value="all">ทั้งหมด</option>
@@ -735,8 +735,8 @@ function DebtsContent() {
             toast.success('ยกเลิกใบรับชำระแล้ว ยอดหนี้กลับมาค้างชำระ');
             setHistoryModalOpen(false);
             void reloadData();
-          } catch (err: any) {
-            toast.error(err?.message || 'ยกเลิกไม่สำเร็จ');
+          } catch (err) {
+            toast.error((err as Error | undefined)?.message || 'ยกเลิกไม่สำเร็จ');
           }
         } : undefined}
       />

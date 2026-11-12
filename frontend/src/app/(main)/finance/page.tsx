@@ -117,7 +117,7 @@ export default function FinancePage() {
       setExpenses(exp.data || []);
       setCategories(cats || []);
       setLoadError(null);
-    } catch (err: any) {
+    } catch (err) {
       // never show ฿0 / an old ledger as if it came from the server
       setOverview(null);
       setSummary(null);
@@ -145,8 +145,8 @@ export default function FinancePage() {
       }
       toast.success('ยกเลิกรายการแล้ว (บันทึกเป็นรายการกลับ)');
       void load();
-    } catch (err: any) {
-      toast.error(err?.message || 'ยกเลิกไม่สำเร็จ');
+    } catch (err) {
+      toast.error((err as Error | undefined)?.message || 'ยกเลิกไม่สำเร็จ');
     }
   };
 
@@ -459,7 +459,7 @@ export default function FinancePage() {
                             await apiFetch(`/finance/expenses/${e.id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) });
                             toast.success('ยกเลิกค่าใช้จ่ายแล้ว เงินคืนเข้าบัญชีเดิม');
                             void load();
-                          } catch (err: any) { toast.error(err?.message || 'ยกเลิกไม่สำเร็จ'); }
+                          } catch (err) { toast.error((err as Error | undefined)?.message || 'ยกเลิกไม่สำเร็จ'); }
                         }}>ยกเลิก</Button>
                       )}
                     </td>
@@ -514,8 +514,8 @@ function TransferDialog({ mode, accounts, onClose, onDone }: { mode: null | 'dep
       toast.success('บันทึกการย้ายเงินแล้ว');
       onClose();
       onDone();
-    } catch (err: any) {
-      toast.error(err?.message || 'บันทึกไม่สำเร็จ');
+    } catch (err) {
+      toast.error((err as Error | undefined)?.message || 'บันทึกไม่สำเร็จ');
     } finally { setSaving(false); }
   };
 
@@ -599,8 +599,8 @@ function ExpenseDialog({ open, accounts, categories, onClose, onDone }: { open: 
       toast.success('บันทึกค่าใช้จ่ายแล้ว');
       onClose();
       onDone();
-    } catch (err: any) {
-      toast.error(err?.message || 'บันทึกไม่สำเร็จ');
+    } catch (err) {
+      toast.error((err as Error | undefined)?.message || 'บันทึกไม่สำเร็จ');
     } finally { setSaving(false); }
   };
 
@@ -666,7 +666,7 @@ function OwnerDialog({ open, accounts, onClose, onDone }: { open: boolean; accou
       toast.success('บันทึกแล้ว');
       onClose();
       onDone();
-    } catch (err: any) { toast.error(err?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
+    } catch (err) { toast.error((err as Error | undefined)?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
   };
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -720,7 +720,7 @@ function AmountDialog({ state, onClose, onDone }: { state: null | { kind: 'openi
       toast.success('บันทึกแล้ว');
       onClose();
       onDone();
-    } catch (err: any) { toast.error(err?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
+    } catch (err) { toast.error((err as Error | undefined)?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
   };
   return (
     <Dialog open={!!state} onOpenChange={(o) => !o && onClose()}>
@@ -749,13 +749,13 @@ function CategoryManager({ categories, onChanged }: { categories: Category[]; on
       await apiFetch('/finance/expense-categories', { method: 'POST', body: JSON.stringify({ name }) });
       setName('');
       onChanged();
-    } catch (err: any) { toast.error(err?.message || 'เพิ่มหมวดไม่สำเร็จ'); }
+    } catch (err) { toast.error((err as Error | undefined)?.message || 'เพิ่มหมวดไม่สำเร็จ'); }
   };
   const toggle = async (c: Category) => {
     try {
       await apiFetch(`/finance/expense-categories/${c.id}`, { method: 'PATCH', body: JSON.stringify({ isActive: !c.isActive }) });
       onChanged();
-    } catch (err: any) { toast.error(err?.message || 'บันทึกไม่สำเร็จ'); }
+    } catch (err) { toast.error((err as Error | undefined)?.message || 'บันทึกไม่สำเร็จ'); }
   };
   return (
     <div className="p-4 space-y-3">

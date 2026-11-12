@@ -242,7 +242,7 @@ export default function DashboardPage() {
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setTimeFilter(tab.id as any)}
+                onClick={() => setTimeFilter(tab.id as typeof timeFilter)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   timeFilter === tab.id
                     ? "bg-indigo-600 text-white shadow-xs"

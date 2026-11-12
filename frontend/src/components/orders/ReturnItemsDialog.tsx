@@ -72,7 +72,7 @@ export function ReturnItemsDialog({ orderId, onClose, onDone }: { orderId: strin
       toast.success(`บันทึกรับคืน ${res.returnNumber} คืนเงิน ${formatCurrency(res.refundAmount)} แล้ว`);
       if (method === 'CASH') void useShiftStore.getState().fetchCurrentShift();
       onClose(); onDone();
-    } catch (err: any) { toast.error(err?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
+    } catch (err) { toast.error((err as Error | undefined)?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
   };
 
   return (

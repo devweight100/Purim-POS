@@ -28,7 +28,7 @@ export function RecurringPanel({ accounts, categories, onChanged }: { accounts: 
   const payable = accounts.filter((a) => a.isActive && (a.type === 'CASH_SAFE' || a.type === 'BANK'));
 
   const load = useCallback(async () => {
-    try { setRows(await apiFetch('/finance/recurring')); } catch (err: any) { toast.error(err?.message || 'โหลดไม่สำเร็จ'); }
+    try { setRows(await apiFetch('/finance/recurring')); } catch (err) { toast.error((err as Error | undefined)?.message || 'โหลดไม่สำเร็จ'); }
   }, []);
   useEffect(() => { void load(); }, [load]);
 
@@ -36,11 +36,11 @@ export function RecurringPanel({ accounts, categories, onChanged }: { accounts: 
     const reason = window.prompt(`ข้ามงวด ${thaiDate(r.nextDueDate)} ของ "${r.name}" เพราะ?`);
     if (!reason) return;
     try { await apiFetch(`/finance/recurring/${r.id}/skip`, { method: 'POST', body: JSON.stringify({ reason }) }); toast.success('ข้ามงวดนี้แล้ว'); void load(); }
-    catch (err: any) { toast.error(err?.message || 'ไม่สำเร็จ'); }
+    catch (err) { toast.error((err as Error | undefined)?.message || 'ไม่สำเร็จ'); }
   };
   const toggle = async (r: Recurring) => {
     try { await apiFetch(`/finance/recurring/${r.id}`, { method: 'PATCH', body: JSON.stringify({ isActive: !r.isActive }) }); void load(); }
-    catch (err: any) { toast.error(err?.message || 'ไม่สำเร็จ'); }
+    catch (err) { toast.error((err as Error | undefined)?.message || 'ไม่สำเร็จ'); }
   };
 
   const due = rows.filter((r) => r.status === 'OVERDUE' || r.status === 'DUE_SOON');
@@ -112,7 +112,7 @@ function CreateDialog({ open, accounts, categories, onClose, onDone }: { open: b
       await apiFetch('/finance/recurring', { method: 'POST', body: JSON.stringify({ name, categoryId, accountId: accountId || undefined, amount: Number(amount), frequency, dayOfMonth: Number(dayOfMonth), dayOfWeek: Number(dayOfWeek), monthOfYear: Number(monthOfYear), remindDays: Number(remindDays) }) });
       toast.success('เพิ่มค่าใช้จ่ายประจำแล้ว');
       onClose(); onDone();
-    } catch (err: any) { toast.error(err?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
+    } catch (err) { toast.error((err as Error | undefined)?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
   };
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -181,7 +181,7 @@ function PayDialog({ target, accounts, onClose, onDone }: { target: Recurring | 
       const res = await apiFetch(`/finance/recurring/${target.id}/pay`, { method: 'POST', body: JSON.stringify({ clientId, amount: Number(amount), accountId, note }) });
       toast.success(`บันทึกค่าใช้จ่าย ${res.expenseNumber} แล้ว งวดถัดไป ${thaiDate(res.nextDueDate)}`);
       onClose(); onDone();
-    } catch (err: any) { toast.error(err?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
+    } catch (err) { toast.error((err as Error | undefined)?.message || 'บันทึกไม่สำเร็จ'); } finally { setSaving(false); }
   };
   return (
     <Dialog open={!!target} onOpenChange={(o) => !o && onClose()}>

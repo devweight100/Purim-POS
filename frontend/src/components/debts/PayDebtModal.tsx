@@ -131,8 +131,8 @@ export function PayDebtModal({
       } else {
         toast.error(res.error || 'เกิดข้อผิดพลาดในการบันทึกรับชำระ');
       }
-    } catch (err: any) {
-      toast.error(err.message || 'บันทึกรับชำระไม่สำเร็จ');
+    } catch (err) {
+      toast.error((err as Error).message || 'บันทึกรับชำระไม่สำเร็จ');
     } finally {
       submitting.current = false;
       setIsSubmitting(false);

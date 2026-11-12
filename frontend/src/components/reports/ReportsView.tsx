@@ -537,7 +537,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               <button
                 key={t.key}
                 type="button"
-                onClick={() => setTimeRange(t.key as any)}
+                onClick={() => setTimeRange(t.key as typeof timeRange)}
                 className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
                   timeRange === t.key
                     ? 'bg-indigo-600 text-white shadow-2xs'

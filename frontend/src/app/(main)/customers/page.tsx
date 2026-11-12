@@ -114,7 +114,7 @@ export default function CustomersPage() {
       setCustomers(list);
       setLoyaltyConfig(config);
       setLoadError(null);
-    } catch (err: any) {
+    } catch (err) {
       setCustomers([]);
       setLoadError(errorMessage(err, 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     } finally {
@@ -298,8 +298,8 @@ export default function CustomersPage() {
       }
       setIsFormOpen(false);
       reloadData();
-    } catch (err: any) {
-      toast.error(err?.message || 'บันทึกข้อมูลลูกค้าไม่สำเร็จ');
+    } catch (err) {
+      toast.error((err as Error | undefined)?.message || 'บันทึกข้อมูลลูกค้าไม่สำเร็จ');
     }
   };
 
@@ -310,8 +310,8 @@ export default function CustomersPage() {
         await apiFetch(`/customers/${cust.id}`, { method: 'DELETE' });
         toast.success(`ลบสมาชิก "${cust.name}" เรียบร้อยแล้ว`);
         reloadData();
-      } catch (err: any) {
-        toast.error(err?.message || 'ลบลูกค้าไม่สำเร็จ');
+      } catch (err) {
+        toast.error((err as Error | undefined)?.message || 'ลบลูกค้าไม่สำเร็จ');
       }
     }
   };
@@ -466,7 +466,7 @@ export default function CustomersPage() {
                 key={st.value}
                 variant={typeFilter === st.value ? 'secondary' : 'ghost'}
                 size="sm"
-                onClick={() => setTypeFilter(st.value as any)}
+                onClick={() => setTypeFilter(st.value as typeof typeFilter)}
                 className={`h-8 px-3 text-xs font-bold rounded-lg transition-all ${
                   typeFilter === st.value
                     ? 'bg-sky-50 text-sky-700 border border-sky-300 shadow-2xs'
@@ -682,7 +682,7 @@ export default function CustomersPage() {
                 <button
                   key={t.id}
                   type="button"
-                  onClick={() => setActiveFormTab(t.id as any)}
+                  onClick={() => setActiveFormTab(t.id as typeof activeFormTab)}
                   className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold border-b-2 transition-all cursor-pointer ${
                     activeFormTab === t.id
                       ? 'border-sky-500 text-sky-700 bg-white rounded-t-lg shadow-2xs'

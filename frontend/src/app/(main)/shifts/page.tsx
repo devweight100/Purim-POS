@@ -411,7 +411,7 @@ export default function ShiftsHistoryPage() {
           {/* Quick Date Filters */}
           <select
             value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value as any)}
+            onChange={(e) => setDateFilter(e.target.value as typeof dateFilter)}
             className="h-11 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:border-indigo-500"
           >
             <option value="ALL">📅 ทุกช่วงวันที่</option>
@@ -434,7 +434,7 @@ export default function ShiftsHistoryPage() {
           {/* Status Discrepancy Filter */}
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
+            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
             className="h-11 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:border-indigo-500"
           >
             <option value="ALL">ทุกผลการปิดกะ</option>

@@ -438,9 +438,9 @@ export function CreateSupplierReturnModal({
 
       onSuccess(resultNote);
       onOpenChange(false);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to save supplier return note:', err);
-      toast.error(err.message || 'เกิดข้อผิดพลาดในการบันทึกเอกสารส่งคืน');
+      toast.error((err as Error).message || 'เกิดข้อผิดพลาดในการบันทึกเอกสารส่งคืน');
     } finally {
       setIsSubmitting(false);
     }
@@ -577,7 +577,7 @@ export function CreateSupplierReturnModal({
               3. เลือกสินค้าที่จะส่งคืน (จากสต็อกของเคลม หรือ สินค้าปกติในคลัง):
             </label>
 
-            <Tabs value={activeItemTab} onValueChange={(v: any) => setActiveItemTab(v)} className="w-full">
+            <Tabs value={activeItemTab} onValueChange={(v) => setActiveItemTab(v as typeof activeItemTab)} className="w-full">
               <TabsList className="grid grid-cols-2 h-11 bg-slate-100 p-1 rounded-2xl">
                 <TabsTrigger
                   value="defective"

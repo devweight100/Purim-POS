@@ -164,8 +164,8 @@ export function SettlePayableModal({
       } else {
         toast.error(res.message);
       }
-    } catch (err: any) {
-      toast.error(err.message || 'เกิดข้อผิดพลาดในการบันทึกการชำระเงิน');
+    } catch (err) {
+      toast.error((err as Error).message || 'เกิดข้อผิดพลาดในการบันทึกการชำระเงิน');
     } finally {
       setIsSubmitting(false);
     }
@@ -341,7 +341,7 @@ export function SettlePayableModal({
                   <button
                     key={m.id}
                     type="button"
-                    onClick={() => setPaymentMethod(m.id as any)}
+                    onClick={() => setPaymentMethod(m.id as typeof paymentMethod)}
                     className={`p-3 rounded-2xl border text-center transition-all flex flex-col items-center gap-1.5 ${
                       isSel
                         ? 'border-indigo-500 bg-indigo-50/70 text-indigo-950 font-bold ring-2 ring-indigo-400/30'

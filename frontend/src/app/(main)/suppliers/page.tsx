@@ -36,7 +36,7 @@ export default function SuppliersPage() {
         setSuppliers([]);
       }
       setLoadError(null);
-    } catch (err: any) {
+    } catch (err) {
       console.warn("Failed to fetch suppliers:", err);
       setSuppliers([]);
       setLoadError(errorMessage(err, "ติดต่อเซิร์ฟเวอร์ไม่ได้"));
@@ -128,8 +128,8 @@ export default function SuppliersPage() {
       }
       setIsDialogOpen(false);
       fetchSuppliers();
-    } catch (err: any) {
-      toast.error(err?.message || "บันทึกข้อมูลผู้จำหน่ายไม่สำเร็จ");
+    } catch (err) {
+      toast.error((err as Error | undefined)?.message || "บันทึกข้อมูลผู้จำหน่ายไม่สำเร็จ");
     }
   };
 
@@ -139,8 +139,8 @@ export default function SuppliersPage() {
       await apiFetch(`/suppliers/${id}`, { method: "DELETE" });
       toast.success("ลบผู้จำหน่ายสำเร็จ");
       fetchSuppliers();
-    } catch (err: any) {
-      toast.error(err?.message || "ลบผู้จำหน่ายไม่สำเร็จ");
+    } catch (err) {
+      toast.error((err as Error | undefined)?.message || "ลบผู้จำหน่ายไม่สำเร็จ");
     }
   };
 
