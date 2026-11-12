@@ -94,10 +94,19 @@ interface TelemetryData {
   recentActivity: ActivityItem[];
 }
 
+/** GET /server-control/telemetry; null (logged) when it fails. */
+async function requestTelemetry(): Promise<TelemetryData | null> {
+  return apiFetch<TelemetryData | null>('/server-control/telemetry').catch((err: unknown) => {
+    console.warn('Failed to fetch telemetry:', err);
+    return null;
+  });
+}
+
 export default function MasterControlPage() {
   const [data, setData] = useState<TelemetryData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  // true from the start: the first (non-silent) telemetry load begins on mount
+  const [refreshing, setRefreshing] = useState(true);
   const [copiedIp, setCopiedIp] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -108,31 +117,37 @@ export default function MasterControlPage() {
 
   const prevBillsCount = useRef<number>(0);
 
+  /** Show a telemetry reply (null: the request failed) and end the loading / refresh state. */
+  const applyTelemetry = (res: TelemetryData | null) => {
+    if (res) {
+      setData(res);
+      // a reply without todaySummary keeps the previous count (older servers)
+      const totalBills = res.todaySummary?.totalBills;
+      if (totalBills !== undefined) {
+        // Play subtle telemetry sound or notification if a new bill completed
+        if (prevBillsCount.current > 0 && totalBills > prevBillsCount.current) {
+          toast.success(`⚡ [NEW SALE] มีการชำระเงินใหม่เข้ามาในระบบ! รวม ${totalBills} บิลแล้ว`);
+        }
+        prevBillsCount.current = totalBills;
+      }
+    }
+    setLoading(false);
+    setRefreshing(false);
+  };
+
+  /** Load telemetry; a non-silent call shows the refresh spinner meanwhile. */
   const fetchTelemetry = async (silent = false) => {
     if (!silent) setRefreshing(true);
-    try {
-      const res = (await apiFetch('/server-control/telemetry')) as TelemetryData;
-      if (res) {
-        setData(res);
-        // Play subtle telemetry sound or notification if a new bill completed
-        if (prevBillsCount.current > 0 && res.todaySummary.totalBills > prevBillsCount.current) {
-          toast.success(`⚡ [NEW SALE] มีการชำระเงินใหม่เข้ามาในระบบ! รวม ${res.todaySummary.totalBills} บิลแล้ว`);
-        }
-        prevBillsCount.current = res.todaySummary.totalBills;
-      }
-    } catch (err) {
-      console.warn('Failed to fetch telemetry:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+    applyTelemetry(await requestTelemetry());
   };
 
   useEffect(() => {
-    fetchTelemetry();
+    // the first load is non-silent: "refreshing" starts as true (useState above)
+    const load = async () => applyTelemetry(await requestTelemetry());
+    void load();
     // Auto-refresh telemetry every 4 seconds (Real-time Radar Poll)
     const interval = setInterval(() => {
-      fetchTelemetry(true);
+      void load();
     }, 4000);
     return () => clearInterval(interval);
   }, []);

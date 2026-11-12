@@ -11,6 +11,7 @@ import { Gamepad2,
   ChevronDown, History, PackageX, TrendingUp, Sparkles, Coins, Boxes, UserCog,
   ScanLine, Radio,
   Wallet, ShieldCheck,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { performLogout } from '@/lib/logout';
@@ -22,14 +23,14 @@ import { useDocumentSearchStore } from '@/lib/store/document-search-store';
 interface SubMenuItem {
   href: string;
   label: string;
-  icon: any;
+  icon: LucideIcon;
   children?: SubMenuItem[];
 }
 
 interface NavGroup {
   id: string;
   title: string;
-  icon: any;
+  icon: LucideIcon;
   items: SubMenuItem[];
 }
 
@@ -152,8 +153,11 @@ export function Sidebar() {
       .filter((group) => group.items.length > 0);
   }, [user]);
 
-  // Ensure current pathname's group and submenus are open
-  useEffect(() => {
+  // On a route (or menu) change: open the current pathname's group and submenus, and close the
+  // mobile menu. Adjusted during render (React's "state from changed props" pattern), not in an effect.
+  const [syncedRoute, setSyncedRoute] = useState<{ pathname: string; groups: NavGroup[] } | null>(null);
+  if (syncedRoute?.pathname !== pathname || syncedRoute.groups !== visibleNavGroups) {
+    setSyncedRoute({ pathname, groups: visibleNavGroups });
     visibleNavGroups.forEach((group) => {
       const isMatch = group.items.some(
         (item) => item.href === pathname || item.children?.some((c) => c.href === pathname)
@@ -166,12 +170,8 @@ export function Sidebar() {
     if (pathname.startsWith('/reports')) {
       setOpenSubMenus((prev) => ({ ...prev, '/reports': true }));
     }
-  }, [pathname, visibleNavGroups]);
-
-  // Close mobile menu on route change
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
+    if (syncedRoute?.pathname !== pathname) setMobileOpen(false);
+  }
 
   // Save and restore sidebar scroll position across navigation
   const saveCurrentScroll = () => {

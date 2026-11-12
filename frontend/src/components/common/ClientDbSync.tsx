@@ -11,7 +11,7 @@ import { fetchCategoriesFromBackend } from '@/lib/category-storage';
 import { fetchBankAccountsFromBackend } from '@/lib/bank-account-storage';
 import { loadStoreSettingsFromBackend } from '@/lib/store-settings-storage';
 import { fetchCustomers } from '@/lib/customer-service';
-import { api, apiFetch, getAuthToken } from '@/lib/api';
+import { api, apiFetch, getAuthToken, ApiError } from '@/lib/api';
 import { getTerminalId } from '@/lib/terminal-id';
 import { startRealtime, RealtimeEvent } from '@/lib/realtime';
 import { clearLegacyLocalData } from '@/lib/local-data-reset';
@@ -122,8 +122,8 @@ export function ClientDbSync() {
                 }
               }
             })
-            .catch((err: any) => {
-              if (err?.status === 401 && !disposed) {
+            .catch((err: unknown) => {
+              if (err instanceof ApiError && err.status === 401 && !disposed) {
                 useAuthStore.getState().logout();
               }
             }),
