@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useHasChanged } from '@/lib/pos/use-has-changed';
 import {
   Package,
   ShieldCheck,
@@ -31,6 +32,11 @@ import { PendingClaimItem } from '../../lib/types';
 import { formatCurrency } from '../../lib/utils';
 import { toast } from 'sonner';
 import { addQty, minQty, parseQty, qtyInputMode, qtyStep, roundQty, subQty, useAllowDecimalQty } from '@/lib/qty';
+
+/** Temporary id of a claim discount waiting in the cart (replaced by the server on checkout). */
+function newDraftClaimId() {
+  return `draft-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+}
 
 interface CustomerClaimStockModalProps {
   isOpen: boolean;
@@ -72,12 +78,10 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
   const [refundMode, setRefundMode] = useState<'NONE' | 'CASH' | 'TRANSFER'>('NONE');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const loadStock = async () => {
-    if (!customerId && !customerName && !searchQuery.trim()) {
-      setStockSummary(null);
-      return;
-    }
-    setLoading(true);
+  const hasStockQuery = !!(customerId || customerName || searchQuery.trim());
+
+  /** Reads the customer's stock from the server (state is only set after the request). */
+  const fetchStock = async () => {
     try {
       const summary = await getCustomerProductStock({
         customerId: customerId || undefined,
@@ -93,6 +97,15 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
     }
   };
 
+  const loadStock = async () => {
+    if (!hasStockQuery) {
+      setStockSummary(null);
+      return;
+    }
+    setLoading(true);
+    await fetchStock();
+  };
+
   const resetForm = () => {
     setSearchQuery('');
     setSelectedClaims({});
@@ -100,14 +113,21 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
     setExpandedProductIds({});
   };
 
-  useEffect(() => {
+  // Opening (or another customer while open) clears the selection and loads the stock; closing resets the form
+  const openOrCustomerChanged = useHasChanged(`${isOpen}|${customerId}|${customerName}`);
+  if (openOrCustomerChanged) {
     if (isOpen) {
-      loadStock();
       setSelectedClaims({});
       setRefundMode('NONE');
+      if (hasStockQuery) setLoading(true);
+      else setStockSummary(null);
     } else {
       resetForm();
     }
+  }
+  useEffect(() => {
+    // reload only when the dialog opens or the customer changes, not on every keystroke of the search box
+    if (isOpen && hasStockQuery) void fetchStock();
   }, [isOpen, customerId, customerName]);
 
   const handleClose = () => {
@@ -211,7 +231,7 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
       const latestOrder = product.orders.find((o) => o.availableClaimQuantity > 0) || product.orders[0];
 
       const pendingClaim: PendingClaimItem = {
-        id: `draft-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+        id: newDraftClaimId(),
         orderId: latestOrder?.orderId || '',
         orderNumber: latestOrder?.orderNumber || '-',
         orderDate: latestOrder?.orderDate || new Date().toISOString(),
@@ -302,7 +322,7 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
       await loadStock();
     } catch (err) {
       console.error('Failed to process refund claims:', err);
-      toast.error(`บันทึกการคืนเงินไม่สำเร็จ: ${(err as any)?.message || 'เกิดข้อผิดพลาด'}`);
+      toast.error(`บันทึกการคืนเงินไม่สำเร็จ: ${(err as { message?: string } | null)?.message || 'เกิดข้อผิดพลาด'}`);
     } finally {
       setIsProcessing(false);
     }
