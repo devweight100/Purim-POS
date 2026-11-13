@@ -56,6 +56,83 @@ export interface ReplacementWarrantyRecord {
 // ─── Server reads ───
 
 /** All claims from the server. Throws when the server cannot be reached. */
+/** Server claim -> the claim record the pages and the printed claim document use. */
+export function mapServerClaim(c: ApiClaim, storeProducts: Product[] = useProductStore.getState().products || []): ClaimRecord {
+  const claimId = c.claimNumber || c.id;
+  const ordNum = c.order?.orderNumber || c.orderNumber || '-';
+  const pId = (c.productId || c.product?.id) ?? '';
+
+  const matchedProd = storeProducts.find((p) => p.id === pId || p.sku === c.product?.sku || p.sku === c.sku);
+  const resolvedUnitPrice = Number(c.unitPrice ?? matchedProd?.priceLevel1 ?? matchedProd?.basePrice ?? 0);
+  const resolvedQty = Number(c.quantity ?? 1);
+  const resolvedClaimValue = Number(c.totalClaimValue ?? c.refundAmount ?? (resolvedUnitPrice * resolvedQty));
+
+  const resolvedResType = (c.resolutionType ||
+    (c.claimType === 'REFUND'
+      ? 'REFUND_CASH'
+      : c.claimType === 'EXCHANGE'
+        ? 'REPLACE_ITEM'
+        : 'REPLACE_ITEM')) as ClaimResolutionType;
+
+  let resolvedStatus: ClaimStatus = 'COMPLETED';
+  const rawStatus = c.frontendStatus || c.claimStatus || c.status;
+  if (rawStatus !== undefined && CLAIM_STATUSES.includes(rawStatus)) {
+    resolvedStatus = rawStatus as ClaimStatus;
+  } else if (rawStatus === 'IN_PROGRESS') {
+    resolvedStatus = c.returnDocId ? 'SENT_TO_SUPPLIER' : 'PENDING_SUPPLIER';
+  } else if (rawStatus === 'PENDING') {
+    resolvedStatus = resolvedResType === 'STORE_DISCOUNT' ? 'PENDING_CHECKOUT' : 'PENDING_SUPPLIER';
+  } else if (rawStatus === 'REJECTED') {
+    resolvedStatus = 'SCRAPPED';
+  }
+
+  return {
+    id: claimId,
+    orderId: c.orderId || c.order?.id || '',
+    orderNumber: ordNum !== '-' ? ordNum : '-',
+    orderDate: c.orderDate || c.order?.createdAt || c.createdAt || new Date().toISOString(),
+    claimDate: c.claimDate || c.receivedDate || c.createdAt || new Date().toISOString(),
+    customerId: c.customerId ?? c.customer?.id ?? null,
+    customerName: c.customer?.name || c.customerName || 'ลูกค้าทั่วไป',
+    customerPhone: c.customer?.phone || c.customerPhone || '-',
+    productId: pId,
+    productName: c.product?.name || c.productName || matchedProd?.name || 'สินค้า',
+    sku: c.product?.sku || c.sku || matchedProd?.sku || '-',
+    unitName: c.unitName || matchedProd?.unit || 'ชิ้น',
+    quantity: resolvedQty,
+    conversionFactor: Number(c.conversionFactor ?? 1),
+    baseQuantity: Number(c.baseQuantity ?? resolvedQty),
+    replacementProductId: c.replacementProductId,
+    replacementProductName: c.replacementProductName,
+    replacementSku: c.replacementSku,
+    replacementUnitName: c.replacementUnitName,
+    replacementConversionFactor: c.replacementConversionFactor,
+    unitPrice: resolvedUnitPrice,
+    totalClaimValue: resolvedClaimValue,
+    refundAmount: c.refundAmount,
+    refundAccountId: c.refundAccountId,
+    refundAccountLabel: c.refundAccountLabel,
+    refundAccountNumber: c.refundAccountNumber,
+    discountAmount: c.discountAmount,
+    defectReason: c.defectReason || c.problemDescription || '-',
+    resolutionType: resolvedResType,
+    status: resolvedStatus,
+    cashierName: c.cashierName || 'พนักงาน POS',
+    note: c.note ?? c.resolutionNote,
+    isReplacementItem: c.isReplacementItem,
+    parentClaimId: c.parentClaimId,
+    claimedInOrderNumber: c.claimedInOrderNumber,
+    supplierId: c.supplierId,
+    supplierName: c.supplierName,
+    supplierTrackingNo: c.supplierTrackingNo,
+    costPrice: c.costPrice !== undefined ? Number(c.costPrice) : undefined,
+    totalCostValue: c.totalCostValue !== undefined ? Number(c.totalCostValue) : undefined,
+    returnDocId: c.returnDocId,
+    settledInBillNumber: c.settledInBillNumber,
+    completedDate: c.completedDate,
+  };
+}
+
 export async function fetchAllClaimRecords(): Promise<ClaimRecord[]> {
   // Hydrate replacement warranties in background
   void fetchReplacementWarranties().catch(() => {});
@@ -67,81 +144,7 @@ export async function fetchAllClaimRecords(): Promise<ClaimRecord[]> {
     {
       const storeProducts: Product[] = useProductStore.getState().products || [];
 
-      const mapped: ClaimRecord[] = list.map((c) => {
-        const claimId = c.claimNumber || c.id;
-        const ordNum = c.order?.orderNumber || c.orderNumber || '-';
-        const pId = (c.productId || c.product?.id) ?? '';
-
-        const matchedProd = storeProducts.find((p) => p.id === pId || p.sku === c.product?.sku || p.sku === c.sku);
-        const resolvedUnitPrice = Number(c.unitPrice ?? matchedProd?.priceLevel1 ?? matchedProd?.basePrice ?? 0);
-        const resolvedQty = Number(c.quantity ?? 1);
-        const resolvedClaimValue = Number(c.totalClaimValue ?? c.refundAmount ?? (resolvedUnitPrice * resolvedQty));
-
-        const resolvedResType = (c.resolutionType ||
-          (c.claimType === 'REFUND'
-            ? 'REFUND_CASH'
-            : c.claimType === 'EXCHANGE'
-              ? 'REPLACE_ITEM'
-              : 'REPLACE_ITEM')) as ClaimResolutionType;
-
-        let resolvedStatus: ClaimStatus = 'COMPLETED';
-        const rawStatus = c.frontendStatus || c.claimStatus || c.status;
-        if (rawStatus !== undefined && CLAIM_STATUSES.includes(rawStatus)) {
-          resolvedStatus = rawStatus as ClaimStatus;
-        } else if (rawStatus === 'IN_PROGRESS') {
-          resolvedStatus = c.returnDocId ? 'SENT_TO_SUPPLIER' : 'PENDING_SUPPLIER';
-        } else if (rawStatus === 'PENDING') {
-          resolvedStatus = resolvedResType === 'STORE_DISCOUNT' ? 'PENDING_CHECKOUT' : 'PENDING_SUPPLIER';
-        } else if (rawStatus === 'REJECTED') {
-          resolvedStatus = 'SCRAPPED';
-        }
-
-        return {
-          id: claimId,
-          orderId: c.orderId || c.order?.id || '',
-          orderNumber: ordNum !== '-' ? ordNum : '-',
-          orderDate: c.orderDate || c.order?.createdAt || c.createdAt || new Date().toISOString(),
-          claimDate: c.claimDate || c.receivedDate || c.createdAt || new Date().toISOString(),
-          customerId: c.customerId ?? c.customer?.id ?? null,
-          customerName: c.customer?.name || c.customerName || 'ลูกค้าทั่วไป',
-          customerPhone: c.customer?.phone || c.customerPhone || '-',
-          productId: pId,
-          productName: c.product?.name || c.productName || matchedProd?.name || 'สินค้า',
-          sku: c.product?.sku || c.sku || matchedProd?.sku || '-',
-          unitName: c.unitName || matchedProd?.unit || 'ชิ้น',
-          quantity: resolvedQty,
-          conversionFactor: Number(c.conversionFactor ?? 1),
-          baseQuantity: Number(c.baseQuantity ?? resolvedQty),
-          replacementProductId: c.replacementProductId,
-          replacementProductName: c.replacementProductName,
-          replacementSku: c.replacementSku,
-          replacementUnitName: c.replacementUnitName,
-          replacementConversionFactor: c.replacementConversionFactor,
-          unitPrice: resolvedUnitPrice,
-          totalClaimValue: resolvedClaimValue,
-          refundAmount: c.refundAmount,
-          refundAccountId: c.refundAccountId,
-          refundAccountLabel: c.refundAccountLabel,
-          refundAccountNumber: c.refundAccountNumber,
-          discountAmount: c.discountAmount,
-          defectReason: c.defectReason || c.problemDescription || '-',
-          resolutionType: resolvedResType,
-          status: resolvedStatus,
-          cashierName: c.cashierName || 'พนักงาน POS',
-          note: c.note ?? c.resolutionNote,
-          isReplacementItem: c.isReplacementItem,
-          parentClaimId: c.parentClaimId,
-          claimedInOrderNumber: c.claimedInOrderNumber,
-          supplierId: c.supplierId,
-          supplierName: c.supplierName,
-          supplierTrackingNo: c.supplierTrackingNo,
-          costPrice: c.costPrice !== undefined ? Number(c.costPrice) : undefined,
-          totalCostValue: c.totalCostValue !== undefined ? Number(c.totalCostValue) : undefined,
-          returnDocId: c.returnDocId,
-          settledInBillNumber: c.settledInBillNumber,
-          completedDate: c.completedDate,
-        };
-      });
+      const mapped: ClaimRecord[] = list.map((c) => mapServerClaim(c, storeProducts));
 
       claimsMem = mapped;
       return mapped;

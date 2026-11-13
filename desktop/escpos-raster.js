@@ -124,8 +124,9 @@ async function renderOnce(html, { dots, baseURL, layoutWidth }) {
   if (image.getSize().width !== dots) image = image.resize({ width: dots, quality: 'best' });
   const size = image.getSize();
   const bitmap = Buffer.from(image.toBitmap());
+  if (!size.width || !size.height || !bitmap.length) throw new Error('empty capture');
   dbg('render', { load: tLoad - t0, total: Date.now() - t0, height });
-  return { bitmap, width: size.width, height: size.height, ms: { load: tLoad - t0, render: Date.now() - t0 } };
+  return { bitmap, image, width: size.width, height: size.height, ms: { load: tLoad - t0, render: Date.now() - t0 } };
 }
 
 /** Render HTML to a bitmap exactly `dots` pixels wide (layout width 288 CSS px ~ 76mm). */
@@ -400,9 +401,34 @@ async function sendRaw(printerName, bytes) {
   }
 }
 
+/**
+ * The slip as a picture for the Windows driver (fallback when RAW printing fails, or
+ * receiptPrintMode = "driver"). Thermal drivers swap TrueType text for their built-in fonts,
+ * which have no Thai glyphs ("?????"); a picture is printed as it is.
+ */
+function slipImageHtml(pngBuffer) {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+@page { size: 80mm auto; margin: 0; }
+html, body { margin: 0; padding: 0; background: #fff; }
+img { display: block; width: 100%; height: auto; }
+</style></head><body><img src="data:image/png;base64,${Buffer.from(pngBuffer).toString('base64')}"></body></html>`;
+}
+
+/** Render the slip HTML to a PNG (same renderer as the RAW path). */
+async function renderSlipPng(html, { dots = 576, baseURL } = {}) {
+  const img = await renderHtmlToBitmap(html, { dots, baseURL });
+  return img.image.toPNG();
+}
+
 async function printHtmlAsRaster(html, { printerName, dots = 576, baseURL, cut = true, threshold = 160 } = {}) {
   const started = Date.now();
-  const img = await renderHtmlToBitmap(html, { dots, baseURL });
+  let img;
+  try {
+    img = await renderHtmlToBitmap(html, { dots, baseURL });
+  } catch (err) {
+    logLine(`raster RENDER FAIL printer="${printerName}" ${(err && err.message) || err}`);
+    return { success: false, error: `render failed: ${(err && err.message) || err}`, mode: 'raster' };
+  }
   const t1 = Date.now();
   const bytes = bitmapToEscPos(img.bitmap, img.width, img.height, { cut, threshold });
   const t2 = Date.now();
@@ -410,7 +436,9 @@ async function printHtmlAsRaster(html, { printerName, dots = 576, baseURL, cut =
   const t3 = Date.now();
   const ms = { load: img.ms.load, render: t1 - started, encode: t2 - t1, send: t3 - t2, total: t3 - started };
   logLine(`raster ${res.success ? 'OK' : 'FAIL'} printer="${printerName}" via=${res.via || '-'} ${JSON.stringify(ms)} ${res.success ? '' : res.error || ''}`);
-  return { ...res, mode: 'raster', bytes: bytes.length, ms, width: img.width, height: img.height };
+  // a failed send keeps the rendered picture, so the driver fallback prints exactly the same slip
+  const png = res.success ? undefined : img.image.toPNG();
+  return { ...res, mode: 'raster', bytes: bytes.length, ms, width: img.width, height: img.height, png };
 }
 
 /** Start the print helper and the render window early so the first receipt is fast too. */
@@ -430,4 +458,4 @@ function shutdown() {
   host.stop();
 }
 
-module.exports = { renderHtmlToBitmap, bitmapToEscPos, sendRaw, printHtmlAsRaster, warmUp, shutdown, logLine };
+module.exports = { renderHtmlToBitmap, renderSlipPng, slipImageHtml, bitmapToEscPos, sendRaw, printHtmlAsRaster, warmUp, shutdown, logLine };

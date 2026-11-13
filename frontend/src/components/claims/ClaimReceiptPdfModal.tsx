@@ -14,11 +14,12 @@ import {
 } from '@/components/ui/dialog';
 import { 
   Printer, Download, ShieldAlert, CheckCircle2, 
-  Building2, User, Phone, MapPin, FileText, Store, Sparkles, Hash, Mail
+  Building2, User, Phone, MapPin, FileText, Sparkles, Hash, Mail
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BarcodeView } from '@/components/common/BarcodeView';
 import { formatQty } from '@/lib/qty';
+import { SLIP_WIDTH_PX } from '@/components/pos/slip-parts';
 
 /** Thai labels for every claim resolution type (frontend enum + legacy/backend values). */
 export const CLAIM_RESOLUTION_LABELS: Record<string, string> = {
@@ -169,14 +170,14 @@ export function ClaimReceiptPdfModal({
             ════════════════════════════════════════════════════════════════ */}
             {printFormat === '80mm' && (
               <div 
-                className="receipt-container w-full max-w-[78mm] sm:max-w-[80mm] print:w-full print:max-w-full min-h-[140mm] bg-white text-black px-3.5 py-4 shadow-2xl font-sans text-[11.5px] leading-snug rounded-none space-y-2 box-border border-2 border-black print:border-none print:p-0 relative select-none"
-                style={{ boxSizing: 'border-box', color: '#000000', backgroundColor: '#ffffff', margin: '0 auto' }}
+                className="receipt-container bg-white text-black font-sans text-[11.5px] leading-snug rounded-none space-y-2 box-border relative select-none shadow-md ring-1 ring-slate-300 print:shadow-none print:ring-0"
+                // printable width of the 80 mm roll (288 px = 72 mm): the preview breaks lines like the paper
+                style={{ width: SLIP_WIDTH_PX, maxWidth: '100%', boxSizing: 'border-box', color: '#000000', backgroundColor: '#ffffff', margin: '0 auto', padding: '4px 4px 8px' }}
               >
                 {/* Store Header */}
                 <div className="text-center space-y-1 pb-2 border-b-2 border-black">
                   <div className="flex items-center justify-center gap-1.5 font-black text-base sm:text-lg font-sans text-black">
-                    <Store className="w-5 h-5 text-black shrink-0 stroke-[2.5]" />
-                    <span className="truncate">{storeSettings.storeName || 'ร้านปุริม (PURIM POS)'}</span>
+                    <span className="break-words">{storeSettings.storeName}</span>
                   </div>
 
                   {storeSettings.branchName && (
@@ -315,7 +316,7 @@ export function ClaimReceiptPdfModal({
             ════════════════════════════════════════════════════════════════ */}
             {printFormat === 'a4' && (
               <div 
-                className="a4-container w-[210mm] max-w-[210mm] min-h-[297mm] bg-white text-slate-900 p-[10mm] shadow-2xl font-sans text-xs leading-relaxed rounded-sm flex flex-col justify-between box-border border border-slate-300 relative select-none"
+                className="a4-page a4-container w-[210mm] max-w-[210mm] min-h-[297mm] bg-white text-slate-900 p-[10mm] shadow-2xl font-sans text-xs leading-relaxed rounded-sm flex flex-col justify-between box-border border border-slate-300 relative select-none"
                 style={{ width: '210mm', maxWidth: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
               >
                 <div className="space-y-3.5">
@@ -385,7 +386,7 @@ export function ClaimReceiptPdfModal({
                   {/* Formal Itemized Claims Table */}
                   <div className="space-y-1.5 pt-2">
                     <span className="font-bold text-xs text-slate-900">1. รายการสินค้าที่นำมาเคลม (Claimed Items)</span>
-                    <div className="border border-slate-300 rounded-xl overflow-hidden min-h-[95mm] flex flex-col justify-between bg-white">
+                    <div className="border border-slate-300 rounded-xl overflow-hidden min-h-[72mm] flex flex-col justify-between bg-white">
                       <table className="w-full h-full flex-1 border-collapse text-xs">
                         <thead>
                           <tr className="bg-slate-100 font-bold text-slate-800 border-b-2 border-slate-300">

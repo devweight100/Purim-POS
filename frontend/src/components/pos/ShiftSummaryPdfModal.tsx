@@ -3,12 +3,12 @@
 import { useState, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Printer, Download, ExternalLink, FileText, CheckCircle2, Store, Building2 } from 'lucide-react';
-import { formatCurrency, formatDocDate } from '@/lib/utils';
+import { Printer, Download, ExternalLink, FileText, CheckCircle2 } from 'lucide-react';
+import { formatDocDate } from '@/lib/utils';
+import { SlipPaper, SlipRow, SlipRule, SlipShopHeader, slipMoney } from '@/components/pos/slip-parts';
 import { capturePrintable as html2canvas } from '@/lib/pdf-print-service';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
-import { BarcodeView } from '@/components/common/BarcodeView';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 
@@ -200,274 +200,103 @@ export function ShiftSummaryPdfModal({ open, onOpenChange, data }: ShiftSummaryP
           </div>
         </div>
 
-        {/* Thermal Receipt Preview Container (Scrollable with comfortable height) */}
+        {/* Slip preview: exactly what prints (288 px = 72 mm printable width) */}
         <div className="flex-1 overflow-y-auto overflow-x-auto p-3 sm:p-4 flex justify-center bg-slate-300/60 rounded-2xl border border-slate-300/80 min-h-[420px] max-h-[72vh]">
-          <div
-            ref={summaryRef}
-            className="w-full max-w-[78mm] sm:max-w-[80mm] print:w-full print:max-w-full bg-white text-black px-3.5 py-4 shadow-2xl font-sans text-[11.5px] leading-snug rounded-none space-y-2 overflow-hidden box-border h-fit border border-black print:border-none print:p-0"
-            style={{ boxSizing: 'border-box', color: '#000000', backgroundColor: '#ffffff', margin: '0 auto' }}
-          >
-            {/* Store Header */}
-            <div className="text-center space-y-1 pb-2 border-b-2 border-black">
-              <div className="flex items-center justify-center gap-1.5 font-black text-base sm:text-lg font-sans text-black">
-                <Store className="w-5 h-5 text-black shrink-0 stroke-[2.5]" />
-                <span className="truncate">{storeSettings.storeName || 'ร้านปุริม (PURIM POS)'}</span>
-              </div>
-              {storeSettings.branchName && (
-                <p className="text-[11px] text-black font-bold font-sans">สาขา: {storeSettings.branchName}</p>
-              )}
-              {storeSettings.taxId && (
-                <p className="text-[11px] text-black font-bold font-mono">เลขประจำตัวผู้เสียภาษี: {storeSettings.taxId}</p>
-              )}
-              {storeSettings.storeAddress && (
-                <p className="text-[10.5px] text-black font-bold leading-tight break-words font-sans">
-                  {storeSettings.storeAddress}
-                </p>
-              )}
-              {storeSettings.storePhone && (
-                <p className="text-[11px] text-black font-bold font-mono">โทร: {storeSettings.storePhone}</p>
-              )}
-              <div className="pt-1">
-                <span className="text-[13px] font-black border-2 border-black px-3 py-0.5 rounded-none font-sans inline-block text-black uppercase tracking-wider">
-                  {isOpenShift ? 'ใบสรุปยอดระหว่างกะ (ยังไม่ปิดกะ)' : 'ใบสรุปปิดกะการขาย'}
-                </span>
+          <div className="bg-white shadow-md ring-1 ring-slate-300 self-start">
+            <SlipPaper ref={summaryRef}>
+              <SlipShopHeader
+                settings={storeSettings}
+                showTaxId={false}
+                title={isOpenShift ? 'สรุปยอดระหว่างกะ (ยังไม่ปิดกะ)' : 'ใบสรุปปิดกะ'}
+              />
+
+              <SlipRule />
+              <div className="space-y-0.5">
+                <SlipRow label="กะ" value={<span className="font-bold">{shiftLabel}</span>} />
+                <SlipRow label="พนักงาน" value={data.userName} />
+                <SlipRow label="เปิดกะ" value={formatDocDate(data.openedAt, { time: true })} />
+                <SlipRow label="ปิดกะ" value={isOpenShift ? 'ยังไม่ปิดกะ' : formatDocDate(data.closedAt, { time: true })} />
+                <SlipRow label="บิลขาย / ยกเลิก" value={`${data.orderCount} / ${data.voidCount}`} />
               </div>
 
-              {/* Barcode of Shift ID */}
-              <div className="pt-2 pb-1 flex justify-center bg-white">
-                <BarcodeView value={shiftLabel} width={1.8} height={44} fontSize={12} />
-              </div>
-            </div>
-
-            {/* Shift Meta */}
-            <div className="text-[11.5px] space-y-1 pb-2 border-b-2 border-dashed border-black font-bold text-black">
-              <div className="flex justify-between items-center gap-1">
-                <span className="shrink-0">รหัสกะ:</span>
-                <span className="font-black truncate text-right font-mono text-black text-[12px]">{shiftLabel}</span>
-              </div>
-              <div className="flex justify-between items-center gap-1">
-                <span className="shrink-0">พนักงานขาย:</span>
-                <span className="font-bold text-black truncate text-right">{data.userName}</span>
-              </div>
-              <div className="flex justify-between items-center gap-1">
-                <span className="shrink-0">เปิดกะ:</span>
-                <span className="truncate text-right font-mono text-[11px]">{formatDocDate(data.openedAt, { time: true })}</span>
-              </div>
-              <div className="flex justify-between items-center gap-1">
-                <span className="shrink-0">ปิดกะ:</span>
-                <span className="truncate text-right font-mono text-[11px]">{isOpenShift ? 'ยังไม่ปิดกะ' : formatDocDate(data.closedAt, { time: true })}</span>
-              </div>
-            </div>
-
-            {/* Sales Breakdown */}
-            <div className="space-y-1 text-[11.5px] pb-2 border-b-2 border-dashed border-black text-black font-bold">
-              <div className="font-black text-black border-b-2 border-black pb-0.5 font-sans">
-                📊 ยอดขายแยกตามช่องทาง
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="truncate pr-1">• เงินสด (Cash):</span>
-                <span className="shrink-0 font-mono text-[12px]">{formatCurrency(data.cashSales)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="truncate pr-1">• QR (พร้อมเพย์):</span>
-                <span className="shrink-0 font-mono text-[12px]">{formatCurrency(data.qrSales)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="truncate pr-1">• โอนเงิน (Transfer):</span>
-                <span className="shrink-0 font-mono text-[12px]">{formatCurrency(data.transferSales)}</span>
-              </div>
-
-              {/* Itemized Bank Account Breakdown for QR & Transfer */}
-              {data.bankAccountBreakdown && data.bankAccountBreakdown.length > 0 && (
-                <div className="my-1 p-1.5 border-2 border-black rounded space-y-0.5 font-sans">
-                  <div className="text-[10px] font-black text-black border-b border-black pb-0.5 flex items-center gap-1">
-                    <Building2 className="w-3.5 h-3.5 text-black shrink-0" />
-                    <span>แยกตามบัญชีธนาคาร:</span>
+              <SlipRule />
+              <div className="font-bold">ยอดขายตามช่องทาง</div>
+              <div className="space-y-0.5">
+                <SlipRow label="เงินสด" value={slipMoney(data.cashSales)} />
+                <SlipRow label="QR พร้อมเพย์" value={slipMoney(data.qrSales)} />
+                <SlipRow label="โอนเงิน" value={slipMoney(data.transferSales)} />
+                {data.bankAccountBreakdown?.map((item, idx) => (
+                  <SlipRow key={idx} className="pl-2 text-[11px]" label={`- ${item.accountLabel}`} value={slipMoney(item.amount)} />
+                ))}
+                <SlipRow label="บัตรเครดิต" value={slipMoney(data.cardSales)} />
+                <SlipRow label="เงินเชื่อ (ลูกหนี้)" value={slipMoney(data.creditSales || 0)} />
+                <SlipRow className="text-[14px] font-bold pt-0.5" label="รวมยอดขาย" value={slipMoney(data.totalSales)} />
+                {!!data.returnsTotal && (
+                  <>
+                    <SlipRow label={`คืนสินค้า (${data.returnCount || 0} ครั้ง)`} value={`-${slipMoney(data.returnsTotal)}`} />
+                    <SlipRow className="text-[14px] font-bold" label="ยอดขายสุทธิ" value={slipMoney(data.netSales ?? data.totalSales - data.returnsTotal)} />
+                  </>
+                )}
+                {((data.billDiscountsTotal || 0) > 0 || (data.pointsDiscountsTotal || 0) > 0) && (
+                  <div className="text-[11px] pt-0.5">
+                    <SlipRow label="ส่วนลดท้ายบิล (รวมในยอดแล้ว)" value={`-${slipMoney(data.billDiscountsTotal || 0)}`} />
+                    {(data.pointsDiscountsTotal || 0) > 0 && <SlipRow label="ส่วนลดแต้ม" value={`-${slipMoney(data.pointsDiscountsTotal || 0)}`} />}
                   </div>
-                  {data.bankAccountBreakdown.map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-[10.5px] text-black font-bold pl-1">
-                      <span className="truncate pr-1 max-w-[155px]" title={item.accountLabel}>• {item.accountLabel}:</span>
-                      <span className="font-black text-black shrink-0 font-mono">{formatCurrency(item.amount)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+                )}
+              </div>
 
-              <div className="flex justify-between items-center">
-                <span className="truncate pr-1">• บัตรเครดิต:</span>
-                <span className="shrink-0 font-mono text-[12px]">{formatCurrency(data.cardSales)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="truncate pr-1">• เงินเชื่อ (Credit / ลูกหนี้):</span>
-                <span className="font-bold shrink-0 font-mono text-[12px]">{formatCurrency(data.creditSales || 0)}</span>
-              </div>
-              <div className="flex justify-between items-center text-[14px] font-black text-black pt-1 border-t-2 border-black my-1">
-                <span>{data.returnsTotal ? 'รวมยอดขาย:' : 'รวมยอดขายสุทธิ:'}</span>
-                <span className="shrink-0 font-mono text-[16px]">{formatCurrency(data.totalSales)}</span>
-              </div>
-              {!!data.returnsTotal && (
+              {(data.debtCollectionCount || 0) > 0 && (
                 <>
-                  <div className="flex justify-between items-center">
-                    <span className="truncate pr-1">(-) คืนสินค้า ({data.returnCount || 0} ครั้ง):</span>
-                    <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.returnsTotal)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-[14px] font-black text-black">
-                    <span>ยอดขายสุทธิ (หักคืนสินค้า):</span>
-                    <span className="shrink-0 font-mono text-[16px]">{formatCurrency(data.netSales ?? data.totalSales - data.returnsTotal)}</span>
+                  <SlipRule />
+                  <div className="font-bold">รับชำระหนี้ ({data.debtCollectionCount} รายการ)</div>
+                  <div className="space-y-0.5">
+                    <SlipRow label="เงินสด" value={slipMoney(data.debtCollectionCash || 0)} />
+                    <SlipRow label="QR / โอน" value={slipMoney(data.debtCollectionQrTransfer || 0)} />
+                    <SlipRow className="font-bold" label="รวมรับชำระหนี้" value={slipMoney(data.debtCollectionTotal || 0)} />
                   </div>
                 </>
               )}
-            </div>
 
-            {/* Debt Collections (การรับชำระหนี้ / เงินเชื่อประจำกะ) */}
-            <div className="space-y-1 text-[11.5px] pb-2 border-b-2 border-dashed border-black text-black font-bold">
-              <div className="font-black text-black border-b-2 border-black pb-0.5 font-sans flex items-center justify-between">
-                <span>💳 รับชำระหนี้ / เงินเชื่อประจำกะ</span>
-                <span className="font-mono text-[11.5px]">
-                  {(data.debtCollectionCount || 0)} บิล
-                </span>
+              <SlipRule />
+              <div className="font-bold">เงินสดในลิ้นชัก</div>
+              <div className="space-y-0.5">
+                <SlipRow label="เงินทอนตั้งต้น" value={slipMoney(data.openingCash)} />
+                <SlipRow label="+ ขายเงินสด" value={slipMoney(data.cashSales)} />
+                {!!data.debtCollectionCash && data.cashInExcludesDebt && <SlipRow label="+ รับชำระหนี้เงินสด" value={slipMoney(data.debtCollectionCash)} />}
+                {data.cashIn > 0 && <SlipRow label="+ นำเงินเข้า" value={slipMoney(data.cashIn)} />}
+                {data.cashOut > 0 && <SlipRow label="- นำเงินออก" value={slipMoney(data.cashOut)} />}
+                {!!data.returnRefundAmount && (
+                  <SlipRow label={`- คืนเงินคืนสินค้า (${data.returnRefundCount || 1})`} value={slipMoney(data.returnRefundAmount)} />
+                )}
+                {!!data.voidRefundAmount && <SlipRow label={`- คืนเงินยกเลิกบิล (${data.voidRefundCount || 1})`} value={slipMoney(data.voidRefundAmount)} />}
+                {(data.returnRefundAmount !== undefined ? !!data.claimRefundAmount : (data.cashRefunds || 0) > 0) && (
+                  <SlipRow
+                    label={`- คืนเงินเคลม (${data.claimRefundCount || 1})`}
+                    value={slipMoney(data.returnRefundAmount !== undefined ? data.claimRefundAmount || 0 : data.cashRefunds || 0)}
+                  />
+                )}
+                <SlipRow className="font-bold pt-0.5" label="เงินสดที่ควรมี" value={slipMoney(data.expectedCash)} />
+                <SlipRow className="font-bold" label="นับได้จริง" value={isOpenShift ? 'ยังไม่ได้นับ' : slipMoney(data.actualCash)} />
+                <SlipRow
+                  className="text-[14px] font-bold"
+                  label={isOpenShift ? 'ผลต่าง' : Math.abs(diff) < 0.005 ? 'ผลต่าง (ครบพอดี)' : diff > 0 ? 'เงินเกิน' : 'เงินขาด'}
+                  value={isOpenShift ? '-' : `${diff > 0.005 ? '+' : diff < -0.005 ? '-' : ''}${slipMoney(Math.abs(diff))}`}
+                />
               </div>
-              <div className="flex justify-between items-center">
-                <span className="truncate pr-1">• จำนวนบิลที่รับชำระ:</span>
-                <span className="font-black shrink-0">{(data.debtCollectionCount || 0)} บิล</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="truncate pr-1">• ยอดรับชำระเงินสด:</span>
-                <span className="font-black shrink-0 font-mono text-[12px]">{formatCurrency(data.debtCollectionCash || 0)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="truncate pr-1">• ยอดรับชำระ QR / โอน:</span>
-                <span className="font-black shrink-0 font-mono text-[12px]">{formatCurrency(data.debtCollectionQrTransfer || 0)}</span>
-              </div>
-              <div className="flex justify-between items-center font-black text-black pt-1 border-t-2 border-black">
-                <span>รวมยอดรับชำระหนี้ทั้งสิ้น:</span>
-                <span className="shrink-0 font-mono text-[13px]">
-                  {formatCurrency(data.debtCollectionTotal || 0)}
-                </span>
-              </div>
-            </div>
 
-            {/* Discounts Breakdown (สรุปส่วนลดประจำกะ) */}
-            <div className="space-y-1 text-[11.5px] pb-2 border-b-2 border-dashed border-black text-black font-bold">
-              <div className="font-black text-black border-b-2 border-black pb-0.5 font-sans">
-                🔖 สรุปส่วนลดประจำกะ
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="truncate pr-1">• ส่วนลดการค้า / ท้ายบิล:</span>
-                <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.billDiscountsTotal || 0)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="truncate pr-1">• ส่วนลดแต้มสะสมสมาชิก:</span>
-                <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.pointsDiscountsTotal || 0)}</span>
-              </div>
-              <div className="flex justify-between items-center font-black text-black pt-1 border-t-2 border-black">
-                <span>รวมส่วนลดทั้งหมด:</span>
-                <span className="shrink-0 font-mono text-[13px]">
-                  -{formatCurrency((data.billDiscountsTotal || 0) + (data.pointsDiscountsTotal || 0))}
-                </span>
-              </div>
-            </div>
-
-            {/* Shift Stats */}
-            <div className="space-y-1 text-[11.5px] pb-2 border-b-2 border-dashed border-black text-black font-bold">
-              <div className="font-black text-black border-b-2 border-black pb-0.5 font-sans">
-                📈 สถิติกะการขาย
-              </div>
-              <div className="flex justify-between items-center">
-                <span>ออเดอร์สำเร็จ:</span>
-                <span className="font-black shrink-0 font-mono text-[12px]">{data.orderCount} บิล</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>ออเดอร์ยกเลิก (Void):</span>
-                <span className="font-black shrink-0 font-mono text-[12px]">{data.voidCount} บิล</span>
-              </div>
-            </div>
-
-            {/* Cash Drawer Reconciliation (กระทบยอดเงินสดในลิ้นชัก) */}
-            <div className="space-y-1 text-[11.5px] pb-2 border-b-2 border-dashed border-black text-black font-bold">
-              <div className="font-black text-black border-b-2 border-black pb-0.5 font-sans flex items-center justify-between">
-                <span>💵 กระทบยอดเงินสดในลิ้นชัก</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>เงินสดตั้งต้น (เปิดกะ):</span>
-                <span className="shrink-0 font-mono text-[12px]">{formatCurrency(data.openingCash)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>(+) ยอดขายเงินสด:</span>
-                <span className="shrink-0 font-mono text-[12px]">+{formatCurrency(data.cashSales)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>(+) เงินเข้าลิ้นชัก (Cash In):</span>
-                <span className="shrink-0 font-mono text-[12px]">+{formatCurrency(data.cashIn)}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>(-) เงินออกลิ้นชัก (Cash Out):</span>
-                <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.cashOut)}</span>
-              </div>
-              {!!data.debtCollectionCash && data.cashInExcludesDebt && (
-                <div className="flex justify-between items-center">
-                  <span>(+) รับชำระหนี้เงินสด:</span>
-                  <span className="shrink-0 font-mono text-[12px]">+{formatCurrency(data.debtCollectionCash)}</span>
+              <SlipRule />
+              <div className="text-[11px] pt-4 grid grid-cols-2 gap-3 text-center">
+                <div>
+                  <div className="border-b border-dotted border-black h-5" />
+                  พนักงาน
                 </div>
-              )}
-              {!!data.returnRefundAmount && (
-                <div className="flex justify-between items-center">
-                  <span>(-) คืนเงินสดคืนสินค้า ({data.returnRefundCount || 1} ครั้ง):</span>
-                  <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.returnRefundAmount)}</span>
+                <div>
+                  <div className="border-b border-dotted border-black h-5" />
+                  ผู้ตรวจนับ
                 </div>
-              )}
-              {!!data.voidRefundAmount && (
-                <div className="flex justify-between items-center">
-                  <span>(-) คืนเงินสดยกเลิกบิล ({data.voidRefundCount || 1} ครั้ง):</span>
-                  <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.voidRefundAmount)}</span>
-                </div>
-              )}
-              {(data.returnRefundAmount !== undefined ? !!data.claimRefundAmount : data.cashRefunds !== undefined && data.cashRefunds > 0) && (
-                <div className="flex justify-between items-center">
-                  <span>(-) คืนเงินสดเคลม ({data.claimRefundCount || 1} ครั้ง):</span>
-                  <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.returnRefundAmount !== undefined ? data.claimRefundAmount || 0 : data.cashRefunds || 0)}</span>
-                </div>
-              )}
-              
-              <div className="flex justify-between items-center font-bold text-black pt-1 border-t-2 border-black">
-                <span>เงินสดที่ควรมีในลิ้นชัก:</span>
-                <span className="shrink-0 font-mono font-black text-[13px]">{formatCurrency(data.expectedCash)}</span>
               </div>
-              <div className="flex justify-between items-center font-black text-black">
-                <span>เงินสดที่นับได้จริง:</span>
-                <span className="shrink-0 font-mono font-black text-[14px]">{isOpenShift ? 'ยังไม่ได้นับ' : formatCurrency(data.actualCash)}</span>
-              </div>
-
-              {/* Prominent Cash Reconciliation Result Box */}
-              <div className="flex justify-between items-center font-black text-[12px] p-2 mt-1 border-2 border-black bg-white">
-                <span>ผลการกระทบยอด:</span>
-                <span className="font-black text-[13px] font-sans">
-                  {isOpenShift
-                    ? 'ยังไม่ปิดกะ'
-                    : Math.abs(diff) < 0.005
-                    ? 'ครบพอดี (฿0.00)' 
-                    : diff > 0 
-                    ? `เงินสดเกิน (+${formatCurrency(diff)})` 
-                    : `เงินสดขาด (-${formatCurrency(Math.abs(diff))})`}
-                </span>
-              </div>
-            </div>
-
-            {/* Footer Signatures */}
-            <div className="pt-2 space-y-2.5 text-[11px] text-black font-bold">
-              <div className="flex justify-between items-center">
-                <span>ลงชื่อพนักงาน:</span>
-                <span>.................................</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>ลงชื่อผู้ตรวจ:</span>
-                <span>.................................</span>
-              </div>
-              <div className="text-center text-[10px] text-black pt-1 border-t-2 border-black">
-                พิมพ์เมื่อ: {formatDocDate(new Date(), { time: true })}
-              </div>
-            </div>
-
+              <div className="text-center text-[11px] pt-1">พิมพ์ {formatDocDate(new Date(), { time: true })}</div>
+            </SlipPaper>
           </div>
         </div>
       </DialogContent>

@@ -1,7 +1,8 @@
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { toast } from 'sonner';
 import { getCashDrawerConfig } from './cash-drawer-service';
-import { getElectronAPI } from './electron-api';
+import { getElectronAPI, type ElectronAPI } from './electron-api';
 
 /**
  * Universal Print & PDF Export Utility for Purim POS
@@ -108,6 +109,12 @@ export function buildPrintHtml(element: HTMLElement, title: string, format: '80m
     })
     .join('\n');
 
+  // The app's fonts are next/font classes on <body> that define --font-sarabun etc. Without them
+  // `font-sans` in the copy resolved to nothing and the paper used another font than the preview.
+  const fontVarClasses = typeof document !== 'undefined'
+    ? Array.from(document.body.classList).filter((c) => /variable/i.test(c)).join(' ')
+    : '';
+
   const pageSize = isSlip ? '80mm auto' : 'A4 portrait';
   const containerMaxWidth = isSlip ? '100%' : '210mm';
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
@@ -117,8 +124,7 @@ export function buildPrintHtml(element: HTMLElement, title: string, format: '80m
           @media print {
             @page { size: 80mm auto; margin: 0mm !important; }
             html, body { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
-            .print-wrapper { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 1.5mm !important; }
-            .print-wrapper > div { width: 100% !important; max-width: 100% !important; margin: 0 !important; border: none !important; }
+            .print-wrapper { width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 0 !important; }
             * { color: #000000 !important; border-color: #000000 !important; text-shadow: none !important; }
           }
           * { color: #000000 !important; border-color: #000000 !important; }
@@ -169,6 +175,15 @@ export function buildPrintHtml(element: HTMLElement, title: string, format: '80m
               box-shadow: none !important;
               overflow: visible !important;
             }
+            /* a single sheet drawn 297 mm tall on screen would spill a few mm onto a 2nd page inside
+               the page margins: on paper it is as tall as its content */
+            .print-wrapper > *:not(.a4-page):not(.a4-preview-stack) {
+              min-height: 0 !important;
+              height: auto !important;
+              border: none !important;
+              box-shadow: none !important;
+              border-radius: 0 !important;
+            }
             .no-print-preview { display: none !important; }
           }
   `;
@@ -179,6 +194,7 @@ export function buildPrintHtml(element: HTMLElement, title: string, format: '80m
       <head>
         <title>${title}</title>
         <meta charset="utf-8" />
+        <meta name="purim-print-format" content="${format}" />
         <base href="${baseUrl}/" />
         ${headStyles}
         <style>
@@ -196,7 +212,7 @@ export function buildPrintHtml(element: HTMLElement, title: string, format: '80m
             padding: 0 !important;
             background: #ffffff !important;
             color: #000000 !important;
-            font-family: 'Prompt', 'Sarabun', -apple-system, BlinkMacSystemFont, sans-serif !important;
+            font-family: var(--font-sarabun), 'Sarabun', 'Leelawadee UI', Tahoma, sans-serif !important;
             ${isSlip ? `width: 100% !important; max-width: 100% !important;` : `width: 210mm !important; max-width: 210mm !important;`}
           }
           .no-print {
@@ -206,14 +222,14 @@ export function buildPrintHtml(element: HTMLElement, title: string, format: '80m
             width: 100% !important;
             max-width: ${containerMaxWidth} !important;
             margin: 0 auto !important;
-            padding: ${isSlip ? '0 1.5mm' : '0'} !important;
+            padding: 0 !important;
             background: #ffffff !important;
             box-sizing: border-box !important;
           }
           ${isSlip ? slipCss : a4Css}
         </style>
       </head>
-      <body>
+      <body class="${fontVarClasses}">
         <div class="print-wrapper">
           ${printableMarkup(element)}
         </div>
@@ -222,84 +238,172 @@ export function buildPrintHtml(element: HTMLElement, title: string, format: '80m
   `;
 }
 
-export function printDocumentIframe(
-  element: HTMLElement,
-  title: string,
-  format: '80mm' | 'a4' = 'a4'
-) {
-  const isSlip = format === '80mm';
-  const fullHtml = buildPrintHtml(element, title, format);
+/** The desktop app reports a failed job as { success: false, failureReason }. */
+function failedJobReason(result: unknown): string | null {
+  if (!result || typeof result !== 'object') return null;
+  const r = result as { success?: boolean; failureReason?: string; error?: string };
+  if (r.success !== false) return null;
+  // the Windows dialog closed with "cancel" is not an error
+  if (/cancel/i.test(String(r.failureReason || r.error || ''))) return null;
+  return r.failureReason || r.error || 'ไม่ทราบสาเหตุ';
+}
 
-  // 1. Desktop app: print without the browser preview. Thermal -> receipt printer;
-  //    A4 -> A4 printer from settings, or the system print dialog when none is set.
-  const electron = getElectronAPI();
-  if (electron?.printSilent) {
-    const target = electronPrintTarget(format);
-    electron.printSilent({
-      html: fullHtml,
-      printerName: target.printerName,
-      showDialog: target.showDialog,
-      format,
-    }).catch((err: unknown) => console.error('Electron silent print failed:', err));
-    return;
-  }
-
-  // 2. Browser: hidden iframe; print() is called exactly ONCE (after styles and fonts load).
+/** Load HTML into a hidden iframe and resolve once styles and fonts are ready (max ~2.5 s). */
+function loadIntoIframe(html: string, widthCss: string): Promise<HTMLIFrameElement | null> {
   const iframe = document.createElement('iframe');
+  iframe.setAttribute('aria-hidden', 'true');
   iframe.style.position = 'fixed';
-  iframe.style.left = '-9999px';
+  iframe.style.left = '-10000px';
   iframe.style.top = '0';
-  iframe.style.width = isSlip ? '80mm' : '210mm';
+  iframe.style.width = widthCss;
   iframe.style.height = '297mm';
   iframe.style.border = '0';
   iframe.style.visibility = 'hidden';
   document.body.appendChild(iframe);
-
   const win = iframe.contentWindow;
   const doc = win?.document;
   if (!win || !doc) {
-    document.body.removeChild(iframe);
+    iframe.remove();
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      const fonts = (doc as Document & { fonts?: FontFaceSet }).fonts;
+      const fontsReady = fonts?.ready ? fonts.ready.then(() => undefined, () => undefined) : Promise.resolve();
+      Promise.race([fontsReady, new Promise((r) => setTimeout(r, 1500))]).then(() => setTimeout(() => resolve(iframe), 100));
+    };
+    iframe.addEventListener('load', start, { once: true });
+    doc.open();
+    doc.write(html);
+    doc.close();
+    if (doc.readyState === 'complete') start();
+    // a stylesheet that never finishes loading must not block printing
+    setTimeout(start, 2500);
+  });
+}
+
+function printIframeOnce(iframe: HTMLIFrameElement) {
+  try {
+    iframe.contentWindow?.focus();
+    iframe.contentWindow?.print();
+  } catch (e) {
+    console.warn('Iframe print error', e);
+  }
+  setTimeout(() => iframe.remove(), 3000);
+}
+
+/**
+ * The slip as a PICTURE page (one <img>, 72 mm wide). Thermal printer drivers replace text with
+ * their built-in fonts, which have no Thai glyphs ("?????"); a picture prints as it looks.
+ * Returns null when the picture cannot be made.
+ */
+async function slipPictureHtml(fullHtml: string, title: string): Promise<string | null> {
+  const frame = await loadIntoIframe(fullHtml, `${SLIP_LAYOUT_PX}px`);
+  if (!frame) return null;
+  try {
+    const root = frame.contentDocument?.querySelector<HTMLElement>('.print-wrapper');
+    if (!root) return null;
+    const canvas = await html2canvas(root, {
+      scale: 2, // 576 dots: the printer's resolution at 72 mm
+      // the browser draws the slip itself (html2canvas' own text layout misplaces Thai lines)
+      foreignObjectRendering: true,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      logging: false,
+      windowWidth: SLIP_LAYOUT_PX,
+      onclone: (_d: Document, el: HTMLElement) => replaceModernColors(el),
+    });
+    const dataUrl = canvas.toDataURL('image/png');
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="purim-print-format" content="80mm"><title>${title}</title><style>
+      @page { size: 80mm auto; margin: 0; }
+      html, body { margin: 0; padding: 0; background: #fff; }
+      img { display: block; width: ${SLIP_LAYOUT_PX}px; max-width: 100%; height: auto; margin: 0 auto; }
+    </style></head><body><img src="${dataUrl}" alt=""></body></html>`;
+  } catch (err) {
+    console.warn('Slip picture failed', err);
+    return null;
+  } finally {
+    frame.remove();
+  }
+}
+
+/** Browser printing of a slip: as a picture (see slipPictureHtml); as HTML if that fails. */
+async function printSlipInBrowser(fullHtml: string, title: string): Promise<void> {
+  const html = (await slipPictureHtml(fullHtml, title)) || fullHtml;
+  const frame = await loadIntoIframe(html, '80mm');
+  if (!frame) {
     window.print();
     return;
   }
+  const img = frame.contentDocument?.querySelector('img');
+  if (img && !img.complete) await new Promise((r) => { img.onload = img.onerror = r; });
+  printIframeOnce(frame);
+}
 
-  let printed = false;
-  const printOnce = () => {
-    if (printed) return;
-    printed = true;
+/**
+ * Desktop apps older than 1.2.0 print every job through the Windows driver as text (Thai -> "???").
+ * They have no getAppVersion (added in 1.2.3); 1.2.0-1.2.2 also lack it, a picture is fine there too.
+ */
+async function desktopPrintsSlipsAsText(electron: ElectronAPI): Promise<boolean> {
+  if (typeof electron.getAppVersion !== 'function') return true;
+  try {
+    const v = String((await electron.getAppVersion()) || '0').split('.').map((n) => Number(n) || 0);
+    return v[0] < 1 || (v[0] === 1 && v[1] < 2);
+  } catch {
+    return true;
+  }
+}
+
+/** Layout width of a slip: 576 printer dots (72 mm) = 288 CSS px, as the desktop app renders it. */
+const SLIP_LAYOUT_PX = 288;
+
+/**
+ * Print a document. Desktop app: silent print (slips -> receipt printer as an ESC/POS picture,
+ * A4 -> A4 printer or the system dialog); browser: hidden iframe + print() (slips as a picture).
+ * Resolves when the job was handed over; a failed desktop job shows the reason to the cashier.
+ */
+export async function printDocumentIframe(
+  element: HTMLElement,
+  title: string,
+  format: '80mm' | 'a4' = 'a4'
+): Promise<void> {
+  const isSlip = format === '80mm';
+  const fullHtml = buildPrintHtml(element, title, format);
+
+  const electron = getElectronAPI();
+  if (electron?.printSilent) {
+    const target = electronPrintTarget(format);
     try {
-      win.focus();
-      win.print();
-    } catch (e) {
-      console.warn('Iframe print error', e);
+      // an old desktop app would send the slip to the driver as text: hand it a picture instead
+      const html = isSlip && (await desktopPrintsSlipsAsText(electron)) ? (await slipPictureHtml(fullHtml, title)) || fullHtml : fullHtml;
+      const result = await electron.printSilent({
+        html,
+        printerName: target.printerName,
+        showDialog: target.showDialog,
+        format,
+      });
+      const failed = failedJobReason(result);
+      if (failed) toast.error(`พิมพ์ไม่สำเร็จ: ${failed}`, { id: 'print-failed' });
+    } catch (err) {
+      console.error('Electron silent print failed:', err);
+      toast.error('พิมพ์ไม่สำเร็จ (ติดต่อเครื่องพิมพ์ไม่ได้)', { id: 'print-failed' });
     }
-    // Clean up iframe after print dialog completes
-    setTimeout(() => {
-      try {
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-      } catch {
-        /* ignore */
-      }
-    }, 3000);
-  };
+    return;
+  }
 
-  let started = false;
-  const start = () => {
-    if (started) return;
-    started = true;
-    const fonts = (doc as Document & { fonts?: FontFaceSet }).fonts;
-    const fontsReady = fonts?.ready ? fonts.ready.then(() => undefined, () => undefined) : Promise.resolve();
-    Promise.race([fontsReady, new Promise((r) => setTimeout(r, 1500))]).then(() => setTimeout(printOnce, 100));
-  };
-  iframe.addEventListener('load', start, { once: true });
-
-  doc.open();
-  doc.write(fullHtml);
-  doc.close();
-
-  if (doc.readyState === 'complete') start();
-  // a stylesheet that never finishes loading must not block printing
-  setTimeout(start, 2500);
+  if (isSlip) {
+    await printSlipInBrowser(fullHtml, title);
+    return;
+  }
+  const frame = await loadIntoIframe(fullHtml, '210mm');
+  if (!frame) {
+    window.print();
+    return;
+  }
+  printIframeOnce(frame);
 }
 
 /** Render a canvas onto A4 pages, slicing it vertically when taller than one page. */

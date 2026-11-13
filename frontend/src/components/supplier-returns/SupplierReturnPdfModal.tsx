@@ -114,7 +114,7 @@ export function SupplierReturnPdfModal({
         <div className="flex-1 overflow-y-auto pr-1 py-4 flex justify-center bg-slate-200/70 rounded-2xl border border-slate-300">
           <div
             ref={docRef}
-            className="a4-doc-sheet w-[210mm] max-w-[210mm] min-h-[297mm] bg-white border border-slate-300 rounded-sm p-[10mm] shadow-2xl text-slate-800 text-[11.5px] flex flex-col justify-between box-border select-none"
+            className="a4-page a4-doc-sheet w-[210mm] max-w-[210mm] min-h-[297mm] bg-white border border-slate-300 rounded-sm p-[10mm] shadow-2xl text-slate-800 text-[11.5px] flex flex-col justify-between box-border select-none"
             style={{ width: '210mm', maxWidth: '210mm', minHeight: '297mm', boxSizing: 'border-box' }}
           >
             <div className="space-y-3.5">

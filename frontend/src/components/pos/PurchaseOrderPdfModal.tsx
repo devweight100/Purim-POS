@@ -69,6 +69,7 @@ interface PoLikeItem {
 /** A purchase order in any shape this document accepts. */
 interface PoLike {
   id?: string;
+  notes?: string | null;
   poNumber?: string;
   poCode?: string;
   createdAt?: string;
@@ -236,16 +237,15 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
         <div className="p-6 bg-slate-100/60 overflow-y-auto overflow-x-auto flex-1 flex justify-center">
           <div
             ref={printRef}
-            className="a4-container w-full max-w-[210mm] min-h-[297mm] bg-white border border-slate-300 p-8 shadow-lg text-slate-800 flex flex-col justify-between"
-            style={{ fontFamily: `'Sarabun', sans-serif` }}
+            className="a4-page a4-container w-[210mm] max-w-[210mm] shrink-0 min-h-[297mm] bg-white border border-slate-300 p-[10mm] shadow-lg text-slate-800 font-sans flex flex-col justify-between box-border"
           >
             {/* Top Company Header & Document Title */}
             <div>
-              <div className="flex justify-between items-start border-b-2 border-slate-800 pb-5 mb-5">
+              <div className="flex justify-between items-start border-b-2 border-slate-800 pb-3 mb-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <Store className="w-7 h-7 text-sky-600" />
-                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">{storeSettings?.storeName || 'ร้านปุริม POS / PURIM POS STORE'}</h1>
+                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">{storeSettings?.storeName}</h1>
                   </div>
                   {storeSettings?.storeAddress && <p className="text-xs text-slate-600 font-medium">{storeSettings.storeAddress}</p>}
                   <p className="text-xs text-slate-600 font-medium">
@@ -265,7 +265,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
               </div>
 
               {/* Order Metadata Box */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-2 gap-4 mb-4">
                 {/* Left: Supplier Info */}
                 <div className="border border-slate-300 rounded-xl p-4 bg-slate-50/50">
                   <div className="text-xs font-black uppercase text-sky-700 border-b border-slate-200 pb-1 mb-2 flex items-center gap-1.5">
@@ -319,18 +319,18 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
               </div>
 
               {/* Items Table */}
-              <div className="mb-6 overflow-hidden border border-slate-300 rounded-xl">
+              <div className="mb-4 overflow-hidden border border-slate-300 rounded-xl">
                 <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="bg-slate-800 text-white font-bold uppercase">
                       <th className="p-2.5 text-center w-12 border-r border-slate-700">ลำดับ</th>
-                      <th className="p-2.5 w-32 border-r border-slate-700">รหัสสินค้า</th>
+                      <th className="p-2.5 w-24 border-r border-slate-700">รหัสสินค้า</th>
                       <th className="p-2.5 border-r border-slate-700">รายการสินค้า (DESCRIPTION)</th>
-                      <th className="p-2.5 text-right w-20 border-r border-slate-700">จำนวน</th>
-                      <th className="p-2.5 text-right w-24 border-r border-slate-700">หน่วยละ</th>
+                      <th className="p-2.5 text-right w-16 border-r border-slate-700">จำนวน</th>
+                      <th className="p-2.5 text-right w-20 border-r border-slate-700">หน่วยละ</th>
                       <th className="p-2.5 text-right w-20 border-r border-slate-700">ส่วนลด</th>
-                      <th className="p-2.5 text-right w-20 border-r border-slate-700">VAT</th>
-                      <th className="p-2.5 text-right w-28">จำนวนเงิน (บาท)</th>
+                      <th className="p-2.5 text-right w-16 border-r border-slate-700">VAT</th>
+                      <th className="p-2.5 text-right w-24">จำนวนเงิน (บาท)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 font-medium">
@@ -382,7 +382,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
               </div>
 
               {/* Summary Calculation Box */}
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-8">
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
                 {/* Left: Thai Baht Text Box */}
                 <div className="w-full sm:w-1/2 border border-slate-300 rounded-xl p-4 bg-slate-50/60 flex flex-col justify-between">
                   <div>
@@ -392,7 +392,8 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                     </p>
                   </div>
                   <div className="mt-3 text-[11px] text-slate-500 italic">
-                    * หมายเหตุ: กรุณาส่งมอบสินค้าพร้อมใบส่งสินค้า/ใบแจ้งหนี้ และระบุเลขที่ใบสั่งซื้อบนเอกสารทุกครั้ง
+                    {poData.notes && <p className="not-italic text-slate-800 font-semibold mb-1">หมายเหตุ: {poData.notes}</p>}
+                    * กรุณาส่งมอบสินค้าพร้อมใบส่งสินค้า/ใบแจ้งหนี้ และระบุเลขที่ใบสั่งซื้อบนเอกสารทุกครั้ง
                   </div>
                 </div>
 
@@ -437,8 +438,8 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
             </div>
 
             {/* Bottom Official Signature Block */}
-            <div className="grid grid-cols-2 gap-8 border-t border-slate-300 pt-6 mt-6">
-              <div className="text-center space-y-8">
+            <div className="grid grid-cols-2 gap-8 border-t border-slate-300 pt-3 mt-2">
+              <div className="text-center space-y-3">
                 <p className="text-xs font-bold text-slate-600">ผู้จัดทำเอกสาร / PREPARED BY</p>
                 <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto pt-6"></div>
                 <div className="text-xs text-slate-500">
@@ -447,7 +448,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                 </div>
               </div>
 
-              <div className="text-center space-y-8">
+              <div className="text-center space-y-3">
                 <p className="text-xs font-bold text-slate-600">ผู้อนุมัติสั่งซื้อ / AUTHORIZED BY</p>
                 <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto pt-6"></div>
                 <div className="text-xs text-slate-500">

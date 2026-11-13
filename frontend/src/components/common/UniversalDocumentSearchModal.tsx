@@ -13,10 +13,12 @@ import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { errorText } from '@/lib/api-error';
 import type {
-  ApiDebt, ApiDocumentSearchResult, ApiOrderLike, ApiShiftRecord, ClaimRecord, DebtPaymentInstallment, DebtRecord,
+  ApiClaim, ApiDebt, ApiDocumentSearchResult, ApiOrderLike, ApiPaymentVoucher, ApiShiftRecord, ApiSupplierReturnNote, ClaimRecord, DebtPaymentInstallment, DebtRecord,
   SupplierReturnNote,
 } from '@/lib/types';
-import type { PaymentVoucher } from '@/lib/payable-service';
+import { normalizeVoucherRow, type PaymentVoucher } from '@/lib/payable-service';
+import { mapReturnNote } from '@/lib/supplier-return-service';
+import { mapServerClaim } from '@/lib/claim-service';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -129,7 +131,13 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
         break;
       }
       case 'CLAIM': {
-        setActiveClaim(doc.rawData as ClaimRecord);
+        // same mapping as the claims page, so the document prints the same from both
+        const raw = doc.rawData as ApiClaim;
+        setActiveClaim(mapServerClaim(raw));
+        void api.claims
+          .getOne(raw.id)
+          .then((full) => full && setActiveClaim(mapServerClaim(full)))
+          .catch(() => undefined);
         break;
       }
       case 'DEBT': {
@@ -167,11 +175,17 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
         break;
       }
       case 'SUPPLIER_RETURN': {
-        setActiveReturnNote(doc.rawData as SupplierReturnNote);
+        // the search row has no items (they are stored with the note's details): load the note
+        const raw = doc.rawData as ApiSupplierReturnNote;
+        setActiveReturnNote(mapReturnNote(raw));
+        void api.supplierReturns
+          .getOne(raw.id || doc.docNumber)
+          .then((full) => full && setActiveReturnNote(mapReturnNote(full)))
+          .catch((err) => toast.error(`โหลดรายการในใบส่งคืนไม่สำเร็จ: ${errorText(err)}`));
         break;
       }
       case 'PAYMENT_VOUCHER': {
-        setActiveVoucher(doc.rawData as PaymentVoucher);
+        setActiveVoucher(normalizeVoucherRow(doc.rawData as ApiPaymentVoucher));
         break;
       }
     }
