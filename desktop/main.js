@@ -1052,6 +1052,7 @@ function printViaDriver(html, printerName, isA4, showDialog = false, slipHeightM
 }
 
 const { printHtmlAsRaster, renderSlipPng, slipImageHtml, warmUp: warmUpPrinting, shutdown: shutdownPrinting } = require('./escpos-raster');
+const { decidePrintRoute } = require('./print-route');
 
 function guessPaperDots(printerName) {
   const n = String(printerName || '').toLowerCase();
@@ -1066,20 +1067,25 @@ ipcMain.handle('print-silent', async (event, { html, printerName, format, mode, 
   // Never let the document call window.print() itself (that opens Chromium's print preview)
   const cleanHtml = String(html || '').replace(/<script[\s\S]*?<\/script>/gi, '');
   const config = loadConfig();
-  const isA4 = format ? format === 'a4' : (cleanHtml.includes('size: A4') || cleanHtml.includes('210mm'));
+  const { paper, route } = decidePrintRoute({ format, html: cleanHtml, mode, config });
+  const title = (/<title>([^<]*)<\/title>/i.exec(cleanHtml) || [])[1] || '';
+  const started = Date.now();
+  const done = (res, path) => {
+    log(`[Print] "${title.trim()}" format=${format || '-'} paper=${paper} path=${path} printer="${(res && res.printer) || ''}" ${res && res.success ? 'OK' : `FAIL ${(res && (res.failureReason || res.error)) || ''}`} ${Date.now() - started}ms`);
+    return res;
+  };
 
   // A4 documents never go to the receipt (thermal) printer: they use the A4 printer chosen in
   // settings (printerName) or, when none is set, the Windows print dialog.
-  if (isA4) {
+  if (route === 'a4') {
     const a4Name = String(printerName || '').trim();
-    if (!a4Name || showDialog) return printViaDriver(cleanHtml, '', true, true);
+    if (!a4Name || showDialog) return done(await printViaDriver(cleanHtml, '', true, true), 'a4-dialog');
     let printers = [];
     try { printers = mainWindow ? await mainWindow.webContents.getPrintersAsync() : []; } catch (e) { printers = []; }
     const found = printers.find(p => p.name.toLowerCase() === a4Name.toLowerCase());
-    if (printers.length > 0 && !found) return printViaDriver(cleanHtml, '', true, true);
-    return printViaDriver(cleanHtml, found ? found.name : a4Name, true, false);
+    if (printers.length > 0 && !found) return done(await printViaDriver(cleanHtml, '', true, true), 'a4-dialog');
+    return done(await printViaDriver(cleanHtml, found ? found.name : a4Name, true, false), 'a4-driver');
   }
-  const receiptMode = mode || config.receiptPrintMode || 'raster';
   const targetPrinter = await resolvePrinterDevice(printerName || config.printerName);
   const serverBase = (config.serverUrl || 'http://localhost:3000').replace(/\/+$/, '');
   const dots = Number(config.paperDots) || guessPaperDots(targetPrinter);
@@ -1088,7 +1094,7 @@ ipcMain.handle('print-silent', async (event, { html, printerName, format, mode, 
   // built-in fonts, which have no Thai glyphs, so Thai came out as "?????". RAW raster first;
   // if that fails (or receiptPrintMode = "driver") the driver gets the same slip as a picture.
   let png = null;
-  if (receiptMode !== 'driver') {
+  if (route === 'raster') {
     try {
       const res = await printHtmlAsRaster(cleanHtml, {
         printerName: targetPrinter,
@@ -1097,20 +1103,19 @@ ipcMain.handle('print-silent', async (event, { html, printerName, format, mode, 
         cut: cut !== false && config.autoCut !== false,
       });
       console.log(`[RasterPrint] ${targetPrinter}: ${JSON.stringify({ ...res, png: undefined, output: undefined })}`);
-      if (res.success) return { success: true, printer: targetPrinter, mode: 'raster' };
+      if (res.success) return done({ success: true, printer: targetPrinter, mode: 'raster' }, 'raster');
       png = res.png || null;
-      log(`[RasterPrint] failed (${res.error}), printing the slip as a picture through the driver`);
+      log(`[Print] raster failed (${res.error}), printing the slip as a picture through the driver`);
     } catch (err) {
-      log(`[RasterPrint] error (${(err && err.message) || err}), printing the slip as a picture through the driver`);
+      log(`[Print] raster error (${(err && err.message) || err}), printing the slip as a picture through the driver`);
     }
   }
   if (!png) {
     try {
       png = await renderSlipPng(cleanHtml, { dots, baseURL: `${serverBase}/` });
     } catch (err) {
-      log(`[DriverPrint] slip could not be drawn: ${(err && err.message) || err}`);
       // never fall back to text (prints "?????" on thermal printers): report the failure instead
-      return { success: false, printer: targetPrinter, failureReason: 'วาดใบเสร็จเพื่อพิมพ์ไม่สำเร็จ' };
+      return done({ success: false, printer: targetPrinter, failureReason: `วาดใบเสร็จเพื่อพิมพ์ไม่สำเร็จ: ${(err && err.message) || err}` }, 'none');
     }
   }
   // one page exactly as long as the picture (80 mm wide), so the roll is not cut into 300 mm pages
@@ -1120,7 +1125,7 @@ ipcMain.handle('print-silent', async (event, { html, printerName, format, mode, 
     if (size.width > 0) heightMm = Math.max(40, Math.ceil((size.height / size.width) * 80) + 2);
   } catch {}
   const res = await printViaDriver(slipImageHtml(png), targetPrinter, false, false, heightMm);
-  return { ...res, mode: 'driver-image' };
+  return done({ ...res, mode: 'driver-image' }, 'driver-image');
 });
 
 // Hardware: Cash Drawer Kick pulse supporting Auto (Dual ESC/POS + Epson APD Font), ESC/POS only, or APD Font only

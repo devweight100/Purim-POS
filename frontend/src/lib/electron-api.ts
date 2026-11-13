@@ -4,6 +4,8 @@
  */
 export interface ElectronAPI {
   isDesktop?: boolean;
+  /** desktop app version (1.2.3+) */
+  getAppVersion?: () => Promise<string>;
   saveConfig?: (config: { printerName?: string; kickMethod?: string }) => Promise<unknown>;
   kickDrawer?: (options: { printerName?: string; method?: string }) => Promise<{ success?: boolean; printer?: string; output?: string; error?: string } | null>;
   printSilent?: (options: { html: string; printerName?: string; showDialog?: boolean; format?: string }) => Promise<unknown>;

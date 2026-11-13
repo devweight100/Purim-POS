@@ -5,6 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "test": "node --test print-route.test.js",
     "build:dir": "electron-builder --dir",
     "build:exe": "electron-builder",
     "build:installer": "bash ../Installer/build-installers.sh client",
@@ -30,6 +31,7 @@
       "app-updater.js",
       "splash.html",
       "escpos-raster.js",
+      "print-route.js",
       "preload.js",
       "connect-server.html",
       "kick-drawer.exe",

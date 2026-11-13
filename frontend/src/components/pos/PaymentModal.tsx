@@ -16,7 +16,7 @@ import { CreditCard, QrCode, Banknote, Edit3, CheckCircle2, SplitSquareHorizonta
 import { NumpadPopup } from './NumpadPopup';
 import { ReceiptPdfModal, ReceiptData } from './ReceiptPdfModal';
 import { orderToReceiptData, summarizePaymentMethods, isCreditMethod } from '@/lib/receipt-mapper';
-import { ThermalReceiptView, printThermalReceiptDirect } from './ThermalReceiptView';
+import { printThermalReceiptDirect } from './ThermalReceiptView';
 import { loadBankAccounts, BankAccount } from '@/lib/bank-account-storage';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe } from '@/lib/pdf-print-service';
@@ -100,7 +100,6 @@ export function PaymentModal({
   // PDF Receipt state
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
   const [showReceiptPdf, setShowReceiptPdf] = useState(false);
-  const directReceiptRef = useRef<HTMLDivElement>(null);
 
   const triggerDirectPrint = (receipt: ReceiptData) => {
     printThermalReceiptDirect(receipt, loadStoreSettings());
@@ -1186,28 +1185,6 @@ export function PaymentModal({
         </DialogContent>
       </Dialog>
 
-      {/* Hidden offscreen container for direct instant Epson TM-T82 printing */}
-      <div 
-        style={{ 
-          position: 'fixed', 
-          left: '-9999px', 
-          top: '-9999px', 
-          width: '80mm', 
-          opacity: 0, 
-          pointerEvents: 'none', 
-          zIndex: -100 
-        }} 
-        aria-hidden="true"
-      >
-        {receiptData && (
-          <ThermalReceiptView
-            ref={directReceiptRef}
-            data={receiptData}
-            settings={loadStoreSettings()}
-          />
-        )}
-      </div>
-
       {/* Optional PDF Receipt Preview Modal */}
       <ReceiptPdfModal
         open={showReceiptPdf}
@@ -1218,7 +1195,6 @@ export function PaymentModal({
           }
         }}
         data={receiptData}
-        autoPrint={false}
       />
 
       {/* Numpad Popup with Full Amount ("เต็ม") Support */}

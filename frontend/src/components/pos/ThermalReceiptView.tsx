@@ -3,12 +3,10 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { Store } from 'lucide-react';
-import { formatCurrency, formatDocDate } from '@/lib/utils';
+import { formatDocDate } from '@/lib/utils';
 import { paymentMethodLabel } from '@/lib/receipt-mapper';
 import { StoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe } from '@/lib/pdf-print-service';
-import { BarcodeView } from '@/components/common/BarcodeView';
 import { formatQty, mulQty, subQty } from '@/lib/qty';
 
 export interface ReceiptData {
@@ -61,6 +59,10 @@ export interface ReceiptData {
   note?: string;
   /** unpaid part of a credit sale (ค้างชำระ) */
   outstandingAmount?: number;
+  /** VAT rate of the bill (orders.vat_rate); defaults to the store setting */
+  vatRate?: number;
+  /** POS terminal that made the sale, when known */
+  terminalName?: string;
   /** reprint of an existing bill -> "พิมพ์ซ้ำ" marker with the reprint time */
   isReprint?: boolean;
   reprintedAt?: string;
@@ -91,7 +93,7 @@ export const SAMPLE_RECEIPT_DATA: ReceiptData = {
   billDiscountAmount: 0,
   vatAmount: 6.87,
   totalAmount: 105,
-  paymentMethod: 'เงินสด (Cash)',
+  paymentMethod: 'เงินสด',
   payments: [{ method: 'CASH', amount: 105 }],
   cashReceived: 500,
   changeAmount: 395,
@@ -106,296 +108,181 @@ interface ThermalReceiptViewProps {
   className?: string;
 }
 
+/**
+ * Printable width of an 80 mm thermal roll: 576 printer dots (72 mm) = 288 CSS px, the width the
+ * desktop app lays slips out at (desktop/escpos-raster.js). The preview uses the same width, so
+ * line breaks on screen are the line breaks on paper.
+ */
+export const SLIP_WIDTH_PX = 288;
+
+/** 1,234.50 (always 2 decimals, no currency sign: every amount on the slip is in baht) */
+const money = (v: number | undefined | null) =>
+  (Number(v) || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function Row({ label, value, className = '' }: { label: React.ReactNode; value: React.ReactNode; className?: string }) {
+  return (
+    <div className={`flex justify-between items-start gap-2 ${className}`}>
+      <span className="min-w-0 break-words">{label}</span>
+      <span className="shrink-0 text-right tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+const Rule = () => <div className="border-t border-dashed border-black my-1" />;
+
+/**
+ * 80 mm receipt (ใบเสร็จรับเงิน / ใบกำกับภาษีอย่างย่อ). Black on white, no boxes or grey: what is
+ * shown here is exactly what the thermal printer prints (same component, same width, same CSS
+ * on screen and on paper).
+ */
 export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceiptViewProps>(
   ({ data, settings, className = '' }, ref) => {
+    const vatShown = Number(data.vatAmount) > 0;
+    // a VAT-registered shop issues an abbreviated tax invoice (Revenue Code s.86/6)
+    const isTaxInvoice = settings.vatEnabled === true || vatShown;
+    const vatRate = Number(data.vatRate ?? settings.vatRate) || 7;
+    const payments = (data.payments || []).filter((p) => Number(p.amount) > 0);
+    const singleMethod = payments.length <= 1;
+    const hasPoints =
+      !!data.customerName &&
+      ((data.customerPointsEarned ?? 0) > 0 || (data.pointsUsed ?? 0) > 0 || data.customerPointsBalance !== undefined);
+
     return (
       <div
         ref={ref}
-        className={`w-full max-w-[78mm] sm:max-w-[80mm] print:w-full print:max-w-full bg-white text-black font-sans text-[12px] leading-snug rounded-none space-y-2 overflow-hidden box-border select-none border border-black print:border-none print:p-0 ${className}`}
-        style={{
-          boxSizing: 'border-box',
-          color: '#000000',
-          backgroundColor: '#ffffff',
-          margin: '0 auto',
-          padding: '2mm 1.5mm',
-        }}
+        data-slip-root=""
+        className={`bg-white text-black font-sans text-[12px] leading-snug font-semibold box-border ${className}`}
+        style={{ width: SLIP_WIDTH_PX, maxWidth: '100%', color: '#000000', backgroundColor: '#ffffff', margin: '0 auto', padding: '4px 4px 8px' }}
       >
-        {/* ─── 1. Header (ชื่อร้าน, สาขา, เลขประจำตัวผู้เสียภาษี) ─── */}
-        <div className="text-center space-y-1 pb-2 border-b-2 border-black">
-          <div className="flex items-center justify-center gap-1.5 font-black text-base sm:text-lg font-sans text-black">
-            <Store className="w-5 h-5 text-black shrink-0 stroke-[2.5]" />
-            <span className="break-words min-w-0">{settings.storeName}</span>
+        {/* ─── Shop ─── */}
+        <div className="text-center leading-tight">
+          <div className="text-[16px] font-bold break-words">{settings.storeName}</div>
+          {settings.branchName && <div className="mt-0.5">{settings.branchName}</div>}
+          {settings.storeAddress && <div className="mt-0.5 text-[11px] whitespace-pre-wrap break-words">{settings.storeAddress}</div>}
+          {settings.storePhone && <div className="mt-0.5 text-[11px]">โทร {settings.storePhone}</div>}
+          {isTaxInvoice && settings.taxId && <div className="mt-0.5 text-[11px]">เลขประจำตัวผู้เสียภาษี {settings.taxId}</div>}
+          {settings.receiptHeader && <div className="mt-0.5 text-[11px] whitespace-pre-wrap break-words">{settings.receiptHeader}</div>}
+          <div className="mt-1.5 text-[14px] font-bold">
+            {isTaxInvoice ? (
+              <>
+                ใบเสร็จรับเงิน/
+                <wbr />
+                ใบกำกับภาษีอย่างย่อ
+              </>
+            ) : (
+              'ใบเสร็จรับเงิน'
+            )}
           </div>
-
-          {settings.branchName && (
-            <p className="text-[11px] text-black font-bold font-sans">
-              สาขา: {settings.branchName}
-            </p>
-          )}
-
-          {settings.taxId && (
-            <p className="text-[11px] text-black font-bold font-mono">
-              เลขประจำตัวผู้เสียภาษี: {settings.taxId}
-            </p>
-          )}
-
-          {settings.storeAddress && (
-            <p className="text-[10.5px] text-black font-bold leading-tight break-words font-sans whitespace-pre-wrap">
-              {settings.storeAddress}
-            </p>
-          )}
-
-          {settings.storePhone && (
-            <p className="text-[11px] text-black font-bold font-mono">
-              โทร: {settings.storePhone}
-            </p>
-          )}
-
-          {settings.storeEmail && (
-            <p className="text-[10.5px] text-black font-bold font-sans">
-              {settings.storeEmail}
-            </p>
-          )}
-
-          {/* Custom Receipt Header Slogan */}
-          {settings.receiptHeader && (
-            <div className="pt-0.5">
-              <p className="text-[10.5px] text-black font-bold font-sans whitespace-pre-wrap leading-tight">
-                {settings.receiptHeader}
-              </p>
-            </div>
-          )}
-
-          <div className="pt-1">
-            <span className="text-[13px] font-black border-2 border-black px-3 py-0.5 rounded-none font-sans inline-block text-black tracking-wider">
-              {Number(data.vatAmount) > 0 ? 'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ' : 'ใบเสร็จรับเงิน'}
-            </span>
-          </div>
+          {isTaxInvoice && <div className="text-[11px]">(ราคารวมภาษีมูลค่าเพิ่มแล้ว)</div>}
           {data.isReprint && (
-            <div className="pt-1 text-[12px] font-black text-black">
-              *** พิมพ์ซ้ำ ***
-              <div className="text-[10.5px] font-bold">พิมพ์ซ้ำเมื่อ {formatDocDate(data.reprintedAt || new Date(), { time: true })}</div>
-            </div>
+            <div className="mt-0.5 font-bold">*** พิมพ์ซ้ำ {formatDocDate(data.reprintedAt || new Date(), { time: true })} ***</div>
           )}
         </div>
 
-        {/* ─── 2. Meta Details (เลขที่บิล, วันที่, พนักงาน, ลูกค้า) ─── */}
-        <div className="text-[11.5px] space-y-1 pb-2 border-b-2 border-dashed border-black text-black font-bold">
-          <div className="flex justify-between items-center gap-1">
-            <span className="shrink-0">เลขที่บิล:</span>
-            <span className="font-black truncate text-right font-mono text-black text-[12px]">{data.orderNumber}</span>
-          </div>
-          <div className="flex justify-between items-center gap-1">
-            <span className="shrink-0">วันที่:</span>
-            <span className="font-bold truncate text-right font-mono text-black text-[11px]">
-              {formatDocDate(data.createdAt, { time: true })}
-            </span>
-          </div>
-          <div className="flex justify-between items-center gap-1">
-            <span className="shrink-0">พนักงานขาย:</span>
-            <span className="font-bold truncate text-right text-black">{data.userName || 'พนักงาน POS'}</span>
-          </div>
-          <div className="flex justify-between items-start gap-1">
-            <span className="shrink-0">ลูกค้า:</span>
-            <span className="font-black text-black text-right break-words min-w-0">
-              {data.customerName || 'ลูกค้าทั่วไป (Walk-in)'}
-            </span>
-          </div>
+        <Rule />
+
+        {/* ─── Bill ─── */}
+        <div className="space-y-0.5">
+          <Row label="เลขที่" value={<span className="font-bold">{data.orderNumber}</span>} />
+          <Row label="วันที่" value={formatDocDate(data.createdAt, { time: true })} />
+          <Row label="พนักงาน" value={data.userName || '-'} />
+          {data.terminalName && <Row label="เครื่อง" value={data.terminalName} />}
+          {data.customerName && <Row label="ลูกค้า" value={<span className="break-words">{data.customerName}</span>} />}
         </div>
 
-        {/* ─── 3. Items Table (ตารางรายการสินค้า) ─── */}
-        <div className="space-y-1.5 py-1.5 border-b-2 border-dashed border-black">
-          <div className="flex justify-between text-[11.5px] font-black border-b-2 border-black pb-1 text-black">
-            <span className="w-1/2">รายการ</span>
-            <span className="w-1/4 text-center">จำนวน</span>
-            <span className="w-1/4 text-right">รวม (฿)</span>
-          </div>
+        <Rule />
 
-          {data.items.map((item, idx) => (
-            <div key={idx} className="text-[11.5px] space-y-0.5 text-black pt-1">
-              <div className="font-black text-black leading-tight break-words text-[12px]">
-                {idx + 1}. {item.name}
-              </div>
-
-              {/* แสดงรายการสินค้าย่อยในเซ็ต (Bundle Components) */}
-              {item.bundleData?.bundleItems && item.bundleData.bundleItems.length > 0 && (
-                <div className="pl-2 text-[10.5px] text-black font-bold space-y-0.5 border-l-2 border-black my-1">
-                  {item.bundleData.bundleItems.map((bItem, bIdx) => (
-                    <div key={bIdx} className="flex justify-between">
-                      <span>• {bItem.productName}</span>
-                      <span className="font-black font-mono">x{formatQty(mulQty(bItem.quantity, item.quantity))}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex justify-between items-center text-black text-[11px] pl-1 font-bold">
-                <span className="truncate pr-1">
-                  {formatQty(item.quantity)} {item.unitName} x {formatCurrency(item.unitPrice)}
-                </span>
-                <span className="font-black text-black shrink-0 font-mono text-[12px]">
-                  {formatCurrency(item.lineTotal)}
-                </span>
-              </div>
-
-              {item.discountAmount !== undefined && item.discountAmount > 0 && (
-                <div className="text-[10.5px] text-black font-black pl-1">
-                  * ส่วนลด: -{formatCurrency(item.discountAmount)}
-                </div>
-              )}
-
-              {item.claimQuantity !== undefined && item.claimQuantity > 0 && (
-                <div className="text-[11px] text-black font-black pl-1">
-                  * เคลมฟรี: {formatQty(item.claimQuantity)} {item.unitName} (คิดเงิน {formatQty(Math.max(0, subQty(item.quantity, item.claimQuantity)))} {item.unitName})
-                </div>
-              )}
-
-              {item.itemNote && (
-                <div className="text-[10.5px] text-black font-bold pl-1 pt-0.5 break-words">
-                  [โน้ต: {item.itemNote}]
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* ─── 4. Totals Summary (ยอดรวม, ส่วนลด, ยอดสุทธิ) ─── */}
-        <div className="space-y-1 text-[11.5px] pt-1.5 pb-2 border-b-2 border-dashed border-black text-black font-bold">
-          <div className="flex justify-between items-center">
-            <span>รวมเงิน:</span>
-            <span className="shrink-0 font-mono font-bold text-[12px]">{formatCurrency(data.subtotal)}</span>
-          </div>
-
-          {data.billDiscountAmount > 0 && (
-            <div className="flex justify-between items-center font-black">
-              <span className="truncate pr-1">ส่วนลดท้ายบิล:</span>
-              <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.billDiscountAmount)}</span>
-            </div>
-          )}
-
-          {data.pointsDiscountAmount !== undefined && data.pointsDiscountAmount > 0 && (
-            <div className="flex justify-between items-center font-black">
-              <span className="truncate pr-1">ส่วนลดแต้ม ({data.pointsUsed?.toLocaleString() || 0}):</span>
-              <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.pointsDiscountAmount)}</span>
-            </div>
-          )}
-
-          {data.claimDiscountAmount !== undefined && data.claimDiscountAmount > 0 && (
-            <div className="flex justify-between items-center font-black">
-              <span className="truncate pr-1">หักส่วนลดเคลม:</span>
-              <span className="shrink-0 font-mono text-[12px]">-{formatCurrency(data.claimDiscountAmount)}</span>
-            </div>
-          )}
-
-          {data.vatAmount > 0 && (
-            <div className="flex justify-between items-center font-bold text-[10.5px]">
-              <span>ภาษีมูลค่าเพิ่ม (รวมในบิล):</span>
-              <span className="shrink-0 font-mono text-[11px]">{formatCurrency(data.vatAmount)}</span>
-            </div>
-          )}
-
-          {/* ยอดรวมสุทธิ - ตัวหนาใหญ่พิเศษ สีดำสนิท พร้อมเส้นคู่ชัดเจน */}
-          <div className="flex justify-between items-center text-[15px] font-black text-black pt-1.5 pb-1.5 border-t-2 border-b-2 border-black my-1.5">
-            <span>ยอดรวมสุทธิ:</span>
-            <span className="shrink-0 text-[17px] font-mono font-black">{formatCurrency(data.totalAmount)}</span>
-          </div>
-        </div>
-
-        {/* ─── 5. Claim Details Voucher Box (ถ้ามีส่วนลดเคลม) ─── */}
-        {data.claimInfo && (
-          <div className="py-1 border-2 border-black text-[11px] space-y-1 p-2 my-1 text-black font-bold">
-            <div className="font-black flex justify-between items-center border-b border-black pb-0.5">
-              <span>[ข้อมูลการเคลมสินค้า]</span>
-              <span className="font-mono font-black">#{data.claimInfo.claimId}</span>
-            </div>
-            <div>• สินค้า: {data.claimInfo.productName} ({formatQty(data.claimInfo.quantity)} {data.claimInfo.unitName})</div>
-            {data.claimInfo.defectReason && (
-              <div>• อาการเสีย: {data.claimInfo.defectReason}</div>
-            )}
-            <div className="flex justify-between items-center font-black pt-0.5 border-t border-dashed border-black">
-              <span>ส่วนลดเคลมที่นำมาหักในบิลนี้:</span>
-              <span className="font-mono">-{formatCurrency(data.claimInfo.discountAmount)}</span>
-            </div>
-          </div>
-        )}
-
-        {/* ─── 6. Payment Info (วิธีชำระเงิน, รับเงินมา, เงินทอน) ─── */}
-        <div className="space-y-1 text-[11.5px] pb-2 border-b-2 border-dashed border-black text-black font-bold">
-          <div className="flex justify-between items-center font-black border-b border-black pb-1">
-            <span className="shrink-0">ชำระโดย:</span>
-            <span className="truncate text-right">{data.paymentMethod}</span>
-          </div>
-
-          {/* แจกแจงการแบ่งชำระ (Split Payment) */}
-          {data.payments && data.payments.length > 0 && (
-            <div className="space-y-0.5 pt-1 my-1">
-              {data.payments.map((p, pIdx) => {
-                const methodName = paymentMethodLabel(p.method);
-                return (
-                  <div key={pIdx} className="flex justify-between items-center text-black font-bold text-[11px]">
-                    <span className="truncate pr-1">• {methodName}</span>
-                    <span className="font-black shrink-0 font-mono">{formatCurrency(p.amount)}</span>
+        {/* ─── Items: name, then qty unit x price = amount; a line discount on its own line ─── */}
+        <div className="space-y-1">
+          {data.items.map((item, idx) => {
+            const discount = Number(item.discountAmount) || 0;
+            const gross = Number(item.lineTotal) + (discount > 0 ? discount : 0);
+            const claimQty = Number(item.claimQuantity) || 0;
+            return (
+              <div key={idx}>
+                <div className="break-words leading-tight">{item.name}</div>
+                {item.bundleData?.bundleItems && item.bundleData.bundleItems.length > 0 && (
+                  <div className="pl-2 text-[11px]">
+                    {item.bundleData.bundleItems.map((b, bIdx) => (
+                      <Row key={bIdx} label={`- ${b.productName}`} value={`x${formatQty(mulQty(b.quantity, item.quantity))}`} />
+                    ))}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )}
+                <Row className="pl-2" label={`${formatQty(item.quantity)} ${item.unitName} x ${money(item.unitPrice)}`} value={money(gross)} />
+                {discount > 0 && <Row className="pl-2" label="ส่วนลด" value={`-${money(discount)}`} />}
+                {claimQty > 0 && (
+                  <div className="pl-2 text-[11px]">
+                    เคลมฟรี {formatQty(claimQty)} {item.unitName} (คิดเงิน {formatQty(Math.max(0, subQty(item.quantity, claimQty)))})
+                  </div>
+                )}
+                {item.itemNote && <div className="pl-2 text-[11px] break-words">หมายเหตุ: {item.itemNote}</div>}
+              </div>
+            );
+          })}
+        </div>
 
-          {data.cashReceived !== undefined && data.cashReceived > 0 && (
-            <div className="flex justify-between items-center font-bold pt-0.5">
-              <span>รับเงินมา:</span>
-              <span className="shrink-0 font-mono font-bold text-[12px]">{formatCurrency(data.cashReceived)}</span>
-            </div>
+        <Rule />
+
+        {/* ─── Totals ─── */}
+        <div className="space-y-0.5">
+          <Row label={`รวม ${data.items.length} รายการ`} value={money(data.subtotal)} />
+          {data.billDiscountAmount > 0 && <Row label="ส่วนลดท้ายบิล" value={`-${money(data.billDiscountAmount)}`} />}
+          {(data.pointsDiscountAmount ?? 0) > 0 && (
+            <Row label={`ส่วนลดแต้ม (${(data.pointsUsed || 0).toLocaleString('th-TH')} แต้ม)`} value={`-${money(data.pointsDiscountAmount)}`} />
           )}
-          {data.outstandingAmount !== undefined && data.outstandingAmount > 0 && (
-            <div className="flex justify-between items-center font-black text-[13px] pt-1 border-t border-black">
-              <span>ยอดค้างชำระ:</span>
-              <span className="shrink-0 font-mono font-black text-[14px]">{formatCurrency(data.outstandingAmount)}</span>
-            </div>
-          )}
-          {data.changeAmount !== undefined && data.changeAmount > 0 && (
-            <div className="flex justify-between items-center font-black text-[13.5px] pt-1">
-              <span>เงินทอน:</span>
-              <span className="shrink-0 font-mono font-black text-[15px]">{formatCurrency(data.changeAmount)}</span>
+          {(data.claimDiscountAmount ?? 0) > 0 && <Row label="ส่วนลดเคลมสินค้า" value={`-${money(data.claimDiscountAmount)}`} />}
+          <Row className="text-[16px] font-bold pt-0.5" label="ยอดสุทธิ" value={money(data.totalAmount)} />
+          {vatShown && (
+            <div className="text-[11px] space-y-0.5 pt-0.5">
+              <Row label="มูลค่าก่อนภาษี" value={money(Number(data.totalAmount) - Number(data.vatAmount))} />
+              <Row label={`ภาษีมูลค่าเพิ่ม ${vatRate}%`} value={money(data.vatAmount)} />
             </div>
           )}
         </div>
 
-        {/* ─── 7. Member Loyalty Points Summary ─── */}
-        {data.customerName && (data.customerPointsBalance !== undefined || data.customerPointsEarned !== undefined) && (
-          <div className="flex items-center justify-between text-[11px] font-black border-2 border-black px-2 py-1 text-black my-1.5">
-            <span>
-              แต้มที่ได้: +{data.customerPointsEarned ?? 0}
-              {data.pointsUsed !== undefined && data.pointsUsed > 0 && (
-                <span className="font-bold"> (ใช้ {data.pointsUsed.toLocaleString()})</span>
-              )}
-            </span>
-            {data.customerPointsBalance !== undefined && (
-              <span>แต้มรวม: <b className="font-black font-mono">{data.customerPointsBalance.toLocaleString()}</b> แต้ม</span>
-            )}
+        {data.claimInfo && (
+          <div className="text-[11px] pt-1 break-words">
+            เคลม #{data.claimInfo.claimId}: {data.claimInfo.productName} {formatQty(data.claimInfo.quantity)} {data.claimInfo.unitName}
+            {data.claimInfo.defectReason ? ` (${data.claimInfo.defectReason})` : ''}
           </div>
         )}
 
-        {/* ─── 8. Bill Note / Remarks (หมายเหตุท้ายบิล) ─── */}
+        <Rule />
+
+        {/* ─── Payment ─── */}
+        <div className="space-y-0.5">
+          {payments.length === 0 && <Row label="ชำระโดย" value={data.paymentMethod} />}
+          {payments.map((p, i) => (
+            <Row
+              key={i}
+              label={singleMethod ? `ชำระโดย ${paymentMethodLabel(p.method)}` : paymentMethodLabel(p.method)}
+              value={money(p.amount)}
+            />
+          ))}
+          {(data.cashReceived ?? 0) > 0 && <Row label="รับเงิน" value={money(data.cashReceived)} />}
+          {(data.changeAmount ?? 0) > 0 && <Row className="text-[14px] font-bold" label="เงินทอน" value={money(data.changeAmount)} />}
+          {(data.outstandingAmount ?? 0) > 0 && (
+            <Row className="text-[14px] font-bold" label="ยอดค้างชำระ" value={money(data.outstandingAmount)} />
+          )}
+        </div>
+
+        {hasPoints && (
+          <div className="text-[11px] pt-1 space-y-0.5">
+            <Row label="แต้มที่ได้รับ" value={`+${(data.customerPointsEarned ?? 0).toLocaleString('th-TH')}`} />
+            {(data.pointsUsed ?? 0) > 0 && <Row label="แต้มที่ใช้" value={`-${(data.pointsUsed ?? 0).toLocaleString('th-TH')}`} />}
+            {data.customerPointsBalance !== undefined && <Row label="แต้มคงเหลือ" value={data.customerPointsBalance.toLocaleString('th-TH')} />}
+          </div>
+        )}
+
         {data.note && (
-          <div className="text-[11px] text-black border-2 border-black p-2 space-y-0.5 break-words text-left font-bold my-1.5">
-            <span className="block font-black">[หมายเหตุ]</span>
-            <p className="whitespace-pre-wrap leading-relaxed">{data.note}</p>
-          </div>
+          <>
+            <Rule />
+            <div className="text-[11px] whitespace-pre-wrap break-words">หมายเหตุ: {data.note}</div>
+          </>
         )}
 
-        {/* ─── 9. Footer (ข้อความท้ายบิล) ─── */}
-        {settings.receiptFooter ? (
-          <div className="text-center pt-1 space-y-0.5 text-[10.5px] text-black font-bold font-sans">
-            <p className="leading-tight whitespace-pre-wrap">
-              {settings.receiptFooter}
-            </p>
-          </div>
-        ) : null}
-
-        <div className="text-center text-[12px] font-black text-black pt-1 tracking-wider border-t-2 border-black mt-2">
-          *** ขอบคุณที่ใช้บริการ ***
-        </div>
+        <Rule />
+        <div className="text-center text-[11px] whitespace-pre-wrap break-words">{settings.receiptFooter || 'ขอบคุณที่ใช้บริการ'}</div>
       </div>
     );
   }
@@ -404,8 +291,9 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
 ThermalReceiptView.displayName = 'ThermalReceiptView';
 
 /**
- * Direct printing helper for Epson TM-T82 thermal receipt printer.
- * Renders the receipt off-screen and invokes printDocumentIframe cleanly.
+ * THE way to print a receipt slip (after a sale, reprints from the orders page, POS history,
+ * document search, payment edits). The slip is rendered off-screen at the printable width and
+ * printed from there, never from a node inside a dialog, so every entry point prints the same.
  */
 export function printThermalReceiptDirect(data: ReceiptData, settings: StoreSettings) {
   if (typeof window === 'undefined') return;
@@ -415,11 +303,11 @@ export function printThermalReceiptDirect(data: ReceiptData, settings: StoreSett
 
   const container = document.createElement('div');
   container.id = 'direct-thermal-receipt-container';
+  container.setAttribute('aria-hidden', 'true');
   container.style.position = 'fixed';
   container.style.left = '-9999px';
-  container.style.top = '-9999px';
-  container.style.width = '80mm';
-  container.style.opacity = '0';
+  container.style.top = '0';
+  container.style.width = `${SLIP_WIDTH_PX}px`;
   container.style.pointerEvents = 'none';
   container.style.zIndex = '-9999';
   document.body.appendChild(container);
@@ -430,14 +318,15 @@ export function printThermalReceiptDirect(data: ReceiptData, settings: StoreSett
     root.render(<ThermalReceiptView data={data} settings={settings} />);
   });
 
-  setTimeout(() => {
-    const receipt = (container.firstElementChild as HTMLElement | null) || container;
-    printDocumentIframe(receipt, `พิมพ์ใบเสร็จ - ${data.orderNumber}`, '80mm');
+  const receipt = (container.firstElementChild as HTMLElement | null) || container;
+  void printDocumentIframe(receipt, `ใบเสร็จ ${data.orderNumber}`, '80mm').finally(() => {
     setTimeout(() => {
       try {
         root.unmount();
         container.remove();
-      } catch (e) {}
-    }, 4000);
-  }, 16);
+      } catch {
+        /* already gone */
+      }
+    }, 1000);
+  });
 }
