@@ -382,7 +382,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
               </div>
 
               {/* Summary Calculation Box */}
-              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-8">
+              <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
                 {/* Left: Thai Baht Text Box */}
                 <div className="w-full sm:w-1/2 border border-slate-300 rounded-xl p-4 bg-slate-50/60 flex flex-col justify-between">
                   <div>
@@ -438,19 +438,19 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
             </div>
 
             {/* Bottom Official Signature Block */}
-            <div className="grid grid-cols-2 gap-8 border-t border-slate-300 pt-6 mt-6">
-              <div className="text-center space-y-8">
+            <div className="grid grid-cols-2 gap-8 border-t border-slate-300 pt-4 mt-4">
+              <div className="text-center space-y-3">
                 <p className="text-xs font-bold text-slate-600">ผู้จัดทำเอกสาร / PREPARED BY</p>
-                <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto pt-6"></div>
+                <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto pt-10"></div>
                 <div className="text-xs text-slate-500">
                   <p>(........................................................)</p>
                   <p className="mt-1">วันที่ ..... / ..... / .........</p>
                 </div>
               </div>
 
-              <div className="text-center space-y-8">
+              <div className="text-center space-y-3">
                 <p className="text-xs font-bold text-slate-600">ผู้อนุมัติสั่งซื้อ / AUTHORIZED BY</p>
-                <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto pt-6"></div>
+                <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto pt-10"></div>
                 <div className="text-xs text-slate-500">
                   <p>(........................................................)</p>
                   <p className="mt-1">วันที่ ..... / ..... / .........</p>
