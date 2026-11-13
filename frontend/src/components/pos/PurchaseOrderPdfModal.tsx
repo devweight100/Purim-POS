@@ -241,7 +241,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
           >
             {/* Top Company Header & Document Title */}
             <div>
-              <div className="flex justify-between items-start border-b-2 border-slate-800 pb-5 mb-5">
+              <div className="flex justify-between items-start border-b-2 border-slate-800 pb-3 mb-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <Store className="w-7 h-7 text-sky-600" />
@@ -265,7 +265,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
               </div>
 
               {/* Order Metadata Box */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-2 gap-4 mb-4">
                 {/* Left: Supplier Info */}
                 <div className="border border-slate-300 rounded-xl p-4 bg-slate-50/50">
                   <div className="text-xs font-black uppercase text-sky-700 border-b border-slate-200 pb-1 mb-2 flex items-center gap-1.5">
@@ -319,7 +319,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
               </div>
 
               {/* Items Table */}
-              <div className="mb-6 overflow-hidden border border-slate-300 rounded-xl">
+              <div className="mb-4 overflow-hidden border border-slate-300 rounded-xl">
                 <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="bg-slate-800 text-white font-bold uppercase">
@@ -438,10 +438,10 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
             </div>
 
             {/* Bottom Official Signature Block */}
-            <div className="grid grid-cols-2 gap-8 border-t border-slate-300 pt-4 mt-4">
+            <div className="grid grid-cols-2 gap-8 border-t border-slate-300 pt-3 mt-2">
               <div className="text-center space-y-3">
                 <p className="text-xs font-bold text-slate-600">ผู้จัดทำเอกสาร / PREPARED BY</p>
-                <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto pt-10"></div>
+                <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto pt-6"></div>
                 <div className="text-xs text-slate-500">
                   <p>(........................................................)</p>
                   <p className="mt-1">วันที่ ..... / ..... / .........</p>
@@ -450,7 +450,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
 
               <div className="text-center space-y-3">
                 <p className="text-xs font-bold text-slate-600">ผู้อนุมัติสั่งซื้อ / AUTHORIZED BY</p>
-                <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto pt-10"></div>
+                <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto pt-6"></div>
                 <div className="text-xs text-slate-500">
                   <p>(........................................................)</p>
                   <p className="mt-1">วันที่ ..... / ..... / .........</p>
