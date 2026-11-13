@@ -276,7 +276,7 @@ Ok 'frontend พร้อม'
 Step '8/8' 'ตั้งค่า Firewall, เปิดอัตโนมัติ, แอปหน้าร้าน'
 if ($isAdmin) {
   Get-NetFirewallRule -DisplayName 'Purim POS Server*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-  New-NetFirewallRule -DisplayName 'Purim POS Server (TCP 3000)' -Direction Inbound -Protocol TCP -LocalPort 3000 -Action Allow -Profile Any -RemoteAddress LocalSubnet | Out-Null
+  New-NetFirewallRule -DisplayName 'Purim POS Server (TCP 3000)' -Direction Inbound -Protocol TCP -LocalPort 3000 -Action Allow -Profile Any -RemoteAddress @('LocalSubnet', '100.64.0.0/10') | Out-Null  # shop LAN + Tailscale (owner's devices only)
   Ok 'เปิดพอร์ต 3000 ให้เครื่องลูกในวง LAN'
 }
 
