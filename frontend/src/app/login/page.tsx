@@ -3,6 +3,7 @@ import { VersionBadge } from '@/components/common/VersionInfo';
 
 import { useState } from "react";
 import { useAuthStore } from "@/lib/store/auth-store";
+import { homePathFor } from "@/lib/mobile";
 import { errorText } from "@/lib/api-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,7 +28,8 @@ export default function LoginPage() {
       const res = await login(username.trim(), password.trim());
       if (res?.success) {
         toast.success("เข้าสู่ระบบสำเร็จ");
-        window.location.href = "/pos";
+        // phones of users who may see the summary land on /m, everything else on the POS
+        window.location.href = homePathFor(useAuthStore.getState().user);
       } else {
         toast.error(res?.error || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
       }

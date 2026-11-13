@@ -330,4 +330,53 @@ d('store flow (e2e)', () => {
       await api('get', '/reports/tabs?tab=nope', A).expect(400);
     });
   });
+
+  describe('mobile summary (/m): read-only endpoints', () => {
+    it('product lookup: stock, packs, prices; VIEW_REPORTS needed; cost only with VIEW_COST', async () => {
+      const r = (await api('get', `/products/lookup?q=${encodeURIComponent(state.p.sku)}`, A).expect(200)).body;
+      const hit = r.data.find((x: any) => x.id === state.p.id);
+      expect(hit).toBeDefined();
+      expect(hit.stock).toBe(Number((await api('get', `/products/${state.p.id}/stock`, A)).body.computedStock));
+      expect(hit.prices[0]).toBe(state.price);
+      expect(typeof hit.costPrice).toBe('number');
+      expect(r.canViewCost).toBe(true);
+      expect(r.meta.counts.all).toBeGreaterThanOrEqual(1);
+      // filters agree with the dashboard's low / out counts
+      const dash = (await api('get', '/reports/dashboard?range=today', A)).body;
+      const low = (await api('get', '/products/lookup?filter=low&limit=1', A)).body;
+      expect(low.meta.total).toBe(dash.inventory.lowStockCount);
+      expect((await api('get', '/products/lookup?filter=out&limit=1', A)).body.meta.total).toBe(dash.inventory.outOfStockCount);
+      await api('get', '/products/lookup?filter=nope', A).expect(400);
+      // the seeded cashier has no VIEW_REPORTS
+      await api('get', '/products/lookup', C).expect(403);
+      // a viewer with VIEW_REPORTS but not VIEW_COST gets no cost
+      await api('post', '/auth/register', A, { username: 'viewer1', password: 'View@test99', fullName: 'ผู้ดู', role: 'CASHIER', permissions: ['VIEW_REPORTS'] }).expect(201);
+      const V = (await api('post', '/auth/login', undefined, { username: 'viewer1', password: 'View@test99' }).expect(201)).body.access_token;
+      const v = (await api('get', `/products/lookup?q=${encodeURIComponent(state.p.sku)}`, V).expect(200)).body;
+      expect(v.canViewCost).toBe(false);
+      expect(JSON.stringify(v.data)).not.toMatch(/costPrice|unitCost/);
+    });
+
+    it('dashboard: top N, previous period and hours of a one-day period', async () => {
+      const today = (await api('get', '/reports/dashboard?range=today&top=10&compare=1', A).expect(200)).body;
+      expect(today.hourly).toHaveLength(24);
+      const hourSum = today.hourly.reduce((s: number, h: any) => s + h.netSales, 0);
+      expect(Math.round(hourSum * 100) / 100).toBe(today.sales.netSales);
+      expect(today.hourly.reduce((s: number, h: any) => s + h.orders, 0)).toBe(today.sales.completedCount);
+      expect(today.previous).toMatchObject({ netSales: expect.any(Number), completedCount: expect.any(Number) });
+      expect(today.topProducts.length).toBeLessThanOrEqual(10);
+      const plain = (await api('get', '/reports/dashboard?range=today', A)).body;
+      expect(plain.previous).toBeNull();
+      expect(plain.sales.netSales).toBe(today.sales.netSales);
+      expect((await api('get', '/reports/dashboard?range=7days', A)).body.hourly).toBeNull();
+    });
+
+    it('bill detail never carries the password / PIN hashes', async () => {
+      const list = (await api('get', '/orders?limit=1', A)).body;
+      const o = (await api('get', `/orders/${list.data[0].id}`, A).expect(200)).body;
+      expect(o.user.fullName).toBeTruthy();
+      expect(o.user.password).toBeUndefined();
+      expect(o.user.pinCode).toBeUndefined();
+    });
+  });
 });

@@ -11,6 +11,9 @@ import { validateCheckoutInput, lineAmounts, checkPointsDiscount, claimableBaseQ
 import { billTotals, earnedPoints, normVatRate, vatIncluded } from '../../../shared/src/pricing';
 import { addQty, decimalQtyAllowed, hasMax2Decimals, mulQty, parseQty, qn, subQty } from '../common/qty';
 
+/** Seller shown with a bill: never the password / PIN hashes. */
+const ORDER_USER_SELECT = { select: { id: true, username: true, fullName: true, role: true } } as const;
+
 @Injectable()
 export class OrdersService {
   constructor(
@@ -44,7 +47,7 @@ export class OrdersService {
       if (data.clientOrderId) {
         const existing = await tx.order.findUnique({
           where: { clientOrderId: data.clientOrderId },
-          include: { items: { include: { product: true } }, payments: true, customer: true, user: true },
+          include: { items: { include: { product: true } }, payments: true, customer: true, user: ORDER_USER_SELECT },
         });
         if (existing) {
           // Already synced! Return existing order directly to avoid duplicate processing.
@@ -441,7 +444,7 @@ export class OrdersService {
             })),
           },
         },
-        include: { items: true, payments: true, customer: true, user: true },
+        include: { items: true, payments: true, customer: true, user: ORDER_USER_SELECT },
       });
 
       // 5. Debt = sum of every CREDIT_DEBT line (never falls back to the bill total)
@@ -544,7 +547,7 @@ export class OrdersService {
     return businessTransaction(this.prisma, async (tx) => {
       const order = await tx.order.findUnique({
         where: { id },
-        include: { items: { include: { product: true } }, payments: true, debt: true, shift: true, user: true },
+        include: { items: { include: { product: true } }, payments: true, debt: true, shift: true, user: ORDER_USER_SELECT },
       });
 
       if (!order) throw new NotFoundException('ไม่พบออเดอร์นี้');
@@ -753,7 +756,7 @@ export class OrdersService {
         const fresh = await tx.payment.findMany({ where: { orderId: id } });
         await this.postOrderPayments(tx, id, order.orderNumber, fresh, order.shift?.terminalId ?? null);
       }
-      return tx.order.findUnique({ where: { id }, include: { items: { include: { product: true } }, payments: true, customer: true, user: true, debt: true } });
+      return tx.order.findUnique({ where: { id }, include: { items: { include: { product: true } }, payments: true, customer: true, user: ORDER_USER_SELECT, debt: true } });
     });
   }
 
@@ -856,7 +859,8 @@ export class OrdersService {
         items: { include: { product: true } },
         payments: true,
         customer: true,
-        user: true,
+        // never the password / PIN hashes
+        user: ORDER_USER_SELECT,
         debt: true,
         returns: { include: { items: true }, orderBy: { createdAt: 'asc' } },
       },

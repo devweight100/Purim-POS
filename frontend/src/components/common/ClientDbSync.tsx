@@ -65,6 +65,25 @@ export function ClientDbSync() {
         const token = getAuthToken();
         const authState = useAuthStore.getState();
 
+        // Mobile summary (/m, a phone over Tailscale): read-only, not a sales terminal. No terminal
+        // heartbeat and no POS master data (the whole product catalogue every 15 s); only the profile.
+        const path = typeof window !== 'undefined' ? window.location.pathname : '';
+        if (path === '/m' || path.startsWith('/m/')) {
+          if (token && authState.isAuthenticated) {
+            await api.auth
+              .getProfile()
+              .then((profile) => {
+                if (!profile || disposed) return;
+                if (profile.isActive === false) useAuthStore.getState().logout();
+                else useAuthStore.setState({ user: { ...profile, name: profile.fullName || profile.name } });
+              })
+              .catch((err: unknown) => {
+                if (err instanceof ApiError && err.status === 401 && !disposed) useAuthStore.getState().logout();
+              });
+          }
+          return;
+        }
+
         // 2. Send terminal heartbeat ping so Master Control sees all online terminals in real time
         try {
           const terminalId = getTerminalId();

@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OrderStatus } from '@prisma/client';
 import { grossPerUnit } from '../../../shared/src/po-calc';
 import { addDays, bangkokDayKey, bangkokDayStart, bangkokStartOfDay, bangkokStartOfMonth, dateRangeFilter, DAY_MS } from '../common/bangkok-date';
-import { DateRange, paymentChannels, salesTotals, sqlRange } from './sales-math';
+import { DateRange, paymentChannels, previousPeriod, salesTotals, sqlRange } from './sales-math';
 import { round2 } from '../../../shared/src/money';
 import { REPORT_TIME_RANGES, reportRangeBounds, type ReportTimeRange } from '../../../shared/src/bangkok-date';
 import { quantitiesToNumbers } from '../common/qty';
@@ -127,8 +127,12 @@ export class ReportsService {
    * Server-side aggregate for the dashboard page: no row limits, returns netted, Bangkok days,
    * one low-stock threshold. Legacy fields (todaySales, monthSales, salesChart ...) kept.
    */
-  async getDashboard(q: { range?: string; startDate?: string; endDate?: string } = {}) {
+  async getDashboard(q: { range?: string; startDate?: string; endDate?: string; top?: string; compare?: string } = {}) {
     const period = this.dashboardPeriod(q);
+    // optional (mobile summary /m): top=N products (default 5, max 50), compare=1 adds the previous period
+    const topParsed = parseInt(String(q.top ?? ''), 10);
+    const topN = Number.isFinite(topParsed) && topParsed > 0 ? Math.min(topParsed, 50) : 5;
+    const prevRange = q.compare === '1' || q.compare === 'true' ? previousPeriod(period.range, period.from, period.to) : null;
     const today = bangkokStartOfDay();
     const [sales, channels, todayTotals, monthTotals, inventory, debt, customers, recent] = await Promise.all([
       salesTotals(this.prisma, period.filter),
@@ -180,6 +184,38 @@ export class ReportsService {
     for (const r of returnDays) { const b = ensure(keyOf(r.d)); b.returns = round2(b.returns + Number(r.amount)); }
     const timeline = [...buckets.values()].sort((a, b) => a.date.localeCompare(b.date)).map((b) => ({ ...b, netSales: round2(b.sales - b.returns) }));
 
+    // ── one-day periods: also per Bangkok hour (same rules as the timeline: completed bills - returns)
+    let hourly: { hour: number; sales: number; returns: number; netSales: number; orders: number }[] | null = null;
+    if (spanDays === 1) {
+      const hourOf = (col: Prisma.Sql) => Prisma.sql`EXTRACT(HOUR FROM (${col} + interval '7 hours'))::int`;
+      const [orderHours, returnHours] = await Promise.all([
+        this.prisma.$queryRaw<{ h: number; amount: number; n: number }[]>(Prisma.sql`
+          SELECT ${hourOf(Prisma.sql`o.created_at`)} AS h, COALESCE(SUM(o.total_amount),0)::float8 AS amount, COUNT(*)::int AS n
+          FROM orders o WHERE o.status = 'COMPLETED' ${sqlRange(Prisma.sql`o.created_at`, period.filter)} GROUP BY 1`),
+        this.prisma.$queryRaw<{ h: number; amount: number }[]>(Prisma.sql`
+          SELECT ${hourOf(Prisma.sql`r.created_at`)} AS h, COALESCE(SUM(r.refund_amount),0)::float8 AS amount
+          FROM order_returns r WHERE true ${sqlRange(Prisma.sql`r.created_at`, period.filter)} GROUP BY 1`),
+      ]);
+      hourly = Array.from({ length: 24 }, (_, hour) => ({ hour, sales: 0, returns: 0, netSales: 0, orders: 0 }));
+      for (const r of orderHours) { const b = hourly[Number(r.h)]; if (b) { b.sales = round2(b.sales + Number(r.amount)); b.orders += Number(r.n); } }
+      for (const r of returnHours) { const b = hourly[Number(r.h)]; if (b) b.returns = round2(b.returns + Number(r.amount)); }
+      for (const b of hourly) b.netSales = round2(b.sales - b.returns);
+    }
+
+    // ── previous period of the same length (compare=1)
+    let previous: { from: string; to: string; netSales: number; completedCount: number; averageBasket: number; returnsAmount: number } | null = null;
+    if (prevRange) {
+      const p = await salesTotals(this.prisma, prevRange);
+      previous = {
+        from: prevRange.gte.toISOString(),
+        to: prevRange.lt.toISOString(),
+        netSales: p.netSales,
+        completedCount: p.completedCount,
+        averageBasket: p.completedCount > 0 ? round2(p.netSales / p.completedCount) : 0,
+        returnsAmount: p.returns.amount,
+      };
+    }
+
     // ── top products: net of returned items, revenue after the bill-discount share
     const topRows = await this.prisma.$queryRaw<{ product_id: string; name: string; sku: string; qty: number; revenue: number; cost: number }[]>(Prisma.sql`
       WITH sold AS (
@@ -202,10 +238,10 @@ export class ReportsService {
       FROM products p
       JOIN (SELECT product_id FROM sold UNION SELECT product_id FROM back) ids ON ids.product_id = p.id
       LEFT JOIN sold s ON s.product_id = p.id LEFT JOIN back b ON b.product_id = p.id
-      ORDER BY revenue DESC LIMIT 10`);
+      ORDER BY revenue DESC LIMIT ${topN + 10}`);
     const topProducts = topRows
       .filter((r) => Number(r.qty) > 0 || Number(r.revenue) > 0)
-      .slice(0, 5)
+      .slice(0, topN)
       .map((r) => ({ productId: r.product_id, name: r.name, sku: r.sku, quantity: Number(r.qty), revenue: round2(Number(r.revenue)), cost: round2(Number(r.cost)) }));
 
     const ch = (k: string) => round2(channels[k]?.amount || 0);
@@ -220,6 +256,8 @@ export class ReportsService {
       },
       payments: { cash: ch('CASH'), qrTransfer: ch('QR_TRANSFER'), card: ch('CARD'), credit: ch('CREDIT'), other: ch('OTHER'), detail: channels },
       timeline,
+      hourly,
+      previous,
       topProducts,
       inventory,
       receivables: { totalPending: round2(Number(debt._sum.remainingAmount || 0)), billCount: debt._count._all },

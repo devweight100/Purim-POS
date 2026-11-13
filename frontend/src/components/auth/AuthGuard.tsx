@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { setInMemoryAuthToken } from '@/lib/api';
 import { canAccessRoute } from '@/lib/permissions';
+import { homePathFor } from '@/lib/mobile';
 import { ShieldAlert } from 'lucide-react';
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -92,8 +93,8 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       // Default / temporary credential -> must set a new password first
       router.replace('/change-password');
     } else if (hasValidAuth && isLoginPage) {
-      // Already logged in -> Redirect to POS
-      router.replace('/pos');
+      // Already logged in -> POS (phones of users who may see the summary: /m)
+      router.replace(homePathFor(useAuthStore.getState().user));
     }
   }, [isHydrated, hasValidAuth, isLoginPage, isPublicRoute, mustChangePassword, isChangePasswordPage, router]);
 

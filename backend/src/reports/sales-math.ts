@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { round2 } from '../../../shared/src/money';
+import { bangkokDate, bangkokParts, DAY_MS } from '../../../shared/src/bangkok-date';
 
 /**
  * One definition of "sales" for every report (P&L, /reports/sales-summary, /reports/dashboard):
@@ -137,4 +138,23 @@ export async function paymentChannels(prisma: any, range: DateRange) {
     b.returned = round2(b.returned + amt);
   }
   return out;
+}
+
+/**
+ * The period just before `from`..`to` with the same length, for "compared with the previous period":
+ * a calendar month (range 'month') -> the same days of the previous month (capped at its end);
+ * anything else -> shifted back by its length in whole days (today so far -> yesterday up to the same
+ * clock time; last 7 days -> the 7 days before). Bangkok has no DST, so whole days are 24 h.
+ */
+export function previousPeriod(range: string, from: Date | null, to: Date): { gte: Date; lt: Date } | null {
+  if (!from) return null;
+  const f = from.getTime();
+  const t = to.getTime();
+  if (range === 'month') {
+    const { year, month } = bangkokParts(f - 1);
+    const pf = bangkokDate(year, month, 1);
+    return { gte: new Date(pf), lt: new Date(Math.min(pf + (t - f), f)) };
+  }
+  const days = Math.max(1, Math.ceil((t - f) / DAY_MS));
+  return { gte: new Date(f - days * DAY_MS), lt: new Date(t - days * DAY_MS) };
 }

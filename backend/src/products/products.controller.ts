@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Req } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Req } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -37,6 +37,24 @@ export class ProductsController {
   @Get()
   async findAll(@Query('search') search?: string, @Query('categoryId') categoryId?: string, @Req() req?: any) {
     return costFilterFor(req?.user)(await this.productsService.findAll(search, categoryId));
+  }
+
+  /**
+   * Mobile summary page (/m): read-only search with stock, packs and prices, paged.
+   * ?q=&filter=all|low|out&page=&limit= (max 50). VIEW_REPORTS (ADMIN / MANAGER always); cost only with VIEW_COST.
+   */
+  @Get('lookup')
+  @RequirePermissions('VIEW_REPORTS')
+  async lookup(
+    @Query('q') q?: string,
+    @Query('filter') filter?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Req() req?: any,
+  ) {
+    if (q !== undefined && typeof q !== 'string') throw new BadRequestException('คำค้นหาไม่ถูกต้อง');
+    const result = await this.productsService.lookup({ q, filter, page: parseInt(String(page ?? ''), 10) || 1, limit: parseInt(String(limit ?? ''), 10) || 20 });
+    return { ...result, data: costFilterFor(req?.user)(result.data), canViewCost: canViewCost(req?.user) };
   }
 
   @Get('barcode/:code')

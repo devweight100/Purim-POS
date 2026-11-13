@@ -52,7 +52,8 @@ import {
   Ban,
   ShieldAlert,
   ArrowRight,
-  Info
+  Info,
+  Smartphone
 } from "lucide-react";
 import { fetchAllClaimRecords, loadAllClaimRecords } from "@/lib/claim-service";
 import { ClaimRecord } from "@/lib/types";
@@ -314,6 +315,14 @@ export default function DashboardPage() {
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
             <span>รีเฟรช</span>
           </Button>
+          <Link
+            href="/m"
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-xs font-bold text-indigo-700 hover:bg-indigo-100"
+            title="สรุปยอดขาย สต็อก ราคา และบิล สำหรับหน้าจอมือถือ"
+          >
+            <Smartphone className="h-3.5 w-3.5" />
+            <span>มุมมองมือถือ</span>
+          </Link>
         </div>
       </div>
 

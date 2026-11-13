@@ -10,6 +10,16 @@ export default function manifest(): MetadataRoute.Manifest {
     display: 'standalone',
     background_color: '#ffffff',
     theme_color: '#4f46e5',
+    // long-press the installed app icon: the owner's read-only summary for phones (start_url stays the POS)
+    shortcuts: [
+      {
+        name: 'สรุปร้าน (มือถือ)',
+        short_name: 'สรุปร้าน',
+        description: 'ยอดขาย สต็อก ราคา และบิล แบบดูอย่างเดียว',
+        url: '/m',
+        icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml' }],
+      },
+    ],
     icons: [
       {
         src: '/icon.svg',
