@@ -19,7 +19,9 @@ import {
 import { toast } from 'sonner';
 import { BarcodeView } from '@/components/common/BarcodeView';
 import { formatQty } from '@/lib/qty';
-import { SLIP_WIDTH_PX } from '@/components/pos/slip-parts';
+import { SLIP_WIDTH_PX, SlipShopHeader } from '@/components/pos/slip-parts';
+import { getReceiptOptions } from '@/lib/receipt-options';
+import { A4FooterText, A4StoreHeader } from '@/components/common/A4StoreHeader';
 
 /** Thai labels for every claim resolution type (frontend enum + legacy/backend values). */
 export const CLAIM_RESOLUTION_LABELS: Record<string, string> = {
@@ -174,39 +176,9 @@ export function ClaimReceiptPdfModal({
                 // printable width of the 80 mm roll (288 px = 72 mm): the preview breaks lines like the paper
                 style={{ width: SLIP_WIDTH_PX, maxWidth: '100%', boxSizing: 'border-box', color: '#000000', backgroundColor: '#ffffff', margin: '0 auto', padding: '4px 4px 8px' }}
               >
-                {/* Store Header */}
+                {/* Store Header: same rules as every slip (Settings > รูปแบบใบเสร็จ) */}
                 <div className="text-center space-y-1 pb-2 border-b-2 border-black">
-                  <div className="flex items-center justify-center gap-1.5 font-black text-base sm:text-lg font-sans text-black">
-                    <span className="break-words">{storeSettings.storeName}</span>
-                  </div>
-
-                  {storeSettings.branchName && (
-                    <p className="text-[11px] text-black font-bold font-sans">สาขา: {storeSettings.branchName}</p>
-                  )}
-
-                  {storeSettings.taxId && (
-                    <p className="text-[11px] text-black font-bold font-mono">เลขผู้เสียภาษี: {storeSettings.taxId}</p>
-                  )}
-
-                  <p className="text-[10.5px] text-black font-bold font-sans leading-tight break-words">
-                    {storeSettings.storeAddress}
-                  </p>
-
-                  {storeSettings.storePhone && (
-                    <p className="text-[11px] text-black font-bold font-mono">โทร: {storeSettings.storePhone}</p>
-                  )}
-
-                  {storeSettings.receiptHeader && (
-                    <p className="text-[10.5px] text-black font-bold font-sans pt-0.5 whitespace-pre-wrap">
-                      {storeSettings.receiptHeader}
-                    </p>
-                  )}
-
-                  <div className="pt-1">
-                    <span className="text-[13px] font-black border-2 border-black px-3 py-0.5 rounded-none font-sans inline-block text-black uppercase tracking-wider">
-                      ใบรับเคลมสินค้า / สลิปเปลี่ยนของ
-                    </span>
-                  </div>
+                  <SlipShopHeader settings={storeSettings} title="ใบรับเคลมสินค้า / สลิปเปลี่ยนของ" />
 
                   {/* ─── BARCODE OF CLAIM ID ─── */}
                   <div className="pt-2 pb-1 flex justify-center bg-white">
@@ -302,7 +274,7 @@ export function ClaimReceiptPdfModal({
 
                 {/* Slip Footer Policy */}
                 <div className="text-center pt-2 space-y-1 text-[10.5px] text-black font-bold border-t-2 border-black mt-2">
-                  {storeSettings.receiptFooter ? (
+                  {getReceiptOptions(storeSettings).slip.showFooterText && storeSettings.receiptFooter ? (
                     <p className="whitespace-pre-wrap leading-tight">{storeSettings.receiptFooter}</p>
                   ) : (
                     <p>* โปรดเก็บสลิปนี้ไว้เป็นหลักฐานการเคลมสินค้า *</p>
@@ -322,30 +294,7 @@ export function ClaimReceiptPdfModal({
                 <div className="space-y-3.5">
                 {/* A4 Header */}
                 <div className="flex justify-between items-start border-b-2 border-slate-800 pb-4">
-                  <div className="space-y-1 max-w-[60%]">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white font-black flex items-center justify-center text-base">
-                        P
-                      </div>
-                      <h2 className="text-lg font-black text-slate-900">
-                        {storeSettings.storeName || 'ร้านปุริม ซุปเปอร์มาร์เก็ต'}
-                      </h2>
-                    </div>
-
-                    {storeSettings.branchName && (
-                      <p className="text-xs text-slate-600 font-medium">สาขา: {storeSettings.branchName}</p>
-                    )}
-
-                    <p className="text-slate-600 text-[11px] leading-tight">
-                      {storeSettings.storeAddress}
-                    </p>
-
-                    <div className="text-[11px] text-slate-600 flex flex-wrap gap-x-4">
-                      {storeSettings.taxId && <span><b>เลขผู้เสียภาษี:</b> {storeSettings.taxId}</span>}
-                      {storeSettings.storePhone && <span><b>โทร:</b> {storeSettings.storePhone}</span>}
-                      {storeSettings.storeEmail && <span><b>อีเมล:</b> {storeSettings.storeEmail}</span>}
-                    </div>
-                  </div>
+                  <A4StoreHeader settings={storeSettings} className="max-w-[60%]" />
 
                   {/* Document Title & Metadata Box */}
                   <div className="text-right space-y-1">
@@ -495,9 +444,7 @@ export function ClaimReceiptPdfModal({
                   <span className="font-bold text-slate-800 block">เงื่อนไขการรับเคลมสินค้า:</span>
                   <p>1. เอกสารนี้ออกเพื่อเป็นหลักฐานการรับเคลมหรือเปลี่ยนสินค้าของทางร้านค้า</p>
                   <p>2. สินค้าที่เปลี่ยนใหม่หรือได้รับการชดเชยจะอยู่ภายใต้นโยบายการรับประกันของบริษัทฯ</p>
-                  {storeSettings.receiptFooter && (
-                    <p className="text-slate-700 pt-0.5 whitespace-pre-wrap">{storeSettings.receiptFooter}</p>
-                  )}
+                  <A4FooterText settings={storeSettings} className="text-slate-700 pt-0.5" />
                 </div>
 
                 </div>

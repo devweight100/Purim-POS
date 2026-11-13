@@ -17,6 +17,7 @@ import {
 import { formatCurrency, formatDocDate, thaiBahtText } from '@/lib/utils';
 import { SupplierReturnNote } from '@/lib/types';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
+import { A4StoreHeader } from '@/components/common/A4StoreHeader';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
 import { BarcodeView } from '@/components/common/BarcodeView';
 import { toast } from 'sonner';
@@ -120,24 +121,7 @@ export function SupplierReturnPdfModal({
             <div className="space-y-3.5">
             {/* Store & Document Header */}
             <div className="flex justify-between items-start border-b-2 border-slate-800 pb-3.5">
-              <div className="space-y-1 max-w-[58%]">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white font-black flex items-center justify-center text-xs">
-                    P
-                  </div>
-                  <h2 className="text-base font-black text-slate-900">{storeSettings.storeName || 'ร้านปุริม POS'}</h2>
-                </div>
-                {storeSettings.branchName && (
-                  <p className="text-[10.5px] text-slate-600 font-medium">สาขา: {storeSettings.branchName}</p>
-                )}
-                <p className="text-slate-600 text-[10.5px] leading-tight">
-                  {storeSettings.storeAddress}
-                </p>
-                <div className="text-[10.5px] text-slate-600 flex flex-wrap gap-x-3">
-                  {storeSettings.taxId && <span><b>เลขผู้เสียภาษี:</b> {storeSettings.taxId}</span>}
-                  {storeSettings.storePhone && <span><b>โทร:</b> {storeSettings.storePhone}</span>}
-                </div>
-              </div>
+              <A4StoreHeader settings={storeSettings} showHeaderText={false} className="max-w-[58%]" />
 
               <div className="text-right space-y-0.5">
                 <h3 className="text-sm font-black text-indigo-900 uppercase tracking-tight">

@@ -1378,6 +1378,8 @@ export interface ApiStoreSettings {
   cashMovementApprovalLimit?: number | string;
   allowDecimalQty?: boolean;
   loyaltyConfig?: LoyaltyConfigJson | null;
+  /** what slips / A4 documents show (shared/src/receipt-options.ts); null = defaults */
+  receiptOptions?: { slip?: Record<string, boolean>; a4?: Record<string, boolean> } | null;
 }
 
 /** store_settings.loyalty_config (see customer-service LoyaltySystemConfig) */

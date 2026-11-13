@@ -4,10 +4,11 @@ import { useState, useRef } from 'react';
 import { calculatePurchaseBill } from '@shared/po-calc';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Printer, Download, FileText, CheckCircle2, Store, Building2, Calendar, FileCheck } from 'lucide-react';
+import { Printer, Download, FileText, CheckCircle2, Building2, Calendar, FileCheck } from 'lucide-react';
 import { formatCurrency, formatDocDate, thaiBahtText } from '@/lib/utils';
 import { toast } from 'sonner';
 import { BarcodeView } from '@/components/common/BarcodeView';
+import { A4StoreHeader } from '@/components/common/A4StoreHeader';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
 import { formatQty } from '@/lib/qty';
@@ -180,6 +181,8 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
   const usedVatTypes = new Set(calc.lines.filter((l) => l.baseAmount > 0 && l.vatType !== 'NONE').map((l) => l.vatType));
   const vatType: 'none' | 'include' | 'exclude' | 'mixed' =
     usedVatTypes.size === 0 ? 'none' : usedVatTypes.size > 1 || calc.lines.some((l) => l.baseAmount > 0 && l.vatType === 'NONE') ? 'mixed' : usedVatTypes.has('INCLUDED') ? 'include' : 'exclude';
+  // purchase VAT is the supplier's tax: a shop without VAT shows VAT columns only when this PO has VAT
+  const showVat = storeSettings.vatEnabled === true || vatType !== 'none';
   const vatRates = Array.from(new Set(calc.lines.filter((l) => l.vatType !== 'NONE').map((l) => l.vatRate))).join('/');
 
 
@@ -242,17 +245,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
             {/* Top Company Header & Document Title */}
             <div>
               <div className="flex justify-between items-start border-b-2 border-slate-800 pb-3 mb-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Store className="w-7 h-7 text-sky-600" />
-                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">{storeSettings?.storeName}</h1>
-                  </div>
-                  {storeSettings?.storeAddress && <p className="text-xs text-slate-600 font-medium">{storeSettings.storeAddress}</p>}
-                  <p className="text-xs text-slate-600 font-medium">
-                    {storeSettings?.taxId && `เลขประจำตัวผู้เสียภาษี: ${storeSettings.taxId} | `}
-                    {storeSettings?.storePhone && `โทร: ${storeSettings.storePhone}`}
-                  </p>
-                </div>
+                <A4StoreHeader settings={storeSettings} showHeaderText={false} className="max-w-[60%]" />
                 <div className="text-right flex flex-col items-end">
                   <div className="inline-block bg-sky-600 text-white font-black px-4 py-1.5 rounded text-lg uppercase tracking-wider mb-2">
                     ใบสั่งซื้อ / PURCHASE ORDER
@@ -329,14 +322,14 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                       <th className="p-2.5 text-right w-16 border-r border-slate-700">จำนวน</th>
                       <th className="p-2.5 text-right w-20 border-r border-slate-700">หน่วยละ</th>
                       <th className="p-2.5 text-right w-20 border-r border-slate-700">ส่วนลด</th>
-                      <th className="p-2.5 text-right w-16 border-r border-slate-700">VAT</th>
+                      {showVat && <th className="p-2.5 text-right w-16 border-r border-slate-700">VAT</th>}
                       <th className="p-2.5 text-right w-24">จำนวนเงิน (บาท)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 font-medium">
                     {items.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="p-8 text-center text-slate-400 font-semibold">
+                        <td colSpan={showVat ? 8 : 7} className="p-8 text-center text-slate-400 font-semibold">
                           ไม่พบรายการสินค้าในใบสั่งซื้อนี้
                         </td>
                       </tr>
@@ -369,9 +362,11 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                                 <span className="block text-[10px] text-slate-500">({line.discountValue}%)</span>
                               )}
                             </td>
-                            <td className="p-2.5 text-right text-slate-700 border-r border-slate-200">
-                              {line && line.vatType !== 'NONE' ? formatCurrency(line.vatAmount) : '-'}
-                            </td>
+                            {showVat && (
+                              <td className="p-2.5 text-right text-slate-700 border-r border-slate-200">
+                                {line && line.vatType !== 'NONE' ? formatCurrency(line.vatAmount) : '-'}
+                              </td>
+                            )}
                             <td className="p-2.5 text-right font-bold text-slate-900">{formatCurrency(lineAmount)}</td>
                           </tr>
                         );
@@ -415,6 +410,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                       <span className="font-semibold text-slate-800">{formatCurrency(netAmount)}</span>
                     </div>
                   )}
+                  {showVat && (
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span className="text-slate-600 font-semibold">
                       ภาษีมูลค่าเพิ่ม ({vatType === 'none' ? 'Non-VAT' : `VAT ${vatRates}%${vatType === 'mixed' ? ' บางรายการ' : ''}`})
@@ -429,6 +425,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                         : formatCurrency(vatAmount)}
                     </span>
                   </div>
+                  )}
                   <div className="flex justify-between py-2 border-t-2 border-slate-800 text-slate-900 font-black text-sm bg-slate-50 px-2 rounded">
                     <span>จำนวนเงินรวมทั้งสิ้น (GRAND TOTAL)</span>
                     <span className="text-sky-600 text-base">{formatCurrency(finalTotal)}</span>
