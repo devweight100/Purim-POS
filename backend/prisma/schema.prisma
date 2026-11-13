@@ -856,6 +856,7 @@ model StoreSettings {
   receiptHeader String?  @map("receipt_header")
   receiptFooter String?  @map("receipt_footer")
   backupOffsiteDir String? @map("backup_offsite_dir") // folder on another disk / synced cloud folder for backup copies
+  receiptOptions   Json?   @map("receipt_options") // what slips / A4 documents show: { slip: {...}, a4: {...} } (shared/src/receipt-options.ts)
   approvalRules    Json?   @map("approval_rules") // { maxDiscountPercent: {CASHIER: 10, ...}, belowCostNeedsApproval, belowPriceFloorNeedsApproval }
   vatRate       Decimal  @default(7) @map("vat_rate") @db.Decimal(5, 2)
   vatEnabled    Boolean  @default(false) @map("vat_enabled") // store charges VAT on sales (off = no VAT anywhere on bills)
