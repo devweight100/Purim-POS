@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ThermalReceiptView, SAMPLE_RECEIPT_DATA, type ReceiptData } from '../ThermalReceiptView';
