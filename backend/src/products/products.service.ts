@@ -6,6 +6,7 @@ import { InventoryService } from '../inventory/inventory.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { rethrowPrismaError } from './prisma-errors';
+import { LOOKUP_FILTERS, type LookupFilter, packChain, priceLevels, rankCandidates, searchTokens, stockLevel } from './product-lookup';
 import { addQty, assertQtyAllowed, decimalQtyAllowed, hasMax2Decimals, qn, roundQty } from '../common/qty';
 
 /** Highest price / cost accepted for a product (columns are Decimal(10,2)). */
@@ -466,6 +467,93 @@ export class ProductsService {
       include: this.productInclude,
     });
     return products.map((p) => this.mapProductWithStock(p));
+  }
+
+  /**
+   * Read-only lookup for the mobile summary page (GET /products/lookup): active products matching
+   * every word of `q` in name / SKU / barcode / pack barcode, with stock in the base unit, packaging
+   * units (size in base units + price levels) and price levels. `filter` low / out uses the store's
+   * lowStockThreshold (bundles have no stock of their own and are left out of those two filters).
+   * Cost is included here; the controller strips it for users without VIEW_COST.
+   */
+  async lookup(opts: { q?: string; filter?: string; page?: number; limit?: number }) {
+    const filter = (LOOKUP_FILTERS as readonly string[]).includes(opts.filter || 'all') ? ((opts.filter || 'all') as LookupFilter) : null;
+    if (!filter) throw new BadRequestException('ตัวกรองไม่ถูกต้อง (all, low, out)');
+    const page = Math.max(1, Math.floor(opts.page || 1));
+    const limit = Math.min(50, Math.max(1, Math.floor(opts.limit || 20)));
+    const tokens = searchTokens(opts.q);
+    const where: Prisma.ProductWhereInput = {
+      isActive: true,
+      AND: tokens.map((t) => ({
+        OR: [
+          { name: { contains: t, mode: 'insensitive' } },
+          { sku: { contains: t, mode: 'insensitive' } },
+          { barcodes: { some: { barcode: { contains: t } } } },
+          { packagingUnits: { some: { barcode: { contains: t } } } },
+        ],
+      })),
+    };
+    const [settings, rows, sums] = await Promise.all([
+      this.prisma.storeSettings.findFirst({ select: { lowStockThreshold: true } }),
+      this.prisma.product.findMany({
+        where,
+        select: {
+          id: true, name: true, sku: true, isBundle: true,
+          barcodes: { select: { barcode: true } },
+          bundleItems: { select: { childProductId: true, quantity: true } },
+        },
+      }),
+      this.prisma.stockBatch.groupBy({ by: ['productId'], _sum: { quantityRemaining: true } }),
+    ]);
+    const thresholdRaw = Number(settings?.lowStockThreshold);
+    const threshold = Number.isFinite(thresholdRaw) && thresholdRaw >= 0 ? thresholdRaw : 5;
+    const stockOf = new Map(sums.map((s) => [s.productId, roundQty(Number(s._sum.quantityRemaining || 0))]));
+    const stockFor = (r: (typeof rows)[number]): number => {
+      if (!r.isBundle || r.bundleItems.length === 0) return stockOf.get(r.id) || 0;
+      return Math.max(0, Math.min(...r.bundleItems.map((bi) => Math.floor((stockOf.get(bi.childProductId) || 0) / (qn(bi.quantity) || 1) + 1e-9))));
+    };
+    const candidates = rows.map((r) => ({ ...r, barcodes: r.barcodes.map((b) => b.barcode), stock: stockFor(r) }));
+    const counts = { all: candidates.length, low: 0, out: 0 };
+    for (const c of candidates) {
+      if (c.isBundle) continue;
+      const lv = stockLevel(c.stock, threshold);
+      if (lv === 'low') counts.low++;
+      else if (lv === 'out') counts.out++;
+    }
+    const filtered = filter === 'all' ? candidates : candidates.filter((c) => !c.isBundle && stockLevel(c.stock, threshold) === filter);
+    const ranked = rankCandidates(filtered, opts.q || '');
+    const pageRows = ranked.slice((page - 1) * limit, page * limit);
+    const details = await this.prisma.product.findMany({
+      where: { id: { in: pageRows.map((r) => r.id) } },
+      select: {
+        id: true, name: true, sku: true, unit: true, isBundle: true, basePrice: true, costPrice: true,
+        priceLevel1: true, priceLevel2: true, priceLevel3: true, priceLevel4: true, priceLevel5: true,
+        category: { select: { name: true } },
+        packagingUnits: { orderBy: { sortOrder: 'asc' } },
+        wholesalePrices: { orderBy: { sortOrder: 'asc' }, select: { minQuantity: true, unitPrice: true } },
+      },
+    });
+    const byId = new Map(details.map((d) => [d.id, d]));
+    const data = pageRows.flatMap((r) => {
+      const d = byId.get(r.id);
+      if (!d) return [];
+      return [{
+        id: d.id,
+        name: d.name,
+        sku: d.sku,
+        unit: d.unit || 'ชิ้น',
+        category: d.category?.name || null,
+        isBundle: d.isBundle,
+        barcodes: r.barcodes,
+        stock: r.stock,
+        stockLevel: d.isBundle ? null : stockLevel(r.stock, threshold),
+        prices: priceLevels(d as unknown as Record<string, unknown>, d.basePrice),
+        packs: packChain(d.packagingUnits as unknown as { name: string; qtyPerPrev: number; barcode: string | null }[]),
+        wholesalePrices: d.wholesalePrices.map((w) => ({ minQuantity: Number(w.minQuantity), unitPrice: Number(w.unitPrice) })),
+        costPrice: Number(d.costPrice || 0),
+      }];
+    });
+    return { data, meta: { total: filtered.length, page, limit, totalPages: Math.ceil(filtered.length / limit), lowStockThreshold: threshold, counts } };
   }
 
   async findOne(id: string) {

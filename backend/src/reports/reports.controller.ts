@@ -10,14 +10,20 @@ import { ReportsService } from './reports.service';
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
-  /** ?range=today|7days|30days|month|all (default today) or startDate/endDate (YYYY-MM-DD = Bangkok day) */
+  /**
+   * ?range=today|7days|30days|month|all (default today) or startDate/endDate (YYYY-MM-DD = Bangkok day)
+   * &top=N (top products, default 5, max 50) &compare=1 (adds `previous`: the period before, same length)
+   * One-day periods also get `hourly` (24 Bangkok hours).
+   */
   @Get('dashboard')
   async getDashboard(
     @Query('range') range?: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
+    @Query('top') top?: string,
+    @Query('compare') compare?: string,
   ) {
-    return this.reportsService.getDashboard({ range, startDate, endDate });
+    return this.reportsService.getDashboard({ range, startDate, endDate, top, compare });
   }
 
   @Get('sales-summary')
