@@ -69,6 +69,7 @@ interface PoLikeItem {
 /** A purchase order in any shape this document accepts. */
 interface PoLike {
   id?: string;
+  notes?: string | null;
   poNumber?: string;
   poCode?: string;
   createdAt?: string;
@@ -236,8 +237,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
         <div className="p-6 bg-slate-100/60 overflow-y-auto overflow-x-auto flex-1 flex justify-center">
           <div
             ref={printRef}
-            className="a4-container w-full max-w-[210mm] min-h-[297mm] bg-white border border-slate-300 p-8 shadow-lg text-slate-800 flex flex-col justify-between"
-            style={{ fontFamily: `'Sarabun', sans-serif` }}
+            className="a4-container w-[210mm] max-w-[210mm] shrink-0 min-h-[297mm] bg-white border border-slate-300 p-[10mm] shadow-lg text-slate-800 font-sans flex flex-col justify-between box-border"
           >
             {/* Top Company Header & Document Title */}
             <div>
@@ -245,7 +245,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <Store className="w-7 h-7 text-sky-600" />
-                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">{storeSettings?.storeName || 'ร้านปุริม POS / PURIM POS STORE'}</h1>
+                    <h1 className="text-2xl font-black text-slate-900 tracking-tight">{storeSettings?.storeName}</h1>
                   </div>
                   {storeSettings?.storeAddress && <p className="text-xs text-slate-600 font-medium">{storeSettings.storeAddress}</p>}
                   <p className="text-xs text-slate-600 font-medium">
@@ -324,13 +324,13 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                   <thead>
                     <tr className="bg-slate-800 text-white font-bold uppercase">
                       <th className="p-2.5 text-center w-12 border-r border-slate-700">ลำดับ</th>
-                      <th className="p-2.5 w-32 border-r border-slate-700">รหัสสินค้า</th>
+                      <th className="p-2.5 w-24 border-r border-slate-700">รหัสสินค้า</th>
                       <th className="p-2.5 border-r border-slate-700">รายการสินค้า (DESCRIPTION)</th>
-                      <th className="p-2.5 text-right w-20 border-r border-slate-700">จำนวน</th>
-                      <th className="p-2.5 text-right w-24 border-r border-slate-700">หน่วยละ</th>
+                      <th className="p-2.5 text-right w-16 border-r border-slate-700">จำนวน</th>
+                      <th className="p-2.5 text-right w-20 border-r border-slate-700">หน่วยละ</th>
                       <th className="p-2.5 text-right w-20 border-r border-slate-700">ส่วนลด</th>
-                      <th className="p-2.5 text-right w-20 border-r border-slate-700">VAT</th>
-                      <th className="p-2.5 text-right w-28">จำนวนเงิน (บาท)</th>
+                      <th className="p-2.5 text-right w-16 border-r border-slate-700">VAT</th>
+                      <th className="p-2.5 text-right w-24">จำนวนเงิน (บาท)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 font-medium">
@@ -392,7 +392,8 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                     </p>
                   </div>
                   <div className="mt-3 text-[11px] text-slate-500 italic">
-                    * หมายเหตุ: กรุณาส่งมอบสินค้าพร้อมใบส่งสินค้า/ใบแจ้งหนี้ และระบุเลขที่ใบสั่งซื้อบนเอกสารทุกครั้ง
+                    {poData.notes && <p className="not-italic text-slate-800 font-semibold mb-1">หมายเหตุ: {poData.notes}</p>}
+                    * กรุณาส่งมอบสินค้าพร้อมใบส่งสินค้า/ใบแจ้งหนี้ และระบุเลขที่ใบสั่งซื้อบนเอกสารทุกครั้ง
                   </div>
                 </div>
 

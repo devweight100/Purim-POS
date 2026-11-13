@@ -90,7 +90,7 @@ let vouchersMem: PaymentVoucher[] = [];
 let lastVoucherSyncAt = 0;
 let lastBillsSyncAt = 0;
 
-function normalizeVoucherRow(v: ApiPaymentVoucher | null | undefined): PaymentVoucher {
+export function normalizeVoucherRow(v: ApiPaymentVoucher | null | undefined): PaymentVoucher {
   const bills: PaymentVoucherBillItem[] = Array.isArray(v?.bills)
     ? v.bills
     : Array.isArray(v?.items)

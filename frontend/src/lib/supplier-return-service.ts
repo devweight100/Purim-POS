@@ -58,7 +58,8 @@ export function loadPurchaseOrders(): ApiPurchaseOrder[] {
 }
 
 // ─── Supplier Return Notes ───
-function mapReturnNote(item: ApiSupplierReturnNote): SupplierReturnNote {
+/** Server supplier-return note -> the shape the pages and the printed note use. */
+export function mapReturnNote(item: ApiSupplierReturnNote): SupplierReturnNote {
   const docNum = item.returnNumber || item.noteNumber || item.id;
   const rawStatus = item.frontendStatus || item.status;
   const resolvedStatus =

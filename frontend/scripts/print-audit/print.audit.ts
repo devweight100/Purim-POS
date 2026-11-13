@@ -223,7 +223,7 @@ async function openFromSearch(docNumber: string) {
   await page.keyboard.press('F3');
   const search = page.getByRole('dialog').last();
   await search.locator('input').first().fill(docNumber);
-  await page.keyboard.press('Enter');
+  // results appear as you type (Enter would open the first one)
   await search.getByText(docNumber).first().click();
 }
 
@@ -302,6 +302,7 @@ test('seed the other documents through the API', async () => {
       items: [{ orderItemId: line?.id, quantity: 1 }],
       reason: 'ลูกค้าซื้อเกิน',
       refundMethod: 'CASH',
+      shiftId: shift?.id,
       clientReturnId: `pa-return-${Date.now()}-0001`,
     });
   } catch (e) {
@@ -330,7 +331,8 @@ test('seed the other documents through the API', async () => {
       orderId: ids.cashOrderId,
       quantity: 1,
       unitName: 'ถุง',
-      resolutionType: 'REFUND',
+      resolutionType: 'STORE_DISCOUNT',
+      discountAmount: 145,
       defectReason: 'ถุงขาด ปูนจับตัวเป็นก้อน',
       cashierName: 'ผู้ดูแลระบบ',
       clientClaimId: `pa-claim-${Date.now()}-0001`,
@@ -356,9 +358,9 @@ test('seed the other documents through the API', async () => {
       billDiscountType: 'baht',
       billDiscountValue: 100,
       items: [
-        { productId: pipe, quantity: 50, unitCost: 62, discountType: 'percent', discountValue: 5, vatRate: 7 },
-        { productId: ids['PA-CEMENT-TPI'], quantity: 20, unitCost: 101.5, discountType: 'baht', discountValue: 30, vatRate: 7 },
-        { productId: ids['PA-SCREW-6'], quantity: 10, unitCost: 24.5, vatRate: 7 },
+        { productId: pipe, quantity: 50, unitCost: 62, discountType: 'percent', discountValue: 5, vatType: 'EXCLUDED', vatRate: 7 },
+        { productId: ids['PA-CEMENT-TPI'], quantity: 20, unitCost: 101.5, discountType: 'baht', discountValue: 30, vatType: 'EXCLUDED', vatRate: 7 },
+        { productId: ids['PA-SCREW-6'], quantity: 10, unitCost: 24.5, vatType: 'EXCLUDED', vatRate: 7 },
       ],
     },
   );

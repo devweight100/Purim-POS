@@ -175,6 +175,15 @@ export function buildPrintHtml(element: HTMLElement, title: string, format: '80m
               box-shadow: none !important;
               overflow: visible !important;
             }
+            /* a single sheet drawn 297 mm tall on screen would spill a few mm onto a 2nd page inside
+               the page margins: on paper it is as tall as its content */
+            .print-wrapper > *:not(.a4-page):not(.a4-preview-stack) {
+              min-height: 0 !important;
+              height: auto !important;
+              border: none !important;
+              box-shadow: none !important;
+              border-radius: 0 !important;
+            }
             .no-print-preview { display: none !important; }
           }
   `;

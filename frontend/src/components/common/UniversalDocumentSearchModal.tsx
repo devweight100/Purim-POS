@@ -13,10 +13,12 @@ import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api';
 import { errorText } from '@/lib/api-error';
 import type {
-  ApiDebt, ApiDocumentSearchResult, ApiOrderLike, ApiShiftRecord, ClaimRecord, DebtPaymentInstallment, DebtRecord,
+  ApiClaim, ApiDebt, ApiDocumentSearchResult, ApiOrderLike, ApiPaymentVoucher, ApiShiftRecord, ApiSupplierReturnNote, ClaimRecord, DebtPaymentInstallment, DebtRecord,
   SupplierReturnNote,
 } from '@/lib/types';
-import type { PaymentVoucher } from '@/lib/payable-service';
+import { normalizeVoucherRow, type PaymentVoucher } from '@/lib/payable-service';
+import { mapReturnNote } from '@/lib/supplier-return-service';
+import { mapServerClaim } from '@/lib/claim-service';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -129,7 +131,8 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
         break;
       }
       case 'CLAIM': {
-        setActiveClaim(doc.rawData as ClaimRecord);
+        // same mapping as the claims page, so the document prints the same from both
+        setActiveClaim(mapServerClaim(doc.rawData as ApiClaim));
         break;
       }
       case 'DEBT': {
@@ -167,11 +170,11 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
         break;
       }
       case 'SUPPLIER_RETURN': {
-        setActiveReturnNote(doc.rawData as SupplierReturnNote);
+        setActiveReturnNote(mapReturnNote(doc.rawData as ApiSupplierReturnNote));
         break;
       }
       case 'PAYMENT_VOUCHER': {
-        setActiveVoucher(doc.rawData as PaymentVoucher);
+        setActiveVoucher(normalizeVoucherRow(doc.rawData as ApiPaymentVoucher));
         break;
       }
     }

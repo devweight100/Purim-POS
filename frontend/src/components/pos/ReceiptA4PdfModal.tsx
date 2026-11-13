@@ -1,7 +1,11 @@
 "use client";
 
 import { useRef, useState } from 'react';
-import { formatCurrency, formatDocDate, formatDocDateTime, thaiBahtText } from '@/lib/utils';
+import { formatDocDate, formatDocDateTime, thaiBahtText } from '@/lib/utils';
+
+/** ฿1,234.50: amounts on a tax invoice always show satang */
+const formatCurrency = (v: number | string | null | undefined) =>
+  '฿' + (Number(v) || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 import { paymentMethodLabel } from '@/lib/receipt-mapper';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe, exportElementToPdf, buildA4Pdf } from '@/lib/pdf-print-service';
@@ -140,6 +144,8 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
   const receiptA4Ref = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const storeSettings = loadStoreSettings();
+  // ต้นฉบับ (for the buyer) / สำเนา (the shop's copy): reprints default to a copy, the cashier can switch
+  const [copyChoice, setCopyChoice] = useState<{ doc: string; copy: boolean } | null>(null);
 
   if (!data) return null;
 
@@ -148,7 +154,7 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
   const isInstallment = data.isInstallmentReceipt === true;
   const rawReceiptAmount = isInstallment ? (data.installmentAmount ?? data.totalAmount) : data.totalAmount;
   const receiptAmount = Number(rawReceiptAmount) || 0;
-  const isCopy = data.isCopy === true;
+  const isCopy = copyChoice && copyChoice.doc === data.orderNumber ? copyChoice.copy : data.isCopy === true;
   const missingTaxId = (hasVat || storeSettings.vatEnabled) && !String(storeSettings.taxId || '').trim();
   const vatRateLabel = Number(storeSettings.vatRate) || 7;
 
@@ -408,7 +414,7 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
           </div>
         )}
 
-        {data.customerName && data.customerPointsEarned !== undefined && (
+        {data.customerName && (data.customerPointsEarned ?? 0) > 0 && (
           <div className="border border-slate-200 bg-slate-50 p-1.5 rounded-xl text-[10px] text-slate-600 flex justify-between">
             <span>ได้รับแต้ม: <b className="text-emerald-700 font-bold">+{data.customerPointsEarned ?? 0}</b></span>
             {data.customerPointsBalance !== undefined && (
@@ -566,7 +572,18 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
               <p className="text-xs text-slate-500 font-mono mt-0.5">
                 เอกสารเลขที่: {data.orderNumber}
                 {pageCount > 1 && <span className="ml-2 font-sans font-bold text-slate-700">({pageCount} หน้า)</span>}
-                {isCopy && <span className="ml-2 font-sans font-bold text-slate-700">สำเนา (COPY)</span>}
+                <span className="ml-2 inline-flex rounded-md border border-slate-300 overflow-hidden font-sans align-middle">
+                  {([false, true] as const).map((copy) => (
+                    <button
+                      key={String(copy)}
+                      type="button"
+                      onClick={() => setCopyChoice({ doc: data.orderNumber, copy })}
+                      className={`px-2 py-0.5 text-[11px] font-bold ${isCopy === copy ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+                    >
+                      {copy ? 'สำเนา' : 'ต้นฉบับ'}
+                    </button>
+                  ))}
+                </span>
                 {isInstallment && (
                   <span className="ml-2 bg-indigo-100 text-indigo-800 text-[11px] font-bold px-2 py-0.5 rounded-md font-sans">
                     รับชำระงวดที่ {data.installmentNo}: {formatCurrency(data.installmentAmount || 0)} (คงค้าง {formatCurrency(data.remainingDebt || 0)})
