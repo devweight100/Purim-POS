@@ -6,10 +6,9 @@ import { cn } from '@/lib/utils';
 /** Baht with satang only when there are satang: ฿1,234 / ฿1,234.50 */
 export function baht(n: unknown): string {
   const v = Number(n) || 0;
-  return (
-    '฿' +
-    v.toLocaleString('th-TH', { minimumFractionDigits: v % 1 !== 0 ? 2 : 0, maximumFractionDigits: 2 })
-  );
+  const a = Math.abs(v);
+  // minus before the sign: -฿12 (refunds bigger than the day's transfers)
+  return (v < 0 ? '-฿' : '฿') + a.toLocaleString('th-TH', { minimumFractionDigits: a % 1 !== 0 ? 2 : 0, maximumFractionDigits: 2 });
 }
 
 export function Card({ children, className, ...rest }: { children: ReactNode; className?: string } & React.HTMLAttributes<HTMLDivElement>) {
