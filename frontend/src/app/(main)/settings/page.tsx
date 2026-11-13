@@ -509,6 +509,14 @@ export default function SettingsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* ─── LEFT COLUMN: SETTINGS FORM (7 cols) ─── */}
         <div className="lg:col-span-7 space-y-5">
+          {/* what slips / A4 documents show: first, so it sits next to the live preview */}
+          <ReceiptOptionsSection
+            settings={settings}
+            onChange={setSettings}
+            layout={receiptLayout}
+            onLayoutChange={setReceiptLayout}
+            disabled={!!storeLoadError}
+          />
           {/* Card 1: ข้อมูลร้านค้า & เอกสาร */}
           <Card className="bg-white border-slate-200 shadow-2xs">
             <CardHeader className="pb-3 border-b border-slate-100">
@@ -769,15 +777,6 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
-
-          {/* Card 2b: what slips / A4 documents show */}
-          <ReceiptOptionsSection
-            settings={settings}
-            onChange={setSettings}
-            layout={receiptLayout}
-            onLayoutChange={setReceiptLayout}
-            disabled={!!storeLoadError}
-          />
 
           {/* Card 3: ตั้งค่าลิ้นชักเก็บเงิน & เครื่องพิมพ์ใบเสร็จ */}
           <Card className="bg-white border-slate-200 shadow-2xs">
