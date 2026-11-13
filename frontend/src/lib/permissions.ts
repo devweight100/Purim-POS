@@ -39,6 +39,13 @@ export const ROUTE_PERMISSIONS: Record<string, PermissionRequirement> = {
   '/approvals': ['APPROVE_OVERRIDES', 'VIEW_REPORTS'],
   '/settings': 'MANAGE_SETTINGS',
   '/users': 'MANAGE_USERS',
+  // mobile summary (sales / stock / bills, read-only): GET /reports/dashboard, /products/lookup need VIEW_REPORTS
+  '/m': 'VIEW_REPORTS',
+};
+
+/** Roles that may open a route whatever their permissions (the backend lets them through as well). */
+export const ROUTE_ROLES: Record<string, string[]> = {
+  '/m': ['MANAGER'],
 };
 
 export function hasPermission(
@@ -76,6 +83,7 @@ export function canAccessRoute(
   // Exact match or sub-route match
   for (const [route, perm] of Object.entries(ROUTE_PERMISSIONS)) {
     if (pathname === route || pathname.startsWith(route + '/')) {
+      if (user.role && ROUTE_ROLES[route]?.includes(user.role)) return true;
       return hasPermission(user, perm);
     }
   }
