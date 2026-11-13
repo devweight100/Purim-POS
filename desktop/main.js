@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, net, Menu, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, net, Menu, dialog, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -971,10 +971,17 @@ body { margin: 0; padding: 0; font-family: 'Control', 'FontControl', sans-serif;
   });
 }
 
-// Hardware: 100% Silent Direct Print to Epson TM-T82 without any popup dialog
-function printViaDriver(html, printerName, isA4, showDialog = false) {
+// Print through the Windows driver (A4 documents; receipts only as a picture, see print-silent).
+// PURIM_DRIVER_OUT=<file.pdf> saves the job as a PDF instead of printing (tests).
+function printViaDriver(html, printerName, isA4, showDialog = false, slipHeightMm = 300) {
   return new Promise(async (resolve) => {
     let printWin = null;
+    let tmpDir = null;
+    const finish = (result) => {
+      if (printWin && !printWin.isDestroyed()) printWin.close();
+      if (tmpDir) setTimeout(() => { try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {} }, 5000);
+      resolve(result);
+    };
     try {
       // 302px exactly equals 80mm at 96 DPI, preventing thermal roll shrinkage
       const winWidth = isA4 ? 794 : 302;
@@ -995,48 +1002,56 @@ function printViaDriver(html, printerName, isA4, showDialog = false) {
       // A4 with no A4 printer configured -> let the user pick in the system print dialog
       const targetPrinter = showDialog ? '' : await resolvePrinterDevice(printerName || config.printerName);
 
-      printWin.webContents.on('did-finish-load', () => {
-        const printOptions = {
-          silent: !showDialog,
-          printBackground: true,
-          margins: {
-            marginType: 'none'
-          }
-        };
-        if (targetPrinter) printOptions.deviceName = targetPrinter;
-
-        // Explicit 80mm thermal roll sizing for receipt printers
-        if (!isA4) {
-          printOptions.pageSize = {
-            width: 80000,   // 80mm in microns
-            height: 300000  // continuous thermal roll
-          };
-        }
-
-        printWin.webContents.print(printOptions, (success, failureReason) => {
-          if (printWin && !printWin.isDestroyed()) {
-            printWin.close();
-          }
-          console.log(`Print job to [${targetPrinter}]: success=${success}, reason=${failureReason}`);
-          resolve({ success, printer: targetPrinter, failureReason });
+      // Large documents (a slip picture) load from a temp file: data: URLs have a size limit
+      const doc = String(html);
+      if (doc.length > 1024 * 1024) {
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'purim-driver-'));
+        const file = path.join(tmpDir, 'print.html');
+        fs.writeFileSync(file, doc, 'utf8');
+        await printWin.loadFile(file);
+      } else {
+        // baseURLForDataURL so styles, fonts, and assets resolve properly
+        await printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(doc)}`, {
+          baseURLForDataURL: `${serverBase}/`
         });
-      });
+      }
+      // web fonts and images before printing
+      await printWin.webContents.executeJavaScript(
+        `Promise.race([Promise.all([document.fonts ? document.fonts.ready : 0, ...Array.from(document.images).map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; }))]), new Promise(r => setTimeout(r, 2500))]).then(() => true)`,
+        true,
+      ).catch(() => undefined);
 
-      // Load receipt HTML with baseURLForDataURL so styles, fonts, and assets resolve properly
-      await printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`, {
-        baseURLForDataURL: `${serverBase}/`
+      const pageSize = isA4 ? 'A4' : { width: 80000, height: Math.round(slipHeightMm * 1000) }; // microns; one page as long as the slip
+      if (process.env.PURIM_DRIVER_OUT) {
+        // printToPDF takes inches, print() microns
+        const pdfSize = isA4 ? 'A4' : { width: 80 / 25.4, height: slipHeightMm / 25.4 };
+        const pdf = await printWin.webContents.printToPDF({ printBackground: true, pageSize: pdfSize, margins: { top: 0, bottom: 0, left: 0, right: 0 } });
+        fs.writeFileSync(process.env.PURIM_DRIVER_OUT, pdf);
+        log(`[DriverPrint] saved to ${process.env.PURIM_DRIVER_OUT} (${isA4 ? 'A4' : '80mm'})`);
+        return finish({ success: true, printer: targetPrinter, mode: 'driver-file' });
+      }
+
+      const printOptions = {
+        silent: !showDialog,
+        printBackground: true,
+        margins: { marginType: 'none' }
+      };
+      if (targetPrinter) printOptions.deviceName = targetPrinter;
+      // Explicit 80mm thermal roll sizing for receipt printers
+      if (!isA4) printOptions.pageSize = pageSize;
+
+      printWin.webContents.print(printOptions, (success, failureReason) => {
+        console.log(`Print job to [${targetPrinter}]: success=${success}, reason=${failureReason}`);
+        finish({ success, printer: targetPrinter, failureReason });
       });
     } catch (err) {
-      if (printWin && !printWin.isDestroyed()) {
-        printWin.close();
-      }
       console.error('Silent print failed:', err);
-      resolve({ success: false, failureReason: err.message });
+      finish({ success: false, failureReason: err.message });
     }
   });
 }
 
-const { printHtmlAsRaster, warmUp: warmUpPrinting, shutdown: shutdownPrinting } = require('./escpos-raster');
+const { printHtmlAsRaster, renderSlipPng, slipImageHtml, warmUp: warmUpPrinting, shutdown: shutdownPrinting } = require('./escpos-raster');
 
 function guessPaperDots(printerName) {
   const n = String(printerName || '').toLowerCase();
@@ -1066,24 +1081,46 @@ ipcMain.handle('print-silent', async (event, { html, printerName, format, mode, 
   }
   const receiptMode = mode || config.receiptPrintMode || 'raster';
   const targetPrinter = await resolvePrinterDevice(printerName || config.printerName);
+  const serverBase = (config.serverUrl || 'http://localhost:3000').replace(/\/+$/, '');
+  const dots = Number(config.paperDots) || guessPaperDots(targetPrinter);
 
-  if (!isA4 && receiptMode !== 'driver') {
+  // Receipts never reach the driver as text: thermal drivers replace TrueType text with their
+  // built-in fonts, which have no Thai glyphs, so Thai came out as "?????". RAW raster first;
+  // if that fails (or receiptPrintMode = "driver") the driver gets the same slip as a picture.
+  let png = null;
+  if (receiptMode !== 'driver') {
     try {
-      const serverBase = (config.serverUrl || 'http://localhost:3000').replace(/\/+$/, '');
       const res = await printHtmlAsRaster(cleanHtml, {
         printerName: targetPrinter,
-        dots: Number(config.paperDots) || guessPaperDots(targetPrinter),
+        dots,
         baseURL: `${serverBase}/`,
         cut: cut !== false && config.autoCut !== false,
       });
-      console.log(`[RasterPrint] ${targetPrinter}: ${JSON.stringify({ ...res, output: undefined })}`);
+      console.log(`[RasterPrint] ${targetPrinter}: ${JSON.stringify({ ...res, png: undefined, output: undefined })}`);
       if (res.success) return { success: true, printer: targetPrinter, mode: 'raster' };
-      console.warn('[RasterPrint] failed, falling back to driver:', res.error);
+      png = res.png || null;
+      log(`[RasterPrint] failed (${res.error}), printing the slip as a picture through the driver`);
     } catch (err) {
-      console.warn('[RasterPrint] error, falling back to driver:', err);
+      log(`[RasterPrint] error (${(err && err.message) || err}), printing the slip as a picture through the driver`);
     }
   }
-  return printViaDriver(cleanHtml, targetPrinter, isA4);
+  if (!png) {
+    try {
+      png = await renderSlipPng(cleanHtml, { dots, baseURL: `${serverBase}/` });
+    } catch (err) {
+      log(`[DriverPrint] slip could not be drawn: ${(err && err.message) || err}`);
+      // never fall back to text (prints "?????" on thermal printers): report the failure instead
+      return { success: false, printer: targetPrinter, failureReason: 'วาดใบเสร็จเพื่อพิมพ์ไม่สำเร็จ' };
+    }
+  }
+  // one page exactly as long as the picture (80 mm wide), so the roll is not cut into 300 mm pages
+  let heightMm = 300;
+  try {
+    const size = nativeImage.createFromBuffer(png).getSize();
+    if (size.width > 0) heightMm = Math.max(40, Math.ceil((size.height / size.width) * 80) + 2);
+  } catch {}
+  const res = await printViaDriver(slipImageHtml(png), targetPrinter, false, false, heightMm);
+  return { ...res, mode: 'driver-image' };
 });
 
 // Hardware: Cash Drawer Kick pulse supporting Auto (Dual ESC/POS + Epson APD Font), ESC/POS only, or APD Font only
