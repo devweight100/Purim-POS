@@ -308,6 +308,8 @@ async function slipPictureHtml(fullHtml: string, title: string): Promise<string 
     if (!root) return null;
     const canvas = await html2canvas(root, {
       scale: 2, // 576 dots: the printer's resolution at 72 mm
+      // the browser draws the slip itself (html2canvas' own text layout misplaces Thai lines)
+      foreignObjectRendering: true,
       backgroundColor: '#ffffff',
       useCORS: true,
       logging: false,
