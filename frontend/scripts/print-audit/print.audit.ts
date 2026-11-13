@@ -76,7 +76,7 @@ async function scan(code: string) {
 
 test.beforeAll(async ({ browser }) => {
   token = await adminToken();
-  await api('PATCH', '/settings', token, { ...STORE, vatEnabled: VAT, vatRate: 7, allowDecimalQty: false });
+  await api('PATCH', '/settings', token, { ...STORE, vatEnabled: VAT, vatRate: 7, allowDecimalQty: false, receiptOptions: null });
 
   // products (idempotent by SKU)
   const existing = await api<{ data?: { id: string; sku: string }[] } | { id: string; sku: string }[]>('GET', '/products?limit=500', token);

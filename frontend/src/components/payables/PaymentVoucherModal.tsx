@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import { 
   Building2, CheckCircle2, Download, Printer, 
-  FileText, Store, Phone, MapPin, Hash
+  FileText, Phone, MapPin, Hash
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +19,7 @@ import { PayablePaymentEntry, SupplierPayableBill, PaymentVoucher } from '@/lib/
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
 import { BarcodeView } from '@/components/common/BarcodeView';
+import { A4StoreHeader } from '@/components/common/A4StoreHeader';
 import { toast } from 'sonner';
 
 interface PaymentVoucherModalProps {
@@ -150,33 +151,7 @@ export function PaymentVoucherModal({
 
               {/* Letterhead */}
               <div className="flex justify-between items-start border-b-2 border-slate-800 pb-3">
-                <div className="space-y-1 max-w-[60%]">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white font-black flex items-center justify-center text-sm shadow-xs">
-                      <Store className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h2 className="text-base font-black text-slate-900 leading-tight">
-                        {storeSettings.storeName || 'ร้านปุริม POS'}
-                      </h2>
-                      {storeSettings.branchName && (
-                        <p className="text-[10px] text-slate-500 font-medium">สาขา: {storeSettings.branchName}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {storeSettings.storeAddress && (
-                    <p className="text-slate-600 text-[10px] leading-tight whitespace-pre-wrap">
-                      {storeSettings.storeAddress}
-                    </p>
-                  )}
-
-                  <div className="flex flex-wrap gap-x-3 text-[10px] text-slate-600 font-mono">
-                    {storeSettings.taxId && <span>เลขผู้เสียภาษี: <b>{storeSettings.taxId}</b></span>}
-                    {storeSettings.storePhone && <span>โทร: <b>{storeSettings.storePhone}</b></span>}
-                    {storeSettings.storeEmail && <span>อีเมล: <b>{storeSettings.storeEmail}</b></span>}
-                  </div>
-                </div>
+                <A4StoreHeader settings={storeSettings} showHeaderText={false} className="max-w-[60%]" />
 
                 <div className="text-right space-y-1">
                   <div className="flex items-center justify-end gap-2">

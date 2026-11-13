@@ -50,7 +50,7 @@ import {
 } from "@/lib/store-settings-storage";
 import { LoadErrorState, errorMessage } from "@/components/common/LoadErrorState";
 import { isValidQty, qtyInputMode, qtyStep } from "@/lib/qty";
-import { ThermalReceiptView, SAMPLE_RECEIPT_DATA } from "@/components/pos/ThermalReceiptView";
+import { ReceiptOptionsSection, ReceiptPreview, LayoutTabs, type ReceiptLayout } from "@/components/settings/ReceiptOptionsSection";
 import { formatCurrency } from "@/lib/utils";
 import { VersionDetails } from "@/components/common/VersionInfo";
 import { clearLocalShopData } from '@/lib/local-data-reset';
@@ -261,6 +261,8 @@ function BackupSection() {
 export default function SettingsPage() {
   const [settings, setSettings] = useState<StoreSettings>(DEFAULT_STORE_SETTINGS);
   const [loading, setLoading] = useState(true);
+  // which receipt layout the options card edits and the preview shows
+  const [receiptLayout, setReceiptLayout] = useState<ReceiptLayout>("slip");
   const [storeLoadError, setStoreLoadError] = useState<string | null>(null);
   const [drawerConfig, setDrawerConfig] = useState<CashDrawerConfig>(getCashDrawerConfig());
 
@@ -507,6 +509,14 @@ export default function SettingsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* ─── LEFT COLUMN: SETTINGS FORM (7 cols) ─── */}
         <div className="lg:col-span-7 space-y-5">
+          {/* what slips / A4 documents show: first, so it sits next to the live preview */}
+          <ReceiptOptionsSection
+            settings={settings}
+            onChange={setSettings}
+            layout={receiptLayout}
+            onLayoutChange={setReceiptLayout}
+            disabled={!!storeLoadError}
+          />
           {/* Card 1: ข้อมูลร้านค้า & เอกสาร */}
           <Card className="bg-white border-slate-200 shadow-2xs">
             <CardHeader className="pb-3 border-b border-slate-100">
@@ -998,20 +1008,20 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
               <Eye className="w-4 h-4 text-indigo-600" />
-              <span className="text-sm font-bold text-slate-900">ตัวอย่างสลิป EPSON TM-T82 (ความกว้างพอดีกระดาษ 80mm)</span>
+              <span className="text-sm font-bold text-slate-900">
+                {receiptLayout === "slip" ? "ตัวอย่างสลิป (ความกว้างพอดีกระดาษ 80mm)" : "ตัวอย่างใบเสร็จ A4 (ย่อ 50%)"}
+              </span>
             </div>
-            <Badge variant="outline" className="text-[10.5px] bg-emerald-50 text-emerald-700 border-emerald-300 gap-1 font-bold">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Real-time
-            </Badge>
+            <LayoutTabs value={receiptLayout} onChange={setReceiptLayout} />
           </div>
 
           <div className="bg-slate-200/70 p-4 sm:p-5 rounded-2xl border border-slate-300 flex justify-center shadow-inner overflow-x-auto">
-            {/* The EXACT SAME Thermal Receipt View component as used in POS sales modal */}
-            <ThermalReceiptView data={{ ...SAMPLE_RECEIPT_DATA, vatAmount: settings.vatEnabled ? SAMPLE_RECEIPT_DATA.vatAmount : 0 }} settings={settings} />
+            {/* The EXACT SAME components that print (80 mm slip / A4 receipt) */}
+            <ReceiptPreview settings={settings} layout={receiptLayout} />
           </div>
 
           <p className="text-[11px] text-center text-slate-500 font-sans">
-            💡 ตัวอย่างสลิปด้านบนนี้ ใช้แม่แบบเดียวกับใบเสร็จจริงหน้าขาย 100% (WYSIWYG) เมื่อพิมพ์ออกมาจะได้แบบนี้ทุกประการ
+            ตัวอย่างนี้ใช้แม่แบบเดียวกับที่พิมพ์จริง เปลี่ยนตัวเลือกแล้วเห็นผลทันที (กดบันทึกเพื่อใช้กับทุกเครื่อง)
           </p>
         </div>
       </div>

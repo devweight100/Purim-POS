@@ -9,8 +9,10 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateBy,
   ValidateIf,
 } from 'class-validator';
+import { receiptOptionsInputError } from '../../../shared/src/receipt-options';
 
 /** Decimal columns come back from GET as strings ("0.01"); the settings page sends them back as-is. */
 const toNumber = ({ value }: { value: unknown }) =>
@@ -83,6 +85,17 @@ export class UpdateSettingsDto {
   @Max(9999999999, { message: 'วงเงินเงินสดเข้า/ออกมากเกินไป' })
   cashMovementApprovalLimit?: number;
 
+  /** What slips / A4 documents show ({ slip: { showAddress: false, ... }, a4: {...} }); null = defaults. */
+  @ValidateIf((o) => o.receiptOptions !== undefined)
+  @ValidateBy({
+    name: 'isReceiptOptions',
+    validator: {
+      validate: (value: unknown) => receiptOptionsInputError(value) === null,
+      defaultMessage: (args) => receiptOptionsInputError(args?.value) || 'รูปแบบใบเสร็จไม่ถูกต้อง',
+    },
+  })
+  receiptOptions?: Record<string, Record<string, boolean>> | null;
+
   @IsOptional()
   @IsObject({ message: 'การตั้งค่าแต้มสะสมไม่ถูกต้อง' })
   loyaltyConfig?: Record<string, unknown> | null;
@@ -93,4 +106,5 @@ export const SETTINGS_FIELDS = [
   'storeName', 'branchName', 'storePhone', 'storeAddress', 'storeEmail', 'logoUrl', 'qrImageUrl', 'qrLabel',
   'taxId', 'receiptHeader', 'receiptFooter', 'vatRate', 'vatEnabled', 'pointsPerBaht', 'pointValue',
   'lowStockThreshold', 'allowDecimalQty', 'cashMovementApprovalLimit', 'loyaltyConfig',
+  'receiptOptions',
 ] as const;

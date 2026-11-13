@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Patch, Put, Body, UseGuards, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ServerControlService } from '../server-control/server-control.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
@@ -111,6 +112,7 @@ export class SettingsController {
       if ((body as any)?.[k] !== undefined) data[k] = (body as any)[k];
     }
     if (data.loyaltyConfig === null) data.loyaltyConfig = undefined;
+    if (data.receiptOptions === null) data.receiptOptions = Prisma.DbNull; // back to the defaults
     const settings = await this.prisma.storeSettings.findFirst();
     const saved = settings
       ? await this.prisma.storeSettings.update({ where: { id: settings.id }, data })

@@ -1,13 +1,15 @@
 "use client";
 
-import { useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { formatDocDate, formatDocDateTime, thaiBahtText } from '@/lib/utils';
 
 /** ฿1,234.50: amounts on a tax invoice always show satang */
 const formatCurrency = (v: number | string | null | undefined) =>
   '฿' + (Number(v) || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 import { paymentMethodLabel } from '@/lib/receipt-mapper';
-import { loadStoreSettings } from '@/lib/store-settings-storage';
+import { loadStoreSettings, type StoreSettings } from '@/lib/store-settings-storage';
+import { getReceiptOptions } from '@/lib/receipt-options';
+import { A4FooterText, A4StoreHeader } from '@/components/common/A4StoreHeader';
 import { printDocumentIframe, exportElementToPdf, buildA4Pdf } from '@/lib/pdf-print-service';
 import { Button } from '@/components/ui/button';
 import {
@@ -149,37 +151,10 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
 
   if (!data) return null;
 
-  const vatNum = Number(data.vatAmount) || 0;
-  const hasVat = vatNum > 0;
-  const isInstallment = data.isInstallmentReceipt === true;
-  const rawReceiptAmount = isInstallment ? (data.installmentAmount ?? data.totalAmount) : data.totalAmount;
-  const receiptAmount = Number(rawReceiptAmount) || 0;
+  const { vatShop, hasVat, isInstallment, docTitleTh, pageCount } = receiptA4Meta(data, storeSettings);
   const isCopy = copyChoice && copyChoice.doc === data.orderNumber ? copyChoice.copy : data.isCopy === true;
-  const missingTaxId = (hasVat || storeSettings.vatEnabled) && !String(storeSettings.taxId || '').trim();
-  const vatRateLabel = Number(storeSettings.vatRate) || 7;
-
-  const totalBeforeVat = hasVat
-    ? Math.max(0, receiptAmount - vatNum)
-    : receiptAmount;
-
-  const docTitleTh = isInstallment ? 'ใบเสร็จรับเงิน' : hasVat ? 'ใบเสร็จรับเงิน / ใบกำกับภาษี' : 'ใบเสร็จรับเงิน';
-  const docTitleEn = isInstallment
-    ? `RECEIPT (INSTALLMENT NO. ${data.installmentNo})`
-    : hasVat
-    ? 'RECEIPT / TAX INVOICE'
-    : 'RECEIPT';
-  const docDate = isInstallment && data.installmentDate ? data.installmentDate : data.createdAt;
-
-  // room the totals + signatures need on the last page, in row units
-  const totalsWeight =
-    13 +
-    (data.payments && data.payments.length > 0 ? 1 + Math.ceil(data.payments.length / 2) : 0) +
-    (data.claimInfo ? 4 : 0) +
-    (data.outstandingAmount && data.outstandingAmount > 0 ? 1 : 0);
-  const pages = paginateA4Rows(data.items, totalsWeight);
-  const pageCount = pages.length;
-  // a short single-page bill keeps a few empty grid rows (looks like a pre-printed form)
-  const emptyRowsCount = pageCount === 1 && data.items.length <= 5 ? 6 - data.items.length : 0;
+  // a VAT shop issues a full tax invoice, which needs the shop's tax id
+  const missingTaxId = vatShop && !String(storeSettings.taxId || '').trim();
 
   const handleDownloadPdf = async () => {
     if (!receiptA4Ref.current) return;
@@ -228,6 +203,163 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
     printDocumentIframe(receiptA4Ref.current, docTitle, 'a4');
   };
 
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[96vw] max-w-[1100px] max-h-[95vh] bg-slate-100 border-slate-300 text-slate-900 rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col overflow-hidden">
+        <DialogHeader className="pb-3 border-b border-slate-200 shrink-0">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <DialogTitle className="text-xl font-extrabold flex items-center gap-2 text-slate-900">
+                <FileText className="w-5 h-5 text-indigo-600" />
+                <span>
+                  {isInstallment
+                    ? `ใบเสร็จรับเงินค่างวด (งวดที่ ${data.installmentNo}) - ขนาด A4`
+                    : hasVat
+                    ? 'ใบเสร็จรับเงิน / ใบกำกับภาษีเต็มรูปแบบ (ขนาด A4)'
+                    : 'ใบเสร็จรับเงินเต็มรูปแบบ (ขนาด A4)'}
+                </span>
+              </DialogTitle>
+              <p className="text-xs text-slate-500 font-mono mt-0.5">
+                เอกสารเลขที่: {data.orderNumber}
+                {pageCount > 1 && <span className="ml-2 font-sans font-bold text-slate-700">({pageCount} หน้า)</span>}
+                <span className="ml-2 inline-flex rounded-md border border-slate-300 overflow-hidden font-sans align-middle">
+                  {([false, true] as const).map((copy) => (
+                    <button
+                      key={String(copy)}
+                      type="button"
+                      onClick={() => setCopyChoice({ doc: data.orderNumber, copy })}
+                      className={`px-2 py-0.5 text-[11px] font-bold ${isCopy === copy ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
+                    >
+                      {copy ? 'สำเนา' : 'ต้นฉบับ'}
+                    </button>
+                  ))}
+                </span>
+                {isInstallment && (
+                  <span className="ml-2 bg-indigo-100 text-indigo-800 text-[11px] font-bold px-2 py-0.5 rounded-md font-sans">
+                    รับชำระงวดที่ {data.installmentNo}: {formatCurrency(data.installmentAmount || 0)} (คงค้าง {formatCurrency(data.remainingDebt || 0)})
+                  </span>
+                )}
+                {vatShop && !hasVat && !isInstallment && (
+                  <span className="ml-2 text-emerald-600 font-sans font-bold">(แบบไม่มี VAT)</span>
+                )}
+              </p>
+              {missingTaxId && (
+                <p className="mt-1 text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg px-2 py-1 font-sans">
+                  ยังไม่ได้ตั้งค่าเลขประจำตัวผู้เสียภาษีของร้าน - ใบกำกับภาษีที่ไม่มีเลขผู้เสียภาษีใช้เป็นหลักฐานภาษีไม่ได้ (ตั้งค่าที่ ตั้งค่าร้านค้า)
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleOpenPdfTab}
+                disabled={isGenerating}
+                className="h-9 px-3 text-xs font-bold border-slate-300 hover:bg-white text-slate-700 rounded-xl gap-1.5 shadow-xs"
+                title="เปิดเอกสาร A4 ในแท็บใหม่"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>เปิดแท็บใหม่</span>
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadPdf}
+                disabled={isGenerating}
+                className="h-9 px-3 text-xs font-bold border-slate-300 hover:bg-white text-slate-700 rounded-xl gap-1.5 shadow-xs"
+                title="ดาวน์โหลดไฟล์ A4 PDF"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>ดาวน์โหลด PDF</span>
+              </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleNativePrint}
+                disabled={isGenerating}
+                className="h-9 px-4 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl gap-1.5 shadow-sm"
+                title="สั่งพิมพ์เอกสาร A4 ทันที"
+              >
+                <Printer className="w-4 h-4" />
+                <span>พิมพ์เอกสาร A4</span>
+              </Button>
+            </div>
+          </div>
+        </DialogHeader>
+
+        {/* ─── A4 PAPER PREVIEW: one sheet per printed page ─── */}
+        <div className="flex-1 overflow-y-auto p-2 sm:p-4 flex justify-center bg-slate-200/70 rounded-2xl border border-slate-300/80 my-2">
+          <ReceiptA4Document ref={receiptA4Ref} data={data} settings={storeSettings} isCopy={isCopy} />
+        </div>
+
+        <div className="pt-2 border-t border-slate-200 flex justify-end shrink-0">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="h-10 px-5 border-slate-300 text-slate-700 font-bold rounded-xl"
+          >
+            ปิดหน้าต่าง
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
+/** Everything the A4 receipt derives from the bill and the shop's VAT setting. */
+export function receiptA4Meta(data: ReceiptA4Data, settings: StoreSettings) {
+  // a shop without VAT prints a plain receipt: no tax invoice title, no VAT lines, no tax ids
+  const vatShop = settings.vatEnabled === true;
+  const vatNum = Number(data.vatAmount) || 0;
+  const hasVat = vatShop && vatNum > 0;
+  const isInstallment = data.isInstallmentReceipt === true;
+  const rawReceiptAmount = isInstallment ? (data.installmentAmount ?? data.totalAmount) : data.totalAmount;
+  const receiptAmount = Number(rawReceiptAmount) || 0;
+  const vatRateLabel = Number(settings.vatRate) || 7;
+  const totalBeforeVat = hasVat ? Math.max(0, receiptAmount - vatNum) : receiptAmount;
+  const docTitleTh = isInstallment ? 'ใบเสร็จรับเงิน' : hasVat ? 'ใบเสร็จรับเงิน / ใบกำกับภาษี' : 'ใบเสร็จรับเงิน';
+  const docTitleEn = isInstallment
+    ? `RECEIPT (INSTALLMENT NO. ${data.installmentNo})`
+    : hasVat
+    ? 'RECEIPT / TAX INVOICE'
+    : 'RECEIPT';
+  const docDate = isInstallment && data.installmentDate ? data.installmentDate : data.createdAt;
+  // room the totals + signatures need on the last page, in row units
+  const totalsWeight =
+    13 +
+    (data.payments && data.payments.length > 0 ? 1 + Math.ceil(data.payments.length / 2) : 0) +
+    (data.claimInfo ? 4 : 0) +
+    (data.outstandingAmount && data.outstandingAmount > 0 ? 1 : 0);
+  const pages = paginateA4Rows(data.items, totalsWeight);
+  const pageCount = pages.length;
+  // a short single-page bill keeps a few empty grid rows (looks like a pre-printed form)
+  const emptyRowsCount = pageCount === 1 && data.items.length <= 5 ? 6 - data.items.length : 0;
+  return {
+    vatShop, hasVat, isInstallment, receiptAmount, vatRateLabel, totalBeforeVat, docTitleTh, docTitleEn, docDate,
+    pages, pageCount, emptyRowsCount,
+  };
+}
+
+/**
+ * The A4 receipt / tax invoice itself (one `.a4-page` per printed sheet). The dialog prints this
+ * node, and the settings page previews the same component.
+ */
+export const ReceiptA4Document = React.forwardRef<
+  HTMLDivElement,
+  { data: ReceiptA4Data; settings: StoreSettings; isCopy?: boolean }
+>(function ReceiptA4Document({ data, settings: storeSettings, isCopy = false }, ref) {
+  const o = getReceiptOptions(storeSettings).a4;
+  const {
+    vatShop, hasVat, isInstallment, receiptAmount, vatRateLabel, totalBeforeVat, docTitleTh, docTitleEn, docDate,
+    pages, pageCount, emptyRowsCount,
+  } = receiptA4Meta(data, storeSettings);
   const tableHead = (
     <thead className="bg-slate-100 text-black font-extrabold border-b-2 border-slate-300">
       <tr>
@@ -248,39 +380,11 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
     </span>
   );
 
-  const storeIdLine = (
-    <div className="flex flex-wrap gap-x-3 text-[10.5px] text-slate-600">
-      {storeSettings.taxId && String(storeSettings.taxId).trim() && (
-        <span><b>เลขประจำตัวผู้เสียภาษี:</b> {storeSettings.taxId}</span>
-      )}
-      {storeSettings.storePhone && <span><b>โทร:</b> {storeSettings.storePhone}</span>}
-      {storeSettings.storeEmail && <span><b>อีเมล:</b> {storeSettings.storeEmail}</span>}
-    </div>
-  );
+
 
   const fullHeader = (
     <div className="flex flex-row justify-between items-start gap-4 pb-2.5 border-b-2 border-slate-800">
-      <div className="space-y-0.5 max-w-[450px]">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-black text-base shadow-sm">
-            P
-          </div>
-          <div>
-            <h2 className="text-lg font-black text-slate-900 tracking-tight leading-none">
-              {storeSettings.storeName || 'ร้านปุริม (Purim POS)'}
-            </h2>
-            {storeSettings.branchName && (
-              <span className="text-[10.5px] font-bold text-indigo-700 tracking-wide">
-                สาขา: {storeSettings.branchName}
-              </span>
-            )}
-          </div>
-        </div>
-        {storeSettings.storeAddress && (
-          <p className="text-[10.5px] text-slate-600 leading-snug pt-0.5">{storeSettings.storeAddress}</p>
-        )}
-        {storeIdLine}
-      </div>
+      <A4StoreHeader settings={storeSettings} className="max-w-[450px]" />
 
       <div className="text-right border-2 border-indigo-700 bg-indigo-50/60 p-2.5 rounded-xl min-w-[220px]">
         <h3 className="text-sm font-black text-indigo-950 uppercase tracking-tight">{docTitleTh}</h3>
@@ -323,19 +427,19 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
           <div className="text-[11.5px] font-bold text-slate-900">
             {data.customerCompany || data.customerName || 'ลูกค้าทั่วไป (General Customer)'}
           </div>
-          {data.customerAddress && (
+          {o.showCustomerDetails && data.customerAddress && (
             <div className="text-slate-600 leading-tight flex items-start gap-1 text-[10.5px]">
               <MapPin className="w-3 h-3 text-slate-400 mt-0.5 shrink-0" />
               <span>{data.customerAddress}</span>
             </div>
           )}
-          {data.customerTaxId && (
+          {vatShop && o.showCustomerDetails && data.customerTaxId && (
             <div className="text-slate-700 text-[10.5px]">
               <b>เลขผู้เสียภาษี:</b> <span className="font-mono">{data.customerTaxId}</span>
               {data.customerBranch && <span className="ml-2 font-medium">({data.customerBranch})</span>}
             </div>
           )}
-          {data.customerPhone && (
+          {o.showCustomerDetails && data.customerPhone && (
             <div className="text-slate-700 flex items-center gap-1 text-[10.5px]">
               <Phone className="w-3 h-3 text-slate-400" />
               <span>โทร: {data.customerPhone}</span>
@@ -360,10 +464,12 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
             </span>
             <span className="font-bold text-slate-800">{formatDocDateTime(docDate)}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500 font-semibold">พนักงานขาย (Cashier):</span>
-            <span className="font-medium text-slate-800">{data.userName || 'พนักงาน POS'}</span>
-          </div>
+          {o.showCashier && (
+            <div className="flex justify-between">
+              <span className="text-slate-500 font-semibold">พนักงานขาย (Cashier):</span>
+              <span className="font-medium text-slate-800">{data.userName || 'พนักงาน POS'}</span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span className="text-slate-500 font-semibold">ช่องทางชำระ (Payment):</span>
             <span className="font-bold text-indigo-700">{data.paymentMethod}</span>
@@ -382,12 +488,14 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
   const summaryBlock = (
     <div className="grid grid-cols-12 gap-3 text-xs pt-0.5 break-inside-avoid">
       <div className="col-span-5 space-y-1.5">
-        <div className="bg-slate-100 p-2 rounded-xl border border-slate-200">
-          <span className="text-[10px] font-bold text-slate-600 block">จำนวนเงินตัวอักษร (Amount in Words):</span>
-          <span className="text-[11.5px] font-black text-slate-900 leading-snug">{thaiBahtText(receiptAmount)}</span>
-        </div>
+        {o.showAmountInWords && (
+          <div className="bg-slate-100 p-2 rounded-xl border border-slate-200">
+            <span className="text-[10px] font-bold text-slate-600 block">จำนวนเงินตัวอักษร (Amount in Words):</span>
+            <span className="text-[11.5px] font-black text-slate-900 leading-snug">{thaiBahtText(receiptAmount)}</span>
+          </div>
+        )}
 
-        {data.payments && data.payments.length > 0 && (
+        {o.showPaymentDetails && data.payments && data.payments.length > 0 && (
           <div className="border border-slate-200 rounded-xl p-2 bg-slate-50 space-y-0.5">
             <span className="font-bold text-slate-800 block text-[10.5px]">รายละเอียดการชำระเงิน:</span>
             {data.payments.map((p, i) => (
@@ -414,7 +522,7 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
           </div>
         )}
 
-        {data.customerName && (data.customerPointsEarned ?? 0) > 0 && (
+        {o.showPoints && data.customerName && (data.customerPointsEarned ?? 0) > 0 && (
           <div className="border border-slate-200 bg-slate-50 p-1.5 rounded-xl text-[10px] text-slate-600 flex justify-between">
             <span>ได้รับแต้ม: <b className="text-emerald-700 font-bold">+{data.customerPointsEarned ?? 0}</b></span>
             {data.customerPointsBalance !== undefined && (
@@ -554,97 +662,7 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
   );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[96vw] max-w-[1100px] max-h-[95vh] bg-slate-100 border-slate-300 text-slate-900 rounded-3xl p-4 sm:p-6 shadow-2xl flex flex-col overflow-hidden">
-        <DialogHeader className="pb-3 border-b border-slate-200 shrink-0">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <DialogTitle className="text-xl font-extrabold flex items-center gap-2 text-slate-900">
-                <FileText className="w-5 h-5 text-indigo-600" />
-                <span>
-                  {isInstallment
-                    ? `ใบเสร็จรับเงินค่างวด (งวดที่ ${data.installmentNo}) - ขนาด A4`
-                    : hasVat
-                    ? 'ใบเสร็จรับเงิน / ใบกำกับภาษีเต็มรูปแบบ (ขนาด A4)'
-                    : 'ใบเสร็จรับเงินเต็มรูปแบบ (ขนาด A4)'}
-                </span>
-              </DialogTitle>
-              <p className="text-xs text-slate-500 font-mono mt-0.5">
-                เอกสารเลขที่: {data.orderNumber}
-                {pageCount > 1 && <span className="ml-2 font-sans font-bold text-slate-700">({pageCount} หน้า)</span>}
-                <span className="ml-2 inline-flex rounded-md border border-slate-300 overflow-hidden font-sans align-middle">
-                  {([false, true] as const).map((copy) => (
-                    <button
-                      key={String(copy)}
-                      type="button"
-                      onClick={() => setCopyChoice({ doc: data.orderNumber, copy })}
-                      className={`px-2 py-0.5 text-[11px] font-bold ${isCopy === copy ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'}`}
-                    >
-                      {copy ? 'สำเนา' : 'ต้นฉบับ'}
-                    </button>
-                  ))}
-                </span>
-                {isInstallment && (
-                  <span className="ml-2 bg-indigo-100 text-indigo-800 text-[11px] font-bold px-2 py-0.5 rounded-md font-sans">
-                    รับชำระงวดที่ {data.installmentNo}: {formatCurrency(data.installmentAmount || 0)} (คงค้าง {formatCurrency(data.remainingDebt || 0)})
-                  </span>
-                )}
-                {!hasVat && !isInstallment && (
-                  <span className="ml-2 text-emerald-600 font-sans font-bold">(แบบไม่มี VAT)</span>
-                )}
-              </p>
-              {missingTaxId && (
-                <p className="mt-1 text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded-lg px-2 py-1 font-sans">
-                  ยังไม่ได้ตั้งค่าเลขประจำตัวผู้เสียภาษีของร้าน - ใบกำกับภาษีที่ไม่มีเลขผู้เสียภาษีใช้เป็นหลักฐานภาษีไม่ได้ (ตั้งค่าที่ ตั้งค่าร้านค้า)
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleOpenPdfTab}
-                disabled={isGenerating}
-                className="h-9 px-3 text-xs font-bold border-slate-300 hover:bg-white text-slate-700 rounded-xl gap-1.5 shadow-xs"
-                title="เปิดเอกสาร A4 ในแท็บใหม่"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>เปิดแท็บใหม่</span>
-              </Button>
-
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleDownloadPdf}
-                disabled={isGenerating}
-                className="h-9 px-3 text-xs font-bold border-slate-300 hover:bg-white text-slate-700 rounded-xl gap-1.5 shadow-xs"
-                title="ดาวน์โหลดไฟล์ A4 PDF"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>ดาวน์โหลด PDF</span>
-              </Button>
-
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleNativePrint}
-                disabled={isGenerating}
-                className="h-9 px-4 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl gap-1.5 shadow-sm"
-                title="สั่งพิมพ์เอกสาร A4 ทันที"
-              >
-                <Printer className="w-4 h-4" />
-                <span>พิมพ์เอกสาร A4</span>
-              </Button>
-            </div>
-          </div>
-        </DialogHeader>
-
-        {/* ─── A4 PAPER PREVIEW: one sheet per printed page ─── */}
-        <div className="flex-1 overflow-y-auto p-2 sm:p-4 flex justify-center bg-slate-200/70 rounded-2xl border border-slate-300/80 my-2">
-          <div ref={receiptA4Ref} className="a4-preview-stack flex flex-col gap-4">
+    <div ref={ref} className="a4-preview-stack flex flex-col gap-4">
             {pages.map((rowIdx, pageIdx) => {
               const isFirst = pageIdx === 0;
               const isLast = pageIdx === pageCount - 1;
@@ -700,7 +718,8 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
                   </div>
 
                   <div className="mt-auto pt-3 space-y-1">
-                    {isLast ? signatures : (
+                    {isLast && <A4FooterText settings={storeSettings} className="text-center text-[10.5px] text-slate-700" />}
+                    {isLast ? (o.showSignatures ? signatures : null) : (
                       <p className="text-right text-[10.5px] font-bold text-slate-600">มีต่อหน้าถัดไป ...</p>
                     )}
                     {pageCount > 1 && (
@@ -710,20 +729,6 @@ export function ReceiptA4PdfModal({ open, onOpenChange, data }: ReceiptA4PdfModa
                 </div>
               );
             })}
-          </div>
-        </div>
-
-        <div className="pt-2 border-t border-slate-200 flex justify-end shrink-0">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className="h-10 px-5 border-slate-300 text-slate-700 font-bold rounded-xl"
-          >
-            ปิดหน้าต่าง
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+    </div>
   );
-}
+});

@@ -156,7 +156,7 @@ export function DebtReceiptPdfModal({ open, onOpenChange, debtRecord, installmen
         <div className="flex-1 overflow-y-auto overflow-x-auto p-3 sm:p-4 flex justify-center bg-slate-300/60 rounded-2xl border border-slate-300/80 min-h-[420px] max-h-[72vh]">
           <div className="bg-white shadow-md ring-1 ring-slate-300 self-start">
             <SlipPaper ref={receiptRef}>
-              <SlipShopHeader settings={storeSettings} showTaxId={storeSettings.vatEnabled === true} title="ใบเสร็จรับเงิน (รับชำระหนี้)" />
+              <SlipShopHeader settings={storeSettings} title="ใบเสร็จรับเงิน (รับชำระหนี้)" />
 
               <SlipRule />
               <div className="space-y-0.5">
@@ -168,7 +168,7 @@ export function DebtReceiptPdfModal({ open, onOpenChange, debtRecord, installmen
                 {debtRecord.companyName && debtRecord.customerName && debtRecord.companyName !== debtRecord.customerName && (
                   <SlipRow label="ผู้ติดต่อ" value={debtRecord.customerName} />
                 )}
-                {debtRecord.taxId && <SlipRow label="เลขผู้เสียภาษี" value={debtRecord.taxId} />}
+                {storeSettings.vatEnabled === true && debtRecord.taxId && <SlipRow label="เลขผู้เสียภาษี" value={debtRecord.taxId} />}
                 {debtRecord.customerPhone && <SlipRow label="โทร" value={debtRecord.customerPhone} />}
               </div>
 

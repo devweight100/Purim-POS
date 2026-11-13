@@ -8,7 +8,8 @@ import { paymentMethodLabel } from '@/lib/receipt-mapper';
 import { StoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe } from '@/lib/pdf-print-service';
 import { formatQty, mulQty, subQty } from '@/lib/qty';
-import { SLIP_WIDTH_PX, SlipPaper, SlipRow, SlipRule, SlipShopHeader, slipMoney } from './slip-parts';
+import { getReceiptOptions } from '@/lib/receipt-options';
+import { SLIP_WIDTH_PX, SlipFooter, SlipPaper, SlipRow, SlipRule, SlipShopHeader, slipMoney } from './slip-parts';
 
 export interface ReceiptData {
   orderNumber: string;
@@ -123,13 +124,16 @@ const Rule = SlipRule;
  */
 export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceiptViewProps>(
   ({ data, settings, className = '' }, ref) => {
-    const vatShown = Number(data.vatAmount) > 0;
-    // a VAT-registered shop issues an abbreviated tax invoice (Revenue Code s.86/6)
-    const isTaxInvoice = settings.vatEnabled === true || vatShown;
+    const o = getReceiptOptions(settings).slip;
+    // a VAT-registered shop issues an abbreviated tax invoice (Revenue Code s.86/6); a shop without
+    // VAT prints a plain receipt with no tax wording at all (amounts unchanged)
+    const isTaxInvoice = settings.vatEnabled === true;
+    const vatShown = isTaxInvoice && Number(data.vatAmount) > 0;
     const vatRate = Number(data.vatRate ?? settings.vatRate) || 7;
     const payments = (data.payments || []).filter((p) => Number(p.amount) > 0);
     const singleMethod = payments.length <= 1;
     const hasPoints =
+      o.showPoints &&
       !!data.customerName &&
       ((data.customerPointsEarned ?? 0) > 0 || (data.pointsUsed ?? 0) > 0 || (data.customerPointsBalance ?? 0) > 0);
 
@@ -138,7 +142,6 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
         {/* ─── Shop ─── */}
         <SlipShopHeader
           settings={settings}
-          showTaxId={isTaxInvoice}
           title={
             isTaxInvoice ? (
               <>
@@ -163,9 +166,9 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
         <div className="space-y-0.5">
           <Row label="เลขที่" value={<span className="font-bold">{data.orderNumber}</span>} />
           <Row label="วันที่" value={formatDocDate(data.createdAt, { time: true })} />
-          <Row label="พนักงาน" value={data.userName || '-'} />
+          {o.showCashier && <Row label="พนักงาน" value={data.userName || '-'} />}
           {data.terminalName && <Row label="เครื่อง" value={data.terminalName} />}
-          {data.customerName && <Row label="ลูกค้า" value={<span className="break-words">{data.customerName}</span>} />}
+          {o.showCustomer && data.customerName && <Row label="ลูกค้า" value={<span className="break-words">{data.customerName}</span>} />}
         </div>
 
         <Rule />
@@ -237,8 +240,8 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
               value={money(p.amount)}
             />
           ))}
-          {(data.cashReceived ?? 0) > 0 && <Row label="รับเงิน" value={money(data.cashReceived)} />}
-          {(data.changeAmount ?? 0) > 0 && <Row className="text-[14px] font-bold" label="เงินทอน" value={money(data.changeAmount)} />}
+          {o.showPaymentDetails && (data.cashReceived ?? 0) > 0 && <Row label="รับเงิน" value={money(data.cashReceived)} />}
+          {o.showPaymentDetails && (data.changeAmount ?? 0) > 0 && <Row className="text-[14px] font-bold" label="เงินทอน" value={money(data.changeAmount)} />}
           {(data.outstandingAmount ?? 0) > 0 && (
             <Row className="text-[14px] font-bold" label="ยอดค้างชำระ" value={money(data.outstandingAmount)} />
           )}
@@ -252,15 +255,19 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
           </div>
         )}
 
-        {data.note && (
+        {o.showNote && data.note && (
           <>
             <Rule />
             <div className="text-[11px] whitespace-pre-wrap break-words">หมายเหตุ: {data.note}</div>
           </>
         )}
 
-        <Rule />
-        <div className="text-center text-[11px] whitespace-pre-wrap break-words">{settings.receiptFooter || 'ขอบคุณที่ใช้บริการ'}</div>
+        {o.showFooterText && (
+          <>
+            <Rule />
+            <SlipFooter settings={settings} />
+          </>
+        )}
       </SlipPaper>
     );
   }

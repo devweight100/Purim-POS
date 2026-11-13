@@ -1,5 +1,6 @@
 import { api } from './api';
 import type { ApiStoreSettings } from './types';
+import { normalizeReceiptOptions, type ReceiptOptions } from '@shared/receipt-options';
 
 export interface StoreSettings {
   storeName: string;
@@ -22,6 +23,8 @@ export interface StoreSettings {
   cashMovementApprovalLimit?: number | string; // Decimal column: the server sends it as a string
   /** quantities may have up to 2 decimals (sell by metre / kg); off = whole units only */
   allowDecimalQty?: boolean;
+  /** what slips / A4 documents show, every key filled (read it through lib/receipt-options getReceiptOptions) */
+  receiptOptions?: ReceiptOptions;
 }
 
 /**
@@ -46,6 +49,7 @@ export const DEFAULT_STORE_SETTINGS: StoreSettings = {
   vatEnabled: false,
   lowStockThreshold: 5,
   allowDecimalQty: false,
+  receiptOptions: normalizeReceiptOptions(null),
 };
 
 export function loadStoreSettings(): StoreSettings {
@@ -70,6 +74,7 @@ function normalizeStoreSettings(settings: Partial<StoreSettings> | ApiStoreSetti
     vatRate: Number(settings?.vatRate ?? DEFAULT_STORE_SETTINGS.vatRate),
     vatEnabled: settings?.vatEnabled === true,
     allowDecimalQty: settings?.allowDecimalQty === true,
+    receiptOptions: normalizeReceiptOptions(settings?.receiptOptions),
     lowStockThreshold: Number.isFinite(Number(settings?.lowStockThreshold)) ? Number(settings?.lowStockThreshold) : 5,
   };
 }

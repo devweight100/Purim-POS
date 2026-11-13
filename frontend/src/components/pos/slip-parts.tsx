@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { StoreSettings } from '@/lib/store-settings-storage';
+import { getReceiptOptions } from '@/lib/receipt-options';
 
 /**
  * Building blocks of every 80 mm slip (receipt, debt payment, shift summary).
@@ -43,7 +44,10 @@ export const SlipPaper = React.forwardRef<HTMLDivElement, { children: React.Reac
 );
 SlipPaper.displayName = 'SlipPaper';
 
-/** Shop name, branch, address, phone, (tax id) and the document title. */
+/**
+ * Shop part of every slip (receipt, debt payment, shift summary, claim): store name (always), then
+ * what Settings > รูปแบบใบเสร็จ (slip) allows. The seller tax id appears only for a VAT shop.
+ */
 export function SlipShopHeader({
   settings,
   title,
@@ -52,19 +56,38 @@ export function SlipShopHeader({
 }: {
   settings: StoreSettings;
   title: React.ReactNode;
+  /** false on internal papers (shift summary) that are never tax documents */
   showTaxId?: boolean;
   children?: React.ReactNode;
 }) {
+  const o = getReceiptOptions(settings).slip;
   return (
     <div className="text-center leading-tight">
+      {o.showLogo && settings.logoUrl && (
+        // eslint-disable-next-line @next/next/no-img-element -- printed slip: a plain <img> is what the raster renderer captures
+        <img src={settings.logoUrl} alt="" className="mx-auto mb-1 max-h-[64px] max-w-[160px] object-contain grayscale" />
+      )}
       <div className="text-[16px] font-bold break-words">{settings.storeName}</div>
-      {settings.branchName && <div className="mt-0.5">{settings.branchName}</div>}
-      {settings.storeAddress && <div className="mt-0.5 text-[11px] whitespace-pre-wrap break-words">{settings.storeAddress}</div>}
-      {settings.storePhone && <div className="mt-0.5 text-[11px]">โทร {settings.storePhone}</div>}
-      {showTaxId && settings.taxId && <div className="mt-0.5 text-[11px]">เลขประจำตัวผู้เสียภาษี {settings.taxId}</div>}
-      {settings.receiptHeader && <div className="mt-0.5 text-[11px] whitespace-pre-wrap break-words">{settings.receiptHeader}</div>}
+      {o.showBranch && settings.branchName && <div className="mt-0.5">{settings.branchName}</div>}
+      {o.showAddress && settings.storeAddress && (
+        <div className="mt-0.5 text-[11px] whitespace-pre-wrap break-words">{settings.storeAddress}</div>
+      )}
+      {o.showPhone && settings.storePhone && <div className="mt-0.5 text-[11px]">โทร {settings.storePhone}</div>}
+      {o.showEmail && settings.storeEmail && <div className="mt-0.5 text-[11px] break-words">{settings.storeEmail}</div>}
+      {showTaxId && o.showTaxId && settings.taxId && <div className="mt-0.5 text-[11px]">เลขประจำตัวผู้เสียภาษี {settings.taxId}</div>}
+      {o.showHeaderText && settings.receiptHeader && (
+        <div className="mt-0.5 text-[11px] whitespace-pre-wrap break-words">{settings.receiptHeader}</div>
+      )}
       <div className="mt-1.5 text-[14px] font-bold">{title}</div>
       {children}
     </div>
   );
+}
+
+/** Footer text of a slip (Settings: ข้อความส่วนท้าย), or `fallback` when the shop wrote none. Nothing when switched off. */
+export function SlipFooter({ settings, fallback = 'ขอบคุณที่ใช้บริการ' }: { settings: StoreSettings; fallback?: string }) {
+  if (!getReceiptOptions(settings).slip.showFooterText) return null;
+  const text = settings.receiptFooter || fallback;
+  if (!text) return null;
+  return <div className="text-center text-[11px] whitespace-pre-wrap break-words">{text}</div>;
 }
