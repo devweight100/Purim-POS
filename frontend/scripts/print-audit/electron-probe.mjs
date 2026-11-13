@@ -61,6 +61,13 @@ async function step(label, fn) {
   }
 }
 
+page.on('dialog', (d) => {
+  logs.push(`[probe] page dialog: ${d.message()}\n`);
+  d.accept().catch(() => undefined);
+});
+page.on('console', (m) => {
+  if (m.type() === 'error' || m.type() === 'warning') logs.push(`[page ${m.type()}] ${m.text()}\n`);
+});
 await page.waitForLoadState();
 await page.waitForTimeout(2000);
 if (page.url().includes('/login')) {
@@ -72,16 +79,49 @@ if (page.url().includes('/login')) {
 
 for (const where of (process.env.PA_STEPS || 'orders').split(',')) {
   await step(`slip-${where}`, async () => {
+    if (where === 'possale') {
+      // a cash sale on the POS: the slip prints right after payment (no preview dialog)
+      await page.goto(`${frontend}/pos`);
+      await page.waitForTimeout(2000);
+      for (let i = 0; i < 3 && (await page.getByRole('dialog').count()) > 0; i++) await page.keyboard.press('Escape');
+      const input = page.locator('input.sr-only[tabindex="-1"]');
+      await input.focus();
+      await page.keyboard.type(process.env.PA_SKU || 'PA-SCREW-6', { delay: 5 });
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(500);
+      await page.getByRole('button', { name: 'ชำระเงิน' }).click();
+      const pay = page.getByRole('dialog');
+      await pay.getByRole('button', { name: /เงินสด \(Cash\)/ }).click();
+      await pay.getByRole('button', { name: '฿100', exact: true }).click();
+      await page.waitForTimeout(800);
+      await pay.getByRole('button', { name: 'ยืนยันรับเงินสด' }).click();
+      await page.waitForTimeout(3000);
+      await page.screenshot({ path: path.join(out, 'possale-after-confirm.png') });
+      await pay.getByText('ชำระเงินสำเร็จ!').waitFor();
+      return;
+    }
     if (where === 'orders') {
       await page.goto(`${frontend}/orders`);
       await page.getByText(orderNumber).first().click();
       await page.getByRole('dialog').last().getByRole('button', { name: /พิมพ์สลิป 80mm/ }).click();
-    } else {
+    } else if (where === 'poshistory') {
       await page.goto(`${frontend}/pos`);
       await page.waitForTimeout(1500);
       for (let i = 0; i < 3 && (await page.getByRole('dialog').count()) > 0; i++) await page.keyboard.press('Escape');
       await page.getByRole('button', { name: /ประวัติ/ }).first().click();
-      await page.getByRole('dialog').last().getByText(orderNumber).first().click();
+      const row = page.getByRole('dialog').last().locator('tr').filter({ hasText: orderNumber });
+      await row.getByRole('button', { name: /เครื่องมือ/ }).click();
+      await page.getByRole('menuitem', { name: 'ดูใบเสร็จ' }).click();
+    } else {
+      // document search (F3)
+      await page.goto(`${frontend}/pos`);
+      await page.waitForTimeout(1500);
+      for (let i = 0; i < 3 && (await page.getByRole('dialog').count()) > 0; i++) await page.keyboard.press('Escape');
+      await page.keyboard.press('F3');
+      const search = page.getByRole('dialog').last();
+      await search.locator('input').first().fill(orderNumber);
+      await page.keyboard.press('Enter');
+      await search.getByText(orderNumber).first().click();
     }
     const dlg = page.getByRole('dialog').filter({ hasText: 'ตัวอย่างใบเสร็จรับเงิน' });
     await dlg.waitFor();

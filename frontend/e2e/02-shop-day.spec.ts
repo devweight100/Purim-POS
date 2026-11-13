@@ -81,14 +81,14 @@ test('sell by scanning a hyphenated SKU and pay cash; the receipt shows the tota
   const receipt = page.getByRole('dialog').filter({ hasText: 'ตัวอย่างใบเสร็จรับเงิน' });
   await expect(receipt).toBeVisible();
   const text = (await receipt.innerText()).replace(/\s+/g, ' ');
-  expect(text).toMatch(/เลขที่บิล: ORD-\d+/);
-  expect(text).toContain(`${WATER.name} 2 ชิ้น x ฿12 ฿24`);
-  expect(text).toContain(`${RICE.name} 1 ชิ้น x ฿189 ฿189`);
-  expect(text).toContain('รวมเงิน: ฿213');
-  expect(text).toContain('ยอดรวมสุทธิ: ฿213');
-  expect(text).toContain('ชำระโดย: เงินสด');
-  expect(text).toContain('รับเงินมา: ฿500');
-  expect(text).toContain('เงินทอน: ฿287');
+  expect(text).toMatch(/เลขที่ ORD-\d+/);
+  expect(text).toContain(`${WATER.name} 2 ชิ้น x 12.00 24.00`);
+  expect(text).toContain(`${RICE.name} 1 ชิ้น x 189.00 189.00`);
+  expect(text).toContain('รวม 2 รายการ 213.00');
+  expect(text).toContain('ยอดสุทธิ 213.00');
+  expect(text).toContain('ชำระโดย เงินสด 213.00');
+  expect(text).toContain('รับเงิน 500.00');
+  expect(text).toContain('เงินทอน 287.00');
   await receipt.getByRole('button', { name: 'Close' }).click();
   await expect(receipt).toBeHidden();
   await finishPayment();
@@ -166,10 +166,10 @@ test('close shift with counted cash', async () => {
   const summary = page.getByRole('dialog').filter({ hasText: 'ใบสรุปปิดกะ' });
   await expect(summary).toBeVisible();
   const text = (await summary.innerText()).replace(/\s+/g, ' ');
-  expect(text).toContain('เงินสด (Cash): ฿213');
-  expect(text).toContain('เงินเชื่อ (Credit / ลูกหนี้): ฿189');
-  expect(text).toContain('รวมยอดขาย: ฿402');
-  expect(text).toContain('-฿12');
+  expect(text).toContain('เงินสด 213.00');
+  expect(text).toContain('เงินเชื่อ (ลูกหนี้) 189.00');
+  expect(text).toContain('รวมยอดขาย 402.00');
+  expect(text).toContain('-12.00');
   await page.keyboard.press('Escape');
 
   const shift = await latestShift();

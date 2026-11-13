@@ -8,6 +8,7 @@ import { paymentMethodLabel } from '@/lib/receipt-mapper';
 import { StoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe } from '@/lib/pdf-print-service';
 import { formatQty, mulQty, subQty } from '@/lib/qty';
+import { SLIP_WIDTH_PX, SlipPaper, SlipRow, SlipRule, SlipShopHeader, slipMoney } from './slip-parts';
 
 export interface ReceiptData {
   orderNumber: string;
@@ -108,27 +109,12 @@ interface ThermalReceiptViewProps {
   className?: string;
 }
 
-/**
- * Printable width of an 80 mm thermal roll: 576 printer dots (72 mm) = 288 CSS px, the width the
- * desktop app lays slips out at (desktop/escpos-raster.js). The preview uses the same width, so
- * line breaks on screen are the line breaks on paper.
- */
-export const SLIP_WIDTH_PX = 288;
+/** Printable slip width (re-exported for callers that render a slip off-screen). */
+export { SLIP_WIDTH_PX };
 
-/** 1,234.50 (always 2 decimals, no currency sign: every amount on the slip is in baht) */
-const money = (v: number | undefined | null) =>
-  (Number(v) || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-function Row({ label, value, className = '' }: { label: React.ReactNode; value: React.ReactNode; className?: string }) {
-  return (
-    <div className={`flex justify-between items-start gap-2 ${className}`}>
-      <span className="min-w-0 break-words">{label}</span>
-      <span className="shrink-0 text-right tabular-nums">{value}</span>
-    </div>
-  );
-}
-
-const Rule = () => <div className="border-t border-dashed border-black my-1" />;
+const money = slipMoney;
+const Row = SlipRow;
+const Rule = SlipRule;
 
 /**
  * 80 mm receipt (ใบเสร็จรับเงิน / ใบกำกับภาษีอย่างย่อ). Black on white, no boxes or grey: what is
@@ -145,25 +131,16 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
     const singleMethod = payments.length <= 1;
     const hasPoints =
       !!data.customerName &&
-      ((data.customerPointsEarned ?? 0) > 0 || (data.pointsUsed ?? 0) > 0 || data.customerPointsBalance !== undefined);
+      ((data.customerPointsEarned ?? 0) > 0 || (data.pointsUsed ?? 0) > 0 || (data.customerPointsBalance ?? 0) > 0);
 
     return (
-      <div
-        ref={ref}
-        data-slip-root=""
-        className={`bg-white text-black font-sans text-[12px] leading-snug font-semibold box-border ${className}`}
-        style={{ width: SLIP_WIDTH_PX, maxWidth: '100%', color: '#000000', backgroundColor: '#ffffff', margin: '0 auto', padding: '4px 4px 8px' }}
-      >
+      <SlipPaper ref={ref} className={className}>
         {/* ─── Shop ─── */}
-        <div className="text-center leading-tight">
-          <div className="text-[16px] font-bold break-words">{settings.storeName}</div>
-          {settings.branchName && <div className="mt-0.5">{settings.branchName}</div>}
-          {settings.storeAddress && <div className="mt-0.5 text-[11px] whitespace-pre-wrap break-words">{settings.storeAddress}</div>}
-          {settings.storePhone && <div className="mt-0.5 text-[11px]">โทร {settings.storePhone}</div>}
-          {isTaxInvoice && settings.taxId && <div className="mt-0.5 text-[11px]">เลขประจำตัวผู้เสียภาษี {settings.taxId}</div>}
-          {settings.receiptHeader && <div className="mt-0.5 text-[11px] whitespace-pre-wrap break-words">{settings.receiptHeader}</div>}
-          <div className="mt-1.5 text-[14px] font-bold">
-            {isTaxInvoice ? (
+        <SlipShopHeader
+          settings={settings}
+          showTaxId={isTaxInvoice}
+          title={
+            isTaxInvoice ? (
               <>
                 ใบเสร็จรับเงิน/
                 <wbr />
@@ -171,13 +148,14 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
               </>
             ) : (
               'ใบเสร็จรับเงิน'
-            )}
-          </div>
+            )
+          }
+        >
           {isTaxInvoice && <div className="text-[11px]">(ราคารวมภาษีมูลค่าเพิ่มแล้ว)</div>}
           {data.isReprint && (
             <div className="mt-0.5 font-bold">*** พิมพ์ซ้ำ {formatDocDate(data.reprintedAt || new Date(), { time: true })} ***</div>
           )}
-        </div>
+        </SlipShopHeader>
 
         <Rule />
 
@@ -283,7 +261,7 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
 
         <Rule />
         <div className="text-center text-[11px] whitespace-pre-wrap break-words">{settings.receiptFooter || 'ขอบคุณที่ใช้บริการ'}</div>
-      </div>
+      </SlipPaper>
     );
   }
 );
