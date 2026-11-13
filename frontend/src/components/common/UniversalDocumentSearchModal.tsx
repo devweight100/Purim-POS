@@ -132,7 +132,12 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
       }
       case 'CLAIM': {
         // same mapping as the claims page, so the document prints the same from both
-        setActiveClaim(mapServerClaim(doc.rawData as ApiClaim));
+        const raw = doc.rawData as ApiClaim;
+        setActiveClaim(mapServerClaim(raw));
+        void api.claims
+          .getOne(raw.id)
+          .then((full) => full && setActiveClaim(mapServerClaim(full)))
+          .catch(() => undefined);
         break;
       }
       case 'DEBT': {
@@ -170,7 +175,13 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
         break;
       }
       case 'SUPPLIER_RETURN': {
-        setActiveReturnNote(mapReturnNote(doc.rawData as ApiSupplierReturnNote));
+        // the search row has no items (they are stored with the note's details): load the note
+        const raw = doc.rawData as ApiSupplierReturnNote;
+        setActiveReturnNote(mapReturnNote(raw));
+        void api.supplierReturns
+          .getOne(raw.id || doc.docNumber)
+          .then((full) => full && setActiveReturnNote(mapReturnNote(full)))
+          .catch((err) => toast.error(`โหลดรายการในใบส่งคืนไม่สำเร็จ: ${errorText(err)}`));
         break;
       }
       case 'PAYMENT_VOUCHER': {

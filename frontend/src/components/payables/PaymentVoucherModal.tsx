@@ -129,7 +129,7 @@ export function PaymentVoucherModal({
           {/* Strict A4 Document Sheet: 210mm x 297mm with fixed bottom signature */}
           <div
             ref={docRef}
-            className="w-[210mm] min-h-[297mm] max-w-[210mm] bg-white border border-slate-300 rounded-xs p-[10mm] shadow-xl text-slate-800 text-[11px] leading-relaxed flex flex-col justify-between box-border font-sans"
+            className="a4-page w-[210mm] min-h-[297mm] max-w-[210mm] bg-white border border-slate-300 rounded-xs p-[10mm] shadow-xl text-slate-800 text-[11px] leading-relaxed flex flex-col justify-between box-border font-sans"
             style={{ width: '210mm', minHeight: '297mm', maxWidth: '210mm', boxSizing: 'border-box' }}
           >
             {/* ─── TOP SECTION: LETTERHEAD, DOCUMENT META & PAYEE INFO ─── */}

@@ -223,8 +223,12 @@ async function openFromSearch(docNumber: string) {
   await page.keyboard.press('F3');
   const search = page.getByRole('dialog').last();
   await search.locator('input').first().fill(docNumber);
-  // results appear as you type (Enter would open the first one)
-  await search.getByText(docNumber).first().click();
+  // results appear as you type; open the one with this number ("ดู & พิมพ์..." button of its row)
+  await search.getByText(docNumber, { exact: true }).first().waitFor();
+  await search
+    .locator(`xpath=.//*[normalize-space(text())="${docNumber}"]/ancestor::div[.//button][1]//button`)
+    .last()
+    .click();
 }
 
 test('orders page: slip + A4 reprint of the cash sale; slip of the credit sale', async ({ browser }) => {

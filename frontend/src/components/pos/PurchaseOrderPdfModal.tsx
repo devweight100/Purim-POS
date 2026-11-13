@@ -237,7 +237,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
         <div className="p-6 bg-slate-100/60 overflow-y-auto overflow-x-auto flex-1 flex justify-center">
           <div
             ref={printRef}
-            className="a4-container w-[210mm] max-w-[210mm] shrink-0 min-h-[297mm] bg-white border border-slate-300 p-[10mm] shadow-lg text-slate-800 font-sans flex flex-col justify-between box-border"
+            className="a4-page a4-container w-[210mm] max-w-[210mm] shrink-0 min-h-[297mm] bg-white border border-slate-300 p-[10mm] shadow-lg text-slate-800 font-sans flex flex-col justify-between box-border"
           >
             {/* Top Company Header & Document Title */}
             <div>
