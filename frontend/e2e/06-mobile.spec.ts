@@ -34,10 +34,10 @@ let token = '';
 let product: LookupRow;
 let orderNumber = '';
 
-async function shot(page: Page, name: string) {
+async function shot(page: Page, name: string, fullPage = false) {
   if (!SHOT_DIR) return;
   fs.mkdirSync(SHOT_DIR, { recursive: true });
-  await page.screenshot({ path: path.join(SHOT_DIR, `${name}.png`), fullPage: true });
+  await page.screenshot({ path: path.join(SHOT_DIR, `${name}.png`), fullPage });
 }
 
 /** "88 ขวด = 7 ลัง 4 ขวด" for DRK-001 (ลัง = 12, แพ็ค = 6). */
@@ -98,6 +98,7 @@ test('owner on a phone: sales, stock, bills, more; read-only; fits 360 px', asyn
   await expect(page.getByTestId('top-products')).toContainText(product.name);
   await expect(page.getByTestId('sales-chart')).toBeVisible();
   await shot(page, '1-sales');
+  await shot(page, '1-sales-full', true);
 
   // another period: one request for it, chip state follows
   const week = page.waitForResponse((r) => r.url().includes('/api/reports/dashboard?range=7days') && r.ok());
@@ -122,7 +123,11 @@ test('owner on a phone: sales, stock, bills, more; read-only; fits 360 px', asyn
   await expect(card).toContainText('= 12 ขวด');
   await expect(card.getByTestId('stock-cost')).toBeVisible();
   // Thai name search finds it too
+  const thai = page.waitForResponse((r) => r.url().includes(`/api/products/lookup?q=${encodeURIComponent('น้ำดื่ม')}&`) && r.ok());
   await page.getByTestId('stock-search').fill('น้ำดื่ม');
+  const thaiHits = (await (await thai).json()) as { meta: { total: number } };
+  expect(thaiHits.meta.total).toBeLessThan(5);
+  await expect(page.getByTestId('stock-card')).toHaveCount(thaiHits.meta.total);
   await expect(page.getByTestId('stock-card').filter({ hasText: 'DRK-001' })).toHaveCount(1);
   await shot(page, '2-stock');
 
@@ -130,9 +135,9 @@ test('owner on a phone: sales, stock, bills, more; read-only; fits 360 px', asyn
   await page.getByTestId('tab-bills').click();
   const first = page.getByTestId('bill-row').first();
   await expect(first).toContainText(orderNumber);
+  await shot(page, '3-bills');
   await page.getByTestId('bill-search').fill(orderNumber);
   await expect(page.getByTestId('bill-row')).toHaveCount(1);
-  await shot(page, '3-bills');
   await page.getByTestId('bill-row').first().click();
   const detail = page.getByTestId('bill-detail');
   await expect(detail).toContainText(orderNumber);

@@ -111,7 +111,7 @@ export default function MobileSummaryPage() {
 
       <nav
         aria-label="เมนูมุมมองมือถือ"
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-2px_8px_rgba(15,23,42,0.06)]"
       >
         <ul className="mx-auto grid max-w-xl grid-cols-4">
           {TABS.map(({ key, label, icon: Icon }) => {

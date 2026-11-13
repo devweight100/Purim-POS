@@ -77,7 +77,7 @@ function Change({ current, previous, label, onDark }: { current: number; previou
           up ? 'bg-emerald-100 text-emerald-800' : down ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-700',
         )}
       >
-        <Icon className="h-4 w-4" aria-hidden />
+        {pct !== null && <Icon className="h-4 w-4" aria-hidden />}
         {pct === null ? (current > 0 ? 'ใหม่' : '0%') : `${pct > 0 ? '+' : ''}${pct.toLocaleString('th-TH')}%`}
       </span>
       <span className={onDark ? 'text-indigo-100' : 'text-slate-500'}>
