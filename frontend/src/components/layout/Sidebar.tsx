@@ -10,7 +10,7 @@ import { Gamepad2,
   FolderTree, Building2, Receipt, ShieldAlert, ArrowLeftRight, HandCoins,
   ChevronDown, History, PackageX, TrendingUp, Sparkles, Coins, Boxes, UserCog,
   ScanLine, Radio,
-  Wallet, ShieldCheck,
+  Wallet, ShieldCheck, Smartphone,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -43,6 +43,7 @@ const navGroups: NavGroup[] = [
       { href: '/master-control', label: '🚀 แผงควบคุมเครื่องแม่ (Master Command)', icon: Radio },
       { href: '/monitor', label: '🕹️ มอนิเตอร์ร้าน (Pixel View)', icon: Gamepad2 },
       { href: '/dashboard', label: 'แดชบอร์ดสรุปภาพรวม', icon: LayoutDashboard },
+      { href: '/m', label: 'มุมมองมือถือ', icon: Smartphone },
       { 
         href: '/reports', 
         label: 'รายงาน & สถิติธุรกิจ', 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/lib/store/auth-store";
+import { homePathFor } from "@/lib/mobile";
 import { apiFetch } from "@/lib/api";
 import { errorText } from "@/lib/api-error";
 import { Button } from "@/components/ui/button";
@@ -45,7 +46,7 @@ export default function ChangePasswordPage() {
       if (res?.access_token) useAuthStore.getState().setToken(res.access_token);
       useAuthStore.setState((s) => ({ user: s.user ? { ...s.user, mustChangePassword: false } : s.user }));
       toast.success("เปลี่ยนรหัสผ่านเรียบร้อยแล้ว");
-      router.replace("/pos");
+      router.replace(homePathFor(useAuthStore.getState().user));
     } catch (err) {
       toast.error(errorText(err) || "เปลี่ยนรหัสผ่านไม่สำเร็จ");
     } finally {
