@@ -45,6 +45,21 @@ test('reports show the server figures and export them', async ({ page }) => {
   expect(pay.payments.shifts.totalShiftsCount).toBeGreaterThan(0);
   expect(pay.sales).toBeUndefined();
 
+  // best sellers: one page from the server; the export asks for every page (limit=500)
+  const best = page.waitForResponse((r) => isTabs('bestsellers', 'all')(r) && r.url().includes('page=1') && r.url().includes('limit=15'));
+  await page.goto('/reports/bestsellers');
+  await page.getByRole('button', { name: 'ทั้งหมด', exact: true }).click();
+  const bs = await (await best).json();
+  expect(bs.bestsellers.productCount).toBeGreaterThan(0);
+  expect(bs.bestsellers.allProducts.length).toBe(Math.min(15, bs.bestsellers.total));
+  const exportPage = page.waitForResponse((r) => isTabs('bestsellers', 'all')(r) && r.url().includes('limit=500'));
+  const download2 = page.waitForEvent('download');
+  await page.getByTitle('ส่งออกไฟล์ CSV (UTF-8)').click();
+  await exportPage;
+  const file2 = test.info().outputPath('bestsellers.csv');
+  await (await download2).saveAs(file2);
+  expect(fs.readFileSync(file2, 'utf8').trim().split('\n').length).toBe(bs.bestsellers.productCount + 1);
+
   // no bulk downloads for client-side aggregation any more
   const bulk = apiCalls.filter((u) => /\/api\/(orders|purchase-orders|claims|debts|customers)\?limit=|\/api\/shifts\/history|\/api\/reports\/analytics/.test(u));
   expect(bulk).toEqual([]);

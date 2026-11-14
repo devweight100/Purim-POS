@@ -24,7 +24,7 @@ Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time 
        /reports/analytics guarded by the row limit.
 3. [x] P&L (planning.service) claims / write-off / ledger sums in SQL.
 4. [x] e2e parity test adapted to paging (fetch all pages) + new tricky-dataset test (old JS == new SQL).
-5. [ ] Frontend ReportsView: server paging/search for bestsellers, inventory, customers; export fetches all pages.
+5. [x] Frontend ReportsView: server paging/search for bestsellers, inventory, customers; export fetches all pages.
 6. [ ] EXPLAIN ANALYZE -> indexes (migration 20261123000000_report_indexes + @@index).
 7. [ ] After-measurements, full verification, PROJECT_STATUS entry.
 
@@ -47,4 +47,10 @@ Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time 
   loops, and paging/search/sort/400s. 36/36 e2e pass.
 - Bug found by the tricky data: retail price must be COALESCE(price_level_1, base_price) (old code read a
   Decimal / string, so a price level 1 of 0 is used as 0), fixed in inventory tab + dashboard snapshot.
+- Step 5: reports-service.ts types follow the paged response; fetchReportTabs takes page/limit/q/sort/list;
+  collectAllPages + fetchAllReportRows (export = every page, limit 500). ReportsView: best sellers / inventory /
+  customers render the server page, pagination uses `total`, cards use productCount / listCounts /
+  customerCount / totalSpentAll / topCustomers; new search box (debounced 300 ms, server-side) for those tabs
+  (there was a `search` state but no input before). vitest reports-service.test.ts (5); Playwright 04-reports
+  checks bestsellers paging + CSV export of all rows.
 - Purchases tab stays in Node (PO rows bounded by the row guard; claims list = getAllClaims(1, 5000) as before).

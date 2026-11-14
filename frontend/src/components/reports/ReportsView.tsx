@@ -7,6 +7,8 @@ import {
   ReportTimeRange,
   ReportTabsResponse,
   fetchReportTabs,
+  fetchAllReportRows,
+  type ReportTabsParams,
   EMPTY_SALES,
   EMPTY_CLAIMS_AND_VAT,
   EMPTY_BESTSELLERS,
@@ -206,8 +208,13 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  // Search in tables
+  // Search in tables (best sellers, inventory and customers are searched on the server)
   const [search, setSearch] = useState('');
+  const [serverSearch, setServerSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setServerSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
   const [loading, setLoading] = useState(false);
 
   // Figures of the tab on screen for the selected period, computed by the server (GET /reports/tabs)
@@ -228,9 +235,19 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
   // Load the figures of the active tab for the period (the newest request wins)
   const requestSeq = useRef(0);
   /** Request `seq`: state is only updated after the request, and only if it is still the newest. */
+  const periodParams = { range: timeRange, start: customStartDate, end: customEndDate };
+  const isListTab = activeTab === 'bestsellers' || activeTab === 'inventory' || activeTab === 'customers';
+  // long lists come one page at a time from the server (page, page size, search, inventory view)
+  const tabParams = (): ReportTabsParams => ({
+    ...periodParams,
+    tab: activeTab,
+    ...(isListTab ? { page: currentPage, limit: pageSize, q: serverSearch, ...(activeTab === 'inventory' ? { list: inventorySubFilter } : {}) } : {}),
+  });
+  // a list tab reloads when its page / page size / search / view changes
+  const listKey = isListTab ? JSON.stringify([currentPage, pageSize, serverSearch, activeTab === 'inventory' ? inventorySubFilter : '']) : '';
   const fetchTab = async (seq: number) => {
     try {
-      const data = await fetchReportTabs({ range: timeRange, start: customStartDate, end: customEndDate, tab: activeTab });
+      const data = await fetchReportTabs(tabParams());
       if (seq === requestSeq.current) setReport(data);
     } catch (err) {
       console.error('Failed to load reports data:', err);
@@ -262,7 +279,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     const run = async () => { await fetchTab(seq); };
     void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, timeRange, customStartDate, customEndDate]);
+  }, [activeTab, timeRange, customStartDate, customEndDate, listKey]);
 
   useEffect(() => {
     const handleSynced = () => loadDataRef.current();
@@ -313,55 +330,11 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     return filteredDailySales.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   }, [filteredDailySales, currentPage, pageSize]);
 
-  // 2. Best Sellers
-  const filteredBestSellers = useMemo(() => {
-    if (!search.trim()) return bestSellersReport.allProducts;
-    const q = search.toLowerCase().trim();
-    return bestSellersReport.allProducts.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      p.sku.toLowerCase().includes(q) ||
-      formatCategory(p.category).toLowerCase().includes(q)
-    );
-  }, [bestSellersReport.allProducts, search]);
-
-  const paginatedBestSellers = useMemo(() => {
-    return filteredBestSellers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  }, [filteredBestSellers, currentPage, pageSize]);
-
-  // 3. Inventory
-  const filteredInventoryItems = useMemo(() => {
-    let list = inventoryReport.items;
-    if (inventorySubFilter === 'deadstock') list = inventoryReport.deadstockList;
-    else if (inventorySubFilter === 'lowstock') list = inventoryReport.lowStockList;
-    if (!search.trim()) return list;
-    const q = search.toLowerCase().trim();
-    return list.filter(item =>
-      item.name.toLowerCase().includes(q) ||
-      item.sku.toLowerCase().includes(q) ||
-      formatCategory(item.category).toLowerCase().includes(q) ||
-      item.supplierName.toLowerCase().includes(q)
-    );
-  }, [inventoryReport, inventorySubFilter, search]);
-
-  const paginatedInventoryItems = useMemo(() => {
-    return filteredInventoryItems.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  }, [filteredInventoryItems, currentPage, pageSize]);
-
-  // 4. Customers
-  const filteredCustomers = useMemo(() => {
-    const list = customerDebtsReport.allCustomers || [];
-    if (!search.trim()) return list;
-    const q = search.toLowerCase().trim();
-    return list.filter(c =>
-      c.name.toLowerCase().includes(q) ||
-      c.code.toLowerCase().includes(q) ||
-      c.phone.toLowerCase().includes(q)
-    );
-  }, [customerDebtsReport.allCustomers, search]);
-
-  const paginatedCustomers = useMemo(() => {
-    return filteredCustomers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  }, [filteredCustomers, currentPage, pageSize]);
+  // 2-4. Best sellers, inventory, customers: the server sends the page on screen (search + paging
+  // done there); `total` = rows matching the search
+  const paginatedBestSellers = bestSellersReport.allProducts;
+  const paginatedInventoryItems = inventoryReport.items;
+  const paginatedCustomers = customerDebtsReport.allCustomers;
 
   // 5. Purchases / Suppliers
   const filteredSuppliers = useMemo(() => {
@@ -413,7 +386,8 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           { header: 'กำไร', value: (r) => r.totalProfit },
           { header: '% กำไร', value: (r) => r.profitMarginPercent },
         ];
-        file = await downloadReport(format, base, 'สินค้าขายดี', bestSellersReport.allProducts, cols);
+        // every page from the server (same period), not just the page on screen
+        file = await downloadReport(format, base, 'สินค้าขายดี', await fetchAllReportRows('bestsellers', periodParams), cols);
       } else if (activeTab === 'inventory') {
         const cols: ExportColumn<(typeof inventoryReport.items)[number]>[] = [
           no,
@@ -428,7 +402,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           { header: 'มูลค่าขายรวม', value: (r) => r.totalRetailValue },
           { header: 'สถานะ', value: (r) => (r.isDeadstock ? 'ขายช้า(Deadstock)' : r.isLowStock ? 'สต็อกต่ำ' : 'ปกติ') },
         ];
-        file = await downloadReport(format, base, 'มูลค่าคลัง', inventoryReport.items, cols);
+        file = await downloadReport(format, base, 'มูลค่าคลัง', await fetchAllReportRows('inventory', periodParams), cols);
       } else if (activeTab === 'payments') {
         const rows = [
           ...paymentsShiftsReport.channels.map((c) => ({ label: c.label, count: c.orderCount, amount: c.totalAmount, pct: c.percentage })),
@@ -456,7 +430,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           { header: 'หนี้คงค้าง', value: (r) => r.outstandingDebt },
           { header: 'วันที่ซื้อล่าสุด', value: (r) => r.lastOrderDate },
         ];
-        file = await downloadReport(format, base, 'ลูกค้า', customerDebtsReport.allCustomers, cols);
+        file = await downloadReport(format, base, 'ลูกค้า', await fetchAllReportRows('customers', periodParams), cols);
       } else if (activeTab === 'purchases') {
         const cols: ExportColumn<(typeof purchasesClaimsReport.supplierBreakdown)[number]>[] = [
           no,
@@ -623,6 +597,21 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           })}
         </div>
       </div>
+
+      {/* Search in the long lists (done on the server, over every row of the period) */}
+      {isListTab && (
+        <div className="relative max-w-md">
+          <Search className="w-4 h-4 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <Input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={activeTab === 'customers' ? 'ค้นหาชื่อ / รหัส / เบอร์โทรลูกค้า' : 'ค้นหาชื่อสินค้า / SKU / หมวดหมู่'}
+            className="h-8 pl-8 text-sm bg-white"
+            aria-label="ค้นหาในรายงาน"
+          />
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════════════
           REPORT 1: SALES & GROSS PROFIT REPORT
@@ -842,7 +831,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               </div>
               <div className="flex items-baseline gap-1.5 font-mono">
                 <span className="text-lg sm:text-xl font-black text-indigo-700 tracking-tight">
-                  {bestSellersReport.allProducts.length}
+                  {bestSellersReport.productCount}
                 </span>
                 <span className="text-xs text-slate-600 font-sans font-bold">รายการ</span>
               </div>
@@ -904,7 +893,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 </TableHeader>
 
                 <TableBody className="divide-y divide-slate-100">
-                  {filteredBestSellers.length === 0 ? (
+                  {paginatedBestSellers.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-12 text-slate-400 text-sm">
                         ไม่พบข้อมูลสินค้าขายในช่วงเวลานี้
@@ -954,7 +943,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
 
             {/* Pagination Controls */}
             <ReportPagination
-              totalItems={filteredBestSellers.length}
+              totalItems={bestSellersReport.total}
               currentPage={currentPage}
               pageSize={pageSize}
               onPageChange={setCurrentPage}
@@ -1030,7 +1019,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 inventorySubFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'
               }`}
             >
-              สินค้าทั้งหมด ({inventoryReport.items.length})
+              สินค้าทั้งหมด ({inventoryReport.listCounts.all})
             </button>
             <button
               type="button"
@@ -1039,7 +1028,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 inventorySubFilter === 'deadstock' ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-700'
               }`}
             >
-              ⚠️ ขายช้า: ไม่มีขายและไม่ได้รับเข้า &gt; 30 วัน ({inventoryReport.deadstockList.length})
+              ⚠️ ขายช้า: ไม่มีขายและไม่ได้รับเข้า &gt; 30 วัน ({inventoryReport.listCounts.deadstock})
             </button>
             <button
               type="button"
@@ -1048,7 +1037,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 inventorySubFilter === 'lowstock' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-700'
               }`}
             >
-              📦 สินค้าใกล้หมดสต็อก ({inventoryReport.lowStockList.length})
+              📦 สินค้าใกล้หมดสต็อก ({inventoryReport.listCounts.lowstock})
             </button>
           </div>
 
@@ -1071,7 +1060,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 </TableHeader>
 
                 <TableBody className="divide-y divide-slate-100">
-                  {filteredInventoryItems.length === 0 ? (
+                  {paginatedInventoryItems.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={9} className="text-center py-12 text-slate-400 text-sm">
                         ไม่พบรายการสินค้าคงคลังที่ตรงกับเงื่อนไข
@@ -1131,7 +1120,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
 
             {/* Pagination Controls */}
             <ReportPagination
-              totalItems={filteredInventoryItems.length}
+              totalItems={inventoryReport.total}
               currentPage={currentPage}
               pageSize={pageSize}
               onPageChange={setCurrentPage}
@@ -1266,7 +1255,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 <span className="text-sm font-bold text-indigo-950">ลูกค้าทั้งหมด:</span>
               </div>
               <span className="text-lg sm:text-xl font-black text-indigo-700 font-mono tracking-tight">
-                {customerDebtsReport.allCustomers.length} <span className="text-xs font-sans">คน</span>
+                {customerDebtsReport.customerCount} <span className="text-xs font-sans">คน</span>
               </span>
             </div>
 
@@ -1279,8 +1268,8 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               </div>
               <span className="text-lg sm:text-xl font-black text-emerald-700 font-mono tracking-tight">
                 {formatCurrency(
-                  customerDebtsReport.allCustomers.length > 0
-                    ? Math.round(customerDebtsReport.allCustomers.reduce((s, c) => s + c.totalSpent, 0) / customerDebtsReport.allCustomers.length)
+                  customerDebtsReport.customerCount > 0
+                    ? Math.round(customerDebtsReport.totalSpentAll / customerDebtsReport.customerCount)
                     : 0
                 )}
               </span>
@@ -1294,7 +1283,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 <span className="text-sm font-bold text-amber-950">ลูกค้ายอดซื้อสูงสุด:</span>
               </div>
               <span className="text-xs sm:text-sm font-black text-amber-700 truncate max-w-[170px]">
-                {customerDebtsReport.allCustomers[0]?.name || '-'}
+                {customerDebtsReport.topCustomers[0]?.name || '-'}
               </span>
             </div>
 
@@ -1337,7 +1326,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-slate-100">
-                  {filteredCustomers.length === 0 ? (
+                  {paginatedCustomers.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={10} className="text-center py-12 text-slate-400 text-sm">
                         ไม่พบข้อมูลประวัติยอดซื้อของลูกค้าที่ตรงกับเงื่อนไข
@@ -1357,7 +1346,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td className="py-3.5 px-3.5 font-bold text-slate-900 text-[15px]">
                             <div className="flex items-center gap-1.5">
                               <span>{c.name}</span>
-                              {idx === 0 && currentPage === 1 && (
+                              {idx === 0 && currentPage === 1 && !serverSearch && (
                                 <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px] px-1 py-0 font-bold">
                                   👑 VIP #1
                                 </Badge>
@@ -1399,7 +1388,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
 
             {/* Pagination Controls */}
             <ReportPagination
-              totalItems={filteredCustomers.length}
+              totalItems={customerDebtsReport.total}
               currentPage={currentPage}
               pageSize={pageSize}
               onPageChange={setCurrentPage}
