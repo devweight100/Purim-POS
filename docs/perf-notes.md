@@ -1,15 +1,15 @@
 # Perf round — progress notes (delete a task's section when it is fully done)
 
-## Task 5: complete claims queries (orders badge, supplier-return eligible claims) + /payables/bills in SQL — IN PROGRESS
+## Task 5: complete claims queries (orders badge, supplier-return eligible claims) + /payables/bills in SQL — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 
 Branch ccr-8f8b0741-si1a0o (base e1c61aa). Load DB perf_load on :5433.
 
 ### Plan
-1. [ ] Find every consumer of fetchAllClaimRecords / /claims?limit=500; record which change.
-2. [ ] Claims: filtered server queries (orders page by orderIds / bill numbers; supplier returns eligible claims) + index
+1. [x] Find every consumer of fetchAllClaimRecords / /claims?limit=500; record which change.
+2. [x] Claims: filtered server queries (orders page by orderIds / bill numbers; supplier returns eligible claims) + index
        on the audit-log metadata bill number if needed; parity e2e (under cap) + above-cap test.
-3. [ ] /payables/bills computed in SQL; parity e2e still green; bench at ~50k POs before/after.
-4. [ ] Full verification, before/after, PROJECT_STATUS, drop perf_* DBs.
+3. [x] /payables/bills computed in SQL; parity e2e still green; bench at ~50k POs before/after.
+4. [x] Full verification, before/after, PROJECT_STATUS, drop perf_* DBs.
 
 ### Data
 perf_load recreated (prepare-database.js + seed-load.sh + seed-payables.sql) + scratchpad/perf/seed-claims.sql: 20,000 claims
@@ -34,7 +34,58 @@ perf_load recreated (prepare-database.js + seed-load.sh + seed-payables.sql) + s
 - unchanged: claims page list, dashboard, claim-inventory, POS OrderHistoryModal, ProductClaimModal / verifyClaimEligibility /
   fetchClaimEligibleItems, generateClaimNumber, refresh after creating / updating a claim.
 
+### After (raw t5-after.txt)
+| request | before | after |
+|---|---|---|
+| orders page "claimed" badge (perf_load, 20k claims) | /claims?limit=500 once: 0.11 s / 567 kB, claims older than the newest 500 missed | GET /claims/claimed-orders?orderIds=<page's bills without linked claims>: 0.03-0.05 s / 60-90 B, every claim |
+| supplier returns pending claims (perf_load) | /claims?limit=500: 0.11 s / 567 kB, newest 500 only | GET /claims/returnable: every returnable claim (10,667 here: the seed leaves 2/3 x 4/5 of 20k claims open) 0.75-1.0 s / 12 MB (423 kB gzip); SQL 40 ms, the rest is Prisma reading 10.7k rows |
+| /payables/bills page / filters / search (5k POs) | 0.16-0.21 s | 0.04-0.08 s |
+| /payables/bills open=1 slim=1 limit=5000 (5k POs) | 0.18 s | 0.12 s |
+| /payables/bills page / filters / search (50k POs) | 1.4-1.9 s | 0.18-0.22 s (SQL ~0.15 s) |
+| /payables/bills open=1 slim=1 limit=5000 (50k POs) | 1.57 s | 0.41 s (2.3 MB of rows) |
+| backend peak RSS, payables run at 50k POs | 1.36 GB | 0.20 GB |
+
+### Verification
+backend tsc + jest 122 + e2e 58/58 (fresh perf_t5_test; new: claims under / above the cap vs frozen copy
+test/legacy/claims-client-legacy.ts, payables SQL figures == billFigures on edge bills + purchase_order_item_totals ==
+recomputed sums after update / move / delete / PO deletion; the payables parity tests unchanged and green), fresh
+migrate deploy + empty schema diff (expression index, order_id index, totals table + 3 triggers present); frontend tsc,
+eslint 0 errors (313 warnings, unchanged), vitest 180 (new claims-queries 2), next build, Playwright 17/17 (08 / 09 assert
+the new claims requests and no /claims?limit list).
+
+### Behaviour changes
+- Orders page: the claimed badge for claims recorded by bill number is asked per page (every claim, refreshed with each
+  page load; was loaded once per visit from the newest 500 claims).
+- Supplier returns page / create dialog: pending claims = every returnable claim (same rule; was the newest 500). The
+  dialog opened from the purchase-orders page now loads them itself (it used whatever claims list was last loaded,
+  often none). After a return write the returnable list is reloaded too.
+- /payables/bills: figures are exact decimals (sums no longer carry float noise such as 0.30000000000000004); half-cent
+  rounding follows PostgreSQL ROUND (a float value like 1.005 that JS rounded to 1.00 gives 1.01); summary.suppliers is
+  ordered by the supplier's newest open bill then supplier id (consumers read it as a map). Same rows, paging, filters.
+- GET /claims rows with the same received date are ordered by id (was unspecified).
+
+### Follow-ups (not done)
+- GET /claims/returnable returns every returnable claim in one response; the old rule counts COMPLETED claims without a
+  return note as returnable, so the list grows with all claims (the 12 MB / 0.9 s above is the 10.7k-claim worst case).
+  Server-side grouping per supplier or paging would need the page's supplier matching (catalogue / POs) on the server.
+- Other claims consumers still read /claims?limit=500 (claims page list, dashboard, claim inventory, POS history,
+  claim modal / eligibility, claim number sequence): unchanged by request.
+- /payables/bills slim limit=5000 at 50k POs is 0.4 s mostly for 2.3 MB of JSON rows; the vouchers aggregate (~30 ms)
+  could be kept like the line totals if vouchers grow far beyond 6k.
+
 ### Done
+- Claims: GET /claims/claimed-orders?orderIds= (<= 500; ids of those bills claimed by order id or bill number: candidates
+  via customer_claims.order_id and the CLAIM_META orderNumber expression index, bill number then resolved exactly like
+  GET /claims) and GET /claims/returnable (SQL superset by CLAIM_META returnDocId / frontendStatus, then the page's exact
+  rule on merged rows; rows read in parallel chunks of 1,000 ids). Migration 20261127000000_claim_lookups
+  (customer_claims_order_id_idx in the schema; audit_logs_claim_meta_order_number_idx partial expression index, SQL only,
+  ignored by the schema diff). Frontend: orders page per-page query, supplier-return-service keeps the returnable claims.
+- Payables: getPayableBills = one SQL statement (pay aggregate, figures, narrow materialized pass for summary / filter
+  count / supplier rows, page rows only for the page; non-slim rows still built by Prisma + billFigures for the 50 POs).
+  Migration 20261128000000_po_item_totals: purchase_order_item_totals (model PurchaseOrderItemTotal) kept by statement
+  triggers on purchase_order_items adding exact numeric deltas (concurrency-safe via ON CONFLICT DO UPDATE; cascade
+  deletes skipped), backfilled; it replaced a 250k-row GROUP BY (~0.15-0.2 s at 50k POs).
+
 
 ## Task 4: follow-ups (payables on the server, supplier-return PO list, debt queries, customer sync) — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 
