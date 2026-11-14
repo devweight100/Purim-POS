@@ -6,22 +6,15 @@ import { isRetryableError } from './api-error';
 import { newOperationId } from './order-sync-service';
 import { useShiftStore } from './store/shift-store';
 
-let lastDebtSyncAt = 0;
-/** Last debt list the server returned in this session (memory only, never localStorage). */
-let lastServerDebts: DebtRecord[] = [];
-
 /**
- * Debts the server returned most recently in this session (empty until the first fetch) and a
- * background refresh. Pages that show debts call fetchDebtRecords() and handle its errors.
+ * Debts the server returned in this session, by order id (memory only, never localStorage). Pages ask the
+ * server for the debts they show (a filtered page, or the debts of given bills) instead of downloading
+ * every debt.
  */
-export function loadAllDebtRecords(): DebtRecord[] {
-  if (typeof window === 'undefined') return [];
+const debtsByOrder = new Map<string, DebtRecord>();
 
-  if (Date.now() - lastDebtSyncAt > 10000) {
-    lastDebtSyncAt = Date.now();
-    void fetchDebtRecords().catch(() => {});
-  }
-  return lastServerDebts;
+function remember(rows: DebtRecord[]) {
+  for (const row of rows) debtsByOrder.set(row.orderId, row);
 }
 
 type DebtCustomerProfile = NonNullable<NonNullable<ApiDebt['customer']>['profile']>;
@@ -77,19 +70,20 @@ function mapDebt(row: ApiDebt): DebtRecord {
   };
 }
 
-export async function fetchDebtRecords(): Promise<DebtRecord[]> {
-  const rows: DebtRecord[] = [];
-  let page = 1;
-  while (true) {
-    const result = await apiFetch<ApiPage<ApiDebt> | null>('/debts?limit=100&page=' + page);
+/** The debts of these bills (credit bills of the orders page), from the server; also kept for getDebtRecordByOrderId. */
+export async function fetchDebtsForOrders(orderIds: string[]): Promise<DebtRecord[]> {
+  const ids = [...new Set(orderIds.filter(Boolean))];
+  const out: DebtRecord[] = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const result = await apiFetch<ApiPage<ApiDebt> | null>(`/debts?limit=500&orderIds=${chunk.map(encodeURIComponent).join(',')}`);
     if (!Array.isArray(result?.data)) throw new Error('ข้อมูลหนี้จากฐานข้อมูลไม่ถูกต้อง');
-    rows.push(...result.data.map(mapDebt));
-    if (page >= (result.meta?.totalPages || 1)) break;
-    page++;
+    for (const id of chunk) debtsByOrder.delete(id);
+    const rows = result.data.map(mapDebt);
+    remember(rows);
+    out.push(...rows);
   }
-  lastDebtSyncAt = Date.now();
-  lastServerDebts = rows;
-  return rows;
+  return out;
 }
 
 export interface DebtPageStats {
@@ -106,21 +100,27 @@ export interface DebtPageQuery {
   page: number;
   limit: number;
   search?: string;
-  statusGroup?: 'all' | 'unpaid' | 'overdue' | 'paid';
+  /** owing = something left to pay (remaining > 0): the POS debt picker */
+  statusGroup?: 'all' | 'unpaid' | 'overdue' | 'paid' | 'owing';
   customerId?: string | null;
   customerType?: 'all' | 'INDIVIDUAL' | 'COMPANY';
+  /** cards over every debt (default true) */
+  stats?: boolean;
 }
 
 /** One page of the receivables list, filtered / searched by the server, plus the cards over every debt. */
 export async function fetchDebtPage(q: DebtPageQuery): Promise<{ rows: DebtRecord[]; total: number; stats: DebtPageStats | null }> {
-  const params = new URLSearchParams({ page: String(q.page), limit: String(q.limit), stats: '1' });
+  const params = new URLSearchParams({ page: String(q.page), limit: String(q.limit) });
+  if (q.stats !== false) params.set('stats', '1');
   if (q.search?.trim()) params.set('search', q.search.trim());
   if (q.statusGroup && q.statusGroup !== 'all') params.set('statusGroup', q.statusGroup);
   if (q.customerId) params.set('customerId', q.customerId);
   if (q.customerType && q.customerType !== 'all') params.set('customerType', q.customerType);
   const result = await apiFetch<(ApiPage<ApiDebt> & { stats?: DebtPageStats }) | null>('/debts?' + params.toString());
   if (!Array.isArray(result?.data)) throw new Error('ข้อมูลหนี้จากฐานข้อมูลไม่ถูกต้อง');
-  return { rows: result.data.map(mapDebt), total: Number(result.meta?.total) || 0, stats: result.stats || null };
+  const rows = result.data.map(mapDebt);
+  remember(rows);
+  return { rows, total: Number(result.meta?.total) || 0, stats: result.stats || null };
 }
 
 export async function recordDebtPayment(
@@ -177,7 +177,7 @@ export async function recordDebtPayment(
   try {
     localStorage.removeItem(key);
   } catch {}
-  lastServerDebts = [...lastServerDebts.filter((row) => row.orderId !== orderId), debtRecord];
+  debtsByOrder.set(debtRecord.orderId, debtRecord);
   void useShiftStore.getState().fetchCurrentShift();
   return { success: true, debtRecord, installment };
 }
@@ -201,7 +201,8 @@ export function getShiftDebtCollections(
     time: string;
   }>;
 } {
-  const allDebts = loadAllDebtRecords();
+  // offline fallback only (the server's shift summary wins): the debts seen in this session
+  const allDebts = [...debtsByOrder.values()];
   let count = 0;
   let total = 0;
   let cashTotal = 0;
@@ -244,13 +245,14 @@ export function getShiftDebtCollections(
  */
 export function getDebtRecordByOrderId(orderId: string): DebtRecord | null {
   if (!orderId) return null;
-  const all = loadAllDebtRecords();
-  return all.find((d) => d.orderId === orderId || d.orderNumber === orderId) || null;
+  const byId = debtsByOrder.get(orderId);
+  if (byId) return byId;
+  for (const d of debtsByOrder.values()) if (d.orderNumber === orderId) return d;
+  return null;
 }
 
 /** Cancel a debt receipt recorded by mistake (ADMIN / MANAGER). The debt goes back up. */
 export async function cancelDebtPayment(paymentId: string, reason: string) {
   const res = await apiFetch<ApiDebtPayment>(`/debts/payments/${encodeURIComponent(paymentId)}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) });
-  try { await fetchDebtRecords(); } catch {}
   return res;
 }

@@ -37,7 +37,7 @@ export class DebtsService {
     limit = 20,
     search?: string,
     status?: string,
-    opts: { statusGroup?: string; customerId?: string; customerType?: string; stats?: boolean } = {},
+    opts: { statusGroup?: string; customerId?: string; customerType?: string; orderIds?: string; stats?: boolean } = {},
   ) {
     if (!Number.isFinite(page) || page < 1) page = 1;
     if (!Number.isFinite(limit) || limit < 1) limit = 20;
@@ -54,11 +54,19 @@ export class DebtsService {
     const owed = { AND: [{ status: { not: DebtStatus.PAID } }, { remainingAmount: { gt: 0 } }] };
     if (opts.statusGroup && opts.statusGroup !== 'all') {
       if (opts.statusGroup === 'unpaid') and.push(owed);
+      // owing: something left to pay (the POS debt picker's rule: remaining > 0, whatever the stored status)
+      else if (opts.statusGroup === 'owing') and.push({ remainingAmount: { gt: 0 } });
       else if (opts.statusGroup === 'overdue') and.push(owed, { dueDate: { lt: now } });
       else if (opts.statusGroup === 'paid') and.push({ OR: [{ status: DebtStatus.PAID }, { remainingAmount: { lte: 0 } }] });
       else throw new BadRequestException('สถานะหนี้ที่ค้นหาไม่ถูกต้อง');
     }
     if (opts.customerId) and.push({ customerId: opts.customerId });
+    // orderIds=a,b: the debts of these bills (orders page: credit bills on the current page)
+    if (opts.orderIds !== undefined) {
+      const ids = [...new Set(opts.orderIds.split(',').map((x) => x.trim()).filter(Boolean))];
+      if (ids.length > 500) throw new BadRequestException('ขอได้ครั้งละไม่เกิน 500 บิล');
+      and.push({ orderId: { in: ids } });
+    }
     if (opts.customerType && opts.customerType !== 'all') {
       if (opts.customerType !== 'INDIVIDUAL' && opts.customerType !== 'COMPANY') throw new BadRequestException('ประเภทลูกค้าไม่ถูกต้อง');
       // same rule as the page: no type in the profile = INDIVIDUAL

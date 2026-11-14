@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { DebtRecord, DebtPaymentInstallment, Customer } from '@/lib/types';
-import { fetchDebtRecords } from '@/lib/debt-service';
+import { fetchDebtPage } from '@/lib/debt-service';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,8 @@ interface PosDebtSelectModalProps {
   cashierName?: string;
 }
 
+const DEBT_PICKER_LIMIT = 100;
+
 export function PosDebtSelectModal({
   open,
   onOpenChange,
@@ -48,13 +51,27 @@ export function PosDebtSelectModal({
   const [receiptDebtRecord, setReceiptDebtRecord] = useState<DebtRecord | null>(null);
   const [receiptInstallment, setReceiptInstallment] = useState<DebtPaymentInstallment | null>(null);
 
+  /** bills that still owe something, newest first */
+  const [owingTotal, setOwingTotal] = useState(0);
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
+
+  // The server filters (customer / search) and returns the first DEBT_PICKER_LIMIT bills that still owe
+  // something (the picker used to download every debt and filter here).
   const reloadDebts = async () => {
     setLoading(true);
     try {
-      const records = await fetchDebtRecords();
-      setDebts(records);
+      const res = await fetchDebtPage({
+        page: 1,
+        limit: DEBT_PICKER_LIMIT,
+        statusGroup: 'owing',
+        stats: false,
+        ...(targetCustomer ? { customerId: targetCustomer.id } : { search: debouncedSearch }),
+      });
+      setDebts(res.rows);
+      setOwingTotal(res.total);
     } catch {
       setDebts([]);
+      setOwingTotal(0);
       toast.error('ไม่สามารถโหลดข้อมูลบิลลูกหนี้จากเซิร์ฟเวอร์ได้ กรุณาลองใหม่');
     } finally {
       setLoading(false);
@@ -69,42 +86,17 @@ export function PosDebtSelectModal({
     if (open) setLoading(true);
   }
 
-  // load the debts from the server when opening
+  // load the debts from the server when opening, and again when the search changes
   useEffect(() => {
     if (!open) return;
     const load = async () => {
       await reloadDebts();
     };
     void load();
-  }, [open, targetCustomer]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, targetCustomer, debouncedSearch]);
 
-  // Filter only unpaid debts matching search or target customer
-  const unpaidDebts = useMemo(() => {
-    return debts.filter((d) => {
-      // Must have remaining debt
-      if (d.remainingDebt <= 0 || d.status === 'PAID') return false;
-
-      // Target customer filter if provided
-      if (targetCustomer && d.customerId !== targetCustomer.id) {
-        return false;
-      }
-
-      // Search query
-      if (search.trim()) {
-        const q = search.toLowerCase().trim();
-        const matchNumber = d.orderNumber?.toLowerCase().includes(q);
-        const matchName = d.customerName?.toLowerCase().includes(q);
-        const matchCode = d.customerCode?.toLowerCase().includes(q);
-        const matchPhone = d.customerPhone?.toLowerCase().includes(q);
-        const matchCompany = d.companyName?.toLowerCase().includes(q);
-        if (!matchNumber && !matchName && !matchCode && !matchPhone && !matchCompany) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [debts, targetCustomer, search]);
+  const unpaidDebts = debts;
 
   const handleStartPay = (debt: DebtRecord) => {
     setSelectedDebtForPay(debt);
@@ -149,6 +141,12 @@ export function PosDebtSelectModal({
                   className="pl-9 h-10 bg-slate-50 border-slate-300 rounded-xl text-xs sm:text-sm font-medium shadow-inner"
                 />
               </div>
+            )}
+
+            {!loading && owingTotal > unpaidDebts.length && (
+              <p className="text-xs text-slate-500" data-testid="debt-picker-more">
+                แสดง {unpaidDebts.length} บิลล่าสุด จากบิลค้างชำระ {owingTotal.toLocaleString()} บิล — พิมพ์ค้นหาเพื่อหาบิลอื่น
+              </p>
             )}
 
             {/* List of Unpaid Bills */}

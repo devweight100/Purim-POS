@@ -21,8 +21,9 @@ export class DebtsController {
     @Query('customerId') customerId?: string,
     @Query('customerType') customerType?: string,
     @Query('stats') stats?: string,
+    @Query('orderIds') orderIds?: string,
   ) {
-    for (const v of [search, status, statusGroup, customerId, customerType]) {
+    for (const v of [search, status, statusGroup, customerId, customerType, orderIds]) {
       if (v !== undefined && typeof v !== 'string') throw new BadRequestException('เงื่อนไขค้นหาไม่ถูกต้อง');
     }
     return this.debtsService.getAllDebts(
@@ -30,7 +31,7 @@ export class DebtsController {
       limit ? parseInt(limit, 10) : 20,
       search,
       status,
-      { statusGroup, customerId, customerType, stats: stats === '1' || stats === 'true' },
+      { statusGroup, customerId, customerType, orderIds, stats: stats === '1' || stats === 'true' },
     );
   }
 

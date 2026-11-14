@@ -1243,6 +1243,15 @@ d('store flow (e2e)', () => {
         expect(byName.rows.map((d) => d.id)).toContain(d0.id);
         expect(byName.rows[0].customer).toHaveProperty('profile');
       }
+      // POS debt picker: owing (remaining > 0) for a customer; orders page: the debts of given bills
+      const owing = await allPages('/debts?statusGroup=owing', 50);
+      expect(owing.rows.map((d) => d.id)).toEqual(all.filter((d) => Number(d.remainingAmount) > 0).map((d) => d.id));
+      if (all.length) {
+        const some = all.slice(0, 2).map((d) => d.orderId);
+        const byOrders = (await api('get', `/debts?limit=500&orderIds=${some.join(',')},missing-id`, A).expect(200)).body.data as any[];
+        expect(byOrders.map((d) => d.orderId).sort()).toEqual([...some].sort());
+      }
+      expect((await api('get', '/debts?orderIds=', A).expect(200)).body.data).toEqual([]);
       const company = await allPages('/debts?customerType=COMPANY', 50);
       expect(company.rows.every((d) => d.customer?.profile?.type === 'COMPANY')).toBe(true);
       await api('get', '/debts?statusGroup=bad', A).expect(400);

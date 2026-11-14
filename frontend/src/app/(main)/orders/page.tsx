@@ -14,7 +14,7 @@ import { useProductStore } from "@/lib/store/product-store";
 import { getCustomerById, fetchCustomers } from "@/lib/customer-service";
 
 import { fetchAllClaimRecords } from "@/lib/claim-service";
-import { getDebtRecordByOrderId } from "@/lib/debt-service";
+import { fetchDebtsForOrders, getDebtRecordByOrderId } from "@/lib/debt-service";
 import { ClaimRecord, DebtRecord, DebtPaymentInstallment } from "@/lib/types";
 import { ReceiptA4PdfModal, ReceiptA4Data } from "@/components/pos/ReceiptA4PdfModal";
 import { ReceiptPdfModal, ReceiptData } from "@/components/pos/ReceiptPdfModal";
@@ -25,7 +25,7 @@ import { syncPendingOrders } from "@/lib/order-sync-service";
 import { useConnectionStatus } from "@/lib/connection-status";
 import { errorMessage } from "@/components/common/LoadErrorState";
 import { toast } from "sonner";
-import type { OrderRow, OrderRowItem } from "./_components/order-shared";
+import { isOrderCredit, type OrderRow, type OrderRowItem } from "./_components/order-shared";
 import { OrdersTable } from "./_components/OrdersTable";
 import { OrdersToolbar } from "./_components/OrdersToolbar";
 import { OrderDetailDialog } from "./_components/OrderDetailDialog";
@@ -143,6 +143,9 @@ export default function OrdersPage() {
           : [];
         return { ...bOrder, hasClaims, claims: bOrder.claims || [], items, isSynced: true };
       });
+      // the debts of the credit bills on this page (paid / not paid badges), not every debt
+      const creditIds = rows.filter((o) => isOrderCredit(o)).map((o) => o.id);
+      if (creditIds.length) await fetchDebtsForOrders(creditIds).catch((e) => console.warn("debts of the page's credit bills:", e));
       const c = res?.meta?.counts;
       setOrders(rows);
       setFilteredCount(Number(res?.meta?.total) || 0);
@@ -227,8 +230,10 @@ export default function OrdersPage() {
   };
 
   // ─── Open Credit Payment History Modal ───
-  const handleOpenCreditHistory = (order: OrderRow, e?: React.MouseEvent) => {
+  const handleOpenCreditHistory = async (order: OrderRow, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    // fresh from the server (this bill only)
+    await fetchDebtsForOrders([order.id]).catch(() => undefined);
     const debt = getDebtRecordByOrderId(order.id || order.orderNumber);
     setCreditHistoryOrder(order);
     setCreditDebtRecord(debt);

@@ -22,7 +22,7 @@ owes its total, 600 vouchers over 1,800 POs: partial, discount, credit notes, ev
 1. [x] perf_load (kept), payables seed, measure before.
 2. [x] Payables: page uses /payables/bills (paging, search, supplier filter, summary totals); e2e parity vs the browser logic.
 3. [x] Supplier returns: PO list searchable/paged from the server.
-4. [ ] POS debt picker + orders credit history: filtered server query.
+4. [x] POS debt picker + orders credit history: filtered server query.
 5. [ ] Customer list refresh every 15 s -> delta / on demand (check consumers).
 6. [ ] Cheap follow-ups (claims on orders page).
 7. [ ] Tests, after-measurements, full verification, PROJECT_STATUS.
@@ -47,6 +47,12 @@ owes its total, 600 vouchers over 1,800 POs: partial, discount, credit notes, ev
   PO of the chosen supplier (all pages) and recomputes the payable PO list / claims / products from them; claimed
   products without a supplier use GET /purchase-orders/product-suppliers?ids= (supplier of the newest PO containing
   the product, = what the old loop over the newest 500 POs looked for). e2e 54/54.
+- Step 4: GET /debts gains statusGroup=owing (remaining > 0 = the picker's rule) and orderIds=a,b (<= 500). POS debt
+  picker: one server query (owing, customerId for a chosen customer, else the debounced search; newest 100 with a
+  "showing 100 of N, search" note) instead of every debt. Orders page: the debts of the credit bills on the current
+  page (orderIds) for the paid badge, the credit-history dialog re-reads its bill's debt. debt-service keeps the debts
+  it has seen by order id (no background full download any more); the close-shift offline fallback reads those (the
+  server's shift summary wins anyway).
 
 ## Task 1: reports computed in the database — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 
