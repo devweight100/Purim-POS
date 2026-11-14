@@ -149,27 +149,25 @@ export class PayablesService {
       const q = search.toLowerCase();
       conds.push(Prisma.sql`(strpos(lower(po_number), ${q}) > 0 OR strpos(lower(supplier_name), ${q}) > 0 OR strpos(lower(COALESCE(supplier_invoice_no, '')), ${q}) > 0)`);
     }
-    const where = conds.length ? Prisma.sql`WHERE ${Prisma.join(conds, ' AND ')}` : Prisma.empty;
+    const hitExpr = conds.length ? Prisma.join(conds, ' AND ') : Prisma.sql`TRUE`;
     const [[agg], creditRows] = await Promise.all([
       this.prisma.$queryRaw<{
-        summary: { billCount: number; unpaidCount: number; totalOutstanding: string | null; totalPaid: string | null };
+        summary: { billCount: number; unpaidCount: number; totalOutstanding: string | null; totalPaid: string | null; hits: number };
         suppliers: { supplierId: string; openCount: number; debt: string }[] | null;
-        total: number;
         rows: {
           id: string; po_number: string; supplier_invoice_no: string | null; supplier_id: string; supplier_name: string;
           supplier_contact: string | null; supplier_phone: string | null; supplier_address: string | null; bill_date: string; status: string;
           total: string; received_amount: string; already_paid: string; already_discount: string; remaining: string; pay_status: BillPaymentStatus; item_count: number;
         }[] | null;
       }[]>`
-        WITH pay AS (
+        WITH pay AS MATERIALIZED (
           SELECT i.purchase_order_id AS po_id, SUM(i.amount_paid) AS paid_sum, SUM(GREATEST(v.discount_amount, 0)) AS disc_sum
             FROM payment_voucher_items i JOIN payment_vouchers v ON v.id = i.voucher_id
            WHERE v.status = 'ACTIVE' GROUP BY 1),
         b AS (
           SELECT po.id, po.created_at, po.po_number, po.supplier_invoice_no, po.supplier_id,
                  COALESCE(NULLIF(s.name, ''), 'ไม่ระบุผู้จำหน่าย') AS supplier_name,
-                 s.contact_name AS supplier_contact, s.phone AS supplier_phone, s.address AS supplier_address,
-                 po.bill_date, po.status::text AS status, po.total_amount AS total, po.paid_amount, po.payment_status::text AS db_status,
+                 po.total_amount AS total, po.paid_amount, po.payment_status::text AS db_status,
                  CASE WHEN COALESCE(pay.paid_sum, 0) > 0 THEN pay.paid_sum ELSE po.paid_amount END AS already_paid,
                  COALESCE(pay.disc_sum, 0) AS already_discount,
                  GREATEST(0, po.remaining_payable) AS db_remaining,
@@ -181,30 +179,31 @@ export class PayablesService {
             LEFT JOIN purchase_order_item_totals it ON it.purchase_order_id = po.id
            WHERE po.status = ANY(${statuses}::"POStatus"[])),
         f AS (SELECT b.*, GREATEST(0, LEAST(db_remaining, ROUND(received_value - paid_amount, 2))) AS remaining FROM b),
-        g AS (
+        g AS NOT MATERIALIZED (
           SELECT f.*, CASE WHEN db_remaining <= 0 AND total > 0 THEN 'PAID'
                            WHEN remaining <= 0 AND total > 0 THEN 'PARTIALLY_PAID'
                            WHEN already_paid > 0 OR already_discount > 0 THEN 'PARTIALLY_PAID'
                            WHEN db_status IN ('PAID', 'PARTIALLY_PAID') THEN db_status
                            ELSE 'UNPAID' END AS pay_status
             FROM f),
-        hit AS (SELECT * FROM g ${where})
+        -- one pass over every bill, kept narrow (wide numeric rows are slow to materialize)
+        n AS MATERIALIZED (SELECT id, created_at, supplier_id, remaining, already_paid, pay_status, (${hitExpr}) AS hit FROM g)
         SELECT
           (SELECT json_build_object('billCount', COUNT(*), 'unpaidCount', COUNT(*) FILTER (WHERE pay_status <> 'PAID'),
-                                    'totalOutstanding', SUM(remaining)::text, 'totalPaid', SUM(already_paid)::text) FROM g) AS summary,
-          (SELECT json_agg(json_build_object('supplierId', supplier_id, 'openCount', n, 'debt', debt::text) ORDER BY first_rn)
-             FROM (SELECT supplier_id, COUNT(*)::int AS n, SUM(remaining) AS debt, MIN(rn) AS first_rn
-                     FROM (SELECT supplier_id, remaining, row_number() OVER (ORDER BY created_at DESC, id DESC) AS rn FROM g WHERE remaining > 0) o
-                    GROUP BY supplier_id) x) AS suppliers,
-          (SELECT COUNT(*)::int FROM hit) AS total,
+                                    'totalOutstanding', SUM(remaining)::text, 'totalPaid', SUM(already_paid)::text,
+                                    'hits', COUNT(*) FILTER (WHERE hit)) FROM n) AS summary,
+          (SELECT json_agg(json_build_object('supplierId', supplier_id, 'openCount', n, 'debt', debt::text) ORDER BY newest DESC, supplier_id)
+             FROM (SELECT supplier_id, COUNT(*)::int AS n, SUM(remaining) AS debt, MAX(created_at) AS newest
+                     FROM n WHERE remaining > 0 GROUP BY supplier_id) x) AS suppliers,
           (SELECT json_agg(json_build_object(
-                    'id', id, 'po_number', po_number, 'supplier_invoice_no', supplier_invoice_no, 'supplier_id', supplier_id,
-                    'supplier_name', supplier_name, 'supplier_contact', supplier_contact, 'supplier_phone', supplier_phone,
-                    'supplier_address', supplier_address, 'bill_date', to_char(bill_date, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'status', status, 'total', total::text,
-                    'received_amount', ROUND(received_value, 2)::text, 'already_paid', already_paid::text,
-                    'already_discount', already_discount::text, 'remaining', remaining::text, 'pay_status', pay_status,
-                    'item_count', item_count) ORDER BY created_at DESC, id DESC)
-             FROM (SELECT * FROM hit ORDER BY created_at DESC, id DESC LIMIT ${limit} OFFSET ${(page - 1) * limit}) p) AS rows`,
+                    'id', p.id, 'po_number', p.po_number, 'supplier_invoice_no', p.supplier_invoice_no, 'supplier_id', p.supplier_id,
+                    'supplier_name', p.supplier_name, 'supplier_contact', s.contact_name, 'supplier_phone', s.phone,
+                    'supplier_address', s.address, 'bill_date', to_char(po.bill_date, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'status', po.status::text,
+                    'total', p.total::text, 'received_amount', ROUND(p.received_value, 2)::text, 'already_paid', p.already_paid::text,
+                    'already_discount', p.already_discount::text, 'remaining', p.remaining::text, 'pay_status', p.pay_status,
+                    'item_count', p.item_count) ORDER BY p.created_at DESC, p.id DESC)
+             FROM (SELECT g.* FROM g JOIN (SELECT id FROM n WHERE hit ORDER BY created_at DESC, id DESC LIMIT ${limit} OFFSET ${(page - 1) * limit}) h ON h.id = g.id) p
+             JOIN purchase_orders po ON po.id = p.id LEFT JOIN suppliers s ON s.id = p.supplier_id) AS rows`,
       this.prisma.$queryRaw<{ supplier_id: string; remaining: string }[]>`
         SELECT supplier_id, remaining_credit_amount::text AS remaining FROM supplier_return_notes
          WHERE status <> 'CANCELLED' AND remaining_credit_amount > 0
@@ -227,7 +226,7 @@ export class PayablesService {
       totalAmount: Number(r.total), receivedAmount: Number(r.received_amount), alreadyPaidAmount: Number(r.already_paid),
       alreadyDiscountAmount: Number(r.already_discount), remainingPayable: Number(r.remaining), paymentStatus: r.pay_status,
     }));
-    const meta = { total: agg.total, page, limit, totalPages: Math.ceil(agg.total / limit) };
+    const meta = { total: agg.summary.hits, page, limit, totalPages: Math.ceil(agg.summary.hits / limit) };
     const summary = {
       billCount: agg.summary.billCount,
       unpaidCount: agg.summary.unpaidCount,
