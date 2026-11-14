@@ -28,7 +28,7 @@ d('store flow (e2e)', () => {
   let http: any;
   let A = ''; // admin token
   let C = ''; // cashier token
-  const api = (method: 'get' | 'post' | 'patch' | 'put', path: string, token?: string, body?: any) => {
+  const api = (method: 'get' | 'post' | 'patch' | 'put' | 'delete', path: string, token?: string, body?: any) => {
     const r = (http as any)[method]('/api' + path);
     if (token) r.set('Authorization', 'Bearer ' + token);
     return body ? r.send(body) : r;
@@ -1264,6 +1264,66 @@ d('store flow (e2e)', () => {
       const expected: Record<string, number> = { ALL: all.length };
       for (const p of all) expected[p.status] = (expected[p.status] || 0) + 1;
       expect(first.meta.counts).toEqual(expected);
+    });
+  });
+  describe('customer list: delta sync', () => {
+    const sync = async (since?: string) =>
+      (await api('get', `/customers/sync${since !== undefined ? `?since=${encodeURIComponent(since)}` : ''}`, A).expect(200)).body;
+    const client = new Map<string, any>();
+    let cursor = '';
+    const pull = async () => {
+      const b = await sync(cursor);
+      if (b.full) client.clear();
+      for (const c of b.customers) client.set(c.id, c);
+      cursor = b.cursor;
+      return b;
+    };
+    /** a delta row = the full-list row + its position in the full list */
+    const strip = (rows: any[]) => rows.map(({ listIndex: _l, ...r }) => r);
+
+    it('full list = GET /customers; deltas: new / edited customers, points, debts; deletion = full reload', async () => {
+      const first = await pull();
+      expect(first.full).toBe(true);
+      expect(first.customers).toEqual((await api('get', '/customers', A).expect(200)).body);
+      expect(await pull()).toMatchObject({ full: false, customers: [], deleted: [] });
+
+      const created = (await api('post', '/customers', A, { name: 'SYNC ลูกค้า', phone: '0899990001' }).expect(201)).body;
+      let d = await pull();
+      expect(d.full).toBe(false);
+      expect(d.customers.map((c: any) => c.id)).toEqual([created.id]);
+      const list = (await api('get', '/customers', A).expect(200)).body as any[];
+      expect(d.customers[0].listIndex).toBe(list.findIndex((c) => c.id === created.id));
+      expect(strip(d.customers)).toEqual([list.find((c) => c.id === created.id)]);
+
+      await api('patch', `/customers/${created.id}`, A, { name: 'SYNC ลูกค้า แก้ไข' }).expect(200);
+      d = await pull();
+      expect(d.customers.map((c: any) => c.name)).toEqual(['SYNC ลูกค้า แก้ไข']);
+
+      // points (sale / redeem) and a debt's remaining amount (credit sale / receipt) change the row too
+      const prisma = new PrismaClient();
+      try {
+        await prisma.customer.update({ where: { id: created.id }, data: { points: 42 } });
+        const debt = await prisma.customerDebt.findFirst({ where: { remainingAmount: { gt: 0 } } });
+        expect(debt).toBeTruthy();
+        await prisma.customerDebt.update({ where: { id: debt!.id }, data: { remainingAmount: { decrement: 1 } } });
+        d = await pull();
+        expect(d.customers.map((c: any) => c.id).sort()).toEqual([created.id, debt!.customerId].sort());
+        await prisma.customerDebt.update({ where: { id: debt!.id }, data: { remainingAmount: { increment: 1 }, status: debt!.status } });
+        await pull();
+        // a status-only debt update (overdue marking) is not a change of the list row
+        await prisma.customerDebt.update({ where: { id: debt!.id }, data: { note: 'x' } });
+        expect((await pull()).customers).toEqual([]);
+      } finally {
+        await prisma.$disconnect();
+      }
+
+      await api('delete', `/customers/${created.id}`, A).expect(200);
+      d = await pull();
+      expect(d.full).toBe(true);
+      expect(d.customers.some((c: any) => c.id === created.id)).toBe(false);
+      // client copy == a fresh full list; bad cursors give a full reload
+      expect(strip([...client.values()])).toEqual((await api('get', '/customers', A).expect(200)).body);
+      for (const bad of ['garbage', 'v1.1-2.0.AAAA', cursor.replace(/^v1\.\d+-\d+/, 'v1.1-1')]) expect((await sync(bad)).full).toBe(true);
     });
   });
 });

@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
 import { customerPageIds, parseCustomerPageQuery } from './customer-list';
+import { CHANGE_LOG_KEEP_MS, cursorUsable, decodeCursor, encodeCursor } from '../products/product-catalog';
 
 /** Profile fields that control store credit: only debt managers may change them. */
 export const CREDIT_FIELDS = ['creditLimit', 'creditTerms', 'isCreditBlocked'] as const;
@@ -137,10 +138,70 @@ export class CustomersController {
     return this.customerRows(where);
   }
 
-  private async customerRows(where: Prisma.CustomerWhereInput) {
-    const rows = await this.prisma.customer.findMany({ where, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
+  private lastChangeLogPrune = 0;
+
+  /**
+   * Customer list delta sync (GET /customers/sync?since=<cursor>), same design as GET /products/sync.
+   * No / unusable cursor, or a customer was deleted since the cursor: every customer (`full: true`, rows = GET
+   * /customers). Otherwise the customers changed since the cursor (rows of customer_changes written by transactions
+   * not visible in the cursor's snapshot: the customer row or its debts) with `listIndex` (position in the full
+   * list, for the fallback CUST code). Read in one REPEATABLE READ transaction so the cursor matches the data.
+   */
+  @Get('sync')
+  async sync(@Query('since') since?: unknown) {
+    const parsed = decodeCursor(since);
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        const [head] = await tx.$queryRaw<{ snapshot: string; epoch: string }[]>`
+          SELECT pg_current_snapshot()::text AS snapshot,
+                 (SELECT oid FROM pg_database WHERE datname = current_database())::text || '-' || 'customer_changes'::regclass::oid::text AS epoch`;
+        const now = Date.now();
+        const cursor = encodeCursor({ epoch: head.epoch, at: now, snapshot: head.snapshot });
+        let usable = cursorUsable(parsed, head.epoch, now);
+        if (usable) {
+          const [chk] = await tx.$queryRaw<{ ok: boolean }[]>`
+            SELECT pg_snapshot_xmax(${parsed!.snapshot}::pg_snapshot) <= pg_snapshot_xmax(pg_current_snapshot()) AS ok`;
+          usable = !!chk?.ok;
+        }
+        const full = async () => ({ cursor, full: true, customers: await this.customerRows({}, tx), deleted: [] as string[] });
+        if (!usable) return full();
+        const changed = await tx.$queryRaw<{ customer_id: string }[]>`
+          SELECT DISTINCT c.customer_id FROM customer_changes c
+          WHERE c.xid >= pg_snapshot_xmin(${parsed!.snapshot}::pg_snapshot)
+            AND NOT pg_visible_in_snapshot(c.xid, ${parsed!.snapshot}::pg_snapshot)`;
+        if (!changed.length) return { cursor, full: false, customers: [], deleted: [] as string[] };
+        const ids = changed.map((r) => r.customer_id);
+        const rows = await this.customerRows({ id: { in: ids } }, tx);
+        // a deletion renumbers the fallback codes of the later rows: send the whole list then (rare)
+        if (rows.length < ids.length) return full();
+        const idx = await tx.$queryRaw<{ id: string; list_index: number }[]>`
+          SELECT id, list_index::int AS list_index FROM (
+            SELECT id, (row_number() OVER (ORDER BY created_at, id)) - 1 AS list_index FROM customers) t
+          WHERE id = ANY(${ids}::text[])`;
+        const indexOf = new Map(idx.map((r) => [r.id, r.list_index]));
+        return { cursor, full: false, customers: rows.map((r) => ({ ...r, listIndex: indexOf.get(r.id) ?? 0 })), deleted: [] as string[] };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, maxWait: 10000, timeout: 120000 },
+    );
+    this.pruneChangeLog();
+    return result;
+  }
+
+  /** Drop change-log rows older than any usable cursor (at most once an hour, in the background). */
+  private pruneChangeLog() {
+    const now = Date.now();
+    if (now - this.lastChangeLogPrune < 3600_000) return;
+    this.lastChangeLogPrune = now;
+    const keepDays = Math.round(CHANGE_LOG_KEEP_MS / 86_400_000);
+    void this.prisma.$executeRaw`DELETE FROM customer_changes WHERE changed_at < CURRENT_TIMESTAMP - make_interval(days => ${keepDays}::int)`.catch(() => {
+      this.lastChangeLogPrune = 0;
+    });
+  }
+
+  private async customerRows(where: Prisma.CustomerWhereInput, db: Prisma.TransactionClient | PrismaService = this.prisma) {
+    const rows = await db.customer.findMany({ where, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
     const debts = rows.length
-      ? await this.prisma.customerDebt.groupBy({
+      ? await db.customerDebt.groupBy({
           by: ['customerId'],
           where: Object.keys(where).length ? { customerId: { in: rows.map((r) => r.id) } } : {},
           _sum: { remainingAmount: true },

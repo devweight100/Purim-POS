@@ -328,6 +328,19 @@ model ProductChange {
   @@map("product_changes")
 }
 
+/// Change log of the customer list delta sync (GET /customers/sync); rows written by triggers on customers and
+/// customer_debts (see migration 20261126000000_customer_sync).
+model CustomerChange {
+  id         BigInt                 @id @default(autoincrement())
+  customerId String                 @map("customer_id")
+  xid        Unsupported("xid8")    @default(dbgenerated("pg_current_xact_id()"))
+  changedAt  DateTime               @default(now()) @map("changed_at")
+
+  @@index([xid])
+  @@index([changedAt])
+  @@map("customer_changes")
+}
+
 model ProductWholesalePrice {
   id          String   @id @default(uuid())
   productId   String   @map("product_id")
