@@ -75,7 +75,7 @@ export function catalogStock(
     return Math.min(
       ...product.bundleItems.map((bi) => {
         const childStock = stockOf.get(bi.childProductId) || 0;
-        const requiredPerSet = qn(bi.quantity as any) || 1;
+        const requiredPerSet = qn(bi.quantity) || 1;
         return Math.floor(childStock / requiredPerSet + 1e-9);
       }),
     );

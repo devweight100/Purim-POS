@@ -80,7 +80,7 @@ Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time 
   (fresh migrate deploy + empty diff checked).
 - Purchases tab stays in Node (PO rows bounded by the row guard; claims list = getAllClaims(1, 5000) as before).
 
-## Task 2: POS catalogue, delta sync, images by URL, lighter stock list, scanner lookup, gzip — IN PROGRESS
+## Task 2: POS catalogue, delta sync, images by URL, lighter stock list, scanner lookup, gzip — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 
 Branch ccr-8f8b0741-si1a0o (base f9078b0). Load DB perf_load (no images / categories / suppliers in it; see
 "perf_img" below for a copy with images). Endpoint list for bench.sh: scratchpad/perf/t2-endpoints.txt
@@ -95,6 +95,19 @@ Branch ccr-8f8b0741-si1a0o (base f9078b0). Load DB perf_load (no images / catego
 | GET /products/lookup (empty q) | 0.31 s | 6.9 kB | groupBy all batches + all products |
 | GET /products/lookup?q=<barcode or sku> | 0.09 s | 0.5 kB | |
 | GET /products/barcode/:code | 0.015 s | 1.3 kB | unique index already |
+
+### After (same perf_load, same bench requests; old = f9078b0 build run on the same DB)
+| request | before time / size | after time / size (gzip) |
+|---|---|---|
+| GET /products | 2.0-2.2 s / 13.5 MB | 0.34-0.49 s / 6.8 MB (72 kB gzip) |
+| GET /products/sync (full, first load) | - | 0.34 s / 6.8 MB (72 kB gzip) |
+| GET /products/sync?since= (nothing changed / 5 stock changes) | (was a full GET /products every 15 s, twice on POS screens) | 0.015 s / 100 B; 0.015-0.02 s / 4.4 kB |
+| GET /inventory/stock | 1.1-1.3 s / 10.7 MB | 0.34 s / 4.7 MB (54 kB gzip) |
+| GET /inventory/low-stock | 0.9-1.0 s / 106 kB | 0.27 s / 47 kB |
+| GET /products/lookup empty / barcode / sku / "รุ่น 500" | 0.29 / 0.07 / 0.07 / 0.35 s | 0.11 / 0.06 / 0.06 / 0.15 s (byte-identical responses) |
+| GET /products/barcode/:code (scanner) | 0.013-0.015 s | 0.012-0.014 s (unique indexes already; POS scans the in-memory catalogue) |
+| peak RSS of the run above | 0.94 GB | 0.37 GB |
+| perf_img (1,000 photos of 30 kB, packs, suppliers, bundles): GET /products | 3.6-3.7 s / 60.5 MB, peak RSS 1.58 GB after 2 calls | 0.60-0.75 s / 11.6 MB (330 kB gzip), peak RSS 0.52 GB |
 
 ### Design (decided)
 - Light catalogue row (GET /products and the sync endpoint share one builder): product scalars, barcodes {barcode,label},
@@ -127,7 +140,7 @@ Branch ccr-8f8b0741-si1a0o (base f9078b0). Load DB perf_load (no images / catego
        image endpoint, update keeps images by id, inventory stock trimmed, lookup speed, compression. Unit + e2e tests.
 3. [x] Frontend: product store delta + offline cache delta, image URLs in POS / products page / PO preview, form keeps
        existing images by id + thumbnail on save. vitest.
-4. [ ] Measurements after, full verification, PROJECT_STATUS entry.
+4. [x] Catalogue rows built by one SQL statement (Prisma objects took 0.95 s of the 1 s); measurements after, full verification, PROJECT_STATUS entry.
 
 ### Done
 - Step 1: baseline measured (table above).
@@ -147,3 +160,13 @@ Branch ccr-8f8b0741-si1a0o (base f9078b0). Load DB perf_load (no images / catego
   delta write), offline-db applyCachedProductDelta, photos by URL (POS cards = thumb URL, products table = thumb,
   PO preview = full URL, form shows URL / upload data, saves existing photos by id, uploads with a 240 px thumbnail).
   vitest product-delta.test.ts (8, incl. store with mocked API) + product-images.test.ts (3): 165 total.
+- Step 4: catalogRows = one SQL statement (CTEs json_agg per relation, trim_scale(decimal)::text = Prisma's Decimal
+  JSON, to_char ISO timestamps, ORDER BY ctid = the old unordered findMany order); parity vs the old build on perf_img:
+  all 10,012 rows equal (minus intended removals) and same order. New e2e: catalogue row == GET /products/:id for a
+  product with every relation (46/46). Playwright 07-product-photos (photo thumb on POS card + products table, form
+  shows URL, upload adds a photo with browser thumbnail, saved photo kept by id, later syncs use since=, response
+  compressed through the Next rewrite: brotli for browsers, gzip for curl). Verification: backend tsc + jest 119 +
+  e2e 46/46, frontend tsc + eslint 0 errors + vitest 165 + next build + Playwright 14/14.
+- Not done / follow-ups: orders page still downloads GET /products once to map names (now light, 0.4 s); the mobile
+  lookup still substring-scans every product (needs pg_trgm for an index; 0.06-0.15 s now); server-side paging of
+  the products / inventory pages is task 3.
