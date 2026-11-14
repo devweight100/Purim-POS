@@ -138,7 +138,8 @@ export class PayablesService {
     const slim = slimQuery;
 
     // Every bill's figures in SQL (= billFigures in payable-bills.ts, exact decimals instead of float sums):
-    // cards, per-supplier summary, the computed-status filter and the page in one statement.
+    // cards, per-supplier summary, the computed-status filter and the page in one statement. Line count and
+    // received value per PO come from purchase_order_item_totals (kept by triggers on purchase_order_items).
     const statuses = PAYABLE_PO_STATUSES as string[];
     const conds: Prisma.Sql[] = [];
     if (supplierId) conds.push(Prisma.sql`supplier_id = ${supplierId}`);
@@ -164,10 +165,6 @@ export class PayablesService {
           SELECT i.purchase_order_id AS po_id, SUM(i.amount_paid) AS paid_sum, SUM(GREATEST(v.discount_amount, 0)) AS disc_sum
             FROM payment_voucher_items i JOIN payment_vouchers v ON v.id = i.voucher_id
            WHERE v.status = 'ACTIVE' GROUP BY 1),
-        recv AS (
-          SELECT purchase_order_id AS po_id, COUNT(*)::int AS n,
-                 SUM(received_qty * CASE WHEN quantity > 0 THEN total / quantity ELSE unit_cost END) AS value
-            FROM purchase_order_items GROUP BY 1),
         b AS (
           SELECT po.id, po.created_at, po.po_number, po.supplier_invoice_no, po.supplier_id,
                  COALESCE(NULLIF(s.name, ''), 'ไม่ระบุผู้จำหน่าย') AS supplier_name,
@@ -176,13 +173,13 @@ export class PayablesService {
                  CASE WHEN COALESCE(pay.paid_sum, 0) > 0 THEN pay.paid_sum ELSE po.paid_amount END AS already_paid,
                  COALESCE(pay.disc_sum, 0) AS already_discount,
                  GREATEST(0, po.remaining_payable) AS db_remaining,
-                 CASE WHEN recv.n IS NULL THEN po.total_amount ELSE recv.value END AS received_value,
-                 COALESCE(recv.n, 0) AS item_count
+                 CASE WHEN COALESCE(it.item_count, 0) = 0 THEN po.total_amount ELSE it.received_value END AS received_value,
+                 COALESCE(it.item_count, 0) AS item_count
             FROM purchase_orders po
             LEFT JOIN suppliers s ON s.id = po.supplier_id
             LEFT JOIN pay ON pay.po_id = po.id
-            LEFT JOIN recv ON recv.po_id = po.id
-           WHERE po.status::text = ANY(${statuses})),
+            LEFT JOIN purchase_order_item_totals it ON it.purchase_order_id = po.id
+           WHERE po.status = ANY(${statuses}::"POStatus"[])),
         f AS (SELECT b.*, GREATEST(0, LEAST(db_remaining, ROUND(received_value - paid_amount, 2))) AS remaining FROM b),
         g AS (
           SELECT f.*, CASE WHEN db_remaining <= 0 AND total > 0 THEN 'PAID'

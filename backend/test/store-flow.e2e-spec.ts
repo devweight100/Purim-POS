@@ -1083,6 +1083,40 @@ d('store flow (e2e)', () => {
       expect(first.summary.totalPaid).toBeCloseTo(full.reduce((s, b) => s + b.alreadyPaidAmount, 0), 6);
       const supRow = first.summary.suppliers.find((x: any) => x.supplierId === edge[0].supplierId);
       expect([supRow.openCount, supRow.debt]).toEqual([4, 99.26]);
+      // purchase_order_item_totals (trigger-kept) == the sums over the current lines, after every write of the suite
+      // plus an update, a move, a delete and a PO deletion here
+      const db2 = new PrismaClient();
+      try {
+        const lines = await db2.purchaseOrderItem.findMany({ where: { purchaseOrder: { poNumber: { startsWith: 'EDGE-' } } }, include: { purchaseOrder: true }, orderBy: { id: 'asc' } });
+        const half = lines.filter((l) => l.purchaseOrder.poNumber === 'EDGE-HALF');
+        const thirds = lines.find((l) => l.purchaseOrder.poNumber === 'EDGE-THIRDS')!;
+        await db2.purchaseOrderItem.updateMany({ where: { purchaseOrderId: half[0].purchaseOrderId }, data: { receivedQty: { increment: 1 } } });
+        const eighths = half.find((l) => Number(l.quantity) === 8)!; // received 2 of 8 for 1.00 -> 0.25
+        await db2.purchaseOrderItem.update({ where: { id: eighths.id }, data: { purchaseOrderId: thirds.purchaseOrderId } });
+        await db2.purchaseOrderItem.delete({ where: { id: half.find((l) => l.id !== eighths.id)!.id } }); // EDGE-HALF has no lines left -> bill amount = total
+        await db2.purchaseOrder.delete({ where: { id: lines.find((l) => l.purchaseOrder.poNumber === 'EDGE-ZEROQTY')!.purchaseOrderId } });
+        const diff = await db2.$queryRaw<any[]>`
+          SELECT COALESCE(t.purchase_order_id, x.purchase_order_id) AS po, t.item_count, x.n, t.received_value::text AS kept, x.v::text AS fresh
+            FROM purchase_order_item_totals t
+            FULL JOIN (SELECT purchase_order_id, COUNT(*)::int AS n, SUM(received_qty * CASE WHEN quantity > 0 THEN total / quantity ELSE unit_cost END) AS v
+                         FROM purchase_order_items GROUP BY 1) x ON x.purchase_order_id = t.purchase_order_id
+           WHERE t.item_count IS DISTINCT FROM COALESCE(x.n, 0) OR (x.n IS NOT NULL AND t.received_value IS DISTINCT FROM x.v)`;
+        expect(diff).toEqual([]);
+        expect(await db2.purchaseOrderItemTotal.count()).toBeGreaterThan(5);
+      } finally {
+        await db2.$disconnect();
+      }
+      const after = (await allBills('&search=EDGE-')).rows;
+      expect(after.map((b) => [b.poNumber, b.itemsCount, b.receivedAmount, b.remainingPayable])).toEqual([
+        ['EDGE-HALF', 0, 1.25, 1.25],
+        ['EDGE-DBSTATUS', 1, 0, 0],
+        ['EDGE-NEGREM', 1, 30, 0],
+        ['EDGE-OVERPAID', 1, 100, 0],
+        ['EDGE-NOITEMS', 0, 55.55, 55.55],
+        ['EDGE-THIRDS', 2, 33.58, 33.58],
+      ]);
+      const slimAfter: any[] = (await api('get', '/payables/bills?limit=5000&slim=1&search=EDGE-', A).expect(200)).body.data;
+      expect(norm(slimAfter.map(figures))).toEqual(norm(after.map(figures)));
     });
 
     it('credit notes with credit left (?available=1) and the newest PO supplier per product', async () => {

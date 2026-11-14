@@ -445,6 +445,7 @@ model PurchaseOrder {
 
   supplier          Supplier              @relation(fields: [supplierId], references: [id])
   items             PurchaseOrderItem[]
+  itemTotals        PurchaseOrderItemTotal?
   stockBatches      StockBatch[]
   voucherItems      PaymentVoucherItem[]
 
@@ -453,6 +454,17 @@ model PurchaseOrder {
   @@index([billDate])
   @@index([supplierInvoiceNo])
   @@map("purchase_orders")
+}
+
+/// Per-PO sums of its lines for GET /payables/bills (count, value received at gross per unit), kept by the
+/// statement triggers of migration 20261128000000_po_item_totals on purchase_order_items (incremental, exact numeric).
+model PurchaseOrderItemTotal {
+  purchaseOrderId String        @id @map("purchase_order_id")
+  itemCount       Int           @default(0) @map("item_count")
+  receivedValue   Decimal       @default(0) @map("received_value") @db.Decimal
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@map("purchase_order_item_totals")
 }
 
 model PurchaseOrderItem {
