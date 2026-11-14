@@ -10,7 +10,7 @@ import { errorMessage } from "./product-helpers";
 import type { ImportFilterTab, ImportPreviewRow, ProductRecord } from "./types";
 
 /** Excel / CSV import: read the file into a preview with a diff against the catalog, then upsert only changed + new rows. */
-export function useProductImport(products: ProductRecord[], reload: () => void) {
+export function useProductImport(loadAll: () => Promise<ProductRecord[]>, reload: () => void) {
   const [importPreviewData, setImportPreviewData] = useState<ImportPreviewRow[]>([]);
   const [isImportPreviewOpen, setIsImportPreviewOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -35,6 +35,8 @@ export function useProductImport(products: ProductRecord[], reload: () => void) 
           return;
         }
 
+        // the diff needs every product, not just the table's page
+        const products = await loadAll();
         const parsedItems = buildImportPreview(rawJson, products);
 
         if (parsedItems.length === 0) {

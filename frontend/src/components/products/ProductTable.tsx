@@ -28,7 +28,7 @@ export function ProductTable({ data, f, sel, onEdit }: {
   onEdit: (p: ProductRecord) => void;
 }) {
   const { categories, loading, loadError, allPackaging, allImages, loadData } = data;
-  const { filtered, paginatedList, currentPage, setCurrentPage, totalPages, sortKey, sortDir, handleSort } = f;
+  const { filteredCount, paginatedList, currentPage, setCurrentPage, totalPages, sortKey, sortDir, handleSort } = f;
 
   return (
     <div className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
@@ -66,7 +66,7 @@ export function ProductTable({ data, f, sel, onEdit }: {
               <TableRow><TableCell colSpan={15} className="text-center h-32 text-slate-500">กำลังโหลด...</TableCell></TableRow>
             ) : loadError ? (
               <TableRow><TableCell colSpan={15}><LoadErrorState message={loadError} onRetry={() => loadData()} /></TableCell></TableRow>
-            ) : filtered.length === 0 ? (
+            ) : filteredCount === 0 ? (
               <TableRow><TableCell colSpan={15} className="text-center h-40 text-slate-400">ไม่พบสินค้าที่ตรงกับเงื่อนไข</TableCell></TableRow>
             ) : paginatedList.map((p) => (
               <ProductTableRow
@@ -87,10 +87,10 @@ export function ProductTable({ data, f, sel, onEdit }: {
       </div>
 
       {/* Pagination Navigation */}
-      {filtered.length > 0 && (
+      {filteredCount > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/80 px-4 py-3 sm:px-6">
           <div className="text-xs text-slate-500 font-medium">
-            แสดง <b className="text-slate-800">{Math.min((currentPage - 1) * ITEMS_PER_PAGE + 1, filtered.length)}</b> - <b className="text-slate-800">{Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)}</b> จากทั้งหมด <b className="text-slate-800">{filtered.length}</b> รายการ
+            แสดง <b className="text-slate-800">{Math.min((currentPage - 1) * ITEMS_PER_PAGE + 1, filteredCount)}</b> - <b className="text-slate-800">{Math.min(currentPage * ITEMS_PER_PAGE, filteredCount)}</b> จากทั้งหมด <b className="text-slate-800">{filteredCount}</b> รายการ
           </div>
           <div className="flex items-center gap-1.5">
             <Button

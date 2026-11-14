@@ -40,6 +40,24 @@ export class ProductsController {
   }
 
   /**
+   * Products management table: ?page&limit(<=500)&q&categoryId&supplierId&stock=all|low|out&sort&dir=asc|desc.
+   * Rows are GET /products catalogue rows (cost fields only for VIEW_COST), meta has total / allCount.
+   */
+  @Get('page')
+  async pageList(@Query() query: Record<string, unknown>, @Req() req?: any) {
+    for (const k of ['page', 'limit', 'q', 'categoryId', 'supplierId', 'stock', 'sort', 'dir']) {
+      if (query[k] !== undefined && typeof query[k] !== 'string') throw new BadRequestException('เงื่อนไขค้นหาไม่ถูกต้อง');
+    }
+    const str = (k: string) => (query[k] as string | undefined) || undefined;
+    const result = await this.productsService.page({
+      page: parseInt(String(query.page ?? ''), 10) || 1,
+      limit: parseInt(String(query.limit ?? ''), 10) || 50,
+      q: str('q'), categoryId: str('categoryId'), supplierId: str('supplierId'), stock: str('stock'), sort: str('sort'), dir: str('dir'),
+    });
+    return { ...result, data: costFilterFor(req?.user)(result.data) };
+  }
+
+  /**
    * Mobile summary page (/m): read-only search with stock, packs and prices, paged.
    * ?q=&filter=all|low|out&page=&limit= (max 50). VIEW_REPORTS (ADMIN / MANAGER always); cost only with VIEW_COST.
    */

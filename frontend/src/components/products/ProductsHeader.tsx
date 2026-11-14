@@ -31,8 +31,9 @@ export function downloadImportTemplate() {
 }
 
 /** Page title + export / import / template / categories / add buttons. */
-export function ProductsHeader({ products, onImportFile, onAdd }: {
-  products: ProductRecord[];
+export function ProductsHeader({ loadAll, onImportFile, onAdd }: {
+  /** every product (the table only holds one page) */
+  loadAll: () => Promise<ProductRecord[]>;
   onImportFile: (file: File) => void;
   onAdd: () => void;
 }) {
@@ -63,7 +64,11 @@ export function ProductsHeader({ products, onImportFile, onAdd }: {
         {/* Export Excel Button */}
         <Button
           variant="outline"
-          onClick={() => exportProductsExcel(products)}
+          onClick={() => {
+            void loadAll()
+              .then(exportProductsExcel)
+              .catch((err: unknown) => toast.error(`ส่งออกไม่สำเร็จ: ${(err as Error | undefined)?.message || "ติดต่อเซิร์ฟเวอร์ไม่ได้"}`));
+          }}
           className="h-10 border-emerald-300 bg-emerald-50/60 font-bold text-emerald-800 hover:bg-emerald-100 hover:border-emerald-400 shadow-2xs cursor-pointer"
           title="ส่งออกรายการสินค้าทั้งหมดเป็นไฟล์ Excel (.xlsx) เพื่อแก้ไขราคา บาร์โค้ด ชื่อ หรือสต็อก"
         >

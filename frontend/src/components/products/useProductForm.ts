@@ -107,21 +107,10 @@ export function useProductForm(data: ProductsData, setExpandedRows: Dispatch<Set
     }
 
     const savedId = targetId;
-    const displayProduct: ProductRecord = {
-      ...updatedProductObj,
-      ...(persistedProduct || {}),
-      id: savedId,
-    };
 
-    let newProductsList: ProductRecord[];
-    if (editingProduct?.id) {
-      newProductsList = data.products.map(p => p.id === editingProduct.id ? { ...p, ...displayProduct } : p);
-    } else {
-      newProductsList = [displayProduct, ...data.products];
-    }
-
-    data.setProducts(newProductsList);
-    await useProductStore.getState().fetchProducts();
+    // show the saved row as the server lists it (its page / position may change with the sort)
+    await data.refreshProducts();
+    void useProductStore.getState().fetchProducts();
 
     data.setAllPackaging(prev => ({ ...prev, [savedId]: form.packagingUnits }));
     if (form.packagingUnits.length > 0) setExpandedRows(prev => new Set([...prev, savedId]));

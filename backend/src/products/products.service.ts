@@ -496,6 +496,91 @@ export class ProductsService {
     return this.catalogRows(this.prisma, where);
   }
 
+  private sortCollation: Promise<string | null> | null = null;
+
+  /** An ICU collation for Thai name sorting (browser localeCompare order), or null (database default). */
+  private nameCollation(): Promise<string | null> {
+    if (!this.sortCollation) {
+      this.sortCollation = this.prisma
+        .$queryRaw<{ collname: string }[]>`SELECT collname FROM pg_collation WHERE collname IN ('th-TH-x-icu', 'th-x-icu', 'und-x-icu') ORDER BY collname DESC`
+        .then((rows) => {
+          const names = rows.map((r) => r.collname);
+          return ['th-TH-x-icu', 'th-x-icu', 'und-x-icu'].find((n) => names.includes(n)) || null;
+        })
+        .catch(() => null);
+    }
+    return this.sortCollation;
+  }
+
+  /**
+   * Products management table (GET /products/page): one page of catalogue rows (same JSON as GET /products),
+   * filtered, searched and sorted by the database. q = substring of name / SKU / barcode / pack barcode
+   * (case-insensitive); supplierId = has that supplier entry; stock low = 0 < stock <= store threshold, out = 0;
+   * sort name | stock | basePrice (selling: price level 1, else base price) | priceLevel1-5 (missing = 0;
+   * level 1 falls back to the base price), ties and no sort = catalogue (table) order.
+   */
+  async page(opts: { page: number; limit: number; q?: string; categoryId?: string; supplierId?: string; stock?: string; sort?: string; dir?: string }) {
+    const page = Math.max(1, Math.min(1_000_000, Math.floor(opts.page || 1)));
+    const limit = Math.max(1, Math.min(500, Math.floor(opts.limit || 50)));
+    const stock = opts.stock || 'all';
+    if (!['all', 'low', 'out'].includes(stock)) throw new BadRequestException('ตัวกรองสต็อกไม่ถูกต้อง (all, low, out)');
+    const dir = opts.dir === 'desc' ? 'DESC' : 'ASC';
+    const collation = await this.nameCollation();
+    const sortSql: Record<string, string> = {
+      name: collation ? `x.name COLLATE "${collation}"` : 'x.name',
+      stock: 'x.stock',
+      basePrice: 'COALESCE(x.price_level_1, x.base_price)',
+      priceLevel1: 'COALESCE(x.price_level_1, x.base_price)',
+      priceLevel2: 'COALESCE(x.price_level_2, 0)',
+      priceLevel3: 'COALESCE(x.price_level_3, 0)',
+      priceLevel4: 'COALESCE(x.price_level_4, 0)',
+      priceLevel5: 'COALESCE(x.price_level_5, 0)',
+    };
+    if (opts.sort && !sortSql[opts.sort]) throw new BadRequestException('ลำดับการเรียงไม่ถูกต้อง');
+    const orderBy = opts.sort ? Prisma.raw(`${sortSql[opts.sort]} ${dir}, x.pos`) : Prisma.raw('x.pos');
+    const conds: Prisma.Sql[] = [];
+    const q = (opts.q || '').trim();
+    if (q) {
+      const p = '%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%';
+      conds.push(Prisma.sql`(x.name ILIKE ${p} OR x.sku ILIKE ${p}
+        OR EXISTS (SELECT 1 FROM product_barcodes b WHERE b.product_id = x.id AND b.barcode ILIKE ${p})
+        OR EXISTS (SELECT 1 FROM product_packaging_units u WHERE u.product_id = x.id AND u.barcode ILIKE ${p}))`);
+    }
+    if (opts.categoryId) conds.push(Prisma.sql`x.category_id = ${opts.categoryId}`);
+    if (opts.supplierId) conds.push(Prisma.sql`EXISTS (SELECT 1 FROM product_suppliers ps WHERE ps.product_id = x.id AND ps.supplier_id = ${opts.supplierId})`);
+    const settings = await this.prisma.storeSettings.findFirst({ select: { lowStockThreshold: true } });
+    const thresholdRaw = Number(settings?.lowStockThreshold);
+    const threshold = Number.isFinite(thresholdRaw) && thresholdRaw >= 0 ? thresholdRaw : 5;
+    if (stock === 'out') conds.push(Prisma.sql`x.stock = 0`);
+    if (stock === 'low') conds.push(Prisma.sql`x.stock > 0 AND x.stock <= ${threshold}`);
+    const where = conds.length ? Prisma.sql`WHERE ${Prisma.join(conds, ' AND ')}` : Prisma.empty;
+    // stock as catalogStock computes it: batch sum, or complete sets of a bundle's children
+    const offset = (page - 1) * limit;
+    const rows = await this.prisma.$queryRaw<{ id: string; total: number }[]>`
+      WITH s AS (SELECT product_id, SUM(quantity_remaining) AS q FROM stock_batches GROUP BY product_id),
+      bs AS (SELECT bi.bundle_product_id AS pid,
+               MIN(floor(COALESCE(s.q, 0) / COALESCE(NULLIF(bi.quantity, 0), 1) + 0.000000001)) AS q
+             FROM product_bundle_items bi LEFT JOIN s ON s.product_id = bi.child_product_id GROUP BY bi.bundle_product_id),
+      x AS (SELECT p.id, p.name, p.sku, p.category_id, p.base_price, p.price_level_1, p.price_level_2, p.price_level_3,
+              p.price_level_4, p.price_level_5, p.ctid AS pos,
+              CASE WHEN p.is_bundle AND bs.pid IS NOT NULL THEN bs.q ELSE COALESCE(s.q, 0) END AS stock
+            FROM products p LEFT JOIN s ON s.product_id = p.id LEFT JOIN bs ON bs.pid = p.id)
+      SELECT x.id, count(*) OVER ()::int AS total FROM x ${where} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`;
+    const [{ all }] = await this.prisma.$queryRaw<{ all: number }[]>`SELECT count(*)::int AS "all" FROM products`;
+    let total = rows.length ? Number(rows[0].total) : 0;
+    if (!rows.length && offset > 0 && conds.length === 0) total = all;
+    else if (!rows.length && offset > 0) {
+      // past the last page: count without paging
+      const again = await this.page({ ...opts, page: 1, limit: 1 });
+      total = again.meta.total;
+    }
+    const ids = rows.map((r) => r.id);
+    const catalog = await this.catalogRows(this.prisma, { ids });
+    const byId = new Map(catalog.map((r) => [r.id, r]));
+    const data = ids.map((id) => byId.get(id)).filter((r): r is CatalogRow => !!r);
+    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit), allCount: all, lowStockThreshold: threshold } };
+  }
+
   /** Remaining stock per product id (sum of its batches); `ids` limits it to those products. */
   private async stockSums(db: any, ids?: string[]): Promise<Map<string, number>> {
     const rows: { product_id: string; qty: string | null }[] = ids

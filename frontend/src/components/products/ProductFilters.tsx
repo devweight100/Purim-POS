@@ -36,18 +36,6 @@ export function ProductFilters({ f, categories, suppliers, totalCount }: {
           <option value="all">🏢 ทุกผู้จำหน่าย</option>
           {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        {f.sizeOptions.length > 0 && (
-          <select value={f.sizeFilter} onChange={e => f.setSizeFilter(e.target.value)} className={selectClass}>
-            <option value="all">📏 ทุกขนาด</option>
-            {f.sizeOptions.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-        )}
-        {f.colorOptions.length > 0 && (
-          <select value={f.colorFilter} onChange={e => f.setColorFilter(e.target.value)} className={selectClass}>
-            <option value="all">🎨 ทุกสี</option>
-            {f.colorOptions.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        )}
         <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
           {STOCK_OPTIONS.map(opt => (
             <button key={opt.key} onClick={() => f.setStockFilter(opt.key)} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${f.stockFilter === opt.key ? "bg-slate-200 text-slate-900" : "text-slate-500 hover:bg-slate-100"}`}>{opt.label}</button>
@@ -56,10 +44,8 @@ export function ProductFilters({ f, categories, suppliers, totalCount }: {
       </div>
 
       <div className="mb-3 flex gap-2 flex-wrap text-sm text-slate-500">
-        <span>แสดง <b className="text-slate-800">{f.filtered.length}</b> รายการ จากทั้งหมด {totalCount}</span>
+        <span>แสดง <b className="text-slate-800">{f.filteredCount.toLocaleString()}</b> รายการ จากทั้งหมด {totalCount.toLocaleString()}</span>
         {f.categoryFilter !== "all" && <span>· <b className="text-sky-600">{categories.find(c => c.id === f.categoryFilter)?.name}</b></span>}
-        {f.sizeFilter !== "all" && <span>· ขนาด <b className="text-sky-600">{f.sizeFilter}</b></span>}
-        {f.colorFilter !== "all" && <span>· สี <b className="text-sky-600">{f.colorFilter}</b></span>}
         {f.stockFilter !== "all" && <span>· <b className="text-amber-600">{f.stockFilter === "out" ? "หมดสต็อก" : "ใกล้หมด"}</b></span>}
       </div>
     </>

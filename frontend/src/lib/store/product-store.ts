@@ -145,7 +145,7 @@ function coverImage(p: ApiProduct | CachedProduct): string | null {
 }
 
 /** A server (or offline-cached) product as the POS / back office use it. */
-function toStoreProduct(p: ApiProduct | CachedProduct): Product {
+export function toStoreProduct(p: ApiProduct | CachedProduct): Product {
   const pId = p.id || p.sku;
   const basePrice = Number(p.price || p.priceLevel1 || p.basePrice || 0);
   // Cost is only sent to users with VIEW_COST / ADMIN; without it, cost stays undefined

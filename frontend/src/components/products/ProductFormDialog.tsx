@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { PackagePlus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -14,13 +15,19 @@ import type { ProductFormState } from "./useProductForm";
 import type { CategoryOption, ProductRecord, SupplierOption } from "./types";
 
 /** Add / edit product dialog: images, details, bundle, barcodes, suppliers & cost, prices, pack units, wholesale. */
-export function ProductFormDialog({ state, products, categories, suppliers }: {
+export function ProductFormDialog({ state, products, onNeedCatalog, categories, suppliers }: {
   state: ProductFormState;
+  /** every product (bundle item picker); loaded with onNeedCatalog when a bundle is edited */
   products: ProductRecord[];
+  onNeedCatalog: () => Promise<unknown>;
   categories: CategoryOption[];
   suppliers: SupplierOption[];
 }) {
   const { dialogMode, editingProduct, form, setForm, updateForm, handleSave, close } = state;
+  const needCatalog = dialogMode !== null && form.isBundle;
+  useEffect(() => {
+    if (needCatalog) void onNeedCatalog().catch(() => undefined);
+  }, [needCatalog, onNeedCatalog]);
 
   return (
     <Dialog open={dialogMode !== null} onOpenChange={open => { if (!open) close(); }}>
