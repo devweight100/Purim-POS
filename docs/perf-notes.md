@@ -2,11 +2,24 @@
 
 ## Task 4: follow-ups (payables on the server, supplier-return PO list, debt queries, customer sync) — IN PROGRESS
 
-Branch ccr-8f8b0741-si1a0o (base b67c198). perf_load recreated after a container restart (prepare-database.js +
-seed-load.sh, admin password Perf12345x, PIN 8642).
+Branch ccr-8f8b0741-si1a0o (base b67c198). perf_load survived the container restart (the cluster lives in /tmp/pgdata;
+started with pg_ctl on :5433; fully migrated). Added realistic payables: scratchpad/perf/seed-payables.sql (every PO
+owes its total, 600 vouchers over 1,800 POs: partial, discount, credit notes, every 50th cancelled; 400 credit notes)
+-> 3,236 UNPAID / 900 PARTIALLY_PAID / 864 PAID POs. Endpoints: scratchpad/perf/t4-endpoints.txt, raw t4-before.txt.
+
+### Before (b67c198 build, perf_load; uncompressed / gzip)
+| request | time | size | used by |
+|---|---|---|---|
+| /purchase-orders?limit=1000 (server caps 500) | 0.27-0.32 s | 2.1 MB / 39 kB | payables page + supplier returns page (newest 500 POs only) |
+| /payables/vouchers?limit=200 | 0.04-0.05 s | 230 kB / 8 kB | payables (payments of the newest 200 vouchers only) |
+| /supplier-returns?limit=200 | 0.03-0.5 s | 185 kB / 4 kB | payables credit-note cards / settle dialog (newest 200 notes only) |
+| /payables/bills (raw POs, not used by the page) | 0.49-0.50 s | 207 kB | - |
+| /customers (ClientDbSync, every 15 s on every screen) | 0.10-0.19 s | 1.2 MB / 23 kB | |
+| /debts?limit=100 x 34 pages (POS debt modal, orders credit history) | 0.02-0.03 s each | 1.5 MB total | |
+| /claims?limit=500 (orders page) | 0.006-0.19 s | (no claims in perf_load) | |
 
 ### Plan
-1. [ ] Recreate perf_load, measure before.
+1. [x] perf_load (kept), payables seed, measure before.
 2. [ ] Payables: page uses /payables/bills (paging, search, supplier filter, summary totals); e2e parity vs the browser logic.
 3. [ ] Supplier returns: PO list searchable/paged from the server.
 4. [ ] POS debt picker + orders credit history: filtered server query.
