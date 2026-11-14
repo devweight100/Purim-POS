@@ -2,10 +2,10 @@ import { businessTransaction } from '../prisma/business-transaction';
 import { grossPerUnit } from '../../../shared/src/po-calc';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { PaymentStatus, VoucherStatus, PaymentMethod, ReturnNoteStatus, POStatus } from '@prisma/client';
+import { PaymentStatus, VoucherStatus, PaymentMethod, ReturnNoteStatus, POStatus, Prisma } from '@prisma/client';
 import * as ledger from '../finance/ledger';
 import { clampInt } from '../products/prisma-errors';
-import { billFigures, billMatchesSearch, paymentEntry } from './payable-bills';
+import { billFigures, paymentEntry, BillPaymentStatus } from './payable-bills';
 
 /** A supplier bill becomes a payable only after goods were received (accrual on receipt). */
 export const PAYABLE_PO_STATUSES: POStatus[] = [POStatus.PARTIALLY_RECEIVED, POStatus.RECEIVED, POStatus.COMPLETED];
@@ -137,90 +137,105 @@ export class PayablesService {
     const openOnly = query.open === '1' || query.open === 'true';
     const slim = slimQuery;
 
+    // Every bill's figures in SQL (= billFigures in payable-bills.ts, exact decimals instead of float sums):
+    // cards, per-supplier summary, the computed-status filter and the page in one statement.
     const statuses = PAYABLE_PO_STATUSES as string[];
-    const [poRows, payRows, creditRows] = await Promise.all([
+    const conds: Prisma.Sql[] = [];
+    if (supplierId) conds.push(Prisma.sql`supplier_id = ${supplierId}`);
+    if (paymentStatus) conds.push(Prisma.sql`pay_status = ${paymentStatus}`);
+    if (openOnly) conds.push(Prisma.sql`remaining > 0`);
+    if (search) {
+      const q = search.toLowerCase();
+      conds.push(Prisma.sql`(strpos(lower(po_number), ${q}) > 0 OR strpos(lower(supplier_name), ${q}) > 0 OR strpos(lower(COALESCE(supplier_invoice_no, '')), ${q}) > 0)`);
+    }
+    const where = conds.length ? Prisma.sql`WHERE ${Prisma.join(conds, ' AND ')}` : Prisma.empty;
+    const [[agg], creditRows] = await Promise.all([
       this.prisma.$queryRaw<{
-        id: string; po_number: string; supplier_invoice_no: string | null; supplier_id: string; supplier_name: string | null;
-        supplier_contact: string | null; supplier_phone: string | null; supplier_address: string | null; bill_date: Date; status: string;
-        total: string; paid: string; remaining: string; payment_status: string; items: [string, string, string, string][];
+        summary: { billCount: number; unpaidCount: number; totalOutstanding: string | null; totalPaid: string | null };
+        suppliers: { supplierId: string; openCount: number; debt: string }[] | null;
+        total: number;
+        rows: {
+          id: string; po_number: string; supplier_invoice_no: string | null; supplier_id: string; supplier_name: string;
+          supplier_contact: string | null; supplier_phone: string | null; supplier_address: string | null; bill_date: string; status: string;
+          total: string; received_amount: string; already_paid: string; already_discount: string; remaining: string; pay_status: BillPaymentStatus; item_count: number;
+        }[] | null;
       }[]>`
-        SELECT po.id, po.po_number, po.supplier_invoice_no, po.supplier_id, s.name AS supplier_name,
-               s.contact_name AS supplier_contact, s.phone AS supplier_phone, s.address AS supplier_address,
-               po.bill_date, po.status::text AS status,
-               po.total_amount::text AS total, po.paid_amount::text AS paid, po.remaining_payable::text AS remaining,
-               po.payment_status::text AS payment_status,
-               COALESCE((SELECT json_agg(json_build_array(i.received_qty::text, i.unit_cost::text, i.quantity::text, i.total::text))
-                           FROM purchase_order_items i WHERE i.purchase_order_id = po.id), '[]'::json) AS items
-          FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id
-         WHERE po.status::text = ANY(${statuses})
-         ORDER BY po.created_at DESC, po.id DESC`,
-      this.prisma.$queryRaw<{ po_id: string; amount_paid: string; discount: string }[]>`
-        SELECT i.purchase_order_id AS po_id, i.amount_paid::text AS amount_paid, v.discount_amount::text AS discount
-          FROM payment_voucher_items i JOIN payment_vouchers v ON v.id = i.voucher_id
-         WHERE v.status = 'ACTIVE'
-         ORDER BY v.payment_date DESC, v.id DESC`,
+        WITH pay AS (
+          SELECT i.purchase_order_id AS po_id, SUM(i.amount_paid) AS paid_sum, SUM(GREATEST(v.discount_amount, 0)) AS disc_sum
+            FROM payment_voucher_items i JOIN payment_vouchers v ON v.id = i.voucher_id
+           WHERE v.status = 'ACTIVE' GROUP BY 1),
+        recv AS (
+          SELECT purchase_order_id AS po_id, COUNT(*)::int AS n,
+                 SUM(received_qty * CASE WHEN quantity > 0 THEN total / quantity ELSE unit_cost END) AS value
+            FROM purchase_order_items GROUP BY 1),
+        b AS (
+          SELECT po.id, po.created_at, po.po_number, po.supplier_invoice_no, po.supplier_id,
+                 COALESCE(NULLIF(s.name, ''), 'ไม่ระบุผู้จำหน่าย') AS supplier_name,
+                 s.contact_name AS supplier_contact, s.phone AS supplier_phone, s.address AS supplier_address,
+                 po.bill_date, po.status::text AS status, po.total_amount AS total, po.paid_amount, po.payment_status::text AS db_status,
+                 CASE WHEN COALESCE(pay.paid_sum, 0) > 0 THEN pay.paid_sum ELSE po.paid_amount END AS already_paid,
+                 COALESCE(pay.disc_sum, 0) AS already_discount,
+                 GREATEST(0, po.remaining_payable) AS db_remaining,
+                 CASE WHEN recv.n IS NULL THEN po.total_amount ELSE recv.value END AS received_value,
+                 COALESCE(recv.n, 0) AS item_count
+            FROM purchase_orders po
+            LEFT JOIN suppliers s ON s.id = po.supplier_id
+            LEFT JOIN pay ON pay.po_id = po.id
+            LEFT JOIN recv ON recv.po_id = po.id
+           WHERE po.status::text = ANY(${statuses})),
+        f AS (SELECT b.*, GREATEST(0, LEAST(db_remaining, ROUND(received_value - paid_amount, 2))) AS remaining FROM b),
+        g AS (
+          SELECT f.*, CASE WHEN db_remaining <= 0 AND total > 0 THEN 'PAID'
+                           WHEN remaining <= 0 AND total > 0 THEN 'PARTIALLY_PAID'
+                           WHEN already_paid > 0 OR already_discount > 0 THEN 'PARTIALLY_PAID'
+                           WHEN db_status IN ('PAID', 'PARTIALLY_PAID') THEN db_status
+                           ELSE 'UNPAID' END AS pay_status
+            FROM f),
+        hit AS (SELECT * FROM g ${where})
+        SELECT
+          (SELECT json_build_object('billCount', COUNT(*), 'unpaidCount', COUNT(*) FILTER (WHERE pay_status <> 'PAID'),
+                                    'totalOutstanding', SUM(remaining)::text, 'totalPaid', SUM(already_paid)::text) FROM g) AS summary,
+          (SELECT json_agg(json_build_object('supplierId', supplier_id, 'openCount', n, 'debt', debt::text) ORDER BY first_rn)
+             FROM (SELECT supplier_id, COUNT(*)::int AS n, SUM(remaining) AS debt, MIN(rn) AS first_rn
+                     FROM (SELECT supplier_id, remaining, row_number() OVER (ORDER BY created_at DESC, id DESC) AS rn FROM g WHERE remaining > 0) o
+                    GROUP BY supplier_id) x) AS suppliers,
+          (SELECT COUNT(*)::int FROM hit) AS total,
+          (SELECT json_agg(json_build_object(
+                    'id', id, 'po_number', po_number, 'supplier_invoice_no', supplier_invoice_no, 'supplier_id', supplier_id,
+                    'supplier_name', supplier_name, 'supplier_contact', supplier_contact, 'supplier_phone', supplier_phone,
+                    'supplier_address', supplier_address, 'bill_date', to_char(bill_date, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'), 'status', status, 'total', total::text,
+                    'received_amount', ROUND(received_value, 2)::text, 'already_paid', already_paid::text,
+                    'already_discount', already_discount::text, 'remaining', remaining::text, 'pay_status', pay_status,
+                    'item_count', item_count) ORDER BY created_at DESC, id DESC)
+             FROM (SELECT * FROM hit ORDER BY created_at DESC, id DESC LIMIT ${limit} OFFSET ${(page - 1) * limit}) p) AS rows`,
       this.prisma.$queryRaw<{ supplier_id: string; remaining: string }[]>`
         SELECT supplier_id, remaining_credit_amount::text AS remaining FROM supplier_return_notes
          WHERE status <> 'CANCELLED' AND remaining_credit_amount > 0
          ORDER BY created_at DESC, id DESC`,
     ]);
 
-    const paysByPo = new Map<string, { amountPaid: string; discountAmount: string }[]>();
-    for (const p of payRows) {
-      const list = paysByPo.get(p.po_id) || [];
-      list.push({ amountPaid: p.amount_paid, discountAmount: p.discount });
-      paysByPo.set(p.po_id, list);
-    }
-
-    // every bill's figures (cards, supplier summary, computed-status filter)
-    const all = poRows.map((r) => {
-      const f = billFigures(
-        { totalAmount: r.total, paidAmount: r.paid, remainingPayable: r.remaining, paymentStatus: r.payment_status, items: (r.items || []).map(([receivedQty, unitCost, quantity, total]) => ({ receivedQty, unitCost, quantity, total })) },
-        paysByPo.get(r.id) || [],
-      );
-      return { id: r.id, poNumber: r.po_number, supplierInvoiceNo: r.supplier_invoice_no, supplierId: r.supplier_id, supplierName: r.supplier_name || 'ไม่ระบุผู้จำหน่าย', row: r, ...f };
-    });
-
     const suppliers = new Map<string, { supplierId: string; openCount: number; debt: number; creditCount: number; creditTotal: number }>();
-    const supplierRow = (id: string) => {
-      let row = suppliers.get(id);
-      if (!row) suppliers.set(id, (row = { supplierId: id, openCount: 0, debt: 0, creditCount: 0, creditTotal: 0 }));
-      return row;
-    };
-    let totalOutstanding = 0;
-    let totalPaid = 0;
-    let unpaidCount = 0;
-    for (const b of all) {
-      totalOutstanding += b.remainingPayable;
-      totalPaid += b.alreadyPaidAmount;
-      if (b.paymentStatus !== 'PAID') unpaidCount++;
-      if (b.remainingPayable > 0) {
-        const s = supplierRow(b.supplierId);
-        s.openCount++;
-        s.debt += b.remainingPayable;
-      }
-    }
+    for (const r of agg.suppliers || []) suppliers.set(r.supplierId, { supplierId: r.supplierId, openCount: r.openCount, debt: Number(r.debt), creditCount: 0, creditTotal: 0 });
     let availableCredit = 0;
     for (const c of creditRows) {
       availableCredit += Number(c.remaining || 0);
-      const s = supplierRow(c.supplier_id);
-      s.creditCount++;
-      s.creditTotal += Number(c.remaining || 0);
+      let row = suppliers.get(c.supplier_id);
+      if (!row) suppliers.set(c.supplier_id, (row = { supplierId: c.supplier_id, openCount: 0, debt: 0, creditCount: 0, creditTotal: 0 }));
+      row.creditCount++;
+      row.creditTotal += Number(c.remaining || 0);
     }
 
-    const filtered = all.filter((b) =>
-      (!supplierId || b.supplierId === supplierId) &&
-      (!paymentStatus || b.paymentStatus === paymentStatus) &&
-      (!openOnly || b.remainingPayable > 0) &&
-      billMatchesSearch(b, search));
-
-    const pageRows = filtered.slice((page - 1) * limit, page * limit);
-    const meta = { total: filtered.length, page, limit, totalPages: Math.ceil(filtered.length / limit) };
+    const pageRows = (agg.rows || []).map((r) => ({
+      id: r.id, poNumber: r.po_number, supplierInvoiceNo: r.supplier_invoice_no, supplierId: r.supplier_id, supplierName: r.supplier_name, row: r,
+      totalAmount: Number(r.total), receivedAmount: Number(r.received_amount), alreadyPaidAmount: Number(r.already_paid),
+      alreadyDiscountAmount: Number(r.already_discount), remainingPayable: Number(r.remaining), paymentStatus: r.pay_status,
+    }));
+    const meta = { total: agg.total, page, limit, totalPages: Math.ceil(agg.total / limit) };
     const summary = {
-      billCount: all.length,
-      unpaidCount,
-      totalOutstanding,
-      totalPaid,
+      billCount: agg.summary.billCount,
+      unpaidCount: agg.summary.unpaidCount,
+      totalOutstanding: Number(agg.summary.totalOutstanding || 0),
+      totalPaid: Number(agg.summary.totalPaid || 0),
       availableCredit,
       availableCreditCount: creditRows.length,
       suppliers: [...suppliers.values()],
@@ -237,7 +252,7 @@ export class PayablesService {
         supplierContact: b.row.supplier_contact ?? undefined,
         supplierPhone: b.row.supplier_phone ?? undefined,
         supplierAddress: b.row.supplier_address ?? undefined,
-        billDate: new Date(b.row.bill_date).toISOString(),
+        billDate: b.row.bill_date,
         status: b.row.status,
         paymentStatus: b.paymentStatus,
         totalAmount: b.totalAmount,
@@ -246,7 +261,7 @@ export class PayablesService {
         alreadyPaidAmount: b.alreadyPaidAmount,
         alreadyDiscountAmount: b.alreadyDiscountAmount,
         remainingPayable: b.remainingPayable,
-        itemsCount: (b.row.items || []).length,
+        itemsCount: b.row.item_count,
         items: [],
         deductedReturns: [],
         payments: [],

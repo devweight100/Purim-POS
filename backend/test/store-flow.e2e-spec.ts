@@ -1038,6 +1038,53 @@ d('store flow (e2e)', () => {
       expect((await api('get', '/payables/bills?limit=5000', A).expect(200)).body.meta.limit).toBe(500);
     });
 
+    it('SQL figures (slim rows, filters, cards) equal billFigures (full rows) on edge-case bills', async () => {
+      const db = new PrismaClient();
+      try {
+        const sup = await db.supplier.create({ data: { name: '' } }); // empty name -> "ไม่ระบุผู้จำหน่าย"
+        const p = await db.product.findFirstOrThrow({ where: { id: state.p.id } });
+        let at = Date.now() + 60000;
+        const mk = async (no: string, po: any, items: any[]) => db.purchaseOrder.create({
+          data: { poNumber: no, supplierId: sup.id, status: 'RECEIVED', createdAt: new Date((at += 1000)), ...po, items: { create: items.map((i) => ({ productId: p.id, ...i })) } },
+        });
+        await mk('EDGE-THIRDS', { totalAmount: 100, remainingPayable: 100 }, [{ quantity: 3, unitCost: 33.33, total: 100, receivedQty: 1 }]);
+        await mk('EDGE-NOITEMS', { totalAmount: 55.55, remainingPayable: 55.55 }, []);
+        await mk('EDGE-ZEROQTY', { totalAmount: 10, remainingPayable: 10 }, [{ quantity: 0, unitCost: 10, total: 0, receivedQty: 1 }]);
+        await mk('EDGE-OVERPAID', { status: 'PARTIALLY_RECEIVED', totalAmount: 200, paidAmount: 150, remainingPayable: 50 }, [{ quantity: 10, unitCost: 20, total: 200, receivedQty: 5 }]);
+        await mk('EDGE-NEGREM', { totalAmount: 30, paidAmount: 40, remainingPayable: -10, paymentStatus: 'PAID' }, [{ quantity: 1, unitCost: 30, total: 30, receivedQty: 1 }]);
+        await mk('EDGE-DBSTATUS', { totalAmount: 0, remainingPayable: 0, paymentStatus: 'PARTIALLY_PAID' }, [{ quantity: 1, unitCost: 0, total: 0, receivedQty: 1 }]);
+        await mk('EDGE-HALF', { totalAmount: 1.25, remainingPayable: 1.25 }, [{ quantity: 8, unitCost: 0.16, total: 1, receivedQty: 1 }, { quantity: 2, unitCost: 0.13, total: 0.25, receivedQty: 2 }]);
+      } finally {
+        await db.$disconnect();
+      }
+      const { rows: full } = await allBills();
+      const slim: any[] = (await api('get', '/payables/bills?limit=5000&slim=1', A).expect(200)).body.data;
+      const figures = (b: any) => ({ poId: b.poId, supplierName: b.supplierName, billDate: b.billDate, status: b.status, paymentStatus: b.paymentStatus, totalAmount: b.totalAmount, receivedAmount: b.receivedAmount, alreadyPaidAmount: b.alreadyPaidAmount, alreadyDiscountAmount: b.alreadyDiscountAmount, remainingPayable: b.remainingPayable, itemsCount: b.itemsCount });
+      expect(norm(slim.map(figures))).toEqual(norm(full.map(figures)));
+      const edge = full.filter((b) => String(b.poNumber).startsWith('EDGE-'));
+      expect(edge.map((b) => [b.poNumber, b.supplierName, b.receivedAmount, b.remainingPayable, b.paymentStatus])).toEqual([
+        ['EDGE-HALF', 'ไม่ระบุผู้จำหน่าย', 0.38, 0.38, 'UNPAID'],
+        ['EDGE-DBSTATUS', 'ไม่ระบุผู้จำหน่าย', 0, 0, 'PARTIALLY_PAID'],
+        ['EDGE-NEGREM', 'ไม่ระบุผู้จำหน่าย', 30, 0, 'PAID'],
+        ['EDGE-OVERPAID', 'ไม่ระบุผู้จำหน่าย', 100, 0, 'PARTIALLY_PAID'],
+        ['EDGE-ZEROQTY', 'ไม่ระบุผู้จำหน่าย', 10, 10, 'UNPAID'],
+        ['EDGE-NOITEMS', 'ไม่ระบุผู้จำหน่าย', 55.55, 55.55, 'UNPAID'],
+        ['EDGE-THIRDS', 'ไม่ระบุผู้จำหน่าย', 33.33, 33.33, 'UNPAID'],
+      ]);
+      // filters / cards over the SQL figures = the same rules applied to the full rows
+      for (const st of ['UNPAID', 'PARTIALLY_PAID', 'PAID']) {
+        expect((await allBills(`&paymentStatus=${st}`)).rows.map((b) => b.poId)).toEqual(full.filter((b) => b.paymentStatus === st).map((b) => b.poId));
+      }
+      expect((await allBills('&search=' + encodeURIComponent('ไม่ระบุ'))).rows.map((b) => b.poNumber)).toEqual(edge.map((b) => b.poNumber));
+      const { first } = await allBills('&open=1');
+      expect(first.summary.billCount).toBe(full.length);
+      expect(first.summary.unpaidCount).toBe(full.filter((b) => b.paymentStatus !== 'PAID').length);
+      expect(first.summary.totalOutstanding).toBeCloseTo(full.reduce((s, b) => s + b.remainingPayable, 0), 6);
+      expect(first.summary.totalPaid).toBeCloseTo(full.reduce((s, b) => s + b.alreadyPaidAmount, 0), 6);
+      const supRow = first.summary.suppliers.find((x: any) => x.supplierId === edge[0].supplierId);
+      expect([supRow.openCount, supRow.debt]).toEqual([4, 99.26]);
+    });
+
     it('credit notes with credit left (?available=1) and the newest PO supplier per product', async () => {
       const all = (await api('get', '/supplier-returns?limit=500', A).expect(200)).body.data as any[];
       const avail = (await api('get', '/supplier-returns?available=1&limit=500', A).expect(200)).body.data as any[];
