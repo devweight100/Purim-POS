@@ -231,16 +231,17 @@ export async function bestSellersSql(db: Db, range: DateRange, lq: ListQuery) {
       WHERE true ${sqlRange(Prisma.sql`r.created_at`, range)}
       GROUP BY ri.product_id),
     r AS MATERIALIZED (
-      SELECT ids.product_id AS id, COALESCE(NULLIF(p.name, ''), 'สินค้า') AS name, COALESCE(NULLIF(p.sku, ''), 'SKU') AS sku,
+      -- FULL JOIN (not a UNION of ids + 2 LEFT JOINs): keeps the row estimate right, so PostgreSQL does not
+      -- pick JIT compilation (which alone cost ~1.5 s here)
+      SELECT COALESCE(s.product_id, b.product_id) AS id, COALESCE(NULLIF(p.name, ''), 'สินค้า') AS name, COALESCE(NULLIF(p.sku, ''), 'SKU') AS sku,
              COALESCE(NULLIF(c.name, ''), 'ทั่วไป') AS category, NULLIF(p.unit, '') AS unit,
              (COALESCE(s.qty, 0) - COALESCE(b.qty, 0))::float8 AS qty,
              (COALESCE(s.revenue, 0) - COALESCE(b.revenue, 0)::float8)::float8 AS revenue,
              (COALESCE(s.cost, 0) - COALESCE(b.cost, 0))::float8 AS cost,
              s.last_at
-      FROM (SELECT product_id FROM sold UNION SELECT product_id FROM back) ids
-      LEFT JOIN sold s ON s.product_id = ids.product_id
-      LEFT JOIN back b ON b.product_id = ids.product_id
-      LEFT JOIN products p ON p.id = ids.product_id
+      FROM sold s
+      FULL JOIN back b ON b.product_id = s.product_id
+      LEFT JOIN products p ON p.id = COALESCE(s.product_id, b.product_id)
       LEFT JOIN categories c ON c.id = p.category_id),
     r2 AS MATERIALIZED (SELECT r.*, round(r.revenue::numeric, 2) AS rev2, round(r.cost::numeric, 2) AS cost2 FROM r)
     SELECT x.*, u.unit_name

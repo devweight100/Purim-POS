@@ -25,7 +25,7 @@ Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time 
 3. [x] P&L (planning.service) claims / write-off / ledger sums in SQL.
 4. [x] e2e parity test adapted to paging (fetch all pages) + new tricky-dataset test (old JS == new SQL).
 5. [x] Frontend ReportsView: server paging/search for bestsellers, inventory, customers; export fetches all pages.
-6. [ ] EXPLAIN ANALYZE -> indexes (migration 20261123000000_report_indexes + @@index).
+6. [x] EXPLAIN ANALYZE -> indexes (migration 20261123000000_report_indexes + @@index).
 7. [ ] After-measurements, full verification, PROJECT_STATUS entry.
 
 ### Decisions / findings
@@ -53,4 +53,12 @@ Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time 
   customerCount / totalSpentAll / topCustomers; new search box (debounced 300 ms, server-side) for those tabs
   (there was a `search` state but no input before). vitest reports-service.test.ts (5); Playwright 04-reports
   checks bestsellers paging + CSV export of all rows.
+- Step 6 (EXPLAIN ANALYZE on perf_load, scratchpad/perf/sqldump.js prints a report function's SQL):
+  bestsellers took 1.7-2.3 s for ANY range, ~1.5 s of it JIT compilation triggered by a bad row estimate
+  (UNION of ids + 2 LEFT JOINs estimated 500k rows) -> FULL JOIN: 0.24 s (7 days) / 0.30 s (all).
+  Other queries (range all, 100k orders): sales 0.49 s, payments 0.13+0.07 s, customers 0.10 s, inventory
+  0.24 s (last sale per product = full order_items join, 0.1 s), all without JIT. Full scans for long ranges
+  cannot use indexes; added only audit_logs(action, created_at) (write-offs: 11 -> 2 ms per month on 300k
+  log rows, all time 22 -> 10 ms) and customer_claims(created_at). Migration 20261123000000_report_indexes
+  (fresh migrate deploy + empty diff checked).
 - Purchases tab stays in Node (PO rows bounded by the row guard; claims list = getAllClaims(1, 5000) as before).

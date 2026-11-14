@@ -794,6 +794,7 @@ model CustomerClaim {
   @@index([customerId])
   @@index([supplierId])
   @@index([returnNoteId])
+  @@index([createdAt]) // claim accounting per period (reports, P&L)
   @@map("customer_claims")
 }
 
@@ -885,6 +886,7 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([userId])
   @@index([createdAt])
+  @@index([action, createdAt]) // P&L stock write-offs per period (audit_logs grows with every sale)
   @@map("audit_logs")
 }
 
