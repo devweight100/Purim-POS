@@ -911,4 +911,210 @@ d('store flow (e2e)', () => {
       expect(rows.find((p: any) => p.id === sk.bundle).computedStock).toBe(0); // own batches only (as before)
     });
   });
+  describe('management lists: server paging / search / sort equal the old in-browser lists', () => {
+    /** every page of a paged endpoint, concatenated */
+    const allPages = async (path: string, limit: number) => {
+      const out: any[] = [];
+      let first: any;
+      for (let page = 1; page < 1000; page++) {
+        const body = (await api('get', `${path}${path.includes('?') ? '&' : '?'}page=${page}&limit=${limit}`, A).expect(200)).body;
+        if (page === 1) first = body;
+        out.push(...body.data);
+        if (body.data.length < limit) break;
+      }
+      return { rows: out, first };
+    };
+
+    beforeAll(async () => {
+      // Thai names / barcodes / pack barcodes / suppliers / customers with profiles
+      const sup = (await api('post', '/suppliers', A, { name: 'LIST ผู้ขาย', creditTerms: 0 })).body;
+      state.listSup = sup.id;
+      const cat = (await api('post', '/categories', A, { name: 'LIST หมวด' }).expect(201)).body.id;
+      state.listCat = cat;
+      const mk = async (body: any) => (await api('post', '/products', A, { basePrice: 20, unit: 'ชิ้น', ...body }).expect(201)).body;
+      const a = await mk({ name: 'เอ ปากกาลูกลื่น 50%', sku: 'LIST-A_1', priceLevel1: 15, priceLevel2: 14, categoryId: cat, barcodes: ['8850001112223'] });
+      await mk({ name: 'ไม้บรรทัด รุ่น ก', sku: 'LIST-B', priceLevel1: 0, categoryId: cat, packagingUnits: [{ name: 'แพ็ค', qtyPerPrev: 12, barcode: 'PACK-LIST-777' }] });
+      await mk({ name: 'ยางลบ', sku: 'list-c', basePrice: 7, supplierEntries: [{ supplierId: sup.id, supplierSku: 'S-LIST', lastCost: 3, isPreferred: true }] });
+      await api('post', '/inventory/adjust', A, { productId: a.id, type: 'SET', amount: 3, reason: 'e2e' }).expect(201);
+      const custs = [
+        { name: 'LIST บริษัท ก', phone: '0811110001', type: 'COMPANY', companyName: 'บจก. ทดสอบรายการ', taxId: '0105551234567', creditLimit: 5000, priceLevel: 3, code: 'CUST-0042' },
+        { name: 'LIST คุณ ข', phone: '0811110002', creditLimit: '100', priceLevel: 2, contactPerson: 'สมศรี' },
+        { name: 'LIST คุณ ค', phone: '0811110003' },
+      ];
+      for (const c of custs) await api('post', '/customers', A, c).expect(201);
+    });
+
+    it('products: every filter / sort / search gives the same rows in the same order as the old table', async () => {
+      const catalog = (await api('get', '/products', A).expect(200)).body as any[];
+      const meta = (await api('get', '/products/page?page=1&limit=5', A).expect(200)).body.meta;
+      expect(meta.allCount).toBe(catalog.length);
+      const threshold = meta.lowStockThreshold;
+      // the store mapping (toStoreProduct) and the old useProductFilters
+      const rows = catalog.map((p) => {
+        const basePrice = Number(p.priceLevel1 || p.basePrice || 0);
+        return {
+          id: p.id, name: p.name, sku: p.sku, categoryId: p.categoryId, stock: Number(p.computedStock),
+          basePrice, priceLevel1: p.priceLevel1 != null ? Number(p.priceLevel1) : basePrice,
+          priceLevel2: p.priceLevel2 != null ? Number(p.priceLevel2) : null, priceLevel3: p.priceLevel3 != null ? Number(p.priceLevel3) : null,
+          priceLevel4: p.priceLevel4 != null ? Number(p.priceLevel4) : null, priceLevel5: p.priceLevel5 != null ? Number(p.priceLevel5) : null,
+          barcodes: [...p.barcodes.map((b: any) => b.barcode), ...p.packagingUnits.map((u: any) => u.barcode).filter(Boolean)],
+          suppliers: p.supplierEntries.map((e: any) => e.supplierId),
+        };
+      });
+      const old = (o: { q?: string; cat?: string; sup?: string; stock?: string; sort?: string; dir?: string }) => {
+        const q = (o.q || '').toLowerCase();
+        let list = rows.filter((p) => {
+          const matchSearch = p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q) || p.barcodes.some((b: string) => b.trim().toLowerCase().includes(q));
+          const matchStock = !o.stock ? true : o.stock === 'out' ? p.stock === 0 : o.stock === 'low' ? p.stock > 0 && p.stock <= threshold
+            : o.stock === 'normal' ? p.stock > threshold : o.stock === 'negative' ? p.stock < 0 : p.stock <= threshold;
+          return matchSearch && (!o.cat || p.categoryId === o.cat) && (!o.sup || p.suppliers.includes(o.sup)) && matchStock;
+        });
+        if (o.sort) {
+          const k = o.sort as keyof (typeof rows)[number];
+          list = [...list].sort((a, b) => {
+            const av = a[k] ?? 0, bv = b[k] ?? 0;
+            if (typeof av === 'string') return o.dir === 'asc' ? av.localeCompare(String(bv), 'th') : String(bv).localeCompare(av, 'th');
+            return o.dir === 'asc' ? Number(av) - Number(bv) : Number(bv) - Number(av);
+          });
+        }
+        return list.map((p) => p.id);
+      };
+      const cases: { q?: string; cat?: string; sup?: string; stock?: string; sort?: string; dir?: string }[] = [
+        {}, { q: 'ปากกา' }, { q: 'list-' }, { q: '50%' }, { q: 'a_1' }, { q: '1112' }, { q: 'pack-list' }, { q: 'ไม่มีสินค้านี้' },
+        { cat: state.listCat }, { sup: state.listSup }, { stock: 'out' }, { stock: 'low' }, { stock: 'normal' }, { stock: 'negative' }, { stock: 'reorder' },
+        { sort: 'name', dir: 'asc' }, { sort: 'name', dir: 'desc' }, { sort: 'stock', dir: 'asc' }, { sort: 'stock', dir: 'desc' },
+        { sort: 'basePrice', dir: 'desc' }, { sort: 'priceLevel1', dir: 'asc' }, { sort: 'priceLevel2', dir: 'desc' }, { sort: 'priceLevel5', dir: 'asc' },
+        { q: 'list', sort: 'name', dir: 'asc', stock: 'out' },
+      ];
+      for (const c of cases) {
+        const qs = new URLSearchParams();
+        if (c.q) qs.set('q', c.q);
+        if (c.cat) qs.set('categoryId', c.cat);
+        if (c.sup) qs.set('supplierId', c.sup);
+        if (c.stock) qs.set('stock', c.stock);
+        if (c.sort) { qs.set('sort', c.sort); qs.set('dir', c.dir!); }
+        const { rows: got, first } = await allPages(`/products/page?${qs.toString()}`, 7);
+        expect({ c, ids: got.map((p) => p.id) }).toEqual({ c, ids: old(c) });
+        expect(first.meta.total).toBe(old(c).length);
+      }
+      // rows are the catalogue rows
+      const one = (await api('get', '/products/page?page=1&limit=1&q=LIST-A_1', A).expect(200)).body.data[0];
+      expect(one).toEqual(catalog.find((p) => p.sku === 'LIST-A_1'));
+      // inventory cards over every product
+      const st = (await api('get', '/products/page?page=1&limit=1&stats=1', A).expect(200)).body.stats;
+      const val = rows.reduce((s, p) => s + Math.max(0, p.stock) * (p.basePrice || Number(catalog.find((x) => x.id === p.id).costPrice) || 0), 0);
+      expect(st.totalItems).toBe(rows.length);
+      expect(st.totalBaseUnits).toBeCloseTo(rows.reduce((s, p) => s + p.stock, 0), 6);
+      expect(st.totalValuation).toBeCloseTo(val, 6);
+      expect(st.outOfStockCount).toBe(rows.filter((p) => p.stock === 0).length);
+      expect(st.lowStockCount).toBe(rows.filter((p) => p.stock > 0 && p.stock <= threshold).length);
+      expect(st.negativeStockCount).toBe(rows.filter((p) => p.stock < 0).length);
+      await api('get', '/products/page?stock=bad', A).expect(400);
+      await api('get', '/products/page?sort=costPrice', A).expect(400);
+      // cashier: no cost fields
+      const cRow = (await api('get', '/products/page?page=1&limit=1&q=LIST-A_1', C).expect(200)).body.data[0];
+      expect(cRow.costPrice).toBeUndefined();
+      // past the last page: empty rows, real total
+      const past = (await api('get', '/products/page?page=999&limit=50&q=LIST', A).expect(200)).body;
+      expect(past.data).toEqual([]);
+      expect(past.meta.total).toBe(old({ q: 'list' }).length);
+    });
+
+    it('customers: paged list == old page filters over the full list; cards + next code over every customer', async () => {
+      const full = (await api('get', '/customers', A).expect(200)).body as any[];
+      expect(full.every((c) => c.debts === undefined && typeof c.currentDebt === 'number')).toBe(true);
+      const norm = full.map((c, idx) => ({
+        ...c, type: c.type === 'COMPANY' ? 'COMPANY' : 'INDIVIDUAL', code: c.code || `CUST-${String(idx + 1).padStart(4, '0')}`,
+        creditLimit: Number(c.creditLimit ?? 0), priceLevel: [1, 2, 3, 4, 5].includes(Number(c.priceLevel)) ? Number(c.priceLevel) : 1,
+      }));
+      const old = (search: string, type: string, level: string) => norm.filter((c) => {
+        const q = search.toLowerCase();
+        const m = c.name.toLowerCase().includes(q) || c.phone.includes(q) || (c.code && c.code.toLowerCase().includes(q))
+          || (c.companyName && c.companyName.toLowerCase().includes(q)) || (c.taxId && c.taxId.includes(q)) || (c.contactPerson && c.contactPerson.toLowerCase().includes(q));
+        const t = type === 'all' || (type === 'credit' ? c.creditLimit > 0 : type === 'hasDebt' ? c.currentDebt > 0 : c.type === type);
+        return m && t && (level === 'all' || c.priceLevel === Number(level));
+      }).map((c) => c.id);
+      for (const [search, type, level] of [['', 'all', 'all'], ['list', 'all', 'all'], ['บจก', 'all', 'all'], ['0105551', 'all', 'all'], ['สมศรี', 'all', 'all'],
+        ['cust-0042', 'all', 'all'], ['', 'COMPANY', 'all'], ['', 'INDIVIDUAL', 'all'], ['', 'credit', 'all'], ['', 'hasDebt', 'all'], ['', 'all', '2'], ['list', 'credit', '3']]) {
+        const qs = new URLSearchParams({ type, priceLevel: level });
+        if (search) qs.set('search', search);
+        const { rows, first } = await allPages(`/customers?${qs.toString()}`, 2);
+        expect({ search, type, level, ids: rows.map((c) => c.id) }).toEqual({ search, type, level, ids: old(search, type, level) });
+        expect(rows.map((c) => c.currentDebt)).toEqual(rows.map((c) => full.find((f) => f.id === c.id).currentDebt));
+        const stats = first.stats;
+        expect(stats).toMatchObject({
+          total: norm.length, companyCount: norm.filter((c) => c.type === 'COMPANY').length,
+          totalCreditCustomers: norm.filter((c) => c.creditLimit > 0).length,
+          totalPoints: norm.reduce((s, c) => s + Number(c.points || 0), 0),
+        });
+        expect(stats.totalDebt).toBeCloseTo(norm.reduce((s, c) => s + c.currentDebt, 0), 6);
+        const maxCode = Math.max(0, ...norm.map((c) => Number((/CUST-(\d+)/i.exec(c.code) || [])[1] || 0)));
+        expect(stats.nextCode).toBe(`CUST-${String(maxCode + 1).padStart(4, '0')}`);
+      }
+      await api('get', '/customers?page=1&type=bad', A).expect(400);
+    });
+
+    it('orders: pages, status tab, search and range counts', async () => {
+      const all = (await api('get', '/orders?limit=1000', A).expect(200)).body.data as any[];
+      const { rows, first } = await allPages('/orders?counts=1', 3);
+      expect(rows.map((o) => o.id)).toEqual(all.map((o) => o.id));
+      const nonVoid = all.filter((o) => o.status !== 'VOIDED');
+      expect(first.meta.counts).toEqual({
+        all: all.length, completed: nonVoid.length, voided: all.length - nonVoid.length,
+        revenue: Math.round(nonVoid.reduce((s, o) => s + Number(o.totalAmount), 0) * 100) / 100,
+      });
+      const voided = await allPages('/orders?statusGroup=voided', 3);
+      expect(voided.rows.map((o) => o.id)).toEqual(all.filter((o) => o.status === 'VOIDED').map((o) => o.id));
+      const done = await allPages('/orders?statusGroup=completed', 3);
+      expect(done.rows.map((o) => o.id)).toEqual(nonVoid.map((o) => o.id));
+      // search by a product name on the bill (the old page searched item names)
+      const withItem = all.find((o) => o.items.length > 0);
+      const name = withItem.items[0].product.name;
+      const found = await allPages(`/orders?search=${encodeURIComponent(name)}`, 50);
+      expect(found.rows.map((o) => o.id)).toEqual(all.filter((o) => o.items.some((i: any) => i.product.name.toLowerCase().includes(name.toLowerCase()))
+        || o.orderNumber.toLowerCase().includes(name.toLowerCase()) || (o.note || '').toLowerCase().includes(name.toLowerCase())
+        || (o.customer?.name || '').toLowerCase().includes(name.toLowerCase())).map((o) => o.id));
+      expect((await api('get', `/orders?search=${encodeURIComponent(withItem.orderNumber)}`, A).expect(200)).body.data.map((o: any) => o.id)).toEqual([withItem.id]);
+      await api('get', '/orders?statusGroup=bad', A).expect(400);
+    });
+
+    it('debts: status groups / customer filter / stats == old page logic over every debt', async () => {
+      const all = (await api('get', '/debts?limit=500', A).expect(200)).body.data as any[];
+      const now = Date.now();
+      const paid = (d: any) => d.status === 'PAID' || Number(d.remainingAmount) <= 0;
+      const groups: Record<string, (d: any) => boolean> = {
+        all: () => true, unpaid: (d) => !paid(d), paid,
+        overdue: (d) => !paid(d) && !!d.dueDate && new Date(d.dueDate).getTime() < now,
+      };
+      for (const [g, f] of Object.entries(groups)) {
+        const { rows, first } = await allPages(`/debts?statusGroup=${g}&stats=1`, 2);
+        expect({ g, ids: rows.map((d) => d.id) }).toEqual({ g, ids: all.filter(f).map((d) => d.id) });
+        expect(first.stats).toMatchObject({
+          totalBills: all.length, paidCount: all.filter(paid).length, unpaidCount: all.filter((d) => !paid(d)).length,
+          overdueCount: all.filter(groups.overdue).length,
+        });
+        expect(first.stats.totalOutstanding).toBeCloseTo(all.reduce((s, d) => s + Number(d.remainingAmount), 0), 6);
+      }
+      if (all.length) {
+        const d0 = all[0];
+        const byCust = await allPages(`/debts?customerId=${d0.customerId}`, 50);
+        expect(byCust.rows.map((d) => d.id)).toEqual(all.filter((d) => d.customerId === d0.customerId).map((d) => d.id));
+        const byName = await allPages(`/debts?search=${encodeURIComponent(d0.customer.name)}`, 50);
+        expect(byName.rows.map((d) => d.id)).toContain(d0.id);
+        expect(byName.rows[0].customer).toHaveProperty('profile');
+      }
+      const company = await allPages('/debts?customerType=COMPANY', 50);
+      expect(company.rows.every((d) => d.customer?.profile?.type === 'COMPANY')).toBe(true);
+      await api('get', '/debts?statusGroup=bad', A).expect(400);
+    });
+
+    it('purchase orders: pages and status counts', async () => {
+      const all = (await api('get', '/purchase-orders?limit=500', A).expect(200)).body.data as any[];
+      const { rows, first } = await allPages('/purchase-orders?counts=1', 2);
+      expect(rows.map((p) => p.id)).toEqual(all.map((p) => p.id));
+      const expected: Record<string, number> = { ALL: all.length };
+      for (const p of all) expected[p.status] = (expected[p.status] || 0) + 1;
+      expect(first.meta.counts).toEqual(expected);
+    });
+  });
 });
