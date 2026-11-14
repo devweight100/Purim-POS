@@ -170,3 +170,41 @@ Branch ccr-8f8b0741-si1a0o (base f9078b0). Load DB perf_load (no images / catego
 - Not done / follow-ups: orders page still downloads GET /products once to map names (now light, 0.4 s); the mobile
   lookup still substring-scans every product (needs pg_trgm for an index; 0.06-0.15 s now); server-side paging of
   the products / inventory pages is task 3.
+
+## Task 3: server-side paging / search / sort for the management lists — IN PROGRESS
+
+Branch ccr-8f8b0741-si1a0o (base 762e54d). Load DB perf_load. Endpoint list: scratchpad/perf/t3-endpoints.txt
+(`ENDPOINTS="$(cat .../t3-endpoints.txt)" bash .../bench2.sh perf_load`), raw output t3-before.txt / t3-after.txt.
+
+### Before (762e54d, perf_load: 10k products, 5k customers, 100k orders, 3.3k debts, 5k POs, 300k audit rows)
+| page | requests on open | time / size | problem |
+|---|---|---|---|
+| /products | catalogue (GET /products/sync full) + /suppliers | 0.46 s / 6.8 MB | whole catalogue for a 50-row table (cheap later via delta, but every first open) |
+| /inventory | catalogue + /inventory/movements (100 newest) | 0.46 s / 6.8 MB | same; adjust dialog = <select> of 10k options |
+| /customers | GET /customers | 0.24 s / 2.1 MB | every customer + every debt row; ?search= also returns everything |
+| /debts | /debts?limit=100&page=1..34 (sequential) | 34 x 0.02-0.03 s / 1.5 MB | grows with debts |
+| /orders | /orders?startDate&endDate (default limit 50!) + GET /products + /claims?limit=500 | 0.04 s / 89 kB + 0.46 s / 6.8 MB | BUG: only the newest 50 bills of the range are shown, stats over those 50 |
+| /purchase-orders | /purchase-orders?limit=1000 (server caps at 500) | 0.25 s / 2.1 MB | BUG: only the newest 500 POs |
+| /payables | /purchase-orders?limit=1000 + /suppliers + /payables/vouchers?limit=200 | 0.25 s / 2.1 MB | BUG: bills from the newest 500 POs only (server /payables/bills exists: 0.64 s) |
+| /products/lookup (mobile) "รุ่น 500" / empty | | 0.21 / 0.09 s | substring scan |
+| audit log | no page in the frontend | - | /inventory/movements is limit 100 |
+
+Search: pg_trgm tested on a copy of perf_load (C.UTF-8): Thai words produce trigrams, `ILIKE '%…%'` with GIN
+gin_trgm_ops: products name/sku/barcode 31 -> 1-14 ms, orders.order_number 75 -> 1 ms. postgres:16-alpine (the
+docker-compose image the Windows installer runs) and EDB Windows installers ship contrib; pg_trgm is a trusted
+extension (PG13+). Migration creates it inside a DO block that only RAISEs a NOTICE if it is missing, so an install
+without contrib still migrates (plain ILIKE, same results, just a scan).
+
+### Plan
+1. [x] Measure, notes.
+2. [ ] Migration pg_trgm (guarded) + GIN trigram indexes (products name/sku, barcodes, pack barcodes, customers name/phone, orders order_number).
+3. [ ] Orders page: server paging/search/status tab/stats; no GET /products download.
+4. [ ] Debts page: server paging + summary.
+5. [ ] Customers: GET /customers?page= (paged mode; no page param = old full list for POS/other consumers).
+6. [ ] Products page: GET /products/page (q, category, supplier, stock filter, sort, paging, counts); export/import/bundle picker load the catalogue on demand.
+7. [ ] Inventory page: paged stock list + server stats.
+8. [ ] Purchase orders + payables: no 500 cap (server paging / server bills).
+9. [ ] Tests, after-measurements, full verification, PROJECT_STATUS.
+
+### Decisions
+(see steps)
