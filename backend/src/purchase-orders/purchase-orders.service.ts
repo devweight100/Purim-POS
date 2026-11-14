@@ -90,6 +90,21 @@ export class PurchaseOrdersService {
     };
   }
 
+  /** Newest PO (createdAt desc, id desc, any status) containing each product -> its supplier. At most 500 ids. */
+  async latestSupplierByProduct(rawIds?: unknown) {
+    if (rawIds !== undefined && typeof rawIds !== 'string') throw new BadRequestException('รายการสินค้าไม่ถูกต้อง');
+    const ids = [...new Set(String(rawIds || '').split(',').map((s) => s.trim()).filter(Boolean))];
+    if (ids.length > 500) throw new BadRequestException('ขอได้ครั้งละไม่เกิน 500 สินค้า');
+    if (!ids.length) return [];
+    return this.prisma.$queryRaw<{ productId: string; supplierId: string; supplierName: string | null }[]>`
+      SELECT DISTINCT ON (i.product_id) i.product_id AS "productId", po.supplier_id AS "supplierId", s.name AS "supplierName"
+        FROM purchase_order_items i
+        JOIN purchase_orders po ON po.id = i.purchase_order_id
+        LEFT JOIN suppliers s ON s.id = po.supplier_id
+       WHERE i.product_id = ANY(${ids})
+       ORDER BY i.product_id, po.created_at DESC, po.id DESC`;
+  }
+
   async findOne(id: string) {
     const po = await this.prisma.purchaseOrder.findUnique({
       where: { id },

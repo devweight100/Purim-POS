@@ -15,6 +15,15 @@ export class PurchaseOrdersController {
     return this.purchaseOrdersService.findAll(query);
   }
 
+  /**
+   * GET /purchase-orders/product-suppliers?ids=a,b: supplier of the newest PO (any status) that contains each
+   * product (supplier-returns page: who to return a claimed product to when the product has no supplier).
+   */
+  @Get('product-suppliers')
+  productSuppliers(@Query('ids') ids?: string) {
+    return this.purchaseOrdersService.latestSupplierByProduct(ids);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.purchaseOrdersService.findOne(id);

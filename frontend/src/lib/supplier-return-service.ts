@@ -14,7 +14,10 @@ import { errorText } from './api-error';
  * synchronously; fetch* refresh them and throw when the server cannot be reached.
  */
 let suppliersMem: ApiSupplier[] = [];
-let purchaseOrdersMem: ApiPurchaseOrder[] = [];
+/** Every PO of each supplier loaded so far (all pages; the page used to load only the newest 500 POs). */
+const supplierPosMem = new Map<string, ApiPurchaseOrder[]>();
+/** Supplier of the newest PO containing a product (GET /purchase-orders/product-suppliers). */
+const productPoSupplierMem = new Map<string, { supplierId: string; supplierName: string | null }>();
 let returnNotesMem: SupplierReturnNote[] = [];
 
 // ─── Suppliers ───
@@ -34,19 +37,40 @@ export function loadSuppliers(): ApiSupplier[] {
 }
 
 // ─── Purchase Orders ───
-/** Purchase orders from the server. Throws when the server cannot be reached. */
-export async function fetchPurchaseOrders(): Promise<ApiPurchaseOrder[]> {
-  const data = await apiFetch<ApiListResponse<ApiPurchaseOrder> | null>('/purchase-orders?limit=1000');
-  const list = Array.isArray(data) ? data : data?.data;
-  if (!Array.isArray(list)) throw new Error('ข้อมูลใบสั่งซื้อจากเซิร์ฟเวอร์ไม่ถูกต้อง');
-  purchaseOrdersMem = list;
-  return list;
+/** Every purchase order of one supplier (all pages, newest first). Throws when the server cannot be reached. */
+export async function fetchSupplierPurchaseOrders(supplierId: string): Promise<ApiPurchaseOrder[]> {
+  const out: ApiPurchaseOrder[] = [];
+  for (let page = 1; page <= 1000; page++) {
+    const data = await apiFetch<ApiListResponse<ApiPurchaseOrder> | null>(
+      `/purchase-orders?supplierId=${encodeURIComponent(supplierId)}&limit=500&page=${page}`,
+    );
+    const list = apiListRows(data);
+    if (!Array.isArray(list)) throw new Error('ข้อมูลใบสั่งซื้อจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+    out.push(...list);
+    if (list.length < 500) break;
+  }
+  supplierPosMem.set(supplierId, out);
+  return out;
 }
 
-/** Last purchase orders the server returned in this session (with supplier names filled in). */
+/** Looks up (on the server) the supplier of the newest PO containing each product. */
+export async function fetchProductPoSuppliers(productIds: string[]): Promise<void> {
+  const ids = [...new Set(productIds.filter(Boolean))];
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200);
+    const rows = await apiFetch<{ productId: string; supplierId: string; supplierName: string | null }[] | null>(
+      `/purchase-orders/product-suppliers?ids=${chunk.map(encodeURIComponent).join(',')}`,
+    );
+    if (!Array.isArray(rows)) throw new Error('ข้อมูลผู้จำหน่ายของสินค้าจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+    for (const id of chunk) productPoSupplierMem.delete(id);
+    for (const r of rows) productPoSupplierMem.set(r.productId, { supplierId: r.supplierId, supplierName: r.supplierName });
+  }
+}
+
+/** Purchase orders of the suppliers loaded so far in this session (with supplier names filled in). */
 export function loadPurchaseOrders(): ApiPurchaseOrder[] {
   const supps = suppliersMem;
-  return purchaseOrdersMem.map((po) => {
+  return [...supplierPosMem.values()].flat().map((po) => {
     if (!po.supplier || !po.supplier.name) {
       const supp = supps.find((s) => s.id === (po.supplierId || po.supplier?.id));
       if (supp) {
@@ -177,7 +201,17 @@ export function resolveProductSupplierAndCost(productId: string, sku?: string): 
     supplier = suppliers.find((s) => s.name.trim().toLowerCase() === refName);
   }
 
-  // Check purchase orders
+  // Check purchase orders: the newest PO containing the product (looked up on the server), then loaded POs
+  if (!supplier) {
+    const fromPo = productPoSupplierMem.get(prod?.id || productId);
+    if (fromPo) {
+      supplier = suppliers.find((s) => s.id === fromPo.supplierId);
+      if (!supplier && fromPo.supplierName) {
+        const refName = fromPo.supplierName.trim().toLowerCase();
+        supplier = suppliers.find((s) => s.name.trim().toLowerCase() === refName);
+      }
+    }
+  }
   if (!supplier) {
     try {
       const pos = loadPurchaseOrders();

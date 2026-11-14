@@ -23,6 +23,7 @@ import {
   getEligibleClaimsForReturn,
   getProductsBySupplier,
   getPayablePOsBySupplier,
+  fetchSupplierPurchaseOrders,
   createSupplierReturnNote,
   updateSupplierReturnNote,
   PayablePO,
@@ -214,6 +215,26 @@ export function CreateSupplierReturnModal({
       }
     }
   }
+
+  // The supplier's purchase orders are loaded from the server (every page) when the supplier is chosen;
+  // then the PO list, the claims matched through POs and the supplier's products are computed again.
+  const [supplierPosError, setSupplierPosError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || !selectedSupplierId) return;
+    let cancelled = false;
+    fetchSupplierPurchaseOrders(selectedSupplierId)
+      .then(() => {
+        if (cancelled) return;
+        setSupplierPosError(null);
+        setPayablePOs(getPayablePOsBySupplier(selectedSupplierId));
+        setAvailableClaims(getEligibleClaimsForReturn(selectedSupplierId));
+        setSupplierProducts(getProductsBySupplier(selectedSupplierId));
+      })
+      .catch((e) => {
+        if (!cancelled) setSupplierPosError(e instanceof Error ? e.message : 'โหลดใบสั่งซื้อของผู้จำหน่ายไม่สำเร็จ');
+      });
+    return () => { cancelled = true; };
+  }, [open, selectedSupplierId]);
 
   const currentSupplier = suppliers.find((s) => s.id === selectedSupplierId);
   const selectedPO = payablePOs.find((p) => p.id === selectedPoId);
@@ -543,6 +564,9 @@ export function CreateSupplierReturnModal({
               )}
             </div>
 
+            {supplierPosError && (
+              <p className="text-xs text-rose-600 bg-rose-50 p-2 rounded-xl border border-rose-200 mb-2">{supplierPosError}</p>
+            )}
             {payablePOs.length === 0 ? (
               <p className="text-xs text-slate-400 italic bg-white p-2.5 rounded-xl border border-slate-200">
                 ไม่มีใบสั่งซื้อที่มียอดค้างชำระของผู้จำหน่ายรายนี้ (สามารถออกเอกสารส่งคืนเพื่อถือเครดิตไว้หักรอบหน้าได้)

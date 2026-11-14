@@ -22,8 +22,7 @@ import {
   loadSupplierReturnNotes,
   fetchSupplierReturnNotes,
   getEligibleClaimsForReturn,
-  loadPurchaseOrders,
-  fetchPurchaseOrders,
+  fetchProductPoSuppliers,
   cancelSupplierReturnNote,
   restoreSupplierReturnNote
 } from '@/lib/supplier-return-service';
@@ -35,7 +34,6 @@ import { ChangeReturnStatusModal } from '@/components/supplier-returns/ChangeRet
 export default function SupplierReturnsPage() {
   const [returnNotes, setReturnNotes] = useState<SupplierReturnNote[]>([]);
   const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string }>>([]);
-  const [pos, setPos] = useState<unknown[]>([]);
   const [pendingClaims, setPendingClaims] = useState<ClaimRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -60,17 +58,19 @@ export default function SupplierReturnsPage() {
   /** Loads the data; state is only updated after the request. */
   const loadData = async () => {
     try {
-      const [notes, supps, purchaseOrders] = await Promise.all([
+      const [notes, supps, claimRecords] = await Promise.all([
         fetchSupplierReturnNotes(),
         fetchSuppliers(),
-        fetchPurchaseOrders(),
+        // eligible claims come from the server's claims list (refreshed here)
+        fetchAllClaimRecords(),
       ]);
       setReturnNotes(notes);
       setSuppliers(supps);
-      setPos(purchaseOrders);
 
-      // eligible claims come from the server's claims list (refreshed here)
-      await fetchAllClaimRecords();
+      // claimed products without a supplier fall back to the supplier of their newest PO (asked on the server,
+      // instead of searching the newest 500 POs here); purchase rights are needed for it, so it may be refused
+      const productIds = claimRecords.filter((c) => !c.returnDocId && c.status !== 'SCRAPPED').map((c) => c.productId);
+      await fetchProductPoSuppliers(productIds).catch((e) => console.warn('PO suppliers of claimed products:', e));
       const claims = getEligibleClaimsForReturn();
       setPendingClaims(claims);
       setLoadError(null);
@@ -78,7 +78,6 @@ export default function SupplierReturnsPage() {
       console.error('Failed to load supplier returns data:', e);
       setReturnNotes([]);
       setSuppliers([]);
-      setPos([]);
       setPendingClaims([]);
       setLoadError(errorMessage(e, 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     } finally {

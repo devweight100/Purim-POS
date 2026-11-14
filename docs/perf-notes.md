@@ -20,8 +20,8 @@ owes its total, 600 vouchers over 1,800 POs: partial, discount, credit notes, ev
 
 ### Plan
 1. [x] perf_load (kept), payables seed, measure before.
-2. [~] Payables (backend done): page uses /payables/bills (paging, search, supplier filter, summary totals); e2e parity vs the browser logic.
-3. [ ] Supplier returns: PO list searchable/paged from the server.
+2. [x] Payables: page uses /payables/bills (paging, search, supplier filter, summary totals); e2e parity vs the browser logic.
+3. [x] Supplier returns: PO list searchable/paged from the server.
 4. [ ] POS debt picker + orders credit history: filtered server query.
 5. [ ] Customer list refresh every 15 s -> delta / on demand (check consumers).
 6. [ ] Cheap follow-ups (claims on orders page).
@@ -37,6 +37,16 @@ owes its total, 600 vouchers over 1,800 POs: partial, discount, credit notes, ev
   consumer (only the e2e test). e2e "payables" parity (frozen legacy copy test/legacy/payables-client-legacy.ts):
   every bill + payments + order, cards, per-supplier, 8 filter combos, paging, slim, open: 53/53 e2e.
   perf_load: page 1 0.20-0.24 s / 227 kB, filtered 0.13-0.2 s, open+slim all.
+- Step 2 frontend: payables page = one server page of 50 bills (search debounced, supplier, status on the server),
+  cards + supplier tab from `summary` (every bill / every credit note), selection kept across pages (selected bills by
+  id), the settle-several-bills dialog gets every open bill (open=1&slim=1, all pages) when it opens, credit notes =
+  every note with credit left (GET /supplier-returns?available=1, all pages; was the newest 200), voucher history paged
+  (50, was newest 200; the dead "payments from bills" fallback table removed). Settlement / rollback / cancel take the
+  bill object (no PO cache). SimplePager component.
+- Step 3: supplier returns page no longer downloads /purchase-orders?limit=1000: the create-return dialog loads every
+  PO of the chosen supplier (all pages) and recomputes the payable PO list / claims / products from them; claimed
+  products without a supplier use GET /purchase-orders/product-suppliers?ids= (supplier of the newest PO containing
+  the product, = what the old loop over the newest 500 POs looked for). e2e 54/54.
 
 ## Task 1: reports computed in the database — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 

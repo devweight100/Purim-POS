@@ -1034,6 +1034,21 @@ d('store flow (e2e)', () => {
       expect(open.rows.map((b) => b.poId)).toEqual(bills.filter((b: any) => b.remainingPayable > 0).map((b: any) => b.poId));
       await api('get', '/payables/bills?paymentStatus=bad', A).expect(400);
     });
+
+    it('credit notes with credit left (?available=1) and the newest PO supplier per product', async () => {
+      const all = (await api('get', '/supplier-returns?limit=500', A).expect(200)).body.data as any[];
+      const avail = (await api('get', '/supplier-returns?available=1&limit=500', A).expect(200)).body.data as any[];
+      expect(avail.map((n) => n.id)).toEqual(all.filter((n) => n.status !== 'CANCELLED' && Number(n.remainingCreditAmount) > 0).map((n) => n.id));
+      const pos = (await api('get', '/purchase-orders?limit=500', A).expect(200)).body.data as any[];
+      const newest = pos.find((po) => po.items.some((i: any) => i.productId === state.p.id));
+      const rows = (await api('get', `/purchase-orders/product-suppliers?ids=${state.p.id},nope`, A).expect(200)).body;
+      expect(rows).toEqual([{ productId: state.p.id, supplierId: newest.supplierId, supplierName: newest.supplier.name }]);
+      expect((await api('get', '/purchase-orders/product-suppliers', A).expect(200)).body).toEqual([]);
+      // a supplier's POs, all pages
+      const s1 = (await api('get', `/purchase-orders?supplierId=${ids.s1}&limit=2&page=2`, A).expect(200)).body;
+      expect(s1.meta.total).toBe(3);
+      expect(s1.data.map((p: any) => p.id)).toEqual(pos.filter((p) => p.supplierId === ids.s1).slice(2).map((p) => p.id));
+    });
   });
 
   describe('management lists: server paging / search / sort equal the old in-browser lists', () => {
