@@ -14,15 +14,13 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
-import type { ClaimRecord } from '@/lib/types';
 import { 
   loadSuppliers,
   fetchSuppliers, 
   loadSupplierReturnNotes,
   fetchSupplierReturnNotes,
-  getEligibleClaimsForReturn,
-  fetchReturnableClaims,
-  fetchProductPoSuppliers,
+  fetchReturnableSummary,
+  type ReturnableSupplierGroup,
   cancelSupplierReturnNote,
   restoreSupplierReturnNote
 } from '@/lib/supplier-return-service';
@@ -34,7 +32,10 @@ import { ChangeReturnStatusModal } from '@/components/supplier-returns/ChangeRet
 export default function SupplierReturnsPage() {
   const [returnNotes, setReturnNotes] = useState<SupplierReturnNote[]>([]);
   const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string }>>([]);
-  const [pendingClaims, setPendingClaims] = useState<ClaimRecord[]>([]);
+  // claims waiting to go back to a supplier: count / value and the cards per supplier (server, every claim)
+  const [pending, setPending] = useState<{ total: number; totalCostValue: number; bySupplier: Map<string, ReturnableSupplierGroup> }>(
+    { total: 0, totalCostValue: 0, bySupplier: new Map() },
+  );
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -58,27 +59,22 @@ export default function SupplierReturnsPage() {
   /** Loads the data; state is only updated after the request. */
   const loadData = async () => {
     try {
-      const [notes, supps, claimRecords] = await Promise.all([
+      const [notes, supps, summary] = await Promise.all([
         fetchSupplierReturnNotes(),
         fetchSuppliers(),
-        // every claim that can still go back to a supplier (server filter; was the newest 500 claims)
-        fetchReturnableClaims(),
+        // every claim that can still go back to a supplier, grouped by its supplier on the server
+        // (supplier / cost resolved there with the rule this page used; was every claim downloaded and matched here)
+        fetchReturnableSummary(),
       ]);
       setReturnNotes(notes);
       setSuppliers(supps);
-
-      // claimed products without a supplier fall back to the supplier of their newest PO (asked on the server,
-      // instead of searching the newest 500 POs here); purchase rights are needed for it, so it may be refused
-      const productIds = claimRecords.filter((c) => !c.returnDocId && c.status !== 'SCRAPPED').map((c) => c.productId);
-      await fetchProductPoSuppliers(productIds).catch((e) => console.warn('PO suppliers of claimed products:', e));
-      const claims = getEligibleClaimsForReturn();
-      setPendingClaims(claims);
+      setPending({ total: summary.total, totalCostValue: summary.totalCostValue, bySupplier: new Map(summary.suppliers.map((g) => [g.supplierId, g])) });
       setLoadError(null);
     } catch (e) {
       console.error('Failed to load supplier returns data:', e);
       setReturnNotes([]);
       setSuppliers([]);
-      setPendingClaims([]);
+      setPending({ total: 0, totalCostValue: 0, bySupplier: new Map() });
       setLoadError(errorMessage(e, 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     } finally {
       setLoading(false);
@@ -158,10 +154,7 @@ export default function SupplierReturnsPage() {
   };
 
   // Calculations for Metrics
-  const totalPendingClaimsCost = pendingClaims.reduce(
-    (sum, c) => sum + Number(c.totalCostValue || (c.costPrice || 50) * (c.quantity || 1)),
-    0
-  );
+  const totalPendingClaimsCost = pending.totalCostValue;
 
   const activeNotes = returnNotes.filter((n) => n.status !== 'CANCELLED');
   const cancelledNotes = returnNotes.filter((n) => n.status === 'CANCELLED');
@@ -256,7 +249,7 @@ export default function SupplierReturnsPage() {
           </div>
           <div className="flex items-baseline gap-1.5 font-mono">
             <span className="text-lg sm:text-xl font-black text-rose-600 tracking-tight">
-              {pendingClaims.length}
+              {pending.total}
             </span>
             <span className="text-xs text-rose-700 font-sans font-bold">รายการ</span>
           </div>
@@ -325,7 +318,7 @@ export default function SupplierReturnsPage() {
               className="rounded-lg font-bold text-xs sm:text-sm data-[state=active]:bg-white data-[state=active]:shadow-xs px-4 gap-1.5"
             >
               <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
-              <span>รอส่งเคลมบริษัท ({pendingClaims.length})</span>
+              <span>รอส่งเคลมบริษัท ({pending.total})</span>
             </TabsTrigger>
             <TabsTrigger
               value="trash"
@@ -549,7 +542,7 @@ export default function SupplierReturnsPage() {
               </div>
             </div>
 
-            {pendingClaims.length === 0 ? (
+            {pending.total === 0 ? (
               <div className="p-8 text-center text-slate-400 space-y-2">
                 <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
                 <p className="font-bold text-slate-700">ไม่มีสินค้าชำรุดค้างส่งคืน</p>
@@ -558,13 +551,9 @@ export default function SupplierReturnsPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {suppliers.map((supp) => {
-                  const suppClaims = pendingClaims.filter((c) => c.supplierId === supp.id);
-                  if (suppClaims.length === 0) return null;
-
-                  const totalVal = suppClaims.reduce(
-                    (sum, c) => sum + Number(c.totalCostValue || (c.costPrice || 50) * (c.quantity || 1)),
-                    0
-                  );
+                  const group = pending.bySupplier.get(supp.id);
+                  if (!group || group.count === 0) return null;
+                  const totalVal = group.totalCostValue;
 
                   return (
                     <div
@@ -575,22 +564,22 @@ export default function SupplierReturnsPage() {
                         <div className="flex justify-between items-start">
                           <p className="font-bold text-slate-900 text-sm truncate">{supp.name}</p>
                           <Badge className="bg-rose-100 text-rose-800 text-xs font-semibold border-rose-200 px-2 py-0.5">
-                            {suppClaims.length} รายการ
+                            {group.count} รายการ
                           </Badge>
                         </div>
                         <p className="text-xs sm:text-sm text-slate-500 mt-1">
                           มูลค่ารวม: <strong className="text-rose-700 font-mono text-sm">{formatCurrency(totalVal)}</strong>
                         </p>
                         <ul className="text-xs text-slate-600 mt-2.5 space-y-1 divide-y divide-slate-200">
-                          {suppClaims.slice(0, 3).map((c) => (
+                          {group.top.map((c) => (
                             <li key={c.id} className="pt-1.5 flex justify-between">
                               <span className="truncate max-w-[160px]">• {c.productName}</span>
                               <span className="font-mono font-semibold">{c.quantity} ชิ้น</span>
                             </li>
                           ))}
-                          {suppClaims.length > 3 && (
+                          {group.count > 3 && (
                             <li className="pt-1.5 text-slate-400 italic text-xs">
-                              + อีก {suppClaims.length - 3} รายการ...
+                              + อีก {group.count - 3} รายการ...
                             </li>
                           )}
                         </ul>

@@ -20,83 +20,23 @@ import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { 
   loadSuppliers,
-  getEligibleClaimsForReturn,
   getProductsBySupplier,
   getPayablePOsBySupplier,
   fetchSupplierPurchaseOrders,
-  fetchReturnableClaims,
-  hasReturnableClaims,
+  fetchReturnableGroups,
+  type GroupedClaimProduct,
+  type ReturnableGroupsPage,
   createSupplierReturnNote,
   updateSupplierReturnNote,
   PayablePO,
   CreateSupplierReturnItemInput
 } from '@/lib/supplier-return-service';
-import { ClaimRecord, SupplierReturnNote } from '@/lib/types';
+import { SupplierReturnNote } from '@/lib/types';
 import { addQty, formatQty, isValidQty, parseQty, qtyInputMode, qtyStep, roundQty, useAllowDecimalQty } from '@/lib/qty';
 
-export interface GroupedClaimProduct {
-  groupKey: string;
-  productId: string;
-  productName: string;
-  sku: string;
-  unitName: string;
-  totalQuantity: number;
-  costPrice: number;
-  claims: ClaimRecord[];
-  claimIds: string[];
-  defectReasons: string[];
-  orderNumbers: string[];
-  supplierId?: string;
-  supplierName?: string;
-}
-
-export function groupClaimsByProduct(claims: ClaimRecord[]): GroupedClaimProduct[] {
-  const map = new Map<string, GroupedClaimProduct>();
-
-  claims.forEach((c) => {
-    const key = c.productId ? `PID_${c.productId}` : (c.sku ? `SKU_${c.sku}` : `NAME_${c.productName}`);
-    const factor = Number(c.conversionFactor || 1);
-    const baseQty = Number(c.baseQuantity !== undefined ? c.baseQuantity : (Number(c.quantity || 1) * factor));
-    const baseUnit = factor > 1 ? (c.replacementUnitName || 'ชิ้น') : (c.unitName || 'ชิ้น');
-    const baseCostPrice = factor > 1 && Number(c.costPrice || 0) > 0 ? Number(c.costPrice) / factor : Number(c.costPrice || 0);
-
-    if (!map.has(key)) {
-      map.set(key, {
-        groupKey: key,
-        productId: c.productId,
-        productName: c.productName,
-        sku: c.sku,
-        unitName: baseUnit,
-        totalQuantity: 0,
-        costPrice: baseCostPrice,
-        claims: [],
-        claimIds: [],
-        defectReasons: [],
-        orderNumbers: [],
-        supplierId: c.supplierId,
-        supplierName: c.supplierName,
-      });
-    }
-
-    const group = map.get(key)!;
-    group.totalQuantity += baseQty;
-    group.claims.push(c);
-    if (c.id && !group.claimIds.includes(c.id)) {
-      group.claimIds.push(c.id);
-    }
-    if (c.defectReason && !group.defectReasons.includes(c.defectReason)) {
-      group.defectReasons.push(c.defectReason);
-    }
-    if (c.orderNumber && !group.orderNumbers.includes(c.orderNumber)) {
-      group.orderNumbers.push(c.orderNumber);
-    }
-    if (group.costPrice <= 0 && baseCostPrice > 0) {
-      group.costPrice = baseCostPrice;
-    }
-  });
-
-  return Array.from(map.values());
-}
+/** Product groups shown per request of the create-return dialog (more on "แสดงเพิ่ม"). */
+const GROUP_PAGE = 50;
+const NO_GROUPS: ReturnableGroupsPage = { data: [], meta: { total: 0, page: 1, limit: GROUP_PAGE }, totals: { groups: 0, claims: 0, pieces: 0 } };
 
 interface CreateSupplierReturnModalProps {
   open: boolean;
@@ -137,8 +77,12 @@ export function CreateSupplierReturnModal({
   const [payablePOs, setPayablePOs] = useState<PayablePO[]>([]);
   const [selectedPoId, setSelectedPoId] = useState<string>('');
   
-  const [availableClaims, setAvailableClaims] = useState<ClaimRecord[]>([]);
-  const [allStoreClaims, setAllStoreClaims] = useState<ClaimRecord[]>([]);
+  // returnable claims grouped by product, from the server: the supplier's own and every other one
+  const [supplierGroups, setSupplierGroups] = useState<ReturnableGroupsPage>(NO_GROUPS);
+  const [otherGroups, setOtherGroups] = useState<ReturnableGroupsPage>(NO_GROUPS);
+  const [claimSearch, setClaimSearch] = useState('');
+  const [debouncedClaimSearch, setDebouncedClaimSearch] = useState('');
+  const [claimGroupsError, setClaimGroupsError] = useState<string | null>(null);
   const [showOtherClaims, setShowOtherClaims] = useState(false);
   const [supplierProducts, setSupplierProducts] = useState<ReturnProduct[]>([]);
   
@@ -199,12 +143,6 @@ export function CreateSupplierReturnModal({
       const pos = getPayablePOsBySupplier(selectedSupplierId);
       setPayablePOs(pos);
 
-      const claims = getEligibleClaimsForReturn(selectedSupplierId);
-      setAvailableClaims(claims);
-
-      const allClaims = getEligibleClaimsForReturn();
-      setAllStoreClaims(allClaims);
-
       const prods = getProductsBySupplier(selectedSupplierId);
       setSupplierProducts(prods);
 
@@ -229,7 +167,6 @@ export function CreateSupplierReturnModal({
         if (cancelled) return;
         setSupplierPosError(null);
         setPayablePOs(getPayablePOsBySupplier(selectedSupplierId));
-        setAvailableClaims(getEligibleClaimsForReturn(selectedSupplierId));
         setSupplierProducts(getProductsBySupplier(selectedSupplierId));
       })
       .catch((e) => {
@@ -238,31 +175,51 @@ export function CreateSupplierReturnModal({
     return () => { cancelled = true; };
   }, [open, selectedSupplierId]);
 
-  // Opened from a page that did not load the returnable claims (purchase orders): load them once.
+  // The returnable claims of the supplier and the other ones, grouped by product on the server (every claim;
+  // the server matches claims to the supplier with the rule this dialog used, POs of the supplier included).
   useEffect(() => {
-    if (!open || hasReturnableClaims()) return;
+    const t = setTimeout(() => setDebouncedClaimSearch(claimSearch), 300);
+    return () => clearTimeout(t);
+  }, [claimSearch]);
+  const loadClaimGroups = async (scope: 'supplier' | 'other', page: number) => {
+    const res = await fetchReturnableGroups({ supplierId: selectedSupplierId, scope, search: debouncedClaimSearch, page, limit: GROUP_PAGE });
+    const set = scope === 'supplier' ? setSupplierGroups : setOtherGroups;
+    set((prev) => (page === 1 ? res : { ...res, data: [...prev.data, ...res.data] }));
+  };
+  useEffect(() => {
+    if (!open || !selectedSupplierId) return;
     let cancelled = false;
-    fetchReturnableClaims()
-      .then(() => {
+    const run = async () => {
+      try {
+        const [mine, other] = await Promise.all([
+          fetchReturnableGroups({ supplierId: selectedSupplierId, scope: 'supplier', search: debouncedClaimSearch, limit: GROUP_PAGE }),
+          fetchReturnableGroups({ supplierId: selectedSupplierId, scope: 'other', search: debouncedClaimSearch, limit: GROUP_PAGE }),
+        ]);
         if (cancelled) return;
-        setAllStoreClaims(getEligibleClaimsForReturn());
-        if (selectedSupplierId) setAvailableClaims(getEligibleClaimsForReturn(selectedSupplierId));
-      })
-      .catch((e) => console.warn('returnable claims:', e));
+        setSupplierGroups(mine);
+        setOtherGroups(other);
+        setClaimGroupsError(null);
+      } catch (e) {
+        if (cancelled) return;
+        setSupplierGroups(NO_GROUPS);
+        setOtherGroups(NO_GROUPS);
+        setClaimGroupsError(e instanceof Error ? e.message : 'โหลดสินค้าเคลมไม่สำเร็จ');
+      }
+    };
+    void run();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, selectedSupplierId, debouncedClaimSearch]);
+  const loadMoreGroups = (scope: 'supplier' | 'other') => {
+    const cur = scope === 'supplier' ? supplierGroups : otherGroups;
+    loadClaimGroups(scope, Math.floor(cur.data.length / GROUP_PAGE) + 1).catch((e) => toast.error(e instanceof Error ? e.message : 'โหลดสินค้าเคลมไม่สำเร็จ'));
+  };
 
   const currentSupplier = suppliers.find((s) => s.id === selectedSupplierId);
   const selectedPO = payablePOs.find((p) => p.id === selectedPoId);
 
-  // Group defective claims by product so identical products are shown as a single row
-  const groupedSupplierClaims = useMemo(() => groupClaimsByProduct(availableClaims), [availableClaims]);
-  const otherClaims = useMemo(
-    () => allStoreClaims.filter((c) => !availableClaims.some((ac) => ac.id === c.id)),
-    [allStoreClaims, availableClaims]
-  );
-  const groupedOtherClaims = useMemo(() => groupClaimsByProduct(otherClaims), [otherClaims]);
+  // Defective claims grouped by product (identical products shown as a single row)
+  const groupedSupplierClaims = supplierGroups.data;
+  const groupedOtherClaims = otherGroups.data;
 
   // Totals
   const defectiveTotal = returnItems
@@ -648,7 +605,7 @@ export function CreateSupplierReturnModal({
                   className="rounded-xl font-bold text-xs data-[state=active]:bg-white data-[state=active]:text-rose-700 data-[state=active]:shadow-xs gap-1.5"
                 >
                   <ShieldAlert className="w-4 h-4 text-rose-600" />
-                  <span>สต็อกของเคลม ({groupedSupplierClaims.length} รายการ / {formatQty(addQty(...availableClaims.map((c) => c.quantity || 1)))} ชิ้น)</span>
+                  <span>สต็อกของเคลม ({supplierGroups.totals.groups} รายการ / {formatQty(supplierGroups.totals.pieces)} ชิ้น)</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="overstock"
@@ -661,6 +618,18 @@ export function CreateSupplierReturnModal({
 
               {/* TAB 1: DEFECTIVE CLAIM STOCK (GROUPED BY PRODUCT) */}
               <TabsContent value="defective" className="pt-2 space-y-2">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Input
+                    value={claimSearch}
+                    onChange={(e) => setClaimSearch(e.target.value)}
+                    placeholder="ค้นหาสินค้าเคลม (ชื่อสินค้า, SKU, เลขที่เคลม, บิลขาย)..."
+                    className="pl-8 h-9 text-xs rounded-xl"
+                  />
+                </div>
+                {claimGroupsError && (
+                  <div className="p-2 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl">{claimGroupsError}</div>
+                )}
                 {groupedSupplierClaims.length === 0 && groupedOtherClaims.length === 0 ? (
                   <div className="p-6 text-center bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-400">
                     ไม่มีสินค้าชำรุดในสต็อกของเคลมที่รอส่งคืนบริษัทในระบบ
@@ -702,10 +671,10 @@ export function CreateSupplierReturnModal({
                                       <span className="text-rose-600 font-medium truncate max-w-xs">
                                         อาการ: {group.defectReasons.join(', ') || 'ชำรุด'}
                                       </span>
-                                      {group.claims.length > 1 && (
+                                      {group.claimCount > 1 && (
                                         <>
                                           <span>•</span>
-                                          <span className="text-slate-400">จาก {group.claims.length} บิลเคลม</span>
+                                          <span className="text-slate-400">จาก {group.claimCount} บิลเคลม</span>
                                         </>
                                       )}
                                     </div>
@@ -798,9 +767,9 @@ export function CreateSupplierReturnModal({
                                     <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-[9px] py-0 font-semibold">
                                       มีของชำรุด {group.totalQuantity} {group.unitName}
                                     </Badge>
-                                    {group.claims.length > 1 && (
+                                    {group.claimCount > 1 && (
                                       <Badge variant="outline" className="text-[9px] py-0 text-slate-500 bg-slate-50">
-                                        รวมจาก {group.claims.length} ใบเคลม
+                                        รวมจาก {group.claimCount} ใบเคลม
                                       </Badge>
                                     )}
                                   </div>
@@ -835,6 +804,11 @@ export function CreateSupplierReturnModal({
                             </div>
                           );
                         })}
+                        {supplierGroups.data.length < supplierGroups.meta.total && (
+                          <Button type="button" size="sm" variant="outline" onClick={() => loadMoreGroups('supplier')} className="w-full h-8 text-xs font-bold rounded-xl">
+                            แสดงเพิ่ม ({supplierGroups.data.length} จาก {supplierGroups.meta.total} รายการสินค้า)
+                          </Button>
+                        )}
                       </div>
                     ) : (
                       <div className="p-4 text-center bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-500">
@@ -843,7 +817,7 @@ export function CreateSupplierReturnModal({
                     )}
 
                     {/* Expandable section for other unreturned defective claims */}
-                    {groupedOtherClaims.length > 0 && (
+                    {otherGroups.meta.total > 0 && (
                       <div className="pt-2 border-t border-slate-200 space-y-1.5">
                         <button
                           type="button"
@@ -854,7 +828,7 @@ export function CreateSupplierReturnModal({
                           <span>
                             {showOtherClaims
                               ? 'ซ่อนสินค้าชำรุดรายการอื่นในสต็อก'
-                              : `แสดงสินค้าชำรุดรายการอื่นในสต็อกของเคลม (${groupedOtherClaims.length} รายการสินค้า)`}
+                              : `แสดงสินค้าชำรุดรายการอื่นในสต็อกของเคลม (${otherGroups.meta.total} รายการสินค้า)`}
                           </span>
                         </button>
 
@@ -1024,6 +998,11 @@ export function CreateSupplierReturnModal({
                                 </div>
                               );
                             })}
+                            {otherGroups.data.length < otherGroups.meta.total && (
+                              <Button type="button" size="sm" variant="outline" onClick={() => loadMoreGroups('other')} className="w-full h-8 text-xs font-bold rounded-xl">
+                                แสดงเพิ่ม ({otherGroups.data.length} จาก {otherGroups.meta.total} รายการสินค้า)
+                              </Button>
+                            )}
                           </div>
                         )}
                       </div>

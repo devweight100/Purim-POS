@@ -8,7 +8,7 @@ import { useProductStore } from '@/lib/store/product-store';
 import { fetchCustomers } from '@/lib/customer-service';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 
-import { fetchAllClaimRecords } from '@/lib/claim-service';
+import { fetchClaimedOrderIds } from '@/lib/claim-service';
 import { ReceiptPdfModal, ReceiptData } from './ReceiptPdfModal';
 import { orderToReceiptData } from '@/lib/receipt-mapper';
 import { PaymentModal } from './PaymentModal';
@@ -131,18 +131,10 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const [ordersRes, claimsRes] = await Promise.all([
-        apiFetch('/orders?limit=100'),
-        fetchAllClaimRecords().catch(() => []),
-      ]);
+      const ordersRes = await apiFetch('/orders?limit=100');
       const fetchedBackend: ServerOrder[] = ordersRes?.data || (Array.isArray(ordersRes) ? ordersRes : []);
-      const allClaims = claimsRes || [];
-
-      const claimedOrderMap = new Set<string>();
-      allClaims.forEach((c) => {
-        if (c.orderId) claimedOrderMap.add(c.orderId);
-        if (c.orderNumber) claimedOrderMap.add(c.orderNumber);
-      });
+      // bills of this list with a claim (by order id or bill number, over every claim; was the newest 500 claims)
+      const claimedOrderMap = await fetchClaimedOrderIds(fetchedBackend.map((o) => o.id).filter(Boolean)).catch(() => new Set<string>());
 
       // Orders come from the server only (unsent offline bills wait in the outbox)
       const combinedMap = new Map<string, HistoryOrder>();

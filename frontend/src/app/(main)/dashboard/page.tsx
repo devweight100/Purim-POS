@@ -55,8 +55,7 @@ import {
   Info,
   Smartphone
 } from "lucide-react";
-import { fetchAllClaimRecords, loadAllClaimRecords } from "@/lib/claim-service";
-import { ClaimRecord } from "@/lib/types";
+import { fetchClaimRefundSummary } from "@/lib/claim-service";
 import { bangkokDate, bangkokParts, bangkokStartOfDay, DAY_MS } from "@shared/bangkok-date";
 
 // Palette colors for charts
@@ -107,14 +106,24 @@ interface DashboardReport {
   recentOrders?: DashboardOrder[];
 }
 
+/** Claim refunds of the same period (Bangkok calendar) -- shown separately, like the P&L. undefined = every claim. */
+function claimPeriodStart(range: DashboardRange, now: number): number | undefined {
+  const today = bangkokStartOfDay(now);
+  const { year, month } = bangkokParts(now);
+  return range === "today" ? today
+    : range === "7days" ? today - 6 * DAY_MS
+    : range === "30days" ? today - 29 * DAY_MS
+    : range === "month" ? bangkokDate(year, month, 1)
+    : undefined;
+}
+
 export default function DashboardPage() {
   const [timeFilter, setTimeFilter] = useState<DashboardRange>("7days");
   // starts as loading: the first load runs right after mount
   const [loading, setLoading] = useState(true);
   const [dash, setDash] = useState<DashboardReport | null>(null);
-  const [claims, setClaims] = useState<ClaimRecord[]>([]);
-  // when the figures were loaded (the claims period is counted from it)
-  const [loadedAt, setLoadedAt] = useState(() => Date.now());
+  // claim refunds of the period (computed on the server over every claim)
+  const [claimRefunds, setClaimRefunds] = useState<{ count: number; amount: number }>({ count: 0, amount: 0 });
 
   // All figures come from the server aggregate (/reports/dashboard): no row cap for "all",
   // returns netted like the P&L, Bangkok days, one low-stock threshold (StoreSettings).
@@ -123,15 +132,11 @@ export default function DashboardPage() {
     try {
       const [dashRes, claimsRes] = await Promise.allSettled([
         apiFetch(`/reports/dashboard?range=${range}`),
-        fetchAllClaimRecords(),
+        fetchClaimRefundSummary(claimPeriodStart(range, Date.now())),
       ]);
       if (dashRes.status === "fulfilled") setDash(dashRes.value);
       else setDash(null);
-      if (claimsRes.status === "fulfilled") {
-        const val = claimsRes.value as ClaimRecord[] | { data?: ClaimRecord[] };
-        setClaims(Array.isArray(val) ? val : Array.isArray(val?.data) ? val.data : []);
-      }
-      setLoadedAt(Date.now());
+      if (claimsRes.status === "fulfilled") setClaimRefunds(claimsRes.value);
     } finally {
       setLoading(false);
     }
@@ -153,38 +158,13 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeFilter]);
 
-  // Claim refunds of the same period (Bangkok calendar) -- shown separately, like the P&L
-  const filteredClaims = useMemo(() => {
-    const now = loadedAt;
-    const today = bangkokStartOfDay(now);
-    const { year, month } = bangkokParts(now);
-    const from =
-      timeFilter === "today" ? today
-      : timeFilter === "7days" ? today - 6 * DAY_MS
-      : timeFilter === "30days" ? today - 29 * DAY_MS
-      : timeFilter === "month" ? bangkokDate(year, month, 1)
-      : -Infinity;
-    return claims.filter((claim) => {
-      const claimTime = new Date(claim.claimDate || claim.orderDate || "").getTime();
-      if (!claimTime) return true;
-      return claimTime >= from;
-    });
-  }, [claims, timeFilter, loadedAt]);
-
   const kpi = useMemo(() => {
     const s: NonNullable<DashboardReport["sales"]> = dash?.sales || {};
     const pay: NonNullable<DashboardReport["payments"]> = dash?.payments || {};
     const inv: NonNullable<DashboardReport["inventory"]> = dash?.inventory || {};
 
-    let claimRefundAmount = 0;
-    let claimRefundCount = 0;
-    filteredClaims.forEach((c) => {
-      const isRefund = c.resolutionType === "REFUND_CASH" || c.resolutionType === "REFUND_TRANSFER" || (c as ClaimRecord & { claimType?: string }).claimType === "REFUND";
-      if (isRefund) {
-        claimRefundCount++;
-        claimRefundAmount += Number(c.totalClaimValue || c.refundAmount || 0);
-      }
-    });
+    const claimRefundAmount = claimRefunds.amount;
+    const claimRefundCount = claimRefunds.count;
 
     const voidedAmount = Number(s.voidedAmount || 0);
     const returnsAmount = Number(s.returnsAmount || 0);
@@ -225,7 +205,7 @@ export default function DashboardPage() {
       totalInventoryRetailValue: Number(inv.stockRetailValue || 0),
       totalCustomers: Number(dash?.totalCustomers || 0),
     };
-  }, [dash, filteredClaims]);
+  }, [dash, claimRefunds]);
 
   // Timeline (Bangkok days, or months for long ranges)
   const salesTimelineData = useMemo(() => {

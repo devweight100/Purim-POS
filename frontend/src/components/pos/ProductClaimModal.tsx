@@ -7,7 +7,6 @@ import {
   fetchClaimEligibleItems,
   processClaim, 
   ClaimVerificationQuery,
-  loadAllClaimRecords 
 } from '@/lib/claim-service';
 import { ClaimEligibleItem, ClaimResolutionType, ClaimRecord, Product, ProductUnit } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/utils';

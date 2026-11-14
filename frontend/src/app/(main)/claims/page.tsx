@@ -1,12 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { 
-  loadAllClaimRecords,
-  fetchAllClaimRecords, 
-  getClaimStockSummary 
-} from '@/lib/claim-service';
+import { fetchClaimsPage, type ClaimSummary } from '@/lib/claim-service';
 import { ClaimRecord, ClaimResolutionType } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,106 +42,84 @@ import { ClaimReceiptPdfModal } from '@/components/claims/ClaimReceiptPdfModal';
 import { toast } from 'sonner';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 
+const EMPTY_SUMMARY: ClaimSummary = {
+  totalClaims: 0, totalClaimValue: 0, pendingSupplierCount: 0, completedCount: 0, scrappedCount: 0,
+  replacedItemCount: 0, refundedCount: 0, discountedCount: 0,
+};
+
 export default function ClaimsPage() {
+  // one page of claims (filters, search, sort and paging on the server, over every claim)
   const [claims, setClaims] = useState<ClaimRecord[]>([]);
+  const [total, setTotal] = useState(0);
+  // summary cards: over every claim
+  const [summary, setSummary] = useState<ClaimSummary>(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [resolutionFilter, setResolutionFilter] = useState<string>('ALL');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [sort, setSort] = useState<'newest' | 'oldest' | 'value_desc' | 'value_asc'>('newest');
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Modals
   const [isClaimModalOpen, setIsClaimModalOpen] = useState(false);
   const [selectedClaimForPdf, setSelectedClaimForPdf] = useState<ClaimRecord | null>(null);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
 
-  /** Loads the data; state is only updated after the request. */
-  const loadClaims = async () => {
-    try {
-      const records = await fetchAllClaimRecords();
-      setClaims(records);
-      setLoadError(null);
-    } catch (err) {
-      setClaims([]);
-      setLoadError(errorMessage(err, 'ไม่สามารถโหลดข้อมูลรายการเคลมได้'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchClaims = async () => {
-    setLoading(true);
-    await loadClaims();
-  };
-
+  // typing in the search box asks the server once it pauses
   useEffect(() => {
-    const run = async () => { await loadClaims(); };
-    void run();
-  }, []);
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
-  // Summary statistics
-  const summary = useMemo(() => {
-    return getClaimStockSummary(claims);
-  }, [claims]);
-
-  // Filtered claims
-  const filteredClaims = useMemo(() => {
-    return claims.filter((claim) => {
-      // Resolution Filter
-      if (resolutionFilter !== 'ALL' && claim.resolutionType !== resolutionFilter) {
-        return false;
-      }
-
-      // Date range filter
-      if (startDate) {
-        const dStart = new Date(startDate).getTime();
-        const cTime = new Date(claim.claimDate).getTime();
-        if (cTime < dStart) return false;
-      }
-      if (endDate) {
-        const dEnd = new Date(endDate).getTime() + 24 * 60 * 60 * 1000;
-        const cTime = new Date(claim.claimDate).getTime();
-        if (cTime > dEnd) return false;
-      }
-
-      // Keyword search
-      if (search.trim()) {
-        const q = search.toLowerCase().trim();
-        const idMatch = claim.id.toLowerCase().includes(q);
-        const orderMatch = (claim.orderNumber || '').toLowerCase().includes(q);
-        const custMatch = (claim.customerName || '').toLowerCase().includes(q);
-        const prodMatch = (claim.productName || '').toLowerCase().includes(q);
-        const skuMatch = (claim.sku || '').toLowerCase().includes(q);
-        const reasonMatch = (claim.defectReason || '').toLowerCase().includes(q);
-
-        if (!idMatch && !orderMatch && !custMatch && !prodMatch && !skuMatch && !reasonMatch) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [claims, resolutionFilter, startDate, endDate, search]);
-
-  // Pagination calculations
-  const totalPages = Math.max(1, Math.ceil(filteredClaims.length / pageSize));
-  const paginatedClaims = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredClaims.slice(start, start + pageSize);
-  }, [filteredClaims, currentPage, pageSize]);
-
-  const currentPageResetKey = JSON.stringify([search, resolutionFilter, pageSize]);
+  const currentPageResetKey = JSON.stringify([debouncedSearch, resolutionFilter, startDate, endDate, sort, pageSize]);
   const [currentPageResetKeySeen, setCurrentPageResetKeySeen] = useState(currentPageResetKey);
   if (currentPageResetKeySeen !== currentPageResetKey) {
     // a filter changed: back to page 1 (adjusted while rendering, no extra effect pass)
     setCurrentPageResetKeySeen(currentPageResetKey);
     setCurrentPage(1);
   }
+
+  /** Loads the page; state is only updated after the request (a newer request wins). */
+  const requestSeq = useRef(0);
+  useEffect(() => {
+    const seq = ++requestSeq.current;
+    const run = async () => {
+      try {
+        const res = await fetchClaimsPage({
+          page: currentPage, limit: pageSize, search: debouncedSearch, resolutionType: resolutionFilter,
+          startDate, endDate, sort,
+        });
+        if (seq !== requestSeq.current) return;
+        setClaims(res.rows);
+        setTotal(res.total);
+        setSummary(res.summary);
+        setLoadError(null);
+      } catch (err) {
+        if (seq !== requestSeq.current) return;
+        setClaims([]);
+        setTotal(0);
+        setLoadError(errorMessage(err, 'ไม่สามารถโหลดข้อมูลรายการเคลมได้'));
+      } finally {
+        if (seq === requestSeq.current) setLoading(false);
+      }
+    };
+    void run();
+  }, [currentPage, pageSize, debouncedSearch, resolutionFilter, startDate, endDate, sort, reloadKey]);
+
+  const fetchClaims = () => {
+    setLoading(true);
+    setReloadKey((k) => k + 1);
+  };
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const paginatedClaims = claims;
 
   // Resolution Badge Helper
   const getResolutionBadge = (res: ClaimResolutionType) => {
@@ -253,7 +227,7 @@ export default function ClaimsPage() {
           </div>
           <div className="flex items-baseline gap-1.5 font-mono">
             <span className="text-lg sm:text-xl font-black text-indigo-700 tracking-tight">
-              {claims.length}
+              {summary.totalClaims}
             </span>
             <span className="text-xs text-slate-600 font-sans font-bold">รายการ</span>
           </div>
@@ -333,6 +307,18 @@ export default function ClaimsPage() {
               <option value="REFUND_TRANSFER">📱 คืนเงินโอน</option>
               <option value="STORE_DISCOUNT">🏷️ ส่วนลดบิล</option>
               <option value="SUPPLIER_RMA">🚚 ส่งเคลมประกัน</option>
+            </select>
+
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as typeof sort)}
+              aria-label="เรียงลำดับ"
+              className="h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 w-full md:w-40"
+            >
+              <option value="newest">ใหม่ล่าสุดก่อน</option>
+              <option value="oldest">เก่าที่สุดก่อน</option>
+              <option value="value_desc">มูลค่าเคลมมากไปน้อย</option>
+              <option value="value_asc">มูลค่าเคลมน้อยไปมาก</option>
             </select>
 
             <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-2xl px-2.5 h-10 text-xs">
@@ -488,7 +474,7 @@ export default function ClaimsPage() {
         </div>
 
         {/* Pagination Footer */}
-        {filteredClaims.length > 0 && (
+        {total > 0 && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 border-t border-slate-100 text-xs text-slate-500">
             <div className="flex items-center gap-2">
               <span>แสดง</span>
@@ -502,7 +488,7 @@ export default function ClaimsPage() {
                 <option value={30}>30</option>
                 <option value={50}>50</option>
               </select>
-              <span>รายการ จากทั้งหมด {filteredClaims.length} รายการ</span>
+              <span>รายการ จากทั้งหมด {total} รายการ</span>
             </div>
 
             <div className="flex items-center gap-1.5">

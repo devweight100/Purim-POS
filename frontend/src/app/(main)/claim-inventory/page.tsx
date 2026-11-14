@@ -1,14 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { loadAllClaimRecords, fetchAllClaimRecords } from '@/lib/claim-service';
-import { 
-  loadSuppliers, 
-  fetchSuppliers,
-  resolveProductSupplierAndCost 
-} from '@/lib/supplier-return-service';
-import { useProductStore } from '@/lib/store/product-store';
+import { fetchSuppliers } from '@/lib/supplier-return-service';
+import { apiFetch } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -101,7 +96,7 @@ interface ProductClaimSummary {
   inStockCostValue: number;
   totalClaimValue: number;
   latestClaimDate: string;
-  claims: ClaimStockItem[];
+  claimCount: number;
 }
 
 interface SupplierClaimSummary {
@@ -115,17 +110,29 @@ interface SupplierClaimSummary {
   inStockCostValue: number;
   totalClaimValue: number;
   latestClaimDate: string;
-  products: ProductClaimSummary[];
 }
+
+/** GET /claims/claim-stock: the page computed on the server over every claim (it read the newest 500 claims). */
+interface ClaimStockScreen {
+  stats: { uniqueProducts: number; pieces: number; costValue: number; suppliersCount: number };
+  categories: string[];
+  filteredCount: number;
+  products: { data: ProductClaimSummary[]; total: number };
+  suppliers: SupplierClaimSummary[];
+  records: { data: ClaimStockItem[]; total: number };
+}
+
+const RECORDS_PAGE = 50;
 
 export default function ClaimInventoryPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [claimItems, setClaimItems] = useState<ClaimStockItem[]>([]);
   const [suppliersList, setSuppliersList] = useState<Array<{ id: string; name: string; phone?: string }>>([]);
+  const [screen, setScreen] = useState<ClaimStockScreen | null>(null);
   
   // Filters
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('ALL');
   const [statusFilter, setStatusFilter] = useState<'IN_STOCK' | 'RETURNED' | 'ALL'>('IN_STOCK');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
@@ -134,289 +141,99 @@ export default function ClaimInventoryPage() {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
+  const [recordsPage, setRecordsPage] = useState(1);
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Detail Modal
   const [selectedProductForModal, setSelectedProductForModal] = useState<ProductClaimSummary | null>(null);
+  const [modalClaims, setModalClaims] = useState<ClaimStockItem[]>([]);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
 
-  // Load and enrich all claim stock data
-  /** Loads the data; state is only updated after the request. */
-  const loadData = async () => {
-    try {
-      const [rawClaims, loadedSuppliers] = await Promise.all([
-        fetchAllClaimRecords(),
-        fetchSuppliers(),
-      ]);
-      setSuppliersList((loadedSuppliers || []).map((s) => ({ id: s.id, name: s.name, phone: s.phone ?? undefined })));
-
-      let storeProducts = useProductStore.getState().products || [];
-      if (!storeProducts.length) {
-        await useProductStore.getState().fetchProducts();
-        storeProducts = useProductStore.getState().products || [];
-      }
-
-      const enriched: ClaimStockItem[] = rawClaims.map((c) => {
-        // Resolve supplier and cost price
-        let suppId = c.supplierId;
-        let suppName = c.supplierName;
-        let cost = Number(c.costPrice || 0);
-
-        if (!suppId || cost <= 0) {
-          const resolved = resolveProductSupplierAndCost(c.productId, c.sku);
-          if (!suppId) {
-            suppId = resolved.supplierId;
-            suppName = resolved.supplierName;
-          }
-          if (cost <= 0) {
-            cost = resolved.costPrice > 0 ? resolved.costPrice : Number(c.unitPrice || 0);
-          }
-        }
-
-        // Category resolution
-        const matchedProduct = storeProducts.find(
-          (p) => p.id === c.productId || p.sku === c.sku
-        );
-        const rawCategory = matchedProduct?.category as string | { name?: string } | null | undefined;
-        const category = typeof rawCategory === 'object' && rawCategory !== null
-          ? (rawCategory.name || 'ทั่วไป')
-          : (rawCategory || 'ทั่วไป');
-
-        // Base unit quantity
-        const factor = Number(c.conversionFactor || 1);
-        const baseQty = Number(
-          c.baseQuantity !== undefined
-            ? c.baseQuantity
-            : Number(c.quantity || 1) * factor
-        );
-        const baseUnit = factor > 1 ? (c.replacementUnitName || 'ชิ้น') : (c.unitName || 'ชิ้น');
-        const baseCost = factor > 1 && cost > 0 ? cost / factor : cost;
-        const totalCost = Math.round(baseCost * baseQty * 100) / 100;
-
-        return {
-          id: c.id,
-          claimId: c.id,
-          claimDate: c.claimDate || c.orderDate || new Date().toISOString(),
-          orderNumber: c.orderNumber,
-          customerName: c.customerName || 'ลูกค้าทั่วไป',
-          customerPhone: c.customerPhone,
-          productId: c.productId,
-          productName: c.productName,
-          sku: c.sku,
-          category,
-          supplierId: suppId || 'UNKNOWN',
-          supplierName: suppName || 'ไม่ระบุผู้จำหน่าย',
-          defectReason: c.defectReason || 'สินค้าชำรุด',
-          quantity: baseQty,
-          unitName: baseUnit,
-          costPrice: baseCost,
-          unitPrice: Number(c.unitPrice || 0),
-          totalCostValue: totalCost,
-          totalClaimValue: Number(c.totalClaimValue || 0),
-          status: c.status,
-          returnDocId: c.returnDocId,
-        };
-      });
-
-      setClaimItems(enriched);
-      setLoadError(null);
-    } catch (err) {
-      console.error('Error loading claim inventory:', err);
-      setClaimItems([]);
-      setLoadError(errorMessage(err, 'ไม่สามารถโหลดข้อมูลสต๊อกของเคลมได้'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchData = async () => {
-    setLoading(true);
-    await loadData();
-  };
-
   useEffect(() => {
-    const run = async () => { await loadData(); };
-    void run();
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // supplier list of the filter (phones come with the server rows)
+  useEffect(() => {
+    fetchSuppliers()
+      .then((loaded) => setSuppliersList((loaded || []).map((s) => ({ id: s.id, name: s.name, phone: s.phone ?? undefined }))))
+      .catch((err) => setLoadError(errorMessage(err, 'ไม่สามารถโหลดข้อมูลสต๊อกของเคลมได้')));
   }, []);
 
-  // Filter claim items
-  const filteredClaims = useMemo(() => {
-    return claimItems.filter((item) => {
-      // 1. Status Filter
-      if (statusFilter === 'IN_STOCK') {
-        // Items currently in claim stock (unreturned to supplier and not scrapped)
-        if (item.returnDocId || item.status === 'SCRAPPED' || item.status === 'SENT_TO_SUPPLIER' || item.status === 'SUPPLIER_REPLACED') {
-          return false;
-        }
-      } else if (statusFilter === 'RETURNED') {
-        // Items already packaged in a supplier return note or sent to supplier
-        if (!item.returnDocId && item.status !== 'SENT_TO_SUPPLIER' && item.status !== 'SUPPLIER_REPLACED') {
-          return false;
-        }
-      }
-
-      // 2. Supplier Filter
-      if (selectedSupplierId !== 'ALL' && item.supplierId !== selectedSupplierId) {
-        return false;
-      }
-
-      // 3. Category Filter
-      if (categoryFilter !== 'ALL' && item.category !== categoryFilter) {
-        return false;
-      }
-
-      // 4. Search Filter
-      if (search.trim()) {
-        const q = search.trim().toLowerCase();
-        const matchName = item.productName.toLowerCase().includes(q);
-        const matchSku = item.sku.toLowerCase().includes(q);
-        const matchSupp = item.supplierName.toLowerCase().includes(q);
-        const matchClaim = item.claimId.toLowerCase().includes(q);
-        const matchOrder = item.orderNumber ? item.orderNumber.toLowerCase().includes(q) : false;
-        return matchName || matchSku || matchSupp || matchClaim || matchOrder;
-      }
-
-      return true;
-    });
-  }, [claimItems, statusFilter, selectedSupplierId, categoryFilter, search]);
-
-  // Aggregate by Product
-  const productSummaries = useMemo(() => {
-    const map = new Map<string, ProductClaimSummary>();
-
-    filteredClaims.forEach((item) => {
-      const key = `${item.productId}_${item.sku}_${item.supplierId}`;
-      const existing = map.get(key);
-
-      const isInStock = !item.returnDocId && item.status !== 'SCRAPPED' && item.status !== 'SENT_TO_SUPPLIER' && item.status !== 'SUPPLIER_REPLACED';
-
-      if (!existing) {
-        map.set(key, {
-          productId: item.productId,
-          productName: item.productName,
-          sku: item.sku,
-          category: item.category,
-          supplierId: item.supplierId,
-          supplierName: item.supplierName,
-          unitName: item.unitName,
-          costPrice: item.costPrice,
-          unitPrice: item.unitPrice,
-          totalPieces: item.quantity,
-          inStockPieces: isInStock ? item.quantity : 0,
-          totalCostValue: item.totalCostValue,
-          inStockCostValue: isInStock ? item.totalCostValue : 0,
-          totalClaimValue: item.totalClaimValue,
-          latestClaimDate: item.claimDate,
-          claims: [item],
-        });
-      } else {
-        existing.totalPieces += item.quantity;
-        if (isInStock) {
-          existing.inStockPieces += item.quantity;
-          existing.inStockCostValue += item.totalCostValue;
-        }
-        existing.totalCostValue += item.totalCostValue;
-        existing.totalClaimValue += item.totalClaimValue;
-        if (new Date(item.claimDate) > new Date(existing.latestClaimDate)) {
-          existing.latestClaimDate = item.claimDate;
-        }
-        existing.claims.push(item);
-      }
-    });
-
-    return Array.from(map.values()).sort((a, b) => b.inStockCostValue - a.inStockCostValue);
-  }, [filteredClaims]);
-
-  // Aggregate by Supplier
-  const supplierSummaries = useMemo(() => {
-    const map = new Map<string, SupplierClaimSummary>();
-
-    productSummaries.forEach((p) => {
-      const suppId = p.supplierId || 'UNKNOWN';
-      const existing = map.get(suppId);
-
-      const suppInfo = suppliersList.find((s) => s.id === suppId);
-
-      if (!existing) {
-        map.set(suppId, {
-          supplierId: suppId,
-          supplierName: p.supplierName,
-          supplierPhone: suppInfo?.phone,
-          productCount: 1,
-          totalPieces: p.totalPieces,
-          inStockPieces: p.inStockPieces,
-          totalCostValue: p.totalCostValue,
-          inStockCostValue: p.inStockCostValue,
-          totalClaimValue: p.totalClaimValue,
-          latestClaimDate: p.latestClaimDate,
-          products: [p],
-        });
-      } else {
-        existing.productCount += 1;
-        existing.totalPieces += p.totalPieces;
-        existing.inStockPieces += p.inStockPieces;
-        existing.totalCostValue += p.totalCostValue;
-        existing.inStockCostValue += p.inStockCostValue;
-        existing.totalClaimValue += p.totalClaimValue;
-        if (new Date(p.latestClaimDate) > new Date(existing.latestClaimDate)) {
-          existing.latestClaimDate = p.latestClaimDate;
-        }
-        existing.products.push(p);
-      }
-    });
-
-    return Array.from(map.values()).sort((a, b) => b.inStockCostValue - a.inStockCostValue);
-  }, [productSummaries, suppliersList]);
-
-  // Overall Statistics for KPI Cards (Filtered scope)
-  const stats = useMemo(() => {
-    const inStockClaims = claimItems.filter(
-      (c) => !c.returnDocId && c.status !== 'SCRAPPED' && c.status !== 'SENT_TO_SUPPLIER' && c.status !== 'COMPLETED' && c.status !== 'SUPPLIER_REPLACED'
-    );
-
-    const totalUniqueInStockProducts = new Set(inStockClaims.map((c) => `${c.productId}_${c.sku}`)).size;
-    const totalInStockPieces = addQty(...inStockClaims.map((c) => c.quantity));
-    const totalInStockCost = inStockClaims.reduce((s, c) => s + c.totalCostValue, 0);
-
-    const distinctSuppliers = new Set(inStockClaims.map((c) => c.supplierId));
-
-    return {
-      uniqueProducts: totalUniqueInStockProducts,
-      pieces: totalInStockPieces,
-      costValue: totalInStockCost,
-      suppliersCount: distinctSuppliers.size,
-    };
-  }, [claimItems]);
-
-  // Unique categories list for filter dropdown
-  const categoryOptions = useMemo(() => {
-    const set = new Set<string>();
-    claimItems.forEach((c) => {
-      if (c.category) set.add(c.category);
-    });
-    return Array.from(set);
-  }, [claimItems]);
-
   // Reset page when filters change
-  const currentPageResetKey = JSON.stringify([search, selectedSupplierId, statusFilter, categoryFilter, activeTab]);
+  const currentPageResetKey = JSON.stringify([debouncedSearch, selectedSupplierId, statusFilter, categoryFilter, activeTab, pageSize]);
   const [currentPageResetKeySeen, setCurrentPageResetKeySeen] = useState(currentPageResetKey);
   if (currentPageResetKeySeen !== currentPageResetKey) {
     // a filter changed: back to page 1 (adjusted while rendering, no extra effect pass)
     setCurrentPageResetKeySeen(currentPageResetKey);
     setCurrentPage(1);
+    setRecordsPage(1);
   }
 
-  // Paginated Products
-  const paginatedProducts = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return productSummaries.slice(start, start + pageSize);
-  }, [productSummaries, currentPage, pageSize]);
+  const filterParams = () => {
+    const qs = new URLSearchParams({ status: statusFilter, supplierId: selectedSupplierId, category: categoryFilter });
+    if (debouncedSearch.trim()) qs.set('search', debouncedSearch);
+    return qs;
+  };
 
-  const totalProductPages = Math.ceil(productSummaries.length / pageSize) || 1;
+  /** Loads the screen (figures over every claim, the products / records pages); a newer request wins. */
+  const requestSeq = useRef(0);
+  useEffect(() => {
+    const seq = ++requestSeq.current;
+    const qs = filterParams();
+    qs.set('page', String(currentPage));
+    qs.set('limit', String(pageSize));
+    qs.set('recordsPage', String(recordsPage));
+    qs.set('recordsLimit', String(RECORDS_PAGE));
+    const run = async () => {
+      try {
+        const res = await apiFetch<ClaimStockScreen | null>(`/claims/claim-stock?${qs}`);
+        if (!res || !res.products || !res.records) throw new Error('ข้อมูลสต๊อกของเคลมจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+        if (seq !== requestSeq.current) return;
+        setScreen(res);
+        setLoadError(null);
+      } catch (err) {
+        if (seq !== requestSeq.current) return;
+        console.error('Error loading claim inventory:', err);
+        setScreen(null);
+        setLoadError(errorMessage(err, 'ไม่สามารถโหลดข้อมูลสต๊อกของเคลมได้'));
+      } finally {
+        if (seq === requestSeq.current) setLoading(false);
+      }
+    };
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch, selectedSupplierId, statusFilter, categoryFilter, currentPage, pageSize, recordsPage, reloadKey]);
+
+  const fetchData = () => {
+    setLoading(true);
+    setReloadKey((k) => k + 1);
+  };
+
+  const productSummaries = screen?.products.data || [];
+  const productTotal = screen?.products.total || 0;
+  const supplierSummaries = screen?.suppliers || [];
+  const filteredClaims = screen?.records.data || [];
+  const filteredCount = screen?.filteredCount || 0;
+  const stats = screen?.stats || { uniqueProducts: 0, pieces: 0, costValue: 0, suppliersCount: 0 };
+  const categoryOptions = screen?.categories || [];
+  const paginatedProducts = productSummaries;
+  const totalProductPages = Math.ceil(productTotal / pageSize) || 1;
+  const totalRecordPages = Math.ceil(filteredCount / RECORDS_PAGE) || 1;
 
   // Open Product Claim Detail Modal
   const handleOpenProductDetail = (p: ProductClaimSummary) => {
     setSelectedProductForModal(p);
+    setModalClaims([]);
     setIsDetailModalOpen(true);
+    const qs = filterParams();
+    qs.set('productId', p.productId);
+    qs.set('sku', p.sku);
+    qs.set('rowSupplierId', p.supplierId);
+    apiFetch<ClaimStockItem[] | null>(`/claims/claim-stock/claims?${qs}`)
+      .then((rows) => setModalClaims(Array.isArray(rows) ? rows : []))
+      .catch((err) => setLoadError(errorMessage(err, 'ไม่สามารถโหลดใบเคลมของสินค้านี้ได้')));
   };
 
   return (
@@ -617,7 +434,7 @@ export default function ClaimInventoryPage() {
         {(search || selectedSupplierId !== 'ALL' || statusFilter !== 'IN_STOCK' || categoryFilter !== 'ALL') && (
           <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs">
             <span className="text-slate-500 font-medium">
-              กำลังกรอง: พบ {productSummaries.length} สินค้า ({filteredClaims.length} รายการเคลม)
+              กำลังกรอง: พบ {productTotal} สินค้า ({filteredCount} รายการเคลม)
             </span>
             <button
               type="button"
@@ -644,7 +461,7 @@ export default function ClaimInventoryPage() {
               className="text-xs sm:text-sm font-bold data-[state=active]:bg-white data-[state=active]:text-indigo-900 rounded-lg px-3 py-1.5 gap-1.5"
             >
               <Boxes className="w-4 h-4" />
-              <span>สรุปรายสินค้าเคลม ({productSummaries.length})</span>
+              <span>สรุปรายสินค้าเคลม ({productTotal})</span>
             </TabsTrigger>
 
             <TabsTrigger
@@ -660,12 +477,12 @@ export default function ClaimInventoryPage() {
               className="text-xs sm:text-sm font-bold data-[state=active]:bg-white data-[state=active]:text-indigo-900 rounded-lg px-3 py-1.5 gap-1.5"
             >
               <FileText className="w-4 h-4" />
-              <span>ประวัติใบเคลมย่อย ({filteredClaims.length})</span>
+              <span>ประวัติใบเคลมย่อย ({filteredCount})</span>
             </TabsTrigger>
           </TabsList>
 
           <span className="text-xs font-bold text-slate-500 font-mono">
-            แสดง {productSummaries.length} สินค้าเคลม
+            แสดง {productTotal} สินค้าเคลม
           </span>
         </div>
 
@@ -757,7 +574,7 @@ export default function ClaimInventoryPage() {
                             </span>
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className="text-xs text-slate-500 font-mono">
-                                รวม {item.claims.length} ใบเคลม
+                                รวม {item.claimCount} ใบเคลม
                               </span>
                               {item.inStockPieces > 0 && item.inStockPieces < item.totalPieces && (
                                 <span className="text-[11px] text-amber-700 font-bold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
@@ -817,7 +634,7 @@ export default function ClaimInventoryPage() {
                                 title="ดูประวัติใบเคลมทั้งหมดของสินค้านี้"
                               >
                                 <Eye className="w-3.5 h-3.5 text-indigo-600" />
-                                <span>ดูใบเคลม ({item.claims.length})</span>
+                                <span>ดูใบเคลม ({item.claimCount})</span>
                               </Button>
 
                               <Link href="/supplier-returns">
@@ -841,10 +658,10 @@ export default function ClaimInventoryPage() {
             </div>
 
             {/* Pagination Controls */}
-            {productSummaries.length > pageSize && (
+            {productTotal > pageSize && (
               <div className="flex items-center justify-between px-4 py-3 bg-slate-50/70 border-t border-slate-200 text-xs">
                 <div className="text-slate-500 font-medium">
-                  แสดงหน้า {currentPage} จากทั้งหมด {totalProductPages} หน้า (รวม {productSummaries.length} สินค้า)
+                  แสดงหน้า {currentPage} จากทั้งหมด {totalProductPages} หน้า (รวม {productTotal} สินค้า)
                 </div>
 
                 <div className="flex items-center gap-1">
@@ -1066,7 +883,7 @@ export default function ClaimInventoryPage() {
                       <tr key={claim.id} className="hover:bg-slate-50/70 transition-colors">
                         {/* 1. Sequence */}
                         <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
-                          {idx + 1}
+                          {(recordsPage - 1) * RECORDS_PAGE + idx + 1}
                         </td>
 
                         {/* 2. Claim Ticket ID */}
@@ -1135,6 +952,22 @@ export default function ClaimInventoryPage() {
                 </TableBody>
               </Table>
             </div>
+            {filteredCount > RECORDS_PAGE && (
+              <div className="flex items-center justify-between px-4 py-3 bg-slate-50/70 border-t border-slate-200 text-xs">
+                <div className="text-slate-500 font-medium">
+                  แสดงหน้า {recordsPage} จากทั้งหมด {totalRecordPages} หน้า (รวม {filteredCount} ใบเคลม)
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="sm" onClick={() => setRecordsPage((p) => Math.max(1, p - 1))} disabled={recordsPage === 1} className="h-7 w-7 p-0">
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </Button>
+                  <span className="px-2 font-mono font-bold text-slate-700">{recordsPage} / {totalRecordPages}</span>
+                  <Button variant="outline" size="sm" onClick={() => setRecordsPage((p) => Math.min(totalRecordPages, p + 1))} disabled={recordsPage >= totalRecordPages} className="h-7 w-7 p-0">
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </TabsContent>
       </Tabs>
@@ -1194,7 +1027,7 @@ export default function ClaimInventoryPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody className="divide-y divide-slate-100 text-xs">
-                    {selectedProductForModal.claims.map((c, i) => (
+                    {modalClaims.map((c, i) => (
                       <TableRow key={c.id}>
                         <td className="py-2.5 px-3 text-center font-mono text-slate-500 font-bold">
                           {i + 1}

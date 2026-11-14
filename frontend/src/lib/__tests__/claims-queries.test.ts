@@ -26,16 +26,36 @@ describe('claims asked from the server for one screen', () => {
     await expect(fetchClaimedOrderIds(['o1'])).rejects.toThrow();
   });
 
-  it('supplier returns use every returnable claim, not the claims list', async () => {
-    h.apiFetch.mockResolvedValueOnce({ data: [claim('CLM-1'), claim('CLM-2', { returnDocId: 'SRN-1' })], meta: { total: 2 } });
+  it('supplier returns: cards and dialog groups come from the server (no claims list in the browser)', async () => {
+    h.apiFetch.mockResolvedValueOnce({ total: 3, totalCostValue: 150, suppliers: [{ supplierId: 's1', count: 3, totalCostValue: 150, top: [] }] });
     const svc = await import('@/lib/supplier-return-service');
+    const sum = await svc.fetchReturnableSummary();
+    expect(h.apiFetch.mock.calls[0][0]).toBe('/claims/returnable/summary');
+    expect(sum.suppliers[0].count).toBe(3);
+    h.apiFetch.mockResolvedValueOnce({ data: [], meta: { total: 0, page: 2, limit: 50 }, totals: { groups: 0, claims: 0, pieces: 0 } });
+    await svc.fetchReturnableGroups({ supplierId: 's 1', scope: 'other', search: ' abc ', page: 2 });
+    expect(h.apiFetch.mock.calls[1][0]).toBe('/claims/returnable/groups?supplierId=s+1&scope=other&page=2&limit=50&search=abc');
+    h.apiFetch.mockResolvedValueOnce(null);
+    await expect(svc.fetchReturnableSummary()).rejects.toThrow();
+  });
+
+  it('claims page / dashboard / eligibility ask for what they show', async () => {
     const claims = await import('@/lib/claim-service');
-    expect(svc.hasReturnableClaims()).toBe(false);
-    await svc.fetchReturnableClaims();
-    expect(h.apiFetch.mock.calls[0][0]).toBe('/claims/returnable');
-    expect(svc.hasReturnableClaims()).toBe(true);
-    // the page's own rule still applies on top (a claim on a return note is not offered)
-    expect(svc.getEligibleClaimsForReturn().map((c) => c.id)).toEqual(['CLM-1']);
-    expect(claims.loadAllClaimRecords()).toEqual([]);
+    h.apiFetch.mockResolvedValueOnce({ data: [claim('CLM-9', { returnDocId: 'SRN-1' })], meta: { total: 41 }, summary: { totalClaims: 41 } });
+    const page = await claims.fetchClaimsPage({ page: 3, limit: 15, search: 'x', resolutionType: 'ALL', startDate: '2026-11-01', endDate: '', sort: 'oldest' });
+    expect(h.apiFetch.mock.calls[0][0]).toBe('/claims/list?page=3&limit=15&search=x&startDate=2026-11-01&sort=oldest');
+    expect(page.total).toBe(41);
+    expect(page.rows[0].id).toBe('CLM-9');
+    expect(page.rows[0].status).toBe('PENDING_SUPPLIER');
+    h.apiFetch.mockResolvedValueOnce({ count: 2, amount: 300 });
+    expect(await claims.fetchClaimRefundSummary(1700000000000.5)).toEqual({ count: 2, amount: 300 });
+    expect(h.apiFetch.mock.calls[1][0]).toBe('/claims/refund-summary?from=1700000000000');
+    h.apiFetch.mockResolvedValueOnce({ count: 0, amount: 0 });
+    await claims.fetchClaimRefundSummary(undefined);
+    expect(h.apiFetch.mock.calls[2][0]).toBe('/claims/refund-summary');
+    h.apiFetch.mockResolvedValueOnce({ data: [claim('CLM-1', { orderId: 'o1' })], meta: { total: 1 } });
+    const ofOrders = await claims.fetchClaimsOfOrders(['o1', 'o1', '']);
+    expect(h.apiFetch.mock.calls[3][0]).toBe('/claims/by-orders?orderIds=o1');
+    expect(ofOrders.map((c) => c.orderId)).toEqual(['o1']);
   });
 });
