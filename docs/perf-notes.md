@@ -20,7 +20,7 @@ owes its total, 600 vouchers over 1,800 POs: partial, discount, credit notes, ev
 
 ### Plan
 1. [x] perf_load (kept), payables seed, measure before.
-2. [ ] Payables: page uses /payables/bills (paging, search, supplier filter, summary totals); e2e parity vs the browser logic.
+2. [~] Payables (backend done): page uses /payables/bills (paging, search, supplier filter, summary totals); e2e parity vs the browser logic.
 3. [ ] Supplier returns: PO list searchable/paged from the server.
 4. [ ] POS debt picker + orders credit history: filtered server query.
 5. [ ] Customer list refresh every 15 s -> delta / on demand (check consumers).
@@ -28,6 +28,15 @@ owes its total, 600 vouchers over 1,800 POs: partial, discount, credit notes, ev
 7. [ ] Tests, after-measurements, full verification, PROJECT_STATUS.
 
 ### Done
+- Step 2 backend: GET /payables/bills now returns the page's bill rows computed on the server (payable-bills.ts =
+  port of the browser mapPosToPayableBills over EVERY payable PO and EVERY active voucher): page/limit (<=500),
+  supplierId, paymentStatus (computed), search (PO no / supplier name / + supplier invoice no), open=1, slim=1;
+  summary over all bills (billCount, unpaidCount, totalOutstanding, totalPaid, availableCredit(+Count), per supplier
+  openCount/debt/creditCount/creditTotal). One intended change: received value = gross per unit (VAT/discounts) like
+  payableNow / settlement (browser used qty x unitCost: a 107 VAT bill showed 100 payable). Old raw-PO response had no
+  consumer (only the e2e test). e2e "payables" parity (frozen legacy copy test/legacy/payables-client-legacy.ts):
+  every bill + payments + order, cards, per-supplier, 8 filter combos, paging, slim, open: 53/53 e2e.
+  perf_load: page 1 0.20-0.24 s / 227 kB, filtered 0.13-0.2 s, open+slim all.
 
 ## Task 1: reports computed in the database — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 

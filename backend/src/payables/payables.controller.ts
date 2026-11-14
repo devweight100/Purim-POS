@@ -11,20 +11,8 @@ export class PayablesController {
   constructor(private readonly payablesService: PayablesService) {}
 
   @Get('bills')
-  getPayableBills(
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @Query('supplierId') supplierId?: string,
-    @Query('paymentStatus') paymentStatus?: string,
-    @Query('search') search?: string,
-  ) {
-    return this.payablesService.getPayableBills(
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 50,
-      supplierId,
-      paymentStatus,
-      search,
-    );
+  getPayableBills(@Query() query: Record<string, unknown>) {
+    return this.payablesService.getPayableBills(query);
   }
 
   @Get('suppliers-summary')

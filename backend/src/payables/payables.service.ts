@@ -4,6 +4,8 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { PaymentStatus, VoucherStatus, PaymentMethod, ReturnNoteStatus, POStatus } from '@prisma/client';
 import * as ledger from '../finance/ledger';
+import { clampInt } from '../products/prisma-errors';
+import { billFigures, billMatchesSearch, paymentEntry } from './payable-bills';
 
 /** A supplier bill becomes a payable only after goods were received (accrual on receipt). */
 export const PAYABLE_PO_STATUSES: POStatus[] = [POStatus.PARTIALLY_RECEIVED, POStatus.RECEIVED, POStatus.COMPLETED];
@@ -112,68 +114,157 @@ export class SettleMultipleBillsDto {
 export class PayablesService {
   constructor(private prisma: PrismaService) {}
 
-  async getPayableBills(page = 1, limit = 50, supplierId?: string, paymentStatus?: string, search?: string) {
-    const skip = (page - 1) * limit;
-
-    const where: any = {
-      status: { in: PAYABLE_PO_STATUSES },
-    };
-
-    if (supplierId && supplierId !== 'ALL') {
-      where.supplierId = supplierId;
+  /**
+   * GET /payables/bills: the payables page's bills, computed here over every payable PO and every
+   * active voucher (see payable-bills.ts). Filters: supplierId, paymentStatus (computed status),
+   * search (PO number / supplier name / supplier invoice no), open=1 (something payable now),
+   * slim=1 (rows without the PO lines).
+   * `summary` is over ALL bills (the page's cards ignore the filters) plus per-supplier open bills and
+   * available credit notes.
+   */
+  async getPayableBills(query: { page?: unknown; limit?: unknown; supplierId?: unknown; paymentStatus?: unknown; search?: unknown; open?: unknown; slim?: unknown } = {}) {
+    const page = clampInt(query.page, 1, 1, 1_000_000);
+    const limit = clampInt(query.limit, 50, 1, 500);
+    for (const key of ['supplierId', 'paymentStatus', 'search', 'open', 'slim'] as const) {
+      if (query[key] !== undefined && typeof query[key] !== 'string') throw new BadRequestException('ตัวกรองบิลเจ้าหนี้ไม่ถูกต้อง');
     }
+    const supplierId = query.supplierId && query.supplierId !== 'ALL' ? String(query.supplierId) : '';
+    const paymentStatus = query.paymentStatus && query.paymentStatus !== 'ALL' ? String(query.paymentStatus) : '';
+    if (paymentStatus && !['UNPAID', 'PARTIALLY_PAID', 'PAID'].includes(paymentStatus)) throw new BadRequestException('สถานะการชำระที่ค้นหาไม่ถูกต้อง');
+    const search = String(query.search || '').trim();
+    const openOnly = query.open === '1' || query.open === 'true';
+    // slim=1: no PO lines in the rows (settle dialog: it only needs the figures)
+    const slim = query.slim === '1' || query.slim === 'true';
 
-    if (paymentStatus && paymentStatus !== 'ALL') {
-      where.paymentStatus = paymentStatus as PaymentStatus;
-    }
-
-    if (search && search.trim()) {
-      where.OR = [
-        { poNumber: { contains: search.trim(), mode: 'insensitive' } },
-        { supplierInvoiceNo: { contains: search.trim(), mode: 'insensitive' } },
-        { supplier: { name: { contains: search.trim(), mode: 'insensitive' } } },
-      ];
-    }
-
-    const [bills, total] = await Promise.all([
-      this.prisma.purchaseOrder.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { billDate: 'desc' },
-        include: {
-          supplier: { select: { id: true, name: true, contactName: true, phone: true } },
-          items: { include: { product: true } },
-        },
-      }),
-      this.prisma.purchaseOrder.count({ where }),
+    const statuses = PAYABLE_PO_STATUSES as string[];
+    const [poRows, payRows, creditRows] = await Promise.all([
+      this.prisma.$queryRaw<{ id: string; po_number: string; supplier_invoice_no: string | null; supplier_id: string; supplier_name: string | null; total: string; paid: string; remaining: string; payment_status: string; items: [string, string, string, string][] }[]>`
+        SELECT po.id, po.po_number, po.supplier_invoice_no, po.supplier_id, s.name AS supplier_name,
+               po.total_amount::text AS total, po.paid_amount::text AS paid, po.remaining_payable::text AS remaining,
+               po.payment_status::text AS payment_status,
+               COALESCE((SELECT json_agg(json_build_array(i.received_qty::text, i.unit_cost::text, i.quantity::text, i.total::text))
+                           FROM purchase_order_items i WHERE i.purchase_order_id = po.id), '[]'::json) AS items
+          FROM purchase_orders po LEFT JOIN suppliers s ON s.id = po.supplier_id
+         WHERE po.status::text = ANY(${statuses})
+         ORDER BY po.created_at DESC, po.id DESC`,
+      this.prisma.$queryRaw<{ po_id: string; amount_paid: string; discount: string }[]>`
+        SELECT i.purchase_order_id AS po_id, i.amount_paid::text AS amount_paid, v.discount_amount::text AS discount
+          FROM payment_voucher_items i JOIN payment_vouchers v ON v.id = i.voucher_id
+         WHERE v.status = 'ACTIVE'
+         ORDER BY v.payment_date DESC, v.id DESC`,
+      this.prisma.$queryRaw<{ supplier_id: string; remaining: string }[]>`
+        SELECT supplier_id, remaining_credit_amount::text AS remaining FROM supplier_return_notes
+         WHERE status <> 'CANCELLED' AND remaining_credit_amount > 0
+         ORDER BY created_at DESC, id DESC`,
     ]);
 
-    // Aggregate summary (received bills only; outstanding capped at received value)
-    const summaryRows = await this.prisma.purchaseOrder.findMany({
-      where: { status: { in: PAYABLE_PO_STATUSES } },
-      select: { totalAmount: true, paidAmount: true, remainingPayable: true, items: { select: { receivedQty: true, unitCost: true, quantity: true, total: true } } },
+    const paysByPo = new Map<string, { amountPaid: string; discountAmount: string }[]>();
+    for (const p of payRows) {
+      const list = paysByPo.get(p.po_id) || [];
+      list.push({ amountPaid: p.amount_paid, discountAmount: p.discount });
+      paysByPo.set(p.po_id, list);
+    }
+
+    // every bill's figures (cards, supplier summary, computed-status filter)
+    const all = poRows.map((r) => {
+      const f = billFigures(
+        { totalAmount: r.total, paidAmount: r.paid, remainingPayable: r.remaining, paymentStatus: r.payment_status, items: (r.items || []).map(([receivedQty, unitCost, quantity, total]) => ({ receivedQty, unitCost, quantity, total })) },
+        paysByPo.get(r.id) || [],
+      );
+      return { id: r.id, poNumber: r.po_number, supplierInvoiceNo: r.supplier_invoice_no, supplierId: r.supplier_id, supplierName: r.supplier_name || 'ไม่ระบุผู้จำหน่าย', ...f };
     });
-    const summaryAgg = {
-      _sum: {
-        totalAmount: summaryRows.reduce((sum, po) => sum + Number(po.totalAmount), 0),
-        paidAmount: summaryRows.reduce((sum, po) => sum + Number(po.paidAmount), 0),
-        remainingPayable: summaryRows.reduce((sum, po) => sum + payableNow(po), 0),
-      },
+
+    const suppliers = new Map<string, { supplierId: string; openCount: number; debt: number; creditCount: number; creditTotal: number }>();
+    const supplierRow = (id: string) => {
+      let row = suppliers.get(id);
+      if (!row) suppliers.set(id, (row = { supplierId: id, openCount: 0, debt: 0, creditCount: 0, creditTotal: 0 }));
+      return row;
     };
+    let totalOutstanding = 0;
+    let totalPaid = 0;
+    let unpaidCount = 0;
+    for (const b of all) {
+      totalOutstanding += b.remainingPayable;
+      totalPaid += b.alreadyPaidAmount;
+      if (b.paymentStatus !== 'PAID') unpaidCount++;
+      if (b.remainingPayable > 0) {
+        const s = supplierRow(b.supplierId);
+        s.openCount++;
+        s.debt += b.remainingPayable;
+      }
+    }
+    let availableCredit = 0;
+    for (const c of creditRows) {
+      availableCredit += Number(c.remaining || 0);
+      const s = supplierRow(c.supplier_id);
+      s.creditCount++;
+      s.creditTotal += Number(c.remaining || 0);
+    }
+
+    const filtered = all.filter((b) =>
+      (!supplierId || b.supplierId === supplierId) &&
+      (!paymentStatus || b.paymentStatus === paymentStatus) &&
+      (!openOnly || b.remainingPayable > 0) &&
+      billMatchesSearch(b, search));
+
+    const pageIds = filtered.slice((page - 1) * limit, page * limit).map((b) => b.id);
+    const pos = pageIds.length
+      ? await this.prisma.purchaseOrder.findMany({
+          where: { id: { in: pageIds } },
+          include: {
+            supplier: true,
+            items: slim ? true : { include: { product: true } },
+            voucherItems: {
+              where: { voucher: { status: VoucherStatus.ACTIVE } },
+              include: { voucher: { include: { debitNotes: { select: { returnNoteId: true, amountDeducted: true } } } } },
+            },
+          },
+        })
+      : [];
+    const byId = new Map(pos.map((po) => [po.id, po]));
+    const data = pageIds.flatMap((id) => {
+      const po = byId.get(id);
+      if (!po) return [];
+      const voucherItems = [...po.voucherItems].sort((a, b) => b.voucher.paymentDate.getTime() - a.voucher.paymentDate.getTime() || (a.voucher.id < b.voucher.id ? 1 : a.voucher.id > b.voucher.id ? -1 : 0));
+      const f = billFigures(po, voucherItems.map((vi) => ({ amountPaid: vi.amountPaid, discountAmount: vi.voucher.discountAmount })));
+      const { voucherItems: _vi, supplier, ...rest } = po;
+      return [{
+        poId: po.id,
+        poNumber: po.poNumber,
+        supplierInvoiceNo: po.supplierInvoiceNo || '',
+        supplierInvoiceDate: '',
+        supplierId: po.supplierId || supplier?.id || '',
+        supplierName: supplier?.name || 'ไม่ระบุผู้จำหน่าย',
+        supplierContact: supplier?.contactName ?? undefined,
+        supplierPhone: supplier?.phone ?? undefined,
+        supplierAddress: supplier?.address ?? undefined,
+        billDate: (po.billDate || po.createdAt).toISOString(),
+        status: po.status,
+        paymentStatus: f.paymentStatus,
+        totalAmount: f.totalAmount,
+        receivedAmount: f.receivedAmount,
+        alreadyDeductedReturns: 0,
+        alreadyPaidAmount: f.alreadyPaidAmount,
+        alreadyDiscountAmount: f.alreadyDiscountAmount,
+        remainingPayable: f.remainingPayable,
+        itemsCount: rest.items.length,
+        items: slim ? [] : rest.items,
+        deductedReturns: [],
+        payments: voucherItems.map((vi) => paymentEntry(po.id, f.totalAmount, vi.voucher, vi.amountPaid)),
+      }];
+    });
 
     return {
-      data: bills,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+      data,
+      meta: { total: filtered.length, page, limit, totalPages: Math.ceil(filtered.length / limit) },
       summary: {
-        totalAmount: Number(summaryAgg._sum.totalAmount) || 0,
-        paidAmount: Number(summaryAgg._sum.paidAmount) || 0,
-        remainingPayable: Number(summaryAgg._sum.remainingPayable) || 0,
+        billCount: all.length,
+        unpaidCount,
+        totalOutstanding,
+        totalPaid,
+        availableCredit,
+        availableCreditCount: creditRows.length,
+        suppliers: [...suppliers.values()],
       },
     };
   }

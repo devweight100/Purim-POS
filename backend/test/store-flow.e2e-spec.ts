@@ -15,6 +15,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaClient } from '@prisma/client';
 import * as legacy from './legacy/reports-client-legacy';
+import * as legacyPayables from './legacy/payables-client-legacy';
 import { valueStock } from '../src/reports/reports.service';
 
 const dbName = (() => { try { return new URL(process.env.DATABASE_URL || '').pathname.slice(1); } catch { return ''; } })();
@@ -227,7 +228,7 @@ d('store flow (e2e)', () => {
       // shop is not VAT-registered: VAT is part of the stock cost; bill discount lowers it
       expect(costs).toEqual([9.5, 10.165]);
       const bills = (await api('get', `/payables/bills?supplierId=${sup.id}`, A)).body;
-      const bill = (bills.data || bills).find((b: any) => b.id === po.id);
+      const bill = (bills.data || bills).find((b: any) => b.poId === po.id);
       expect(Number(bill.remainingPayable)).toBe(196.65);
     });
   });
@@ -911,6 +912,130 @@ d('store flow (e2e)', () => {
       expect(rows.find((p: any) => p.id === sk.bundle).computedStock).toBe(0); // own batches only (as before)
     });
   });
+  describe('payables: GET /payables/bills equals the bills the page built in the browser', () => {
+    const allBills = async (query = '') => {
+      const out: any[] = [];
+      let first: any;
+      for (let page = 1; page < 1000; page++) {
+        const body = (await api('get', `/payables/bills?page=${page}&limit=3${query}`, A).expect(200)).body;
+        if (page === 1) first = body;
+        out.push(...body.data);
+        if (body.data.length < 3) break;
+      }
+      return { rows: out, first };
+    };
+    /** numbers rounded (float summing order may differ), undefined dropped (JSON) */
+    const norm = (v: any) => JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === 'number' ? Math.round(x * 1e6) / 1e6 : x)));
+    const ids: Record<string, string> = {};
+
+    beforeAll(async () => {
+      const s1 = (await api('post', '/suppliers', A, { name: 'AP ผู้ขาย หนึ่ง', contactName: 'คุณเอ', phone: '021112222', creditTerms: 30 }).expect(201)).body;
+      const s2 = (await api('post', '/suppliers', A, { name: 'AP Supplier Two', creditTerms: 0 }).expect(201)).body;
+      ids.s1 = s1.id; ids.s2 = s2.id;
+      const mkPo = async (supplierId: string, items: any[], receive: number[] | null, invoice?: string) => {
+        const po = (await api('post', '/purchase-orders', A, { supplierId, status: 'ISSUED', items: items.map((i) => ({ productId: state.p.id, ...i })) }).expect(201)).body;
+        if (receive) {
+          await api('post', `/purchase-orders/${po.id}/receive`, A, {
+            clientReceiptId: randomUUID(), ...(invoice ? { supplierInvoiceNo: invoice } : {}),
+            items: po.items.map((i: any, k: number) => ({ purchaseOrderItemId: i.id, receivedQty: receive[k], unitCost: Number(i.unitCost) })),
+          }).expect(201);
+        }
+        return po.id as string;
+      };
+      ids.a = await mkPo(s1.id, [{ quantity: 10, unitCost: 20 }], [10]);
+      ids.b = await mkPo(s1.id, [{ quantity: 10, unitCost: 30 }], [4]); // partially received
+      ids.c = await mkPo(s2.id, [{ quantity: 10, unitCost: 10, vatType: 'EXCLUDED', vatRate: 7 }], [10]); // 107 incl. VAT
+      ids.d = await mkPo(s2.id, [{ quantity: 5, unitCost: 40 }], null); // not received: not a bill
+      ids.e = await mkPo(s1.id, [{ quantity: 3, unitCost: 50 }], [3], 'INV-ภาษี-77');
+      await api('post', '/supplier-returns', A, { supplierId: s1.id, items: [{ productId: state.p.id, itemType: 'OVERSTOCK', quantity: 1, unitCost: 10, total: 10 }], totalCreditAmount: 10, deductStock: true }).expect(201);
+      await api('post', '/supplier-returns', A, { supplierId: s1.id, items: [{ productId: state.p.id, itemType: 'OVERSTOCK', quantity: 1, unitCost: 15, total: 15 }], totalCreditAmount: 15, deductStock: true }).expect(201);
+      const notes = (await api('get', `/supplier-returns?supplierId=${s1.id}&limit=50`, A)).body.data;
+      const note10 = notes.find((n: any) => Number(n.totalAmount) === 10).id;
+      const pay = (body: any) => api('post', '/payables/settle-multiple', A, { clientVoucherId: randomUUID(), paymentMethod: 'TRANSFER', moneyAccountId: state.bank.id, ...body }).expect(201);
+      // full payment with a discount and a credit note; a partial payment; a multi-bill voucher with a discount
+      await pay({ supplierId: s1.id, billsToSettle: [{ poId: ids.a, amountToPay: 200 }], matchedDebitNotes: [{ returnNoteId: note10, amountToDeduct: 10 }], discountAmount: 5 });
+      await pay({ supplierId: s1.id, billsToSettle: [{ poId: ids.b, amountToPay: 50 }] });
+      await pay({ supplierId: s1.id, billsToSettle: [{ poId: ids.e, amountToPay: 100 }, { poId: ids.b, amountToPay: 20 }], discountAmount: 3 });
+      // the VAT bill can be paid in full (107): the payable cap counts VAT; then a cancelled voucher
+      const v4 = (await pay({ supplierId: s2.id, billsToSettle: [{ poId: ids.c, amountToPay: 107 }] })).body.voucher;
+      await api('post', `/payables/vouchers/${v4.id}/cancel`, A, { reason: 'e2e' }).expect(201);
+    });
+
+    /** what the old page computed from its downloads (POs with each line's gross per unit as unitCost = the one intended change) */
+    const oldPage = async () => {
+      const pos = (await api('get', '/purchase-orders?limit=1000', A).expect(200)).body.data as any[];
+      const suppliers = (await api('get', '/suppliers', A).expect(200)).body;
+      const vouchers = ((await api('get', '/payables/vouchers?limit=200', A).expect(200)).body.data as any[]).map(legacyPayables.normalizeVoucherRow);
+      const notes = ((await api('get', '/supplier-returns?limit=200', A).expect(200)).body.data as any[]).map((n) => ({ status: n.frontendStatus || n.status, remainingCreditAmount: Number(n.remainingCreditAmount ?? n.totalAmount ?? 0), supplierId: n.supplierId }));
+      const original = legacyPayables.mapPosToPayableBills(pos, suppliers, vouchers);
+      const grossPos = pos.map((po) => ({ ...po, items: po.items.map((i: any) => ({ ...i, unitCost: Number(i.quantity) ? Number(i.total) / Number(i.quantity) : Number(i.unitCost) })) }));
+      const bills = legacyPayables.mapPosToPayableBills(grossPos, suppliers, vouchers).map((b: any, k: number) => ({ ...b, items: original[k].items }));
+      return { original, bills, notes };
+    };
+
+    it('every bill, its figures, payments and order', async () => {
+      const { original, bills } = await oldPage();
+      const { rows } = await allBills();
+      expect(rows.map((b) => b.poNumber)).toEqual(bills.map((b: any) => b.poNumber));
+      expect(norm(rows)).toEqual(norm(bills));
+      expect(rows.find((b) => b.poId === ids.d)).toBeUndefined();
+      // the one intended difference: the VAT bill counted quantity x unitCost (100) in the browser
+      const oldC = original.find((b: any) => b.poId === ids.c);
+      const newC = rows.find((b) => b.poId === ids.c);
+      expect([oldC.receivedAmount, oldC.remainingPayable]).toEqual([100, 100]);
+      expect([newC.receivedAmount, newC.remainingPayable, newC.paymentStatus]).toEqual([107, 107, 'UNPAID']);
+      const a = rows.find((b) => b.poId === ids.a);
+      expect([a.paymentStatus, a.remainingPayable, a.alreadyPaidAmount, a.alreadyDiscountAmount, a.payments.length]).toEqual(['PAID', 0, 200, 5, 1]);
+      const b = rows.find((x) => x.poId === ids.b);
+      expect([b.paymentStatus, b.remainingPayable, b.alreadyPaidAmount, b.payments.length]).toEqual(['PARTIALLY_PAID', 50, 70, 2]);
+      expect(b.payments[0].discountAmount).toBe(3);
+      expect(b.payments[0].netCashOrTransferPaid).toBe(20);
+      // a page of 3 and slim rows
+      const p2 = (await api('get', '/payables/bills?page=2&limit=3&slim=1', A).expect(200)).body;
+      expect(norm(p2.data)).toEqual(norm(bills.slice(3, 6).map((x: any) => ({ ...x, items: [] }))));
+      expect(p2.meta).toMatchObject({ total: bills.length, page: 2, limit: 3, totalPages: Math.ceil(bills.length / 3) });
+    });
+
+    it('cards and per-supplier summary over every bill; filters equal the page filter', async () => {
+      const { bills, notes } = await oldPage();
+      const { first } = await allBills('&search=zzz-none');
+      const cards = legacyPayables.pageCards(bills, notes);
+      expect(first.summary.billCount).toBe(bills.length);
+      expect(first.summary.unpaidCount).toBe(cards.unpaidBillsCount);
+      expect(first.summary.totalOutstanding).toBeCloseTo(cards.totalOutstandingDebt, 6);
+      expect(first.summary.totalPaid).toBeCloseTo(cards.totalPaidAmount, 6);
+      expect(first.summary.availableCredit).toBeCloseTo(cards.totalAvailableDebitCredit, 6);
+      expect(first.summary.availableCreditCount).toBe(cards.availableCreditCount);
+      for (const sid of [ids.s1, ids.s2]) {
+        const open = bills.filter((b: any) => b.supplierId === sid && b.remainingPayable > 0);
+        const credit = notes.filter((n) => n.supplierId === sid && n.status !== 'CANCELLED' && n.remainingCreditAmount > 0);
+        const row = first.summary.suppliers.find((x: any) => x.supplierId === sid) || { openCount: 0, debt: 0, creditCount: 0, creditTotal: 0 };
+        expect(row.openCount).toBe(open.length);
+        expect(row.debt).toBeCloseTo(open.reduce((s: number, b: any) => s + b.remainingPayable, 0), 6);
+        expect(row.creditCount).toBe(credit.length);
+        expect(row.creditTotal).toBeCloseTo(credit.reduce((s, n) => s + n.remainingCreditAmount, 0), 6);
+      }
+      expect(first.summary.suppliers.find((x: any) => x.supplierId === ids.s1).creditTotal).toBe(15);
+      const cases: [string, string, string][] = [
+        ['', 'ALL', 'UNPAID'], ['', 'ALL', 'PARTIALLY_PAID'], ['', 'ALL', 'PAID'], ['', ids.s1, 'ALL'], ['', ids.s2, 'PAID'],
+        ['ap ผู้ขาย', 'ALL', 'ALL'], ['ap supplier', 'ALL', 'ALL'], ['PO', ids.s1, 'UNPAID'],
+      ];
+      for (const [search, sup, status] of cases) {
+        const q = `&search=${encodeURIComponent(search)}&supplierId=${sup}&paymentStatus=${status}`;
+        const { rows, first: f } = await allBills(q);
+        const expected = legacyPayables.pageFilter(bills, search, sup, status);
+        expect({ search, sup, status, ids: rows.map((b) => b.poId) }).toEqual({ search, sup, status, ids: expected.map((b: any) => b.poId) });
+        expect(f.meta.total).toBe(expected.length);
+      }
+      // the supplier's invoice number is searchable too (new); open=1 = something payable now
+      const inv = await allBills('&search=' + encodeURIComponent('ภาษี-77'));
+      expect(inv.rows.map((b) => b.poId)).toEqual([ids.e]);
+      const open = await allBills('&open=1');
+      expect(open.rows.map((b) => b.poId)).toEqual(bills.filter((b: any) => b.remainingPayable > 0).map((b: any) => b.poId));
+      await api('get', '/payables/bills?paymentStatus=bad', A).expect(400);
+    });
+  });
+
   describe('management lists: server paging / search / sort equal the old in-browser lists', () => {
     /** every page of a paged endpoint, concatenated */
     const allPages = async (path: string, limit: number) => {
