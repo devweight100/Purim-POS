@@ -227,13 +227,17 @@ export class ClaimsService {
     };
   }
 
-  /** Rows of GET /claims (claim + product / customer / order, merged with its CLAIM_META / EXCHANGE logs) for these ids, newest first. */
+  /**
+   * Rows of GET /claims (claim + product / customer / order, merged with its CLAIM_META / EXCHANGE logs) for
+   * these ids, in the order of `ids`. Read in parallel chunks of 1,000 ids (one big IN list is ~2.5x slower).
+   */
   private async mergedClaimsByIds(ids: string[]) {
     if (!ids.length) return [];
-    const [claims, logs] = await Promise.all([
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += 1000) chunks.push(ids.slice(i, i + 1000));
+    const parts = await Promise.all(chunks.map((chunk) => Promise.all([
       this.prisma.customerClaim.findMany({
-        where: { id: { in: ids } },
-        orderBy: [{ receivedDate: 'desc' }, { id: 'desc' }],
+        where: { id: { in: chunk } },
         include: {
           product: { select: { id: true, name: true, sku: true, unit: true, basePrice: true, costPrice: true, priceLevel1: true } },
           customer: { select: { id: true, name: true, phone: true } },
@@ -241,18 +245,25 @@ export class ClaimsService {
         },
       }),
       this.prisma.auditLog.findMany({
-        where: { entity: 'CustomerClaim', entityId: { in: ids }, action: { in: ['CLAIM_META', 'EXCHANGE'] } },
+        where: { entity: 'CustomerClaim', entityId: { in: chunk }, action: { in: ['CLAIM_META', 'EXCHANGE'] } },
         orderBy: { createdAt: 'asc' },
       }),
-    ]);
+    ])));
+    const claimsById = new Map<string, any>();
     const logsByClaimId = new Map<string, any[]>();
-    for (const log of logs) {
-      if (!log.entityId) continue;
-      const arr = logsByClaimId.get(log.entityId) || [];
-      arr.push(log);
-      logsByClaimId.set(log.entityId, arr);
+    for (const [claims, logs] of parts) {
+      for (const c of claims) claimsById.set(c.id, c);
+      for (const log of logs) {
+        if (!log.entityId) continue;
+        const arr = logsByClaimId.get(log.entityId) || [];
+        arr.push(log);
+        logsByClaimId.set(log.entityId, arr);
+      }
     }
-    return claims.map((claim) => this.mergeClaimWithLogs(claim, logsByClaimId.get(claim.id) || []));
+    return ids.flatMap((id) => {
+      const claim = claimsById.get(id);
+      return claim ? [this.mergeClaimWithLogs(claim, logsByClaimId.get(id) || [])] : [];
+    });
   }
 
   /**
@@ -303,7 +314,8 @@ export class ClaimsService {
                           bool_or(NOT (COALESCE(jsonb_typeof(details -> 'returnDocId'), '') = 'string' AND details ->> 'returnDocId' <> '')) AS may_lack_doc,
                           bool_or(COALESCE(details ->> 'frontendStatus', '') NOT IN ('SCRAPPED', 'REJECTED')) AS may_be_open
                      FROM audit_logs WHERE entity = 'CustomerClaim' AND action = 'CLAIM_META' GROUP BY entity_id) m ON m.entity_id = c.id
-       WHERE m.entity_id IS NULL OR (m.may_lack_doc AND m.may_be_open)`;
+       WHERE m.entity_id IS NULL OR (m.may_lack_doc AND m.may_be_open)
+       ORDER BY c.received_date DESC, c.id DESC`;
     const data = (await this.mergedClaimsByIds(rows.map((r) => r.id))).filter((c: any) => {
       const raw = c.frontendStatus || c.claimStatus || c.status;
       return !c.returnDocId && raw !== 'SCRAPPED' && raw !== 'REJECTED';
