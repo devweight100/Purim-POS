@@ -17,6 +17,7 @@ import { PrismaClient } from '@prisma/client';
 import * as legacy from './legacy/reports-client-legacy';
 import * as legacyPayables from './legacy/payables-client-legacy';
 import * as legacyClaims from './legacy/claims-client-legacy';
+import * as legacyScreens from './legacy/claims-screens-legacy';
 import { valueStock } from '../src/reports/reports.service';
 
 const dbName = (() => { try { return new URL(process.env.DATABASE_URL || '').pathname.slice(1); } catch { return ''; } })();
@@ -1410,6 +1411,306 @@ d('store flow (e2e)', () => {
       for (const bad of ['garbage', 'v1.1-2.0.AAAA', cursor.replace(/^v1\.\d+-\d+/, 'v1.1-1')]) expect((await sync(bad)).full).toBe(true);
     });
   });
+  // ─── claims screens over every claim (task 6): the server endpoints == the old page logic over the list ───
+  const screens = {
+    /** every page of a paged endpoint (`data` rows) */
+    pages: async (path: string, limit: number, token = A) => {
+      const out: any[] = [];
+      let first: any;
+      for (let page = 1; page < 10000; page++) {
+        const body = (await api('get', `${path}${path.includes('?') ? '&' : '?'}page=${page}&limit=${limit}`, token).expect(200)).body;
+        first = first || body;
+        const rows = Array.isArray(body.data) ? body.data : body.products.data;
+        out.push(...rows);
+        if (rows.length < limit) break;
+      }
+      return { rows: out, first };
+    },
+    /** what the pages had loaded: store products, suppliers, product-suppliers of the returnable claims */
+    state: async (returnableMapped: any[] | null) => {
+      const catalog = (await api('get', '/products/sync', A).expect(200)).body.products as any[];
+      const storeProducts = catalog.map(legacyScreens.toStoreProduct);
+      const suppliers = (await api('get', '/suppliers', A).expect(200)).body as any[];
+      const productPoSupplier = new Map<string, any>();
+      if (returnableMapped) {
+        const ids = [...new Set(returnableMapped.filter((c) => !c.returnDocId && c.status !== 'SCRAPPED').map((c) => c.productId).filter(Boolean))];
+        for (let i = 0; i < ids.length; i += 200) {
+          const rows = (await api('get', `/purchase-orders/product-suppliers?ids=${ids.slice(i, i + 200).join(',')}`, A).expect(200)).body;
+          for (const r of rows) productPoSupplier.set(r.productId, { supplierId: r.supplierId, supplierName: r.supplierName });
+        }
+      }
+      return { storeProducts, suppliers, productPoSupplier, purchaseOrders: [] as any[] };
+    },
+    near: (a: number, b: number) => Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(a), Math.abs(b)),
+    /** every screen: server == legacy logic over `claimRows` (GET /claims rows the page would have had) */
+    compare: async (claimRows: any[]) => {
+      const near = screens.near;
+      const expectNear = (a: number, b: number, what: string) => { if (!near(Number(a), Number(b))) throw new Error(`${what}: ${a} != ${b}`); };
+      const st0 = await screens.state(null);
+      // a CLAIM_META bill number that is not text (12345) is text on the server; the old pages threw on it when searching
+      const mapped = claimRows.map((c) => legacyScreens.mapServerClaim(c, st0.storeProducts))
+        .map((c) => (typeof c.orderNumber === 'number' ? { ...c, orderNumber: String(c.orderNumber) } : c));
+
+      // claims page: rows of every filter, cards over every claim
+      const filters = [
+        { resolutionFilter: 'ALL', startDate: '', endDate: '', search: '' },
+        { resolutionFilter: 'REFUND_CASH', startDate: '', endDate: '', search: '' },
+        { resolutionFilter: 'ALL', startDate: '', endDate: '', search: 'scr' },
+        { resolutionFilter: 'ALL', startDate: '', endDate: '', search: '  CLM-SCR-0  ' },
+        { resolutionFilter: 'SUPPLIER_RMA', startDate: '2026-01-01', endDate: '2026-12-31', search: 'สินค้า' },
+        { resolutionFilter: 'ALL', startDate: '2020-01-01', endDate: '2020-01-05', search: '' },
+      ];
+      const byNo = new Map(claimRows.map((c) => [c.claimNumber, c]));
+      for (const f of filters) {
+        const qs = new URLSearchParams({ resolutionType: f.resolutionFilter, ...(f.startDate ? { startDate: f.startDate, endDate: f.endDate } : {}), ...(f.search ? { search: f.search } : {}) });
+        const { rows, first } = await screens.pages(`/claims/list?${qs}`, 7);
+        const expected = legacyScreens.claimsPageFilter(mapped, f).map((c) => c.id);
+        expect(rows.map((r: any) => r.claimNumber)).toEqual(expected);
+        expect(first.meta.total).toBe(expected.length);
+        expect(rows).toEqual(expected.map((no) => byNo.get(no)));
+        const sum = legacyScreens.getClaimStockSummary(mapped);
+        for (const k of Object.keys(sum) as (keyof typeof sum)[]) expectNear(first.summary[k], sum[k], `summary ${k}`);
+      }
+      const oldest = (await api('get', '/claims/list?sort=oldest&limit=500', A).expect(200)).body.data;
+      expect(oldest.map((r: any) => r.claimNumber)).toEqual([...mapped].reverse().slice(0, 500).map((c) => c.id));
+
+      // dashboard claim refunds
+      for (const from of [undefined, Date.parse('2026-01-01T00:00:00+07:00'), Date.now() - 86400000, Date.now() + 86400000]) {
+        const body = (await api('get', `/claims/refund-summary${from === undefined ? '' : `?from=${from}`}`, A).expect(200)).body;
+        const old = legacyScreens.dashboardClaimRefunds(mapped, from === undefined ? -Infinity : from);
+        expect(body.count).toBe(old.count);
+        expectNear(body.amount, old.amount, 'refund amount');
+      }
+
+      // claims of bills (eligibility check): every claim matching a bill by id / number
+      const orders = (await api('get', '/orders?limit=100', A).expect(200)).body.data as any[];
+      const ids = orders.map((o) => o.id);
+      const got = (await api('get', `/claims/by-orders?orderIds=${ids.join(',')}`, A).expect(200)).body.data as any[];
+      const gotMapped = got.map((c) => legacyScreens.mapServerClaim(c, st0.storeProducts));
+      const matches = (c: any) => orders.some((o) => c.orderId === o.id || c.orderNumber === (o.orderNumber || o.id));
+      expect(gotMapped.filter(matches).map((c) => c.id).sort()).toEqual(mapped.filter(matches).map((c) => c.id).sort());
+
+      // supplier returns page: cards
+      const returnable = mapped.filter((c) => !c.returnDocId && c.status !== 'SCRAPPED');
+      const st = await screens.state(returnable);
+      const pending = legacyScreens.getEligibleClaimsForReturn(st, mapped);
+      const cards = legacyScreens.supplierReturnsCards(pending, st.suppliers);
+      expect(pending.length).toBeGreaterThan(8);
+      expect(cards.cards.length).toBeGreaterThan(1);
+      const summary = (await api('get', '/claims/returnable/summary', A).expect(200)).body;
+      expect(summary.total).toBe(cards.count);
+      expectNear(summary.totalCostValue, cards.totalPendingClaimsCost, 'pending cost');
+      const groupsBySupplier = new Map(summary.suppliers.map((g: any) => [g.supplierId, g]));
+      const shown = st.suppliers.filter((s: any) => groupsBySupplier.has(s.id)).map((s: any) => s.id);
+      expect(shown).toEqual(cards.cards.map((c) => c.supplierId));
+      for (const card of cards.cards) {
+        const g: any = groupsBySupplier.get(card.supplierId);
+        expect(g.count).toBe(card.count);
+        expectNear(g.totalCostValue, card.totalVal, `card ${card.supplierId}`);
+        expect(g.top.map((t: any) => [t.id, t.productName])).toEqual(card.top.map((t) => [t.id, t.productName]));
+        g.top.forEach((t: any, k: number) => expectNear(t.quantity, card.top[k].quantity, 'top qty'));
+      }
+
+      // create-return dialog for each supplier: its claims and the other claims, grouped by product
+      const all = pending;
+      for (const supp of st.suppliers.slice(0, 12)) {
+        const pos: any[] = [];
+        for (let page = 1; page < 100; page++) {
+          const list = (await api('get', `/purchase-orders?supplierId=${supp.id}&limit=500&page=${page}`, A).expect(200)).body.data;
+          pos.push(...list);
+          if (list.length < 500) break;
+        }
+        const dst = { ...st, purchaseOrders: pos };
+        const available = legacyScreens.getEligibleClaimsForReturn(dst, mapped, supp.id);
+        const other = legacyScreens.getEligibleClaimsForReturn(dst, mapped).filter((c) => !available.some((ac) => ac.id === c.id));
+        void all;
+        for (const [scope, claims] of [['supplier', available], ['other', other]] as const) {
+          const expectedGroups = legacyScreens.groupClaimsByProduct(claims as any[]);
+          const { rows, first } = await screens.pages(`/claims/returnable/groups?supplierId=${supp.id}&scope=${scope}`, 3);
+          expect(first.totals.groups).toBe(expectedGroups.length);
+          expect(first.totals.claims).toBe((claims as any[]).length);
+          const hund = (v: any) => { const n = Number(v); const q = Number.isFinite(n) ? n : 0; return Math.round(q * 100 + (q >= 0 ? 1e-7 : -1e-7)); };
+          expectNear(first.totals.pieces, (claims as any[]).reduce((s, c) => s + hund(c.quantity || 1), 0) / 100, 'pieces');
+          expect(rows.map((g: any) => g.groupKey)).toEqual(expectedGroups.map((g) => g.groupKey));
+          rows.forEach((g: any, k: number) => {
+            const e = expectedGroups[k];
+            for (const f of ['productId', 'productName', 'sku', 'unitName', 'claimCount', 'claimIds', 'defectReasons', 'orderNumbers', 'supplierId']) expect([f, g[f]]).toEqual([f, e[f]]);
+            expect(g.supplierName ?? null).toEqual(e.supplierName ?? null);
+            expectNear(g.totalQuantity, e.totalQuantity, 'group qty');
+            expectNear(g.costPrice, e.costPrice, 'group cost');
+          });
+          if (expectedGroups.length) {
+            const term = String(expectedGroups[expectedGroups.length - 1].sku).toLowerCase();
+            const hit = (await api('get', `/claims/returnable/groups?supplierId=${supp.id}&scope=${scope}&search=${encodeURIComponent(term.toUpperCase())}&limit=500`, A).expect(200)).body;
+            const want = expectedGroups.filter((eg) => (claims as any[]).some((c) => `PID_${c.productId}` === eg.groupKey && [c.productName, c.sku, c.id, c.orderNumber].some((x) => String(x || '').toLowerCase().includes(term))));
+            expect(hit.data.map((g: any) => g.groupKey)).toEqual(want.map((g) => g.groupKey));
+          }
+        }
+      }
+
+      // claim stock page (fresh page: no PO suppliers asked, no POs loaded)
+      const items = legacyScreens.claimInventoryItems(st0, mapped);
+      const cats = [...new Set(items.map((i) => i.category))];
+      const views = [
+        { statusFilter: 'IN_STOCK', selectedSupplierId: 'ALL', categoryFilter: 'ALL', search: '' },
+        { statusFilter: 'ALL', selectedSupplierId: 'ALL', categoryFilter: 'ALL', search: '' },
+        { statusFilter: 'RETURNED', selectedSupplierId: 'ALL', categoryFilter: 'ALL', search: '' },
+        { statusFilter: 'ALL', selectedSupplierId: items[0]?.supplierId || 'ALL', categoryFilter: 'ALL', search: '' },
+        { statusFilter: 'ALL', selectedSupplierId: 'ALL', categoryFilter: cats[cats.length - 1] || 'ALL', search: '' },
+        { statusFilter: 'IN_STOCK', selectedSupplierId: 'ALL', categoryFilter: 'ALL', search: 'scr' },
+      ];
+      const sameDate = (a: any, b: any) => expect(new Date(a).getTime()).toBe(new Date(b).getTime());
+      const sameItem = (g: any, e: any) => {
+        for (const f of ['id', 'claimId', 'orderNumber', 'customerName', 'customerPhone', 'productId', 'productName', 'sku', 'category', 'supplierId', 'supplierName', 'defectReason', 'unitName', 'status']) expect([f, g[f]]).toEqual([f, e[f]]);
+        for (const f of ['quantity', 'costPrice', 'unitPrice', 'totalCostValue', 'totalClaimValue']) expectNear(g[f], e[f], f);
+        expect(!!g.returnDocId).toBe(!!e.returnDocId);
+        sameDate(g.claimDate, e.claimDate);
+      };
+      for (const v of views) {
+        const old = legacyScreens.claimInventoryView(items, st0.suppliers, v);
+        const qs = new URLSearchParams({ status: v.statusFilter, supplierId: v.selectedSupplierId, category: v.categoryFilter, ...(v.search ? { search: v.search } : {}) });
+        const { rows: products, first } = await screens.pages(`/claims/claim-stock?${qs}&recordsLimit=500`, 4);
+        expect(first.categories).toEqual(old.categoryOptions);
+        expect(first.filteredCount).toBe(old.filteredClaims.length);
+        expect(first.stats.uniqueProducts).toBe(old.stats.uniqueProducts);
+        expect(first.stats.suppliersCount).toBe(old.stats.suppliersCount);
+        expectNear(first.stats.pieces, old.stats.pieces, 'pieces');
+        expectNear(first.stats.costValue, old.stats.costValue, 'cost');
+        expect(products.map((p: any) => `${p.productId}_${p.sku}_${p.supplierId}`)).toEqual(old.productSummaries.map((p) => `${p.productId}_${p.sku}_${p.supplierId}`));
+        expect(first.products.total).toBe(old.productSummaries.length);
+        products.forEach((p: any, k: number) => {
+          const e = old.productSummaries[k];
+          for (const f of ['productName', 'category', 'supplierName', 'unitName']) expect([f, p[f]]).toEqual([f, e[f]]);
+          for (const f of ['costPrice', 'unitPrice', 'totalPieces', 'inStockPieces', 'totalCostValue', 'inStockCostValue', 'totalClaimValue']) expectNear(p[f], e[f], f);
+          expect(p.claimCount).toBe(e.claims.length);
+          sameDate(p.latestClaimDate, e.latestClaimDate);
+        });
+        expect(first.suppliers.map((s: any) => s.supplierId)).toEqual(old.supplierSummaries.map((s) => s.supplierId));
+        first.suppliers.forEach((s: any, k: number) => {
+          const e = old.supplierSummaries[k];
+          expect([s.supplierName, s.supplierPhone ?? null, s.productCount]).toEqual([e.supplierName, e.supplierPhone ?? null, e.productCount]);
+          for (const f of ['totalPieces', 'inStockPieces', 'totalCostValue', 'inStockCostValue', 'totalClaimValue']) expectNear(s[f], e[f], f);
+          sameDate(s.latestClaimDate, e.latestClaimDate);
+        });
+        expect(first.records.total).toBe(old.filteredClaims.length);
+        expect(first.records.data.map((r: any) => r.id)).toEqual(old.filteredClaims.slice(0, 500).map((r) => r.id));
+        first.records.data.forEach((r: any, k: number) => sameItem(r, old.filteredClaims[k]));
+        for (const p of old.productSummaries.slice(0, 3)) {
+          const pq = new URLSearchParams({ productId: p.productId, sku: p.sku, rowSupplierId: p.supplierId });
+          const list = (await api('get', `/claims/claim-stock/claims?${qs}&${pq}`, A).expect(200)).body;
+          expect(list.map((r: any) => r.id)).toEqual(p.claims.map((c: any) => c.id));
+          list.forEach((r: any, k: number) => sameItem(r, p.claims[k]));
+        }
+      }
+      return { mapped, pending };
+    },
+    seed: async () => {
+      const db = new PrismaClient();
+      try {
+        const admin = await db.user.findFirstOrThrow({ where: { username: 'admin' } });
+        const cat = await db.category.create({ data: { name: 'SCR หมวดเคลม' } });
+        const sup = async (name: string, isActive = true) => db.supplier.create({ data: { name, isActive } });
+        const s1 = await sup('SCR ผู้จำหน่าย หนึ่ง');
+        const s2 = await sup('  scr ผู้จำหน่าย สอง ');
+        const s3 = await sup('SCR ผู้จำหน่าย ปิด', false);
+        const s4 = await sup('SCR ผู้จำหน่าย สี่');
+        const prod = (k: string, data: any = {}) => db.product.create({ data: { name: `SCR สินค้า ${k}`, sku: `SCR-${k}`, basePrice: 120, costPrice: 70, priceLevel1: 110, ...data } });
+        const pA = await prod('A', { categoryId: cat.id, unit: 'กล่อง' });
+        const pB = await prod('B', { costPrice: 0 });
+        const pC = await prod('C', { costPrice: 0, priceLevel1: null, basePrice: 0 });
+        const pD = await prod('D', { name: 'SCR ชื่อซ้ำ' });
+        const pE = await prod('E', { name: 'SCR ชื่อซ้ำ', priceLevel1: 0 });
+        const pF = await prod('F', { unit: '' });
+        await db.productSupplier.create({ data: { productId: pA.id, supplierId: s1.id, isPreferred: true, unitCost: 65 } });
+        await db.productSupplier.create({ data: { productId: pA.id, supplierId: s4.id } });
+        await db.productSupplier.create({ data: { productId: pB.id, supplierId: s3.id } }); // inactive supplier
+        await db.productSupplier.create({ data: { productId: pC.id, supplierId: s4.id, unitCost: null } });
+        // POs: newest PO of pB is from s2; pD on an s4 PO (pE shares its name)
+        const po = async (supplierId: string, items: any[], ago: number) => db.purchaseOrder.create({ data: {
+          poNumber: `SCR-PO-${supplierId.slice(0, 6)}-${ago}`, supplierId, status: 'COMPLETED', totalAmount: 100, createdAt: new Date(Date.now() - ago * 1000),
+          items: { create: items.map((p) => ({ productId: p.id, quantity: 1, unitCost: 50, receivedQty: 1, total: 50 })) },
+        } });
+        await po(s4.id, [pB], 50);
+        await po(s2.id, [pB, pF], 10);
+        await po(s4.id, [pD], 20);
+        await po(s3.id, [pF], 5); // newest PO of pF: inactive supplier -> by name: none -> next rule
+        const cust = await db.customer.create({ data: { name: 'SCR ลูกค้า', phone: '0890000001' } });
+        const ord = await db.order.create({ data: { orderNumber: 'SCR-ORD-1', userId: admin.id, customerId: cust.id, subtotal: 100, totalAmount: 100, status: 'COMPLETED' } });
+        let t = Date.parse('2026-06-01T00:00:00Z');
+        let n = 0;
+        const claim = async (p: any, data: any, metas: any[], exch?: any) => {
+          const no = `CLM-SCR-${String(++n).padStart(3, '0')}`;
+          const c = await db.customerClaim.create({ data: { claimNumber: no, productId: p.id, claimType: 'WARRANTY', problemDescription: 'scr e2e', receivedDate: new Date((t -= 3600000)), ...data } });
+          for (const [k, details] of metas.entries()) {
+            await db.auditLog.create({ data: { action: 'CLAIM_META', entity: 'CustomerClaim', entityId: c.id, details, createdAt: new Date(t + k * 1000) } });
+          }
+          if (exch) await db.auditLog.create({ data: { action: 'EXCHANGE', entity: 'CustomerClaim', entityId: c.id, details: { result: exch }, createdAt: new Date(t - 1000) } });
+          return c;
+        };
+        const m = (x: any) => ({ frontendStatus: 'PENDING_SUPPLIER', resolutionType: 'SUPPLIER_RMA', quantity: 1, unitPrice: 100, totalClaimValue: 100, ...x });
+        await claim(pA, {}, [m({ supplierId: s1.id, supplierName: s1.name, costPrice: 60 })]);
+        await claim(pA, {}, [m({ quantity: 2, baseQuantity: 24, conversionFactor: 12, unitName: 'โหล', replacementUnitName: 'ชิ้น', totalClaimValue: 2400 })]);
+        await claim(pB, {}, [m({ costPrice: '45.5' })]); // entry supplier inactive -> newest PO s2
+        await claim(pC, {}, [m({ unitPrice: undefined, totalClaimValue: undefined, costPrice: 0 })]); // entry s4, cost 0 everywhere
+        await claim(pD, {}, [m({ supplierName: ' scr ผู้จำหน่าย สอง', supplierId: 'not-a-supplier' })]);
+        await claim(pE, {}, [m({ costPrice: null, unitPrice: null })]); // PO name match for s4
+        await claim(pF, {}, [m({ quantity: 1.5, baseQuantity: 1.5 })]); // newest PO supplier inactive -> first supplier
+        await claim(pA, { orderId: ord.id, customerId: cust.id }, [m({ resolutionType: 'REFUND_CASH', frontendStatus: 'COMPLETED', refundAmount: 90, totalClaimValue: 0 })]);
+        await claim(pB, {}, [m({ resolutionType: 'REFUND_TRANSFER', frontendStatus: 'COMPLETED', totalClaimValue: null, refundAmount: '77.25', claimDate: '2025-12-31T23:00:00.000Z' })]);
+        await claim(pA, {}, [m({ returnDocId: 'SRN-SCR-1', frontendStatus: 'SENT_TO_SUPPLIER' })]);
+        await claim(pA, {}, [m({ frontendStatus: 'SCRAPPED' })]);
+        await claim(pC, { status: 'IN_PROGRESS' }, [{ orderNumber: 'SCR-ORD-1', supplierId: s4.id }]); // meta without status
+        await claim(pD, { status: 'PENDING', claimType: 'REFUND' }, []); // no meta at all
+        await claim(pE, {}, [m({ resolutionType: 'STORE_DISCOUNT', frontendStatus: 'PENDING_CHECKOUT', discountAmount: 30 })]);
+        await claim(pF, {}, [m({ quantity: '3', unitPrice: '12.5', totalClaimValue: undefined, defectReason: 'จอแตก' })]);
+        await claim(pA, { claimType: 'EXCHANGE' }, [m({ resolutionType: undefined, quantity: undefined, unitPrice: undefined, totalClaimValue: undefined })], { quantity: 4, unitPrice: 33, baseQuantity: 4 });
+        await claim(pB, {}, [m({ frontendStatus: 'SUPPLIER_REPLACED' }), { note: 'later', supplierId: s2.id }]);
+        await claim(pC, {}, [m({ frontendStatus: 'COMPLETED', resolutionType: 'REPLACE_ITEM', customerName: 'SCR คนเดินผ่าน', orderNumber: 'SCR-NO-BILL' })]);
+        await claim(pD, { receivedDate: new Date('2020-01-03T10:00:00Z') }, [m({ costPrice: 12 })]);
+        await claim(pE, {}, [m({ frontendStatus: 'REJECTED' })]);
+      } finally {
+        await db.$disconnect();
+      }
+    },
+  };
+
+  describe('claims screens under the cap: every server figure == the old page logic (task 6)', () => {
+    beforeAll(async () => { await screens.seed(); });
+
+    it('claims page, dashboard refunds, claims of bills, supplier returns cards + dialog, claim stock', async () => {
+      const capped = (await api('get', '/claims?limit=500', A).expect(200)).body.data as any[];
+      expect(capped.length).toBeLessThan(500);
+      expect(capped.length).toBeGreaterThan(15);
+      await screens.compare(capped);
+    });
+
+    it('claim numbers come from the database: unique and in sequence under concurrent creates', async () => {
+      const p = (await api('get', '/products/sync', A).expect(200)).body.products.find((x: any) => x.sku === 'SCR-A');
+      const made = await Promise.all(Array.from({ length: 6 }, () =>
+        api('post', '/claims', A, { productId: p.id, quantity: 1, claimType: 'WARRANTY', resolutionType: 'SUPPLIER_RMA', problemDescription: 'scr seq' }).expect(201)));
+      const nos = made.map((r) => r.body.claimNumber as string).sort();
+      expect(new Set(nos).size).toBe(6);
+      const seqs = nos.map((no) => Number(no.slice(-5)));
+      expect(seqs.slice(1).map((s, k) => s - seqs[k])).toEqual([1, 1, 1, 1, 1]);
+      expect(nos[0].slice(0, 8)).toMatch(/^CLM-\d{4}$/);
+      // the new claims are in the facts at once (trigger), with the status the server gave them
+      const list = (await api('get', '/claims/list?search=scr%20seq&limit=50', A).expect(200)).body;
+      expect(list.meta.total).toBe(6);
+    });
+
+    it('rejects bad parameters with 400', async () => {
+      await api('get', '/claims/list?limit=0', A).expect(400);
+      await api('get', '/claims/list?resolutionType=NOPE', A).expect(400);
+      await api('get', '/claims/list?sort=x', A).expect(400);
+      await api('get', '/claims/refund-summary?from=abc', A).expect(400);
+      await api('get', '/claims/returnable/groups', A).expect(400);
+      await api('get', '/claims/returnable/groups?supplierId=x&scope=all', A).expect(400);
+      await api('get', '/claims/claim-stock?status=x', A).expect(400);
+      await api('get', '/claims/claim-stock/claims?productId=x', A).expect(400);
+      await api('get', `/claims/by-orders?orderIds=${Array.from({ length: 501 }, (_, k) => `x${k}`).join(',')}`, A).expect(400);
+    });
+  });
+
   describe('claims: claimed bills and returnable claims over every claim (was the newest 500)', () => {
     const o: any[] = [];
     const claimNo: Record<string, string> = {};
@@ -1525,6 +1826,47 @@ d('store flow (e2e)', () => {
       expect(claimed.has(o[8].id)).toBe(true);
       expect(eligible).toContain('CLM-BULK-0');
       expect(eligible.filter((no) => no.startsWith('CLM-BULK-')).length).toBe(151);
+    });
+  });
+
+  describe('claims screens above the cap: complete over every claim (task 6)', () => {
+    it('the old pages (newest 500) missed claims; the server figures == the old logic over every claim', async () => {
+      const db = new PrismaClient();
+      try {
+        const ps = await db.product.findMany({ where: { sku: { startsWith: 'SCR-' } }, orderBy: { sku: 'asc' } });
+        const sups = await db.supplier.findMany({ where: { name: { contains: 'SCR' } }, orderBy: { name: 'asc' } });
+        const old = Date.parse('2019-06-01T00:00:00Z');
+        await db.customerClaim.createMany({
+          data: Array.from({ length: 700 }, (_, k) => ({ id: `scr-bulk-${k}`, claimNumber: `CLM-SCRB-${String(k).padStart(4, '0')}`, productId: ps[k % ps.length].id,
+            claimType: (k % 3 === 0 ? 'REFUND' : k % 3 === 1 ? 'EXCHANGE' : 'WARRANTY') as any, problemDescription: k % 7 ? 'bulk' : 'scr bulk', receivedDate: new Date(old + k * 60000) })),
+        });
+        await db.auditLog.createMany({
+          data: Array.from({ length: 700 }, (_, k) => ({
+            action: 'CLAIM_META', entity: 'CustomerClaim', entityId: `scr-bulk-${k}`, createdAt: new Date(old + k * 60000),
+            details: {
+              frontendStatus: ['PENDING_SUPPLIER', 'COMPLETED', 'SCRAPPED', 'SENT_TO_SUPPLIER'][k % 4], quantity: 1 + (k % 3), unitPrice: 10 + (k % 11),
+              totalClaimValue: (1 + (k % 3)) * (10 + (k % 11)), resolutionType: ['SUPPLIER_RMA', 'REFUND_CASH', 'REPLACE_ITEM', 'REFUND_TRANSFER', 'STORE_DISCOUNT'][k % 5],
+              ...(k % 5 === 0 ? { supplierId: sups[k % sups.length].id, supplierName: sups[k % sups.length].name } : {}),
+              ...(k % 6 === 0 ? { costPrice: 5 + (k % 4) } : {}), ...(k % 9 === 0 ? { returnDocId: 'SRN-SCRB' } : {}),
+              ...(k % 8 === 0 ? { conversionFactor: 6, baseQuantity: 6 * (1 + (k % 3)), replacementUnitName: 'ชิ้น' } : {}),
+            },
+          })),
+        });
+      } finally {
+        await db.$disconnect();
+      }
+      const capped = (await api('get', '/claims?limit=500', A).expect(200)).body.data as any[];
+      const every = (await api('get', '/claims?limit=5000', A).expect(200)).body.data as any[];
+      expect(every.length).toBeGreaterThan(1300);
+      const st = await screens.state(null);
+      const sumOld = legacyScreens.getClaimStockSummary(capped.map((c) => legacyScreens.mapServerClaim(c, st.storeProducts)));
+      const sumAll = legacyScreens.getClaimStockSummary(every.map((c) => legacyScreens.mapServerClaim(c, st.storeProducts)));
+      expect(sumOld.totalClaims).toBe(500);
+      expect(sumAll.totalClaims).toBe(every.length);
+      const list = (await api('get', '/claims/list?limit=1', A).expect(200)).body;
+      expect(list.summary.totalClaims).toBe(every.length);
+      expect(list.meta.total).toBe(every.length);
+      await screens.compare(every);
     });
   });
 });
