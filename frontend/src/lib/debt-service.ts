@@ -92,6 +92,37 @@ export async function fetchDebtRecords(): Promise<DebtRecord[]> {
   return rows;
 }
 
+export interface DebtPageStats {
+  totalBills: number;
+  totalDebtValue: number;
+  totalCollected: number;
+  totalOutstanding: number;
+  paidCount: number;
+  unpaidCount: number;
+  overdueCount: number;
+}
+
+export interface DebtPageQuery {
+  page: number;
+  limit: number;
+  search?: string;
+  statusGroup?: 'all' | 'unpaid' | 'overdue' | 'paid';
+  customerId?: string | null;
+  customerType?: 'all' | 'INDIVIDUAL' | 'COMPANY';
+}
+
+/** One page of the receivables list, filtered / searched by the server, plus the cards over every debt. */
+export async function fetchDebtPage(q: DebtPageQuery): Promise<{ rows: DebtRecord[]; total: number; stats: DebtPageStats | null }> {
+  const params = new URLSearchParams({ page: String(q.page), limit: String(q.limit), stats: '1' });
+  if (q.search?.trim()) params.set('search', q.search.trim());
+  if (q.statusGroup && q.statusGroup !== 'all') params.set('statusGroup', q.statusGroup);
+  if (q.customerId) params.set('customerId', q.customerId);
+  if (q.customerType && q.customerType !== 'all') params.set('customerType', q.customerType);
+  const result = await apiFetch<(ApiPage<ApiDebt> & { stats?: DebtPageStats }) | null>('/debts?' + params.toString());
+  if (!Array.isArray(result?.data)) throw new Error('ข้อมูลหนี้จากฐานข้อมูลไม่ถูกต้อง');
+  return { rows: result.data.map(mapDebt), total: Number(result.meta?.total) || 0, stats: result.stats || null };
+}
+
 export async function recordDebtPayment(
   orderId: string,
   amount: number,

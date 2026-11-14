@@ -26,31 +26,71 @@ export async function resolveReceivingBank(tx: any, bankAccountId?: string | nul
 export class DebtsService {
   constructor(private prisma: PrismaService) {}
 
-  async getAllDebts(page = 1, limit = 20, search?: string, status?: string) {
+  /**
+   * Debt list (GET /debts), paged. `status` = a DebtStatus; the receivables page uses `statusGroup`
+   * (unpaid = money still owed, overdue = owed and past the due date, paid = settled), `customerId`,
+   * `customerType` (INDIVIDUAL / COMPANY from the customer profile) and `stats` (cards over every debt).
+   * Search matches bill number, customer name / phone / code / company name / tax id.
+   */
+  async getAllDebts(
+    page = 1,
+    limit = 20,
+    search?: string,
+    status?: string,
+    opts: { statusGroup?: string; customerId?: string; customerType?: string; stats?: boolean } = {},
+  ) {
+    if (!Number.isFinite(page) || page < 1) page = 1;
+    if (!Number.isFinite(limit) || limit < 1) limit = 20;
+    limit = Math.min(limit, 500);
     const skip = (page - 1) * limit;
     await this.markOverdueDebts();
+    const now = new Date();
 
     const where: any = {};
+    const and: any[] = [];
     if (status && status !== 'ALL') {
       where.status = status as DebtStatus;
     }
+    const owed = { AND: [{ status: { not: DebtStatus.PAID } }, { remainingAmount: { gt: 0 } }] };
+    if (opts.statusGroup && opts.statusGroup !== 'all') {
+      if (opts.statusGroup === 'unpaid') and.push(owed);
+      else if (opts.statusGroup === 'overdue') and.push(owed, { dueDate: { lt: now } });
+      else if (opts.statusGroup === 'paid') and.push({ OR: [{ status: DebtStatus.PAID }, { remainingAmount: { lte: 0 } }] });
+      else throw new BadRequestException('สถานะหนี้ที่ค้นหาไม่ถูกต้อง');
+    }
+    if (opts.customerId) and.push({ customerId: opts.customerId });
+    if (opts.customerType && opts.customerType !== 'all') {
+      if (opts.customerType !== 'INDIVIDUAL' && opts.customerType !== 'COMPANY') throw new BadRequestException('ประเภทลูกค้าไม่ถูกต้อง');
+      // same rule as the page: no type in the profile = INDIVIDUAL
+      const ids = await this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM customers WHERE COALESCE(NULLIF(profile->>'type', ''), 'INDIVIDUAL') = ${opts.customerType}`;
+      and.push({ customerId: { in: ids.map((r) => r.id) } });
+    }
 
     if (search && search.trim()) {
-      where.OR = [
-        { customer: { name: { contains: search.trim(), mode: 'insensitive' } } },
-        { customer: { phone: { contains: search.trim() } } },
-        { order: { orderNumber: { contains: search.trim(), mode: 'insensitive' } } },
-      ];
+      const q = search.trim();
+      const pattern = '%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%';
+      const customerIds = await this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT id FROM customers
+        WHERE name ILIKE ${pattern} OR phone ILIKE ${pattern} OR profile->>'code' ILIKE ${pattern}
+          OR profile->>'companyName' ILIKE ${pattern} OR profile->>'taxId' ILIKE ${pattern}`;
+      and.push({
+        OR: [
+          { customerId: { in: customerIds.map((r) => r.id) } },
+          { order: { orderNumber: { contains: q, mode: 'insensitive' } } },
+        ],
+      });
     }
+    if (and.length) where.AND = and;
 
     const [debts, total] = await Promise.all([
       this.prisma.customerDebt.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         include: {
-          customer: { select: { id: true, name: true, phone: true, address: true } },
+          customer: { select: { id: true, name: true, phone: true, address: true, profile: true } },
           order: { select: { id: true, orderNumber: true, totalAmount: true, createdAt: true } },
           payments: { orderBy: { paymentDate: 'desc' } },
         },
@@ -68,6 +108,21 @@ export class DebtsService {
       },
     });
 
+    let stats: Record<string, number> | undefined;
+    if (opts.stats) {
+      // cards of the receivables page: every debt, whatever the filters (old page: sums of the full download)
+      const [row] = await this.prisma.$queryRaw<Record<string, string>[]>`
+        SELECT count(*)::text AS "totalBills",
+          COALESCE(sum(total_debt), 0)::text AS "totalDebtValue",
+          COALESCE(sum(paid_amount), 0)::text AS "totalCollected",
+          COALESCE(sum(remaining_amount), 0)::text AS "totalOutstanding",
+          count(*) FILTER (WHERE status = 'PAID' OR remaining_amount <= 0)::text AS "paidCount",
+          count(*) FILTER (WHERE NOT (status = 'PAID' OR remaining_amount <= 0))::text AS "unpaidCount",
+          count(*) FILTER (WHERE NOT (status = 'PAID' OR remaining_amount <= 0) AND due_date < ${now})::text AS "overdueCount"
+        FROM customer_debts`;
+      stats = Object.fromEntries(Object.entries(row).map(([k, v]) => [k, Number(v) || 0]));
+    }
+
     return {
       data: debts,
       meta: {
@@ -81,6 +136,7 @@ export class DebtsService {
         totalPaid: Number(aggregates._sum.paidAmount) || 0,
         totalRemaining: Number(aggregates._sum.remainingAmount) || 0,
       },
+      ...(stats ? { stats } : {}),
     };
   }
 

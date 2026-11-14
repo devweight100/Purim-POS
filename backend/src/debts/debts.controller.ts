@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { DebtsService } from './debts.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -17,12 +17,20 @@ export class DebtsController {
     @Query('limit') limit?: string,
     @Query('search') search?: string,
     @Query('status') status?: string,
+    @Query('statusGroup') statusGroup?: string,
+    @Query('customerId') customerId?: string,
+    @Query('customerType') customerType?: string,
+    @Query('stats') stats?: string,
   ) {
+    for (const v of [search, status, statusGroup, customerId, customerType]) {
+      if (v !== undefined && typeof v !== 'string') throw new BadRequestException('เงื่อนไขค้นหาไม่ถูกต้อง');
+    }
     return this.debtsService.getAllDebts(
       page ? parseInt(page, 10) : 1,
       limit ? parseInt(limit, 10) : 20,
       search,
       status,
+      { statusGroup, customerId, customerType, stats: stats === '1' || stats === 'true' },
     );
   }
 

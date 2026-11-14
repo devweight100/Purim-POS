@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { DebtRecord, DebtPaymentInstallment, DebtStatus } from '@/lib/types';
-import { fetchDebtRecords, cancelDebtPayment } from '@/lib/debt-service';
+import { fetchDebtPage, cancelDebtPayment, type DebtPageStats } from '@/lib/debt-service';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -93,15 +94,28 @@ function DebtsContent() {
   const [receiptInstallment, setReceiptInstallment] = useState<DebtPaymentInstallment | null>(null);
 
   const [loadError, setLoadError] = useState<string | null>(null);
-  /** Loads the data; state is only updated after the request. */
+  // Server-side paging / filters / search (GET /debts?page&limit&statusGroup&customerType&customerId&search&stats=1)
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
+  const [filteredCount, setFilteredCount] = useState(0);
+  const [stats, setStats] = useState<DebtPageStats>({
+    totalBills: 0, totalDebtValue: 0, totalCollected: 0, totalOutstanding: 0, paidCount: 0, unpaidCount: 0, overdueCount: 0,
+  });
+
+  /** Loads one page; state is only updated after the request. */
   const loadData = async () => {
     try {
-      const records = await fetchDebtRecords();
-      setDebts(records);
+      const res = await fetchDebtPage({
+        page: currentPage, limit: pageSize, search: debouncedSearch, statusGroup: statusTab,
+        customerId: activeCustomerIdFilter, customerType: typeFilter,
+      });
+      setDebts(res.rows);
+      setFilteredCount(res.total);
+      if (res.stats) setStats(res.stats);
       setLoadError(null);
     } catch (err) {
       console.warn('Failed to load debt records:', err);
       setDebts([]);
+      setFilteredCount(0);
       setLoadError(errorMessage(err, 'ไม่สามารถโหลดข้อมูลบิลค้างชำระได้'));
     } finally {
       setNow(Date.now());
@@ -114,81 +128,6 @@ function DebtsContent() {
     await loadData();
   };
 
-  useEffect(() => {
-    const run = async () => { await loadData(); };
-    void run();
-  }, []);
-
-  // Summary statistics across all debts
-  const stats = useMemo(() => {
-    let totalOutstanding = 0;
-    let totalCollected = 0;
-    let totalDebtValue = 0;
-    let unpaidCount = 0;
-    let paidCount = 0;
-    let overdueCount = 0;
-
-    debts.forEach((d) => {
-      totalDebtValue += d.totalAmount;
-      totalCollected += d.paidAmount;
-      totalOutstanding += d.remainingDebt;
-
-      const isPaid = d.status === 'PAID' || d.remainingDebt <= 0;
-      if (isPaid) {
-        paidCount++;
-      } else {
-        unpaidCount++;
-        if (d.dueDate && new Date(d.dueDate).getTime() < now) {
-          overdueCount++;
-        }
-      }
-    });
-
-    return {
-      totalOutstanding,
-      totalCollected,
-      totalDebtValue,
-      unpaidCount,
-      paidCount,
-      overdueCount,
-      totalBills: debts.length,
-    };
-  }, [debts, now]);
-
-  // Filtered debts based on search, status tab, customer type, and activeCustomerIdFilter
-  const filteredDebts = useMemo(() => {
-    return debts.filter((d) => {
-      // 0. Filter by active customer ID from URL
-      if (activeCustomerIdFilter && d.customerId !== activeCustomerIdFilter) {
-        return false;
-      }
-
-      // 1. Status tab filter
-      if (statusTab === 'unpaid' && (d.status === 'PAID' || d.remainingDebt <= 0)) return false;
-      if (statusTab === 'overdue' && (d.status === 'PAID' || d.remainingDebt <= 0 || !d.dueDate || new Date(d.dueDate).getTime() >= now)) return false;
-      if (statusTab === 'paid' && (d.status !== 'PAID' && d.remainingDebt > 0)) return false;
-
-      // 2. Customer type filter
-      if (typeFilter !== 'all' && d.customerType !== typeFilter) return false;
-
-      // 3. Search query
-      if (search.trim()) {
-        const q = search.toLowerCase().trim();
-        const matchNumber = d.orderNumber?.toLowerCase().includes(q);
-        const matchName = d.customerName?.toLowerCase().includes(q);
-        const matchCode = d.customerCode?.toLowerCase().includes(q);
-        const matchPhone = d.customerPhone?.toLowerCase().includes(q);
-        const matchCompany = d.companyName?.toLowerCase().includes(q);
-        const matchTax = d.taxId?.toLowerCase().includes(q);
-        if (!matchNumber && !matchName && !matchCode && !matchPhone && !matchCompany && !matchTax) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [debts, activeCustomerIdFilter, statusTab, typeFilter, search]);
-
   // Reset pagination when search or filters change
   const currentPageResetKey = JSON.stringify([search, statusTab, typeFilter, activeCustomerIdFilter, pageSize]);
   const [currentPageResetKeySeen, setCurrentPageResetKeySeen] = useState(currentPageResetKey);
@@ -198,12 +137,14 @@ function DebtsContent() {
     setCurrentPage(1);
   }
 
-  // Paginated records
-  const totalPages = Math.max(1, Math.ceil(filteredDebts.length / pageSize));
-  const paginatedDebts = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredDebts.slice(start, start + pageSize);
-  }, [filteredDebts, currentPage, pageSize]);
+  useEffect(() => {
+    const run = async () => { await loadData(); };
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, pageSize, debouncedSearch, statusTab, typeFilter, activeCustomerIdFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredCount / pageSize));
+  const paginatedDebts = debts;
 
   const handleOpenPay = (debt: DebtRecord) => {
     setSelectedDebtForPay(debt);
@@ -235,11 +176,9 @@ function DebtsContent() {
     router.replace('/debts');
   };
 
-  const activeFilteredCustomerName = useMemo(() => {
-    if (!activeCustomerIdFilter) return null;
-    const match = debts.find(d => d.customerId === activeCustomerIdFilter);
-    return match?.customerName || customerNameParam || 'สมาชิกที่เลือก';
-  }, [activeCustomerIdFilter, debts, customerNameParam]);
+  const activeFilteredCustomerName = activeCustomerIdFilter
+    ? debts.find(d => d.customerId === activeCustomerIdFilter)?.customerName || customerNameParam || 'สมาชิกที่เลือก'
+    : null;
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-2 p-2.5 sm:p-3.5 lg:p-4 font-sans">
@@ -358,7 +297,7 @@ function DebtsContent() {
               }`}
             >
               <Layers className="w-3.5 h-3.5 text-slate-500" />
-              <span>ทั้งหมด ({debts.length})</span>
+              <span>ทั้งหมด ({stats.totalBills})</span>
             </button>
 
             <button
@@ -647,14 +586,14 @@ function DebtsContent() {
           <div className="text-slate-500 font-medium">
             แสดงรายการที่{' '}
             <span className="font-bold text-slate-800">
-              {filteredDebts.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
+              {filteredCount === 0 ? 0 : (currentPage - 1) * pageSize + 1}
             </span>{' '}
             -{' '}
             <span className="font-bold text-slate-800">
-              {Math.min(currentPage * pageSize, filteredDebts.length)}
+              {Math.min(currentPage * pageSize, filteredCount)}
             </span>{' '}
             จากทั้งหมด{' '}
-            <span className="font-bold text-slate-800">{filteredDebts.length.toLocaleString()}</span> บิล
+            <span className="font-bold text-slate-800">{filteredCount.toLocaleString()}</span> บิล
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
