@@ -867,6 +867,42 @@ d('store flow (e2e)', () => {
       expect(client.size).toBeGreaterThan(0);
     });
 
+    it('catalogue rows carry the same data as the full product (GET /products/:id), minus batches and photo data', async () => {
+      const sup = (await api('post', '/suppliers', A, { name: 'SYNC ผู้ขาย', creditTerms: 0 })).body;
+      const full = (await api('post', '/products', A, {
+        name: 'SYNC ครบ', sku: 'SYNC-FULL', basePrice: 12.5, priceLevel1: 12.5, priceLevel2: 11, costPrice: 7.25, unit: 'ขวด', categoryId: sk.cat,
+        barcodes: ['SYNC-FULL-1', 'SYNC-FULL-2'],
+        packagingUnits: [{ name: 'แพ็ค', qtyPerPrev: 6, barcode: 'SYNC-FULL-P', priceLevel1: 70.5 }, { name: 'ลัง', qtyPerPrev: 4, priceLevel1: 270, priceLevel3: 260 }],
+        wholesalePrices: [{ minQuantity: 10, unitPrice: 12 }, { minQuantity: 50.5, unitPrice: 11.75 }],
+        supplierEntries: [{ supplierId: sup.id, supplierSku: 'S-1', lastCost: 6.5, isPreferred: true }],
+        images: [{ dataUrl: `data:image/png;base64,${PNG}`, name: 'z.png', isCover: true }],
+      }).expect(201)).body;
+      await api('post', '/inventory/adjust', A, { productId: full.id, type: 'SET', amount: 7, reason: 'e2e' }).expect(201);
+      const list = (await api('get', '/products', A).expect(200)).body;
+      const pick = (x: any, ks: string[]) => Object.fromEntries(ks.map((k) => [k, x?.[k]]));
+      for (const id of [full.id, sk.child, sk.bundle, sk.x]) {
+        const row = list.find((p: any) => p.id === id);
+        const d = (await api('get', `/products/${id}`, A).expect(200)).body;
+        for (const k of Object.keys(d)) {
+          if (['barcodes', 'images', 'stockBatches', 'suppliers', 'bundleItems', 'supplierEntries'].includes(k)) continue;
+          expect([k, row[k]]).toEqual([k, d[k]]);
+        }
+        const byCode = (a: any[]) => [...a].sort((x, y) => x.barcode.localeCompare(y.barcode));
+        expect(byCode(row.barcodes)).toEqual(byCode(d.barcodes.map((b: any) => pick(b, ['barcode', 'label']))));
+        expect(row.images.map((i: any) => pick(i, ['id', 'name', 'isCover', 'sortOrder']))).toEqual(d.images.map((i: any) => pick(i, ['id', 'name', 'isCover', 'sortOrder'])));
+        const slim = (e: any) => ({ ...e, supplier: e.supplier ? pick(e.supplier, ['id', 'name']) : null });
+        expect(row.supplierEntries.map(slim)).toEqual(d.supplierEntries.map(slim));
+        expect(row.suppliers).toEqual(d.suppliers.map((x: any) => ({ ...pick(x, ['id', 'supplierId', 'supplierSku', 'unitCost', 'isPreferred']), supplier: pick(x.supplier, ['id', 'name']) })));
+        expect(row.bundleItems).toEqual(d.bundleItems.map((b: any) => ({ ...pick(b, ['id', 'childProductId', 'quantity']), childProduct: pick(b.childProduct, ['id', 'name', 'sku', 'unit', 'basePrice', 'priceLevel1']) })));
+      }
+      const fullRow = list.find((p: any) => p.id === full.id);
+      expect(fullRow).toMatchObject({ stock: 7, priceLevel1: '12.5', costPrice: '7.25', supplierId: sup.id });
+      expect(fullRow.wholesalePrices.map((w: any) => [w.minQuantity, w.unitPrice])).toEqual([[10, '12'], [50.5, '11.75']]);
+      expect(fullRow.packagingUnits.map((u: any) => [u.name, u.qtyPerPrev, u.priceLevel1, u.priceLevel3])).toEqual([['แพ็ค', 6, '70.5', null], ['ลัง', 4, '270', '260']]);
+      expect((await pull()).products.map((p: any) => p.id)).toContain(full.id);
+      expect(client.get(full.id)).toEqual(fullRow);
+    });
+
     it('/inventory/stock: stock per product without the batch rows', async () => {
       const rows = (await api('get', '/inventory/stock', A).expect(200)).body;
       const child = rows.find((p: any) => p.id === sk.child);

@@ -11,6 +11,10 @@ import { qn } from '../common/qty';
 export const productImageUrl = (id: string, size?: 'thumb') =>
   `/api/product-images/${encodeURIComponent(id)}${size ? `?size=${size}` : ''}`;
 
+/**
+ * Fields of a catalogue row before toCatalogRow (as a Prisma select, for the type). ProductsService.catalogRows
+ * builds exactly these with one SQL statement (e2e compares them with GET /products/:id).
+ */
 export const catalogSelect = {
   id: true,
   name: true,
