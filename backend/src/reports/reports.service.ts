@@ -1,32 +1,29 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { OrderStatus } from '@prisma/client';
+import { OrderStatus, POStatus } from '@prisma/client';
 import { grossPerUnit } from '../../../shared/src/po-calc';
 import { addDays, bangkokDayKey, bangkokDayStart, bangkokStartOfDay, bangkokStartOfMonth, dateRangeFilter, DAY_MS } from '../common/bangkok-date';
 import { DateRange, paymentChannels, previousPeriod, salesTotals, sqlRange } from './sales-math';
 import { round2 } from '../../../shared/src/money';
 import { REPORT_TIME_RANGES, reportRangeBounds, type ReportTimeRange } from '../../../shared/src/bangkok-date';
 import { quantitiesToNumbers } from '../common/qty';
-import { costFilterFor } from '../products/cost-visibility';
-import { ProductsService } from '../products/products.service';
-import { ShiftsService } from '../shifts/shifts.service';
-import { DebtsService } from '../debts/debts.service';
+import { canViewCost } from '../products/cost-visibility';
 import { ClaimsService } from '../claims/claims.service';
+import { calculatePurchasesAndClaimsReport, type ClaimAccountingRows, DEFAULT_LOW_STOCK_THRESHOLD, filterOrdersByDateRange } from './report-tabs';
 import {
-  calculateBestSellingProducts,
-  calculateClaimsAndVat,
-  calculateCustomerAndDebtsReport,
-  calculateInventoryValuationReport,
-  calculatePaymentsAndShiftsReport,
-  calculatePurchasesAndClaimsReport,
-  calculateSalesAndProfitReport,
-  type ClaimAccountingRows,
-  DEFAULT_LOW_STOCK_THRESHOLD,
-  filterOrdersByDateRange,
-  returnsInRange,
-  toReportProduct,
-} from './report-tabs';
+  ANALYTICS_MAX_ORDERS,
+  assertRowLimit,
+  bestSellersSql,
+  claimAccountingSql,
+  customersTabSql,
+  inventorySnapshotSql,
+  inventoryTabSql,
+  parseListQuery,
+  paymentsTabSql,
+  REPORT_MAX_ROWS,
+  salesTabSql,
+} from './report-sql';
 
 export { DEFAULT_LOW_STOCK_THRESHOLD };
 export const REPORT_TABS = ['sales', 'bestsellers', 'inventory', 'payments', 'customers', 'purchases'] as const;
@@ -66,9 +63,6 @@ export function valueStock(batches: { productId: string; quantityRemaining: unkn
 export class ReportsService {
   constructor(
     private prisma: PrismaService,
-    private products: ProductsService,
-    private shifts: ShiftsService,
-    private debts: DebtsService,
     private claims: ClaimsService,
   ) {}
 
@@ -80,33 +74,7 @@ export class ReportsService {
 
   /** Stock position (at cost, plus retail value as a separate figure) and low-stock counts with the store threshold. */
   async inventorySnapshot() {
-    const [threshold, products, batches] = await Promise.all([
-      this.lowStockThreshold(),
-      this.prisma.product.findMany({ where: { isActive: true }, select: { id: true, isBundle: true, costPrice: true, basePrice: true, priceLevel1: true } }),
-      this.prisma.stockBatch.findMany({ where: { quantityRemaining: { not: 0 } }, select: { productId: true, quantityRemaining: true, unitCost: true } }),
-    ]);
-    const val = valueStock(batches);
-    let stockCostValue = 0;
-    let stockRetailValue = 0;
-    let lowStockCount = 0;
-    let outOfStockCount = 0;
-    for (const p of products) {
-      if (p.isBundle) continue; // bundles have no stock of their own
-      const v = val[p.id];
-      const qty = v?.quantityRemaining || 0;
-      stockCostValue += qty > 0 ? (v!.totalCostValue > 0 ? v!.totalCostValue : qty * Number(p.costPrice || 0)) : 0;
-      stockRetailValue += qty * Number(p.priceLevel1 || p.basePrice || 0);
-      if (qty <= 0) outOfStockCount++;
-      else if (qty <= threshold) lowStockCount++;
-    }
-    return {
-      lowStockThreshold: threshold,
-      totalProducts: products.length,
-      lowStockCount, // 0 < stock <= threshold
-      outOfStockCount, // stock <= 0
-      stockCostValue: round2(stockCostValue),
-      stockRetailValue: round2(stockRetailValue),
-    };
+    return inventorySnapshotSql(this.prisma, await this.lowStockThreshold());
   }
 
   private dashboardPeriod(q: { range?: string; startDate?: string; endDate?: string }): { range: string; filter: DateRange; from: Date | null; to: Date } {
@@ -315,6 +283,8 @@ export class ReportsService {
     const range = dateRangeFilter(startDate, endDate);
     const whereClause: any = range ? { createdAt: range } : {};
     const hasDateFilter = !!range;
+    // legacy bulk download (kept for the parity tests): refuse instead of exhausting the memory
+    assertRowLimit(await this.prisma.order.count({ where: whereClause }), 'บิลขาย', ANALYTICS_MAX_ORDERS);
 
     const [orders, activeBatches, products, threshold, lastReceipts, debtPayments] = await Promise.all([
       this.prisma.order.findMany({
@@ -368,7 +338,7 @@ export class ReportsService {
     };
   }
 
-  /** Orders as the reports read them (items + product, payments, customer, cashier, partial returns). */
+  /** Orders as the legacy /reports/analytics download returns them. */
   private static readonly REPORT_ORDER_INCLUDE = {
     items: { include: { product: true } },
     payments: true,
@@ -383,15 +353,19 @@ export class ReportsService {
   } satisfies Prisma.OrderInclude;
 
   /**
-   * Every figure of the Reports page for one period (GET /reports/tabs). The page no longer
-   * downloads orders / claims / debts / shifts to add them up itself: all report numbers are
-   * computed here, with the functions in report-tabs.ts.
+   * Every figure of the Reports page for one period (GET /reports/tabs), aggregated in PostgreSQL
+   * (report-sql.ts; the rules are spelled out in report-tabs.ts / sales-math.ts). No bill is loaded
+   * into Node, so any period - including "all" - costs a few GROUP BY queries.
    *
    * range: today | yesterday | 7days | 30days (default) | thisMonth | lastMonth | thisYear | all | custom
    * (custom: start / end = YYYY-MM-DD Bangkok days, end inclusive). tab: one of REPORT_TABS to
    * compute only that tab (the page asks for the tab on screen); omitted = all tabs.
+   *
+   * Long lists come one page at a time: page (1..), limit (default 50, max 500), q (search),
+   * sort (bestsellers: quantity | revenue | profit; customers: spent | debt | orders | name),
+   * list (inventory: all | deadstock | lowstock). Totals and counts always cover everything.
    */
-  async getReportTabs(q: { range?: string; start?: string; end?: string; tab?: string }, user?: any) {
+  async getReportTabs(q: { range?: string; start?: string; end?: string; tab?: string; page?: string; limit?: string; q?: string; sort?: string; list?: string }, user?: any) {
     const timeRange = (q.range || '30days') as ReportTimeRange;
     if (!REPORT_TIME_RANGES.includes(timeRange)) throw new BadRequestException(`ช่วงเวลาไม่ถูกต้อง (${REPORT_TIME_RANGES.join(', ')})`);
     const customStart = timeRange === 'custom' ? q.start || undefined : undefined;
@@ -401,6 +375,9 @@ export class ReportsService {
     const tabs: ReportTab[] = q.tab ? [q.tab as ReportTab] : [...REPORT_TABS];
     if (tabs.some((t) => !REPORT_TABS.includes(t))) throw new BadRequestException(`tab ไม่ถูกต้อง (${REPORT_TABS.join(', ')})`);
     const want = (t: ReportTab) => tabs.includes(t);
+    const single = tabs.length === 1;
+    // sort / list belong to one tab: with several tabs in one answer only page, limit and q apply
+    const lq = parseListQuery(single ? q : { page: q.page, limit: q.limit, q: q.q });
 
     const now = Date.now();
     const { start, end } = reportRangeBounds(timeRange, customStart, customEnd, now);
@@ -411,24 +388,6 @@ export class ReportsService {
       const t = new Date(iso).getTime();
       return isNaN(t) || (t >= start && t < end);
     };
-    const created = range ? { createdAt: range } : {};
-    const needOrders = want('sales') || want('bestsellers') || want('payments') || want('customers');
-    const needReturns = want('sales') || want('bestsellers') || want('payments');
-    const needProducts = want('sales') || want('bestsellers') || want('inventory');
-
-    const [orders, ordersWithReturns, products] = await Promise.all([
-      needOrders
-        ? this.prisma.order.findMany({ where: created, orderBy: { createdAt: 'desc' }, include: ReportsService.REPORT_ORDER_INCLUDE }).then(toWire)
-        : [],
-      // returns MADE in the period, whatever the bill date (same netting rule as the P&L)
-      needReturns
-        ? this.prisma.order
-            .findMany({ where: { returns: { some: range ? { createdAt: range } : {} } }, orderBy: { createdAt: 'desc' }, include: ReportsService.REPORT_ORDER_INCLUDE })
-            .then(toWire)
-        : [],
-      needProducts ? this.products.findAll().then((rows) => toWire(costFilterFor(user)(rows)).map(toReportProduct)) : [],
-    ]);
-    const rangeReturns = needReturns ? returnsInRange(ordersWithReturns, timeRange, customStart, customEnd, now) : [];
 
     const out: Record<string, any> = {
       period: {
@@ -439,56 +398,35 @@ export class ReportsService {
         timezone: 'Asia/Bangkok',
       },
     };
-
+    const db = this.prisma;
+    const jobs: Promise<void>[] = [];
     if (want('sales')) {
-      out.sales = calculateSalesAndProfitReport(orders, products, rangeReturns);
-      out.claimsAndVat = calculateClaimsAndVat(await this.claimAccounting(range), orders, rangeReturns);
+      jobs.push((async () => {
+        const [s, claim] = await Promise.all([salesTabSql(db, range), claimAccountingSql(db, range, true)]);
+        out.sales = s.sales;
+        out.claimsAndVat = { ...claim, claimNetCost: claim.replacementCost + claim.refundsPaid - claim.supplierRecovery, ...s.vat };
+      })());
     }
-    if (want('bestsellers')) out.bestsellers = calculateBestSellingProducts(orders, products, rangeReturns);
+    if (want('bestsellers')) jobs.push(bestSellersSql(db, range, lq).then((r) => { out.bestsellers = r; }));
     if (want('inventory')) {
-      const [threshold, batches, lastReceipts, lastSales] = await Promise.all([
-        this.lowStockThreshold(),
-        this.prisma.stockBatch.findMany({ where: { quantityRemaining: { not: 0 } }, select: { productId: true, quantityRemaining: true, unitCost: true } }),
-        this.prisma.stockBatch.groupBy({ by: ['productId'], where: { quantityReceived: { gt: 0 } }, _max: { receivedAt: true } }),
-        // last sale per product over all bills that are not voided (deadstock)
-        this.prisma.$queryRaw<{ product_id: string; last: Date }[]>(Prisma.sql`
-          SELECT oi.product_id, MAX(o.created_at) AS last
-          FROM order_items oi JOIN orders o ON o.id = oi.order_id
-          WHERE o.status::text NOT IN ('VOIDED', 'REFUNDED', 'CANCELLED')
-          GROUP BY oi.product_id`),
-      ]);
-      const lastSaleOrders = lastSales.map((r) => ({ status: 'COMPLETED', createdAt: new Date(r.last).toISOString(), items: [{ productId: r.product_id }] }));
-      out.inventory = calculateInventoryValuationReport(products, lastSaleOrders, toWire(valueStock(batches)), {
-        lowStockThreshold: threshold,
-        lastReceivedAtByProduct: Object.fromEntries(lastReceipts.map((r) => [r.productId, r._max.receivedAt?.toISOString() ?? null])),
-      });
+      jobs.push((async () => {
+        out.inventory = await inventoryTabSql(db, { threshold: await this.lowStockThreshold(), canSeeCost: canViewCost(user), now }, lq);
+      })());
     }
-    if (want('payments')) {
-      const [shifts, debtPayments] = await Promise.all([
-        this.shifts.getShiftHistory(1, 100000, undefined, range).then((r) => toWire(r.data)),
-        this.prisma.debtPayment.findMany({ where: { cancelledAt: null, ...(range ? { paymentDate: range } : {}) }, select: { amount: true, paymentMethod: true, paymentDate: true } }),
-      ]);
-      const debtReceipts = debtPayments.map((d) => ({ amount: Number(d.amount), method: d.paymentMethod, createdAt: d.paymentDate.toISOString() }));
-      out.payments = calculatePaymentsAndShiftsReport(orders, shifts, { returns: rangeReturns, debtReceipts, inRange });
-    }
-    if (want('customers')) {
-      const [debts, customers] = await Promise.all([
-        this.debts.getAllDebts(1, 5000).then((r) => toWire(r.data)),
-        this.prisma.customer.findMany({ include: { debts: true } }).then((rows) =>
-          toWire(rows.map((row) => ({ ...((row.profile as any) || {}), ...row, phone: row.phone || '', currentDebt: row.debts.reduce((sum, d) => sum + Number(d.remainingAmount), 0) }))),
-        ),
-      ]);
-      out.customers = calculateCustomerAndDebtsReport(orders, debts, customers);
-    }
+    if (want('payments')) jobs.push(paymentsTabSql(db, range).then((r) => { out.payments = r; }));
+    if (want('customers')) jobs.push(customersTabSql(db, range, now, lq).then((r) => { out.customers = r; }));
     if (want('purchases')) {
-      const [purchases, claims, suppliers] = await Promise.all([
-        this.purchasesData(range),
-        this.claims.getAllClaims(1, 5000).then((r: any) => toWire(r.data)),
-        this.prisma.supplier.findMany({ where: { isActive: true } }).then(toWire),
-      ]);
-      const claimsInRange = filterOrdersByDateRange(claims, timeRange, customStart, customEnd, now);
-      out.purchases = calculatePurchasesAndClaimsReport(purchases, claimsInRange, suppliers, inRange);
+      jobs.push((async () => {
+        const [purchases, claims, suppliers] = await Promise.all([
+          this.purchasesData(range),
+          this.claims.getAllClaims(1, 5000).then((r: any) => toWire(r.data)),
+          this.prisma.supplier.findMany({ where: { isActive: true }, take: REPORT_MAX_ROWS }).then(toWire),
+        ]);
+        const claimsInRange = filterOrdersByDateRange(claims, timeRange, customStart, customEnd, now);
+        out.purchases = calculatePurchasesAndClaimsReport(purchases, claimsInRange, suppliers, inRange);
+      })());
     }
+    await Promise.all(jobs);
     return out;
   }
 
@@ -522,13 +460,20 @@ export class ReportsService {
    * - payable: owed per supplier for received goods, same formula as /finance/overview
    */
   private async purchasesData(range: DateRange) {
+    const poWhere = { status: { notIn: ['DRAFT', 'CANCELLED'] as POStatus[] } };
+    const batchWhere = { purchaseOrderId: { not: null }, ...(range ? { receivedAt: range } : {}) };
+    const [poLines, batchCount] = await Promise.all([
+      this.prisma.purchaseOrderItem.count({ where: { purchaseOrder: poWhere } }),
+      this.prisma.stockBatch.count({ where: batchWhere }),
+    ]);
+    assertRowLimit(Math.max(poLines, batchCount), 'ใบสั่งซื้อ');
     const [batches, pos] = await Promise.all([
       this.prisma.stockBatch.findMany({
-        where: { purchaseOrderId: { not: null }, ...(range ? { receivedAt: range } : {}) },
+        where: batchWhere,
         select: { productId: true, quantityReceived: true, receivedAt: true, purchaseOrderId: true },
       }),
       this.prisma.purchaseOrder.findMany({
-        where: { status: { notIn: ['DRAFT', 'CANCELLED'] } },
+        where: poWhere,
         select: {
           id: true, poNumber: true, status: true, supplierId: true, paidAmount: true, remainingPayable: true, totalAmount: true,
           supplier: { select: { name: true } },
