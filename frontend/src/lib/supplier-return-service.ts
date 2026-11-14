@@ -119,12 +119,20 @@ export function mapReturnNote(item: ApiSupplierReturnNote): SupplierReturnNote {
   };
 }
 
-/** Supplier return notes from the server. Throws when the server cannot be reached. */
+/**
+ * Every supplier return note from the server (all pages, newest first; was the newest 200, which also made the
+ * next document number repeat once a month had more). Throws when the server cannot be reached.
+ */
 export async function fetchSupplierReturnNotes(): Promise<SupplierReturnNote[]> {
-  const res = await apiFetch<ApiListResponse<ApiSupplierReturnNote> | null>('/supplier-returns?limit=200');
-  const list = apiListRows(res);
-  if (!Array.isArray(list)) throw new Error('ข้อมูลใบส่งคืนจากเซิร์ฟเวอร์ไม่ถูกต้อง');
-  returnNotesMem = list.map(mapReturnNote);
+  const out: SupplierReturnNote[] = [];
+  for (let page = 1; page <= 1000; page++) {
+    const res = await apiFetch<ApiListResponse<ApiSupplierReturnNote> | null>(`/supplier-returns?limit=500&page=${page}`);
+    const list = apiListRows(res);
+    if (!Array.isArray(list)) throw new Error('ข้อมูลใบส่งคืนจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+    out.push(...list.map(mapReturnNote));
+    if (list.length < 500) break;
+  }
+  returnNotesMem = out;
   return returnNotesMem;
 }
 
