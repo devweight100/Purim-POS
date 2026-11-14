@@ -23,7 +23,7 @@ owes its total, 600 vouchers over 1,800 POs: partial, discount, credit notes, ev
 2. [x] Payables: page uses /payables/bills (paging, search, supplier filter, summary totals); e2e parity vs the browser logic.
 3. [x] Supplier returns: PO list searchable/paged from the server.
 4. [x] POS debt picker + orders credit history: filtered server query.
-5. [ ] Customer list refresh every 15 s -> delta / on demand (check consumers).
+5. [x] Customer list refresh every 15 s -> delta / on demand (check consumers).
 6. [ ] Cheap follow-ups (claims on orders page).
 7. [ ] Tests, after-measurements, full verification, PROJECT_STATUS.
 
@@ -53,6 +53,16 @@ owes its total, 600 vouchers over 1,800 POs: partial, discount, credit notes, ev
   page (orderIds) for the paid badge, the credit-history dialog re-reads its bill's debt. debt-service keeps the debts
   it has seen by order id (no background full download any more); the close-shift offline fallback reads those (the
   server's shift summary wins anyway).
+- Step 5 (customers): consumers of the in-memory list = POS selected customer (useCustomerById: debt / points kept
+  fresh), POS customer picker (fetch on open), claim modal (match by id / phone / name), orders page (A4 reprint
+  customer + refresh after void), POS history void; no offline (IndexedDB) cache of customers, desktop has none.
+  All keep using the list, now kept by a delta: migration 20261126000000_customer_sync (customer_changes log,
+  triggers on customers and on customer_debts remaining / customer changes; schema model CustomerChange), GET
+  /customers/sync?since= (same snapshot cursor as the product sync; rows = GET /customers rows + listIndex for the
+  fallback CUST code; a deletion -> full list). customer-service fetchCustomers = first call full, then delta
+  (cursor per login token, concurrent calls share one request, no re-render on an empty delta). e2e (full = GET
+  /customers, new / edit / points / debt / status-only debt update / delete / bad cursors, client == fresh full)
+  55/55; vitest customer-sync (4) + payables/debts queries (5) -> 178.
 
 ## Task 1: reports computed in the database — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 

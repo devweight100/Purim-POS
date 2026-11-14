@@ -1,6 +1,6 @@
 'use client';
 import { useSyncExternalStore } from 'react';
-import { api, apiFetch } from './api';
+import { api, apiFetch, getAuthToken } from './api';
 import type { ApiCustomer } from './types';
 
 export type CustomerType = 'INDIVIDUAL' | 'COMPANY';
@@ -122,12 +122,66 @@ export function loadCustomers(): Customer[] {
   return lastServerCustomers;
 }
 
-/** Customers from the server. Throws when the server cannot be reached. */
-export async function fetchCustomers(): Promise<Customer[]> {
-  const rows = await api.customers.getAll();
-  const normalized = (Array.isArray(rows) ? rows : []).map((c, idx: number) => normalizeCustomerRow(c, idx));
-  publishCustomers(normalized);
-  return normalized;
+/** A customer of the list and its position in the server's full list (creation order; fallback CUST code). */
+export interface IndexedCustomer {
+  customer: Customer;
+  listIndex: number;
+}
+
+export interface CustomerSyncResponse {
+  cursor: string;
+  full: boolean;
+  customers: (ApiCustomer & { listIndex?: number })[];
+  deleted: string[];
+}
+
+/**
+ * Applies GET /customers/sync to the list: full = the new list; otherwise the changed customers replace / join it
+ * (kept in list order). Returns null when nothing changed (no re-render).
+ */
+export function applyCustomerSync(current: IndexedCustomer[], res: CustomerSyncResponse): IndexedCustomer[] | null {
+  if (res.full) return res.customers.map((c, i) => ({ customer: normalizeCustomerRow(c, i), listIndex: i }));
+  if (!res.customers.length && !res.deleted?.length) return null;
+  const byId = new Map(current.map((x) => [x.customer.id, x]));
+  let next = current.length ? Math.max(...current.map((x) => x.listIndex)) + 1 : 0;
+  for (const c of res.customers) {
+    const { listIndex, ...row } = c;
+    const li = typeof listIndex === 'number' ? listIndex : next++;
+    byId.set(String(row.id), { customer: normalizeCustomerRow(row, li), listIndex: li });
+  }
+  for (const id of res.deleted || []) byId.delete(id);
+  return [...byId.values()].sort((a, b) => a.listIndex - b.listIndex);
+}
+
+let indexedCustomers: IndexedCustomer[] = [];
+let customersCursor: { token: string | null; cursor: string } | null = null;
+let customersInflight: Promise<Customer[]> | null = null;
+
+function setIndexed(list: IndexedCustomer[]) {
+  indexedCustomers = list;
+  publishCustomers(list.map((x) => x.customer));
+}
+
+/**
+ * Customers from the server: the whole list on the first call of a login, then only the customers changed since
+ * (GET /customers/sync; the screens used to download the whole list every 15 s). Throws when the server cannot be
+ * reached. Concurrent calls share one request.
+ */
+export function fetchCustomers(): Promise<Customer[]> {
+  if (customersInflight) return customersInflight;
+  customersInflight = (async () => {
+    const token = getAuthToken();
+    const since = customersCursor && customersCursor.token === token ? customersCursor.cursor : '';
+    const res = await apiFetch<CustomerSyncResponse | null>(`/customers/sync${since ? `?since=${encodeURIComponent(since)}` : ''}`);
+    if (!res || !Array.isArray(res.customers) || typeof res.cursor !== 'string') throw new Error('ข้อมูลลูกค้าจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+    const next = applyCustomerSync(since ? indexedCustomers : [], since ? res : { ...res, full: true });
+    if (next) setIndexed(next);
+    customersCursor = { token, cursor: res.cursor };
+    return lastServerCustomers;
+  })().finally(() => {
+    customersInflight = null;
+  });
+  return customersInflight;
 }
 
 export interface CustomerPageStats {
@@ -213,14 +267,16 @@ export async function upsertCustomer(
   const saved = customerData.id
     ? await api.customers.update(customerData.id, customerData)
     : await api.customers.create(customerData);
-  const customer = normalizeCustomerRow({ ...customerData, ...saved });
-  publishCustomers([...lastServerCustomers.filter((c) => c.id !== customer.id), customer]);
+  const existing = indexedCustomers.find((x) => x.customer.id === String(saved?.id ?? customerData.id));
+  const listIndex = existing ? existing.listIndex : indexedCustomers.length ? Math.max(...indexedCustomers.map((x) => x.listIndex)) + 1 : 0;
+  const customer = normalizeCustomerRow({ ...customerData, ...saved }, listIndex);
+  setIndexed([...indexedCustomers.filter((x) => x.customer.id !== customer.id), { customer, listIndex }].sort((a, b) => a.listIndex - b.listIndex));
   return { success: true, customer };
 }
 
 export async function deleteCustomer(id: string): Promise<boolean> {
   await api.customers.delete(id);
-  publishCustomers(lastServerCustomers.filter((c) => c.id !== id));
+  setIndexed(indexedCustomers.filter((x) => x.customer.id !== id));
   return true;
 }
 
