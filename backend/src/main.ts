@@ -5,10 +5,24 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { json, urlencoded } from 'express';
+import compression from 'compression';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   
+  // gzip JSON responses (the product list / reports compress ~10x; the Next.js /api rewrite passes the encoded
+  // body through). Never the realtime event stream: compression would buffer the events.
+  app.use(
+    compression({
+      threshold: 1024,
+      filter: (req, res) => {
+        if (String(req.headers.accept || '').includes('text/event-stream')) return false;
+        if (String(res.getHeader('Content-Type') || '').includes('text/event-stream')) return false;
+        return compression.filter(req, res);
+      },
+    }),
+  );
+
   // Set larger payload limits for bulk Excel product imports
   app.use(json({ limit: '50mb' }));
   app.use(urlencoded({ limit: '50mb', extended: true }));

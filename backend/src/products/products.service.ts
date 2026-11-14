@@ -8,6 +8,10 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { rethrowPrismaError } from './prisma-errors';
 import { LOOKUP_FILTERS, type LookupFilter, packChain, priceLevels, rankCandidates, searchTokens, stockLevel } from './product-lookup';
 import { addQty, assertQtyAllowed, decimalQtyAllowed, hasMax2Decimals, qn, roundQty } from '../common/qty';
+import {
+  CHANGE_LOG_KEEP_MS, catalogSelect, cleanThumb, cursorUsable, decodeCursor, decodeImageDataUrl, encodeCursor, toCatalogRow,
+  type CatalogRow,
+} from './product-catalog';
 
 /** Highest price / cost accepted for a product (columns are Decimal(10,2)). */
 export const MAX_PRODUCT_PRICE = 10_000_000;
@@ -244,15 +248,42 @@ export class ProductsService {
       });
   }
 
+  /** New photos (entries carrying a dataUrl), sortOrder = position in the list sent. */
   private buildImageCreates(images: any[] = []) {
     return images
-      .filter((image) => image?.dataUrl)
-      .map((image, index) => ({
+      .map((image, index) => ({ image, index }))
+      .filter(({ image }) => image?.dataUrl)
+      .map(({ image, index }) => ({
         dataUrl: String(image.dataUrl),
+        thumbDataUrl: cleanThumb(image.thumbDataUrl),
         name: image.name ? String(image.name) : null,
         isCover: Boolean(image.isCover),
         sortOrder: index,
       }));
+  }
+
+  /**
+   * Replace a product's photo list. Entries with a dataUrl are new photos; entries with only the `id` of one of
+   * this product's photos (the list carries photo URLs, not the data) keep that photo row and its data, with the
+   * new name / cover flag / position. Photos not in the list are deleted. A photo row's data never changes, so
+   * GET /product-images/:id can be cached for good.
+   */
+  private async replaceImages(tx: any, productId: string, images: any[]) {
+    const existing: { id: string }[] = await tx.productImage.findMany({ where: { productId }, select: { id: true } });
+    const own = new Set(existing.map((e) => e.id));
+    const kept = images
+      .map((image, index) => ({ image, index }))
+      .filter(({ image }) => !image?.dataUrl && image?.id && own.has(String(image.id)));
+    const keepIds = kept.map(({ image }) => String(image.id));
+    await tx.productImage.deleteMany({ where: { productId, id: { notIn: keepIds } } });
+    for (const { image, index } of kept) {
+      await tx.productImage.update({
+        where: { id: String(image.id) },
+        data: { name: image.name ? String(image.name) : null, isCover: Boolean(image.isCover), sortOrder: index },
+      });
+    }
+    const creates = this.buildImageCreates(images);
+    if (creates.length) await tx.productImage.createMany({ data: creates.map((c) => ({ ...c, productId })) });
   }
 
   private buildWholesalePriceCreates(prices: any[] = []) {
@@ -462,11 +493,107 @@ export class ProductsService {
     if (categoryId) {
       where.categoryId = categoryId;
     }
-    const products = await this.prisma.product.findMany({
-      where,
-      include: this.productInclude,
+    return this.catalogRows(this.prisma, where);
+  }
+
+  /** Remaining stock per product id (sum of its batches); `ids` limits it to those products. */
+  private async stockSums(db: any, ids?: string[]): Promise<Map<string, number>> {
+    const rows: { product_id: string; qty: string | null }[] = ids
+      ? ids.length
+        ? await db.$queryRaw`SELECT product_id, SUM(quantity_remaining)::text AS qty FROM stock_batches WHERE product_id = ANY(${ids}::text[]) GROUP BY product_id`
+        : []
+      : await db.$queryRaw`SELECT product_id, SUM(quantity_remaining)::text AS qty FROM stock_batches GROUP BY product_id`;
+    return new Map(rows.map((r) => [r.product_id, Number(r.qty || 0)]));
+  }
+
+  /** POS catalogue rows (see product-catalog.ts) of the products matching `where` (no filter = every product). */
+  private async catalogRows(db: any, where: Prisma.ProductWhereInput = {}): Promise<CatalogRow[]> {
+    const products = await db.product.findMany({ where, select: catalogSelect });
+    const filtered = Object.keys(where).length > 0;
+    let stockOf: Map<string, number>;
+    if (filtered) {
+      const ids = new Set<string>();
+      for (const p of products) {
+        ids.add(p.id);
+        for (const bi of p.bundleItems) ids.add(bi.childProductId);
+      }
+      stockOf = await this.stockSums(db, [...ids]);
+    } else {
+      stockOf = await this.stockSums(db);
+    }
+    return products.map((p: any) => toCatalogRow(p, stockOf));
+  }
+
+  private lastChangeLogPrune = 0;
+
+  /**
+   * POS catalogue delta sync (GET /products/sync?since=<cursor>).
+   * No / unusable cursor: every product (`full: true`). Otherwise the products changed since the cursor (rows of
+   * product_changes written by transactions not visible in the cursor's snapshot, plus bundles of changed children)
+   * and the ids of deleted products. Reads in one REPEATABLE READ transaction, so the returned cursor (its snapshot)
+   * matches the data exactly: a write committed during the read shows up in the next delta.
+   */
+  async sync(since?: string): Promise<{ cursor: string; full: boolean; products: CatalogRow[]; deleted: string[] }> {
+    const parsed = decodeCursor(since);
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        const [head] = await tx.$queryRaw<{ snapshot: string; epoch: string }[]>`
+          SELECT pg_current_snapshot()::text AS snapshot,
+                 (SELECT oid FROM pg_database WHERE datname = current_database())::text || '-' || 'product_changes'::regclass::oid::text AS epoch`;
+        const now = Date.now();
+        const cursor = encodeCursor({ epoch: head.epoch, at: now, snapshot: head.snapshot });
+        let usable = cursorUsable(parsed, head.epoch, now);
+        if (usable) {
+          // a snapshot "from the future" (database restored / replaced) cannot be compared: reload everything
+          const [chk] = await tx.$queryRaw<{ ok: boolean }[]>`
+            SELECT pg_snapshot_xmax(${parsed!.snapshot}::pg_snapshot) <= pg_snapshot_xmax(pg_current_snapshot()) AS ok`;
+          usable = !!chk?.ok;
+        }
+        if (!usable) return { cursor, full: true, products: await this.catalogRows(tx), deleted: [] as string[] };
+
+        const changed = await tx.$queryRaw<{ product_id: string }[]>`
+          SELECT DISTINCT c.product_id FROM product_changes c
+          WHERE c.xid >= pg_snapshot_xmin(${parsed!.snapshot}::pg_snapshot)
+            AND NOT pg_visible_in_snapshot(c.xid, ${parsed!.snapshot}::pg_snapshot)`;
+        const ids = new Set(changed.map((r) => r.product_id));
+        if (ids.size) {
+          // a bundle's stock and child names come from its children
+          const bundles = await tx.$queryRaw<{ id: string }[]>`
+            SELECT DISTINCT bundle_product_id AS id FROM product_bundle_items WHERE child_product_id = ANY(${[...ids]}::text[])`;
+          for (const b of bundles) ids.add(b.id);
+        }
+        const products = ids.size ? await this.catalogRows(tx, { id: { in: [...ids] } }) : [];
+        const found = new Set(products.map((p) => p.id));
+        return { cursor, full: false, products, deleted: [...ids].filter((id) => !found.has(id)) };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead, maxWait: 10000, timeout: 120000 },
+    );
+    this.pruneChangeLog();
+    return result;
+  }
+
+  /** Drop change-log rows older than any usable cursor (at most once an hour, in the background). */
+  private pruneChangeLog() {
+    const now = Date.now();
+    if (now - this.lastChangeLogPrune < 3600_000) return;
+    this.lastChangeLogPrune = now;
+    const keepDays = Math.round(CHANGE_LOG_KEEP_MS / 86_400_000);
+    // changed_at is written by the database clock (CURRENT_TIMESTAMP), so compare with it too
+    void this.prisma.$executeRaw`DELETE FROM product_changes WHERE changed_at < CURRENT_TIMESTAMP - make_interval(days => ${keepDays}::int)`.catch(() => {
+      this.lastChangeLogPrune = 0;
     });
-    return products.map((p) => this.mapProductWithStock(p));
+  }
+
+  /** Photo of GET /product-images/:id (`thumb`: the small copy, or the full photo for rows saved without one). */
+  async getImage(id: string, size?: string): Promise<{ contentType: string; body: Buffer } | null> {
+    if (typeof id !== 'string' || id.length > 64) return null;
+    if (size === 'thumb') {
+      const t = await this.prisma.productImage.findUnique({ where: { id }, select: { thumbDataUrl: true } });
+      if (!t) return null;
+      if (t.thumbDataUrl) return decodeImageDataUrl(t.thumbDataUrl);
+    }
+    const img = await this.prisma.productImage.findUnique({ where: { id }, select: { dataUrl: true } });
+    return decodeImageDataUrl(img?.dataUrl);
   }
 
   /**
@@ -482,37 +609,33 @@ export class ProductsService {
     const page = Math.max(1, Math.floor(opts.page || 1));
     const limit = Math.min(50, Math.max(1, Math.floor(opts.limit || 20)));
     const tokens = searchTokens(opts.q);
-    const where: Prisma.ProductWhereInput = {
-      isActive: true,
-      AND: tokens.map((t) => ({
-        OR: [
-          { name: { contains: t, mode: 'insensitive' } },
-          { sku: { contains: t, mode: 'insensitive' } },
-          { barcodes: { some: { barcode: { contains: t } } } },
-          { packagingUnits: { some: { barcode: { contains: t } } } },
-        ],
-      })),
-    };
-    const [settings, rows, sums] = await Promise.all([
+    // One SQL query (Prisma loaded every product + barcodes + bundle items as objects: 0.3 s on 10k products).
+    // Same match as before: every word in name / SKU (case-insensitive) or a barcode / pack barcode (exact case).
+    const tokenConds = tokens.map((t) => Prisma.sql`(
+        strpos(lower(p.name), lower(${t})) > 0 OR strpos(lower(p.sku), lower(${t})) > 0
+        OR EXISTS (SELECT 1 FROM product_barcodes b WHERE b.product_id = p.id AND strpos(b.barcode, ${t}) > 0)
+        OR EXISTS (SELECT 1 FROM product_packaging_units u WHERE u.product_id = p.id AND strpos(u.barcode, ${t}) > 0))`);
+    const whereSql = Prisma.join([Prisma.sql`p.is_active`, ...tokenConds], ' AND ');
+    const [settings, rawRows, sums] = await Promise.all([
       this.prisma.storeSettings.findFirst({ select: { lowStockThreshold: true } }),
-      this.prisma.product.findMany({
-        where,
-        select: {
-          id: true, name: true, sku: true, isBundle: true,
-          barcodes: { select: { barcode: true } },
-          bundleItems: { select: { childProductId: true, quantity: true } },
-        },
-      }),
-      this.prisma.stockBatch.groupBy({ by: ['productId'], _sum: { quantityRemaining: true } }),
+      this.prisma.$queryRaw<{ id: string; name: string; sku: string; isBundle: boolean; barcodes: string[] | null; bundleItems: { childProductId: string; quantity: string }[] | null }[]>`
+        SELECT p.id, p.name, p.sku, p.is_bundle AS "isBundle",
+          (SELECT array_agg(b.barcode ORDER BY b.created_at, b.id) FROM product_barcodes b WHERE b.product_id = p.id) AS barcodes,
+          (SELECT json_agg(json_build_object('childProductId', bi.child_product_id, 'quantity', bi.quantity::text))
+             FROM product_bundle_items bi WHERE bi.bundle_product_id = p.id) AS "bundleItems"
+        FROM products p WHERE ${whereSql}`,
+      this.prisma.$queryRaw<{ product_id: string; qty: string | null }[]>`
+        SELECT product_id, SUM(quantity_remaining)::text AS qty FROM stock_batches GROUP BY product_id`,
     ]);
+    const rows = rawRows.map((r) => ({ ...r, barcodes: r.barcodes || [], bundleItems: r.bundleItems || [] }));
     const thresholdRaw = Number(settings?.lowStockThreshold);
     const threshold = Number.isFinite(thresholdRaw) && thresholdRaw >= 0 ? thresholdRaw : 5;
-    const stockOf = new Map(sums.map((s) => [s.productId, roundQty(Number(s._sum.quantityRemaining || 0))]));
+    const stockOf = new Map(sums.map((s) => [s.product_id, roundQty(Number(s.qty || 0))]));
     const stockFor = (r: (typeof rows)[number]): number => {
       if (!r.isBundle || r.bundleItems.length === 0) return stockOf.get(r.id) || 0;
       return Math.max(0, Math.min(...r.bundleItems.map((bi) => Math.floor((stockOf.get(bi.childProductId) || 0) / (qn(bi.quantity) || 1) + 1e-9))));
     };
-    const candidates = rows.map((r) => ({ ...r, barcodes: r.barcodes.map((b) => b.barcode), stock: stockFor(r) }));
+    const candidates = rows.map((r) => ({ ...r, stock: stockFor(r) }));
     const counts = { all: candidates.length, low: 0, out: 0 };
     for (const c of candidates) {
       if (c.isBundle) continue;
@@ -608,7 +731,7 @@ export class ProductsService {
         await tx.productPackagingUnit.deleteMany({ where: { productId: id } });
       }
       if (images) {
-        await tx.productImage.deleteMany({ where: { productId: id } });
+        await this.replaceImages(tx, id, images);
       }
       if (wholesalePrices) {
         await tx.productWholesalePrice.deleteMany({ where: { productId: id } });
@@ -631,7 +754,6 @@ export class ProductsService {
           ...data,
           ...(barcodes && { barcodes: { create: this.buildBarcodeCreates(barcodes) } }),
           ...(packagingUnits && { packagingUnits: { create: this.buildPackagingUnitCreates(packagingUnits) } }),
-          ...(images && { images: { create: this.buildImageCreates(images) } }),
           ...(wholesalePrices && { wholesalePrices: { create: this.buildWholesalePriceCreates(wholesalePrices) } }),
           ...(bundleItems && {
             bundleItems: {

@@ -57,6 +57,16 @@ export class ProductsController {
     return { ...result, data: costFilterFor(req?.user)(result.data), canViewCost: canViewCost(req?.user) };
   }
 
+  /**
+   * POS catalogue delta sync. No / old cursor: every product (`full: true`); else the products changed since the
+   * cursor plus the ids of deleted ones. Always returns the cursor for the next call. Cost fields as GET /products.
+   */
+  @Get('sync')
+  async sync(@Query('since') since?: string, @Req() req?: any) {
+    const result = await this.productsService.sync(typeof since === 'string' ? since : undefined);
+    return { ...result, products: costFilterFor(req?.user)(result.products) };
+  }
+
   @Get('barcode/:code')
   async findByBarcode(@Param('code') code: string, @Req() req?: any) {
     return costFilterFor(req?.user)(await this.productsService.findByBarcode(code));

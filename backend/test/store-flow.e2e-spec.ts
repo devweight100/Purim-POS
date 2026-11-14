@@ -720,4 +720,159 @@ d('store flow (e2e)', () => {
       await api('get', '/reports/tabs?tab=customers&limit=abc', A).expect(400);
     });
   });
+
+  describe('POS catalogue: delta sync and photos by URL', () => {
+    const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const THUMB = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+    const sync = async (since?: string, token = A) =>
+      (await api('get', `/products/sync${since !== undefined ? `?since=${encodeURIComponent(since)}` : ''}`, token).expect(200)).body;
+    /** the client side: full load, then deltas merged by id */
+    const client = new Map<string, any>();
+    let cursor = '';
+    const pull = async () => {
+      const b = await sync(cursor);
+      if (b.full) client.clear();
+      for (const p of b.products) client.set(p.id, p);
+      for (const id of b.deleted) client.delete(id);
+      cursor = b.cursor;
+      return b;
+    };
+    const ids = (b: any) => b.products.map((p: any) => p.id).sort();
+    const sk = { child: '', bundle: '', x: '', gone: '', cat: '', sup: '' };
+
+    it('first call: every product (same rows as GET /products) and a cursor; then an empty delta', async () => {
+      const b = await pull();
+      expect(b.full).toBe(true);
+      expect(typeof b.cursor).toBe('string');
+      const list = (await api('get', '/products', A).expect(200)).body;
+      expect(b.products).toEqual(list);
+      expect(b.products.every((p: any) => !('stockBatches' in p))).toBe(true);
+      const again = await pull();
+      expect(again).toMatchObject({ full: false, products: [], deleted: [] });
+    });
+
+    it('new products, photos, bundles and stock show up in the delta', async () => {
+      sk.cat = (await api('post', '/categories', A, { name: 'SYNC หมวด' }).expect(201)).body.id;
+      const mk = async (body: any) => (await api('post', '/products', A, { basePrice: 20, priceLevel1: 20, costPrice: 8, unit: 'ชิ้น', ...body }).expect(201)).body;
+      sk.child = (await mk({ name: 'SYNC ลูก', sku: 'SYNC-CHILD', barcodes: ['SYNC-BC-1'] })).id;
+      sk.x = (await mk({
+        name: 'SYNC รูป', sku: 'SYNC-X', categoryId: sk.cat,
+        images: [{ dataUrl: `data:image/png;base64,${PNG}`, thumbDataUrl: `data:image/png;base64,${THUMB}`, name: 'a.png', isCover: true }],
+      })).id;
+      sk.bundle = (await mk({ name: 'SYNC ชุด', sku: 'SYNC-BUNDLE', isBundle: true, bundleItems: [{ childProductId: sk.child, quantity: 2 }] })).id;
+      await api('post', '/inventory/adjust', A, { productId: sk.child, type: 'SET', amount: 9, reason: 'e2e' }).expect(201);
+      const b = await pull();
+      expect(b.full).toBe(false);
+      expect(ids(b)).toEqual([sk.bundle, sk.child, sk.x].sort());
+      expect(client.get(sk.child).stock).toBe(9);
+      expect(client.get(sk.bundle).stock).toBe(4); // floor(9 / 2) sets
+      expect(client.get(sk.bundle).bundleItems[0].childProduct).toMatchObject({ id: sk.child, name: 'SYNC ลูก', sku: 'SYNC-CHILD' });
+      const img = client.get(sk.x).images[0];
+      expect(img).toMatchObject({ name: 'a.png', isCover: true, url: `/api/product-images/${img.id}`, thumbUrl: `/api/product-images/${img.id}?size=thumb` });
+      expect(img.dataUrl).toBeUndefined();
+      expect(client.get(sk.x).category.name).toBe('SYNC หมวด');
+    });
+
+    it('a sale changes the product and the bundles it is part of', async () => {
+      await api('post', '/orders/checkout', C, { clientOrderId: randomUUID(), shiftId: state.shift2.id, items: [{ productId: sk.child, quantity: 3, unitPrice: 20 }], payments: [{ method: 'CASH', amount: 60 }] }).expect(201);
+      const b = await pull();
+      expect(ids(b)).toEqual([sk.bundle, sk.child].sort());
+      expect(client.get(sk.child).stock).toBe(6);
+      expect(client.get(sk.bundle).stock).toBe(3);
+    });
+
+    it('price, barcode, category rename, deactivation, receiving and deletes all bump the cursor', async () => {
+      await api('patch', `/products/${sk.x}`, A, { basePrice: 25, priceLevel1: 25 }).expect(200);
+      expect(ids(await pull())).toEqual([sk.x]);
+      expect(client.get(sk.x).priceLevel1).toBe('25');
+      await api('patch', `/products/${sk.child}`, A, { barcodes: ['SYNC-BC-2'] }).expect(200);
+      expect(ids(await pull())).toEqual([sk.bundle, sk.child].sort());
+      expect(client.get(sk.child).barcodes.map((x: any) => x.barcode)).toEqual(['SYNC-BC-2']);
+      await api('patch', `/categories/${sk.cat}`, A, { name: 'SYNC หมวดใหม่' }).expect(200);
+      expect(ids(await pull())).toEqual([sk.x]);
+      expect(client.get(sk.x).category.name).toBe('SYNC หมวดใหม่');
+      await api('patch', `/products/${sk.x}`, A, { isActive: false }).expect(200);
+      expect(ids(await pull())).toEqual([sk.x]);
+      expect(client.get(sk.x).isActive).toBe(false);
+      const sup = (await api('post', '/suppliers', A, { name: 'SYNC Supplier', creditTerms: 0 })).body;
+      const po = (await api('post', '/purchase-orders', A, { supplierId: sup.id, status: 'ISSUED', items: [{ productId: sk.child, quantity: 4, unitCost: 7 }] }).expect(201)).body;
+      await api('post', `/purchase-orders/${po.id}/receive`, A, { clientReceiptId: randomUUID(), items: [{ purchaseOrderItemId: po.items[0].id, receivedQty: 4, unitCost: 7 }] }).expect(201);
+      const r = await pull();
+      expect(ids(r)).toEqual(expect.arrayContaining([sk.bundle, sk.child]));
+      expect(client.get(sk.child).stock).toBe(10);
+      sk.gone = (await api('post', '/products', A, { name: 'SYNC ลบ', sku: 'SYNC-GONE', basePrice: 1 }).expect(201)).body.id;
+      expect(ids(await pull())).toEqual([sk.gone]);
+      await api('delete' as any, `/products/${sk.gone}`, A).expect(200);
+      const d = await pull();
+      expect(d).toMatchObject({ full: false, products: [], deleted: [sk.gone] });
+      expect(client.has(sk.gone)).toBe(false);
+    });
+
+    it('full load + deltas == a fresh full load', async () => {
+      const fresh = await sync();
+      expect(fresh.full).toBe(true);
+      expect(client.size).toBe(fresh.products.length);
+      for (const p of fresh.products) expect(client.get(p.id)).toEqual(p);
+    });
+
+    it('bad, foreign or very old cursors give a full reload; cost fields only with VIEW_COST', async () => {
+      for (const bad of ['', 'nope', 'v1.1-2.0.' + Buffer.from('1:2:').toString('base64url'), cursor.replace(/^v1\.\d+-\d+\./, 'v1.1-2.'), cursor.replace(/^(v1\.\d+-\d+\.)\d+/, '$1' + (Date.now() - 8 * 86400_000))]) {
+        expect((await sync(bad)).full).toBe(true);
+      }
+      expect((await sync(cursor)).full).toBe(false);
+      const asCashier = await sync(undefined, C);
+      const row = asCashier.products.find((p: any) => p.id === sk.child);
+      expect(row.costPrice).toBeUndefined();
+      expect(row.stock).toBe(10);
+      expect(JSON.stringify(asCashier.products)).not.toMatch(/"(costPrice|unitCost|lastCost)"/);
+    });
+
+    it('GET /product-images/:id serves the photo without login, cacheable; ?size=thumb the small copy', async () => {
+      const img = client.get(sk.x).images[0];
+      const r = await http.get(img.url).buffer(true).parse((res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); }).expect(200);
+      expect(r.headers['content-type']).toBe('image/png');
+      expect(r.headers['cache-control']).toContain('immutable');
+      expect(Buffer.compare(r.body, Buffer.from(PNG, 'base64'))).toBe(0);
+      await http.get(img.url).set('If-None-Match', r.headers.etag).expect(304);
+      const t = await http.get(img.thumbUrl).buffer(true).parse((res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); }).expect(200);
+      expect(Buffer.compare(t.body, Buffer.from(THUMB, 'base64'))).toBe(0);
+      await http.get('/api/product-images/does-not-exist').expect(404);
+      // only image data URLs are served
+      const html = (await api('post', '/products', A, { name: 'SYNC html', sku: 'SYNC-HTML', basePrice: 1, images: [{ dataUrl: 'data:text/html;base64,PGgxPng8L2gxPg==' }] }).expect(201)).body;
+      await http.get(`/api/product-images/${html.images[0].id}`).expect(404);
+    });
+
+    it('saving the photo list by id keeps the photo data; new photos are added; an old-style list replaces', async () => {
+      const before = (await api('get', `/products/${sk.x}`, A).expect(200)).body.images;
+      expect(before).toHaveLength(1);
+      await api('patch', `/products/${sk.x}`, A, {
+        images: [{ id: before[0].id, name: 'a.png', isCover: false }, { dataUrl: `data:image/png;base64,${THUMB}`, name: 'b.png', isCover: true }],
+      }).expect(200);
+      const after = (await api('get', `/products/${sk.x}`, A).expect(200)).body.images;
+      expect(after.map((i: any) => [i.name, i.isCover, i.sortOrder])).toEqual([['a.png', false, 0], ['b.png', true, 1]]);
+      expect(after[0].id).toBe(before[0].id);
+      expect(after[0].dataUrl).toBe(`data:image/png;base64,${PNG}`);
+      expect(after[0].thumbDataUrl).toBe(`data:image/png;base64,${THUMB}`);
+      expect(ids(await pull())).toContain(sk.x);
+      // an unknown id (another product's photo) is not taken over
+      const other = (await api('post', '/products', A, { name: 'SYNC other', sku: 'SYNC-OTHER', basePrice: 1, images: [{ dataUrl: `data:image/png;base64,${PNG}` }] }).expect(201)).body;
+      await api('patch', `/products/${sk.x}`, A, { images: [{ id: other.images[0].id }, { id: after[1].id }] }).expect(200);
+      expect((await api('get', `/products/${sk.x}`, A)).body.images.map((i: any) => i.id)).toEqual([after[1].id]);
+      expect((await api('get', `/products/${other.id}`, A)).body.images).toHaveLength(1);
+      // clients that send every photo as data (older frontends) still replace the list
+      await api('patch', `/products/${sk.x}`, A, { images: [{ dataUrl: `data:image/png;base64,${PNG}`, name: 'c.png' }] }).expect(200);
+      const c = (await api('get', `/products/${sk.x}`, A)).body.images;
+      expect(c.map((i: any) => i.name)).toEqual(['c.png']);
+      expect(c[0].thumbDataUrl).toBeNull();
+      expect(client.size).toBeGreaterThan(0);
+    });
+
+    it('/inventory/stock: stock per product without the batch rows', async () => {
+      const rows = (await api('get', '/inventory/stock', A).expect(200)).body;
+      const child = rows.find((p: any) => p.id === sk.child);
+      expect(child.computedStock).toBe(10);
+      expect(child.stockBatches).toBeUndefined();
+      expect(rows.find((p: any) => p.id === sk.bundle).computedStock).toBe(0); // own batches only (as before)
+    });
+  });
 });

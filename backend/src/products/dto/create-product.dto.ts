@@ -36,9 +36,19 @@ export class ProductPackagingUnitDto {
 }
 
 export class ProductImageDto {
+  /** id of one of the product's existing photos (kept as is; the list sends URLs, not the data) */
+  @IsString()
+  @IsOptional()
+  id?: string;
+
   @IsString()
   @IsOptional()
   dataUrl?: string;
+
+  /** small JPEG made by the browser for lists (optional) */
+  @IsString()
+  @IsOptional()
+  thumbDataUrl?: string;
 
   @IsString()
   @IsOptional()

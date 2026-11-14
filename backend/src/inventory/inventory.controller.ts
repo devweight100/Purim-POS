@@ -1,6 +1,5 @@
 import { Controller, Get, Post, Body, Query, UseGuards, Request } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
-import { addQty } from '../common/qty';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
@@ -16,14 +15,18 @@ export class InventoryController {
     private prisma: PrismaService
   ) {}
 
+  /**
+   * Every product with its remaining stock (sum of its own batches, summed in SQL). The batch rows themselves are
+   * not sent (unbounded: every receipt adds one); GET /products/:id has them.
+   */
   private async stockList() {
-    const products = await this.prisma.product.findMany({
-      include: { stockBatches: true }
-    });
-    return products.map(p => ({
-      ...p,
-      computedStock: addQty(...p.stockBatches.map((b) => b.quantityRemaining))
-    }));
+    const [products, sums] = await Promise.all([
+      this.prisma.product.findMany(),
+      this.prisma.$queryRaw<{ product_id: string; qty: string | null }[]>`
+        SELECT product_id, SUM(quantity_remaining)::text AS qty FROM stock_batches GROUP BY product_id`,
+    ]);
+    const stockOf = new Map(sums.map((r) => [r.product_id, Number(r.qty || 0)]));
+    return products.map((p) => ({ ...p, computedStock: stockOf.get(p.id) || 0 }));
   }
 
   // costPrice / batch unitCost only for ADMIN or VIEW_COST

@@ -295,6 +295,8 @@ model ProductImage {
   id        String   @id @default(uuid())
   productId String   @map("product_id")
   dataUrl    String   @map("data_url") @db.Text
+  /// small JPEG made by the browser when the photo is saved (null for older rows: the full image is served)
+  thumbDataUrl String? @map("thumb_data_url") @db.Text
   name      String?
   isCover   Boolean  @default(false) @map("is_cover")
   sortOrder Int      @default(0) @map("sort_order")
@@ -305,6 +307,21 @@ model ProductImage {
 
   @@index([productId])
   @@map("product_images")
+}
+
+/// Append-only change log of the POS catalogue, filled by database triggers (migration
+/// 20261124000000_product_sync) on products, stock batches, barcodes, packaging units, images, wholesale
+/// prices, product suppliers, bundle items, categories and suppliers. GET /products/sync returns the
+/// products whose rows were committed after the client's snapshot (xid not visible in it).
+model ProductChange {
+  id        BigInt                 @id @default(autoincrement())
+  productId String                 @map("product_id")
+  xid       Unsupported("xid8")    @default(dbgenerated("pg_current_xact_id()"))
+  changedAt DateTime               @default(now()) @map("changed_at")
+
+  @@index([xid])
+  @@index([changedAt])
+  @@map("product_changes")
 }
 
 model ProductWholesalePrice {
