@@ -245,11 +245,14 @@ export async function fetchPayableBillsPage(query: PayableBillsQuery = {}): Prom
   return res;
 }
 
+/** Page size of the slim open-bill list (server maximum for slim rows). */
+export const OPEN_BILLS_PAGE = 5000;
+
 /** Every bill with something payable now (all pages, without PO lines): the settle-several-bills dialog. */
 export async function fetchOpenPayableBills(supplierId?: string): Promise<SupplierPayableBill[]> {
   const out: SupplierPayableBill[] = [];
   for (let page = 1; page <= 1000; page++) {
-    const res = await fetchPayableBillsPage({ page, limit: 500, open: true, slim: true, supplierId });
+    const res = await fetchPayableBillsPage({ page, limit: OPEN_BILLS_PAGE, open: true, slim: true, supplierId });
     out.push(...res.data);
     if (page >= res.meta.totalPages || res.data.length === 0) break;
   }

@@ -1033,6 +1033,8 @@ d('store flow (e2e)', () => {
       const open = await allBills('&open=1');
       expect(open.rows.map((b) => b.poId)).toEqual(bills.filter((b: any) => b.remainingPayable > 0).map((b: any) => b.poId));
       await api('get', '/payables/bills?paymentStatus=bad', A).expect(400);
+      expect((await api('get', '/payables/bills?limit=5000&slim=1', A).expect(200)).body.meta.limit).toBe(5000);
+      expect((await api('get', '/payables/bills?limit=5000', A).expect(200)).body.meta.limit).toBe(500);
     });
 
     it('credit notes with credit left (?available=1) and the newest PO supplier per product', async () => {

@@ -24,14 +24,14 @@ describe('payables bills (server)', () => {
   it('the settle dialog gets every open bill (all pages, slim)', async () => {
     const bill = (n: number) => ({ poId: `po${n}`, remainingPayable: n });
     h.apiFetch
-      .mockResolvedValueOnce({ data: Array.from({ length: 500 }, (_, i) => bill(i)), meta: { total: 501, page: 1, limit: 500, totalPages: 2 }, summary: emptySummary })
-      .mockResolvedValueOnce({ data: [bill(500)], meta: { total: 501, page: 2, limit: 500, totalPages: 2 }, summary: emptySummary });
+      .mockResolvedValueOnce({ data: Array.from({ length: 5000 }, (_, i) => bill(i)), meta: { total: 5001, page: 1, limit: 5000, totalPages: 2 }, summary: emptySummary })
+      .mockResolvedValueOnce({ data: [bill(5000)], meta: { total: 5001, page: 2, limit: 5000, totalPages: 2 }, summary: emptySummary });
     const { fetchOpenPayableBills } = await import('@/lib/payable-service');
     const rows = await fetchOpenPayableBills();
-    expect(rows).toHaveLength(501);
+    expect(rows).toHaveLength(5001);
     expect(h.apiFetch.mock.calls.map((c) => query(c[0]))).toEqual([
-      { page: '1', limit: '500', open: '1', slim: '1' },
-      { page: '2', limit: '500', open: '1', slim: '1' },
+      { page: '1', limit: '5000', open: '1', slim: '1' },
+      { page: '2', limit: '5000', open: '1', slim: '1' },
     ]);
   });
 

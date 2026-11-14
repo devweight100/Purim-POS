@@ -118,23 +118,25 @@ export class PayablesService {
    * GET /payables/bills: the payables page's bills, computed here over every payable PO and every
    * active voucher (see payable-bills.ts). Filters: supplierId, paymentStatus (computed status),
    * search (PO number / supplier name / supplier invoice no), open=1 (something payable now),
-   * slim=1 (rows without the PO lines).
+   * slim=1 (rows without the PO lines; limit up to 5,000 instead of 500).
    * `summary` is over ALL bills (the page's cards ignore the filters) plus per-supplier open bills and
    * available credit notes.
    */
   async getPayableBills(query: { page?: unknown; limit?: unknown; supplierId?: unknown; paymentStatus?: unknown; search?: unknown; open?: unknown; slim?: unknown } = {}) {
-    const page = clampInt(query.page, 1, 1, 1_000_000);
-    const limit = clampInt(query.limit, 50, 1, 500);
     for (const key of ['supplierId', 'paymentStatus', 'search', 'open', 'slim'] as const) {
       if (query[key] !== undefined && typeof query[key] !== 'string') throw new BadRequestException('ตัวกรองบิลเจ้าหนี้ไม่ถูกต้อง');
     }
+    // slim rows (no PO lines) are small: the settle dialog takes every open bill in one request (5,000 per page)
+    const slimQuery = query.slim === '1' || query.slim === 'true';
+    const page = clampInt(query.page, 1, 1, 1_000_000);
+    const limit = clampInt(query.limit, 50, 1, slimQuery ? 5000 : 500);
     const supplierId = query.supplierId && query.supplierId !== 'ALL' ? String(query.supplierId) : '';
     const paymentStatus = query.paymentStatus && query.paymentStatus !== 'ALL' ? String(query.paymentStatus) : '';
     if (paymentStatus && !['UNPAID', 'PARTIALLY_PAID', 'PAID'].includes(paymentStatus)) throw new BadRequestException('สถานะการชำระที่ค้นหาไม่ถูกต้อง');
     const search = String(query.search || '').trim();
     const openOnly = query.open === '1' || query.open === 'true';
     // slim=1: no PO lines in the rows (settle dialog: it only needs the figures)
-    const slim = query.slim === '1' || query.slim === 'true';
+    const slim = slimQuery;
 
     const statuses = PAYABLE_PO_STATUSES as string[];
     const [poRows, payRows, creditRows] = await Promise.all([
