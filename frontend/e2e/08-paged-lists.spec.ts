@@ -52,4 +52,7 @@ test('products, customers and orders pages ask the server for one page at a time
   expect(requests.some((r) => r.startsWith('/api/orders?') && r.includes('counts=1') && r.includes('page=1'))).toBe(true);
   // the orders page no longer downloads the product list
   expect(requests.filter((r) => r === '/api/products').length).toBe(0);
+  // claimed badges: asked for the bills of the page (when it has bills), never the newest-500 claims list
+  if (orders.meta.total > 0) await expect.poll(() => requests.some((r) => r.startsWith('/api/claims/claimed-orders?orderIds='))).toBe(true);
+  expect(requests.some((r) => r.startsWith('/api/claims?'))).toBe(false);
 });
