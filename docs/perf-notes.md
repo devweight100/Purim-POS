@@ -1,6 +1,6 @@
 # Perf round — progress notes (delete a task's section when it is fully done)
 
-## Task 1: reports computed in the database — IN PROGRESS
+## Task 1: reports computed in the database — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 
 Load DB: `perf_load` (prepare-database.js + scratchpad/perf/seed-load.sh; admin password changed to `Perf12345x`, PIN 8642).
 Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time / bytes / peak RSS).
@@ -41,7 +41,7 @@ Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time 
 4. [x] e2e parity test adapted to paging (fetch all pages) + new tricky-dataset test (old JS == new SQL).
 5. [x] Frontend ReportsView: server paging/search for bestsellers, inventory, customers; export fetches all pages.
 6. [x] EXPLAIN ANALYZE -> indexes (migration 20261123000000_report_indexes + @@index).
-7. [~] After-measurements (done); full verification and PROJECT_STATUS entry next.
+7. [x] After-measurements, full verification (backend jest 115, e2e 36/36 x4 fresh DBs; frontend tsc, eslint 0 errors, vitest 154, next build; Playwright 13/13), PROJECT_STATUS entry.
 
 ### Decisions / findings
 - Legacy quirks kept: PENDING orders count as sales in /reports/tabs (only VOIDED/REFUNDED excluded); orders without payments
