@@ -47,6 +47,8 @@ Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time 
 - Legacy quirks kept: PENDING orders count as sales in /reports/tabs (only VOIDED/REFUNDED excluded); orders without payments
   count as CASH; customers' averageTicket is unrounded for 1 bill and Math.round for more; debt-by-name fallback.
 - Removed from the response (never read by the page, unbounded): `payments.shifts.list`, `customers.unpaidDebtsList`.
+- Unrounded float totals (inventory totalCostVal etc., debt aging sums) may differ in the last bits (~1e-11):
+  the old value depended on the heap order of the rows too; e2e compares them to 1e-6 (was flaky 1 in 4 runs).
 - Tie order of equal rows in sorted lists was the heap order of the old findMany (not reproducible) -> now deterministic.
 
 ### Done

@@ -285,6 +285,9 @@ d('store flow (e2e)', () => {
       const products = legacy.legacyFormatProducts(rawProducts);
       const rawOrders = analytics.orders;
       const json = (v: any) => JSON.parse(JSON.stringify(v));
+      // totals the old code left unrounded (sum of floats): their last bits depended on the row order of
+      // the database (heap order), so they are compared to 1e-6
+      const fuzz = (v: any): any => (typeof v === 'number' ? Math.round(v * 1e6) / 1e6 : Array.isArray(v) ? v.map(fuzz) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fuzz(x)])) : v);
       const byId = (rows: any[]) => [...rows].sort((a, b) => String(a.id).localeCompare(String(b.id)));
       const ranked = (label: string, got: any[], exp: any[], key: string) => {
         expect({ label, values: got.map((r) => r[key]) }).toEqual({ label, values: exp.map((r) => r[key]) });
@@ -368,8 +371,8 @@ d('store flow (e2e)', () => {
 
         // inventory: totals as before; items / deadstock / low stock come as paged lists
         const ei = expected.inventory;
-        expect({ label, inv: without(got.inventory, 'items', 'list', 'listCounts', 'total', 'page', 'limit') })
-          .toEqual({ label, inv: without(ei, 'items', 'deadstockList', 'lowStockList') });
+        expect({ label, inv: fuzz(without(got.inventory, 'items', 'list', 'listCounts', 'total', 'page', 'limit')) })
+          .toEqual({ label, inv: fuzz(without(ei, 'items', 'deadstockList', 'lowStockList')) });
         expect(got.inventory.listCounts).toEqual({ all: ei.items.length, deadstock: ei.deadstockList.length, lowstock: ei.lowStockList.length });
         ranked(`${label} inventory all`, (await pages(q, 'inventory', 'items')).rows, ei.items, 'totalCostValue');
         ranked(`${label} inventory deadstock`, (await pages(q, 'inventory', 'items', { list: 'deadstock' })).rows, ei.deadstockList, 'totalCostValue');
@@ -378,7 +381,7 @@ d('store flow (e2e)', () => {
         // customers: aging and totals as before; the unpaid-bill list is no longer sent
         const ec = expected.customers;
         const gc = got.customers;
-        expect({ label, aging: [gc.totalOutstandingDebt, gc.unpaidBillsCount, gc.agingBuckets] }).toEqual({ label, aging: [ec.totalOutstandingDebt, ec.unpaidBillsCount, ec.agingBuckets] });
+        expect({ label, aging: fuzz([gc.totalOutstandingDebt, gc.unpaidBillsCount, gc.agingBuckets]) }).toEqual({ label, aging: fuzz([ec.totalOutstandingDebt, ec.unpaidBillsCount, ec.agingBuckets]) });
         expect(gc.customerCount).toBe(ec.allCustomers.length);
         expect(gc.totalSpentAll).toBe(sum(ec.allCustomers, 'totalSpent'));
         top(`${label} topCustomers`, gc.topCustomers, ec.topCustomers, 'totalSpent', ec.allCustomers);
