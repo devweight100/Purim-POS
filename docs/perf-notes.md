@@ -79,3 +79,52 @@ Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time 
   log rows, all time 22 -> 10 ms) and customer_claims(created_at). Migration 20261123000000_report_indexes
   (fresh migrate deploy + empty diff checked).
 - Purchases tab stays in Node (PO rows bounded by the row guard; claims list = getAllClaims(1, 5000) as before).
+
+## Task 2: POS catalogue, delta sync, images by URL, lighter stock list, scanner lookup, gzip — IN PROGRESS
+
+Branch ccr-8f8b0741-si1a0o (base f9078b0). Load DB perf_load (no images / categories / suppliers in it; see
+"perf_img" below for a copy with images). Endpoint list for bench.sh: scratchpad/perf/t2-endpoints.txt
+(`ENDPOINTS="$(cat .../t2-endpoints.txt)" bash .../bench.sh perf_load`).
+
+### Before (f9078b0, perf_load)
+| request | time | size | note |
+|---|---|---|---|
+| GET /products | 1.8-2.0 s | 13.5 MB | peak RSS 0.6 -> 0.88 GB after 2 calls; every row carries all stock batches (incl. empty ones) |
+| GET /inventory/stock | 1.1 s | 10.7 MB | no consumer in frontend / desktop / tests |
+| GET /inventory/low-stock | 1.0 s | 106 kB | loads every product + batch |
+| GET /products/lookup (empty q) | 0.31 s | 6.9 kB | groupBy all batches + all products |
+| GET /products/lookup?q=<barcode or sku> | 0.09 s | 0.5 kB | |
+| GET /products/barcode/:code | 0.015 s | 1.3 kB | unique index already |
+
+### Design (decided)
+- Light catalogue row (GET /products and the sync endpoint share one builder): product scalars, barcodes {barcode,label},
+  packagingUnits, wholesalePrices, category {id,name,color,icon}, images META {id,name,isCover,sortOrder,url,thumbUrl}
+  (no base64), supplierEntries (+ slim `suppliers`), bundleItems {childProductId,quantity,childProduct{id,name,sku,basePrice,priceLevel1}},
+  stock/computedStock from one SQL sum. NO stockBatches arrays. GET /products/:id stays full (form / tests).
+- Images: GET /api/product-images/:id[?size=thumb] public (img tags cannot send the bearer token; ids are uuids,
+  product photos are not secret), decoded from data_url, Cache-Control immutable (image rows are never modified:
+  update keeps rows by id, new photos = new rows). Thumbnail: product_images.thumb_data_url made by the browser on
+  save (compressImage 240 px); old rows without one serve the full image.
+- Delta sync: append-only table product_changes(product_id, xid xid8 default pg_current_xact_id()) filled by triggers
+  on products, stock_batches, barcodes, packaging units, images, wholesale prices, product_suppliers, bundle items,
+  categories (update) and suppliers (update). Cursor = pg_current_snapshot() of a REPEATABLE READ read; changes =
+  rows whose xid is not visible in the cursor snapshot (exact, no clock / in-flight-transaction races) + bundles whose
+  children changed; missing ids = deleted. Cursor older than 7 days / from the future / invalid -> full reload.
+  Log pruned (> 14 days) at most hourly. Writes are serialized by the business advisory lock and inserts take no row
+  locks, so the triggers add no deadlock risk.
+- GET /products/sync?since=<cursor> -> {cursor, full, products, deleted}; client keeps cursor per user (cost visibility).
+- Frontend: product-store keeps raw rows + cursor; delta merged by a pure function (vitest); no state change when
+  nothing changed; offline IndexedDB gets put/delete for the delta (full replace on full load).
+- /inventory/stock + low-stock: product scalars + computedStock from SQL sums, no batch arrays.
+- gzip: `compression` middleware, SSE (text/event-stream) excluded.
+
+### Plan
+1. [ ] Notes + baseline (this section).
+2. [ ] Backend: migration (thumb column, product_changes + triggers), light row builder, GET /products light, sync endpoint,
+       image endpoint, update keeps images by id, inventory stock trimmed, lookup speed, compression. Unit + e2e tests.
+3. [ ] Frontend: product store delta + offline cache delta, image URLs in POS / products page / PO preview, form keeps
+       existing images by id + thumbnail on save. vitest.
+4. [ ] Measurements after, full verification, PROJECT_STATUS entry.
+
+### Done
+- Step 1: baseline measured (table above).
