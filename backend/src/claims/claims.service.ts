@@ -204,7 +204,7 @@ export class ClaimsService {
             entityId: { in: claimIds },
             action: { in: ['CLAIM_META', 'EXCHANGE'] },
           },
-          orderBy: { createdAt: 'asc' },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], // id: same order as claim_facts
         })
       : [];
 
@@ -246,7 +246,7 @@ export class ClaimsService {
       }),
       this.prisma.auditLog.findMany({
         where: { entity: 'CustomerClaim', entityId: { in: chunk }, action: { in: ['CLAIM_META', 'EXCHANGE'] } },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], // id: same order as claim_facts
       }),
     ])));
     const claimsById = new Map<string, any>();
@@ -342,7 +342,7 @@ export class ClaimsService {
         entityId: claim.id,
         action: { in: ['CLAIM_META', 'EXCHANGE'] },
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], // id: same order as claim_facts
     });
 
     return this.mergeClaimWithLogs(claim, logs);
@@ -1116,7 +1116,7 @@ export class ClaimsService {
           entityId: claim.id,
           action: { in: ['CLAIM_META', 'EXCHANGE'] },
         },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], // id: same order as claim_facts
       });
 
       return this.mergeClaimWithLogs(updated, logs);

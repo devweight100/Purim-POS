@@ -456,6 +456,39 @@ model PurchaseOrder {
   @@map("purchase_orders")
 }
 
+/// The claim as the claims screens see it (claim row merged with its CLAIM_META / EXCHANGE logs, mapped like the
+/// frontend's mapServerClaim), kept by the row triggers of migration 20261129000000_claim_records; read through the
+/// SQL view claim_records (adds the product / customer / bill fallbacks). Never written by the application.
+model ClaimFact {
+  claimId             String        @id @map("claim_id")
+  claimKey            String        @map("claim_key")
+  claimDate           DateTime?     @map("claim_date") @db.Timestamptz(6)
+  resType             String        @map("res_type")
+  status              String
+  hasReturnDoc        Boolean       @map("has_return_doc")
+  returnDocId         String?       @map("return_doc_id")
+  quantity            Float
+  conversionFactor    Float         @map("conversion_factor")
+  baseQuantity        Float         @map("base_quantity")
+  unitPrice           Float?        @map("unit_price")
+  claimValue          Float?        @map("claim_value")
+  refundAmount        Json?         @map("refund_amount")
+  orderNumber         String?       @map("order_number")
+  customerName        String?       @map("customer_name")
+  customerPhone       String?       @map("customer_phone")
+  productName         String?       @map("product_name")
+  sku                 String?
+  defectReason        String        @map("defect_reason")
+  unitName            Json?         @map("unit_name")
+  replacementUnitName String?       @map("replacement_unit_name")
+  supplierId          String?       @map("supplier_id")
+  supplierName        String?       @map("supplier_name")
+  costPrice           Float?        @map("cost_price")
+  claim               CustomerClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@map("claim_facts")
+}
+
 /// Per-PO sums of its lines for GET /payables/bills (count, value received at gross per unit), kept by the
 /// statement triggers of migration 20261128000000_po_item_totals on purchase_order_items (incremental, exact numeric).
 model PurchaseOrderItemTotal {
@@ -837,6 +870,7 @@ model CustomerClaim {
   product            Product     @relation(fields: [productId], references: [id])
   supplier           Supplier?          @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   returnNote         SupplierReturnNote? @relation(fields: [returnNoteId], references: [id], onDelete: SetNull)
+  facts              ClaimFact?
 
   @@index([status])
   @@index([productId])
