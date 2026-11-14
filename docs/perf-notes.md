@@ -1,0 +1,38 @@
+# Perf round — progress notes (delete a task's section when it is fully done)
+
+## Task 1: reports computed in the database — IN PROGRESS
+
+Load DB: `perf_load` (prepare-database.js + scratchpad/perf/seed-load.sh; admin password changed to `Perf12345x`, PIN 8642).
+Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time / bytes / peak RSS).
+
+### Before (c60c929, load DB)
+| request | time | size | note |
+|---|---|---|---|
+| tabs today sales / bestsellers / inventory / customers | 2.1 / 2.0 / 2.4 / 0.55 s | 0.6 kB / 449 kB / 4.4 MB / 1.7 MB | |
+| tabs 7days sales / bestsellers / payments / customers | 3.6 / 3.9 / 3.1 / 3.4 s | bestsellers 2.9 MB, customers 2.3 MB | RSS 2.0 GB |
+| tabs thisMonth sales / bestsellers / payments / customers | 11.9 / 8.1 / 7.2 / 7.3 s | | peak RSS 4.8 GB |
+| tabs thisYear or all (any order tab) | backend OOM crash | | "JavaScript heap out of memory" |
+| tabs purchases (any range) | 0.65-0.73 s | | loads all POs |
+| dashboard today / month / all | 0.41 / 0.51 / 0.63 s | | already SQL (inventory snapshot in Node) |
+| sales-summary all / month | 0.08 / 0.04 s | | already SQL |
+| P&L month / all | 0.05 / 0.14 s | | sales part SQL; claims/ledger rows in Node |
+
+### Plan
+1. [ ] `backend/src/reports/report-sql.ts`: SQL equivalents of report-tabs.ts (sales by Bangkok day, VAT, best sellers,
+       payments + shifts stats, customers, inventory, purchases, claim accounting), row guard (400 Thai message).
+2. [ ] `reports.service.ts` getReportTabs uses them; paging params (page, limit, q, sort, list); dashboard inventory snapshot in SQL;
+       /reports/analytics guarded by the row limit.
+3. [ ] P&L (planning.service) claims / write-off / ledger sums in SQL.
+4. [ ] e2e parity test adapted to paging (fetch all pages) + new tricky-dataset test (old JS == new SQL).
+5. [ ] Frontend ReportsView: server paging/search for bestsellers, inventory, customers; export fetches all pages.
+6. [ ] EXPLAIN ANALYZE -> indexes (migration 20261123000000_report_indexes + @@index).
+7. [ ] After-measurements, full verification, PROJECT_STATUS entry.
+
+### Decisions / findings
+- Legacy quirks kept: PENDING orders count as sales in /reports/tabs (only VOIDED/REFUNDED excluded); orders without payments
+  count as CASH; customers' averageTicket is unrounded for 1 bill and Math.round for more; debt-by-name fallback.
+- Removed from the response (never read by the page, unbounded): `payments.shifts.list`, `customers.unpaidDebtsList`.
+- Tie order of equal rows in sorted lists was the heap order of the old findMany (not reproducible) -> now deterministic.
+
+### Done
+- (nothing yet)
