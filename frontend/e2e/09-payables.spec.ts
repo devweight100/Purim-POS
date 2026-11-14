@@ -12,7 +12,7 @@ interface BillsPage {
  * Payables are computed and paged by the server (GET /payables/bills): 52 bills of one supplier = 2 pages, the
  * selection survives paging, the settle dialog pays the selected bills with a discount (the discount lowers what is
  * paid, the bills are settled), the voucher shows in the history. The supplier-returns dialog loads the chosen
- * supplier's POs from the server; the page asks for every returnable claim (GET /claims/returnable).
+ * supplier's POs from the server; the page asks for the returnable claims per supplier (GET /claims/returnable/summary).
  */
 test('payables: server pages, selection across pages, settle several bills with a discount', async ({ page }) => {
   const token = await apiLogin(ADMIN);
@@ -95,7 +95,9 @@ test('payables: server pages, selection across pages, settle several bills with 
   const oldestOpen = all.data[all.data.length - 3].poNumber; // still unpaid after the voucher above
   await expect(page.getByRole('dialog').getByText(oldestOpen)).toBeVisible();
   expect(requests.some((r) => r.includes('/api/purchase-orders?limit=1000'))).toBe(false);
-  // pending supplier claims: every returnable claim from the server, not the newest 500 claims
-  expect(requests).toContain('/api/claims/returnable');
-  expect(requests.some((r) => r.startsWith('/api/claims?'))).toBe(false);
+  // pending supplier claims: grouped by supplier on the server over every claim; the dialog asks for the
+  // chosen supplier's claim groups (no claims list downloaded to the browser)
+  expect(requests).toContain('/api/claims/returnable/summary');
+  await expect.poll(() => requests.some((r) => r.startsWith(`/api/claims/returnable/groups?supplierId=${sup.id}&scope=supplier`))).toBe(true);
+  expect(requests.some((r) => r.startsWith('/api/claims?') || r === '/api/claims/returnable')).toBe(false);
 });
