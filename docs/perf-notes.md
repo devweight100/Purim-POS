@@ -17,6 +17,21 @@ Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time 
 | sales-summary all / month | 0.08 / 0.04 s | | already SQL |
 | P&L month / all | 0.05 / 0.14 s | | sales part SQL; claims/ledger rows in Node |
 
+### After (step 6 build, same load DB, same bench.sh requests; lists = one page of 50 rows)
+| request | before time / size | after time / size |
+|---|---|---|
+| tabs today sales / bestsellers / inventory / customers | 2.1 / 2.0 / 2.4 / 0.55 s; 0.6 kB / 449 kB / 4.4 MB / 1.7 MB | 0.04 / 0.06 / 0.20 / 0.05 s; 0.6 / 27 / 22 / 15 kB |
+| tabs 7days sales / bestsellers / payments / customers | 3.6 / 3.9 / 3.1 / 3.4 s (bestsellers 2.9 MB) | 0.14 / 0.21 / 0.03 / 0.05 s (27 kB) |
+| tabs thisMonth sales / bestsellers / payments / customers | 11.9 / 8.1 / 7.2 / 7.3 s | 0.10 / 0.22 / 0.04 / 0.07 s |
+| tabs thisYear (all tabs) | OOM crash | 1.1 s, 76 kB |
+| tabs all sales / bestsellers / inventory / payments / customers | OOM crash (inventory 2.5 s, 4.4 MB) | 0.35 / 0.33 / 0.22 / 0.07 / 0.09 s |
+| tabs all (all tabs) | OOM crash | 1.2 s, 76 kB |
+| tabs purchases (any range) | 0.63-0.73 s | 0.77-0.85 s (unchanged code, still in Node) |
+| dashboard today / month / all | 0.41 / 0.51 / 0.63 s | 0.14 / 0.30 / 0.55 s |
+| P&L month / all | 0.05 / 0.14 s | 0.05 / 0.13 s |
+| /reports/analytics (all) | loads up to 50k bills | 400 above 5,000 bills (legacy download, test oracle only) |
+| peak RSS of the run | 4.8 GB, then heap OOM | 0.71 GB (order tabs alone stay at ~0.14 GB; the purchases tab adds ~0.1-0.14 GB per call until GC) |
+
 ### Plan
 1. [x] `backend/src/reports/report-sql.ts`: SQL equivalents of report-tabs.ts (sales by Bangkok day, VAT, best sellers,
        payments + shifts stats, customers, inventory, purchases, claim accounting), row guard (400 Thai message).
@@ -26,7 +41,7 @@ Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time 
 4. [x] e2e parity test adapted to paging (fetch all pages) + new tricky-dataset test (old JS == new SQL).
 5. [x] Frontend ReportsView: server paging/search for bestsellers, inventory, customers; export fetches all pages.
 6. [x] EXPLAIN ANALYZE -> indexes (migration 20261123000000_report_indexes + @@index).
-7. [ ] After-measurements, full verification, PROJECT_STATUS entry.
+7. [~] After-measurements (done); full verification and PROJECT_STATUS entry next.
 
 ### Decisions / findings
 - Legacy quirks kept: PENDING orders count as sales in /reports/tabs (only VOIDED/REFUNDED excluded); orders without payments
