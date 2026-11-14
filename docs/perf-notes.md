@@ -1,5 +1,18 @@
 # Perf round — progress notes (delete a task's section when it is fully done)
 
+## Task 5: complete claims queries (orders badge, supplier-return eligible claims) + /payables/bills in SQL — IN PROGRESS
+
+Branch ccr-8f8b0741-si1a0o (base e1c61aa). Load DB perf_load on :5433.
+
+### Plan
+1. [ ] Find every consumer of fetchAllClaimRecords / /claims?limit=500; record which change.
+2. [ ] Claims: filtered server queries (orders page by orderIds / bill numbers; supplier returns eligible claims) + index
+       on the audit-log metadata bill number if needed; parity e2e (under cap) + above-cap test.
+3. [ ] /payables/bills computed in SQL; parity e2e still green; bench at ~50k POs before/after.
+4. [ ] Full verification, before/after, PROJECT_STATUS, drop perf_* DBs.
+
+### Done
+
 ## Task 4: follow-ups (payables on the server, supplier-return PO list, debt queries, customer sync) — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 
 Branch ccr-8f8b0741-si1a0o (base b67c198). perf_load survived the container restart (the cluster lives in /tmp/pgdata;
