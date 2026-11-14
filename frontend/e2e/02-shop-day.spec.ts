@@ -123,6 +123,35 @@ test('credit sale to a customer', async () => {
   expect(JSON.stringify(debts)).toContain(must(state.creditOrder).id);
 });
 
+test('debt picker: the customer\'s debt (customer list delta) and the bills it owes, asked from the server', async () => {
+  const requests: string[] = [];
+  const onReq = (r: { url: () => string }) => {
+    const u = new URL(r.url());
+    if (u.pathname.startsWith('/api/')) requests.push(decodeURIComponent(u.pathname + u.search));
+  };
+  page.on('request', onReq);
+  await page.getByRole('button', { name: 'เลือกลูกค้า' }).click();
+  const pick = page.getByRole('dialog').filter({ hasText: 'เลือกลูกค้าสมาชิก' });
+  await pick.getByPlaceholder('พิมพ์ค้นหาชื่อ, เบอร์โทร, เลขผู้เสียภาษี Tax ID...').fill('ประหยัด');
+  await pick.getByText('ประหยัด อดออม').first().click();
+  await expect(pick).toBeHidden();
+  // the customer list is refreshed by a delta (the new debt arrives with it), not the whole list
+  expect(requests.some((r) => r.startsWith('/api/customers/sync'))).toBe(true);
+  expect(requests.some((r) => r === '/api/customers' || r.startsWith('/api/customers?search'))).toBe(false);
+  // the debt button lives in the list view of the POS
+  const view = page.locator('select').filter({ hasText: 'Touch Screen' });
+  await view.selectOption('list_view');
+  await page.getByRole('button', { name: /รับชำระหนี้/ }).first().click();
+  const debtDialog = page.getByRole('dialog').filter({ hasText: 'รับชำระหนี้ / บิลเงินเชื่อหน้าร้าน (POS)' });
+  await expect(debtDialog).toContainText(must(state.creditOrder).orderNumber);
+  expect(requests.some((r) => r.startsWith('/api/debts?') && r.includes('statusGroup=owing') && r.includes('customerId='))).toBe(true);
+  expect(requests.some((r) => r.startsWith('/api/debts?limit=100&page='))).toBe(false);
+  page.off('request', onReq);
+  await page.keyboard.press('Escape');
+  await expect(debtDialog).toBeHidden();
+  await view.selectOption('touch_screen');
+});
+
 test('partial return by the manager', async ({ browser }) => {
   const order = must(state.cashOrder);
   const ctx = await browser.newContext();

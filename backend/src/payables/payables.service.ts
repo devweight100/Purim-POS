@@ -118,7 +118,7 @@ export class PayablesService {
    * GET /payables/bills: the payables page's bills, computed here over every payable PO and every
    * active voucher (see payable-bills.ts). Filters: supplierId, paymentStatus (computed status),
    * search (PO number / supplier name / supplier invoice no), open=1 (something payable now),
-   * slim=1 (rows without the PO lines; limit up to 5,000 instead of 500).
+   * slim=1 (rows without the PO lines and the payment list; limit up to 5,000 instead of 500).
    * `summary` is over ALL bills (the page's cards ignore the filters) plus per-supplier open bills and
    * available credit notes.
    */
@@ -135,13 +135,18 @@ export class PayablesService {
     if (paymentStatus && !['UNPAID', 'PARTIALLY_PAID', 'PAID'].includes(paymentStatus)) throw new BadRequestException('สถานะการชำระที่ค้นหาไม่ถูกต้อง');
     const search = String(query.search || '').trim();
     const openOnly = query.open === '1' || query.open === 'true';
-    // slim=1: no PO lines in the rows (settle dialog: it only needs the figures)
     const slim = slimQuery;
 
     const statuses = PAYABLE_PO_STATUSES as string[];
     const [poRows, payRows, creditRows] = await Promise.all([
-      this.prisma.$queryRaw<{ id: string; po_number: string; supplier_invoice_no: string | null; supplier_id: string; supplier_name: string | null; total: string; paid: string; remaining: string; payment_status: string; items: [string, string, string, string][] }[]>`
+      this.prisma.$queryRaw<{
+        id: string; po_number: string; supplier_invoice_no: string | null; supplier_id: string; supplier_name: string | null;
+        supplier_contact: string | null; supplier_phone: string | null; supplier_address: string | null; bill_date: Date; status: string;
+        total: string; paid: string; remaining: string; payment_status: string; items: [string, string, string, string][];
+      }[]>`
         SELECT po.id, po.po_number, po.supplier_invoice_no, po.supplier_id, s.name AS supplier_name,
+               s.contact_name AS supplier_contact, s.phone AS supplier_phone, s.address AS supplier_address,
+               po.bill_date, po.status::text AS status,
                po.total_amount::text AS total, po.paid_amount::text AS paid, po.remaining_payable::text AS remaining,
                po.payment_status::text AS payment_status,
                COALESCE((SELECT json_agg(json_build_array(i.received_qty::text, i.unit_cost::text, i.quantity::text, i.total::text))
@@ -173,7 +178,7 @@ export class PayablesService {
         { totalAmount: r.total, paidAmount: r.paid, remainingPayable: r.remaining, paymentStatus: r.payment_status, items: (r.items || []).map(([receivedQty, unitCost, quantity, total]) => ({ receivedQty, unitCost, quantity, total })) },
         paysByPo.get(r.id) || [],
       );
-      return { id: r.id, poNumber: r.po_number, supplierInvoiceNo: r.supplier_invoice_no, supplierId: r.supplier_id, supplierName: r.supplier_name || 'ไม่ระบุผู้จำหน่าย', ...f };
+      return { id: r.id, poNumber: r.po_number, supplierInvoiceNo: r.supplier_invoice_no, supplierId: r.supplier_id, supplierName: r.supplier_name || 'ไม่ระบุผู้จำหน่าย', row: r, ...f };
     });
 
     const suppliers = new Map<string, { supplierId: string; openCount: number; debt: number; creditCount: number; creditTotal: number }>();
@@ -209,13 +214,52 @@ export class PayablesService {
       (!openOnly || b.remainingPayable > 0) &&
       billMatchesSearch(b, search));
 
-    const pageIds = filtered.slice((page - 1) * limit, page * limit).map((b) => b.id);
+    const pageRows = filtered.slice((page - 1) * limit, page * limit);
+    const meta = { total: filtered.length, page, limit, totalPages: Math.ceil(filtered.length / limit) };
+    const summary = {
+      billCount: all.length,
+      unpaidCount,
+      totalOutstanding,
+      totalPaid,
+      availableCredit,
+      availableCreditCount: creditRows.length,
+      suppliers: [...suppliers.values()],
+    };
+    if (slim) {
+      // the settle dialog: figures + supplier only, straight from the rows above (no PO lines, no payment list)
+      const data = pageRows.map((b) => ({
+        poId: b.id,
+        poNumber: b.poNumber,
+        supplierInvoiceNo: b.supplierInvoiceNo || '',
+        supplierInvoiceDate: '',
+        supplierId: b.supplierId,
+        supplierName: b.supplierName,
+        supplierContact: b.row.supplier_contact ?? undefined,
+        supplierPhone: b.row.supplier_phone ?? undefined,
+        supplierAddress: b.row.supplier_address ?? undefined,
+        billDate: new Date(b.row.bill_date).toISOString(),
+        status: b.row.status,
+        paymentStatus: b.paymentStatus,
+        totalAmount: b.totalAmount,
+        receivedAmount: b.receivedAmount,
+        alreadyDeductedReturns: 0,
+        alreadyPaidAmount: b.alreadyPaidAmount,
+        alreadyDiscountAmount: b.alreadyDiscountAmount,
+        remainingPayable: b.remainingPayable,
+        itemsCount: (b.row.items || []).length,
+        items: [],
+        deductedReturns: [],
+        payments: [],
+      }));
+      return { data, meta, summary };
+    }
+    const pageIds = pageRows.map((b) => b.id);
     const pos = pageIds.length
       ? await this.prisma.purchaseOrder.findMany({
           where: { id: { in: pageIds } },
           include: {
             supplier: true,
-            items: slim ? true : { include: { product: true } },
+            items: { include: { product: true } },
             voucherItems: {
               where: { voucher: { status: VoucherStatus.ACTIVE } },
               include: { voucher: { include: { debitNotes: { select: { returnNoteId: true, amountDeducted: true } } } } },
@@ -250,25 +294,13 @@ export class PayablesService {
         alreadyDiscountAmount: f.alreadyDiscountAmount,
         remainingPayable: f.remainingPayable,
         itemsCount: rest.items.length,
-        items: slim ? [] : rest.items,
+        items: rest.items,
         deductedReturns: [],
         payments: voucherItems.map((vi) => paymentEntry(po.id, f.totalAmount, vi.voucher, vi.amountPaid)),
       }];
     });
 
-    return {
-      data,
-      meta: { total: filtered.length, page, limit, totalPages: Math.ceil(filtered.length / limit) },
-      summary: {
-        billCount: all.length,
-        unpaidCount,
-        totalOutstanding,
-        totalPaid,
-        availableCredit,
-        availableCreditCount: creditRows.length,
-        suppliers: [...suppliers.values()],
-      },
-    };
+    return { data, meta, summary };
   }
 
   async getSupplierSummaries() {

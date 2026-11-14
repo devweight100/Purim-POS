@@ -992,7 +992,7 @@ d('store flow (e2e)', () => {
       expect(b.payments[0].netCashOrTransferPaid).toBe(20);
       // a page of 3 and slim rows
       const p2 = (await api('get', '/payables/bills?page=2&limit=3&slim=1', A).expect(200)).body;
-      expect(norm(p2.data)).toEqual(norm(bills.slice(3, 6).map((x: any) => ({ ...x, items: [] }))));
+      expect(norm(p2.data)).toEqual(norm(bills.slice(3, 6).map((x: any) => ({ ...x, items: [], payments: [] }))));
       expect(p2.meta).toMatchObject({ total: bills.length, page: 2, limit: 3, totalPages: Math.ceil(bills.length / 3) });
     });
 
