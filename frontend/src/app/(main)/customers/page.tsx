@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import {
   Customer,
   CustomerType,
   LoyaltySystemConfig,
-  fetchCustomers,
+  fetchCustomerPage,
+  type CustomerPageStats,
   fetchLoyaltyConfig,
   upsertCustomer,
   deleteCustomer,
@@ -15,7 +17,7 @@ import {
   saveLoyaltyConfig,
   calculateEarnedPoints,
   calculateRedemptionDiscount,
-  generateNextCustomerCode,
+
 } from '@/lib/customer-service';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -107,15 +109,37 @@ export default function CustomersPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  /** Loads the data; state is only updated after the request. */
+  // Server-side paging / filters / search (GET /customers?page&limit&search&type&priceLevel)
+  const PAGE_SIZE = 50;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [filteredCount, setFilteredCount] = useState(0);
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
+  const [stats, setStats] = useState<CustomerPageStats>({
+    total: 0, individualCount: 0, companyCount: 0, totalCreditCustomers: 0, totalDebt: 0, totalPoints: 0, nextCode: 'CUST-0001',
+  });
+  // a filter changed: back to page 1 (adjusted while rendering, no extra effect pass)
+  const pageResetKey = JSON.stringify([search, typeFilter, priceLevelFilter]);
+  const [pageResetKeySeen, setPageResetKeySeen] = useState(pageResetKey);
+  if (pageResetKeySeen !== pageResetKey) {
+    setPageResetKeySeen(pageResetKey);
+    setCurrentPage(1);
+  }
+
+  /** Loads one page; state is only updated after the request. */
   const loadData = async () => {
     try {
-      const [list, config] = await Promise.all([fetchCustomers(), fetchLoyaltyConfig()]);
-      setCustomers(list);
+      const [res, config] = await Promise.all([
+        fetchCustomerPage({ page: currentPage, limit: PAGE_SIZE, search: debouncedSearch, type: typeFilter, priceLevel: priceLevelFilter }),
+        fetchLoyaltyConfig(),
+      ]);
+      setCustomers(res.rows);
+      setFilteredCount(res.total);
+      setStats(res.stats);
       setLoyaltyConfig(config);
       setLoadError(null);
     } catch (err) {
       setCustomers([]);
+      setFilteredCount(0);
       setLoadError(errorMessage(err, 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     } finally {
       setIsLoading(false);
@@ -130,66 +154,15 @@ export default function CustomersPage() {
   useEffect(() => {
     const run = async () => { await loadData(); };
     void run();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, debouncedSearch, typeFilter, priceLevelFilter]);
 
-  // Summary Stats
-  const stats = useMemo(() => {
-    const total = customers.length;
-    let individualCount = 0;
-    let companyCount = 0;
-    let totalCreditCustomers = 0;
-    let totalDebt = 0;
-    let totalPoints = 0;
-
-    customers.forEach((c) => {
-      if (c.type === 'COMPANY') companyCount++;
-      else individualCount++;
-
-      if (c.creditLimit > 0) totalCreditCustomers++;
-      totalDebt += Number(c.currentDebt || 0);
-      totalPoints += Number(c.points || 0);
-    });
-
-    return {
-      total,
-      individualCount,
-      companyCount,
-      totalCreditCustomers,
-      totalDebt,
-      totalPoints,
-    };
-  }, [customers]);
-
-  // Filtered List
-  const filteredCustomers = useMemo(() => {
-    return customers.filter((c) => {
-      const q = search.toLowerCase();
-      const matchSearch =
-        c.name.toLowerCase().includes(q) ||
-        c.phone.includes(q) ||
-        (c.code && c.code.toLowerCase().includes(q)) ||
-        (c.companyName && c.companyName.toLowerCase().includes(q)) ||
-        (c.taxId && c.taxId.includes(q)) ||
-        (c.contactPerson && c.contactPerson.toLowerCase().includes(q));
-
-      let matchType = true;
-      if (typeFilter === 'INDIVIDUAL') matchType = c.type === 'INDIVIDUAL';
-      else if (typeFilter === 'COMPANY') matchType = c.type === 'COMPANY';
-      else if (typeFilter === 'credit') matchType = (c.creditLimit || 0) > 0;
-      else if (typeFilter === 'hasDebt') matchType = (c.currentDebt || 0) > 0;
-
-      let matchPrice = true;
-      if (priceLevelFilter !== 'all') {
-        matchPrice = c.priceLevel === Number(priceLevelFilter);
-      }
-
-      return matchSearch && matchType && matchPrice;
-    });
-  }, [customers, search, typeFilter, priceLevelFilter]);
+  const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE));
+  const filteredCustomers = customers;
 
   // Open Create Dialog
   const handleOpenAdd = () => {
-    const nextCode = generateNextCustomerCode();
+    const nextCode = stats.nextCode;
     setFormData({
       type: 'INDIVIDUAL',
       code: nextCode,
@@ -663,6 +636,18 @@ export default function CustomersPage() {
             </TableBody>
           </Table>
         </div>
+        {filteredCount > 0 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/80 px-4 py-3">
+            <div className="text-xs text-slate-500 font-medium">
+              แสดง <b className="text-slate-800">{(currentPage - 1) * PAGE_SIZE + 1}</b> - <b className="text-slate-800">{Math.min(currentPage * PAGE_SIZE, filteredCount)}</b> จากทั้งหมด <b className="text-slate-800">{filteredCount.toLocaleString()}</b> ราย
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Button variant="outline" size="sm" disabled={currentPage <= 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} className="h-8 px-3 text-xs font-semibold border-slate-300">‹ ก่อนหน้า</Button>
+              <span className="px-2 text-xs font-bold text-slate-700">หน้า {currentPage} <span className="font-normal text-slate-400">/ {totalPages}</span></span>
+              <Button variant="outline" size="sm" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} className="h-8 px-3 text-xs font-semibold border-slate-300">ถัดไป ›</Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal 1: Create / Edit Customer Dialog */}

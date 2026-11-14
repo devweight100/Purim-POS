@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
+import { customerPageIds, parseCustomerPageQuery } from './customer-list';
 
 /** Profile fields that control store credit: only debt managers may change them. */
 export const CREDIT_FIELDS = ['creditLimit', 'creditTerms', 'isCreditBlocked'] as const;
@@ -109,16 +110,44 @@ export class CustomersController {
     }
   }
 
+  /**
+   * Without `page`: every customer (POS customer picker / lookups; ?search= matches name or phone).
+   * With `page`: one page for the customers screen: ?page&limit(<=500)&search&type(INDIVIDUAL|COMPANY|credit|hasDebt)
+   * &priceLevel -> { data, meta, stats } (stats = cards over every customer + next free CUST code).
+   * currentDebt is summed by the database (no debt rows in the response).
+   */
   @Get()
-  async findAll(@Query('search') search?: string) {
+  async findAll(@Query() query: Record<string, unknown>) {
+    if (query.page !== undefined) {
+      const q = parseCustomerPageQuery(query);
+      const page = await customerPageIds(this.prisma, q);
+      const rows = await this.customerRows({ id: { in: page.ids.map((r) => r.id) } });
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      const data = page.ids.filter((r) => byId.has(r.id)).map((r) => ({ ...byId.get(r.id)!, listIndex: r.listIndex }));
+      return { data, meta: { total: page.total, page: q.page, limit: q.limit, totalPages: Math.ceil(page.total / q.limit) }, stats: page.stats };
+    }
+    const search = query.search;
+    if (search !== undefined && typeof search !== 'string') throw new BadRequestException('คำค้นหาไม่ถูกต้อง');
     const where = search ? {
       OR: [
         { name: { contains: search, mode: 'insensitive' as any } },
         { phone: { contains: search, mode: 'insensitive' as any } }
       ]
     } : {};
-    const rows = await this.prisma.customer.findMany({ where, include: { debts: true } });
-    return rows.map(row => ({ ...(row.profile as any || {}), ...row, phone: row.phone || '', currentDebt: row.debts.reduce((sum, d) => sum + Number(d.remainingAmount), 0) }));
+    return this.customerRows(where);
+  }
+
+  private async customerRows(where: Prisma.CustomerWhereInput) {
+    const rows = await this.prisma.customer.findMany({ where, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
+    const debts = rows.length
+      ? await this.prisma.customerDebt.groupBy({
+          by: ['customerId'],
+          where: Object.keys(where).length ? { customerId: { in: rows.map((r) => r.id) } } : {},
+          _sum: { remainingAmount: true },
+        })
+      : [];
+    const debtOf = new Map(debts.map((d) => [d.customerId, Number(d._sum.remainingAmount) || 0]));
+    return rows.map((row) => ({ ...((row.profile as any) || {}), ...row, phone: row.phone || '', currentDebt: debtOf.get(row.id) || 0 }));
   }
 
   @Get(':id')

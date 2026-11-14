@@ -1,6 +1,6 @@
 'use client';
 import { useSyncExternalStore } from 'react';
-import { api } from './api';
+import { api, apiFetch } from './api';
 import type { ApiCustomer } from './types';
 
 export type CustomerType = 'INDIVIDUAL' | 'COMPANY';
@@ -128,6 +128,41 @@ export async function fetchCustomers(): Promise<Customer[]> {
   const normalized = (Array.isArray(rows) ? rows : []).map((c, idx: number) => normalizeCustomerRow(c, idx));
   publishCustomers(normalized);
   return normalized;
+}
+
+export interface CustomerPageStats {
+  total: number;
+  individualCount: number;
+  companyCount: number;
+  totalCreditCustomers: number;
+  totalDebt: number;
+  totalPoints: number;
+  /** next free CUST-#### code (over every customer) */
+  nextCode: string;
+}
+
+/** One page of the customers screen (GET /customers?page=…), filtered and searched by the server. */
+export async function fetchCustomerPage(q: {
+  page: number;
+  limit: number;
+  search?: string;
+  type?: 'all' | 'INDIVIDUAL' | 'COMPANY' | 'credit' | 'hasDebt';
+  priceLevel?: string;
+}): Promise<{ rows: Customer[]; total: number; stats: CustomerPageStats }> {
+  const params = new URLSearchParams({ page: String(q.page), limit: String(q.limit) });
+  if (q.search?.trim()) params.set('search', q.search.trim());
+  if (q.type && q.type !== 'all') params.set('type', q.type);
+  if (q.priceLevel && q.priceLevel !== 'all') params.set('priceLevel', q.priceLevel);
+  const res = await apiFetch<{ data: (ApiCustomer & { listIndex?: number })[]; meta: { total: number }; stats: CustomerPageStats } | null>(
+    `/customers?${params.toString()}`,
+  );
+  if (!Array.isArray(res?.data) || !res?.stats) throw new Error('ข้อมูลลูกค้าจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+  // listIndex = position in the whole list: the same fallback code as the full list gives a row without one
+  const rows = res.data.map((c, i) => {
+    const { listIndex, ...row } = c;
+    return normalizeCustomerRow(row, listIndex ?? i);
+  });
+  return { rows, total: Number(res.meta?.total) || 0, stats: res.stats };
 }
 
 /** Loyalty config from the server. Throws when the server cannot be reached. */
