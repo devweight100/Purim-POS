@@ -22,8 +22,8 @@ Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time 
        payments + shifts stats, customers, inventory, purchases, claim accounting), row guard (400 Thai message).
 2. [x] `reports.service.ts` getReportTabs uses them; paging params (page, limit, q, sort, list); dashboard inventory snapshot in SQL;
        /reports/analytics guarded by the row limit.
-3. [ ] P&L (planning.service) claims / write-off / ledger sums in SQL.
-4. [ ] e2e parity test adapted to paging (fetch all pages) + new tricky-dataset test (old JS == new SQL).
+3. [x] P&L (planning.service) claims / write-off / ledger sums in SQL.
+4. [x] e2e parity test adapted to paging (fetch all pages) + new tricky-dataset test (old JS == new SQL).
 5. [ ] Frontend ReportsView: server paging/search for bestsellers, inventory, customers; export fetches all pages.
 6. [ ] EXPLAIN ANALYZE -> indexes (migration 20261123000000_report_indexes + @@index).
 7. [ ] After-measurements, full verification, PROJECT_STATUS entry.
@@ -38,4 +38,13 @@ Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time 
 - Steps 1-2: report-sql.ts reviewed, controller passes page/limit/q/sort/list; store-flow e2e parity test now
   fetches every page (limit 3) for bestsellers (3 sorts), inventory (all/deadstock/lowstock), customers and
   compares with the frozen legacy functions: 31/31 e2e pass.
+- Step 3: planning.service profitAndLoss uses claimAccountingSql / stockWriteOffSql / ledgerProfitRowsSql.
+- Step 4: store-flow e2e "reports: tricky dataset" inserts edge cases with Prisma (Bangkok midnight borders,
+  PENDING / payment-less / zero-subtotal / voided bills, packs, returns without lines, DEBT_REDUCTION, same-name
+  customers, string profile figures, debts of every age, oversold / zero-cost / inactive / bundle products,
+  shifts, claims with string figures, cancelled notes, expense reversal, drawer vs bank adjustments,
+  write-offs), reruns the parity check, checks P&L parts and the dashboard stock position against the old
+  loops, and paging/search/sort/400s. 36/36 e2e pass.
+- Bug found by the tricky data: retail price must be COALESCE(price_level_1, base_price) (old code read a
+  Decimal / string, so a price level 1 of 0 is used as 0), fixed in inventory tab + dashboard snapshot.
 - Purchases tab stays in Node (PO rows bounded by the row guard; claims list = getAllClaims(1, 5000) as before).

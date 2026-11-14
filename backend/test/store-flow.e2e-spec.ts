@@ -15,6 +15,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaClient } from '@prisma/client';
 import * as legacy from './legacy/reports-client-legacy';
+import { valueStock } from '../src/reports/reports.service';
 
 const dbName = (() => { try { return new URL(process.env.DATABASE_URL || '').pathname.slice(1); } catch { return ''; } })();
 const enabled = /test/i.test(dbName);
@@ -391,6 +392,7 @@ d('store flow (e2e)', () => {
       return rawOrders.length;
     };
 
+    state.expectParity = expectParity;
     it('every tab, every period: same numbers as the old client-side functions', async () => {
       expect(await expectParity()).toBeGreaterThan(5);
       // the data really exercised the netting rules
@@ -455,6 +457,264 @@ d('store flow (e2e)', () => {
       expect(o.user.fullName).toBeTruthy();
       expect(o.user.password).toBeUndefined();
       expect(o.user.pinCode).toBeUndefined();
+    });
+  });
+
+  /**
+   * Edge cases written straight into the database (shapes the POS rarely makes but old data has):
+   * Bangkok midnight borders, PENDING / payment-less / zero-subtotal / voided bills, packs (base qty),
+   * returns without lines, DEBT_REDUCTION / TRANSFER refunds, return-only products, equal best
+   * sellers, same-name customers (debt by name), imported customer figures as strings, debts of every
+   * age, oversold / zero-cost / inactive / bundle products, open + closed shifts, claims with string
+   * figures, cancelled return notes, expense reversals, drawer vs bank adjustments, write-offs.
+   * Then the parity check runs again, and the P&L parts moved to SQL are checked against the old loops.
+   */
+  describe('reports: tricky dataset (old JS == new SQL)', () => {
+    const day = 86400000;
+    const r2 = (v: number) => Math.round(v * 100) / 100;
+    it('adds edge-case rows straight into the database', async () => {
+      const db = new PrismaClient();
+      try {
+        const now = Date.now();
+        const bkkToday = new Date(now + 7 * 3600000).toISOString().slice(0, 10);
+        const todayStart = Date.parse(`${bkkToday}T00:00:00+07:00`);
+        const monthStart = Date.parse(`${bkkToday.slice(0, 8)}01T00:00:00+07:00`);
+        const admin = await db.user.findFirstOrThrow({ where: { username: 'admin' } });
+        const cat = await db.category.create({ data: { name: 'E2E หมวดพิเศษ' } });
+        const mk = (sku: string, data: any = {}) => db.product.create({ data: { name: `E2E ${sku}`, sku, basePrice: 100, costPrice: 40, categoryId: cat.id, ...data } });
+        const pA = await mk('TRK-A');
+        const pB = await mk('TRK-B');
+        const pPack = await mk('TRK-PACK', { unit: '', priceLevel1: 0, basePrice: 55.5 });
+        const pRet = await mk('TRK-RET', { categoryId: null });
+        const pDead = await mk('TRK-DEAD');
+        const pNew = await mk('TRK-NEW', { priceLevel1: 77.77 });
+        const pOver = await mk('TRK-OVER');
+        const pZero = await mk('TRK-ZERO', { costPrice: 12.34 });
+        const pOff = await mk('TRK-OFF', { isActive: false });
+        await mk('TRK-BUNDLE', { isBundle: true });
+        const batch = (p: any, qty: number, cost: number, daysAgo: number, rem = qty) =>
+          db.stockBatch.create({ data: { productId: p.id, quantityReceived: qty, quantityRemaining: rem, unitCost: cost, receivedAt: new Date(now - daysAgo * day) } });
+        await batch(pA, 100, 33.3333, 60);
+        await batch(pB, 100, 33.3333, 60);
+        await batch(pPack, 240, 3.5, 50);
+        await batch(pDead, 10, 30, 40);
+        await batch(pNew, 3, 20, 2);
+        await batch(pOver, 2, 10, 45);
+        await batch(pOver, 0, 10, 44, -5);
+        await batch(pZero, 4, 0, 45);
+        await batch(pOff, 6, 9.99, 45);
+
+        const sup = await db.supplier.create({ data: { name: 'E2E Tricky Supplier' } });
+        const mkCustomer = (name: string, phone: string | null, profile: any = null) => db.customer.create({ data: { name, phone, profile } });
+        const cCode = await mkCustomer('E2E รหัส', '0811111111', { code: 'VIP-1', totalSpent: '1234.5', totalOrders: 3, lastPurchaseDate: '2026-01-02' });
+        const cDup1 = await mkCustomer('E2E ซ้ำ', '0822222222');
+        const cDup2 = await mkCustomer('E2E ซ้ำ', null, { customerCode: 'DUP-2' });
+        await mkCustomer('E2E แคตตาล็อก', '0833333333', { totalSpent: 500, totalOrders: '2', customerCode: 'C-9' });
+
+        const shiftOpen = await db.shift.create({ data: { shiftNumber: 'TRK-S1', userId: admin.id, terminalId: 'trk-1', startingCash: 200, openedAt: new Date(todayStart + 3600000) } });
+        const shiftClosed = await db.shift.create({ data: {
+          shiftNumber: 'TRK-S2', userId: admin.id, terminalId: 'trk-2', startingCash: 500, status: 'CLOSED', actualCash: 632.55,
+          openedAt: new Date(now - 3 * day), closedAt: new Date(now - 2 * day),
+        } });
+        await db.cashMovement.createMany({ data: [
+          { shiftId: shiftOpen.id, type: 'IN', amount: 100, reason: 'เงินทอน' },
+          { shiftId: shiftOpen.id, type: 'OUT', amount: 30, category: 'REFUND', reason: 'คืนเงิน' },
+        ] });
+
+        let n = 0;
+        const order = async (o: { at: number; status?: any; customerId?: string; shiftId?: string; discount?: number; vat?: number; cogs?: number; subtotal?: number;
+          items: { p: any; qty: number; price: number; base?: number; unitName?: string; disc?: number; cost?: number }[]; pays?: { method: any; amount: number }[] }) => {
+          const lines = o.items.map((i) => ({ productId: i.p.id, quantity: i.qty, baseQuantity: i.base ?? null, unitName: i.unitName ?? null, unitPrice: i.price, discountAmount: i.disc ?? 0, unitCost: i.cost ?? 40, total: r2(i.qty * i.price - (i.disc ?? 0)) }));
+          const subtotal = o.subtotal ?? r2(lines.reduce((s, l) => s + l.total, 0));
+          return db.order.create({
+            data: {
+              orderNumber: `TRK-${++n}`, userId: admin.id, customerId: o.customerId, shiftId: o.shiftId, status: o.status ?? 'COMPLETED',
+              subtotal, discountAmount: o.discount ?? 0, totalAmount: r2(subtotal - (o.discount ?? 0)), totalCogs: o.cogs ?? 0, vatAmount: o.vat ?? 0, vatRate: o.vat ? 7 : 0,
+              createdAt: new Date(o.at), items: { create: lines }, payments: { create: o.pays ?? [] },
+            },
+            include: { items: true },
+          });
+        };
+        const ret = (o: any, at: number, method: string, amount: number, extra: { vat?: number; cogs?: number; items?: any[] } = {}) =>
+          db.orderReturn.create({ data: {
+            returnNumber: `TRK-R${++n}`, orderId: o.id, refundMethod: method, refundAmount: amount, vatAmount: extra.vat ?? 0, cogsReturned: extra.cogs ?? 0,
+            reason: 'tricky', createdAt: new Date(at), items: { create: extra.items ?? [] },
+          } });
+
+        // midnight borders: exactly 00:00 Bangkok today, 1 ms before (yesterday); start of the month and 1 ms before
+        const o1 = await order({ at: todayStart, shiftId: shiftOpen.id, discount: 10.55, vat: 18.61, cogs: 120,
+          items: [{ p: pA, qty: 3, price: 100, disc: 5 }], pays: [{ method: 'CASH', amount: 100 }, { method: 'CREDIT_CARD', amount: 184.45 }] });
+        await order({ at: todayStart - 1, discount: 10.55, cogs: 120, items: [{ p: pB, qty: 3, price: 100, disc: 5 }], pays: [{ method: 'CREDIT_NOTE', amount: 284.45 }] });
+        await order({ at: monthStart, cogs: 12.34, items: [{ p: pZero, qty: 1, price: 19.5, cost: 12.34 }], pays: [{ method: 'QR_PROMPTPAY', amount: 19.5 }] });
+        await order({ at: monthStart - 1, cogs: 12.34, items: [{ p: pZero, qty: 1, price: 19.5, cost: 12.34 }], pays: [{ method: 'TRANSFER', amount: 19.5 }] });
+        // PENDING bill of packs (12 per pack) without any payment row: counts as a cash sale
+        await order({ at: now - 3600000, status: 'PENDING', customerId: cDup1.id, cogs: 84, items: [{ p: pPack, qty: 2, base: 24, unitName: 'โหล', price: 600, cost: 3.5 }] });
+        // zero subtotal (free goods) and a voided bill (with a return that must be ignored) from the closed shift
+        await order({ at: now - 2 * 3600000, subtotal: 0, items: [{ p: pA, qty: 1, price: 0 }] });
+        const o5 = await order({ at: now - 2.5 * day, status: 'VOIDED', shiftId: shiftClosed.id, cogs: 40, items: [{ p: pA, qty: 1, price: 77 }], pays: [{ method: 'CASH', amount: 77 }] });
+        await ret(o5, now - 2 * 3600000, 'CASH', 77, { items: [{ orderItemId: o5.items[0].id, productId: pA.id, quantity: 1, baseQuantity: 1, refundAmount: 77, unitCost: 40 }] });
+        // credit sales of every age; same-name customers; a debt that is PAID
+        const o6 = await order({ at: now - 40 * day, customerId: cCode.id, cogs: 80, items: [{ p: pRet, qty: 2, price: 50 }], pays: [{ method: 'CREDIT_DEBT', amount: 100 }] });
+        const o7 = await order({ at: now - 20 * day, customerId: cDup2.id, cogs: 40, items: [{ p: pB, qty: 1, price: 99.99 }], pays: [{ method: 'CREDIT_DEBT', amount: 50 }, { method: 'TRANSFER', amount: 49.99 }] });
+        const o8 = await order({ at: now - 90 * day, customerId: cDup1.id, cogs: 40, items: [{ p: pA, qty: 1, price: 70 }], pays: [{ method: 'CREDIT_DEBT', amount: 70 }] });
+        const o9 = await order({ at: now - 100 * day, customerId: cDup1.id, cogs: 40, items: [{ p: pB, qty: 1, price: 70 }], pays: [{ method: 'CREDIT_DEBT', amount: 70 }] });
+        const debt = (o: any, customerId: string, total: number, remaining: number, status: any) =>
+          db.customerDebt.create({ data: { customerId, orderId: o.id, totalDebt: total, paidAmount: total - remaining, remainingAmount: remaining, status, createdAt: o.createdAt } });
+        const d6 = await debt(o6, cCode.id, 100, 50, 'PARTIALLY_PAID');
+        await debt(o7, cDup2.id, 50, 50, 'PENDING');
+        await debt(o8, cDup1.id, 70, 70, 'PAID');
+        await debt(o9, cDup1.id, 70, 70, 'OVERDUE');
+        await db.debtPayment.createMany({ data: [
+          { debtId: d6.id, amount: 10, paymentMethod: 'CASH', cashierName: 'e2e', paymentDate: new Date(now - 3600000) },
+          { debtId: d6.id, amount: 15, paymentMethod: 'TRANSFER', cashierName: 'e2e', paymentDate: new Date(now - 3600000), cancelledAt: new Date() },
+        ] });
+        // returns made today: of a 40-day-old bill (debt reduction, not restocked: return-only product of the period),
+        // a refund without lines (VAT bill), and yesterday a transfer refund of a restocked line
+        await ret(o6, now - 60000, 'DEBT_REDUCTION', 50, { items: [{ orderItemId: o6.items[0].id, productId: pRet.id, quantity: 1, baseQuantity: 1, refundAmount: 50, unitCost: 40, restock: false }] });
+        await ret(o1, now - 30000, 'CASH', 10, { vat: 0.65 });
+        await ret(o7, todayStart - 1000, 'TRANSFER', 99.99, { cogs: 40, items: [{ orderItemId: o7.items[0].id, productId: pB.id, quantity: 1, baseQuantity: 1, refundAmount: 99.99, unitCost: 40 }] });
+        await db.order.update({ where: { id: o6.id }, data: { returnedAmount: 50 } });
+        await db.order.update({ where: { id: o1.id }, data: { returnedAmount: 10 } });
+        await db.order.update({ where: { id: o7.id }, data: { returnedAmount: 99.99 } });
+
+        // claims (string figures, zero figures, no metadata) and supplier return notes (one cancelled)
+        const claim = (no: string, at: number, metadata: any) =>
+          db.customerClaim.create({ data: { claimNumber: no, productId: pA.id, claimType: 'EXCHANGE', problemDescription: 'tricky', supplierId: sup.id, createdAt: new Date(at), metadata } });
+        await claim('TRK-C1', now - 60000, { accounting: { replacementCost: '12.5', refundPaid: 3 } });
+        await claim('TRK-C2', todayStart - 60000, { accounting: { replacementCost: 0, refundPaid: 0 } });
+        await claim('TRK-C3', now - 10 * day, null);
+        await claim('TRK-C4', now - 5 * day, { accounting: { replacementCost: 40.25, refundPaid: '0' } });
+        const note = (no: string, status: any, total: number) =>
+          db.supplierReturnNote.create({ data: { returnNumber: no, supplierId: sup.id, totalAmount: total, remainingCreditAmount: total, status, items: { create: [{ itemType: 'DEFECTIVE', quantity: 1, unitCost: total, total }, { itemType: 'OVERSTOCK', quantity: 1, unitCost: 3, total: 3 }] } } });
+        await note('TRK-N1', 'PENDING', 7.25);
+        await note('TRK-N2', 'CANCELLED', 100);
+
+        // ledger rows of the P&L
+        const accounts = await db.moneyAccount.findMany();
+        const safe = accounts.find((a) => a.type === 'CASH_SAFE')!;
+        const bank = accounts.find((a) => a.type === 'BANK')!;
+        const drawer = accounts.find((a) => a.type === 'CASH_DRAWER')!;
+        const cats = await db.expenseCategory.findMany({ take: 2, orderBy: { sortOrder: 'asc' } });
+        const tx = (data: any) => db.moneyTransaction.create({ data: { occurredAt: new Date(now - 60000), ...data } });
+        const exp = await tx({ accountId: safe.id, direction: 'OUT', amount: 120, type: 'EXPENSE', categoryId: cats[0].id });
+        await tx({ accountId: safe.id, direction: 'IN', amount: 120, type: 'REVERSAL', reversalOfId: exp.id, categoryId: cats[0].id });
+        await tx({ accountId: safe.id, direction: 'OUT', amount: 45.5, type: 'EXPENSE', categoryId: cats[1].id });
+        await tx({ accountId: bank.id, direction: 'OUT', amount: 10, type: 'EXPENSE' });
+        await tx({ accountId: bank.id, direction: 'IN', amount: 33, type: 'OTHER_INCOME' });
+        await tx({ accountId: drawer.id, direction: 'OUT', amount: 2.5, type: 'SHIFT_OVER_SHORT' });
+        await tx({ accountId: bank.id, direction: 'IN', amount: 7, type: 'ADJUSTMENT' });
+        await tx({ accountId: drawer.id, direction: 'OUT', amount: 5, type: 'ADJUSTMENT' });
+        await tx({ accountId: bank.id, direction: 'OUT', amount: 8, type: 'EXPENSE', categoryId: cats[1].id, occurredAt: new Date(now - 50 * day) });
+        await db.auditLog.createMany({ data: [
+          { action: 'STOCK_ADJUST_SUB', entity: 'Product', details: { costValue: -25.5 }, createdAt: new Date(now - 60000) },
+          { action: 'STOCK_ADJUST_SUB', entity: 'Product', details: { costValue: '-4.5' }, createdAt: new Date(now - 60000) },
+          { action: 'STOCK_ADJUST_SUB', entity: 'Product', details: { costValue: 3 }, createdAt: new Date(now - 60000) },
+          { action: 'STOCK_ADJUST_SUB', entity: 'Product', details: { costValue: -9 }, createdAt: new Date(now - 50 * day) },
+        ] });
+      } finally {
+        await db.$disconnect();
+      }
+    });
+
+    it('every tab, every period: still the same numbers as the old client-side functions', async () => {
+      await state.expectParity();
+    });
+
+    it('P&L claims / write-offs / ledger: same as the old row-by-row sums', async () => {
+      const db = new PrismaClient();
+      try {
+        const bkk = (t: number) => new Date(t + 7 * 3600000).toISOString().slice(0, 10);
+        for (const [from, to] of [[bkk(Date.now()), bkk(Date.now())], [bkk(Date.now() - 60 * day), bkk(Date.now())], ['2020-01-01', '2030-01-01']]) {
+          const pl = (await api('get', `/finance/profit-loss?from=${from}&to=${to}`, A).expect(200)).body;
+          const period = { gte: new Date(`${from}T00:00:00+07:00`), lt: new Date(Date.parse(`${to}T00:00:00+07:00`) + day) };
+          // the loops /finance/profit-loss ran before (planning.service.ts at c60c929)
+          let replacementCost = 0, refundsPaid = 0;
+          for (const c of await db.customerClaim.findMany({ where: { createdAt: period }, select: { metadata: true } })) {
+            const acc = ((c.metadata as any) || {}).accounting || {};
+            replacementCost += Number(acc.replacementCost) || 0;
+            refundsPaid += Number(acc.refundPaid) || 0;
+          }
+          const rec = await db.supplierReturnNoteItem.aggregate({ where: { itemType: 'DEFECTIVE', note: { status: { not: 'CANCELLED' }, createdAt: period } }, _sum: { total: true } });
+          const supplierRecovery = Number(rec._sum.total || 0);
+          const adj = await db.auditLog.findMany({ where: { action: 'STOCK_ADJUST_SUB', createdAt: period }, select: { details: true } });
+          const stockWriteOff = r2(adj.reduce((s, a) => s + Math.max(0, -Number((a.details as any)?.costValue || 0)), 0));
+          const rows = await db.moneyTransaction.findMany({
+            where: { occurredAt: period, type: { in: ['EXPENSE', 'OTHER_INCOME', 'SHIFT_OVER_SHORT', 'ADJUSTMENT', 'REVERSAL'] } },
+            select: { type: true, direction: true, amount: true, reversalOfId: true, category: { select: { name: true } }, account: { select: { type: true } } },
+          });
+          const originals = new Map((await db.moneyTransaction.findMany({ where: { id: { in: rows.filter((r) => r.reversalOfId).map((r) => r.reversalOfId!) } } })).map((o) => [o.id, o.type]));
+          const expenses: Record<string, number> = {};
+          let otherIncome = 0, overShort = 0, adjustments = 0;
+          for (const r of rows) {
+            const kind = r.type === 'REVERSAL' ? originals.get(r.reversalOfId || '') : r.type;
+            const signed = (r.direction === 'IN' ? 1 : -1) * Number(r.amount);
+            if (kind === 'EXPENSE') { const k = r.category?.name || 'อื่นๆ'; expenses[k] = r2((expenses[k] || 0) - signed); }
+            else if (kind === 'OTHER_INCOME') otherIncome += signed;
+            else if (kind === 'SHIFT_OVER_SHORT') overShort += signed;
+            else if (kind === 'ADJUSTMENT' && r.account.type !== 'CASH_DRAWER') adjustments += signed;
+          }
+          for (const k of Object.keys(expenses)) if (Math.abs(expenses[k]) < 0.005) delete expenses[k];
+          expect({ from, to, claims: pl.claims, stockWriteOff: pl.stockWriteOff, expenses: pl.expenses, otherIncome: pl.otherIncome, cashOverShort: pl.cashOverShort, accountAdjustments: pl.accountAdjustments }).toEqual({
+            from, to,
+            claims: { replacementCost: r2(replacementCost), refundsPaid: r2(refundsPaid), supplierRecovery: r2(supplierRecovery), net: r2(replacementCost + refundsPaid - supplierRecovery) },
+            stockWriteOff, expenses, otherIncome: r2(otherIncome), cashOverShort: r2(overShort), accountAdjustments: r2(adjustments),
+          });
+        }
+        // the data really has these cases
+        const today = (await api('get', '/finance/profit-loss', A)).body;
+        expect(today.claims.replacementCost).toBeGreaterThan(0);
+        expect(today.stockWriteOff).toBeGreaterThan(0);
+        expect(Object.keys(today.expenses).length).toBeGreaterThan(0);
+      } finally {
+        await db.$disconnect();
+      }
+    });
+
+    it('dashboard stock position: same as the old loop over batches', async () => {
+      const db = new PrismaClient();
+      try {
+        const [threshold, products, batches] = await Promise.all([
+          db.storeSettings.findFirst().then((s: any) => (Number.isFinite(Number(s?.lowStockThreshold)) ? Number(s.lowStockThreshold) : 5)),
+          db.product.findMany({ where: { isActive: true }, select: { id: true, isBundle: true, costPrice: true, basePrice: true, priceLevel1: true } }),
+          db.stockBatch.findMany({ where: { quantityRemaining: { not: 0 } }, select: { productId: true, quantityRemaining: true, unitCost: true } }),
+        ]);
+        const val = valueStock(batches);
+        let stockCostValue = 0, stockRetailValue = 0, lowStockCount = 0, outOfStockCount = 0;
+        for (const p of products) {
+          if (p.isBundle) continue;
+          const v = val[p.id];
+          const qty = v?.quantityRemaining || 0;
+          stockCostValue += qty > 0 ? (v!.totalCostValue > 0 ? v!.totalCostValue : qty * Number(p.costPrice || 0)) : 0;
+          stockRetailValue += qty * Number(p.priceLevel1 || p.basePrice || 0);
+          if (qty <= 0) outOfStockCount++;
+          else if (qty <= threshold) lowStockCount++;
+        }
+        const dash = (await api('get', '/reports/dashboard?range=today', A).expect(200)).body;
+        expect(dash.inventory).toEqual({ lowStockThreshold: threshold, totalProducts: products.length, lowStockCount, outOfStockCount, stockCostValue: r2(stockCostValue), stockRetailValue: r2(stockRetailValue) });
+      } finally {
+        await db.$disconnect();
+      }
+    });
+
+    it('paging, search and sort parameters', async () => {
+      const get = async (q: string) => (await api('get', `/reports/tabs?range=all&${q}`, A).expect(200)).body;
+      const b = (await get('tab=bestsellers&q=TRK-&limit=2&sort=revenue')).bestsellers;
+      expect(b.allProducts).toHaveLength(2);
+      expect(b.total).toBeGreaterThan(2);
+      expect(b.allProducts.every((p: any) => p.sku.startsWith('TRK-'))).toBe(true);
+      expect(b.allProducts[0].totalRevenue).toBeGreaterThanOrEqual(b.allProducts[1].totalRevenue);
+      expect(b.productCount).toBeGreaterThan(b.total);
+      const c = (await get('tab=customers&q=ซ้ำ&sort=debt')).customers;
+      expect(c.allCustomers.length).toBeGreaterThan(0);
+      expect(c.allCustomers.every((x: any) => x.name.includes('ซ้ำ'))).toBe(true);
+      expect(c.total).toBe(c.allCustomers.length);
+      const i = (await get('tab=inventory&list=deadstock&q=TRK-DEAD')).inventory;
+      expect(i.items.map((x: any) => x.sku)).toEqual(['TRK-DEAD']);
+      expect((await get('tab=inventory&limit=100000')).inventory.limit).toBe(500);
+      await api('get', '/reports/tabs?tab=bestsellers&sort=nope', A).expect(400);
+      await api('get', '/reports/tabs?tab=inventory&list=nope', A).expect(400);
+      await api('get', '/reports/tabs?tab=customers&page=0', A).expect(400);
+      await api('get', '/reports/tabs?tab=customers&limit=abc', A).expect(400);
     });
   });
 });

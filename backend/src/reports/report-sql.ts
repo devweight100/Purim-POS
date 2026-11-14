@@ -310,7 +310,8 @@ function inventoryCte(nowIso: string, threshold: number, canSeeCost: boolean) {
              COALESCE(NULLIF(c.name, ''), 'ทั่วไป') AS category, COALESCE(NULLIF(p.unit, ''), 'ชิ้น') AS unit,
              GREATEST(0, COALESCE(st.net, 0))::float8 AS stock,
              ${canSeeCost ? Prisma.sql`p.cost_price::float8` : Prisma.sql`0::float8`} AS fallback,
-             COALESCE(NULLIF(p.price_level_1, 0), p.base_price, 0)::float8 AS retail,
+             -- price level 1 when set (also when 0: the old code read the Decimal / string, which is truthy), else base price
+             COALESCE(p.price_level_1, p.base_price, 0)::float8 AS retail,
              CASE WHEN COALESCE(st.pos_qty, 0) > 0 THEN st.pos_val / st.pos_qty ELSE 0 END AS avg_cost,
              ${days(Prisma.sql`sale.last`)} AS days_sale, ${days(Prisma.sql`recv.last`)} AS days_recv
       FROM products p
@@ -396,7 +397,7 @@ export async function inventorySnapshotSql(db: Db, threshold: number) {
       FROM stock_batches b WHERE b.quantity_remaining <> 0 GROUP BY b.product_id),
     x AS (
       SELECT p.is_bundle, GREATEST(0, COALESCE(st.net, 0))::float8 AS qty, p.cost_price::float8 AS cost,
-             COALESCE(NULLIF(p.price_level_1, 0), p.base_price, 0)::float8 AS retail,
+             COALESCE(p.price_level_1, p.base_price, 0)::float8 AS retail,
              CASE WHEN COALESCE(st.pos_qty, 0) > 0 THEN st.pos_val / st.pos_qty ELSE 0 END AS avg_cost
       FROM products p LEFT JOIN st ON st.product_id = p.id
       WHERE p.is_active)

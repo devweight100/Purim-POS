@@ -5,6 +5,7 @@ import { businessTransaction } from '../prisma/business-transaction';
 import * as ledger from './ledger';
 import { bangkokDayKey, bangkokStartOfMonth, dateRangeFilter, parseDateParam } from '../common/bangkok-date';
 import { salesTotals } from '../reports/sales-math';
+import { claimAccountingSql, ledgerProfitRowsSql, stockWriteOffSql } from '../reports/report-sql';
 import { round2 } from '../../../shared/src/money';
 
 type Actor = { id?: string } | undefined;
@@ -273,44 +274,28 @@ export class PlanningService {
     const cogs = t.cogs;
     const grossProfit = t.grossProfit;
 
-    const claims = await this.prisma.customerClaim.findMany({ where: { createdAt: period }, select: { metadata: true } });
-    let replacementCost = 0;
-    let refundsPaid = 0;
-    for (const c of claims) {
-      const acc = ((c.metadata as any) || {}).accounting || {};
-      replacementCost += Number(acc.replacementCost) || 0;
-      refundsPaid += Number(acc.refundPaid) || 0;
-    }
-    const recovered = await this.prisma.supplierReturnNoteItem.aggregate({
-      where: { itemType: 'DEFECTIVE', note: { status: { not: 'CANCELLED' }, createdAt: period } },
-      _sum: { total: true },
-    });
-    const supplierRecovery = Number(recovered._sum.total || 0);
+    // claims, write-offs and the ledger part summed in PostgreSQL (report-sql.ts): no per-row loading
+    const [claim, writeOff, ledgerRows] = await Promise.all([
+      claimAccountingSql(this.prisma, period, false),
+      stockWriteOffSql(this.prisma, period),
+      ledgerProfitRowsSql(this.prisma, period),
+    ]);
+    const { replacementCost, refundsPaid, supplierRecovery } = claim;
     const claimCost = round2(replacementCost + refundsPaid - supplierRecovery);
-
     // stock written off (damage / shrinkage) = negative cost value of stock-reducing adjustments
-    const adj = await this.prisma.auditLog.findMany({ where: { action: 'STOCK_ADJUST_SUB', createdAt: period }, select: { details: true } });
-    const stockWriteOff = round2(adj.reduce((s, a) => s + Math.max(0, -Number((a.details as any)?.costValue || 0)), 0));
+    const stockWriteOff = round2(writeOff);
 
     // expenses / other income / over-short / bank adjustments from the ledger (reversals netted)
-    const rows = await this.prisma.moneyTransaction.findMany({
-      where: { occurredAt: period, type: { in: ['EXPENSE', 'OTHER_INCOME', 'SHIFT_OVER_SHORT', 'ADJUSTMENT', 'REVERSAL'] } },
-      select: { id: true, type: true, direction: true, amount: true, reversalOfId: true, category: { select: { name: true } }, account: { select: { type: true } } },
-    });
-    const originals = new Map(
-      (await this.prisma.moneyTransaction.findMany({ where: { id: { in: rows.filter((r) => r.reversalOfId).map((r) => r.reversalOfId as string) } }, select: { id: true, type: true } })).map((o) => [o.id, o.type]),
-    );
     const expenses: Record<string, number> = {};
     let otherIncome = 0;
     let overShort = 0;
     let adjustments = 0;
-    for (const r of rows) {
-      const kind = r.type === 'REVERSAL' ? originals.get(r.reversalOfId || '') : r.type;
-      const signed = (r.direction === 'IN' ? 1 : -1) * Number(r.amount); // +money in, -money out
-      if (kind === 'EXPENSE') { const k = r.category?.name || 'อื่นๆ'; expenses[k] = round2((expenses[k] || 0) - signed); }
-      else if (kind === 'OTHER_INCOME') otherIncome += signed;
-      else if (kind === 'SHIFT_OVER_SHORT') overShort += signed;
-      else if (kind === 'ADJUSTMENT' && r.account.type !== 'CASH_DRAWER') adjustments += signed;
+    for (const r of ledgerRows) {
+      const signed = r.signed; // +money in, -money out
+      if (r.kind === 'EXPENSE') { const k = r.category || 'อื่นๆ'; expenses[k] = round2((expenses[k] || 0) - signed); }
+      else if (r.kind === 'OTHER_INCOME') otherIncome += signed;
+      else if (r.kind === 'SHIFT_OVER_SHORT') overShort += signed;
+      else if (r.kind === 'ADJUSTMENT' && !r.drawer) adjustments += signed;
     }
     for (const k of Object.keys(expenses)) if (Math.abs(expenses[k]) < 0.005) delete expenses[k];
     const totalExpenses = round2(Object.values(expenses).reduce((s, v) => s + v, 0));
