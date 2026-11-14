@@ -267,7 +267,14 @@ d('store flow (e2e)', () => {
       await api('post', `/orders/${old.id}/returns`, A, { clientReturnId: randomUUID(), items: [{ orderItemId: old.items[0].id, quantity: 1 }], refundMethod: 'CASH', shiftId: state.shift3.id, reason: 'e2e parity' }).expect(201);
     });
 
-    it('every tab, every period: same numbers as the old client-side functions', async () => {
+    /**
+     * The old page's figures (frozen client code fed with what the page downloaded) against GET /reports/tabs.
+     * Long lists are paged on the server now: every page is fetched (small pages, to cross page borders)
+     * and compared with the old full list. Rows with the same sort value may come in another order
+     * (the old order was the database's heap order), so a ranked list is checked as: the same sequence
+     * of sort values + the same rows.
+     */
+    const expectParity = async () => {
       const unwrap = (b: any) => (Array.isArray(b?.data) ? b.data : Array.isArray(b) ? b : []);
       // what the old page downloaded
       const analytics = (await api('get', '/reports/analytics', A).expect(200)).body;
@@ -276,7 +283,32 @@ d('store flow (e2e)', () => {
       );
       const products = legacy.legacyFormatProducts(rawProducts);
       const rawOrders = analytics.orders;
-      expect(rawOrders.length).toBeGreaterThan(5);
+      const json = (v: any) => JSON.parse(JSON.stringify(v));
+      const byId = (rows: any[]) => [...rows].sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      const ranked = (label: string, got: any[], exp: any[], key: string) => {
+        expect({ label, values: got.map((r) => r[key]) }).toEqual({ label, values: exp.map((r) => r[key]) });
+        expect({ label, rows: byId(got) }).toEqual({ label, rows: byId(json(exp)) });
+      };
+      // a top-N list: same sort values; each row equals the old row of that product
+      const top = (label: string, got: any[], exp: any[], key: string, all: any[]) => {
+        expect({ label, values: got.map((r) => r[key]) }).toEqual({ label, values: exp.map((r) => r[key]) });
+        const old = new Map(json(all).map((r: any) => [r.id, r]));
+        for (const r of got) expect({ label, row: r }).toEqual({ label, row: old.get(r.id) });
+      };
+      const pages = async (q: URLSearchParams, tab: string, key: string, extra: Record<string, string> = {}) => {
+        const rows: any[] = [];
+        let first: any;
+        for (let page = 1; page < 1000; page++) {
+          const p = new URLSearchParams({ ...Object.fromEntries(q), tab, limit: '3', page: String(page), ...extra });
+          const b = (await api('get', `/reports/tabs?${p}`, A).expect(200)).body[tab];
+          first ||= b;
+          expect(b.page).toBe(page);
+          rows.push(...b[key]);
+          if (b[key].length < 3) break;
+        }
+        expect(rows.length).toBe(first.total);
+        return { first, rows };
+      };
 
       const periods: [string, string?, string?][] = [
         ['today'], ['yesterday'], ['7days'], ['30days'], ['thisMonth'], ['lastMonth'], ['thisYear'], ['all'],
@@ -295,7 +327,7 @@ d('store flow (e2e)', () => {
         const replacementCost = events.reduce((sum: number, e: any) => sum + (Number(e.replacementCost) || 0), 0);
         const refundsPaid = events.reduce((sum: number, e: any) => sum + (Number(e.refundPaid) || 0), 0);
         const supplierRecovery = recoveries.reduce((sum: number, r: any) => sum + (Number(r.amount) || 0), 0);
-        const expected = {
+        const expected: Record<string, any> = json({
           sales: legacy.calculateSalesAndProfitReport(filteredOrders, products, rangeReturns),
           claimsAndVat: { replacementCost, refundsPaid, supplierRecovery, claimNetCost: replacementCost + refundsPaid - supplierRecovery, ...legacy.calculateVatSummary(filteredOrders, rangeReturns) },
           bestsellers: legacy.calculateBestSellingProducts(filteredOrders, products, rangeReturns),
@@ -303,18 +335,64 @@ d('store flow (e2e)', () => {
           payments: legacy.calculatePaymentsAndShiftsReport(filteredOrders, shifts, { returns: rangeReturns, debtReceipts: analytics.debtReceipts, inRange }),
           customers: legacy.calculateCustomerAndDebtsReport(filteredOrders, debts, customers),
           purchases: legacy.calculatePurchasesAndClaimsReport(analytics.purchases, legacy.filterOrdersByDateRange(claims, tr, customStart, customEnd), suppliers, inRange),
-        };
+        });
         const q = new URLSearchParams({ range: timeRange, ...(customStart ? { start: customStart } : {}), ...(customEnd ? { end: customEnd } : {}) });
         const got = (await api('get', `/reports/tabs?${q}`, A).expect(200)).body;
         const label = `${timeRange} ${customStart || ''} ${customEnd || ''}`;
-        for (const k of Object.keys(expected) as (keyof typeof expected)[]) {
-          expect({ label, tab: k, value: got[k] }).toEqual({ label, tab: k, value: JSON.parse(JSON.stringify(expected[k])) });
+        const without = (o: any, ...keys: string[]) => Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)));
+
+        for (const k of ['sales', 'claimsAndVat', 'purchases']) {
+          expect({ label, tab: k, value: got[k] }).toEqual({ label, tab: k, value: expected[k] });
         }
+        // payments: the per-shift list is no longer sent (the page never showed it)
+        delete expected.payments.shifts.list;
+        expect({ label, tab: 'payments', value: got.payments }).toEqual({ label, tab: 'payments', value: expected.payments });
+
+        // best sellers: totals over every product + one page per sort
+        const eb = expected.bestsellers;
+        const gb = got.bestsellers;
+        expect(gb.productCount).toBe(eb.allProducts.length);
+        const sum = (rows: any[], k: string) => Math.round(rows.reduce((s, r) => s + r[k], 0) * 100) / 100;
+        expect(gb.totals.quantity).toBeCloseTo(eb.allProducts.reduce((s: number, r: any) => s + r.quantitySold, 0), 6);
+        expect(gb.totals.revenue).toBe(sum(eb.allProducts, 'totalRevenue'));
+        expect(gb.totals.cost).toBe(sum(eb.allProducts, 'totalCost'));
+        top(`${label} topByQuantity`, gb.topByQuantity, eb.topByQuantity, 'quantitySold', eb.allProducts);
+        top(`${label} topByProfit`, gb.topByProfit, eb.topByProfit, 'totalProfit', eb.allProducts);
+        top(`${label} topByRevenue`, gb.topByRevenue, eb.topByRevenue, 'totalRevenue', eb.allProducts);
+        const sorts: [string, string][] = [['quantity', 'quantitySold'], ['revenue', 'totalRevenue'], ['profit', 'totalProfit']];
+        for (const [sort, key] of sorts) {
+          const { rows } = await pages(q, 'bestsellers', 'allProducts', { sort });
+          ranked(`${label} bestsellers ${sort}`, rows, [...eb.allProducts].sort((a: any, b: any) => b[key] - a[key]), key);
+        }
+
+        // inventory: totals as before; items / deadstock / low stock come as paged lists
+        const ei = expected.inventory;
+        expect({ label, inv: without(got.inventory, 'items', 'list', 'listCounts', 'total', 'page', 'limit') })
+          .toEqual({ label, inv: without(ei, 'items', 'deadstockList', 'lowStockList') });
+        expect(got.inventory.listCounts).toEqual({ all: ei.items.length, deadstock: ei.deadstockList.length, lowstock: ei.lowStockList.length });
+        ranked(`${label} inventory all`, (await pages(q, 'inventory', 'items')).rows, ei.items, 'totalCostValue');
+        ranked(`${label} inventory deadstock`, (await pages(q, 'inventory', 'items', { list: 'deadstock' })).rows, ei.deadstockList, 'totalCostValue');
+        ranked(`${label} inventory lowstock`, (await pages(q, 'inventory', 'items', { list: 'lowstock' })).rows, ei.lowStockList, 'stock');
+
+        // customers: aging and totals as before; the unpaid-bill list is no longer sent
+        const ec = expected.customers;
+        const gc = got.customers;
+        expect({ label, aging: [gc.totalOutstandingDebt, gc.unpaidBillsCount, gc.agingBuckets] }).toEqual({ label, aging: [ec.totalOutstandingDebt, ec.unpaidBillsCount, ec.agingBuckets] });
+        expect(gc.customerCount).toBe(ec.allCustomers.length);
+        expect(gc.totalSpentAll).toBe(sum(ec.allCustomers, 'totalSpent'));
+        top(`${label} topCustomers`, gc.topCustomers, ec.topCustomers, 'totalSpent', ec.allCustomers);
+        ranked(`${label} customers`, (await pages(q, 'customers', 'allCustomers')).rows, ec.allCustomers, 'totalSpent');
+
         // one tab at a time (what the page asks for) gives the same figures
         const one = (await api('get', `/reports/tabs?${q}&tab=payments`, A).expect(200)).body;
         expect(one.payments).toEqual(got.payments);
         expect(one.sales).toBeUndefined();
       }
+      return rawOrders.length;
+    };
+
+    it('every tab, every period: same numbers as the old client-side functions', async () => {
+      expect(await expectParity()).toBeGreaterThan(5);
       // the data really exercised the netting rules
       const all = (await api('get', '/reports/tabs?range=all', A)).body;
       expect(all.sales.totalReturns).toBeGreaterThan(0);

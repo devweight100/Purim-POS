@@ -18,9 +18,9 @@ Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time 
 | P&L month / all | 0.05 / 0.14 s | | sales part SQL; claims/ledger rows in Node |
 
 ### Plan
-1. [ ] `backend/src/reports/report-sql.ts`: SQL equivalents of report-tabs.ts (sales by Bangkok day, VAT, best sellers,
+1. [x] `backend/src/reports/report-sql.ts`: SQL equivalents of report-tabs.ts (sales by Bangkok day, VAT, best sellers,
        payments + shifts stats, customers, inventory, purchases, claim accounting), row guard (400 Thai message).
-2. [ ] `reports.service.ts` getReportTabs uses them; paging params (page, limit, q, sort, list); dashboard inventory snapshot in SQL;
+2. [x] `reports.service.ts` getReportTabs uses them; paging params (page, limit, q, sort, list); dashboard inventory snapshot in SQL;
        /reports/analytics guarded by the row limit.
 3. [ ] P&L (planning.service) claims / write-off / ledger sums in SQL.
 4. [ ] e2e parity test adapted to paging (fetch all pages) + new tricky-dataset test (old JS == new SQL).
@@ -35,4 +35,7 @@ Bench: scratchpad/perf/bench.sh <db> (starts dist backend on :4390, prints time 
 - Tie order of equal rows in sorted lists was the heap order of the old findMany (not reproducible) -> now deterministic.
 
 ### Done
-- (nothing yet)
+- Steps 1-2: report-sql.ts reviewed, controller passes page/limit/q/sort/list; store-flow e2e parity test now
+  fetches every page (limit 3) for bestsellers (3 sorts), inventory (all/deadstock/lowstock), customers and
+  compares with the frozen legacy functions: 31/31 e2e pass.
+- Purchases tab stays in Node (PO rows bounded by the row guard; claims list = getAllClaims(1, 5000) as before).

@@ -39,6 +39,9 @@ export class ReportsController {
    * ?range=today|yesterday|7days|30days|thisMonth|lastMonth|thisYear|all|custom (default 30days)
    * &start=YYYY-MM-DD&end=YYYY-MM-DD (custom; Bangkok days, end inclusive)
    * &tab=sales|bestsellers|inventory|payments|customers|purchases (omit for all)
+   * Long lists (best sellers, inventory, customers) are paged: &page=1&limit=50 (max 500)&q=search
+   * &sort=quantity|revenue|profit (bestsellers) or spent|debt|orders|name (customers)
+   * &list=all|deadstock|lowstock (inventory). sort / list need a single tab.
    */
   @Get('tabs')
   async getReportTabs(
@@ -47,8 +50,13 @@ export class ReportsController {
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('tab') tab?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('q') q?: string,
+    @Query('sort') sort?: string,
+    @Query('list') list?: string,
   ) {
-    return this.reportsService.getReportTabs({ range, start, end, tab }, req?.user);
+    return this.reportsService.getReportTabs({ range, start, end, tab, page, limit, q, sort, list }, req?.user);
   }
 
   @Get('analytics')
