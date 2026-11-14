@@ -152,6 +152,34 @@ export async function fetchAllClaimRecords(): Promise<ClaimRecord[]> {
   }
 }
 
+/**
+ * Ids of these bills that have a claim, by order id or by bill number, over every claim on the server
+ * (GET /claims/claimed-orders, 500 ids per request). Throws when the server cannot be reached.
+ */
+export async function fetchClaimedOrderIds(orderIds: string[]): Promise<Set<string>> {
+  const ids = [...new Set(orderIds.filter(Boolean))];
+  const out = new Set<string>();
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    const res = await apiFetch<string[] | null>(`/claims/claimed-orders?orderIds=${chunk.map(encodeURIComponent).join(',')}`);
+    if (!Array.isArray(res)) throw new Error('ข้อมูลเคลมจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+    res.forEach((id) => out.add(id));
+  }
+  return out;
+}
+
+/**
+ * Every claim that can still be sent back to a supplier (not on a return note, not scrapped), from
+ * GET /claims/returnable. Does not touch the claims kept by fetchAllClaimRecords. Throws when the server cannot be reached.
+ */
+export async function fetchReturnableClaimRecords(): Promise<ClaimRecord[]> {
+  const res = await apiFetch<ApiListResponse<ApiClaim> | null>('/claims/returnable');
+  const list = apiListRows(res);
+  if (!Array.isArray(list)) throw new Error('ข้อมูลเคลมจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+  const storeProducts: Product[] = useProductStore.getState().products || [];
+  return list.map((c) => mapServerClaim(c, storeProducts));
+}
+
 /** Replacement warranties from the server. Throws when the server cannot be reached. */
 export async function fetchReplacementWarranties(): Promise<ReplacementWarrantyRecord[]> {
   const res = await apiFetch<ApiListResponse<ReplacementWarrantyRecord> | null>('/claims/warranties/list');

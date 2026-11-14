@@ -299,12 +299,11 @@ export class ClaimsService {
   async getReturnableClaims() {
     const rows = await this.prisma.$queryRaw<{ id: string }[]>`
       SELECT c.id FROM customer_claims c
-       WHERE (NOT EXISTS (SELECT 1 FROM audit_logs l WHERE l.entity = 'CustomerClaim' AND l.entity_id = c.id AND l.action = 'CLAIM_META')
-              OR EXISTS (SELECT 1 FROM audit_logs l WHERE l.entity = 'CustomerClaim' AND l.entity_id = c.id AND l.action = 'CLAIM_META'
-                          AND NOT (jsonb_typeof(l.details -> 'returnDocId') = 'string' AND l.details ->> 'returnDocId' <> '')))
-         AND (NOT EXISTS (SELECT 1 FROM audit_logs l WHERE l.entity = 'CustomerClaim' AND l.entity_id = c.id AND l.action = 'CLAIM_META')
-              OR EXISTS (SELECT 1 FROM audit_logs l WHERE l.entity = 'CustomerClaim' AND l.entity_id = c.id AND l.action = 'CLAIM_META'
-                          AND COALESCE(l.details ->> 'frontendStatus', '') NOT IN ('SCRAPPED', 'REJECTED')))`;
+        LEFT JOIN (SELECT entity_id,
+                          bool_or(NOT (COALESCE(jsonb_typeof(details -> 'returnDocId'), '') = 'string' AND details ->> 'returnDocId' <> '')) AS may_lack_doc,
+                          bool_or(COALESCE(details ->> 'frontendStatus', '') NOT IN ('SCRAPPED', 'REJECTED')) AS may_be_open
+                     FROM audit_logs WHERE entity = 'CustomerClaim' AND action = 'CLAIM_META' GROUP BY entity_id) m ON m.entity_id = c.id
+       WHERE m.entity_id IS NULL OR (m.may_lack_doc AND m.may_be_open)`;
     const data = (await this.mergedClaimsByIds(rows.map((r) => r.id))).filter((c: any) => {
       const raw = c.frontendStatus || c.claimStatus || c.status;
       return !c.returnDocId && raw !== 'SCRAPPED' && raw !== 'REJECTED';

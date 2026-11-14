@@ -24,6 +24,8 @@ import {
   getProductsBySupplier,
   getPayablePOsBySupplier,
   fetchSupplierPurchaseOrders,
+  fetchReturnableClaims,
+  hasReturnableClaims,
   createSupplierReturnNote,
   updateSupplierReturnNote,
   PayablePO,
@@ -235,6 +237,21 @@ export function CreateSupplierReturnModal({
       });
     return () => { cancelled = true; };
   }, [open, selectedSupplierId]);
+
+  // Opened from a page that did not load the returnable claims (purchase orders): load them once.
+  useEffect(() => {
+    if (!open || hasReturnableClaims()) return;
+    let cancelled = false;
+    fetchReturnableClaims()
+      .then(() => {
+        if (cancelled) return;
+        setAllStoreClaims(getEligibleClaimsForReturn());
+        if (selectedSupplierId) setAvailableClaims(getEligibleClaimsForReturn(selectedSupplierId));
+      })
+      .catch((e) => console.warn('returnable claims:', e));
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const currentSupplier = suppliers.find((s) => s.id === selectedSupplierId);
   const selectedPO = payablePOs.find((p) => p.id === selectedPoId);

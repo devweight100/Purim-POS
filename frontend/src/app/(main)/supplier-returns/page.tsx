@@ -14,7 +14,6 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
-import { fetchAllClaimRecords } from '@/lib/claim-service';
 import type { ClaimRecord } from '@/lib/types';
 import { 
   loadSuppliers,
@@ -22,6 +21,7 @@ import {
   loadSupplierReturnNotes,
   fetchSupplierReturnNotes,
   getEligibleClaimsForReturn,
+  fetchReturnableClaims,
   fetchProductPoSuppliers,
   cancelSupplierReturnNote,
   restoreSupplierReturnNote
@@ -61,8 +61,8 @@ export default function SupplierReturnsPage() {
       const [notes, supps, claimRecords] = await Promise.all([
         fetchSupplierReturnNotes(),
         fetchSuppliers(),
-        // eligible claims come from the server's claims list (refreshed here)
-        fetchAllClaimRecords(),
+        // every claim that can still go back to a supplier (server filter; was the newest 500 claims)
+        fetchReturnableClaims(),
       ]);
       setReturnNotes(notes);
       setSuppliers(supps);

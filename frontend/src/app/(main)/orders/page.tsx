@@ -13,9 +13,9 @@ import { useCartStore } from "@/lib/store/cart-store";
 import { useProductStore } from "@/lib/store/product-store";
 import { getCustomerById, fetchCustomers } from "@/lib/customer-service";
 
-import { fetchAllClaimRecords } from "@/lib/claim-service";
+import { fetchClaimedOrderIds } from "@/lib/claim-service";
 import { fetchDebtsForOrders, getDebtRecordByOrderId } from "@/lib/debt-service";
-import { ClaimRecord, DebtRecord, DebtPaymentInstallment } from "@/lib/types";
+import { DebtRecord, DebtPaymentInstallment } from "@/lib/types";
 import { ReceiptA4PdfModal, ReceiptA4Data } from "@/components/pos/ReceiptA4PdfModal";
 import { ReceiptPdfModal, ReceiptData } from "@/components/pos/ReceiptPdfModal";
 import { orderToA4Data, orderToReceiptData, paymentMethodLabel } from "@/lib/receipt-mapper";
@@ -96,21 +96,6 @@ export default function OrdersPage() {
   const { products } = useProductStore();
   const shiftStore = useShiftStore();
 
-  // Claimed bills (claims linked by order id come with each order; this adds claims recorded by bill number)
-  const [claimedKeys, setClaimedKeys] = useState<Set<string>>(() => new Set());
-  useEffect(() => {
-    void fetchAllClaimRecords()
-      .then((claims: ClaimRecord[]) => {
-        const keys = new Set<string>();
-        claims.forEach((c) => {
-          if (c.orderId) keys.add(c.orderId);
-          if (c.orderNumber) keys.add(c.orderNumber);
-        });
-        setClaimedKeys(keys);
-      })
-      .catch(() => {});
-  }, []);
-
   // Server-side paging, search, status tab and summary counts (GET /orders?page&limit&search&statusGroup&counts=1)
   const debouncedSearch = useDebouncedValue(search.trim(), 300);
   const [filteredCount, setFilteredCount] = useState(0);
@@ -131,13 +116,14 @@ export default function OrdersPage() {
         meta: { total: number; totalPages: number; counts?: { all: number; completed: number; voided: number; revenue: number } };
       }>(`/orders?${params.toString()}`);
       const fetchedBackend: OrderRow[] = Array.isArray(res?.data) ? res.data : [];
+      // Claimed bills: claims linked by order id come with each order; the server adds claims recorded by
+      // bill number for the bills of this page (every claim, not the newest 500)
+      const unlinked = fetchedBackend.filter((o) => !(Array.isArray(o.claims) && o.claims.length > 0)).map((o) => o.id);
+      const claimedIds = unlinked.length
+        ? await fetchClaimedOrderIds(unlinked).catch((e) => { console.warn("claimed bills of the page:", e); return new Set<string>(); })
+        : new Set<string>();
       const rows: OrderRow[] = fetchedBackend.map((bOrder) => {
-        const key = bOrder.orderNumber || bOrder.id;
-        const hasClaims =
-          (Array.isArray(bOrder.claims) && bOrder.claims.length > 0) ||
-          claimedKeys.has(key) ||
-          claimedKeys.has(bOrder.id) ||
-          claimedKeys.has(bOrder.orderNumber);
+        const hasClaims = (Array.isArray(bOrder.claims) && bOrder.claims.length > 0) || claimedIds.has(bOrder.id);
         const items: OrderRowItem[] = Array.isArray(bOrder.items)
           ? bOrder.items.map((it) => ({ ...it, name: it.product?.name || it.name || "สินค้า", sku: it.product?.sku || it.sku || "" }))
           : [];
@@ -180,7 +166,7 @@ export default function OrdersPage() {
     const run = async () => { await loadOrders(); };
     void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate, currentPage, pageSize, statusTab, debouncedSearch, claimedKeys]);
+  }, [startDate, endDate, currentPage, pageSize, statusTab, debouncedSearch]);
 
   useEffect(() => {
     // Auto-sync offline orders in background

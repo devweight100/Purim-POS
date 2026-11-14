@@ -2,7 +2,7 @@ import {
   ClaimRecord, SupplierReturnNote, SupplierReturnItem, SupplierReturnItemType, Product,
   ApiSupplier, ApiPurchaseOrder, ApiSupplierReturnNote, ApiListResponse, apiListRows,
 } from './types';
-import { loadAllClaimRecords, fetchAllClaimRecords } from './claim-service';
+import { fetchAllClaimRecords, fetchReturnableClaimRecords } from './claim-service';
 import { useProductStore } from './store/product-store';
 import { apiFetch, api } from './api';
 import { grossPerUnit } from '@shared/po-calc';
@@ -19,6 +19,21 @@ const supplierPosMem = new Map<string, ApiPurchaseOrder[]>();
 /** Supplier of the newest PO containing a product (GET /purchase-orders/product-suppliers). */
 const productPoSupplierMem = new Map<string, { supplierId: string; supplierName: string | null }>();
 let returnNotesMem: SupplierReturnNote[] = [];
+/** Every claim that can still go back to a supplier (GET /claims/returnable), last server answer. */
+let returnableClaimsMem: ClaimRecord[] = [];
+let returnableClaimsLoaded = false;
+
+/** True once the returnable claims were loaded in this session (the supplier returns page loads them on open). */
+export function hasReturnableClaims(): boolean {
+  return returnableClaimsLoaded;
+}
+
+/** Reload every returnable claim (supplier returns page, create-return dialog). Throws when the server cannot be reached. */
+export async function fetchReturnableClaims(): Promise<ClaimRecord[]> {
+  returnableClaimsMem = await fetchReturnableClaimRecords();
+  returnableClaimsLoaded = true;
+  return returnableClaimsMem;
+}
 
 // ─── Suppliers ───
 export const DEFAULT_SUPPLIERS: ApiSupplier[] = [];
@@ -368,7 +383,7 @@ export function getPayablePOsBySupplier(supplierId: string): PayablePO[] {
 
 // ─── Get Claims Eligible to be Returned to Supplier ───
 export function getEligibleClaimsForReturn(supplierId?: string): ClaimRecord[] {
-  const allClaims = loadAllClaimRecords();
+  const allClaims = returnableClaimsMem;
   const suppliers = loadSuppliers();
   const pos = loadPurchaseOrders();
 
@@ -605,8 +620,8 @@ function buildReturnContent(params: CreateReturnNoteParams) {
       else overstockTotalCost += itemTotalCost;
     });
   } else if (Array.isArray(params.claimItems) && params.claimItems.length > 0) {
-    // Legacy claimItems: item details come from the server's claims
-    const claims = loadAllClaimRecords();
+    // Legacy claimItems: item details come from the server's returnable claims
+    const claims = returnableClaimsMem;
     params.claimItems.forEach((ci) => {
       const c = claims.find((row) => row.id === ci.claimId);
       if (!c) return;
@@ -646,7 +661,7 @@ function buildReturnContent(params: CreateReturnNoteParams) {
 
 /** After the server accepted a change: reload notes, claims (re-linked by the server) and stock. */
 async function refreshAfterReturnWrite(): Promise<void> {
-  await Promise.allSettled([fetchSupplierReturnNotes(), fetchAllClaimRecords()]);
+  await Promise.allSettled([fetchSupplierReturnNotes(), fetchReturnableClaims(), fetchAllClaimRecords()]);
   if (typeof window !== 'undefined') {
     void useProductStore.getState().fetchProducts();
     window.dispatchEvent(new Event('pos-data-synced'));
