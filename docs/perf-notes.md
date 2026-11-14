@@ -197,14 +197,28 @@ without contrib still migrates (plain ILIKE, same results, just a scan).
 
 ### Plan
 1. [x] Measure, notes.
-2. [ ] Migration pg_trgm (guarded) + GIN trigram indexes (products name/sku, barcodes, pack barcodes, customers name/phone, orders order_number).
-3. [ ] Orders page: server paging/search/status tab/stats; no GET /products download.
-4. [ ] Debts page: server paging + summary.
-5. [ ] Customers: GET /customers?page= (paged mode; no page param = old full list for POS/other consumers).
+2. [x] Migration pg_trgm (guarded) + GIN trigram indexes (products name/sku, barcodes, pack barcodes, customers name/phone, orders order_number).
+3. [x] Orders page: server paging/search/status tab/stats; no GET /products download.
+4. [x] Debts page: server paging + summary.
+5. [x] Customers: GET /customers?page= (paged mode; no page param = old full list for POS/other consumers).
 6. [ ] Products page: GET /products/page (q, category, supplier, stock filter, sort, paging, counts); export/import/bundle picker load the catalogue on demand.
 7. [ ] Inventory page: paged stock list + server stats.
 8. [ ] Purchase orders + payables: no 500 cap (server paging / server bills).
 9. [ ] Tests, after-measurements, full verification, PROJECT_STATUS.
 
 ### Decisions
-(see steps)
+- pg_trgm migration 20261125000000_trigram_search (guarded DO block; schema declares the GIN indexes, fresh-DB diff empty).
+- Search everywhere = case-insensitive substring (ILIKE with % _ \ escaped), same fields the pages searched before.
+- Orders: GET /orders gains statusGroup (completed = not VOIDED, voided), search also in note + item product name/sku,
+  counts=1 -> meta.counts {all, completed, voided, revenue} over the date range only (old cards ignored search/tab);
+  order createdAt desc, id desc. Page no longer downloads GET /products (item names come with the order).
+  Search on 100k orders: 0.25-0.3 s (OR over joins); page 1: 0.03-0.09 s.
+- Debts: GET /debts gains statusGroup (unpaid / overdue / paid as the page defined them), customerId, customerType
+  (profile type, missing = INDIVIDUAL), search also customer code / company / tax id, stats=1 (cards over every debt).
+  The list now includes customer.profile (before: type filter / code search never matched anything).
+  Other consumers of the full list (POS debt modal, orders page credit history via getDebtRecordByOrderId) still
+  use fetchDebtRecords (all pages) — not changed.
+- Customers: GET /customers?page= paged mode (stats + nextCode over every customer, listIndex for the legacy
+  fallback code); no page = full list as before minus the `debts` arrays (nobody read them), currentDebt summed
+  in SQL, rows in creation order. ClientDbSync still refreshes the full list every 15 s (now 0.11 s / 1.2 MB).
+
