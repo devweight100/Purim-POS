@@ -13,7 +13,12 @@ import { poStatusBadge } from './PoStatusBadge';
 type PoAction = (po: PurchaseOrder, e?: React.MouseEvent) => void;
 
 interface Props {
-  purchaseOrders: PurchaseOrder[];
+  /** POs per status over every PO (server counts), ALL = total */
+  statusCounts: Record<string, number>;
+  page: number;
+  setPage: (page: number) => void;
+  total: number;
+  pageSize: number;
   filteredPOs: PurchaseOrder[];
   loading: boolean;
   loadError: string | null;
@@ -29,7 +34,7 @@ interface Props {
 
 /** Status tabs + table of purchase orders. */
 export function PoListTable({
-  purchaseOrders, filteredPOs, loading, loadError, setStatusFilter, fetchPOs, handleViewDetail,
+  statusCounts, page, setPage, total, pageSize, filteredPOs, loading, loadError, setStatusFilter, fetchPOs, handleViewDetail,
   openEditDialog, openIssueConfirmDialog, openReceiveDialog, openStatusChangeDialog, openCancelDialog,
 }: Props) {
   return (
@@ -37,21 +42,21 @@ export function PoListTable({
       <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 p-4">
         <Tabs defaultValue="ALL" onValueChange={setStatusFilter}>
           <TabsList className="bg-slate-100 border border-slate-200">
-            <TabsTrigger value="ALL" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">ทั้งหมด ({purchaseOrders.length})</TabsTrigger>
+            <TabsTrigger value="ALL" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">ทั้งหมด ({statusCounts.ALL || 0})</TabsTrigger>
             <TabsTrigger value="DRAFT" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-              DRAFT ({purchaseOrders.filter(p => p.status === 'DRAFT').length})
+              DRAFT ({statusCounts.DRAFT || 0})
             </TabsTrigger>
             <TabsTrigger value="ISSUED" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-              ISSUED ({purchaseOrders.filter(p => p.status === 'ISSUED').length})
+              ISSUED ({statusCounts.ISSUED || 0})
             </TabsTrigger>
             <TabsTrigger value="PARTIALLY_RECEIVED" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-              PARTIAL ({purchaseOrders.filter(p => p.status === 'PARTIALLY_RECEIVED').length})
+              PARTIAL ({statusCounts.PARTIALLY_RECEIVED || 0})
             </TabsTrigger>
             <TabsTrigger value="COMPLETED" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-              COMPLETED ({purchaseOrders.filter(p => p.status === 'COMPLETED').length})
+              COMPLETED ({statusCounts.COMPLETED || 0})
             </TabsTrigger>
             <TabsTrigger value="CANCELLED" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-              CANCELLED ({purchaseOrders.filter(p => p.status === 'CANCELLED').length})
+              CANCELLED ({statusCounts.CANCELLED || 0})
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -185,6 +190,18 @@ export function PoListTable({
           </TableBody>
         </Table>
       </div>
+      {total > pageSize && (
+        <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/80 px-4 py-3">
+          <div className="text-xs text-slate-500 font-medium">
+            แสดง <b className="text-slate-800">{(page - 1) * pageSize + 1}</b> - <b className="text-slate-800">{Math.min(page * pageSize, total)}</b> จาก <b className="text-slate-800">{total.toLocaleString()}</b> ใบ
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(Math.max(1, page - 1))} className="h-8 px-3 text-xs">‹ ก่อนหน้า</Button>
+            <span className="px-2 text-xs font-bold text-slate-700">หน้า {page} / {Math.max(1, Math.ceil(total / pageSize))}</span>
+            <Button variant="outline" size="sm" disabled={page * pageSize >= total} onClick={() => setPage(page + 1)} className="h-8 px-3 text-xs">ถัดไป ›</Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

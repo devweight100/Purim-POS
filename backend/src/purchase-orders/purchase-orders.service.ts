@@ -60,10 +60,23 @@ export class PurchaseOrdersService {
           supplier: true,
           items: { include: { product: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       }),
       this.prisma.purchaseOrder.count({ where }),
     ]);
+
+    // ?counts=1: POs per status (status tabs of the PO page), with the supplier / search filters but not the status
+    let counts: Record<string, number> | undefined;
+    if (query?.counts === '1' || query?.counts === 'true') {
+      const countWhere = { ...where };
+      delete countWhere.status;
+      const groups = await this.prisma.purchaseOrder.groupBy({ by: ['status'], where: countWhere, _count: { _all: true } });
+      counts = { ALL: 0 };
+      for (const g of groups) {
+        counts[g.status] = g._count._all;
+        counts.ALL += g._count._all;
+      }
+    }
 
     return {
       data: orders,
@@ -72,6 +85,7 @@ export class PurchaseOrdersService {
         page,
         limit,
         totalPages: Math.ceil(total / limit),
+        ...(counts ? { counts } : {}),
       },
     };
   }

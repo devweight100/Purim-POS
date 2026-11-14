@@ -100,22 +100,38 @@ export default function PurchaseOrdersPage() {
   const [isUnderReceiveModalOpen, setIsUnderReceiveModalOpen] = useState(false);
   const [underReceiveAction, setUnderReceiveAction] = useState<'ADJUST_AND_COMPLETE' | 'PARTIAL'>('ADJUST_AND_COMPLETE');
 
+  // Server-side paging and status tab (GET /purchase-orders?page&limit&status&counts=1); before, the page asked
+  // for 1,000 rows and the server capped the list at 500.
+  const PO_PAGE_SIZE = 50;
+  const [poPage, setPoPage] = useState(1);
+  const [poTotal, setPoTotal] = useState(0);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const changeStatusFilter = (v: string) => {
+    if (v !== statusFilter) setPoPage(1);
+    setStatusFilter(v);
+  };
+
   /** Load the list (state is only set after the request finished). */
   const loadPOs = useCallback(async () => {
     let list: PurchaseOrder[] = [];
     try {
-      const data = await apiFetch("/purchase-orders?limit=1000");
+      const params = new URLSearchParams({ page: String(poPage), limit: String(PO_PAGE_SIZE), counts: '1' });
+      if (statusFilter !== 'ALL') params.set('status', statusFilter);
+      const data = await apiFetch(`/purchase-orders?${params.toString()}`);
       list = Array.isArray(data) ? data : data.data;
       if (!Array.isArray(list)) throw new Error("ข้อมูลใบสั่งซื้อไม่ถูกต้อง");
+      setPoTotal(Number(data?.meta?.total) || list.length);
+      setStatusCounts(data?.meta?.counts || {});
       setLoadError(null);
     } catch (error) {
       list = [];
+      setPoTotal(0);
       setLoadError(error instanceof Error ? error.message : "โหลดใบสั่งซื้อจากฐานข้อมูลไม่ได้");
     }
 
     setPurchaseOrders(list);
     setLoading(false);
-  }, []);
+  }, [poPage, statusFilter]);
 
   const fetchPOs = useCallback(async () => {
     setLoading(true);
@@ -493,9 +509,7 @@ export default function PurchaseOrdersPage() {
     } finally { receiveBusy.current = false; }
   };
 
-  const filteredPOs = purchaseOrders.filter(po => 
-    statusFilter === "ALL" ? true : po.status === statusFilter
-  );
+  const filteredPOs = purchaseOrders;
 
 
   const imagePreview = (
@@ -553,11 +567,15 @@ export default function PurchaseOrdersPage() {
       </div>
 
       <PoListTable
-        purchaseOrders={purchaseOrders}
+        statusCounts={statusCounts}
         filteredPOs={filteredPOs}
         loading={loading}
         loadError={loadError}
-        setStatusFilter={setStatusFilter}
+        setStatusFilter={changeStatusFilter}
+        page={poPage}
+        setPage={setPoPage}
+        total={poTotal}
+        pageSize={PO_PAGE_SIZE}
         fetchPOs={fetchPOs}
         handleViewDetail={handleViewDetail}
         openEditDialog={openEditDialog}
