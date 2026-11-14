@@ -1,6 +1,6 @@
 # Perf round — progress notes (delete a task's section when it is fully done)
 
-## Task 4: follow-ups (payables on the server, supplier-return PO list, debt queries, customer sync) — IN PROGRESS
+## Task 4: follow-ups (payables on the server, supplier-return PO list, debt queries, customer sync) — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 
 Branch ccr-8f8b0741-si1a0o (base b67c198). perf_load survived the container restart (the cluster lives in /tmp/pgdata;
 started with pg_ctl on :5433; fully migrated). Added realistic payables: scratchpad/perf/seed-payables.sql (every PO
@@ -24,8 +24,40 @@ owes its total, 600 vouchers over 1,800 POs: partial, discount, credit notes, ev
 3. [x] Supplier returns: PO list searchable/paged from the server.
 4. [x] POS debt picker + orders credit history: filtered server query.
 5. [x] Customer list refresh every 15 s -> delta / on demand (check consumers).
-6. [ ] Cheap follow-ups (claims on orders page).
-7. [ ] Tests, after-measurements, full verification, PROJECT_STATUS.
+6. [x] Cheap follow-ups: supplier-returns page loads every return note (was newest 200; the next document number
+       counted only those). Claims cap NOT changed (see below).
+7. [x] Tests, after-measurements, full verification, PROJECT_STATUS.
+
+### After (same perf_load; t4-after.txt; uncompressed / gzip)
+| screen | before | after |
+|---|---|---|
+| payables page open | POs 0.27-0.32 s / 2.1 MB (newest 500 only) + vouchers 0.04 s / 230 kB (newest 200) + notes (newest 200); bills, paid amounts and cards WRONG beyond the caps | /payables/bills page 0.19-0.27 s / 227 kB (4.9 kB gzip), every PO and voucher; vouchers page 0.014-0.02 s / 58 kB; available credit notes 0.03-0.05 s |
+| payables filter / search / page | in the browser over the capped list | 0.18-0.24 s per page (all bills computed per request; SQL 67 ms) |
+| settle-several-bills dialog | the capped list | every open bill (4,136), one slim request 0.19-0.20 s / 1.9 MB (43 kB gzip) |
+| supplier returns page | POs 0.27-0.32 s / 2.1 MB (newest 500), notes newest 200 | no PO download on open; dialog: the supplier's POs 0.013-0.022 s / 72 kB; claimed-product suppliers 0.01-0.017 s per 200 ids; every note |
+| POS debt picker | 34 x /debts?limit=100 (1.5 MB) | 1 request: owing for the customer 0.01 s / 3.5 kB; without customer 0.02-0.03 s / 49 kB (newest 100 + "N more, search") |
+| orders page credit badges / history | background download of every debt (34 requests) | debts of the page's credit bills 0.008-0.01 s / 0.6 kB |
+| customer list every 15 s (every screen) | 0.10-0.19 s / 1.2 MB (23 kB gzip) | first load 0.09-0.15 s / 1.2 MB, then delta 0.005-0.008 s / 101 B (5 changed: 0.014 s / 1.4 kB) |
+
+### Verification
+backend tsc + jest 122 + e2e 55/55 (fresh perf_t4_test; new: payables parity x2, credit notes / product-suppliers, customer
+sync, debts owing / orderIds), fresh migrate deploy + empty schema diff (customer_changes + 3 triggers present); frontend
+tsc, eslint 0 errors (313 warnings, none new rules), vitest 178 (new customer-sync 4, payables-debts-queries 5), next build,
+Playwright 17/17 (new 09-payables; 02-shop-day debt picker step).
+
+### Behaviour changes
+- Payables: bill amount / payable cap of VAT or discounted lines = gross per unit (= settlement / PO dialog); search also
+  matches the supplier's invoice number; 50 bills per page, select-all = the open bills of the page, selection kept across
+  pages; settle dialog lists every open bill; voucher history 50 per page; the dead "payments built from bills" table is gone.
+- POS debt picker: newest 100 owing bills unless a customer is chosen or a search is typed (search also matches tax id).
+- Supplier returns dialog: the PO list appears after the supplier's POs load (error shown in the dialog if refused).
+
+### Follow-ups (not done)
+- fetchAllClaimRecords (claims page, orders page "claimed" badge for claims recorded by bill number, supplier-returns
+  eligible claims) still reads the newest 500 claims (/claims?limit=500); claims carry the bill number in audit-log meta, so
+  a server-side check needs care.
+- /payables/bills computes every payable PO per request (0.2 s at 5k POs); fine for now, SQL figures or a cache if POs grow
+  10x.
 
 ### Done
 - Step 2 backend: GET /payables/bills now returns the page's bill rows computed on the server (payable-bills.ts =
