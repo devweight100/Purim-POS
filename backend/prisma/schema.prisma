@@ -831,6 +831,7 @@ model CustomerClaim {
   @@index([customerId])
   @@index([supplierId])
   @@index([returnNoteId])
+  @@index([orderId]) // claims of a bill (orders list include, GET /claims/claimed-orders)
   @@index([createdAt]) // claim accounting per period (reports, P&L)
   @@map("customer_claims")
 }

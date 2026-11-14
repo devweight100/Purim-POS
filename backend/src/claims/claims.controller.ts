@@ -43,6 +43,21 @@ export class ClaimsController {
     );
   }
 
+  /** ?orderIds=a,b (<= 500): ids of these bills that have a claim (by order id or by bill number). */
+  @Get('claimed-orders')
+  getClaimedOrders(@Query('orderIds') orderIds?: string) {
+    if (orderIds !== undefined && typeof orderIds !== 'string') throw new BadRequestException('รายการบิลไม่ถูกต้อง');
+    const ids = [...new Set(String(orderIds || '').split(',').map((s) => s.trim()).filter(Boolean))];
+    if (ids.length > 500) throw new BadRequestException('ขอได้ครั้งละไม่เกิน 500 บิล');
+    return ids.length ? this.claimsService.getClaimedOrderIds(ids) : [];
+  }
+
+  /** Every claim that can still go back to a supplier (supplier returns page). */
+  @Get('returnable')
+  getReturnable() {
+    return this.claimsService.getReturnableClaims();
+  }
+
   @Get('warranties/list')
   getWarrantiesList() {
     return this.claimsService.getReplacementWarranties();

@@ -227,6 +227,91 @@ export class ClaimsService {
     };
   }
 
+  /** Rows of GET /claims (claim + product / customer / order, merged with its CLAIM_META / EXCHANGE logs) for these ids, newest first. */
+  private async mergedClaimsByIds(ids: string[]) {
+    if (!ids.length) return [];
+    const [claims, logs] = await Promise.all([
+      this.prisma.customerClaim.findMany({
+        where: { id: { in: ids } },
+        orderBy: { receivedDate: 'desc' },
+        include: {
+          product: { select: { id: true, name: true, sku: true, unit: true, basePrice: true, costPrice: true, priceLevel1: true } },
+          customer: { select: { id: true, name: true, phone: true } },
+          order: { select: { id: true, orderNumber: true, createdAt: true } },
+        },
+      }),
+      this.prisma.auditLog.findMany({
+        where: { entity: 'CustomerClaim', entityId: { in: ids }, action: { in: ['CLAIM_META', 'EXCHANGE'] } },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ]);
+    const logsByClaimId = new Map<string, any[]>();
+    for (const log of logs) {
+      if (!log.entityId) continue;
+      const arr = logsByClaimId.get(log.entityId) || [];
+      arr.push(log);
+      logsByClaimId.set(log.entityId, arr);
+    }
+    return claims.map((claim) => this.mergeClaimWithLogs(claim, logsByClaimId.get(claim.id) || []));
+  }
+
+  /**
+   * GET /claims/claimed-orders?orderIds=a,b: the ids of these bills that have a claim, over EVERY claim.
+   * Same rule as the orders page used on the claims list (newest 500 only): a claim marks the bill whose id or
+   * number equals the claim's orderId or its bill number (the linked order's number, else the orderNumber kept in
+   * its CLAIM_META audit log - claims recorded by bill number have no order id). Candidates come from indexed
+   * lookups (customer_claims.order_id, the CLAIM_META orderNumber expression index); the bill number is then
+   * resolved exactly as GET /claims does.
+   */
+  async getClaimedOrderIds(orderIds: string[]): Promise<string[]> {
+    const orders = await this.prisma.order.findMany({ where: { id: { in: orderIds } }, select: { id: true, orderNumber: true } });
+    if (!orders.length) return [];
+    const keys = [...new Set(orders.flatMap((o) => [o.id, o.orderNumber]))];
+    const [linked, metaRows] = await Promise.all([
+      this.prisma.customerClaim.findMany({
+        where: { OR: [{ orderId: { in: keys } }, { order: { orderNumber: { in: keys } } }] },
+        select: { id: true, orderId: true, order: { select: { orderNumber: true } } },
+      }),
+      this.prisma.$queryRaw<{ id: string }[]>`
+        SELECT DISTINCT entity_id AS id FROM audit_logs
+         WHERE entity = 'CustomerClaim' AND action = 'CLAIM_META' AND (details ->> 'orderNumber') = ANY(${keys})`,
+    ]);
+    const claimed = new Set<string>();
+    const resolveIds = new Set(metaRows.map((r) => r.id));
+    for (const c of linked) {
+      if (c.orderId) claimed.add(c.orderId);
+      if (c.order?.orderNumber) claimed.add(c.order.orderNumber);
+      else resolveIds.add(c.id); // bill number from CLAIM_META
+    }
+    for (const c of await this.mergedClaimsByIds([...resolveIds])) {
+      if (c.orderId) claimed.add(c.orderId);
+      if (c.orderNumber !== undefined && c.orderNumber !== null && c.orderNumber !== '') claimed.add(c.orderNumber);
+    }
+    return orders.filter((o) => claimed.has(o.id) || claimed.has(o.orderNumber)).map((o) => o.id);
+  }
+
+  /**
+   * GET /claims/returnable: EVERY claim the supplier-returns page can still send back (not on a return note,
+   * not scrapped) - the rule of the page's getEligibleClaimsForReturn, which ran on the newest 500 claims only.
+   * SQL keeps the claims whose CLAIM_META may lack a returnDocId and may not be scrapped (a superset); the
+   * merged rows are then filtered with the page's exact rule. Same row shape and order as GET /claims.
+   */
+  async getReturnableClaims() {
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT c.id FROM customer_claims c
+       WHERE (NOT EXISTS (SELECT 1 FROM audit_logs l WHERE l.entity = 'CustomerClaim' AND l.entity_id = c.id AND l.action = 'CLAIM_META')
+              OR EXISTS (SELECT 1 FROM audit_logs l WHERE l.entity = 'CustomerClaim' AND l.entity_id = c.id AND l.action = 'CLAIM_META'
+                          AND NOT (jsonb_typeof(l.details -> 'returnDocId') = 'string' AND l.details ->> 'returnDocId' <> '')))
+         AND (NOT EXISTS (SELECT 1 FROM audit_logs l WHERE l.entity = 'CustomerClaim' AND l.entity_id = c.id AND l.action = 'CLAIM_META')
+              OR EXISTS (SELECT 1 FROM audit_logs l WHERE l.entity = 'CustomerClaim' AND l.entity_id = c.id AND l.action = 'CLAIM_META'
+                          AND COALESCE(l.details ->> 'frontendStatus', '') NOT IN ('SCRAPPED', 'REJECTED')))`;
+    const data = (await this.mergedClaimsByIds(rows.map((r) => r.id))).filter((c: any) => {
+      const raw = c.frontendStatus || c.claimStatus || c.status;
+      return !c.returnDocId && raw !== 'SCRAPPED' && raw !== 'REJECTED';
+    });
+    return { data, meta: { total: data.length } };
+  }
+
   async getClaimDetails(id: string) {
     const claim = await this.prisma.customerClaim.findFirst({
       where: {
