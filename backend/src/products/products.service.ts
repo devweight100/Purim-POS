@@ -519,11 +519,15 @@ export class ProductsService {
    * sort name | stock | basePrice (selling: price level 1, else base price) | priceLevel1-5 (missing = 0;
    * level 1 falls back to the base price), ties and no sort = catalogue (table) order.
    */
-  async page(opts: { page: number; limit: number; q?: string; categoryId?: string; supplierId?: string; stock?: string; sort?: string; dir?: string }) {
+  async page(opts: {
+    page: number; limit: number; q?: string; categoryId?: string; supplierId?: string; stock?: string; sort?: string; dir?: string;
+    /** inventory page cards over every product; cost only counts for users who may see it */
+    stats?: boolean; canViewCost?: boolean;
+  }): Promise<{ data: CatalogRow[]; meta: { total: number; page: number; limit: number; totalPages: number; allCount: number; lowStockThreshold: number }; stats?: Record<string, number> }> {
     const page = Math.max(1, Math.min(1_000_000, Math.floor(opts.page || 1)));
     const limit = Math.max(1, Math.min(500, Math.floor(opts.limit || 50)));
     const stock = opts.stock || 'all';
-    if (!['all', 'low', 'out'].includes(stock)) throw new BadRequestException('ตัวกรองสต็อกไม่ถูกต้อง (all, low, out)');
+    if (!['all', 'low', 'out', 'normal', 'negative', 'reorder'].includes(stock)) throw new BadRequestException('ตัวกรองสต็อกไม่ถูกต้อง');
     const dir = opts.dir === 'desc' ? 'DESC' : 'ASC';
     const collation = await this.nameCollation();
     const sortSql: Record<string, string> = {
@@ -553,32 +557,49 @@ export class ProductsService {
     const threshold = Number.isFinite(thresholdRaw) && thresholdRaw >= 0 ? thresholdRaw : 5;
     if (stock === 'out') conds.push(Prisma.sql`x.stock = 0`);
     if (stock === 'low') conds.push(Prisma.sql`x.stock > 0 AND x.stock <= ${threshold}`);
+    if (stock === 'normal') conds.push(Prisma.sql`x.stock > ${threshold}`);
+    if (stock === 'negative') conds.push(Prisma.sql`x.stock < 0`);
+    if (stock === 'reorder') conds.push(Prisma.sql`x.stock <= ${threshold}`);
     const where = conds.length ? Prisma.sql`WHERE ${Prisma.join(conds, ' AND ')}` : Prisma.empty;
     // stock as catalogStock computes it: batch sum, or complete sets of a bundle's children
     const offset = (page - 1) * limit;
-    const rows = await this.prisma.$queryRaw<{ id: string; total: number }[]>`
+    const withX = Prisma.sql`
       WITH s AS (SELECT product_id, SUM(quantity_remaining) AS q FROM stock_batches GROUP BY product_id),
       bs AS (SELECT bi.bundle_product_id AS pid,
                MIN(floor(COALESCE(s.q, 0) / COALESCE(NULLIF(bi.quantity, 0), 1) + 0.000000001)) AS q
              FROM product_bundle_items bi LEFT JOIN s ON s.product_id = bi.child_product_id GROUP BY bi.bundle_product_id),
-      x AS (SELECT p.id, p.name, p.sku, p.category_id, p.base_price, p.price_level_1, p.price_level_2, p.price_level_3,
+      x AS (SELECT p.id, p.name, p.sku, p.category_id, p.base_price, p.cost_price, p.price_level_1, p.price_level_2, p.price_level_3,
               p.price_level_4, p.price_level_5, p.ctid AS pos,
               CASE WHEN p.is_bundle AND bs.pid IS NOT NULL THEN bs.q ELSE COALESCE(s.q, 0) END AS stock
-            FROM products p LEFT JOIN s ON s.product_id = p.id LEFT JOIN bs ON bs.pid = p.id)
+            FROM products p LEFT JOIN s ON s.product_id = p.id LEFT JOIN bs ON bs.pid = p.id)`;
+    const rows = await this.prisma.$queryRaw<{ id: string; total: number }[]>`${withX}
       SELECT x.id, count(*) OVER ()::int AS total FROM x ${where} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`;
+    let stats: Record<string, number> | undefined;
+    if (opts.stats) {
+      // as the inventory page summed its rows: value = stock (>= 0) x selling price, or cost when the price is 0
+      const [r] = await this.prisma.$queryRaw<Record<string, string>[]>`${withX}
+        SELECT count(*)::text AS "totalItems", COALESCE(sum(x.stock), 0)::text AS "totalBaseUnits",
+          COALESCE(sum(GREATEST(x.stock, 0) * CASE WHEN COALESCE(x.price_level_1, x.base_price) <> 0 THEN COALESCE(x.price_level_1, x.base_price)
+            WHEN ${!!opts.canViewCost} THEN x.cost_price ELSE 0 END), 0)::text AS "totalValuation",
+          count(*) FILTER (WHERE x.stock > 0 AND x.stock <= ${threshold})::text AS "lowStockCount",
+          count(*) FILTER (WHERE x.stock = 0)::text AS "outOfStockCount",
+          count(*) FILTER (WHERE x.stock < 0)::text AS "negativeStockCount"
+        FROM x`;
+      stats = Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Number(v) || 0]));
+    }
     const [{ all }] = await this.prisma.$queryRaw<{ all: number }[]>`SELECT count(*)::int AS "all" FROM products`;
     let total = rows.length ? Number(rows[0].total) : 0;
     if (!rows.length && offset > 0 && conds.length === 0) total = all;
     else if (!rows.length && offset > 0) {
       // past the last page: count without paging
-      const again = await this.page({ ...opts, page: 1, limit: 1 });
+      const again = await this.page({ ...opts, page: 1, limit: 1, stats: false });
       total = again.meta.total;
     }
     const ids = rows.map((r) => r.id);
     const catalog = await this.catalogRows(this.prisma, { ids });
     const byId = new Map(catalog.map((r) => [r.id, r]));
     const data = ids.map((id) => byId.get(id)).filter((r): r is CatalogRow => !!r);
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit), allCount: all, lowStockThreshold: threshold } };
+    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit), allCount: all, lowStockThreshold: threshold }, ...(stats ? { stats } : {}) };
   }
 
   /** Remaining stock per product id (sum of its batches); `ids` limits it to those products. */

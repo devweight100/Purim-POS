@@ -1,10 +1,12 @@
 'use client';
 
 import { getLowStockThreshold } from '@/lib/store-settings-storage';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { apiFetch } from '@/lib/api';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import Link from 'next/link';
-import { useProductStore } from '@/lib/store/product-store';
-import type { Product } from '@/lib/types';
+import { toStoreProduct, useProductStore } from '@/lib/store/product-store';
+import type { ApiProduct, Product } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -97,14 +99,74 @@ export default function InventoryPage() {
   const [isStockCardOpen, setIsStockCardOpen] = useState(false);
   const [stockCardProduct, setStockCardProduct] = useState<InvProduct | null>(null);
 
-  const { products, categories: storeCategories, fetchProducts, isLoading, error: productsError } = useProductStore();
+  // whole catalogue (product store): only for the adjust dialog's product list, loaded when it opens
+  const { products, categories: storeCategories, fetchProducts } = useProductStore();
+  // the stock table, the reorder list and the cards come from the server (GET /products/page, paged + filtered)
+  const [pageRows, setPageRows] = useState<InvProduct[]>([]);
+  const [filteredCount, setFilteredCount] = useState(0);
+  const [reorderRows, setReorderRows] = useState<InvProduct[]>([]);
+  const [reorderTotal, setReorderTotal] = useState(0);
+  const [stats, setStats] = useState({ totalItems: 0, totalBaseUnits: 0, totalValuation: 0, lowStockCount: 0, outOfStockCount: 0, negativeStockCount: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [productsError, setProductsError] = useState<string | null>(null);
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
+  const pageQuery = new URLSearchParams({ page: String(inventoryPage), limit: String(inventoryPageSize), stats: '1' });
+  if (debouncedSearch) pageQuery.set('q', debouncedSearch);
+  if (activeCategory !== 'all') pageQuery.set('categoryId', activeCategory);
+  if (stockStatusFilter !== 'all') pageQuery.set('stock', stockStatusFilter);
+  const pageUrl = `/products/page?${pageQuery.toString()}`;
+  const latestPageUrl = useRef(pageUrl);
+
+  const loadPage = async (url: string) => {
+    try {
+      const res = await apiFetch<{ data: ApiProduct[]; meta: { total: number }; stats?: typeof stats }>(url);
+      if (latestPageUrl.current !== url) return;
+      setPageRows((res?.data || []).map(toStoreProduct));
+      setFilteredCount(Number(res?.meta?.total) || 0);
+      if (res?.stats) setStats(res.stats);
+      setProductsError(null);
+    } catch (err) {
+      if (latestPageUrl.current !== url) return;
+      setPageRows([]);
+      setFilteredCount(0);
+      setProductsError((err as Error | undefined)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้');
+    } finally {
+      if (latestPageUrl.current === url) setIsLoading(false);
+    }
+  };
+
+  const loadReorder = async () => {
+    try {
+      const res = await apiFetch<{ data: ApiProduct[]; meta: { total: number } }>('/products/page?page=1&limit=500&stock=reorder');
+      setReorderRows((res?.data || []).map(toStoreProduct));
+      setReorderTotal(Number(res?.meta?.total) || 0);
+    } catch {
+      setReorderRows([]);
+      setReorderTotal(0);
+    }
+  };
+
+  useEffect(() => {
+    latestPageUrl.current = pageUrl;
+    const run = async () => { await loadPage(pageUrl); };
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageUrl]);
+
+  useEffect(() => {
+    if (activeTab !== 'reorder') return;
+    const run = async () => { await loadReorder(); };
+    void run();
+  }, [activeTab]);
   const [movementsError, setMovementsError] = useState<string | null>(null);
   // "now" for the movement date filter: when the movements were (re)loaded
   const [movementsLoadedAt, setMovementsLoadedAt] = useState(() => Date.now());
   const loadError = productsError || movementsError;
 
   const reloadData = async () => {
-    await fetchProducts();
+    await loadPage(latestPageUrl.current);
+    if (activeTab === 'reorder') await loadReorder();
+    if (products.length) void fetchProducts();
     try {
       const movs = await fetchStockMovements();
       setMovements(movs);
@@ -190,71 +252,9 @@ export default function InventoryPage() {
     return parts.join(' ');
   };
 
-  // Inventory stats summary
-  const stats = useMemo(() => {
-    const totalItems = products.length;
-    let totalBaseUnits = 0;
-    let totalValuation = 0;
-    let lowStockCount = 0;
-    let outOfStockCount = 0;
-    let negativeStockCount = 0;
-
-    products.forEach((p: InvProduct) => {
-      const stock = Number(p.stock !== undefined && p.stock !== null ? p.stock : 0);
-      const cost = Number(p.basePrice || p.cost || p.price || 0);
-      const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
-
-      totalBaseUnits += stock;
-      totalValuation += Math.max(0, stock) * cost;
-
-      if (stock < 0) {
-        negativeStockCount++;
-      } else if (stock === 0) {
-        outOfStockCount++;
-      } else if (stock <= minAlert) {
-        lowStockCount++;
-      }
-    });
-
-    return {
-      totalItems,
-      totalBaseUnits,
-      totalValuation,
-      lowStockCount,
-      outOfStockCount,
-      negativeStockCount,
-    };
-  }, [products]);
-
-  // Filtered Products
-  const filteredProducts = useMemo(() => {
-    return products.filter((p: InvProduct) => {
-      const matchSearch =
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        (p.sku && p.sku.toLowerCase().includes(search.toLowerCase())) ||
-        (p.barcodes && p.barcodes.some((b) => b.barcode && b.barcode.toLowerCase().includes(search.toLowerCase())));
-
-      const matchCategory = activeCategory === 'all' || p.categoryId === activeCategory;
-
-      const stock = Number(p.stock !== undefined && p.stock !== null ? p.stock : 0);
-      const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
-
-      let matchStatus = true;
-      if (stockStatusFilter === 'negative') matchStatus = stock < 0;
-      else if (stockStatusFilter === 'normal') matchStatus = stock > minAlert;
-      else if (stockStatusFilter === 'low') matchStatus = stock > 0 && stock <= minAlert;
-      else if (stockStatusFilter === 'out') matchStatus = stock === 0;
-
-      return matchSearch && matchCategory && matchStatus;
-    });
-  }, [products, search, activeCategory, stockStatusFilter]);
-
-  // Paginated Products
-  const totalInventoryPages = Math.max(1, Math.ceil(filteredProducts.length / inventoryPageSize));
-  const paginatedProducts = useMemo(() => {
-    const start = (inventoryPage - 1) * inventoryPageSize;
-    return filteredProducts.slice(start, start + inventoryPageSize);
-  }, [filteredProducts, inventoryPage, inventoryPageSize]);
+  const filteredProducts = { length: filteredCount };
+  const totalInventoryPages = Math.max(1, Math.ceil(filteredCount / inventoryPageSize));
+  const paginatedProducts = pageRows;
 
   // Filtered Movements
   const filteredMovements = useMemo(() => {
@@ -294,6 +294,10 @@ export default function InventoryPage() {
 
   // Handle Opening Adjustment Modal
   const openAdjustDialog = (prod: InvProduct | null = null) => {
+    // the product list of the dialog needs every product (store catalogue, delta-synced after the first load)
+    void fetchProducts().then(() => {
+      if (!prod) setTargetProduct((cur) => cur || useProductStore.getState().products[0] || null);
+    });
     setTargetProduct(prod || products[0] || null);
     setAdjustType('ADD');
     setAdjustAmount('');
@@ -1040,12 +1044,7 @@ export default function InventoryPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {products
-                  .filter((p: InvProduct) => {
-                    const stock = Number(p.stock !== undefined && p.stock !== null ? p.stock : 0);
-                    const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
-                    return stock <= minAlert;
-                  })
+                {reorderRows
                   .map((p: InvProduct) => {
                     const stock = Number(p.stock !== undefined && p.stock !== null ? p.stock : 0);
                     const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
@@ -1107,6 +1106,11 @@ export default function InventoryPage() {
                   })}
               </TableBody>
             </Table>
+            {reorderTotal > reorderRows.length && (
+              <div className="border-t border-slate-200 bg-amber-50/60 px-4 py-2 text-xs font-medium text-amber-900">
+                แสดง {reorderRows.length.toLocaleString()} รายการแรกจาก {reorderTotal.toLocaleString()} รายการ (ดูทั้งหมดได้ที่แท็บภาพรวมสต็อก ตัวกรอง &quot;ใกล้หมด&quot; / &quot;หมด&quot;)
+              </div>
+            )}
           </div>
         </div>
       )}
