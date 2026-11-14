@@ -6,14 +6,24 @@ Branch ccr-8f8b0741-si1a0o (base 5b3dd01). Load DB perf_load on :5433 recreated 
 seed-payables.sql + seed-claims.sql: 20,000 claims).
 
 ### Plan
-1. [ ] Before measurements (GET /claims?limit=500, /claims/returnable).
-2. [ ] Server claim rows in SQL (merged CLAIM_META / EXCHANGE logs + the page mapping) as a view; parity vs mergeClaimWithLogs + mapServerClaim.
-3. [ ] Supplier returns: GET /claims/returnable/summary (supplier groups, counts, totals) + /claims/returnable/groups
-       (dialog: the supplier's product groups / other groups, paged, searched); supplier matching rule on the server; parity e2e vs frozen page logic.
-4. [ ] Claims page: GET /claims paged / searched / filtered / sorted + summary cards; export of all pages.
-5. [ ] Dashboard claim refunds + claim inventory figures in SQL.
-6. [ ] Eligibility (claims of the bills searched) + POS history (claimed-orders); claim number from the server only.
-7. [ ] Tests, after-measurements, full verification, PROJECT_STATUS, drop perf_* DBs.
+1. [x] Before measurements (raw scratchpad/perf/t6-before.txt).
+2. [x] claim_facts table kept by row triggers (claim + its CLAIM_META / EXCHANGE logs, mapped like mapServerClaim) + view
+       claim_records (product / customer / bill fallbacks). Migration 20261129000000_claim_records, model ClaimFact.
+3. [x] Server: ClaimScreensService (GET /claims/list, /claims/refund-summary, /claims/by-orders, /claims/returnable/summary,
+       /claims/returnable/groups, /claims/claim-stock, /claims/claim-stock/claims); queries run with SET LOCAL jit = off.
+4. [x] e2e parity vs frozen copy test/legacy/claims-screens-legacy.ts (under cap + 700 bulk claims above cap) + concurrent
+       claim numbers: e2e 62/62 green.
+5. [x] Frontend: every consumer moved (claims page, dashboard, claim-inventory, supplier returns page + dialog, POS history,
+       eligibility, updateClaimStatus reads the claim, no client claim number); vitest 181, eslint 0 errors.
+6. [ ] Playwright (08/09 expectations), after-measurements, full verification, PROJECT_STATUS, drop perf_* DBs.
+
+### Before (5b3dd01 build, perf_load: 20k claims)
+| request | time | size |
+|---|---|---|
+| /claims?limit=500 (claims page, dashboard, claim stock, POS history, eligibility; newest 500 only) | 0.10-0.14 s | 567 kB (22 kB gzip) |
+| /claims/returnable (supplier returns page + dialog, 10,667 claims) | 0.78-1.0 s | 12.1 MB (426 kB gzip) |
+| + /purchase-orders/product-suppliers for the returnable products (page open) | 0.01 s each, ~40 requests of 200 ids | |
+| backend peak RSS (returnable) | 0.38 GB | |
 
 ## Task 5: complete claims queries (orders badge, supplier-return eligible claims) + /payables/bills in SQL — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 
