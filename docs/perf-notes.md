@@ -1,5 +1,20 @@
 # Perf round — progress notes (delete a task's section when it is fully done)
 
+## Task 6: remove the remaining claims caps (supplier returns grouped on the server, every claims screen complete) — IN PROGRESS
+
+Branch ccr-8f8b0741-si1a0o (base 5b3dd01). Load DB perf_load on :5433 recreated (prepare-database.js + seed-load.sh +
+seed-payables.sql + seed-claims.sql: 20,000 claims).
+
+### Plan
+1. [ ] Before measurements (GET /claims?limit=500, /claims/returnable).
+2. [ ] Server claim rows in SQL (merged CLAIM_META / EXCHANGE logs + the page mapping) as a view; parity vs mergeClaimWithLogs + mapServerClaim.
+3. [ ] Supplier returns: GET /claims/returnable/summary (supplier groups, counts, totals) + /claims/returnable/groups
+       (dialog: the supplier's product groups / other groups, paged, searched); supplier matching rule on the server; parity e2e vs frozen page logic.
+4. [ ] Claims page: GET /claims paged / searched / filtered / sorted + summary cards; export of all pages.
+5. [ ] Dashboard claim refunds + claim inventory figures in SQL.
+6. [ ] Eligibility (claims of the bills searched) + POS history (claimed-orders); claim number from the server only.
+7. [ ] Tests, after-measurements, full verification, PROJECT_STATUS, drop perf_* DBs.
+
 ## Task 5: complete claims queries (orders badge, supplier-return eligible claims) + /payables/bills in SQL — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 
 Branch ccr-8f8b0741-si1a0o (base e1c61aa). Load DB perf_load on :5433.
