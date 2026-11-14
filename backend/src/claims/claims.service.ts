@@ -231,7 +231,7 @@ export class ClaimsService {
    * Rows of GET /claims (claim + product / customer / order, merged with its CLAIM_META / EXCHANGE logs) for
    * these ids, in the order of `ids`. Read in parallel chunks of 1,000 ids (one big IN list is ~2.5x slower).
    */
-  private async mergedClaimsByIds(ids: string[]) {
+  async mergedClaimsByIds(ids: string[]) {
     if (!ids.length) return [];
     const chunks: string[][] = [];
     for (let i = 0; i < ids.length; i += 1000) chunks.push(ids.slice(i, i + 1000));

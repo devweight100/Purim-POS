@@ -56,9 +56,9 @@ EXCEPTION WHEN others THEN RETURN NULL;
 END
 $$;
 
--- x || fallback for a number (NaN and 0 are falsy)
+-- x || fallback for a number (NaN and 0 are falsy; NaN = NaN in PostgreSQL). Each argument used once: inlined.
 CREATE FUNCTION claim_js_or(x double precision, fallback double precision) RETURNS double precision LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
-  SELECT CASE WHEN x IS NULL OR x = 'NaN'::double precision OR x = 0 THEN fallback ELSE x END
+  SELECT COALESCE(NULLIF(NULLIF(x, 'NaN'::double precision), 0), fallback)
 $$;
 
 CREATE TABLE "claim_facts" (
@@ -81,7 +81,7 @@ CREATE TABLE "claim_facts" (
   "product_name" TEXT,
   "sku" TEXT,
   "defect_reason" TEXT NOT NULL,
-  "unit_name" JSONB,
+  "unit_name" TEXT,
   "replacement_unit_name" TEXT,
   "supplier_id" TEXT,
   "supplier_name" TEXT,
@@ -131,7 +131,7 @@ BEGIN
     claim_js_text(lg.m -> 'productName'),
     claim_js_text(lg.m -> 'sku'),
     COALESCE(claim_js_text(lg.m -> 'defectReason'), NULLIF(c.problem_description, ''), '-'),
-    claim_js_nn(lg.m -> 'unitName', lg.x -> 'unitName'),
+    claim_js_text(claim_js_nn(lg.m -> 'unitName', lg.x -> 'unitName')),
     claim_js_text(lg.m -> 'replacementUnitName'),
     claim_js_text(lg.m -> 'supplierId'),
     claim_js_text(lg.m -> 'supplierName'),
@@ -203,6 +203,7 @@ CREATE TRIGGER audit_logs_claim_facts_del AFTER DELETE ON audit_logs
 
 -- backfill
 SELECT claim_facts_refresh(ARRAY(SELECT id FROM customer_claims));
+ANALYZE claim_facts;
 
 -- A claim as the pages see it (mapServerClaim fields): facts + the product / customer / bill fallbacks.
 CREATE VIEW claim_records AS
@@ -230,8 +231,8 @@ SELECT
   COALESCE(NULLIF(p.name, ''), f.product_name, 'สินค้า') AS product_name,
   COALESCE(NULLIF(p.sku, ''), f.sku, '-') AS sku,
   f.defect_reason,
-  -- (unitName ?? product unit ?? 'ชิ้น') || store unit || 'ชิ้น'
-  COALESCE(claim_js_text(claim_js_nn(f.unit_name, claim_js_nn(to_jsonb(p.unit), '"ชิ้น"'))), NULLIF(p.unit, ''), 'ชิ้น') AS unit_name,
+  -- (unitName ?? product unit ?? 'ชิ้น') || store unit || 'ชิ้น' (a given but empty unit name falls back the same way)
+  COALESCE(f.unit_name, NULLIF(p.unit, ''), 'ชิ้น') AS unit_name,
   f.replacement_unit_name,
   f.supplier_id,
   f.supplier_name,

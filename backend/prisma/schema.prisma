@@ -479,7 +479,7 @@ model ClaimFact {
   productName         String?       @map("product_name")
   sku                 String?
   defectReason        String        @map("defect_reason")
-  unitName            Json?         @map("unit_name")
+  unitName            String?       @map("unit_name")
   replacementUnitName String?       @map("replacement_unit_name")
   supplierId          String?       @map("supplier_id")
   supplierName        String?       @map("supplier_name")
