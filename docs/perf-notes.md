@@ -171,7 +171,7 @@ Branch ccr-8f8b0741-si1a0o (base f9078b0). Load DB perf_load (no images / catego
   lookup still substring-scans every product (needs pg_trgm for an index; 0.06-0.15 s now); server-side paging of
   the products / inventory pages is task 3.
 
-## Task 3: server-side paging / search / sort for the management lists — IN PROGRESS
+## Task 3: server-side paging / search / sort for the management lists — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 
 Branch ccr-8f8b0741-si1a0o (base 762e54d). Load DB perf_load. Endpoint list: scratchpad/perf/t3-endpoints.txt
 (`ENDPOINTS="$(cat .../t3-endpoints.txt)" bash .../bench2.sh perf_load`), raw output t3-before.txt / t3-after.txt.
@@ -201,10 +201,10 @@ without contrib still migrates (plain ILIKE, same results, just a scan).
 3. [x] Orders page: server paging/search/status tab/stats; no GET /products download.
 4. [x] Debts page: server paging + summary.
 5. [x] Customers: GET /customers?page= (paged mode; no page param = old full list for POS/other consumers).
-6. [ ] Products page: GET /products/page (q, category, supplier, stock filter, sort, paging, counts); export/import/bundle picker load the catalogue on demand.
-7. [ ] Inventory page: paged stock list + server stats.
-8. [ ] Purchase orders + payables: no 500 cap (server paging / server bills).
-9. [ ] Tests, after-measurements, full verification, PROJECT_STATUS.
+6. [x] Products page: GET /products/page (q, category, supplier, stock filter, sort, paging, counts); export/import/bundle picker load the catalogue on demand.
+7. [x] Inventory page: paged stock list + server stats.
+8. [x] Purchase orders: server paging + status counts. Payables NOT changed (see follow-ups).
+9. [x] Tests, after-measurements, full verification, PROJECT_STATUS.
 
 ### Decisions
 - pg_trgm migration 20261125000000_trigram_search (guarded DO block; schema declares the GIN indexes, fresh-DB diff empty).
@@ -222,3 +222,44 @@ without contrib still migrates (plain ILIKE, same results, just a scan).
   fallback code); no page = full list as before minus the `debts` arrays (nobody read them), currentDebt summed
   in SQL, rows in creation order. ClientDbSync still refreshes the full list every 15 s (now 0.11 s / 1.2 MB).
 
+- Products: GET /products/page?page&limit&q&categoryId&supplierId&stock(all|low|out|normal|negative|reorder)&sort&dir&stats=1.
+  Rows = catalogue rows (catalogRows({ids}), same JSON as GET /products, cost stripped without VIEW_COST); stock as
+  catalogStock (batch sum / complete bundle sets) computed in SQL; sort keys = the old table's (basePrice = price
+  level 1 else base price, levels 2-5 missing = 0), ties and "no sort" = table order (ctid, as the catalogue);
+  name sort uses an ICU collation (th-TH-x-icu / th-x-icu / und-x-icu, looked up once; database default if none).
+  Low-stock threshold = store settings (the page used the local mirror of the same setting).
+  Export / import diff / bundle picker load the catalogue (product store) on demand. Size / colour filters removed
+  (no such columns; never shown). ClientDbSync still loads the catalogue in the background on every back-office
+  screen (task 2 design, delta after the first load) — the table no longer waits for it.
+- Inventory: same endpoint, stats=1 (totalItems, totalBaseUnits, totalValuation = stock>=0 x selling price, cost
+  if the price is 0 and the user may see cost — as the page summed it, low/out/negative counts); reorder tab =
+  first 500 rows of stock=reorder with a "first N of M" note; adjust dialog loads the catalogue when opened.
+- Purchase orders: page of 50, status tab on the server, ?counts=1 -> meta.counts per status (+ALL).
+- /products/lookup unchanged: on perf_load "รุ่น 500" matches every product (all barcodes contain "500"), time is the
+  ranking of 10k candidates in Node, an index cannot help that query (ILIKE form: 74 -> 40 ms of SQL only).
+
+### After (same perf_load; t3-after.txt; sizes uncompressed / gzip)
+| page | before (requests on open) | after |
+|---|---|---|
+| /products | catalogue 0.46 s / 6.8 MB (+ /suppliers) | /products/page 0.05-0.06 s / 36 kB (2.5 kB gzip); search 0.05 s; sort by name p.100 0.06 s |
+| /inventory | catalogue 0.46 s / 6.8 MB + movements | page+stats 0.05 s / 9 kB (1.6 kB gzip); reorder tab 0.05 s / 68 kB |
+| /customers | GET /customers 0.24 s / 2.1 MB, 5k rows in the DOM | page 0.02-0.03 s / 14 kB (1 kB gzip), 50 rows per page |
+| ClientDbSync every 15 s | GET /customers 0.24 s / 2.1 MB | 0.11 s / 1.2 MB (23 kB gzip) |
+| /debts | 34 sequential requests, ~1 s / 1.5 MB | 1 request 0.02 s / 5 kB; search 0.15 s |
+| /orders | 0.04 s / 89 kB but only 50 newest bills + GET /products 0.46 s / 6.8 MB | page+counts 0.02-0.08 s / 27 kB (1.7 kB gzip), all bills reachable; search 0.22-0.3 s |
+| /purchase-orders | 0.25 s / 2.1 MB, newest 500 only | 0.04 s / 213 kB per 50 POs (4.5 kB gzip), all reachable |
+| peak RSS (bench run) | 0.40 GB | 0.18 GB |
+
+### Verification
+backend tsc + jest 119 + e2e 51/51 (fresh perf_t3_test; 5 new list tests), fresh migrate deploy + empty diff (7 trgm
+indexes present); frontend tsc, eslint 0 errors, vitest 169 (4 new), next build, Playwright 15/15 (new 08-paged-lists).
+
+### Follow-ups (not done)
+- Payables page still builds bills in the browser from /purchase-orders?limit=1000 (server cap 500) +
+  /payables/vouchers?limit=200: with > 500 POs or > 200 vouchers the bills / paid amounts are incomplete. Needs the
+  page moved to the server's /payables/bills (0.64 s on perf_load) after checking it computes the same figures.
+- supplier-return-service fetchPurchaseOrders (supplier returns page, payables) has the same 500 cap.
+- POS debt modal and the orders page credit history still use fetchDebtRecords (every debt, 100 per request).
+- ClientDbSync downloads the full customer list every 15 s on every screen (now 1.2 MB / 23 kB gzip) and the
+  catalogue delta; a per-customer refresh would remove the first.
+- /claims?limit=500 on the orders page (claims by bill number) is still a bounded download.
