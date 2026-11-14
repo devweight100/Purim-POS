@@ -11,6 +11,29 @@ Branch ccr-8f8b0741-si1a0o (base e1c61aa). Load DB perf_load on :5433.
 3. [ ] /payables/bills computed in SQL; parity e2e still green; bench at ~50k POs before/after.
 4. [ ] Full verification, before/after, PROJECT_STATUS, drop perf_* DBs.
 
+### Data
+perf_load recreated (prepare-database.js + seed-load.sh + seed-payables.sql) + scratchpad/perf/seed-claims.sql: 20,000 claims
+(every 4th linked by order id, the rest by bill number in CLAIM_META only; every 3rd sent to a supplier, every 5th scrapped)
++ 300k unrelated audit rows. perf_po50 = copy of perf_load + scratchpad/perf/seed-po50.sql (50,000 POs / 250k lines,
+6,600 vouchers; partial receipts, VAT lines, ISSUED POs). Endpoints t5-endpoints.txt, raw t5-before.txt (bench2.sh).
+
+### Before (e1c61aa build)
+| request | perf_load (5k POs, 20k claims) | perf_po50 (50k POs) |
+|---|---|---|
+| /claims?limit=500 (orders badge + supplier returns; newest 500 of 20k only) | 0.11 s / 567 kB | 0.11 s |
+| /payables/bills page 1 | 0.21 s / 227 kB | 1.6-1.9 s |
+| /payables/bills page 40 / UNPAID / supplier / search | 0.16-0.18 s | 1.4-1.7 s |
+| /payables/bills open=1 slim=1 limit=5000 (settle dialog) | 0.18 s / 1.9 MB | 1.57 s / 2.3 MB |
+| backend peak RSS over the run | 0.30 GB | 1.36 GB |
+
+### Claims consumers (fetchAllClaimRecords / loadAllClaimRecords, /claims?limit=500)
+- orders page: "claimed" badge for claims recorded by bill number -> CHANGE (server query for the page's bills).
+- supplier returns page + CreateSupplierReturnModal (also opened from the purchase-orders page; it read whatever claims
+  were last loaded) + getPendingReturnsGroupedBySupplier + legacy claimItems + refresh after a return write -> CHANGE
+  (every returnable claim from the server).
+- unchanged: claims page list, dashboard, claim-inventory, POS OrderHistoryModal, ProductClaimModal / verifyClaimEligibility /
+  fetchClaimEligibleItems, generateClaimNumber, refresh after creating / updating a claim.
+
 ### Done
 
 ## Task 4: follow-ups (payables on the server, supplier-return PO list, debt queries, customer sync) — DONE (summary in PROJECT_STATUS.md 2026-11-14)
