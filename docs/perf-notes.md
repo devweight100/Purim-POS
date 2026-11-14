@@ -117,14 +117,33 @@ Branch ccr-8f8b0741-si1a0o (base f9078b0). Load DB perf_load (no images / catego
   nothing changed; offline IndexedDB gets put/delete for the delta (full replace on full load).
 - /inventory/stock + low-stock: product scalars + computedStock from SQL sums, no batch arrays.
 - gzip: `compression` middleware, SSE (text/event-stream) excluded.
+- Scanner: the POS scans against the in-memory catalogue / GET /products/barcode/:code (unique indexes on
+  product_barcodes.barcode and products.sku, 12 ms). /products/lookup is the mobile search (substring match on every
+  product, cannot use a b-tree): its candidates now come from one SQL query instead of Prisma objects.
 
 ### Plan
 1. [ ] Notes + baseline (this section).
-2. [ ] Backend: migration (thumb column, product_changes + triggers), light row builder, GET /products light, sync endpoint,
+2. [x] Backend: migration (thumb column, product_changes + triggers), light row builder, GET /products light, sync endpoint,
        image endpoint, update keeps images by id, inventory stock trimmed, lookup speed, compression. Unit + e2e tests.
-3. [ ] Frontend: product store delta + offline cache delta, image URLs in POS / products page / PO preview, form keeps
+3. [x] Frontend: product store delta + offline cache delta, image URLs in POS / products page / PO preview, form keeps
        existing images by id + thumbnail on save. vitest.
 4. [ ] Measurements after, full verification, PROJECT_STATUS entry.
 
 ### Done
 - Step 1: baseline measured (table above).
+- Step 2 (backend): migration 20261124000000_product_sync (thumb_data_url, product_changes + triggers; fresh deploy
+  diff empty), product-catalog.ts (row builder, cursor, data-URL decoding) + spec, GET /products = catalogue rows,
+  GET /products/sync, GET /product-images/:id (ProductImagesController, public), update keeps photo rows by id
+  (replaceImages; DTO accepts id / thumbDataUrl), /inventory/stock + low-stock without batch rows, lookup candidates
+  in one SQL query, compression middleware. Parity on perf_img (copy of perf_load + scratchpad/perf/seed-extras.sh:
+  categories, packs, wholesale, suppliers, 50 bundles, 1,000 photos of 30 kB, inactive rows) old build vs new:
+  every product row equal except the intended removals (scratchpad/perf/parity-products.js), /inventory/stock and
+  low-stock rows equal minus stockBatches, 9 lookup URLs byte-identical. e2e: 8 new tests (sync: full, empty delta,
+  create / photo / bundle / stock / sale / price / barcode / category rename / deactivate / receive / delete, full +
+  deltas == fresh full, bad / foreign / old cursors, cost stripping; photos: bytes, thumb, 304, 404, keep-by-id,
+  old-style replace; stock list) -> 45/45.
+- Step 3 (frontend): product-delta.ts (merge + syncSince), product store uses /products/sync (cursor per login token
+  and low-stock threshold; no state change on an empty delta; full reload after offline fallback or a failed IndexedDB
+  delta write), offline-db applyCachedProductDelta, photos by URL (POS cards = thumb URL, products table = thumb,
+  PO preview = full URL, form shows URL / upload data, saves existing photos by id, uploads with a 240 px thumbnail).
+  vitest product-delta.test.ts (8, incl. store with mocked API) + product-images.test.ts (3): 165 total.

@@ -74,6 +74,30 @@ function openDB(): Promise<IDBDatabase> {
 // PRODUCT CACHE METHODS
 // ──────────────────────────────────────────────
 
+/** A server product as stored in the offline cache (flat barcode list for the barcode index). */
+export function toCachedProduct(p: ApiProduct): CachedProduct {
+  const barcodes: string[] = [];
+  if (Array.isArray(p.barcodes)) {
+    for (const b of p.barcodes) {
+      if (typeof b === 'string') barcodes.push(b);
+      else if (b && b.barcode) barcodes.push(b.barcode);
+    }
+  }
+  if (p.barcode && !barcodes.includes(p.barcode)) barcodes.push(p.barcode);
+  return {
+    ...p,
+    id: p.id,
+    name: p.name,
+    sku: p.sku,
+    basePrice: Number(p.basePrice) || Number(p.price) || 0,
+    costPrice: Number(p.costPrice) || 0,
+    categoryId: p.categoryId,
+    barcodes,
+    stockRemaining: p.stockBatches ? addQty(...p.stockBatches.map((b) => b.quantityRemaining || 0)) : p.stock,
+  };
+}
+
+/** Replace the whole offline product cache (full catalogue load). */
 export async function cacheProducts(products: ApiProduct[]): Promise<void> {
   try {
     const db = await openDB();
@@ -81,30 +105,7 @@ export async function cacheProducts(products: ApiProduct[]): Promise<void> {
     const store = tx.objectStore('products');
     store.clear();
 
-    for (const p of products) {
-      const barcodes: string[] = [];
-      if (Array.isArray(p.barcodes)) {
-        for (const b of p.barcodes) {
-          if (typeof b === 'string') barcodes.push(b);
-          else if (b && b.barcode) barcodes.push(b.barcode);
-        }
-      }
-      if (p.barcode && !barcodes.includes(p.barcode)) barcodes.push(p.barcode);
-
-      const cachedItem: CachedProduct = {
-        ...p,
-        id: p.id,
-        name: p.name,
-        sku: p.sku,
-        basePrice: Number(p.basePrice) || Number(p.price) || 0,
-        costPrice: Number(p.costPrice) || 0,
-        categoryId: p.categoryId,
-        barcodes,
-        stockRemaining: p.stockBatches ? addQty(...p.stockBatches.map((b) => b.quantityRemaining || 0)) : p.stock,
-      };
-
-      store.put(cachedItem);
-    }
+    for (const p of products) store.put(toCachedProduct(p));
 
     return new Promise((resolve, reject) => {
       tx.oncomplete = () => { db.close(); resolve(); };
@@ -112,6 +113,31 @@ export async function cacheProducts(products: ApiProduct[]): Promise<void> {
     });
   } catch (err) {
     console.warn('[OfflineDB] Failed to cache products:', err);
+  }
+}
+
+/**
+ * Apply a catalogue delta to the offline cache: changed products are re-written, deleted ones removed. Every
+ * touched row is deleted first so a SKU moving from one product to another never trips the unique SKU index.
+ * false = not written (the caller then reloads the whole catalogue next time).
+ */
+export async function applyCachedProductDelta(changed: ApiProduct[], deleted: string[]): Promise<boolean> {
+  if (!changed.length && !deleted.length) return true;
+  try {
+    const db = await openDB();
+    const tx = db.transaction('products', 'readwrite');
+    const store = tx.objectStore('products');
+    for (const id of [...deleted, ...changed.map((p) => p.id)]) store.delete(id);
+    for (const p of changed) store.put(toCachedProduct(p));
+
+    return await new Promise<boolean>((resolve) => {
+      tx.oncomplete = () => { db.close(); resolve(true); };
+      tx.onerror = () => { db.close(); resolve(false); };
+      tx.onabort = () => { db.close(); resolve(false); };
+    });
+  } catch (err) {
+    console.warn('[OfflineDB] Failed to update cached products:', err);
+    return false;
   }
 }
 

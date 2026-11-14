@@ -24,11 +24,21 @@ export interface ProductPackagingUnit {
   priceLevel5?: number | string | null;
 }
 
+/**
+ * A product photo. The product list (GET /products, /products/sync) carries `url` / `thumbUrl`
+ * (GET /api/product-images/:id); the photo data (`dataUrl`) only comes with a single product, a new upload in the
+ * form, or rows cached offline by older versions.
+ */
 export interface ProductImage {
   id?: string;
-  dataUrl: string;
-  name?: string;
+  dataUrl?: string;
+  /** small copy made in the browser when the photo is uploaded */
+  thumbDataUrl?: string | null;
+  url?: string;
+  thumbUrl?: string;
+  name?: string | null;
   isCover?: boolean;
+  sortOrder?: number;
 }
 
 export interface ProductWholesalePrice {
@@ -801,7 +811,9 @@ export interface ProductWriteRequest {
   supplierId?: string | null;
   barcodes?: Array<{ barcode?: string; supplierId?: string; label?: string } | string>;
   packagingUnits?: Array<{ name?: string; qtyPerPrev?: number | string; barcode?: string | null; priceLevel1?: number | string | null; priceLevel2?: number | string | null; priceLevel3?: number | string | null; priceLevel4?: number | string | null; priceLevel5?: number | string | null }>;
-  images?: Array<{ dataUrl?: string; name?: string; isCover?: boolean }>; // rows without dataUrl are dropped by the server
+  // new photo = dataUrl (+ thumbDataUrl); an existing photo of this product = its id only (data kept on the server).
+  // Photos not in the list are deleted.
+  images?: Array<{ id?: string; dataUrl?: string; thumbDataUrl?: string; name?: string; isCover?: boolean }>;
   wholesalePrices?: Array<{ minQuantity?: number | string | null; unitPrice?: number | string | null }>;
   bundleItems?: Array<{ childProductId?: string; quantity?: number | string }>;
   supplierEntries?: Array<{ supplierId?: string; supplierSku?: string; unitCost?: number | string | null; lastCost?: number | string; isPreferred?: boolean; notes?: string }>;

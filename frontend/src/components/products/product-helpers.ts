@@ -111,10 +111,12 @@ export function getProductPackagingUnits(product: ProductRecord): PackagingUnitF
 export function getProductImages(product: ProductRecord): ProductImageItem[] {
   if (Array.isArray(product?.images) && product.images.length > 0) {
     return product.images
-      .filter((image) => image?.dataUrl)
+      .filter((image) => image?.dataUrl || (image?.url && image.id))
       .map((image) => ({
         id: image.id || generateId(),
-        dataUrl: image.dataUrl as string,
+        ...(image.dataUrl
+          ? { dataUrl: image.dataUrl, ...(image.thumbDataUrl ? { thumbDataUrl: image.thumbDataUrl } : {}) }
+          : { url: image.url, thumbUrl: image.thumbUrl }),
         name: image.name || '',
         isCover: Boolean(image.isCover),
       }));
@@ -183,12 +185,14 @@ export function productToApiPayload(product: ProductRecord, conflictingBarcodeKe
           priceLevel5: optionalPrice(unit.priceLevel5),
         })).filter((unit) => unit.name)
       : undefined,
+    // new photos go up as data; photos already on the server (list rows carry their URL) by id only
     images: Array.isArray(product.images)
-      ? product.images.map((image) => ({
-          dataUrl: image.dataUrl,
-          name: image.name || '',
-          isCover: Boolean(image.isCover),
-        })).filter((image) => image.dataUrl)
+      ? product.images.flatMap((image): Array<{ id?: string; dataUrl?: string; thumbDataUrl?: string; name: string; isCover: boolean }> => {
+          const meta = { name: image.name || '', isCover: Boolean(image.isCover) };
+          if (image.dataUrl) return [{ dataUrl: image.dataUrl, ...(image.thumbDataUrl ? { thumbDataUrl: image.thumbDataUrl } : {}), ...meta }];
+          if (image.url && image.id) return [{ id: image.id, ...meta }];
+          return [];
+        })
       : undefined,
     wholesalePrices: Array.isArray(product.wholesalePrices)
       ? product.wholesalePrices.map((price) => ({

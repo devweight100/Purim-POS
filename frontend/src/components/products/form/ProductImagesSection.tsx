@@ -4,7 +4,9 @@ import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Crown, ImagePlus, Info, Trash2, Upload } from "lucide-react";
 import { compressImage, generateId } from "../product-helpers";
-import type { ProductImageItem, SetForm } from "../types";
+import { imageSrc, type ProductImageItem, type SetForm } from "../types";
+
+const THUMB_PX = 240;
 
 /** Up to 3 product images (drag & drop or file picker), compressed to JPEG data URLs; one is the cover. */
 export function ProductImagesSection({ images, setForm }: { images: ProductImageItem[]; setForm: SetForm }) {
@@ -19,9 +21,11 @@ export function ProductImagesSection({ images, setForm }: { images: ProductImage
     for (const file of toProcess) {
       try {
         const dataUrl = await compressImage(file);
+        // small copy for product lists / POS cards (served as GET /api/product-images/:id?size=thumb)
+        const thumbDataUrl = await compressImage(file, THUMB_PX).catch(() => undefined);
         setForm(prev => ({
           ...prev,
-          images: [...prev.images, { id: generateId(), dataUrl, name: file.name, isCover: prev.images.length === 0 }],
+          images: [...prev.images, { id: generateId(), dataUrl, ...(thumbDataUrl ? { thumbDataUrl } : {}), name: file.name, isCover: prev.images.length === 0 }],
         }));
       } catch { toast.error(`ไม่สามารถโหลดรูป ${file.name}`); }
     }
@@ -57,8 +61,8 @@ export function ProductImagesSection({ images, setForm }: { images: ProductImage
         {/* Filled image slots */}
         {images.map(img => (
           <div key={img.id} className="relative group aspect-square rounded-xl overflow-hidden border-2 border-slate-200">
-            {/* eslint-disable-next-line @next/next/no-img-element -- local base64 data URL preview, next/image cannot optimise it */}
-            <img src={img.dataUrl} alt={img.name} className="w-full h-full object-cover" />
+            {/* eslint-disable-next-line @next/next/no-img-element -- base64 preview of a new upload or the saved photo's API URL, next/image cannot optimise them */}
+            <img src={imageSrc(img)} alt={img.name} className="w-full h-full object-cover" />
             {/* Cover badge */}
             {img.isCover && (
               <div className="absolute top-2 left-2 flex items-center gap-1 bg-amber-400 text-amber-900 text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow">

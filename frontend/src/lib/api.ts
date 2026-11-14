@@ -10,6 +10,7 @@ import {
   findCachedProductByBarcode,
 } from './offline-db';
 import { ApiError, isRetryableError, type UntypedJson } from './api-error';
+import type { ProductSyncResponse } from './product-delta';
 import { reportConnection } from './connection-status';
 import type {
   ApiAuthUser, ApiCategory, ApiClaim, ApiClaimInventoryItem, ApiCustomer, ApiDebt, ApiDebtPayment, ApiDocumentSearchResult,
@@ -217,6 +218,9 @@ export const api = {
         return await findCachedProductByBarcode(barcode);
       }
     },
+    /** POS catalogue: every product (no / unusable cursor) or the changes since `since` (see product-delta.ts). */
+    sync: (since?: string) =>
+      apiFetch<ProductSyncResponse<ApiProduct>>(`/products/sync${since ? `?since=${encodeURIComponent(since)}` : ''}`),
     getOne: (id: string) => apiFetch<ApiProduct>(`/products/${id}`),
     // generic so callers can read the saved product into their own view type (default: the server shape)
     create: <T = ApiProduct>(data: ProductWriteRequest) => apiFetch<T>('/products', { method: 'POST', body: JSON.stringify(data) }),

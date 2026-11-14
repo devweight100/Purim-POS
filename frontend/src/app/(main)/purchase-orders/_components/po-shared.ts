@@ -170,10 +170,13 @@ export function lineVatRate(v: unknown): number {
 /** Product images from the server's product list (cover first). */
 export function loadProductImages(productId: string): string[] {
   const product = (useProductStore.getState().products || []).find((p) => p.id === productId);
-  const images = Array.isArray(product?.images) ? product.images.filter((i) => i?.dataUrl) : [];
-  const cover = images.find((i) => i.isCover)?.dataUrl;
-  const others = images.filter((i) => !i.isCover).map((i) => i.dataUrl);
-  return cover ? [cover, ...others] : images.map((i) => i.dataUrl);
+  // full-size photo: GET /api/product-images/:id (list rows), or the data of rows cached by older versions
+  const src = (i: { url?: string; dataUrl?: string }) => i.url || i.dataUrl || '';
+  const images = Array.isArray(product?.images) ? product.images.filter((i) => i && src(i)) : [];
+  const coverImg = images.find((i) => i.isCover);
+  const cover = coverImg ? src(coverImg) : '';
+  const others = images.filter((i) => !i.isCover).map(src);
+  return cover ? [cover, ...others] : images.map(src);
 }
 
 export const isBoundToSupplier = (product: PoProductLike, supplierId: string) => {

@@ -47,7 +47,7 @@ export interface ProductRecord {
     priceLevel4?: Num;
     priceLevel5?: Num;
   }>;
-  images?: Array<{ id?: string; dataUrl?: string; name?: string; isCover?: boolean }>;
+  images?: Array<{ id?: string; dataUrl?: string; thumbDataUrl?: string | null; url?: string; thumbUrl?: string; name?: string | null; isCover?: boolean }>;
   wholesalePrices?: Array<{ minQuantity?: number | string | null; unitPrice?: number | string | null }>;
   isBundle?: boolean;
   bundleItems?: Array<{ childProductId?: string; productId?: string; quantity?: number | string }>;
@@ -71,10 +71,18 @@ export interface SupplierOption {
 // ─── Form ─────────────────────────────────────────────────────────────
 export interface ProductImageItem {
   id: string;
-  dataUrl: string; // base64 compressed JPEG
+  /** new upload: base64 compressed JPEG (+ small copy for lists) */
+  dataUrl?: string;
+  thumbDataUrl?: string;
+  /** photo already on the server (GET /api/product-images/:id): sent back by id only */
+  url?: string;
+  thumbUrl?: string;
   name: string;
   isCover: boolean;
 }
+
+/** What an <img> shows for a photo: the uploaded data, else the server URL. */
+export const imageSrc = (img: { dataUrl?: string; url?: string } | undefined): string | undefined => img?.dataUrl || img?.url;
 
 export interface ProductBarcodeForm {
   barcode: string;

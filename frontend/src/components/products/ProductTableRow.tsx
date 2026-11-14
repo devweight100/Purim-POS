@@ -36,7 +36,9 @@ export function ProductTableRow({
     ? "bg-amber-100 text-amber-800 border-amber-300 font-bold"
     : "bg-emerald-50 text-emerald-700 border-emerald-200";
   const pkgMults = computeMultipliers(pkgUnits);
-  const coverImg = prodImages.find(img => img.isCover)?.dataUrl || prodImages[0]?.dataUrl || p.imageUrl || null;
+  const coverItem = prodImages.find(img => img.isCover) || prodImages[0];
+  // small copy from the server (GET /api/product-images/:id?size=thumb), or a just-uploaded photo's data
+  const coverImg = coverItem?.thumbDataUrl || coverItem?.dataUrl || coverItem?.thumbUrl || coverItem?.url || p.imageUrl || null;
   const displayBarcodes = getProductBarcodes(p);
   const category = categories.find(c => c.id === p.categoryId);
 
