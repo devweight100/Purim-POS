@@ -1,6 +1,6 @@
 # Perf round — progress notes (delete a task's section when it is fully done)
 
-## Task 6: remove the remaining claims caps (supplier returns grouped on the server, every claims screen complete) — IN PROGRESS
+## Task 6: remove the remaining claims caps (supplier returns grouped on the server, every claims screen complete) — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 
 Branch ccr-8f8b0741-si1a0o (base 5b3dd01). Load DB perf_load on :5433 recreated (prepare-database.js + seed-load.sh +
 seed-payables.sql + seed-claims.sql: 20,000 claims).
@@ -15,7 +15,7 @@ seed-payables.sql + seed-claims.sql: 20,000 claims).
        claim numbers: e2e 62/62 green.
 5. [x] Frontend: every consumer moved (claims page, dashboard, claim-inventory, supplier returns page + dialog, POS history,
        eligibility, updateClaimStatus reads the claim, no client claim number); vitest 181, eslint 0 errors.
-6. [ ] Playwright (08/09 expectations), after-measurements, full verification, PROJECT_STATUS, drop perf_* DBs.
+6. [x] Playwright (09 expectations, new 10-claims), after-measurements, full verification, PROJECT_STATUS, drop perf_* DBs.
 
 ### Before (5b3dd01 build, perf_load: 20k claims)
 | request | time | size |
@@ -24,6 +24,37 @@ seed-payables.sql + seed-claims.sql: 20,000 claims).
 | /claims/returnable (supplier returns page + dialog, 10,667 claims) | 0.78-1.0 s | 12.1 MB (426 kB gzip) |
 | + /purchase-orders/product-suppliers for the returnable products (page open) | 0.01 s each, ~40 requests of 200 ids | |
 | backend peak RSS (returnable) | 0.38 GB | |
+
+### After (perf_load, 20k claims; raw t6-after.txt; uncompressed / gzip)
+| screen | before | after |
+|---|---|---|
+| claims page | /claims?limit=500 0.10-0.14 s / 567 kB, newest 500 only, filters in the browser | GET /claims/list page 0.04-0.07 s / 17 kB (1.5 kB gzip); search 0.15 s; cards over every claim |
+| dashboard claim refunds | same 500-claim list | GET /claims/refund-summary 0.02 s / 32 B |
+| claim stock | same 500-claim list, all records rendered | GET /claims/claim-stock 0.28-0.40 s / 81 kB (3.7 kB gzip), every claim; product detail 0.25 s |
+| supplier returns page | /claims/returnable 0.8-1.0 s / 12.1 MB (426 kB gzip) + ~40 product-supplier requests + matching in the browser | GET /claims/returnable/summary 0.17-0.35 s / 132 kB (5.4 kB gzip) |
+| create-return dialog | the 12 MB list matched in the browser | /claims/returnable/groups 0.14-0.31 s / 20 kB (1.4 kB gzip) per 50 product groups, per scope |
+| POS history / eligibility | 500-claim list | claimed-orders / by-orders for the bills shown: 0.03-0.04 s / 4.6 kB |
+| backend peak RSS | 0.38 GB | 0.15 GB |
+First request after a PostgreSQL restart is slower (cold cache: 2 s once). The enrichment pipeline (view over 20k claims +
+supplier resolution) dominates the 0.2-0.4 s of the supplier / stock screens.
+
+### Behaviour changes
+- Every claims screen now counts every claim (was the newest 500): claims page cards / list, dashboard refunds, claim stock,
+  supplier returns cards and dialog, POS history badge, eligibility already-claimed quantities.
+- Claims page: paged on the server (page reset also on a date change), new sort select (newest / oldest / value).
+- Claim stock: records tab paged (50), product detail loaded on open. Supplier resolution on that page never uses the PO
+  supplier step (it did only when the supplier returns page had been opened earlier in the session).
+- Create-return dialog: product groups 50 at a time ("แสดงเพิ่ม") with a search box; a session-dependent fallback (POs of
+  other suppliers opened earlier in the session) is not used. Cards / groups carry counts instead of claim lists.
+- A CLAIM_META bill number that is not text is treated as text (the old pages threw on it when searching).
+- `updateClaimStatus` reads the claim before appending the note (was the cached list; a claim beyond 500 lost its note).
+- No client-side provisional claim number; the server's number (count of the month + 1 inside the business lock) as before.
+- Sums are double precision like the JS, added in database order (differences < 1e-9).
+
+### Not done
+- Eligibility searches the newest 500 bills (`/orders?limit=500`): an orders cap, not a claims cap.
+- No export exists on the claims page (nothing to extend).
+- GET /claims/returnable (unpaged) is kept on the server for compatibility but no screen uses it.
 
 ## Task 5: complete claims queries (orders badge, supplier-return eligible claims) + /payables/bills in SQL — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 
