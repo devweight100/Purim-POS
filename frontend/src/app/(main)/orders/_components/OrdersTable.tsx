@@ -33,7 +33,7 @@ interface Props {
   loadError: string | null;
   fetchOrders: () => Promise<void>;
   paginatedOrders: OrderRow[];
-  filteredOrders: OrderRow[];
+  filteredCount: number;
   currentPage: number;
   setCurrentPage: React.Dispatch<React.SetStateAction<number>>;
   pageSize: number;
@@ -53,7 +53,7 @@ interface Props {
 
 /** Orders table with print / action buttons and pagination. */
 export function OrdersTable({
-  loading, loadError, fetchOrders, paginatedOrders, filteredOrders, currentPage, setCurrentPage, pageSize, changePageSize,
+  loading, loadError, fetchOrders, paginatedOrders, filteredCount, currentPage, setCurrentPage, pageSize, changePageSize,
   totalPages, handleRowClick, handleOpenCreditHistory, handleOpenA4Receipt, handleOpenSlipReceipt, handleStartEditPayment,
   handleStartEditItems, handleStartRepeatOrder, handleStartEditNote, handleStartVoid, setReturnOrderId,
 }: Props) {
@@ -365,13 +365,13 @@ export function OrdersTable({
         <div className="text-slate-500 font-medium">
           แสดงรายการที่{" "}
           <span className="font-bold text-slate-800">
-            {filteredOrders.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
+            {filteredCount === 0 ? 0 : (currentPage - 1) * pageSize + 1}
           </span>{" "}
           -{" "}
           <span className="font-bold text-slate-800">
-            {Math.min(currentPage * pageSize, filteredOrders.length)}
+            {Math.min(currentPage * pageSize, filteredCount)}
           </span>{" "}
-          จากทั้งหมด <span className="font-bold text-slate-800">{filteredOrders.length.toLocaleString()}</span> บิล
+          จากทั้งหมด <span className="font-bold text-slate-800">{filteredCount.toLocaleString()}</span> บิล
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

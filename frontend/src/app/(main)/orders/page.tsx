@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useRouter } from "next/navigation";
-import { apiFetch, api } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, RefreshCw, FileText } from "lucide-react";
@@ -30,13 +31,9 @@ import { OrdersToolbar } from "./_components/OrdersToolbar";
 import { OrderDetailDialog } from "./_components/OrderDetailDialog";
 import { OrderActionDialogs } from "./_components/OrderActionDialogs";
 
-/** Product fields used to name order lines. */
-type CatalogProduct = { id?: string; sku?: string; name?: string };
-
 export default function OrdersPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<OrderRow[]>([]);
-  const [productsMap, setProductsMap] = useState<Record<string, CatalogProduct>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -99,97 +96,61 @@ export default function OrdersPage() {
   const { products } = useProductStore();
   const shiftStore = useShiftStore();
 
-  // Load product catalog for reliable name & unit lookups
+  // Claimed bills (claims linked by order id come with each order; this adds claims recorded by bill number)
+  const [claimedKeys, setClaimedKeys] = useState<Set<string>>(() => new Set());
   useEffect(() => {
-    const loadCatalog = async () => {
-      let prods: CatalogProduct[] = [];
-      try {
-        prods = await apiFetch("/products");
-      } catch {
-        try {
-          prods = await api.getProducts();
-        } catch {
-          prods = [];
-        }
-      }
-
-      const map: Record<string, CatalogProduct> = {};
-      (Array.isArray(prods) ? prods : []).forEach((p) => {
-        if (p.id) map[p.id] = p;
-        if (p.sku) map[p.sku] = p;
-      });
-      setProductsMap(map);
-    };
-
-    loadCatalog();
+    void fetchAllClaimRecords()
+      .then((claims: ClaimRecord[]) => {
+        const keys = new Set<string>();
+        claims.forEach((c) => {
+          if (c.orderId) keys.add(c.orderId);
+          if (c.orderNumber) keys.add(c.orderNumber);
+        });
+        setClaimedKeys(keys);
+      })
+      .catch(() => {});
   }, []);
 
-  /** Load the orders; every state update happens after the request. */
+  // Server-side paging, search, status tab and summary counts (GET /orders?page&limit&search&statusGroup&counts=1)
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
+  const [filteredCount, setFilteredCount] = useState(0);
+  const [stats, setStats] = useState({ totalOrders: 0, voidedOrders: 0, totalRevenue: 0, allCount: 0 });
+
+  /** Load one page of orders; every state update happens after the request. */
   const loadOrders = async () => {
     try {
-      let fetchedBackend: OrderRow[] = [];
-      let allClaims: ClaimRecord[] = [];
-      {
-        let url = "/orders";
-        const params = new URLSearchParams();
-        if (startDate) params.append("startDate", startDate);
-        if (endDate) params.append("endDate", endDate);
-        if (params.toString()) {
-          url += `?${params.toString()}`;
-        }
-        const [ordersRes, claimsRes] = await Promise.all([
-          apiFetch(url),
-          fetchAllClaimRecords().catch(() => []),
-        ]);
-        fetchedBackend = ordersRes?.data || (Array.isArray(ordersRes) ? ordersRes : []);
-        allClaims = claimsRes || [];
+      const params = new URLSearchParams({ page: String(currentPage), limit: String(pageSize), counts: "1" });
+      if (startDate && endDate) {
+        params.append("startDate", startDate);
+        params.append("endDate", endDate);
       }
-
-      const claimedOrderMap = new Set<string>();
-      allClaims.forEach((c) => {
-        if (c.orderId) claimedOrderMap.add(c.orderId);
-        if (c.orderNumber) claimedOrderMap.add(c.orderNumber);
+      if (statusTab !== "all") params.append("statusGroup", statusTab);
+      if (debouncedSearch) params.append("search", debouncedSearch);
+      const res = await apiFetch<{
+        data: OrderRow[];
+        meta: { total: number; totalPages: number; counts?: { all: number; completed: number; voided: number; revenue: number } };
+      }>(`/orders?${params.toString()}`);
+      const fetchedBackend: OrderRow[] = Array.isArray(res?.data) ? res.data : [];
+      const rows: OrderRow[] = fetchedBackend.map((bOrder) => {
+        const key = bOrder.orderNumber || bOrder.id;
+        const hasClaims =
+          (Array.isArray(bOrder.claims) && bOrder.claims.length > 0) ||
+          claimedKeys.has(key) ||
+          claimedKeys.has(bOrder.id) ||
+          claimedKeys.has(bOrder.orderNumber);
+        const items: OrderRowItem[] = Array.isArray(bOrder.items)
+          ? bOrder.items.map((it) => ({ ...it, name: it.product?.name || it.name || "สินค้า", sku: it.product?.sku || it.sku || "" }))
+          : [];
+        return { ...bOrder, hasClaims, claims: bOrder.claims || [], items, isSynced: true };
       });
-
-      // Orders come from the server only (unsent offline bills live in the outbox, see the banner)
-      const combinedMap = new Map<string, OrderRow>();
-
-      if (Array.isArray(fetchedBackend) && fetchedBackend.length > 0) {
-        fetchedBackend.forEach((bOrder) => {
-          const key = bOrder.orderNumber || bOrder.id;
-
-          const hasClaims =
-            (Array.isArray(bOrder.claims) && bOrder.claims.length > 0) ||
-            claimedOrderMap.has(key) ||
-            claimedOrderMap.has(bOrder.id) ||
-            claimedOrderMap.has(bOrder.orderNumber);
-
-          const bItemsMapped: OrderRowItem[] = Array.isArray(bOrder.items)
-            ? bOrder.items.map((it) => ({
-                ...it,
-                name: it.product?.name || it.name || productsMap[it.productId as string]?.name || "สินค้า",
-                sku: it.product?.sku || it.sku || productsMap[it.productId as string]?.sku || "",
-              }))
-            : [];
-
-          combinedMap.set(key, {
-            ...bOrder,
-            hasClaims,
-            claims: bOrder.claims || [],
-            items: bItemsMapped,
-            isSynced: true,
-          });
-        });
-      }
-
-      const all = Array.from(combinedMap.values()).sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-
-      setOrders(all);
+      const c = res?.meta?.counts;
+      setOrders(rows);
+      setFilteredCount(Number(res?.meta?.total) || 0);
+      if (c) setStats({ totalOrders: c.completed, voidedOrders: c.voided, totalRevenue: c.revenue, allCount: c.all });
       setLoadError(null);
     } catch (error) {
       setOrders([]);
+      setFilteredCount(0);
       setLoadError(errorMessage(error, "ดึงข้อมูลออเดอร์ไม่สำเร็จ"));
     } finally {
       setLoading(false);
@@ -201,73 +162,35 @@ export default function OrdersPage() {
     await loadOrders();
   };
 
-  // A new date range shows the spinner at once; the effect below loads it.
+  // A new date range shows the spinner at once and goes back to page 1; the effect below loads it.
   const changeStartDate = (v: string) => {
-    if (v !== startDate) setLoading(true);
+    if (v !== startDate) { setLoading(true); setCurrentPage(1); }
     setStartDate(v);
   };
   const changeEndDate = (v: string) => {
-    if (v !== endDate) setLoading(true);
+    if (v !== endDate) { setLoading(true); setCurrentPage(1); }
     setEndDate(v);
   };
 
   useEffect(() => {
-    // loading is already true here (initial state / changeStartDate / changeEndDate)
+    // loading is already true on the first run; later runs keep the current rows until the new page arrives
     const run = async () => { await loadOrders(); };
     void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate, currentPage, pageSize, statusTab, debouncedSearch, claimedKeys]);
+
+  useEffect(() => {
     // Auto-sync offline orders in background
     syncPendingOrders(true).then((res) => {
       if (res.synced > 0) {
         fetchOrders();
       }
     });
-  }, [startDate, endDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Unsynced offline orders count (bills waiting in this device's outbox)
   const unsyncedCount = useConnectionStatus((s) => s.pending);
-
-  // Statistics Summary
-  const stats = useMemo(() => {
-    let totalRevenue = 0;
-    let completedCount = 0;
-    let voidedCount = 0;
-
-    orders.forEach((o) => {
-      if (o.status === "VOIDED" || o.status === "CANCELLED") {
-        voidedCount++;
-      } else {
-        completedCount++;
-        totalRevenue += Number(o.totalAmount || o.total || 0);
-      }
-    });
-
-    return {
-      totalOrders: completedCount,
-      voidedOrders: voidedCount,
-      totalRevenue,
-      allCount: orders.length,
-    };
-  }, [orders]);
-
-  // Filtered Orders based on Search & Status Tab
-  const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
-      const isVoid = order.status === "VOIDED" || order.status === "CANCELLED";
-      if (statusTab === "completed" && isVoid) return false;
-      if (statusTab === "voided" && !isVoid) return false;
-
-      if (search.trim()) {
-        const q = search.toLowerCase().trim();
-        const numMatch = order.orderNumber?.toLowerCase().includes(q);
-        const custMatch = (order.customerName || (order.customer as string | null | undefined))?.toLowerCase().includes(q);
-        const itemMatch = order.items?.some((i) => i.name?.toLowerCase().includes(q) || i.sku?.toLowerCase().includes(q));
-        const noteMatch = order.note?.toLowerCase().includes(q);
-        if (!numMatch && !custMatch && !itemMatch && !noteMatch) return false;
-      }
-
-      return true;
-    });
-  }, [orders, statusTab, search]);
 
   // Reset pagination when search, tab or page size changes
   const changeSearch = (v: string) => {
@@ -283,12 +206,8 @@ export default function OrdersPage() {
     setPageSize(v);
   };
 
-  // Paginated records
-  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
-  const paginatedOrders = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredOrders.slice(start, start + pageSize);
-  }, [filteredOrders, currentPage, pageSize]);
+  const totalPages = Math.max(1, Math.ceil(filteredCount / pageSize));
+  const paginatedOrders = orders;
 
   // ─── Order -> printed documents (shared mapper, same as POS history / document search) ───
   // Reprints from this page are copies: A4 "สำเนา (COPY)", thermal "พิมพ์ซ้ำ".
@@ -627,7 +546,7 @@ export default function OrdersPage() {
         loadError={loadError}
         fetchOrders={fetchOrders}
         paginatedOrders={paginatedOrders}
-        filteredOrders={filteredOrders}
+        filteredCount={filteredCount}
         currentPage={currentPage}
         setCurrentPage={setCurrentPage}
         pageSize={pageSize}

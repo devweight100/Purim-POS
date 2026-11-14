@@ -796,15 +796,28 @@ export class OrdersService {
       where.createdAt = { gte: from, lte: to };
     }
 
-    if (query.search && query.search.trim()) {
-      where.OR = [
-        { orderNumber: { contains: query.search.trim(), mode: 'insensitive' } },
-        { customer: { name: { contains: query.search.trim(), mode: 'insensitive' } } },
-        { customer: { phone: { contains: query.search.trim() } } },
-      ];
+    // date range only: the status cards / tab counts of the orders page (?counts=1) ignore search and tab
+    const rangeWhere: any = { ...where };
+    delete rangeWhere.status;
+
+    // orders page tabs: completed = every bill that is not voided, voided = VOIDED
+    if (query.statusGroup !== undefined && query.statusGroup !== 'all') {
+      if (query.statusGroup === 'voided') where.status = OrderStatus.VOIDED;
+      else if (query.statusGroup === 'completed') where.status = { not: OrderStatus.VOIDED };
+      else throw new BadRequestException('สถานะบิลที่ค้นหาไม่ถูกต้อง');
     }
 
     if (query.search !== undefined && typeof query.search !== 'string') throw new BadRequestException('คำค้นหาไม่ถูกต้อง');
+    if (query.search && query.search.trim()) {
+      const q = query.search.trim();
+      where.OR = [
+        { orderNumber: { contains: q, mode: 'insensitive' } },
+        { customer: { name: { contains: q, mode: 'insensitive' } } },
+        { customer: { phone: { contains: q } } },
+        { note: { contains: q, mode: 'insensitive' } },
+        { items: { some: { product: { OR: [{ name: { contains: q, mode: 'insensitive' } }, { sku: { contains: q, mode: 'insensitive' } }] } } } },
+      ];
+    }
     const completedWhere = { ...where, status: OrderStatus.COMPLETED };
     const [orders, total, aggregate, completedCount, returnsAgg] = await Promise.all([
       this.prisma.order.findMany({
@@ -819,7 +832,7 @@ export class OrdersService {
           claims: true,
           returns: { select: { returnNumber: true, refundAmount: true, refundMethod: true, cogsReturned: true, createdAt: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       }),
       this.prisma.order.count({ where }),
       this.prisma.order.aggregate({
@@ -832,6 +845,20 @@ export class OrdersService {
     // completed bills, net of partial returns (refunds and the cost of goods that came back)
     const netSales = round2((Number(aggregate._sum.totalAmount) || 0) - (Number(returnsAgg._sum.refundAmount) || 0));
     const netCogs = round2((Number(aggregate._sum.totalCogs) || 0) - (Number(returnsAgg._sum.cogsReturned) || 0));
+    let counts: { all: number; completed: number; voided: number; revenue: number } | undefined;
+    if (query.counts === '1' || query.counts === 'true') {
+      const groups = await this.prisma.order.groupBy({ by: ['status'], where: rangeWhere, _count: { _all: true }, _sum: { totalAmount: true } });
+      counts = { all: 0, completed: 0, voided: 0, revenue: 0 };
+      for (const g of groups) {
+        counts.all += g._count._all;
+        if (g.status === OrderStatus.VOIDED) counts.voided += g._count._all;
+        else {
+          counts.completed += g._count._all;
+          counts.revenue += Number(g._sum.totalAmount) || 0;
+        }
+      }
+      counts.revenue = round2(counts.revenue);
+    }
 
     return {
       data: orders,
@@ -840,6 +867,7 @@ export class OrdersService {
         page,
         limit,
         totalPages: Math.ceil(total / limit),
+        ...(counts ? { counts } : {}),
       },
       summary: {
         totalSales: netSales,
