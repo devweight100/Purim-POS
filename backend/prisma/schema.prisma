@@ -236,6 +236,8 @@ model Product {
 
   @@index([categoryId])
   @@index([name])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "products_name_trgm_idx")
+  @@index([sku(ops: raw("gin_trgm_ops"))], type: Gin, map: "products_sku_trgm_idx")
   @@map("products")
 }
 
@@ -266,6 +268,7 @@ model ProductBarcode {
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
+  @@index([barcode(ops: raw("gin_trgm_ops"))], type: Gin, map: "product_barcodes_barcode_trgm_idx")
   @@map("product_barcodes")
 }
 
@@ -288,6 +291,7 @@ model ProductPackagingUnit {
 
   @@index([productId])
   @@index([barcode])
+  @@index([barcode(ops: raw("gin_trgm_ops"))], type: Gin, map: "product_packaging_units_barcode_trgm_idx")
   @@map("product_packaging_units")
 }
 
@@ -634,6 +638,8 @@ model Customer {
   debts     CustomerDebt[]
   claims    CustomerClaim[]
 
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "customers_name_trgm_idx")
+  @@index([phone(ops: raw("gin_trgm_ops"))], type: Gin, map: "customers_phone_trgm_idx")
   @@map("customers")
 }
 
@@ -722,6 +728,7 @@ model Order {
   @@index([userId])
   @@index([customerId])
   @@index([shiftId])
+  @@index([orderNumber(ops: raw("gin_trgm_ops"))], type: Gin, map: "orders_order_number_trgm_idx")
   @@map("orders")
 }
 
