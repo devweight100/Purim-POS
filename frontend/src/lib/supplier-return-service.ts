@@ -104,6 +104,23 @@ export async function fetchSupplierReturnNotes(): Promise<SupplierReturnNote[]> 
   return returnNotesMem;
 }
 
+/**
+ * Every credit note with credit left (not cancelled, remaining > 0), all pages: the payables page and its
+ * settle dialogs (the newest-200 list above missed older notes that still had credit).
+ */
+export async function fetchAvailableReturnNotes(): Promise<SupplierReturnNote[]> {
+  const out: SupplierReturnNote[] = [];
+  for (let page = 1; page <= 1000; page++) {
+    const res = await apiFetch<ApiListResponse<ApiSupplierReturnNote> | null>(`/supplier-returns?available=1&limit=500&page=${page}`);
+    const list = apiListRows(res);
+    if (!Array.isArray(list)) throw new Error('ข้อมูลใบลดหนี้จากเซิร์ฟเวอร์ไม่ถูกต้อง');
+    out.push(...list.map(mapReturnNote));
+    if (list.length < 500) break;
+  }
+  returnNotesMem = out;
+  return out;
+}
+
 /** Last supplier return notes the server returned in this session. */
 export function loadSupplierReturnNotes(): SupplierReturnNote[] {
   return returnNotesMem;

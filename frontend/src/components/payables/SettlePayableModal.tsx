@@ -149,7 +149,7 @@ export function SettlePayableModal({
 
       const res = await settlePayableBill({
         clientVoucherId: clientVoucherIdRef.current,
-        poId: bill.poId,
+        bill,
         matchedDebitNotes,
         discountAmount: billDiscount,
         cashOrTransferAmount: finalCashOrTransferAmount,

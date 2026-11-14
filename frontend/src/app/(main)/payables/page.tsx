@@ -24,46 +24,62 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
-import { 
-  loadPayableBills,
-  fetchPayableBills, 
-  SupplierPayableBill, 
+import {
+  fetchPayableBillsPage,
+  fetchOpenPayableBills,
+  SupplierPayableBill,
   PayablePaymentEntry,
   PaymentVoucher,
-  loadPaymentVouchers,
-  fetchPaymentVouchers,
+  PayablesSummary,
+  PayableBillStatusFilter,
+  fetchPaymentVouchersPage,
   updateBillInvoiceNo,
   rollbackPayableBillPayment,
   cancelPayableBill,
   cancelPaymentVoucher
 } from '@/lib/payable-service';
-import { 
-  loadSuppliers, 
+import {
   fetchSuppliers,
-  loadSupplierReturnNotes,
-  fetchSupplierReturnNotes
+  fetchAvailableReturnNotes
 } from '@/lib/supplier-return-service';
-import { SupplierReturnNote } from '@/lib/types';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
+import { SimplePager } from '@/components/common/SimplePager';
 import { SettlePayableModal } from '@/components/payables/SettlePayableModal';
 import { SettleMultipleBillsModal } from '@/components/payables/SettleMultipleBillsModal';
 import { PaymentVoucherModal } from '@/components/payables/PaymentVoucherModal';
 import { PayableBillDetailsModal } from '@/components/payables/PayableBillDetailsModal';
 
+const BILL_PAGE_SIZE = 50;
+const VOUCHER_PAGE_SIZE = 50;
+const EMPTY_SUMMARY: PayablesSummary = {
+  billCount: 0, unpaidCount: 0, totalOutstanding: 0, totalPaid: 0, availableCredit: 0, availableCreditCount: 0, suppliers: [],
+};
+
 export default function PayablesPage() {
+  // Bills are computed and paged on the server (GET /payables/bills): one page here, cards over every bill.
   const [bills, setBills] = useState<SupplierPayableBill[]>([]);
+  const [billTotal, setBillTotal] = useState(0);
+  const [billPage, setBillPage] = useState(1);
+  const [summary, setSummary] = useState<PayablesSummary>(EMPTY_SUMMARY);
   const [suppliers, setSuppliers] = useState<Array<{ id: string; name: string; contactName?: string | null; phone?: string | null }>>([]);
-  const [returnNotes, setReturnNotes] = useState<SupplierReturnNote[]>([]);
   const [paymentVouchers, setPaymentVouchers] = useState<PaymentVoucher[]>([]);
+  const [voucherTotal, setVoucherTotal] = useState(0);
+  const [voucherPage, setVoucherPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Filters
   const [search, setSearch] = useState('');
   const [supplierFilter, setSupplierFilter] = useState('ALL');
-  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState<PayableBillStatusFilter>('ALL');
+  const debouncedSearch = useDebouncedValue(search.trim(), 300);
 
-  // Multi-Bill Settle
+  // Multi-Bill Settle (selection survives paging: the selected bills are kept by id)
   const [selectedPoIds, setSelectedPoIds] = useState<string[]>([]);
+  const [selectedBills, setSelectedBills] = useState<Record<string, SupplierPayableBill>>({});
+  /** bills with something payable now, loaded when the settle-several-bills dialog opens */
+  const [openBills, setOpenBills] = useState<SupplierPayableBill[]>([]);
+  const [openingMulti, setOpeningMulti] = useState(false);
   const [isMultiSettleModalOpen, setIsMultiSettleModalOpen] = useState(false);
   const [multiSettleSupplierId, setMultiSettleSupplierId] = useState<string | undefined>(undefined);
 
@@ -85,26 +101,31 @@ export default function PayablesPage() {
   const [editingInvoicePoId, setEditingInvoicePoId] = useState<string | null>(null);
   const [editingInvoiceValue, setEditingInvoiceValue] = useState<string>('');
 
-  /** Loads the data; state is only updated after the request. */
+  /** Loads the bills page + cards, suppliers, credit notes and the vouchers page; state is only updated after the requests. */
   const loadData = async () => {
     try {
-      const [allBills, supps, notes, vouchers] = await Promise.all([
-        fetchPayableBills(),
+      const [billRes, supps, , vouchers] = await Promise.all([
+        fetchPayableBillsPage({ page: billPage, limit: BILL_PAGE_SIZE, search: debouncedSearch, supplierId: supplierFilter, paymentStatus: statusFilter }),
         fetchSuppliers(),
-        fetchSupplierReturnNotes(),
-        fetchPaymentVouchers(),
+        // every credit note with credit left: the settle dialogs read them
+        fetchAvailableReturnNotes(),
+        fetchPaymentVouchersPage({ page: voucherPage, limit: VOUCHER_PAGE_SIZE }),
       ]);
-      setBills(allBills);
+      setBills(billRes.data);
+      setBillTotal(billRes.meta.total);
+      setSummary(billRes.summary);
       setSuppliers(supps);
-      setReturnNotes(notes);
-      setPaymentVouchers(vouchers);
+      setPaymentVouchers(vouchers.rows);
+      setVoucherTotal(vouchers.total);
       setLoadError(null);
     } catch (e) {
       console.error('Failed to load payables data:', e);
       setBills([]);
+      setBillTotal(0);
+      setSummary(EMPTY_SUMMARY);
       setSuppliers([]);
-      setReturnNotes([]);
       setPaymentVouchers([]);
+      setVoucherTotal(0);
       setLoadError(errorMessage(e, 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     } finally {
       setLoading(false);
@@ -116,10 +137,39 @@ export default function PayablesPage() {
     await loadData();
   };
 
+  // a filter changed: back to page 1 (adjusted while rendering, no extra effect pass)
+  const billFilterKey = JSON.stringify([debouncedSearch, supplierFilter, statusFilter]);
+  const [billFilterKeySeen, setBillFilterKeySeen] = useState(billFilterKey);
+  if (billFilterKeySeen !== billFilterKey) {
+    setBillFilterKeySeen(billFilterKey);
+    setBillPage(1);
+  }
+
   useEffect(() => {
     const run = async () => { await loadData(); };
     void run();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [billPage, voucherPage, debouncedSearch, supplierFilter, statusFilter]);
+
+  /** Opens the settle-several-bills dialog with every open bill (optionally pre-selecting a supplier's bills). */
+  const openMultiSettle = async (supplierId?: string, preselect?: 'supplier' | 'selection') => {
+    setOpeningMulti(true);
+    try {
+      const open = await fetchOpenPayableBills();
+      setOpenBills(open);
+      setMultiSettleSupplierId(supplierId);
+      if (preselect === 'supplier' && supplierId) {
+        setSelectedPoIds(open.filter((b) => b.supplierId === supplierId).map((b) => b.poId));
+      } else if (preselect !== 'selection') {
+        setSelectedPoIds([]);
+      }
+      setIsMultiSettleModalOpen(true);
+    } catch (e) {
+      toast.error(errorMessage(e, 'โหลดบิลค้างชำระไม่สำเร็จ'));
+    } finally {
+      setOpeningMulti(false);
+    }
+  };
 
   const handleOpenSettle = (bill: SupplierPayableBill) => {
     setSelectedBillForSettle(bill);
@@ -152,7 +202,7 @@ export default function PayablesPage() {
     const reason = prompt(`ระบุเหตุผลการยกเลิกใบสำคัญจ่าย ${voucher.voucherNumber}:`, 'ยกเลิกการชำระเงิน');
     if (reason === null) return;
 
-    const res = await cancelPaymentVoucher(voucher.id, reason);
+    const res = await cancelPaymentVoucher(voucher.id, reason, voucher);
     if (res.success) {
       toast.success(res.message);
       refreshData();
@@ -176,14 +226,20 @@ export default function PayablesPage() {
     setEditingInvoicePoId(null);
   };
 
-  const handleToggleSelectPo = (poId: string) => {
-    setSelectedPoIds((prev) => {
-      if (prev.includes(poId)) {
-        return prev.filter(id => id !== poId);
-      } else {
-        return [...prev, poId];
-      }
+  const handleToggleSelectPo = (bill: SupplierPayableBill) => {
+    const poId = bill.poId;
+    setSelectedPoIds((prev) => (prev.includes(poId) ? prev.filter((id) => id !== poId) : [...prev, poId]));
+    setSelectedBills((prev) => {
+      const next = { ...prev };
+      if (next[poId]) delete next[poId];
+      else next[poId] = bill;
+      return next;
     });
+  };
+
+  const clearSelection = () => {
+    setSelectedPoIds([]);
+    setSelectedBills({});
   };
 
   const handleOpenDetails = (bill: SupplierPayableBill) => {
@@ -195,20 +251,7 @@ export default function PayablesPage() {
     if (!confirm(`ต้องการย้อนสถานะการชำระเงินของบิล ${bill.poNumber} หรือไม่?\n(ยอดเงินที่จ่ายและเครดิตใบลดหนี้จะถูกคืนกลับสถานะเดิม ยอดหนี้จะกลับมาค้างชำระ)`)) {
       return;
     }
-    const res = await rollbackPayableBillPayment(bill.poId);
-    if (res.success) {
-      toast.success(res.message);
-      refreshData();
-    } else {
-      toast.error(res.message);
-    }
-  };
-
-  const handleRollbackSinglePayment = async (poId: string, paymentId: string) => {
-    if (!confirm(`ต้องการยกเลิก/ย้อนสถานะการชำระเงินรอบนี้หรือไม่?\n(ยอดเงินและเครดิตใบลดหนี้ในรอบนี้จะถูกคืนกลับสถานะเดิม)`)) {
-      return;
-    }
-    const res = await rollbackPayableBillPayment(poId, paymentId);
+    const res = await rollbackPayableBillPayment(bill);
     if (res.success) {
       toast.success(res.message);
       refreshData();
@@ -220,7 +263,7 @@ export default function PayablesPage() {
   const handleCancelBillAction = async (bill: SupplierPayableBill) => {
     const reason = prompt(`กรุณาระบุเหตุผลการยกเลิกบิล ${bill.poNumber}:`);
     if (reason === null) return;
-    const res = await cancelPayableBill(bill.poId, reason);
+    const res = await cancelPayableBill(bill.poId, reason, bill.poNumber);
     if (res.success) {
       toast.success(res.message);
       refreshData();
@@ -229,39 +272,17 @@ export default function PayablesPage() {
     }
   };
 
-  // KPIs
-  const totalOutstandingDebt = bills.reduce((sum, b) => sum + b.remainingPayable, 0);
-  const unpaidBillsCount = bills.filter((b) => b.paymentStatus !== 'PAID').length;
-  
-  const availableDebitNotes = returnNotes.filter(
-    (n) => n.status !== 'CANCELLED' && n.remainingCreditAmount > 0
-  );
-  const totalAvailableDebitCredit = availableDebitNotes.reduce(
-    (sum, n) => sum + Number(n.remainingCreditAmount || 0),
-    0
-  );
+  // KPIs (over every bill, from the server)
+  const totalOutstandingDebt = summary.totalOutstanding;
+  const unpaidBillsCount = summary.unpaidCount;
+  const totalAvailableDebitCredit = summary.availableCredit;
+  const totalPaidAmount = summary.totalPaid;
+  const supplierSummary = new Map(summary.suppliers.map((row) => [row.supplierId, row]));
 
-  const totalPaidAmount = bills.reduce(
-    (sum, b) => sum + b.alreadyPaidAmount + b.alreadyDeductedReturns,
-    0
-  );
-
-  // Filtered Bills
-  const filteredBills = bills.filter((b) => {
-    const matchesSearch =
-      b.poNumber.toLowerCase().includes(search.toLowerCase()) ||
-      b.supplierName.toLowerCase().includes(search.toLowerCase());
-
-    const matchesSupplier = supplierFilter === 'ALL' || b.supplierId === supplierFilter;
-
-    const matchesStatus =
-      statusFilter === 'ALL' ||
-      (statusFilter === 'UNPAID' && b.paymentStatus === 'UNPAID') ||
-      (statusFilter === 'PARTIALLY_PAID' && b.paymentStatus === 'PARTIALLY_PAID') ||
-      (statusFilter === 'PAID' && b.paymentStatus === 'PAID');
-
-    return matchesSearch && matchesSupplier && matchesStatus;
-  });
+  // the current page (search / supplier / status filtered on the server)
+  const filteredBills = bills;
+  const pageOpenBills = filteredBills.filter((b) => b.remainingPayable > 0);
+  const selectedTotal = Object.values(selectedBills).reduce((s, b) => s + b.remainingPayable, 0);
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7 font-sans">
@@ -282,10 +303,10 @@ export default function PayablesPage() {
           <Button
             type="button"
             size="sm"
+            disabled={openingMulti}
             onClick={() => {
-              setMultiSettleSupplierId(undefined);
-              setSelectedPoIds([]);
-              setIsMultiSettleModalOpen(true);
+              setSelectedBills({});
+              void openMultiSettle(undefined);
             }}
             className="bg-indigo-600 hover:bg-indigo-700 text-white h-10 px-4 text-xs font-bold shadow-sm gap-1.5 rounded-xl"
           >
@@ -389,7 +410,7 @@ export default function PayablesPage() {
             value="bills"
             className="rounded-lg font-bold text-xs sm:text-sm data-[state=active]:bg-white data-[state=active]:shadow-xs px-4"
           >
-            รายการบิลเจ้าหนี้ ({bills.length})
+            รายการบิลเจ้าหนี้ ({summary.billCount.toLocaleString()})
           </TabsTrigger>
           <TabsTrigger
             value="suppliers"
@@ -436,7 +457,7 @@ export default function PayablesPage() {
 
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) => setStatusFilter(e.target.value as PayableBillStatusFilter)}
                 className="h-10 px-3 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 w-full md:w-40"
               >
                 <option value="ALL">ทุกสถานะการชำระ</option>
@@ -462,17 +483,19 @@ export default function PayablesPage() {
                     <tr>
                       <th className="py-3.5 px-3 text-center w-12">
                         <Checkbox
-                          checked={
-                            filteredBills.filter(b => b.remainingPayable > 0).length > 0 &&
-                            selectedPoIds.length === filteredBills.filter(b => b.remainingPayable > 0).length
-                          }
+                          checked={pageOpenBills.length > 0 && pageOpenBills.every((b) => selectedPoIds.includes(b.poId))}
                           onCheckedChange={(checked) => {
-                            if (checked) {
-                              const unpaid = filteredBills.filter(b => b.remainingPayable > 0);
-                              setSelectedPoIds(unpaid.map(b => b.poId));
-                            } else {
-                              setSelectedPoIds([]);
-                            }
+                            // selects / clears the open bills of this page (other pages' selection is kept)
+                            const ids = new Set(pageOpenBills.map((b) => b.poId));
+                            setSelectedPoIds((prev) => (checked ? [...prev.filter((id) => !ids.has(id)), ...ids] : prev.filter((id) => !ids.has(id))));
+                            setSelectedBills((prev) => {
+                              const next = { ...prev };
+                              for (const b of pageOpenBills) {
+                                if (checked) next[b.poId] = b;
+                                else delete next[b.poId];
+                              }
+                              return next;
+                            });
                           }}
                         />
                       </th>
@@ -497,7 +520,7 @@ export default function PayablesPage() {
                           {bill.remainingPayable > 0 ? (
                             <Checkbox
                               checked={selectedPoIds.includes(bill.poId)}
-                              onCheckedChange={() => handleToggleSelectPo(bill.poId)}
+                              onCheckedChange={() => handleToggleSelectPo(bill)}
                             />
                           ) : (
                             <span className="text-slate-300">-</span>
@@ -505,7 +528,7 @@ export default function PayablesPage() {
                         </td>
 
                         <td className="py-3.5 px-2 text-center font-mono font-bold text-slate-500 text-sm">
-                          {idx + 1}
+                          {(billPage - 1) * BILL_PAGE_SIZE + idx + 1}
                         </td>
 
                         <td className="py-3.5 px-3.5">
@@ -670,6 +693,9 @@ export default function PayablesPage() {
                 </table>
               </div>
             )}
+            {billTotal > 0 && (
+              <SimplePager page={billPage} pageSize={BILL_PAGE_SIZE} total={billTotal} onPage={setBillPage} unit="บิล" testId="bill-pager" />
+            )}
           </div>
 
           {/* Floating Sticky Multi-Bill Action Bar */}
@@ -680,16 +706,16 @@ export default function PayablesPage() {
                   {selectedPoIds.length} บิล
                 </Badge>
                 <span className="text-xs sm:text-sm font-bold text-slate-200">
-                  เลือกบิลแล้ว ยอดรวม: <strong className="text-amber-400 font-mono">{formatCurrency(bills.filter(b => selectedPoIds.includes(b.poId)).reduce((s, b) => s + b.remainingPayable, 0))}</strong>
+                  เลือกบิลแล้ว ยอดรวม: <strong className="text-amber-400 font-mono">{formatCurrency(selectedTotal)}</strong>
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
+                  disabled={openingMulti}
                   onClick={() => {
-                    const firstBill = bills.find(b => selectedPoIds.includes(b.poId));
-                    setMultiSettleSupplierId(firstBill?.supplierId);
-                    setIsMultiSettleModalOpen(true);
+                    const firstBill = selectedBills[selectedPoIds[0]];
+                    void openMultiSettle(firstBill?.supplierId, 'selection');
                   }}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 px-4 rounded-xl gap-1.5 shadow-sm"
                 >
@@ -698,7 +724,7 @@ export default function PayablesPage() {
                 </Button>
                 <button
                   type="button"
-                  onClick={() => setSelectedPoIds([])}
+                  onClick={clearSelection}
                   className="text-xs text-slate-400 hover:text-white underline px-2 py-1"
                 >
                   ยกเลิก
@@ -712,14 +738,11 @@ export default function PayablesPage() {
         <TabsContent value="suppliers" className="space-y-4 m-0">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {suppliers.map((supp) => {
-              const suppBills = bills.filter((b) => b.supplierId === supp.id);
-              const suppDebt = suppBills.reduce((s, b) => s + b.remainingPayable, 0);
-              const suppCreditNotes = returnNotes.filter(
-                (n) => n.supplierId === supp.id && n.status !== 'CANCELLED' && n.remainingCreditAmount > 0
-              );
-              const suppCreditTotal = suppCreditNotes.reduce((s, n) => s + Number(n.remainingCreditAmount || 0), 0);
-
-              const firstOpenBill = suppBills.find((b) => b.remainingPayable > 0);
+              const row = supplierSummary.get(supp.id);
+              const suppOpenCount = row?.openCount || 0;
+              const suppDebt = row?.debt || 0;
+              const suppCreditCount = row?.creditCount || 0;
+              const suppCreditTotal = row?.creditTotal || 0;
 
               return (
                 <div
@@ -735,7 +758,7 @@ export default function PayablesPage() {
                         </p>
                       </div>
                       <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs font-semibold px-2 py-0.5">
-                        {suppBills.filter((b) => b.remainingPayable > 0).length} บิลค้าง
+                        {suppOpenCount} บิลค้าง
                       </Badge>
                     </div>
 
@@ -747,24 +770,24 @@ export default function PayablesPage() {
                       <div className="flex justify-between text-slate-600">
                         <span>ใบลดหนี้พร้อมประกบ:</span>
                         <strong className="font-mono text-indigo-700 font-bold">
-                          {suppCreditNotes.length} ฉบับ ({formatCurrency(suppCreditTotal)})
+                          {suppCreditCount} ฉบับ ({formatCurrency(suppCreditTotal)})
                         </strong>
                       </div>
                     </div>
                   </div>
 
-                  {suppBills.filter((b) => b.remainingPayable > 0).length > 0 ? (
+                  {suppOpenCount > 0 ? (
                     <Button
                       type="button"
+                      disabled={openingMulti}
                       onClick={() => {
-                        setMultiSettleSupplierId(supp.id);
-                        setSelectedPoIds(suppBills.filter(b => b.remainingPayable > 0).map(b => b.poId));
-                        setIsMultiSettleModalOpen(true);
+                        setSelectedBills({});
+                        void openMultiSettle(supp.id, 'supplier');
                       }}
                       className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-9 text-xs rounded-xl shadow-xs gap-1.5"
                     >
                       <Receipt className="w-3.5 h-3.5" />
-                      <span>ชำระหนี้รอบบิล ({suppBills.filter((b) => b.remainingPayable > 0).length} บิล)</span>
+                      <span>ชำระหนี้รอบบิล ({suppOpenCount} บิล)</span>
                     </Button>
                   ) : (
                     <p className="text-center text-xs text-emerald-600 font-bold py-1">
@@ -780,13 +803,13 @@ export default function PayablesPage() {
         {/* TAB 3: PAYMENT HISTORY & VOUCHERS */}
         <TabsContent value="history" className="space-y-4 m-0">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-            {paymentVouchers.length === 0 && bills.flatMap((b) => (b.payments || []).map((p) => ({ ...p, bill: b }))).length === 0 ? (
+            {voucherTotal === 0 ? (
               <div className="p-12 text-center text-slate-400 space-y-2">
                 <FileText className="w-12 h-12 text-slate-300 mx-auto" />
                 <p className="text-base font-bold text-slate-700">ยังไม่มีประวัติการชำระเงินเจ้าหนี้</p>
                 <p className="text-xs sm:text-sm text-slate-400">เมื่อมีการบันทึกชำระหนี้ ใบสำคัญจ่ายจะปรากฏที่นี่ และสามารถเปิดดูหรือพิมพ์ย้อนหลังได้ตลอดเวลา</p>
               </div>
-            ) : paymentVouchers.length > 0 ? (
+            ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-xs sm:text-[13px]">
@@ -916,95 +939,9 @@ export default function PayablesPage() {
                   </tbody>
                 </table>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-xs sm:text-[13px]">
-                    <tr>
-                      <th className="py-3.5 px-3.5 text-left">เลขที่สำคัญจ่าย / วันที่</th>
-                      <th className="py-3.5 px-3.5 text-left">บิล PO ที่ชำระ</th>
-                      <th className="py-3.5 px-3.5 text-left">บริษัทผู้จำหน่าย</th>
-                      <th className="py-3.5 px-3.5 text-right">ยอดหนี้ตามบิล</th>
-                      <th className="py-3.5 px-3.5 text-right">ส่วนลดท้ายบิล</th>
-                      <th className="py-3.5 px-3.5 text-right">ประกบหักใบลดหนี้</th>
-                      <th className="py-3.5 px-3.5 text-right">เงินสด/โอนที่จ่ายจริง</th>
-                      <th className="py-3.5 px-3.5 text-center">วิธีชำระ</th>
-                      <th className="py-3.5 px-3.5 text-center whitespace-nowrap">การจัดการ</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {bills.flatMap((b) => (b.payments || []).map((p) => ({ ...p, bill: b }))).map((item) => (
-                      <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3 px-3.5 font-mono">
-                          <span className="font-bold text-indigo-700 text-sm block">{item.id}</span>
-                          <span className="text-xs text-slate-500 block mt-0.5">
-                            {new Date(item.paymentDate).toLocaleDateString('th-TH')}
-                          </span>
-                        </td>
-
-                        <td className="py-3 px-3.5 font-mono font-bold text-slate-800 text-sm">
-                          {item.bill.poNumber}
-                        </td>
-
-                        <td className="py-3 px-3.5 font-bold text-slate-900 text-sm">
-                          {item.bill.supplierName}
-                        </td>
-
-                        <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-800">
-                          {formatCurrency(item.totalBillAmount)}
-                        </td>
-
-                        <td className="py-3 px-3.5 text-right font-mono text-amber-700 font-bold">
-                          {item.discountAmount && item.discountAmount > 0 ? formatCurrency(item.discountAmount) : '-'}
-                        </td>
-
-                        <td className="py-3 px-3.5 text-right font-mono text-indigo-700 font-bold">
-                          {item.deductedCreditAmount > 0 ? formatCurrency(item.deductedCreditAmount) : '-'}
-                        </td>
-
-                        <td className="py-3 px-3.5 text-right font-mono text-emerald-700 font-black text-sm sm:text-base">
-                          {formatCurrency(item.netCashOrTransferPaid)}
-                        </td>
-
-                        <td className="py-3 px-3.5 text-center">
-                          <Badge variant="outline" className="text-xs font-semibold px-2.5 py-0.5">
-                            {item.paymentMethod === 'CASH'
-                              ? '💵 เงินสด'
-                              : item.paymentMethod === 'TRANSFER'
-                              ? '📱 โอนเงิน'
-                              : '💳 อื่นๆ'}
-                          </Badge>
-                        </td>
-
-                        <td className="py-3 px-3.5 text-center">
-                          <div className="flex items-center justify-center gap-1 flex-nowrap whitespace-nowrap">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleOpenVoucher(item.bill, item)}
-                              className="h-8 px-2.5 rounded-xl border-slate-200 hover:border-indigo-300 hover:text-indigo-600 font-bold text-xs gap-1 shrink-0"
-                              title="ดูและพิมพ์ใบสำคัญจ่าย"
-                            >
-                              <Printer className="w-3.5 h-3.5" />
-                              <span>พิมพ์</span>
-                            </Button>
-
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleRollbackSinglePayment(item.bill.poId, item.id)}
-                              title="ยกเลิก/ย้อนสถานะการชำระเงินรอบนี้"
-                              className="h-8 w-8 p-0 rounded-xl border-amber-200 text-amber-700 hover:bg-amber-50 font-bold text-xs shrink-0"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            )}
+            {voucherTotal > 0 && (
+              <SimplePager page={voucherPage} pageSize={VOUCHER_PAGE_SIZE} total={voucherTotal} onPage={setVoucherPage} unit="ใบ" testId="voucher-pager" />
             )}
           </div>
         </TabsContent>
@@ -1037,12 +974,12 @@ export default function PayablesPage() {
       <SettleMultipleBillsModal
         open={isMultiSettleModalOpen}
         onOpenChange={setIsMultiSettleModalOpen}
-        allBills={bills}
+        allBills={openBills}
         initialSupplierId={multiSettleSupplierId}
         preSelectedPoIds={selectedPoIds}
         onSuccess={(voucher) => {
           refreshData();
-          setSelectedPoIds([]);
+          clearSelection();
           setSelectedVoucherForModal(voucher);
           setSelectedBillForVoucher(null);
           setSelectedPaymentForVoucher(null);

@@ -16,12 +16,14 @@ export class SupplierReturnsController {
     @Query('limit') limit?: string,
     @Query('supplierId') supplierId?: string,
     @Query('status') status?: string,
+    @Query('available') available?: string,
   ) {
     return this.returnsService.getAllReturnNotes(
       page ? parseInt(page, 10) : 1,
       limit ? parseInt(limit, 10) : 20,
       supplierId,
       status,
+      available === '1' || available === 'true',
     );
   }
 

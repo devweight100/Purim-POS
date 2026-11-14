@@ -1,14 +1,7 @@
-import {
-  loadPurchaseOrders,
-  loadSuppliers,
-  fetchPurchaseOrders,
-  fetchSuppliers,
-  fetchSupplierReturnNotes,
-} from './supplier-return-service';
 import { apiFetch, api } from './api';
 import { errorText } from './api-error';
 import {
-  PayablePaymentEntry, ApiPaymentVoucher, ApiPurchaseOrder, ApiPurchaseOrderItem, ApiSupplier, ApiListResponse,
+  PayablePaymentEntry, ApiPaymentVoucher, ApiPurchaseOrderItem, ApiListResponse,
   apiListRows,
 } from './types';
 
@@ -85,10 +78,6 @@ export interface PaymentVoucher {
   createdAt: string;
 }
 
-/** Last payment vouchers the server returned in this session (memory only, never localStorage). */
-let vouchersMem: PaymentVoucher[] = [];
-let lastVoucherSyncAt = 0;
-let lastBillsSyncAt = 0;
 
 export function normalizeVoucherRow(v: ApiPaymentVoucher | null | undefined): PaymentVoucher {
   const bills: PaymentVoucherBillItem[] = Array.isArray(v?.bills)
@@ -154,27 +143,15 @@ export function normalizeVoucherRow(v: ApiPaymentVoucher | null | undefined): Pa
   };
 }
 
-/** Payment vouchers from the server. Throws when the server cannot be reached. */
-export async function fetchPaymentVouchers(): Promise<PaymentVoucher[]> {
-  const res = await apiFetch<ApiListResponse<ApiPaymentVoucher> | null>('/payables/vouchers?limit=200');
+/** One page of payment vouchers from the server (newest first). Throws when the server cannot be reached. */
+export async function fetchPaymentVouchersPage(params: { page?: number; limit?: number; search?: string } = {}): Promise<{ rows: PaymentVoucher[]; total: number }> {
+  const q = new URLSearchParams({ page: String(params.page || 1), limit: String(params.limit || 50) });
+  if (params.search?.trim()) q.set('search', params.search.trim());
+  const res = await apiFetch<ApiListResponse<ApiPaymentVoucher> | null>(`/payables/vouchers?${q.toString()}`);
   const list = apiListRows(res);
   if (!Array.isArray(list)) throw new Error('ข้อมูลใบสำคัญจ่ายจากเซิร์ฟเวอร์ไม่ถูกต้อง');
-  lastVoucherSyncAt = Date.now();
-  vouchersMem = list.map((v) => normalizeVoucherRow(v));
-  return vouchersMem;
-}
-
-/** Last vouchers the server returned in this session, plus a background refresh. */
-export function loadPaymentVouchers(): PaymentVoucher[] {
-  if (typeof window !== 'undefined' && Date.now() - lastVoucherSyncAt > 10000) {
-    lastVoucherSyncAt = Date.now();
-    void fetchPaymentVouchers().catch(() => {});
-  }
-  return vouchersMem;
-}
-
-export function getPaymentVoucherById(id: string): PaymentVoucher | undefined {
-  return vouchersMem.find((v) => v.id === id || v.voucherNumber === id);
+  const total = res && !Array.isArray(res) && typeof res.meta?.total === 'number' ? res.meta.total : list.length;
+  return { rows: list.map((v) => normalizeVoucherRow(v)), total };
 }
 
 /** Save the supplier's invoice number on the bill (server first; nothing is kept locally). */
@@ -192,24 +169,7 @@ export async function updateBillInvoiceNo(
   } catch (err) {
     return { success: false, message: errorText(err) || 'บันทึกเลขที่บิลผู้จำหน่ายไม่สำเร็จ' };
   }
-  await fetchPurchaseOrders().catch(() => undefined);
   return { success: true, message: 'บันทึกเลขที่บิลผู้จำหน่ายเรียบร้อยแล้ว' };
-}
-
-/** After the server accepted a payables change: reload POs, vouchers and credit notes. */
-async function refreshAfterPayableWrite(): Promise<void> {
-  await Promise.allSettled([fetchPurchaseOrders(), fetchPaymentVouchers(), fetchSupplierReturnNotes()]);
-}
-
-const PAYABLE_PO_STATUSES = ['PARTIALLY_RECEIVED', 'RECEIVED', 'COMPLETED'];
-
-function receivedValueOf(po: ApiPurchaseOrder): number {
-  const items = Array.isArray(po.items) ? po.items : [];
-  if (!items.length) return Number(po.totalAmount || 0);
-  return items.reduce(
-    (sum: number, i) => sum + (Number(i.receivedQty ?? i.receivedQuantity) || 0) * (Number(i.unitCost) || 0),
-    0,
-  );
 }
 
 function newClientVoucherId(): string {
@@ -224,151 +184,81 @@ function toBackendPaymentMethod(method: string, note?: string): { paymentMethod:
   return { paymentMethod: 'TRANSFER', note: [tag, note].filter(Boolean).join(' ') };
 }
 
-function mapPosToPayableBills(
-  pos: ApiPurchaseOrder[],
-  suppliers: ApiSupplier[],
-  vouchers: PaymentVoucher[],
-): SupplierPayableBill[] {
-  const activeVouchers = Array.isArray(vouchers)
-    ? vouchers.filter((v) => v.status !== 'CANCELLED')
-    : [];
+export type PayableBillStatusFilter = 'ALL' | 'UNPAID' | 'PARTIALLY_PAID' | 'PAID';
 
-  return pos
-    // A supplier bill becomes payable only once goods were actually received.
-    .filter((po) => PAYABLE_PO_STATUSES.includes(po.status))
-    .map((po) => {
-      const totalAmount = Number(po.totalAmount || 0);
-
-      const deductedReturns = Array.isArray(po.deductedReturns) ? po.deductedReturns : [];
-      const alreadyDeducted = deductedReturns.reduce(
-        (sum: number, r) => sum + Number(r.amount || 0),
-        0,
-      );
-
-      let payments: PayablePaymentEntry[] = Array.isArray(po.payments) ? po.payments : [];
-      if (payments.length === 0 && activeVouchers.length > 0) {
-        const matchedVouchers = activeVouchers.filter(
-          (v) =>
-            Array.isArray(v.bills) &&
-            v.bills.some((b) => b.poId === po.id || b.poNumber === po.poNumber),
-        );
-        payments = matchedVouchers.map((v) => {
-          const billItem = v.bills.find(
-            (b) => b.poId === po.id || b.poNumber === po.poNumber,
-          );
-          return {
-            id: `PAY-${v.id}-${po.id}`,
-            voucherId: v.id,
-            voucherNumber: v.voucherNumber,
-            paymentDate: v.paymentDate,
-            paymentMethod: v.paymentMethod,
-            totalBillAmount: totalAmount,
-            deductedCreditAmount: v.deductedCreditAmount || 0,
-            discountAmount: v.discountAmount,
-            netCashOrTransferPaid: Number(billItem?.amountPaid ?? v.netPaidAmount ?? 0),
-            deductedNotes: v.deductedNotes || [],
-            bankAccountId: v.bankAccountId,
-            bankAccountLabel: v.bankAccountLabel,
-            referenceNo: v.referenceNo || v.voucherNumber,
-            note: v.note,
-            cashierName: v.cashierName || 'เจ้าหน้าที่การเงิน',
-          };
-        });
-      }
-
-      const paymentsPaidSum = payments.reduce(
-        (sum: number, p) => sum + Number(p.netCashOrTransferPaid || 0),
-        0,
-      );
-      const alreadyPaid =
-        paymentsPaidSum > 0 ? paymentsPaidSum : Number(po.paidAmount || 0);
-      const alreadyDiscount = payments.reduce(
-        (sum: number, p) => sum + Number(p.discountAmount || 0),
-        0,
-      );
-
-      const computedRemaining = Math.max(
-        0,
-        Math.round((totalAmount - alreadyDeducted - alreadyPaid - alreadyDiscount) * 100) / 100,
-      );
-      // The database is the source of truth: remainingPayable already reflects every
-      // voucher (cash + credit notes + discount). Cap it at the value of goods received.
-      const dbRemaining =
-        po.remainingPayable !== undefined && po.remainingPayable !== null
-          ? Math.max(0, Number(po.remainingPayable))
-          : computedRemaining;
-      const remainingPayable = Math.max(
-        0,
-        Math.min(dbRemaining, Math.round((receivedValueOf(po) - Number(po.paidAmount || 0)) * 100) / 100),
-      );
-
-      let paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'PAID' = 'UNPAID';
-      // PAID only when the whole PO is settled. Paying everything received so far while goods are
-      // still outstanding is PARTIALLY_PAID (more will become payable when the rest arrives).
-      if (dbRemaining <= 0 && totalAmount > 0) {
-        paymentStatus = 'PAID';
-      } else if (remainingPayable <= 0 && totalAmount > 0) {
-        paymentStatus = 'PARTIALLY_PAID';
-      } else if (alreadyDeducted > 0 || alreadyPaid > 0 || alreadyDiscount > 0) {
-        paymentStatus = 'PARTIALLY_PAID';
-      } else if (po.paymentStatus === 'PAID' || po.paymentStatus === 'PARTIALLY_PAID') {
-        paymentStatus = po.paymentStatus;
-      }
-
-      const supp: Partial<ApiSupplier> =
-        suppliers.find((s) => s.id === (po.supplierId || po.supplier?.id)) ||
-        po.supplier ||
-        {};
-
-      return {
-        poId: po.id,
-        poNumber: po.poNumber,
-        supplierInvoiceNo: po.supplierInvoiceNo || po.invoiceNo || '',
-        supplierInvoiceDate: po.supplierInvoiceDate || po.invoiceDate || '',
-        supplierId: po.supplierId || supp.id || '',
-        supplierName: po.supplierName || supp.name || 'ไม่ระบุผู้จำหน่าย',
-        supplierContact: supp.contactName ?? undefined,
-        supplierPhone: supp.phone ?? undefined,
-        supplierAddress: supp.address ?? undefined,
-        billDate:
-          po.billDate || po.createdAt || po.issueDate || po.issuedAt || new Date().toISOString(),
-        status: po.status,
-        paymentStatus,
-        totalAmount,
-        receivedAmount: Math.round(receivedValueOf(po) * 100) / 100,
-        alreadyDeductedReturns: alreadyDeducted,
-        alreadyPaidAmount: alreadyPaid,
-        alreadyDiscountAmount: alreadyDiscount,
-        remainingPayable,
-        itemsCount: (po.items || []).length,
-        items: po.items || [],
-        deductedReturns,
-        payments,
-      };
-    });
+export interface PayableSupplierSummary {
+  supplierId: string;
+  /** bills with something payable now */
+  openCount: number;
+  debt: number;
+  /** credit notes with credit left */
+  creditCount: number;
+  creditTotal: number;
 }
 
-export async function fetchPayableBills(): Promise<SupplierPayableBill[]> {
-  lastBillsSyncAt = Date.now();
-  const [pos, suppliers, vouchers] = await Promise.all([
-    fetchPurchaseOrders(),
-    fetchSuppliers(),
-    fetchPaymentVouchers(),
-  ]);
-
-  return mapPosToPayableBills(pos, suppliers, vouchers);
+/** Cards of the payables page, over every bill (the filters do not change them). */
+export interface PayablesSummary {
+  billCount: number;
+  unpaidCount: number;
+  totalOutstanding: number;
+  totalPaid: number;
+  availableCredit: number;
+  availableCreditCount: number;
+  suppliers: PayableSupplierSummary[];
 }
 
-export function loadPayableBills(): SupplierPayableBill[] {
-  if (typeof window !== 'undefined' && Date.now() - lastBillsSyncAt > 10000) {
-    lastBillsSyncAt = Date.now();
-    void fetchPayableBills().catch(() => {});
+export interface PayableBillsPage {
+  data: SupplierPayableBill[];
+  meta: { total: number; page: number; limit: number; totalPages: number };
+  summary: PayablesSummary;
+}
+
+export interface PayableBillsQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  supplierId?: string;
+  paymentStatus?: PayableBillStatusFilter;
+  /** only bills with something payable now */
+  open?: boolean;
+  /** rows without the PO lines */
+  slim?: boolean;
+}
+
+export function payableBillsUrl(query: PayableBillsQuery = {}): string {
+  const q = new URLSearchParams({ page: String(query.page || 1), limit: String(query.limit || 50) });
+  if (query.search?.trim()) q.set('search', query.search.trim());
+  if (query.supplierId && query.supplierId !== 'ALL') q.set('supplierId', query.supplierId);
+  if (query.paymentStatus && query.paymentStatus !== 'ALL') q.set('paymentStatus', query.paymentStatus);
+  if (query.open) q.set('open', '1');
+  if (query.slim) q.set('slim', '1');
+  return `/payables/bills?${q.toString()}`;
+}
+
+/**
+ * One page of supplier bills, computed on the server over every PO and payment voucher
+ * (the page used to build them here from the newest 500 POs and 200 vouchers).
+ */
+export async function fetchPayableBillsPage(query: PayableBillsQuery = {}): Promise<PayableBillsPage> {
+  const res = await apiFetch<PayableBillsPage | null>(payableBillsUrl(query));
+  if (!res || !Array.isArray(res.data) || !res.meta || !res.summary) throw new Error('ข้อมูลบิลเจ้าหนี้จากเซิร์ฟเวอร์ไม่ถูกต้อง');
+  return res;
+}
+
+/** Every bill with something payable now (all pages, without PO lines): the settle-several-bills dialog. */
+export async function fetchOpenPayableBills(supplierId?: string): Promise<SupplierPayableBill[]> {
+  const out: SupplierPayableBill[] = [];
+  for (let page = 1; page <= 1000; page++) {
+    const res = await fetchPayableBillsPage({ page, limit: 500, open: true, slim: true, supplierId });
+    out.push(...res.data);
+    if (page >= res.meta.totalPages || res.data.length === 0) break;
   }
-  return mapPosToPayableBills(loadPurchaseOrders(), loadSuppliers(), vouchersMem);
+  return out;
 }
 
 export interface SettlePayableParams {
-  poId: string;
+  /** the bill being paid (as the page shows it) */
+  bill: Pick<SupplierPayableBill, 'poId' | 'poNumber' | 'supplierId' | 'totalAmount'>;
   matchedDebitNotes: Array<{
     returnNoteId: string;
     amountToDeduct: number;
@@ -392,16 +282,14 @@ export async function settlePayableBill(params: SettlePayableParams): Promise<{
   updatedBill?: SupplierPayableBill;
   voucher?: PaymentVoucher;
 }> {
-  const allPos = loadPurchaseOrders();
-  const targetPo = allPos.find((p) => p.id === params.poId);
-
-  if (!targetPo) {
+  const targetPo = params.bill;
+  if (!targetPo?.poId) {
     return { success: false, message: 'ไม่พบใบสั่งซื้อ / บิลเจ้าหนี้นี้' };
   }
 
   // Settlement is recorded in the database first; nothing is saved locally if the backend refuses it.
   let backendVoucher: ApiPaymentVoucher | null = null;
-  const supplierId = targetPo.supplierId || targetPo.supplier?.id;
+  const supplierId = targetPo.supplierId;
   if (!supplierId) return { success: false, message: 'บิลนี้ไม่มีข้อมูลผู้จำหน่าย' };
   {
     const debitTotal = (params.matchedDebitNotes || []).reduce((sum, d) => sum + (Number(d.amountToDeduct) || 0), 0);
@@ -414,7 +302,7 @@ export async function settlePayableBill(params: SettlePayableParams): Promise<{
         clientVoucherId: params.clientVoucherId || newClientVoucherId(),
         supplierId,
         billsToSettle: [
-          { poId: targetPo.id, amountToPay: grossToClear },
+          { poId: targetPo.poId, amountToPay: grossToClear },
         ],
         matchedDebitNotes: params.matchedDebitNotes?.length
           ? params.matchedDebitNotes.map((d) => ({
@@ -441,13 +329,10 @@ export async function settlePayableBill(params: SettlePayableParams): Promise<{
   const savedVoucher: ApiPaymentVoucher = backendVoucher;
 
   // The database committed the payment (and the credit-note deductions); show its record.
-  await refreshAfterPayableWrite();
-  const voucher =
-    vouchersMem.find((v) => v.id === savedVoucher.id || v.voucherNumber === savedVoucher.voucherNumber) ||
-    normalizeVoucherRow(savedVoucher);
-  const billItem = voucher.bills.find((b) => b.poId === targetPo.id || b.poNumber === targetPo.poNumber);
+  const voucher = normalizeVoucherRow(savedVoucher);
+  const billItem = voucher.bills.find((b) => b.poId === targetPo.poId || b.poNumber === targetPo.poNumber);
   const paymentEntry: PayablePaymentEntry = {
-    id: `PAY-${voucher.id}-${targetPo.id}`,
+    id: `PAY-${voucher.id}-${targetPo.poId}`,
     voucherId: voucher.id,
     voucherNumber: voucher.voucherNumber,
     paymentDate: voucher.paymentDate,
@@ -540,10 +425,7 @@ export async function settleMultipleBills(params: SettleMultipleBillsParams): Pr
   const savedVoucher: ApiPaymentVoucher = backendVoucher;
 
   // The database committed the voucher; show its record (nothing is bookkept locally).
-  await refreshAfterPayableWrite();
-  const voucher =
-    vouchersMem.find((v) => v.id === savedVoucher.id || v.voucherNumber === savedVoucher.voucherNumber) ||
-    normalizeVoucherRow(savedVoucher);
+  const voucher = normalizeVoucherRow(savedVoucher);
   return {
     success: true,
     message: `สร้างใบชำระหนี้ ${voucher.voucherNumber} สำเร็จ (${voucher.bills.length || params.billsToSettle.length} บิล)`,
@@ -555,10 +437,9 @@ export async function settleMultipleBills(params: SettleMultipleBillsParams): Pr
 // A payment can only be undone on the server, by cancelling the payment voucher that holds it
 // (the server restores the bill balance and the credit notes in the same transaction).
 export async function rollbackPayableBillPayment(
-  poId: string,
+  bill: Pick<SupplierPayableBill, 'poNumber' | 'payments'> | null | undefined,
   paymentId?: string,
 ): Promise<{ success: boolean; message: string }> {
-  const bill = loadPayableBills().find((b) => b.poId === poId);
   if (!bill) return { success: false, message: 'ไม่พบใบสั่งซื้อ / บิลเจ้าหนี้นี้' };
   const payments = (bill.payments || []).filter((p) => !paymentId || p.id === paymentId);
   const voucherIds = Array.from(new Set(payments.map((p) => p.voucherId).filter(Boolean))) as string[];
@@ -579,8 +460,8 @@ export async function rollbackPayableBillPayment(
 export async function cancelPayableBill(
   poId: string,
   reason?: string,
+  poNumber?: string,
 ): Promise<{ success: boolean; message: string }> {
-  const po = loadPurchaseOrders().find((p) => p.id === poId);
   try {
     await apiFetch(`/purchase-orders/${encodeURIComponent(poId)}/cancel`, {
       method: 'POST',
@@ -589,16 +470,15 @@ export async function cancelPayableBill(
   } catch (err) {
     return { success: false, message: errorText(err) || 'ยกเลิกบิลไม่สำเร็จ' };
   }
-  await refreshAfterPayableWrite();
-  return { success: true, message: `ยกเลิกบิล ${po?.poNumber || ''} เรียบร้อยแล้ว` };
+  return { success: true, message: `ยกเลิกบิล ${poNumber || ''} เรียบร้อยแล้ว` };
 }
 
 // ─── Cancel / Void Payment Voucher ───
 export async function cancelPaymentVoucher(
   voucherId: string,
   cancelReason?: string,
+  voucher?: Pick<PaymentVoucher, 'id' | 'voucherNumber' | 'status'>,
 ): Promise<{ success: boolean; message: string }> {
-  const voucher = vouchersMem.find((v) => v.id === voucherId || v.voucherNumber === voucherId);
   if (voucher?.status === 'CANCELLED') {
     return { success: false, message: 'ใบสำคัญจ่ายนี้ถูกยกเลิกไปแล้ว' };
   }
@@ -607,7 +487,6 @@ export async function cancelPaymentVoucher(
   } catch (apiErr) {
     return { success: false, message: errorText(apiErr) || 'ยกเลิกใบสำคัญจ่ายในฐานข้อมูลไม่สำเร็จ' };
   }
-  await refreshAfterPayableWrite();
   return {
     success: true,
     message: `ยกเลิกใบสำคัญจ่าย ${voucher?.voucherNumber || voucherId} สำเร็จ และคืนสถานะหนี้ค้างชำระเรียบร้อยแล้ว`,

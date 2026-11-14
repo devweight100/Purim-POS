@@ -311,10 +311,17 @@ export class SupplierReturnsService {
     }
   }
 
-  async getAllReturnNotes(page = 1, limit = 20, supplierId?: string, status?: string) {
+  /** available=true: only notes with credit left to deduct (not cancelled, remaining > 0) — payables page. */
+  async getAllReturnNotes(page = 1, limit = 20, supplierId?: string, status?: string, available = false) {
+    page = Number.isFinite(page) && page >= 1 ? Math.trunc(page) : 1;
+    limit = Number.isFinite(limit) ? Math.min(500, Math.max(1, Math.trunc(limit))) : 20;
     const skip = (page - 1) * limit;
 
     const where: any = {};
+    if (available) {
+      where.status = { not: 'CANCELLED' };
+      where.remainingCreditAmount = { gt: 0 };
+    }
     if (supplierId && supplierId !== 'ALL') {
       where.supplierId = supplierId;
     }
@@ -327,7 +334,7 @@ export class SupplierReturnsService {
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         include: {
           supplier: true,
           voucherDebits: {

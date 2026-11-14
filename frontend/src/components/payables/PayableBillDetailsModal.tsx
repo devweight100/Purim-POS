@@ -54,7 +54,7 @@ export function PayableBillDetailsModal({
 
     setIsRollingBack(true);
     try {
-      const res = await rollbackPayableBillPayment(bill.poId, paymentId);
+      const res = await rollbackPayableBillPayment(bill, paymentId);
       if (res.success) {
         toast.success(res.message);
         onReload();
