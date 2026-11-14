@@ -11,11 +11,10 @@ import { getProductPackagingUnits } from './cart-pricing';
 import { apiFetch } from './api';
 
 /**
- * Claims and replacement warranties live on the server only. The last server response is kept
- * in memory (never in localStorage) for synchronous lookups; fetch* refresh it and throw when
- * the server cannot be reached.
+ * Claims and replacement warranties live on the server only. Each screen asks the server for what it shows
+ * (a page of claims, figures over every claim, the claims of some bills); fetch* throw when the server cannot
+ * be reached. The last replacement warranties are kept in memory (never in localStorage).
  */
-let claimsMem: ClaimRecord[] = [];
 let warrantiesMem: ReplacementWarrantyRecord[] = [];
 
 const CLAIM_STATUSES: readonly string[] = ['COMPLETED', 'PENDING_CHECKOUT', 'PENDING_SUPPLIER', 'SENT_TO_SUPPLIER', 'SUPPLIER_REPLACED', 'SCRAPPED'];
@@ -133,23 +132,70 @@ export function mapServerClaim(c: ApiClaim, storeProducts: Product[] = useProduc
   };
 }
 
-export async function fetchAllClaimRecords(): Promise<ClaimRecord[]> {
-  // Hydrate replacement warranties in background
-  void fetchReplacementWarranties().catch(() => {});
+/** Summary cards of the claims page, over every claim (getClaimStockSummary of the whole list). */
+export interface ClaimSummary {
+  totalClaims: number;
+  totalClaimValue: number;
+  pendingSupplierCount: number;
+  completedCount: number;
+  scrappedCount: number;
+  replacedItemCount: number;
+  refundedCount: number;
+  discountedCount: number;
+}
 
-  const res = await apiFetch<ApiListResponse<ApiClaim> | null>('/claims?limit=500');
-  const list = apiListRows(res);
-  if (!Array.isArray(list)) throw new Error('ข้อมูลเคลมจากเซิร์ฟเวอร์ไม่ถูกต้อง');
-  {
-    {
-      const storeProducts: Product[] = useProductStore.getState().products || [];
+export interface ClaimListQuery {
+  page: number;
+  limit: number;
+  search?: string;
+  resolutionType?: string;
+  startDate?: string;
+  endDate?: string;
+  sort?: 'newest' | 'oldest' | 'value_desc' | 'value_asc';
+}
 
-      const mapped: ClaimRecord[] = list.map((c) => mapServerClaim(c, storeProducts));
+/**
+ * One page of the claims page from the server (GET /claims/list): filters, search and date range over every
+ * claim, plus the summary cards over every claim. Throws when the server cannot be reached.
+ */
+export async function fetchClaimsPage(q: ClaimListQuery): Promise<{ rows: ClaimRecord[]; total: number; summary: ClaimSummary }> {
+  const params = new URLSearchParams({ page: String(q.page), limit: String(q.limit) });
+  if (q.search?.trim()) params.set('search', q.search);
+  if (q.resolutionType && q.resolutionType !== 'ALL') params.set('resolutionType', q.resolutionType);
+  if (q.startDate) params.set('startDate', q.startDate);
+  if (q.endDate) params.set('endDate', q.endDate);
+  if (q.sort && q.sort !== 'newest') params.set('sort', q.sort);
+  const res = await apiFetch<{ data: ApiClaim[]; meta: { total: number }; summary: ClaimSummary } | null>(`/claims/list?${params}`);
+  if (!res || !Array.isArray(res.data) || !res.summary) throw new Error('ข้อมูลเคลมจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+  const storeProducts: Product[] = useProductStore.getState().products || [];
+  return { rows: res.data.map((c) => mapServerClaim(c, storeProducts)), total: Number(res.meta?.total || 0), summary: res.summary };
+}
 
-      claimsMem = mapped;
-      return mapped;
-    }
+/** Claim refunds (cash / transfer) with a claim date from `from` (ms; undefined = every claim). Dashboard. */
+export async function fetchClaimRefundSummary(from?: number): Promise<{ count: number; amount: number }> {
+  const res = await apiFetch<{ count: number; amount: number } | null>(
+    `/claims/refund-summary${from !== undefined && Number.isFinite(from) ? `?from=${Math.floor(from)}` : ''}`,
+  );
+  if (!res || typeof res.count !== 'number') throw new Error('ข้อมูลเคลมจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+  return { count: res.count, amount: Number(res.amount || 0) };
+}
+
+/**
+ * Every claim of these bills (by order id or bill number), from GET /claims/by-orders (500 bills per
+ * request). Throws when the server cannot be reached.
+ */
+export async function fetchClaimsOfOrders(orderIds: string[]): Promise<ClaimRecord[]> {
+  const ids = [...new Set(orderIds.filter(Boolean))];
+  const out: ClaimRecord[] = [];
+  const storeProducts: Product[] = useProductStore.getState().products || [];
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500);
+    const res = await apiFetch<ApiListResponse<ApiClaim> | null>(`/claims/by-orders?orderIds=${chunk.map(encodeURIComponent).join(',')}`);
+    const list = apiListRows(res);
+    if (!Array.isArray(list)) throw new Error('ข้อมูลเคลมจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+    out.push(...list.map((c) => mapServerClaim(c, storeProducts)));
   }
+  return out;
 }
 
 /**
@@ -168,18 +214,6 @@ export async function fetchClaimedOrderIds(orderIds: string[]): Promise<Set<stri
   return out;
 }
 
-/**
- * Every claim that can still be sent back to a supplier (not on a return note, not scrapped), from
- * GET /claims/returnable. Does not touch the claims kept by fetchAllClaimRecords. Throws when the server cannot be reached.
- */
-export async function fetchReturnableClaimRecords(): Promise<ClaimRecord[]> {
-  const res = await apiFetch<ApiListResponse<ApiClaim> | null>('/claims/returnable');
-  const list = apiListRows(res);
-  if (!Array.isArray(list)) throw new Error('ข้อมูลเคลมจากเซิร์ฟเวอร์ไม่ถูกต้อง');
-  const storeProducts: Product[] = useProductStore.getState().products || [];
-  return list.map((c) => mapServerClaim(c, storeProducts));
-}
-
 /** Replacement warranties from the server. Throws when the server cannot be reached. */
 export async function fetchReplacementWarranties(): Promise<ReplacementWarrantyRecord[]> {
   const res = await apiFetch<ApiListResponse<ReplacementWarrantyRecord> | null>('/claims/warranties/list');
@@ -189,27 +223,9 @@ export async function fetchReplacementWarranties(): Promise<ReplacementWarrantyR
   return list;
 }
 
-/** Last claims the server returned in this session (empty until the first fetch). */
-export function loadAllClaimRecords(): ClaimRecord[] {
-  return claimsMem;
-}
-
 /** Last replacement warranties the server returned in this session. */
 export function loadReplacementWarranties(): ReplacementWarrantyRecord[] {
   return warrantiesMem;
-}
-
-// ─── Generate Unique Claim Number (CLM-YYMMxxxxx) ───
-
-export function generateClaimNumber(): string {
-  const now = new Date();
-  const yy = now.getFullYear().toString().slice(-2);
-  const mm = (now.getMonth() + 1).toString().padStart(2, '0');
-  const prefix = `CLM-${yy}${mm}`;
-  const existing = loadAllClaimRecords();
-  const monthClaims = existing.filter((c) => (c.id || '').startsWith(prefix));
-  const seq = (monthClaims.length + 1).toString().padStart(5, '0');
-  return `${prefix}${seq}`;
 }
 
 // ─── Search & Verify Purchase History & Calculate Remaining Claim Quotas ───
@@ -224,17 +240,17 @@ export interface ClaimVerificationQuery {
 }
 
 /**
- * Bills that can still be claimed, from the server's orders, claims and warranties.
+ * Bills that can still be claimed, from the server's orders, the claims of those bills (every claim, asked for
+ * the bills only; was the newest 500 claims) and warranties.
  * Throws when the server cannot be reached (claim quotas must never come from stale data).
  */
 export async function fetchClaimEligibleItems(query: ClaimVerificationQuery): Promise<ClaimEligibleItem[]> {
-  const [res, claims] = await Promise.all([
+  const [res] = await Promise.all([
     apiFetch<ApiListResponse<ApiOrderLike> | null>('/orders?limit=500'),
-    fetchAllClaimRecords(),
     fetchReplacementWarranties(),
   ]);
   const backendOrders: ApiOrderLike[] = (res && !Array.isArray(res) ? res.data : undefined) || (Array.isArray(res) ? res : []);
-  const allClaims: ClaimRecord[] = claims || [];
+  const allClaims: ClaimRecord[] = await fetchClaimsOfOrders(backendOrders.map((b) => b.id || '').filter(Boolean));
 
   const orderMap = new Map<string, ClaimOrderRow>();
 
@@ -286,7 +302,7 @@ export function verifyClaimEligibility(
 
   // 1. The server's orders (see fetchClaimEligibleItems); no local bill history exists
   const allOrders: ClaimOrderRow[] = Array.isArray(customOrders) ? customOrders : [];
-  const allExistingClaims = customClaims || loadAllClaimRecords();
+  const allExistingClaims = customClaims || [];
   const replacementWarranties = loadReplacementWarranties();
 
   const results: ClaimEligibleItem[] = [];
@@ -624,7 +640,8 @@ export interface ProcessClaimParams {
 }
 
 export async function processClaim(params: ProcessClaimParams): Promise<ClaimRecord> {
-  let claimId = generateClaimNumber();
+  // the claim number is given by the server (next number of the month, in the database transaction)
+  let claimId = '';
   const nowStr = new Date().toISOString();
 
   const claimUnitName = params.chosenUnitName || params.item.unitName;
@@ -776,9 +793,8 @@ export async function processClaim(params: ProcessClaimParams): Promise<ClaimRec
   if (confirmed.cashierName) claimRecord.cashierName = confirmed.cashierName;
   // From here on, the DB transaction has committed. The server also marks a claimed replacement
   // warranty and creates the new one for an exchange (same transaction), so nothing is
-  // bookkept locally; refresh the in-memory lists from the server instead.
-  claimsMem = [claimRecord, ...claimsMem.filter((row) => row.id !== claimId)];
-  void fetchAllClaimRecords().catch(() => undefined);
+  // bookkept locally; the screens ask the server again (pos-data-synced below).
+  void fetchReplacementWarranties().catch(() => undefined);
 
   // REFUND_CASH: the server already took the cash out of this user's shift drawer (cash
   // movement + ledger, same transaction as the claim). Only refresh the shift view here;
@@ -807,82 +823,38 @@ export function updateClaimStatus(
     returnDocId?: string | null;
     settledInBillNumber?: string;
   }
-): ClaimRecord | null {
-  // Only the server changes a claim; compute the request from the last server copy.
-  const current = claimsMem.find((c) => c.id === claimId);
-  const target: ClaimRecord | undefined = current ? { ...current } : undefined;
-  if (target) {
-    if (options?.note) target.note = `${target.note ? target.note + '\n' : ''}${options.note}`;
-    if (newStatus === 'COMPLETED' || newStatus === 'SUPPLIER_REPLACED') {
-      target.completedDate = new Date().toISOString();
+): void {
+  // Only the server changes a claim; the request is computed from the server's copy of this claim
+  // (read first: the note is appended to the claim's note; it read the newest 500 claims kept in memory).
+  void apiFetch<ApiClaim | null>(`/claims/${encodeURIComponent(claimId)}`).then((current) => {
+    const target: ClaimRecord | undefined = current ? mapServerClaim(current) : undefined;
+    if (target) {
+      if (options?.note) target.note = `${target.note ? target.note + '\n' : ''}${options.note}`;
+      if (newStatus === 'COMPLETED' || newStatus === 'SUPPLIER_REPLACED') {
+        target.completedDate = new Date().toISOString();
+      }
     }
-  }
-
-  void apiFetch(`/claims/${encodeURIComponent(claimId)}`, {
-    method: 'PATCH',
-    body: JSON.stringify({
-      status: newStatus,
-      frontendStatus: newStatus,
-      supplierId: options?.supplierId,
-      supplierName: options?.supplierName,
-      supplierTrackingNo: options?.supplierTrackingNo,
-      claimedInOrderNumber: options?.claimedInOrderNumber,
-      returnDocId: options?.returnDocId,
-      settledInBillNumber: options?.settledInBillNumber,
-      note: target?.note ?? options?.note,
-      resolutionNote: target?.note ?? options?.note,
-      completedDate: target?.completedDate,
-    }),
-  }).then(() => fetchAllClaimRecords()).catch((err) => {
+    return apiFetch(`/claims/${encodeURIComponent(claimId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        status: newStatus,
+        frontendStatus: newStatus,
+        supplierId: options?.supplierId,
+        supplierName: options?.supplierName,
+        supplierTrackingNo: options?.supplierTrackingNo,
+        claimedInOrderNumber: options?.claimedInOrderNumber,
+        returnDocId: options?.returnDocId,
+        settledInBillNumber: options?.settledInBillNumber,
+        note: target?.note ?? options?.note,
+        resolutionNote: target?.note ?? options?.note,
+        completedDate: target?.completedDate,
+      }),
+    });
+  }).catch((err) => {
     // The server enforces permissions and the claim workflow; tell the user instead of silently
     // keeping a status the database refused.
     console.warn('[ClaimService] Failed to sync claim status update to backend:', err);
     toast.error(`อัปเดตสถานะเคลม #${claimId} ในฐานข้อมูลไม่สำเร็จ: ${errorText(err) || 'เกิดข้อผิดพลาด'}`);
     window.dispatchEvent(new Event('pos-data-synced'));
   });
-
-  return target || null;
-}
-
-
-// ─── Get Summary KPI for Claims & Defective Stock ───
-
-export function getClaimStockSummary(customClaims?: ClaimRecord[]) {
-  const claims = customClaims !== undefined ? customClaims : loadAllClaimRecords();
-
-  const totalClaims = claims.length;
-  let totalClaimValue = 0;
-  let pendingSupplierCount = 0;
-  let completedCount = 0;
-  let scrappedCount = 0;
-  let replacedItemCount = 0;
-  let refundedCount = 0;
-  let discountedCount = 0;
-
-  claims.forEach((c) => {
-    totalClaimValue += Number(c.totalClaimValue || 0);
-
-    if (c.status === 'PENDING_SUPPLIER' || c.status === 'SENT_TO_SUPPLIER') {
-      pendingSupplierCount++;
-    } else if (c.status === 'COMPLETED' || c.status === 'SUPPLIER_REPLACED') {
-      completedCount++;
-    } else if (c.status === 'SCRAPPED') {
-      scrappedCount++;
-    }
-
-    if (c.resolutionType === 'REPLACE_ITEM') replacedItemCount += Number(c.quantity || 1);
-    else if (c.resolutionType === 'REFUND_CASH' || c.resolutionType === 'REFUND_TRANSFER') refundedCount += Number(c.quantity || 1);
-    else if (c.resolutionType === 'STORE_DISCOUNT') discountedCount += Number(c.quantity || 1);
-  });
-
-  return {
-    totalClaims,
-    totalClaimValue,
-    pendingSupplierCount,
-    completedCount,
-    scrappedCount,
-    replacedItemCount,
-    refundedCount,
-    discountedCount,
-  };
 }

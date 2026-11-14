@@ -2,7 +2,6 @@ import {
   ClaimRecord, SupplierReturnNote, SupplierReturnItem, SupplierReturnItemType, Product,
   ApiSupplier, ApiPurchaseOrder, ApiSupplierReturnNote, ApiListResponse, apiListRows,
 } from './types';
-import { fetchAllClaimRecords, fetchReturnableClaimRecords } from './claim-service';
 import { useProductStore } from './store/product-store';
 import { apiFetch, api } from './api';
 import { grossPerUnit } from '@shared/po-calc';
@@ -19,20 +18,63 @@ const supplierPosMem = new Map<string, ApiPurchaseOrder[]>();
 /** Supplier of the newest PO containing a product (GET /purchase-orders/product-suppliers). */
 const productPoSupplierMem = new Map<string, { supplierId: string; supplierName: string | null }>();
 let returnNotesMem: SupplierReturnNote[] = [];
-/** Every claim that can still go back to a supplier (GET /claims/returnable), last server answer. */
-let returnableClaimsMem: ClaimRecord[] = [];
-let returnableClaimsLoaded = false;
 
-/** True once the returnable claims were loaded in this session (the supplier returns page loads them on open). */
-export function hasReturnableClaims(): boolean {
-  return returnableClaimsLoaded;
+// ─── Claims that can go back to a supplier (computed on the server over every claim) ───
+// Returnable = not on a return note, not scrapped. Each claim's supplier / cost is resolved on the server with
+// the rule this file applied in the browser (claim's supplier, else the product's first supplier entry, else the
+// supplier of the newest PO with the product, else the first supplier; cost per base unit).
+
+/** One supplier card of the supplier returns page. */
+export interface ReturnableSupplierGroup {
+  supplierId: string;
+  count: number;
+  totalCostValue: number;
+  /** first three claims (claim list order) */
+  top: Array<{ id: string; productName: string; quantity: number }>;
 }
 
-/** Reload every returnable claim (supplier returns page, create-return dialog). Throws when the server cannot be reached. */
-export async function fetchReturnableClaims(): Promise<ClaimRecord[]> {
-  returnableClaimsMem = await fetchReturnableClaimRecords();
-  returnableClaimsLoaded = true;
-  return returnableClaimsMem;
+/** Returnable claims per resolved supplier, with the count / value over every returnable claim. */
+export async function fetchReturnableSummary(): Promise<{ total: number; totalCostValue: number; suppliers: ReturnableSupplierGroup[] }> {
+  const res = await apiFetch<{ total: number; totalCostValue: number; suppliers: ReturnableSupplierGroup[] } | null>('/claims/returnable/summary');
+  if (!res || !Array.isArray(res.suppliers)) throw new Error('ข้อมูลเคลมจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+  return res;
+}
+
+/** Returnable claims of one product, grouped (create-return dialog). */
+export interface GroupedClaimProduct {
+  groupKey: string;
+  productId: string;
+  productName: string;
+  sku: string;
+  unitName: string;
+  totalQuantity: number;
+  costPrice: number;
+  claimCount: number;
+  claimIds: string[];
+  defectReasons: string[];
+  orderNumbers: string[];
+  supplierId?: string;
+  supplierName?: string;
+}
+
+export interface ReturnableGroupsPage {
+  data: GroupedClaimProduct[];
+  meta: { total: number; page: number; limit: number };
+  /** of the whole scope (before search / paging): product groups, claims, pieces */
+  totals: { groups: number; claims: number; pieces: number };
+}
+
+/**
+ * Returnable claims grouped by product for the create-return dialog: scope 'supplier' = the claims that belong to
+ * the supplier (its resolved claims, its name, a supplier entry of the product, a PO of the supplier with the
+ * product), 'other' = every other returnable claim. Paged, `search` = product name / SKU / claim / bill number.
+ */
+export async function fetchReturnableGroups(q: { supplierId: string; scope: 'supplier' | 'other'; search?: string; page?: number; limit?: number }): Promise<ReturnableGroupsPage> {
+  const params = new URLSearchParams({ supplierId: q.supplierId, scope: q.scope, page: String(q.page || 1), limit: String(q.limit || 50) });
+  if (q.search?.trim()) params.set('search', q.search.trim());
+  const res = await apiFetch<ReturnableGroupsPage | null>(`/claims/returnable/groups?${params}`);
+  if (!res || !Array.isArray(res.data)) throw new Error('ข้อมูลเคลมจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+  return res;
 }
 
 // ─── Suppliers ───
@@ -381,160 +423,6 @@ export function getPayablePOsBySupplier(supplierId: string): PayablePO[] {
     .filter((po) => po.remainingPayable > 0);
 }
 
-// ─── Get Claims Eligible to be Returned to Supplier ───
-export function getEligibleClaimsForReturn(supplierId?: string): ClaimRecord[] {
-  const allClaims = returnableClaimsMem;
-  const suppliers = loadSuppliers();
-  const pos = loadPurchaseOrders();
-
-  const storeProducts: Product[] = useProductStore.getState().products || [];
-
-  const targetSupplier = supplierId ? suppliers.find((s) => s.id === supplierId) : undefined;
-
-  // Helper to check if a claim belongs to targetSupplierId
-  const isClaimBelongingToSupplier = (claim: ClaimRecord, targetId: string): boolean => {
-    // 1. Direct ID match
-    if (claim.supplierId && claim.supplierId === targetId) return true;
-
-    // 2. Direct supplierName match
-    if (targetSupplier && claim.supplierName) {
-      if (claim.supplierName.trim().toLowerCase() === targetSupplier.name.trim().toLowerCase()) {
-        return true;
-      }
-    }
-
-    // 3. Product catalog matching
-    const prod = storeProducts.find(
-      (p) => p.id === claim.productId || p.sku === claim.sku || p.sku === claim.productId || p.id === claim.sku
-    );
-
-    if (prod) {
-      if (prod.supplierId === targetId) return true;
-      if (typeof prod.supplier === 'string' && targetSupplier && prod.supplier.trim().toLowerCase() === targetSupplier.name.trim().toLowerCase()) {
-        return true;
-      }
-      if (typeof prod.supplier === 'object' && prod.supplier) {
-        if (prod.supplier.id === targetId || (targetSupplier && prod.supplier.name === targetSupplier.name)) {
-          return true;
-        }
-      }
-      if (targetSupplier && prod.supplierName && prod.supplierName.trim().toLowerCase() === targetSupplier.name.trim().toLowerCase()) {
-        return true;
-      }
-      if (Array.isArray(prod.barcodes) && prod.barcodes.some((b) => b.supplierId === targetId)) {
-        return true;
-      }
-      if (Array.isArray(prod.supplierEntries) && prod.supplierEntries.some((s) => s.supplierId === targetId)) {
-        return true;
-      }
-    }
-
-    // 4. Purchase orders from this supplier containing this product
-    const supplierPos = pos.filter(
-      (p) => p.supplierId === targetId || p.supplier?.id === targetId || (targetSupplier && p.supplierName === targetSupplier.name)
-    );
-    const inPo = supplierPos.some((po) =>
-      (po.items || []).some(
-        (i) => i.productId === claim.productId || (i.sku || i.product?.sku) === claim.sku || (claim.productName && (i.productName || i.product?.name) === claim.productName)
-      )
-    );
-    if (inPo) return true;
-
-    return false;
-  };
-
-  // Step 1: Enrich all unreturned, unscrapped claims with resolved supplier & cost
-  const eligibleClaims = allClaims
-    .filter((c) => !c.returnDocId && c.status !== 'SCRAPPED')
-    .map((c) => {
-      let suppId = c.supplierId;
-      let suppName = c.supplierName;
-      let cost = Number(c.costPrice || 0);
-
-      // If supplier info or cost is missing, dynamically resolve from catalog/POs
-      if (!suppId || cost <= 0) {
-        const resolved = resolveProductSupplierAndCost(c.productId, c.sku);
-        if (!suppId) {
-          suppId = resolved.supplierId;
-          suppName = resolved.supplierName;
-        }
-        if (cost <= 0) {
-          cost = resolved.costPrice > 0 ? resolved.costPrice : Number(c.unitPrice || 50);
-        }
-      }
-
-      // Normalize to smallest base unit
-      const factor = Number(c.conversionFactor || 1);
-      const baseQty = Number(c.baseQuantity !== undefined ? c.baseQuantity : (Number(c.quantity || 1) * factor));
-      const baseUnit = factor > 1 ? (c.replacementUnitName || 'ชิ้น') : (c.unitName || 'ชิ้น');
-      const baseCost = factor > 1 && cost > 0 ? (cost / factor) : cost;
-      const totalCost = Math.round(baseCost * baseQty * 100) / 100;
-
-      return {
-        ...c,
-        quantity: baseQty,
-        unitName: baseUnit,
-        baseQuantity: baseQty,
-        supplierId: suppId,
-        supplierName: suppName,
-        costPrice: baseCost,
-        totalCostValue: totalCost,
-      };
-    });
-
-  // Step 2: Filter by supplierId if provided
-  if (!supplierId) {
-    return eligibleClaims;
-  }
-
-  return eligibleClaims.filter((c) => isClaimBelongingToSupplier(c, supplierId));
-}
-
-// ─── Group Pending Claims by Supplier ───
-export interface PendingSupplierGroup {
-  supplierId: string;
-  supplierName: string;
-  supplierPhone?: string | null;
-  supplierContact?: string | null;
-  pendingCount: number;
-  totalItemsQuantity: number;
-  totalCostValue: number;
-  claims: ClaimRecord[];
-}
-
-export function getPendingReturnsGroupedBySupplier(): PendingSupplierGroup[] {
-  const eligible = getEligibleClaimsForReturn();
-  const suppliers = loadSuppliers();
-
-  const groupsMap = new Map<string, PendingSupplierGroup>();
-
-  eligible.forEach((claim) => {
-    const suppId = claim.supplierId || 'unassigned';
-    const supp = suppliers.find((s) => s.id === suppId);
-
-    if (!groupsMap.has(suppId)) {
-      groupsMap.set(suppId, {
-        supplierId: suppId,
-        supplierName: claim.supplierName || supp?.name || 'ไม่ระบุผู้จำหน่าย',
-        supplierPhone: supp?.phone,
-        supplierContact: supp?.contactName,
-        pendingCount: 0,
-        totalItemsQuantity: 0,
-        totalCostValue: 0,
-        claims: [],
-      });
-    }
-
-    const group = groupsMap.get(suppId)!;
-    group.pendingCount += 1;
-    group.totalItemsQuantity += Number(claim.quantity || 1);
-    group.totalCostValue += Number(claim.totalCostValue || (claim.costPrice || 50) * (claim.quantity || 1));
-    group.claims.push(claim);
-  });
-
-  return Array.from(groupsMap.values());
-}
-
 // ─── Create Supplier Return Note (RTN) ───
 export interface CreateSupplierReturnItemInput {
   productId: string;
@@ -574,10 +462,6 @@ export interface CreateReturnNoteParams {
   supplierContact?: string;
   supplierPhone?: string;
   supplierAddress?: string;
-  claimItems?: Array<{
-    claimId: string;
-    unitCost?: number;
-  }>;
   items?: CreateSupplierReturnItemInput[];
   linkedPoId?: string;
   linkedPoNumber?: string;
@@ -587,7 +471,7 @@ export interface CreateReturnNoteParams {
   autoDeductFromPo?: boolean;
 }
 
-/** Items, totals and claim ids of a return note, computed from the form (and claims for legacy claimItems). */
+/** Items and totals of a return note, computed from the form. */
 function buildReturnContent(params: CreateReturnNoteParams) {
   const returnItems: SupplierReturnItem[] = [];
   let totalQty = 0;
@@ -619,30 +503,6 @@ function buildReturnContent(params: CreateReturnNoteParams) {
       if (rItem.itemType === 'DEFECTIVE') defectiveTotalCost += itemTotalCost;
       else overstockTotalCost += itemTotalCost;
     });
-  } else if (Array.isArray(params.claimItems) && params.claimItems.length > 0) {
-    // Legacy claimItems: item details come from the server's returnable claims
-    const claims = returnableClaimsMem;
-    params.claimItems.forEach((ci) => {
-      const c = claims.find((row) => row.id === ci.claimId);
-      if (!c) return;
-      const unitCost = ci.unitCost ?? (c.costPrice || 50);
-      const itemTotalCost = Math.round(unitCost * c.quantity * 100) / 100;
-      returnItems.push({
-        claimId: c.id,
-        productId: c.productId,
-        productName: c.productName,
-        sku: c.sku,
-        unitName: c.unitName,
-        quantity: c.quantity,
-        unitCost,
-        totalCost: itemTotalCost,
-        itemType: 'DEFECTIVE',
-        defectReason: c.defectReason,
-        originalOrderNumber: c.orderNumber,
-      });
-      totalQty += c.quantity;
-      defectiveTotalCost += itemTotalCost;
-    });
   }
 
   const itemsTotalCost = Math.round((defectiveTotalCost + overstockTotalCost) * 100) / 100;
@@ -659,9 +519,9 @@ function buildReturnContent(params: CreateReturnNoteParams) {
   };
 }
 
-/** After the server accepted a change: reload notes, claims (re-linked by the server) and stock. */
+/** After the server accepted a change: reload notes and stock (the claims screens ask the server again). */
 async function refreshAfterReturnWrite(): Promise<void> {
-  await Promise.allSettled([fetchSupplierReturnNotes(), fetchReturnableClaims(), fetchAllClaimRecords()]);
+  await Promise.allSettled([fetchSupplierReturnNotes()]);
   if (typeof window !== 'undefined') {
     void useProductStore.getState().fetchProducts();
     window.dispatchEvent(new Event('pos-data-synced'));
