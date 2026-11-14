@@ -186,7 +186,7 @@ export class ClaimsService {
         where,
         skip,
         take: limit,
-        orderBy: { receivedDate: 'desc' },
+        orderBy: [{ receivedDate: 'desc' }, { id: 'desc' }],
         include: {
           product: { select: { id: true, name: true, sku: true, unit: true, basePrice: true, costPrice: true, priceLevel1: true } },
           customer: { select: { id: true, name: true, phone: true } },
@@ -233,7 +233,7 @@ export class ClaimsService {
     const [claims, logs] = await Promise.all([
       this.prisma.customerClaim.findMany({
         where: { id: { in: ids } },
-        orderBy: { receivedDate: 'desc' },
+        orderBy: [{ receivedDate: 'desc' }, { id: 'desc' }],
         include: {
           product: { select: { id: true, name: true, sku: true, unit: true, basePrice: true, costPrice: true, priceLevel1: true } },
           customer: { select: { id: true, name: true, phone: true } },

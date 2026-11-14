@@ -16,6 +16,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaClient } from '@prisma/client';
 import * as legacy from './legacy/reports-client-legacy';
 import * as legacyPayables from './legacy/payables-client-legacy';
+import * as legacyClaims from './legacy/claims-client-legacy';
 import { valueStock } from '../src/reports/reports.service';
 
 const dbName = (() => { try { return new URL(process.env.DATABASE_URL || '').pathname.slice(1); } catch { return ''; } })();
@@ -1326,6 +1327,123 @@ d('store flow (e2e)', () => {
       // client copy == a fresh full list; bad cursors give a full reload
       expect(strip([...client.values()])).toEqual((await api('get', '/customers', A).expect(200)).body);
       for (const bad of ['garbage', 'v1.1-2.0.AAAA', cursor.replace(/^v1\.\d+-\d+/, 'v1.1-1')]) expect((await sync(bad)).full).toBe(true);
+    });
+  });
+  describe('claims: claimed bills and returnable claims over every claim (was the newest 500)', () => {
+    const o: any[] = [];
+    const claimNo: Record<string, string> = {};
+    const allOrders = async () => {
+      const out: any[] = [];
+      for (let page = 1; page < 1000; page++) {
+        const body = (await api('get', `/orders?page=${page}&limit=100`, A).expect(200)).body;
+        out.push(...body.data);
+        if (body.data.length < 100) break;
+      }
+      return out;
+    };
+    const claimedIds = async (ids: string[]) => {
+      const out = new Set<string>();
+      for (let i = 0; i < ids.length; i += 500) {
+        for (const id of (await api('get', `/claims/claimed-orders?orderIds=${ids.slice(i, i + 500).join(',')}`, A).expect(200)).body) out.add(id);
+      }
+      return out;
+    };
+    /** new page logic: linked claims come with the order, the server adds bills claimed by number */
+    const newHasClaims = (row: any, claimed: Set<string>) => (Array.isArray(row.claims) && row.claims.length > 0) || claimed.has(row.id);
+    const compare = async (claimRows: any[]) => {
+      const orders = await allOrders();
+      const keys = legacyClaims.claimedKeys(claimRows);
+      const claimed = await claimedIds(orders.map((x) => x.id));
+      const expected = orders.filter((x) => legacyClaims.orderHasClaims(x, keys)).map((x) => x.id);
+      expect(orders.filter((x) => newHasClaims(x, claimed)).map((x) => x.id)).toEqual(expected);
+      const returnable = (await api('get', '/claims/returnable', A).expect(200)).body;
+      const eligible = legacyClaims.eligibleClaimIds(claimRows);
+      expect(returnable.data.map((c: any) => c.claimNumber)).toEqual(eligible);
+      expect(returnable.meta.total).toBe(eligible.length);
+      const byNo = new Map(claimRows.map((c) => [c.claimNumber, c]));
+      expect(returnable.data).toEqual(eligible.map((no) => byNo.get(no)));
+      return { orders, claimed, eligible };
+    };
+
+    beforeAll(async () => {
+      const db = new PrismaClient();
+      try {
+        const admin = await db.user.findFirstOrThrow({ where: { username: 'admin' } });
+        const p = await db.product.create({ data: { name: 'CLM สินค้าเคลม', sku: 'CLM-E2E-P', basePrice: 100, costPrice: 40 } });
+        for (let k = 1; k <= 10; k++) {
+          o.push(await db.order.create({ data: { orderNumber: `CLM-E2E-ORD-${k}`, userId: admin.id, subtotal: 100, totalAmount: 100, status: 'COMPLETED', createdAt: new Date(Date.now() - k * 1000) } }));
+        }
+        let t = Date.now() - 3600000;
+        const claim = async (key: string, data: any, metas: any[]) => {
+          const no = `CLM-E2E-${key}`;
+          claimNo[key] = no;
+          const c = await db.customerClaim.create({ data: { claimNumber: no, productId: p.id, claimType: 'EXCHANGE', problemDescription: 'e2e', receivedDate: new Date((t -= 1000)), ...data } });
+          for (const [k, details] of metas.entries()) {
+            await db.auditLog.create({ data: { action: 'CLAIM_META', entity: 'CustomerClaim', entityId: c.id, details, createdAt: new Date(t + k) } });
+          }
+          return c;
+        };
+        const meta = (extra: any) => ({ frontendStatus: 'PENDING_SUPPLIER', status: 'PENDING_SUPPLIER', ...extra });
+        await claim('c1', { orderId: o[0].id }, [meta({ orderNumber: o[0].orderNumber })]); // linked
+        await claim('c2', {}, [meta({ orderNumber: o[1].orderNumber })]); // by bill number only
+        await claim('c3', {}, [meta({ orderNumber: o[2].id })]); // "bill number" = the order id
+        await claim('c4', {}, [meta({ orderNumber: o[3].orderNumber }), meta({ orderNumber: o[4].orderNumber })]); // later log wins: o[4]
+        await claim('c5', {}, [meta({ orderNumber: o[5].orderNumber, returnDocId: 'SRN-E2E-1' })]); // on a return note
+        await claim('c6', {}, [meta({ returnDocId: '', frontendStatus: 'SCRAPPED' })]);
+        await claim('c7', { status: 'REJECTED' }, []); // no metadata, rejected
+        await claim('c8', { status: 'PENDING' }, []); // no metadata: bill number "-"
+        await claim('c9', {}, [{ status: 'SCRAPPED' }]); // status only
+        await claim('c10', {}, [meta({ returnDocId: null })]);
+        await claim('c11', {}, [meta({ returnDocId: 'SRN-E2E-2' }), { note: 'later log without returnDocId' }]);
+        await claim('c12', {}, [meta({ frontendStatus: 'REJECTED' })]);
+        await claim('c13', { orderId: o[6].id }, [meta({ orderNumber: o[7].orderNumber })]); // linked order wins over metadata
+        await claim('c14', { status: 'IN_PROGRESS' }, [{ orderNumber: 12345 }]); // non-string bill number
+      } finally {
+        await db.$disconnect();
+      }
+    });
+
+    it('under the cap: same claimed bills and returnable claims as the old page logic', async () => {
+      const claimRows = (await api('get', '/claims?limit=500', A).expect(200)).body.data as any[];
+      expect(claimRows.length).toBeLessThan(500);
+      const { claimed, eligible } = await compare(claimRows);
+      expect([1, 2, 4].map((k) => claimed.has(o[k].id))).toEqual([true, true, true]);
+      expect([3, 5, 7, 8].map((k) => claimed.has(o[k].id))).toEqual([false, true, false, false]);
+      for (const k of ['c2', 'c3', 'c8', 'c10', 'c14']) expect(eligible).toContain(claimNo[k]);
+      for (const k of ['c5', 'c6', 'c7', 'c9', 'c11', 'c12']) expect(eligible).not.toContain(claimNo[k]);
+      expect((await api('get', '/claims/claimed-orders', A).expect(200)).body).toEqual([]);
+      expect((await api('get', `/claims/claimed-orders?orderIds=${o[1].id},nope,${o[1].id}`, A).expect(200)).body).toEqual([o[1].id]);
+      await api('get', `/claims/claimed-orders?orderIds=${Array.from({ length: 501 }, (_, k) => `x${k}`).join(',')}`, A).expect(400);
+    });
+
+    it('above the cap: older claims are found (the old 500-claim list missed them)', async () => {
+      const db = new PrismaClient();
+      try {
+        const p = await db.product.findFirstOrThrow({ where: { sku: 'CLM-E2E-P' } });
+        const old = new Date('2020-01-01T00:00:00Z');
+        await db.customerClaim.createMany({
+          data: Array.from({ length: 600 }, (_, k) => ({ id: `clm-bulk-${k}`, claimNumber: `CLM-BULK-${k}`, productId: p.id, claimType: 'REFUND' as const, problemDescription: 'bulk', receivedDate: new Date(old.getTime() + k * 60000) })),
+        });
+        await db.auditLog.createMany({
+          data: Array.from({ length: 600 }, (_, k) => ({
+            action: 'CLAIM_META', entity: 'CustomerClaim', entityId: `clm-bulk-${k}`,
+            details: k === 0 ? { orderNumber: o[8].orderNumber, frontendStatus: 'PENDING_SUPPLIER' } : { orderNumber: 'NONE', frontendStatus: k % 2 ? 'SCRAPPED' : 'PENDING_SUPPLIER', ...(k % 4 === 0 ? { returnDocId: 'SRN-B' } : {}) },
+          })),
+        });
+      } finally {
+        await db.$disconnect();
+      }
+      const capped = (await api('get', '/claims?limit=500', A).expect(200)).body.data as any[];
+      const every = (await api('get', '/claims?limit=5000', A).expect(200)).body.data as any[];
+      expect(every.length).toBeGreaterThan(600);
+      // the old page (newest 500) did not see the oldest claim on bill o[8], nor the oldest returnable claim
+      expect(legacyClaims.orderHasClaims({ id: o[8].id, orderNumber: o[8].orderNumber, claims: [] }, legacyClaims.claimedKeys(capped))).toBe(false);
+      expect(legacyClaims.eligibleClaimIds(capped)).not.toContain('CLM-BULK-0');
+      // the new queries see every claim: equal to the old rules over the complete list
+      const { claimed, eligible } = await compare(every);
+      expect(claimed.has(o[8].id)).toBe(true);
+      expect(eligible).toContain('CLM-BULK-0');
+      expect(eligible.filter((no) => no.startsWith('CLM-BULK-')).length).toBe(151);
     });
   });
 });
