@@ -1,5 +1,21 @@
 # Perf round — progress notes (delete a task's section when it is fully done)
 
+## Task 4: follow-ups (payables on the server, supplier-return PO list, debt queries, customer sync) — IN PROGRESS
+
+Branch ccr-8f8b0741-si1a0o (base b67c198). perf_load recreated after a container restart (prepare-database.js +
+seed-load.sh, admin password Perf12345x, PIN 8642).
+
+### Plan
+1. [ ] Recreate perf_load, measure before.
+2. [ ] Payables: page uses /payables/bills (paging, search, supplier filter, summary totals); e2e parity vs the browser logic.
+3. [ ] Supplier returns: PO list searchable/paged from the server.
+4. [ ] POS debt picker + orders credit history: filtered server query.
+5. [ ] Customer list refresh every 15 s -> delta / on demand (check consumers).
+6. [ ] Cheap follow-ups (claims on orders page).
+7. [ ] Tests, after-measurements, full verification, PROJECT_STATUS.
+
+### Done
+
 ## Task 1: reports computed in the database — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 
 Load DB: `perf_load` (prepare-database.js + scratchpad/perf/seed-load.sh; admin password changed to `Perf12345x`, PIN 8642).
