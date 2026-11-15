@@ -18,10 +18,8 @@ import { NumpadPopup } from './NumpadPopup';
 import { SelectUnitModal } from './SelectUnitModal';
 import { RedeemPointsModal } from './RedeemPointsModal';
 import { PosDebtSelectModal } from './PosDebtSelectModal';
-import { ProductClaimModal } from './ProductClaimModal';
 import { ItemClaimModal } from './ItemClaimModal';
 import { CustomerClaimStockModal } from './CustomerClaimStockModal';
-import { ClaimReceiptPdfModal } from '@/components/claims/ClaimReceiptPdfModal';
 
 /** Every dialog of a POS sales screen (/pos). */
 export function PosDialogs({ pos }: { pos: PosController }) {
@@ -111,15 +109,6 @@ export function PosDialogs({ pos }: { pos: PosController }) {
           closePriceEdit();
         }}
       />
-      <ProductClaimModal
-        open={d.showClaimModal}
-        onOpenChange={d.setShowClaimModal}
-        onClaimCompleted={(claim) => {
-          d.setCompletedClaimForPdf(claim);
-          d.setShowClaimPdfModal(true);
-        }}
-      />
-      <ClaimReceiptPdfModal open={d.showClaimPdfModal} onOpenChange={d.setShowClaimPdfModal} claim={d.completedClaimForPdf} />
       {/* Item Claim Popup (In-Cart Replacement) */}
       <ItemClaimModal
         isOpen={!!d.claimTargetItem}

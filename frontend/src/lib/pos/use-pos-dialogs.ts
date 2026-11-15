@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useCartStore } from '@/lib/store/cart-store';
-import type { CartItem, ClaimRecord, Product } from '@/lib/types';
+import type { CartItem, Product } from '@/lib/types';
 import type { Customer } from '@/lib/customer-service';
 
 const EMPTY_CART_PAY_WARNING = 'ไม่มีสินค้าในตะกร้า ไม่สามารถชำระเงินได้';
@@ -27,11 +27,8 @@ export function usePosDialogs() {
   const [showRedeemModal, setShowRedeemModal] = useState(false);
   const [showDebtCollectModal, setShowDebtCollectModal] = useState(false);
   const [debtTargetCustomer, setDebtTargetCustomer] = useState<Customer | null>(null);
-  const [showClaimModal, setShowClaimModal] = useState(false);
   const [showCustomerStockModal, setShowCustomerStockModal] = useState(false);
   const [claimTargetItem, setClaimTargetItem] = useState<CartItem | null>(null);
-  const [completedClaimForPdf, setCompletedClaimForPdf] = useState<ClaimRecord | null>(null);
-  const [showClaimPdfModal, setShowClaimPdfModal] = useState(false);
   const [showCashDrawerModal, setShowCashDrawerModal] = useState(false);
 
   /** A scan is ignored while one of these is open. */
@@ -40,7 +37,7 @@ export function usePosDialogs() {
 
   /** A click on empty space re-focuses the hidden scanner input unless one of these is open. */
   const focusClickBlocked =
-    scanBlocked || !!qtyEditItem || showDebtCollectModal || showCashDrawerModal || showClaimModal ||
+    scanBlocked || !!qtyEditItem || showDebtCollectModal || showCashDrawerModal ||
     showUnitModal || showRedeemModal || showBarcodeScan;
 
   /** Page shortcuts are off while any of these is open (the dialog handles its own keys). */
@@ -90,11 +87,8 @@ export function usePosDialogs() {
     showRedeemModal, setShowRedeemModal,
     showDebtCollectModal, setShowDebtCollectModal,
     debtTargetCustomer,
-    showClaimModal, setShowClaimModal,
     showCustomerStockModal, setShowCustomerStockModal,
     claimTargetItem, setClaimTargetItem,
-    completedClaimForPdf, setCompletedClaimForPdf,
-    showClaimPdfModal, setShowClaimPdfModal,
     showCashDrawerModal, setShowCashDrawerModal,
     scanBlocked,
     focusClickBlocked,

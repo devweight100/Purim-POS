@@ -42,7 +42,7 @@ export function usePosController(variant: PosVariant) {
     items: cart.items,
     showPayment: dialogs.showPayment,
     showCashDrawer: dialogs.showCashDrawerModal,
-    showClaim: dialogs.showClaimModal || dialogs.showCustomerStockModal,
+    showClaim: dialogs.showCustomerStockModal,
     activeCustomer,
     user,
     idleDescription: variant.idleDescription,
