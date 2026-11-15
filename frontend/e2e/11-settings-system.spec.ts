@@ -4,7 +4,7 @@ import { api, apiLogin, uiLogin } from './helpers';
 
 /**
  * Settings page in groups (owner: "the low-stock setting is in the wrong place; dangerous buttons together in one
- * place, ระบบ"): each setting in one group, the irreversible operations only under ตั้งค่า > ระบบ (ADMIN), each
+ * place, ระบบ"): each setting in one group, the irreversible operations only under ตั้งค่า > ระบบ (danger zone, ADMIN), each
  * behind a typed confirmation word; no "install desktop app" button; nothing dangerous on the users page.
  */
 test('settings groups: low-stock in สินค้าและสต็อก, cash limit in การเงิน, saved to the server', async ({ page }) => {
@@ -98,7 +98,8 @@ test('ระบบ danger zone: admin only, typed confirmation before anything i
   expect((await api<{ meta: { total: number } }>('GET', '/products/page?page=1&limit=1', token)).meta.total).toBe(products);
   expect((await api<{ meta: { total: number } }>('GET', '/orders?limit=1', token)).meta.total).toBe(orders);
 
-  // a manager with the settings permission sees the settings groups but not ระบบ
+  // a manager with the settings permission sees ระบบ with version + backup (owner: managers may back up),
+  // but not the danger zone
   const tag = String(Date.now()).slice(-6);
   const managerPassword = `Mgr#E2e${tag}`;
   await api('POST', '/auth/register', token, {
@@ -111,8 +112,17 @@ test('ระบบ danger zone: admin only, typed confirmation before anything i
   await expect(mp).toHaveURL(/\/pos/);
   await mp.goto('/settings?tab=system');
   await expect(mp.getByTestId('settings-tab-stock')).toBeVisible();
-  await expect(mp.getByTestId('settings-tab-system')).toHaveCount(0);
+  await expect(mp.getByTestId('settings-tab-system')).toHaveAttribute('aria-selected', 'true');
+  await expect(mp.getByText('เวอร์ชันระบบ')).toBeVisible();
+  const backupNow = mp.getByRole('button', { name: 'สำรองข้อมูลตอนนี้' });
+  await expect(backupNow).toBeVisible();
+  const backupDone = mp.waitForResponse((r) => r.url().endsWith('/server-control/backup') && r.request().method() === 'POST');
+  await backupNow.click();
+  expect((await backupDone).status()).toBe(201);
+  await expect(mp.getByText(/สำรองข้อมูลสำเร็จ/)).toBeVisible();
+  await expect(mp.getByRole('button', { name: 'ดาวน์โหลด' })).toHaveCount(0);
   await expect(mp.getByTestId('danger-zone')).toHaveCount(0);
+  await expect(mp.getByTestId('open-clear-products')).toHaveCount(0);
   await mgr.close();
 
   // a cashier cannot open the settings at all (and never sees ระบบ)
@@ -124,4 +134,26 @@ test('ระบบ danger zone: admin only, typed confirmation before anything i
   await expect(cp.getByText('ไม่มีสิทธิ์เข้าถึงหน้านี้')).toBeVisible();
   await expect(cp.getByTestId('danger-zone')).toHaveCount(0);
   await cas.close();
+});
+
+test('removed screens: /pos-neo opens the POS, /master-control opens the store monitor; no menu item left', async ({ page }) => {
+  await uiLogin(page, ADMIN.username, ADMIN.password);
+  await expect(page).toHaveURL(/\/pos/);
+
+  // a terminal or bookmark still pointing at the old neo screen lands on the normal POS (no 404)
+  await page.goto('/pos-neo');
+  await expect(page).toHaveURL(/\/pos$/);
+  await expect(page.getByText('Neo-Brutalist')).toHaveCount(0);
+  await page.goto('/pos-neo/anything?x=1');
+  await expect(page).toHaveURL(/\/pos\?x=1$/);
+
+  // old desktop-app menu item / bookmark for แผงควบคุมเครื่องแม่ -> มอนิเตอร์ร้าน
+  await page.goto('/master-control');
+  await expect(page).toHaveURL(/\/monitor$/);
+
+  // the sidebar no longer links to them; the monitor stays
+  await page.goto('/settings');
+  await expect(page.locator('a[href="/master-control"]')).toHaveCount(0);
+  await expect(page.locator('a[href="/pos-neo"]')).toHaveCount(0);
+  await expect(page.locator('a[href="/monitor"]').first()).toBeAttached();
 });

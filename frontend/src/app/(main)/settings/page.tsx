@@ -1154,8 +1154,8 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ─── ระบบ (admin only): version, backups and the irreversible operations ─── */}
-      {activeTab === "system" && isAdmin && (
+      {/* ─── ระบบ (ADMIN + MANAGER): version, backups; the irreversible operations: ADMIN only ─── */}
+      {activeTab === "system" && (
         <div className="max-w-5xl space-y-5" role="tabpanel">
           <Card className="bg-white border-slate-200 shadow-2xs">
             <CardHeader className="pb-3 border-b border-slate-100">
@@ -1171,7 +1171,8 @@ export default function SettingsPage() {
 
           <BackupSection />
 
-          {/* DANGER ZONE: kept apart from everything else, each action needs a typed word */}
+          {/* DANGER ZONE: kept apart from everything else, each action needs a typed word; ADMIN only (same as the API) */}
+          {isAdmin && (
           <section data-testid="danger-zone" className="rounded-2xl border-2 border-rose-300 bg-rose-50/40 p-4 sm:p-5 space-y-4 mt-8">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-700 border border-rose-200 flex items-center justify-center shrink-0">
@@ -1229,6 +1230,7 @@ export default function SettingsPage() {
               </Button>
             </div>
           </section>
+          )}
 
           {/* ─── DELETE ALL PRODUCTS CONFIRMATION ─── */}
           <Dialog open={isClearProductsOpen} onOpenChange={(o) => { if (!isClearingProducts) setIsClearProductsOpen(o); }}>

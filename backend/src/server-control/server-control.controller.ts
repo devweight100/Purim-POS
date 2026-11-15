@@ -50,16 +50,17 @@ export class ServerControlController {
     return this.service.getTelemetry();
   }
 
+  // Backups (ตั้งค่า > ระบบ): ADMIN and MANAGER may list / create / check them (owner 2026-11-15);
+  // downloading a file and the off-site folder stay ADMIN only.
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN', 'MANAGER')
-  @RequirePermissions('VIEW_REPORTS')
   @Get('backups')
   listBackups() {
     return this.service.listBackups();
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'MANAGER')
   @Post('backup')
   createBackup() {
     return this.service.createBackup();

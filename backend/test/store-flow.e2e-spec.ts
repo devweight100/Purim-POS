@@ -1918,6 +1918,32 @@ d('store flow (e2e)', () => {
     });
   });
 
+  describe('backups: ADMIN and MANAGER (owner 2026-11-15)', () => {
+    it('a manager lists / creates backups; download and the off-site folder stay ADMIN; a cashier gets 403', async () => {
+      const tag = String(Date.now()).slice(-6);
+      await api('post', '/auth/register', A, {
+        username: `bkmgr${tag}`, password: `Mgr#Bk${tag}`, fullName: `ผู้จัดการ ${tag}`, role: 'MANAGER',
+        pinCode: String(5000 + (Number(tag) % 4000)), permissions: ['MANAGE_SETTINGS'],
+      }).expect(201);
+      let login = await api('post', '/auth/login', undefined, { username: `bkmgr${tag}`, password: `Mgr#Bk${tag}` }).expect(201);
+      if (login.body.user.mustChangePassword) {
+        await api('post', '/auth/change-password', login.body.access_token, { currentPassword: `Mgr#Bk${tag}`, newPassword: `Mgr#Bk2${tag}`, newPin: String(1000 + (Number(tag) % 4000)) }).expect(201);
+        login = await api('post', '/auth/login', undefined, { username: `bkmgr${tag}`, password: `Mgr#Bk2${tag}` }).expect(201);
+      }
+      const M = login.body.access_token;
+      const made = (await api('post', '/server-control/backup', M).expect(201)).body;
+      expect(made.fileName).toMatch(/^backup-/);
+      const list = (await api('get', '/server-control/backups', M).expect(200)).body.map((f: any) => f.fileName);
+      expect(list).toContain(made.fileName);
+      await api('get', '/server-control/backup-status', M).expect(200);
+      await api('get', `/server-control/backups/${encodeURIComponent(made.fileName)}/download`, M).expect(403);
+      await api('put', '/server-control/backup-settings', M, { offsiteDir: '' }).expect(403);
+      await api('post', '/server-control/backup', C).expect(403);
+      await api('get', '/server-control/backups', C).expect(403);
+      await api('delete', '/products', M).expect(403);
+    });
+  });
+
   describe('delete all products: backup first, like the full reset (owner 2026-11-15)', () => {
     it('no backup -> 400 and nothing deleted; only ADMIN; with a backup the delete runs after it', async () => {
       const svc = app.get(ServerControlService);
