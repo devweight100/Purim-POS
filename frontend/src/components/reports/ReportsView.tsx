@@ -568,7 +568,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
 
       {/* ─── MAIN REPORT TABS (6 Core Executive Reports) ─── */}
       <div className="border-b border-slate-200">
-        <div className="flex overflow-x-auto gap-1 pb-1 scrollbar-none">
+        <div className="flex flex-wrap gap-btn pb-2" role="tablist" aria-label="รายงาน">
           {[
             { key: 'sales', label: '1. ยอดขาย & กำไรขั้นต้น', icon: TrendingUp, href: '/reports/sales' },
             { key: 'bestsellers', label: '2. สินค้าขายดี & ทำกำไร', icon: Sparkles, href: '/reports/bestsellers' },
@@ -583,6 +583,8 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               <button
                 key={tab.key}
                 type="button"
+                role="tab"
+                aria-selected={isTabActive}
                 onClick={() => handleTabChange(tab.key as ReportTabKey)}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
                   isTabActive
@@ -733,7 +735,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           {/* Data Table */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
                 <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
@@ -877,7 +879,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           {/* Table */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
                 <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
@@ -914,7 +916,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                             {p.name}
                           </td>
                           <td className="py-3.5 px-3.5 text-center">
-                            <Badge variant="outline" className="text-xs">{formatCategory(p.category)}</Badge>
+                            <Badge variant="outline" className="text-xs whitespace-normal h-auto max-w-full">{formatCategory(p.category)}</Badge>
                           </td>
                           <td className="py-3.5 px-3.5 text-right font-mono font-black text-indigo-700 text-[15px]">
                             {p.quantitySold} <span className="text-xs font-bold text-slate-500 font-sans">{p.unitName}</span>
@@ -1044,7 +1046,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           {/* Table */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
                 <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
@@ -1209,7 +1211,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               <span className="font-bold text-sm text-slate-900">สรุปยอดตามช่องทางรับชำระเงิน</span>
               <span className="text-xs text-slate-500 font-mono">กระทบยอดเงินสดและเงินโอนเข้าบัญชี</span>
             </div>
-            <Table>
+            <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
               <TableHeader className="bg-slate-50">
                 <TableRow>
                   <TableHead className="py-3 px-3.5 text-center w-16 font-bold text-sm">ลำดับ</TableHead>
@@ -1310,7 +1312,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               <span className="text-xs text-slate-500 font-mono">เรียงตามยอดซื้อสะสมจากมากไปน้อย</span>
             </div>
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
                 <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
@@ -1405,7 +1407,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 หมายเหตุ: หน้า &quot;การเงิน&quot; แบ่งช่วงตาม &quot;จำนวนวันที่เลยกำหนดชำระ&quot; ตัวเลขแต่ละช่วงจึงต่างกันได้ แต่ยอดรวมเท่ากัน
               </p>
             </div>
-            <Table>
+            <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
               <TableHeader className="bg-slate-50">
                 <TableRow>
                   <TableHead className="py-3 px-3.5 text-center w-16 font-bold text-sm">ลำดับ</TableHead>
@@ -1502,7 +1504,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           {/* Supplier Purchases Table */}
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
                 <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">ลำดับ</TableHead>

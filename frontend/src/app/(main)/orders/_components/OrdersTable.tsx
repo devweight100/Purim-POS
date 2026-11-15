@@ -73,8 +73,8 @@ export function OrdersTable({
               <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-right w-[120px]">ยอดรวมสุทธิ</TableHead>
               <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-center w-[140px]">ช่องทางชำระ</TableHead>
               <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-center w-[120px]">สถานะ</TableHead>
-              <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-center w-[250px] pr-4">
-                🖨️ พิมพ์ใบเสร็จ & การจัดการ
+              <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-center pr-4">
+                🖨️ พิมพ์ / จัดการ
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -225,7 +225,7 @@ export function OrdersTable({
 
                     {/* 7. Action & Print Buttons */}
                     <TableCell className="py-3 pr-4 text-center" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-center gap-1.5">
+                      <div className="flex flex-wrap items-center justify-center gap-btn">
                         {/* If Credit Bill -> Always show the Payment History button */}
                         {isCredit ? (
                           <Button

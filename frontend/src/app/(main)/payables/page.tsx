@@ -480,7 +480,8 @@ export default function PayablesPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                {/* below 1280 px: tighter cells, "#" and the deduction columns hidden (they are in the bill details: click the row) */}
+                <table className="w-full text-sm max-xl:[&_th]:px-1.5 max-xl:[&_td]:px-1.5 max-xl:[&_tr>*:nth-child(2)]:hidden max-xl:[&_tr>*:nth-child(8)]:hidden max-xl:[&_tr>*:nth-child(9)]:hidden">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-sm">
                     <tr>
                       <th className="py-3.5 px-3 text-center w-12">

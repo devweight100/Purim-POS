@@ -521,7 +521,7 @@ export default function ShiftsHistoryPage() {
 
               {/* Table of Shifts in this Day */}
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm max-xl:[&_th]:px-2 max-xl:[&_td]:px-2 max-xl:[&_tr>*:first-child]:hidden">
                   <thead className="bg-slate-100/70 text-slate-700 font-bold border-b border-slate-200 text-sm">
                     <tr>
                       <th className="p-3.5 text-center w-20">รอบที่</th>
