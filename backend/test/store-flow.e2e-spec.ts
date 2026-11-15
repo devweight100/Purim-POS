@@ -861,7 +861,7 @@ d('store flow (e2e)', () => {
     });
 
     it('bad, foreign or very old cursors give a full reload; cost fields only with VIEW_COST', async () => {
-      for (const bad of ['', 'nope', 'v1.1-2.0.' + Buffer.from('1:2:').toString('base64url'), cursor.replace(/^v1\.\d+-\d+\./, 'v1.1-2.'), cursor.replace(/^(v1\.\d+-\d+\.)\d+/, '$1' + (Date.now() - 8 * 86400_000))]) {
+      for (const bad of ['', 'nope', 'v1.1-2.0.' + Buffer.from('1:2:').toString('base64url'), cursor.replace(/^v1\.\d+-\d+(-\d+)?\./, 'v1.1-2.'), cursor.replace(/^v1\.(\d+-\d+)-\d+\./, 'v1.$1.'), cursor.replace(/^(v1\.\d+-\d+(?:-\d+)?\.)\d+/, '$1' + (Date.now() - 8 * 86400_000))]) {
         expect((await sync(bad)).full).toBe(true);
       }
       expect((await sync(cursor)).full).toBe(false);
@@ -870,6 +870,18 @@ d('store flow (e2e)', () => {
       expect(row.costPrice).toBeUndefined();
       expect(row.stock).toBe(10);
       expect(JSON.stringify(asCashier.products)).not.toMatch(/"(costPrice|unitCost|lastCost)"/);
+    });
+
+    it('round 2: after the change log is emptied (reset database = TRUNCATE) an old cursor gets a full catalogue', async () => {
+      const before = await sync();
+      expect((await sync(before.cursor)).full).toBe(false);
+      const db = new PrismaClient();
+      try {
+        await db.$executeRawUnsafe('TRUNCATE TABLE product_changes RESTART IDENTITY');
+      } finally {
+        await db.$disconnect();
+      }
+      expect((await sync(before.cursor)).full).toBe(true);
     });
 
     it('GET /product-images/:id serves the photo without login, cacheable; ?size=thumb the small copy', async () => {
