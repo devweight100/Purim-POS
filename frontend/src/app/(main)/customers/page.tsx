@@ -466,11 +466,11 @@ export default function CustomersPage() {
             <TableHeader className="bg-slate-50/90 border-b border-slate-200">
               <TableRow>
                 <TableHead className="w-[28%] text-slate-600 font-bold text-xs uppercase">รหัส / ชื่อสมาชิก & บริษัท</TableHead>
-                <TableHead className="w-[18%] text-slate-600 font-bold text-xs uppercase">ข้อมูลติดต่อ & เลขผู้เสียภาษี</TableHead>
+                <TableHead className="w-[16%] text-slate-600 font-bold text-xs uppercase">ข้อมูลติดต่อ & เลขผู้เสียภาษี</TableHead>
                 <TableHead className="w-[12%] text-center text-slate-600 font-bold text-xs uppercase">ระดับราคา (Price Tier)</TableHead>
                 <TableHead className="w-[18%] text-right text-slate-600 font-bold text-xs uppercase">วงเงินเครดิต & ยอดหนี้คงค้าง</TableHead>
                 <TableHead className="w-[14%] text-center text-slate-600 font-bold text-xs uppercase">คะแนนสะสม & อัตราแลก</TableHead>
-                <TableHead className="w-[10%] text-center text-slate-600 font-bold text-xs uppercase">จัดการ</TableHead>
+                <TableHead className="w-[12%] text-center text-slate-600 font-bold text-xs uppercase">จัดการ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody {...customerNav.bodyProps}>
@@ -601,7 +601,7 @@ export default function CustomersPage() {
 
                       {/* Actions */}
                       <TableCell className="py-3.5 text-center">
-                        <div className="flex items-center justify-center gap-btn">
+                        <div className="flex flex-wrap items-center justify-center gap-btn">
                           <Button
                             size="sm"
                             variant="ghost"

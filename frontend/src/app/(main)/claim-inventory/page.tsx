@@ -492,7 +492,7 @@ export default function ClaimInventoryPage() {
         <TabsContent value="products" className="m-0 space-y-3">
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
-              <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
+              <Table className="max-xl:[&_tr>*:not([colspan]):nth-child(1)]:hidden max-xl:[&_tr>*:not([colspan]):nth-child(4)]:hidden max-xl:[&_tr>*:not([colspan]):nth-child(9)]:hidden">
                 <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">
