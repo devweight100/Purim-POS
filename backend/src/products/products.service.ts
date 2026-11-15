@@ -720,7 +720,9 @@ export class ProductsService {
       async (tx) => {
         const [head] = await tx.$queryRaw<{ snapshot: string; epoch: string }[]>`
           SELECT pg_current_snapshot()::text AS snapshot,
-                 (SELECT oid FROM pg_database WHERE datname = current_database())::text || '-' || 'product_changes'::regclass::oid::text AS epoch`;
+                 (SELECT oid FROM pg_database WHERE datname = current_database())::text || '-' || 'product_changes'::regclass::oid::text
+                   -- TRUNCATE ("ล้างข้อมูลทั้งหมด") gives the change log a new file: old cursors then reload everything
+                   || '-' || pg_relation_filenode('product_changes'::regclass)::text AS epoch`;
         const now = Date.now();
         const cursor = encodeCursor({ epoch: head.epoch, at: now, snapshot: head.snapshot });
         let usable = cursorUsable(parsed, head.epoch, now);

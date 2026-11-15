@@ -5,6 +5,9 @@ describe('POS catalogue helpers', () => {
     const c = { epoch: '16384-24576', at: 1_763_000_000_000, snapshot: '742:745:742,744' };
     expect(decodeCursor(encodeCursor(c))).toEqual(c);
     expect(decodeCursor(encodeCursor({ ...c, snapshot: '10:10:' }))?.snapshot).toBe('10:10:');
+    // round 2: the epoch also carries the change log's file node (a TRUNCATE changes it)
+    const c3 = { ...c, epoch: '16384-24576-99001' };
+    expect(decodeCursor(encodeCursor(c3))).toEqual(c3);
     for (const bad of [undefined, '', 'v1', 'v2.1-2.3.YQ', 'v1.1-2.3.' + Buffer.from("1:2:'; drop").toString('base64url'), 'v1.1-2.3.' + Buffer.from('5:2:').toString('base64url'), 123]) {
       expect(decodeCursor(bad)).toBeNull();
     }

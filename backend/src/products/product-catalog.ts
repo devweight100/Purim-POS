@@ -137,7 +137,8 @@ export function encodeCursor(c: SyncCursor): string {
 /** Parsed cursor, or null when it is missing / malformed (the client then gets a full reload). */
 export function decodeCursor(text: unknown): SyncCursor | null {
   if (typeof text !== 'string' || text.length > 4000) return null;
-  const m = /^v1\.(\d+-\d+)\.(\d{1,15})\.([A-Za-z0-9_-]+)$/.exec(text);
+  // epoch: database oid - change-log oid [- change-log file node (since round 2; older cursors just reload)]
+  const m = /^v1\.(\d+-\d+(?:-\d+)?)\.(\d{1,15})\.([A-Za-z0-9_-]+)$/.exec(text);
   if (!m) return null;
   const snapshot = Buffer.from(m[3], 'base64url').toString('utf8');
   const s = SNAPSHOT_RE.exec(snapshot);

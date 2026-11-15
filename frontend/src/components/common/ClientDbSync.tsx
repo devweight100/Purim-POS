@@ -222,8 +222,10 @@ export function ClientDbSync() {
     const lastRun = new Map<string, number>();
     const soon = (key: string, run: () => unknown) => {
       // A burst of events (import, receiving a PO) becomes one refresh, and refreshes of one kind are at least 2 s
-      // apart: the server re-sends recent changes on every COMMIT for a few seconds, including the commit of the
-      // refresh's own read, which would otherwise keep refreshing in a loop.
+      // apart. (Round 2: the server now announces only committed writes - product ones only when the change log
+      // got rows - so a refresh's own read no longer triggers another; the spacing stays as a guard.)
+      // "ล้างข้อมูลทั้งหมด" on another terminal: the TRUNCATE is announced too, and the delta sync answers an old
+      // cursor with a full catalogue (new change-log epoch), so deleted products disappear here without F5.
       if (timers.has(key)) return;
       const wait = Math.max(300, (lastRun.get(key) ?? 0) + 2000 - Date.now());
       timers.set(key, setTimeout(() => {
