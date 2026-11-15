@@ -227,7 +227,8 @@ export const api = {
     update: <T = ApiProduct>(id: string, data: ProductWriteRequest) => apiFetch<T>(`/products/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     bulkUpsert: (products: ProductWriteRequest[]) => apiFetch<BulkUpsertResponse>('/products/bulk-upsert', { method: 'POST', body: JSON.stringify({ products }) }),
     delete: (id: string) => apiFetch<ApiProduct>(`/products/${id}`, { method: 'DELETE' }),
-    deleteAll: () => apiFetch<{ deleted: number }>('/products', { method: 'DELETE' }),
+    // the server backs up first and deletes nothing when the backup fails (400)
+    deleteAll: () => apiFetch<{ deleted: number; backupFile: string }>('/products', { method: 'DELETE' }),
     getStock: (id: string) => apiFetch<{ productId: string; computedStock?: number }>(`/products/${id}/stock`),
   },
 

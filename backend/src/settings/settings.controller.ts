@@ -152,13 +152,7 @@ export class SettingsController {
     // the old hand-written list left the cash ledger, expenses, returns and approvals behind).
     // Kept: users (admin only, below), store settings and the migration history.
     // A backup is taken first; no backup -> nothing is deleted.
-    let backupFile: string | null = null;
-    try {
-      const backup: any = await this.serverControl.createBackup('manual');
-      backupFile = backup?.fileName || null;
-    } catch (err: any) {
-      backupFile = null;
-    }
+    const backupFile = await this.serverControl.backupBeforeWipe();
     if (!backupFile) {
       throw new BadRequestException('สำรองข้อมูลก่อนล้างไม่สำเร็จ จึงยังไม่ได้ลบข้อมูลใด ๆ กรุณาตรวจสอบหน้า "สำรองข้อมูล" แล้วลองใหม่');
     }

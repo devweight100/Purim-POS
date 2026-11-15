@@ -450,7 +450,9 @@ export default function SettingsPage() {
       // the only local product data is the POS offline cache
       await clearCachedProducts();
       useProductStore.setState({ products: [] });
-      toast.success(`ลบสินค้าทั้งหมดเรียบร้อย${count > 0 ? ` ${count} รายการ` : ""}`);
+      toast.success(
+        `ลบสินค้าทั้งหมดเรียบร้อย${count > 0 ? ` ${count} รายการ` : ""}${result?.backupFile ? ` — สำรองข้อมูลก่อนลบไว้ที่ ${result.backupFile}` : ""}`,
+      );
       setIsClearProductsOpen(false);
       setClearProductsText("");
     } catch (err) {
@@ -1189,7 +1191,7 @@ export default function SettingsPage() {
             <div className="rounded-xl border border-rose-200 bg-white p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="text-xs text-slate-600 space-y-0.5">
                 <p className="text-sm font-bold text-slate-900">ลบสินค้าทั้งหมด</p>
-                <p>ลบรายการสินค้า ราคา บาร์โค้ด ขนาดบรรจุ รูปสินค้า และ cache สินค้าในเครื่อง — ใช้ก่อนนำเข้าสินค้าใหม่ทั้งหมด (สินค้าที่มีบิลขายแล้วลบไม่ได้)</p>
+                <p>ลบรายการสินค้า ราคา บาร์โค้ด ขนาดบรรจุ รูปสินค้า และ cache สินค้าในเครื่อง — ใช้ก่อนนำเข้าสินค้าใหม่ทั้งหมด (สินค้าที่มีบิลขายแล้วลบไม่ได้) — ระบบสำรองข้อมูลให้ก่อนลบเสมอ</p>
               </div>
               <Button
                 type="button"
@@ -1237,7 +1239,7 @@ export default function SettingsPage() {
                 </div>
                 <DialogTitle className="text-center text-lg font-black text-slate-900">ยืนยันการลบสินค้าทั้งหมด?</DialogTitle>
                 <DialogDescription className="text-center text-xs text-slate-600 leading-relaxed">
-                  สินค้า ราคา บาร์โค้ด ขนาดบรรจุ และรูปสินค้า <strong className="text-rose-600 font-bold">จะถูกลบถาวร กู้คืนไม่ได้</strong> (ยกเว้นจากไฟล์สำรองข้อมูล)
+                  สินค้า ราคา บาร์โค้ด ขนาดบรรจุ และรูปสินค้า <strong className="text-rose-600 font-bold">จะถูกลบถาวร</strong> — ระบบจะสำรองข้อมูลให้ก่อนลบทุกครั้ง (กู้คืนได้จากไฟล์สำรองนั้นเท่านั้น) ถ้าสำรองไม่สำเร็จจะไม่ลบอะไรเลย
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3 py-3 border-y border-slate-100 my-2">

@@ -19,6 +19,8 @@ import * as legacyPayables from './legacy/payables-client-legacy';
 import * as legacyClaims from './legacy/claims-client-legacy';
 import * as legacyScreens from './legacy/claims-screens-legacy';
 import { valueStock } from '../src/reports/reports.service';
+import { ServerControlService } from '../src/server-control/server-control.service';
+import { ProductsService } from '../src/products/products.service';
 
 const dbName = (() => { try { return new URL(process.env.DATABASE_URL || '').pathname.slice(1); } catch { return ''; } })();
 const enabled = /test/i.test(dbName);
@@ -1913,6 +1915,46 @@ d('store flow (e2e)', () => {
       expect(walkIn.length).toBe(500);
       // a cashier (POS_SELL) can search too
       expect(await ids('search=' + encodeURIComponent(`${tag}-OLD`), C)).toEqual([oldId]);
+    });
+  });
+
+  describe('delete all products: backup first, like the full reset (owner 2026-11-15)', () => {
+    it('no backup -> 400 and nothing deleted; only ADMIN; with a backup the delete runs after it', async () => {
+      const svc = app.get(ServerControlService);
+      const products = app.get(ProductsService);
+      const db = new PrismaClient();
+      try {
+        const before = await db.product.count();
+        expect(before).toBeGreaterThan(0);
+        await api('delete', '/products', C).expect(403);
+
+        // backup fails -> nothing is deleted
+        const failing = jest.spyOn(svc, 'createBackup').mockRejectedValueOnce(new Error('disk full'));
+        const removeSpy = jest.spyOn(products, 'removeAll');
+        const r = await api('delete', '/products', A).expect(400);
+        expect(String(r.body.message)).toContain('สำรองข้อมูลก่อนลบไม่สำเร็จ');
+        expect(failing).toHaveBeenCalledTimes(1);
+        expect(removeSpy).not.toHaveBeenCalled();
+        expect(await db.product.count()).toBe(before);
+        failing.mockRestore();
+        removeSpy.mockRestore();
+
+        // a real backup is written first, then the delete runs (stubbed: this database has sales,
+        // whose products cannot be deleted) and the answer names the backup file
+        const backup = jest.spyOn(svc, 'createBackup');
+        const remove = jest.spyOn(products, 'removeAll').mockResolvedValueOnce({ deleted: 0 });
+        const ok = await api('delete', '/products', A).expect(200);
+        expect(backup).toHaveBeenCalledTimes(1);
+        expect(remove).toHaveBeenCalledTimes(1);
+        expect(backup.mock.invocationCallOrder[0]).toBeLessThan(remove.mock.invocationCallOrder[0]);
+        expect(ok.body.backupFile).toMatch(/^backup-/);
+        const files = (await api('get', '/server-control/backups', A).expect(200)).body.map((f: any) => f.fileName);
+        expect(files).toContain(ok.body.backupFile);
+        backup.mockRestore();
+        remove.mockRestore();
+      } finally {
+        await db.$disconnect();
+      }
     });
   });
 });

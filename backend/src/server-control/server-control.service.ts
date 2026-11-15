@@ -206,6 +206,19 @@ export class ServerControlService {
     }
   }
 
+  /**
+   * Backup taken right before a destructive action (full reset, delete every product).
+   * Returns the backup file name, or null when no backup could be made: the caller then deletes nothing.
+   */
+  async backupBeforeWipe(): Promise<string | null> {
+    try {
+      const backup = await this.createBackup('manual');
+      return backup?.fileName || null;
+    } catch {
+      return null;
+    }
+  }
+
   async getBackupStatus() {
     return { ...this.backupStatus, offsiteDir: await this.getOffsiteDir() };
   }

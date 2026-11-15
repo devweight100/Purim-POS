@@ -6,11 +6,15 @@ import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
 import { canViewCost, costFilterFor } from './cost-visibility';
+import { ServerControlService } from '../server-control/server-control.service';
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(
+    private readonly productsService: ProductsService,
+    private readonly serverControl: ServerControlService,
+  ) {}
 
   @Post('bulk-upsert')
   @Roles('ADMIN', 'MANAGER')
@@ -119,10 +123,16 @@ export class ProductsController {
     return costFilterFor(req?.user)(product);
   }
 
+  /** ตั้งค่า > ระบบ > ลบสินค้าทั้งหมด. A backup is taken first; no backup -> nothing is deleted (same as the full reset). */
   @Delete()
   @Roles('ADMIN')
-  removeAll() {
-    return this.productsService.removeAll();
+  async removeAll() {
+    const backupFile = await this.serverControl.backupBeforeWipe();
+    if (!backupFile) {
+      throw new BadRequestException('สำรองข้อมูลก่อนลบไม่สำเร็จ จึงยังไม่ได้ลบสินค้าใด ๆ กรุณาตรวจสอบหน้า "สำรองข้อมูล" แล้วลองใหม่');
+    }
+    const result = await this.productsService.removeAll();
+    return { ...result, backupFile };
   }
 
   @Delete(':id')
