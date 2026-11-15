@@ -9,7 +9,6 @@ const KEEP_KEYS = new Set([
   'pos_cash_drawer_config',
   'pos_store_settings_v2',
   'pos_screen_mode',
-  'pos_neo_screen_mode',
   'purim_terminal_id',
   'purim_terminal_custom_name',
   'purim_sidebar_scroll_top',

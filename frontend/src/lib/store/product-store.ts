@@ -28,7 +28,7 @@ interface ProductStore {
 }
 
 function onPosScreen(): boolean {
-  return typeof window !== 'undefined' && /^\/pos(-neo)?(\/|$)/.test(window.location.pathname);
+  return typeof window !== 'undefined' && /^\/pos(\/|$)/.test(window.location.pathname);
 }
 
 export const useProductStore = create<ProductStore>((set, get) => ({

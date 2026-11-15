@@ -957,7 +957,7 @@ export function PosListLayout({
               <span>ปิดกะ</span>
             </button>
           )}
-          <PosLogoutButton variant="classic" className="min-h-[44px]" />
+          <PosLogoutButton className="min-h-[44px]" />
         </div>
 
         {/* Option Selector for Sales Screen View & Exit to Dashboard */}

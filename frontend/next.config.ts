@@ -34,6 +34,14 @@ const nextConfig: NextConfig = {
     "*.trycloudflare.com",
     "trycloudflare.com",
   ],
+  // Screens that were removed: old bookmarks, desktop-app menus and browser history land on the
+  // screen that replaces them instead of a 404 (query string is kept by Next).
+  async redirects() {
+    return [
+      { source: "/pos-neo", destination: "/pos", permanent: false },
+      { source: "/pos-neo/:path*", destination: "/pos", permanent: false },
+    ];
+  },
   async rewrites() {
     // Backend address (read at build time). Override only for tests that run the backend on another port.
     const api = process.env.API_INTERNAL_URL || "http://127.0.0.1:3001";

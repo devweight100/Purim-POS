@@ -1,6 +1,6 @@
 /**
- * The two sales screens (/pos "classic" and /pos-neo) share all of their logic (lib/pos/*) and differ
- * only in layout and in a few texts / settings, which live here.
+ * Texts and settings of the sales screen (/pos). The logic lives in lib/pos/*; this object keeps the
+ * screen-specific bits in one place (a second "neo" screen used to share the same logic; removed 2026-11).
  */
 export type PosViewMode = 'touch_screen' | 'list_view';
 
@@ -34,18 +34,6 @@ export const CLASSIC_POS: PosVariant = {
   scanFirstToast: (name, unitName) => `⚡ สแกนบาร์โค้ดสำเร็จ: ${name} (1 ${unitName})`,
   unitAddedToast: (name, unitName) => `เพิ่ม ${name} (${unitName}) ลงตะกร้าเรียบร้อยแล้ว`,
   cardAddedToast: (name, unitName) => `เพิ่ม ${name} (${unitName}) ลงตะกร้าแล้ว`,
-};
-
-export const NEO_POS: PosVariant = {
-  pageSize: 36,
-  viewModeStorageKey: 'pos_neo_screen_mode',
-  viewModeToast: (mode) => `เปลี่ยนรูปแบบหน้าจอเป็น "${mode === 'touch_screen' ? 'Touch Screen' : 'แบบรายการ'}"`,
-  idleDescription: 'จุดขายพร้อมให้บริการ (Neo UI)',
-  cartItemIdPrefixes: ['cart-item-', 'list-cart-item-'],
-  scanRepeatToast: (name, newQty, unitName) => `⚡ สแกนสินค้าซ้ำ: ${name} (+1 รวมเป็น ${newQty} ${unitName})`,
-  scanFirstToast: (name, unitName) => `⚡ สแกนสำเร็จ: ${name} (1 ${unitName})`,
-  unitAddedToast: (name, unitName) => `เพิ่ม ${name} (${unitName}) แล้ว`,
-  cardAddedToast: (name, unitName) => `เพิ่ม ${name} (${unitName}) แล้ว`,
 };
 
 /** Scrolls the cart row with this index into view (whichever layout is on screen). */

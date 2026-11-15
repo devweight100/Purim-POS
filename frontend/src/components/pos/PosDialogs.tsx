@@ -23,7 +23,7 @@ import { ItemClaimModal } from './ItemClaimModal';
 import { CustomerClaimStockModal } from './CustomerClaimStockModal';
 import { ClaimReceiptPdfModal } from '@/components/claims/ClaimReceiptPdfModal';
 
-/** Every dialog of a POS sales screen (same for /pos and /pos-neo). */
+/** Every dialog of a POS sales screen (/pos). */
 export function PosDialogs({ pos }: { pos: PosController }) {
   const { dialogs: d, cart, scanner, variant } = pos;
   const allowDecimalQty = useAllowDecimalQty();

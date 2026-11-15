@@ -20,7 +20,6 @@ import { usePosKeyboard } from './use-pos-keyboard';
 /**
  * Everything a POS sales screen does apart from drawing itself: dialogs, product list and search,
  * scanner, keyboard shortcuts, cart selection, shift check and the store-monitor ping.
- * /pos and /pos-neo both use it; only their layout differs.
  */
 export function usePosController(variant: PosVariant) {
   const cart = useCartStore();

@@ -9,18 +9,12 @@ import { useCartStore } from '@/lib/store/cart-store';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { performLogout } from '@/lib/logout';
 
-type Variant = 'classic' | 'neo';
-
-const BUTTON_CLASS: Record<Variant, string> = {
-  classic:
-    'h-11 px-3 rounded-xl border border-slate-300 bg-white text-slate-700 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-2xs transition-colors',
-  neo:
-    'h-10 rounded-xl border-2 border-black bg-white px-3 text-xs font-black text-black shadow-[2px_2px_0px_#000] hover:bg-[#E2E8F0] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none flex items-center gap-1.5 shrink-0',
-};
+const BUTTON_CLASS =
+  'h-11 px-3 rounded-xl border border-slate-300 bg-white text-slate-700 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-2xs transition-colors';
 
 /** "ออกจากระบบ" for the sales screens: confirms, then signs out and goes to the login page. */
 /** `compact`: icon only below 2xl screens (the POS toolbar stays on one line). */
-export function PosLogoutButton({ variant = 'classic', className = '', compact = false }: { variant?: Variant; className?: string; compact?: boolean }) {
+export function PosLogoutButton({ className = '', compact = false }: { className?: string; compact?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const userName = useAuthStore((s) => s.user?.fullName || s.user?.name || s.user?.username || '');
@@ -39,7 +33,7 @@ export function PosLogoutButton({ variant = 'classic', className = '', compact =
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`${BUTTON_CLASS[variant]} ${className}`}
+        className={`${BUTTON_CLASS} ${className}`}
         title={userName ? `ออกจากระบบ (${userName})` : 'ออกจากระบบ'}
         aria-label="ออกจากระบบ"
       >
