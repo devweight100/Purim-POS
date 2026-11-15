@@ -76,7 +76,7 @@ d:\โปรเจค POS ร้านปุริม/
 │   │   │   ├── (main)/           # หน้าจอจัดการหลังบ้าน (Dashboard, สินค้า, สต็อก, ฯลฯ)
 │   │   │   ├── pos/              # หน้าจอขายหน้าร้านสำหรับแคชเชียร์ (Full Keyboard & Touch)
 │   │   │   ├── login/            # หน้าเข้าสู่ระบบ
-│   │   │   └── master-control/   # หน้าจอควบคุม Server สำหรับแอดมิน
+│   │   │   └── monitor/          # มอนิเตอร์ร้าน (Pixel View): เครื่องขาย ยอดขาย อัปเดตเซิร์ฟเวอร์
 │   │   ├── components/           # UI Components (Shadcn/UI, Dialogs, Tables)
 │   │   └── lib/
 │   │       ├── store/            # Zustand Stores (cart, shift, product, auth)

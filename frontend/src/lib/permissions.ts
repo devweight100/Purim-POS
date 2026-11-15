@@ -14,7 +14,6 @@ export interface PermissionUser {
 export type PermissionRequirement = string | string[] | string[][];
 
 export const ROUTE_PERMISSIONS: Record<string, PermissionRequirement> = {
-  '/master-control': 'VIEW_REPORTS',
   '/monitor': 'VIEW_REPORTS',
   '/pos': 'POS_SELL',
   '/dashboard': 'VIEW_REPORTS',

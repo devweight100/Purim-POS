@@ -489,10 +489,6 @@ function setupAppMenu() {
           label: '⚙️ ตั้งค่าระบบ (Settings)',
           click: () => loadRouteScreen('/settings')
         },
-        {
-          label: '🚀 แผงควบคุมเครื่องแม่ (Master Command)',
-          click: () => loadRouteScreen('/master-control')
-        },
         { type: 'separator' },
         {
           label: 'ออกจากโปรแกรม',

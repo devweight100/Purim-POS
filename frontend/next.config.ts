@@ -40,6 +40,8 @@ const nextConfig: NextConfig = {
     return [
       { source: "/pos-neo", destination: "/pos", permanent: false },
       { source: "/pos-neo/:path*", destination: "/pos", permanent: false },
+      // แผงควบคุมเครื่องแม่: the store monitor shows the same terminals and sales (old desktop-app menu item)
+      { source: "/master-control", destination: "/monitor", permanent: false },
     ];
   },
   async rewrites() {

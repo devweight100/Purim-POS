@@ -9,7 +9,7 @@ import { Gamepad2,
   Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, 
   FolderTree, Building2, Receipt, ShieldAlert, ArrowLeftRight, HandCoins,
   ChevronDown, History, PackageX, TrendingUp, Sparkles, Coins, Boxes, UserCog,
-  ScanLine, Radio,
+  ScanLine,
   Wallet, ShieldCheck, Smartphone,
   type LucideIcon,
 } from 'lucide-react';
@@ -108,7 +108,6 @@ const navGroups: NavGroup[] = [
     items: [
       { href: '/settings', label: 'ตั้งค่าร้าน', icon: Settings },
       { href: '/users', label: 'พนักงาน & สิทธิ์', icon: UserCog },
-      { href: '/master-control', label: 'แผงควบคุมเครื่องแม่', icon: Radio },
       { href: '/monitor', label: 'มอนิเตอร์ร้าน (Pixel View)', icon: Gamepad2 },
     ],
   },
