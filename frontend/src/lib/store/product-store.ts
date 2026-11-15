@@ -41,8 +41,34 @@ export const useProductStore = create<ProductStore>((set, get) => ({
   syncCursorKey: null,
   syncThreshold: null,
 
-  fetchProducts: async (opts) => {
-    if (get().isLoading) return;
+  fetchProducts: (opts) => {
+    // A refresh asked while a load runs (stock changed, a sale was just saved) is not dropped: it runs once more
+    // right after, so the screen always ends with the server's latest stock.
+    if (inflight) {
+      queued ||= inflight.then(() => {
+        queued = null;
+        return get().fetchProducts(opts);
+      });
+      return queued;
+    }
+    inflight = loadProducts(opts).finally(() => {
+      inflight = null;
+    });
+    return inflight;
+  },
+}));
+
+let inflight: Promise<void> | null = null;
+let queued: Promise<void> | null = null;
+
+type StoreSet = (partial: Partial<ProductStore>) => void;
+let storeSet: StoreSet;
+let storeGet: () => ProductStore;
+
+async function loadProducts(opts?: { offlineCache?: boolean }): Promise<void> {
+  const set = storeSet;
+  const get = storeGet;
+  {
     const offlineCache = opts?.offlineCache ?? onPosScreen();
     set({ isLoading: true, error: null });
     try {
@@ -134,8 +160,10 @@ export const useProductStore = create<ProductStore>((set, get) => ({
       if (offlineCache) set({ error: errorText(err) ?? null, isLoading: false });
       else set({ error: errorText(err) || 'ติดต่อเซิร์ฟเวอร์ไม่ได้', isLoading: false, products: [], fromOfflineCache: false, syncCursor: null, syncCursorKey: null });
     }
-  },
-}));
+  }
+}
+storeSet = useProductStore.setState;
+storeGet = useProductStore.getState;
 
 /** Cover photo of a product: its small copy (catalogue rows carry URLs), else old cached rows' base64 data. */
 function coverImage(p: ApiProduct | CachedProduct): string | null {

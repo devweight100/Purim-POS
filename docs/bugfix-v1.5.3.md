@@ -6,7 +6,11 @@ Status per bug: reproduced? / real cause / fix / files / test.
 ## Progress
 - BUG-01: DONE. Files: frontend/src/components/pos/PaymentModal.tsx, src/lib/order-sync-service.ts, src/lib/offline-db.ts.
   Tests: e2e/12-tester-v153.spec.ts (BUG-01 x2: 1093x614 typing + Enter, 1366/1920 banknote + Enter, stock 24->22), vitest src/lib/__tests__/checkout-no-hang.test.ts.
-- BUG-02..BUG-10: investigated (findings below), not fixed yet.
+- BUG-02: DONE. Files: frontend/src/components/common/ClientDbSync.tsx (SSE realtime refresh, throttled),
+  src/lib/store/product-store.ts (refresh asked during a load runs again after it), src/components/pos/classic/
+  ClassicProductPanel.tsx (stock badge always shown). Test: e2e/12 "BUG-02" (adjust elsewhere -> card within 6 s,
+  sale lowers card and server equally, new window same number).
+- BUG-03..BUG-10: investigated (findings below), not fixed yet.
 - Final verification: not run yet.
 
 ## Findings so far (WIP)
@@ -35,6 +39,10 @@ Note: `pkill -f "next start"` does not kill `next-server` (process renames itsel
 - The backend already emits SSE change events (/api/events/stream, works through the Next rewrite) but the
   frontend never connects (startRealtime imported, never called). fetchProducts() also returns immediately when a
   load is running (a refresh request during a load is lost, e.g. right after a sale).
+- Server note: PrismaService re-emits every entity written in the last 6 s on EVERY COMMIT (also read-only
+  transactions like /products/sync and /shifts/current) -> a client refreshing on events loops for ~6 s (and
+  forever for 'shift', since reading the current shift commits). Client: no refresh on 'shift' events, refreshes
+  of one kind >= 2 s apart. Server not changed (worth a follow-up: emit only on commits of writing transactions).
 - After "ล้างข้อมูลทั้งหมด" (TRUNCATE, no triggers) a client with an old delta cursor keeps deleted products until
   F5 (settings page reloads itself; other terminals are told to press F5).
 

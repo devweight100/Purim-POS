@@ -146,3 +146,32 @@ test('BUG-01: banknote buttons at 1366x768 and 1920x1080; Enter after a banknote
     }
   }
 });
+
+test('BUG-02: the POS card always shows stock left and follows a stock adjustment made elsewhere at once; a sale lowers both', async ({ browser }) => {
+  const { ctx, page } = await cashierPage(browser, { width: 1366, height: 768 });
+  try {
+    const start = await stockOf();
+    await expect(tile(page).getByTestId('pos-card-stock')).toHaveText(`คงเหลือ ${start}`);
+    // the back office adjusts +4 (another screen): the open POS shows it well before the 15 s poll
+    await api('POST', '/inventory/adjust', adminToken, { productId: state.productId, type: 'ADD', amount: 4, reason: 'ปรับยอดเริ่มต้น' });
+    await expect(tile(page).getByTestId('pos-card-stock')).toHaveText(`คงเหลือ ${start + 4}`, { timeout: 6000 });
+    // a sale lowers the card and the server equally
+    await tile(page).click();
+    await page.getByRole('button', { name: 'ชำระเงิน' }).first().click();
+    await page.getByRole('dialog').getByRole('button', { name: /เงินสด \(Cash\)/ }).click();
+    await page.keyboard.type('20');
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog').filter({ hasText: 'ชำระเงินสำเร็จ!' })).toBeVisible();
+    await expect.poll(stockOf).toBe(start + 3);
+    await expect(tile(page).getByTestId('pos-card-stock')).toHaveText(`คงเหลือ ${start + 3}`, { timeout: 6000 });
+  } finally {
+    await ctx.close();
+  }
+  // "restart": a new window shows the same number
+  const again = await cashierPage(browser, { width: 1366, height: 768 });
+  try {
+    await expect(tile(again.page).getByTestId('pos-card-stock')).toHaveText(`คงเหลือ ${await stockOf()}`);
+  } finally {
+    await again.ctx.close();
+  }
+});

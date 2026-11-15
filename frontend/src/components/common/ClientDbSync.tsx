@@ -211,6 +211,41 @@ export function ClientDbSync() {
     };
   }, [userId]);
 
+  // Changes made on any screen / terminal reach this one at once (server-sent events), not only by the 15 s poll:
+  // stock adjusted in the back office shows on the POS card right away (BUG-02 v1.5.3).
+  useEffect(() => {
+    const token = getAuthToken();
+    if (!token || !userId) return;
+    const path = typeof window !== 'undefined' ? window.location.pathname : '';
+    if (path === '/m' || path.startsWith('/m/')) return;
+    const timers = new Map<string, ReturnType<typeof setTimeout>>();
+    const lastRun = new Map<string, number>();
+    const soon = (key: string, run: () => unknown) => {
+      // A burst of events (import, receiving a PO) becomes one refresh, and refreshes of one kind are at least 2 s
+      // apart: the server re-sends recent changes on every COMMIT for a few seconds, including the commit of the
+      // refresh's own read, which would otherwise keep refreshing in a loop.
+      if (timers.has(key)) return;
+      const wait = Math.max(300, (lastRun.get(key) ?? 0) + 2000 - Date.now());
+      timers.set(key, setTimeout(() => {
+        timers.delete(key);
+        lastRun.set(key, Date.now());
+        void Promise.resolve(run()).catch(() => undefined);
+      }, wait));
+    };
+    // (no refresh on 'shift' events: reading the current shift itself emits one -> endless loop)
+    const stop = startRealtime(token, (e: RealtimeEvent) => {
+      if (e.entity === 'product' || e.entity === 'stock' || e.entity === 'category' || e.entity === 'supplier') {
+        soon('products', () => useProductStore.getState().fetchProducts());
+      } else if (e.entity === 'customer' || e.entity === 'debt') {
+        soon('customers', () => fetchCustomers());
+      }
+    });
+    return () => {
+      stop();
+      timers.forEach((t) => clearTimeout(t));
+    };
+  }, [userId]);
+
   if (!status.unavailable && !status.pending && !status.error && !receipts.length) return null;
   return (
     <aside

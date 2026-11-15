@@ -9,6 +9,7 @@ import { formatCurrency } from '@/lib/utils';
 import { useDocumentSearchStore } from '@/lib/store/document-search-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { backOfficeHomeFor } from '@/lib/permissions';
+import { formatQty } from '@/lib/qty';
 import { useProductCardUnit } from '@/lib/pos/use-product-card-unit';
 import type { PosController } from '@/lib/pos/use-pos-controller';
 import type { PosViewMode } from '@/lib/pos/pos-variant';
@@ -39,11 +40,16 @@ function ClassicProductCard({
         </Badge>
       )}
 
-      {isLowStock && (
-        <Badge variant="destructive" className="absolute top-2 right-2 bg-red-50 text-xs text-red-600 border-red-200 z-10 font-bold">
-          เหลือ {product.stock}
-        </Badge>
-      )}
+      {/* stock left is always shown (it used to appear only when low, so a normal stock looked "unknown") */}
+      <Badge
+        data-testid="pos-card-stock"
+        variant={isLowStock ? 'destructive' : 'outline'}
+        className={`absolute top-2 right-2 z-10 text-xs font-bold ${
+          isLowStock ? 'bg-red-50 text-red-600 border-red-200' : 'bg-white/90 text-slate-600 border-slate-200'
+        }`}
+      >
+        {Number(product.stock) <= 0 ? `หมด (${formatQty(product.stock || 0)})` : `${isLowStock ? 'เหลือ' : 'คงเหลือ'} ${formatQty(product.stock)}`}
+      </Badge>
 
       <div className="mb-2.5 flex aspect-square w-full items-center justify-center rounded-xl bg-slate-100 overflow-hidden group-hover:scale-102 transition-transform">
         {product.imageUrl ? (
