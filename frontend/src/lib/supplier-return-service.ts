@@ -304,11 +304,8 @@ export function resolveProductSupplierAndCost(productId: string, sku?: string): 
   const resolvedSupplierName = supplier?.name || 'ไม่ระบุผู้จำหน่าย';
 
   const supplierEntryCost = supplierEntry?.lastCost !== undefined ? Number(supplierEntry.lastCost) : 0;
-  let costPrice = Number(prod?.costPrice || prod?.basePrice || supplierEntryCost || 0);
-  if (costPrice <= 0) {
-    const firstUnitPrice = Number(prod?.units?.[0]?.price || 0);
-    costPrice = firstUnitPrice > 0 ? firstUnitPrice : 0;
-  }
+  // a cost, never the selling price (basePrice / unit price are selling prices - BUG-05 v1.5.3)
+  const costPrice = Number(prod?.costPrice || supplierEntryCost || 0);
 
   return {
     supplierId: resolvedSupplierId,

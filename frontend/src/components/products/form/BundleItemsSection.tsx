@@ -16,7 +16,7 @@ function BundleSummary({ bundleItems, products }: { bundleItems: BundleItemForm[
 
   const totalComponentCost = bundleItems.reduce((sum, bi) => {
     const child = products.find((p) => p.id === bi.childProductId);
-    const pCost = child ? Number(child.costPrice ?? child.basePrice ?? 0) : 0;
+    const pCost = child ? Number(child.costPrice ?? 0) : 0;
     return sum + pCost * (Number(bi.quantity) || 1);
   }, 0);
 

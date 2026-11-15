@@ -270,6 +270,7 @@ export function toStoreProduct(p: ApiProduct | CachedProduct): Product {
     unit: baseUnitName,
     cost: baseCost,
     costPrice: baseCost,
+    ...(p.unitCost !== undefined && p.unitCost !== null && 'unitCost' in p ? { stockUnitCost: Number(p.unitCost) } : {}),
     basePrice: basePrice,
     price: basePrice,
     priceLevel1: p.priceLevel1 != null ? Number(p.priceLevel1) : basePrice,

@@ -539,6 +539,9 @@ export class ProductsService {
       priceLevel3: 'COALESCE(x.price_level_3, 0)',
       priceLevel4: 'COALESCE(x.price_level_4, 0)',
       priceLevel5: 'COALESCE(x.price_level_5, 0)',
+      // cost per unit as the table shows it (FIFO average of the stock on hand, else the reference cost);
+      // only for users who may see costs (others get the plain table order)
+      cost: opts.canViewCost ? 'COALESCE(x.avg_cost, x.cost_price, 0)' : 'x.pos',
     };
     if (opts.sort && !sortSql[opts.sort]) throw new BadRequestException('ลำดับการเรียงไม่ถูกต้อง');
     const orderBy = opts.sort ? Prisma.raw(`${sortSql[opts.sort]} ${dir}, x.pos`) : Prisma.raw('x.pos');
@@ -564,23 +567,30 @@ export class ProductsService {
     // stock as catalogStock computes it: batch sum, or complete sets of a bundle's children
     const offset = (page - 1) * limit;
     const withX = Prisma.sql`
-      WITH s AS (SELECT product_id, SUM(quantity_remaining) AS q FROM stock_batches GROUP BY product_id),
+      WITH s AS (SELECT product_id, SUM(quantity_remaining) AS q,
+                  -- FIFO pool cost of the stock on hand (batches still holding stock), as the inventory report values it
+                  SUM(quantity_remaining * unit_cost) FILTER (WHERE quantity_remaining > 0)
+                    / NULLIF(SUM(quantity_remaining) FILTER (WHERE quantity_remaining > 0), 0) AS avg_cost
+                FROM stock_batches GROUP BY product_id),
       bs AS (SELECT bi.bundle_product_id AS pid,
                MIN(floor(COALESCE(s.q, 0) / COALESCE(NULLIF(bi.quantity, 0), 1) + 0.000000001)) AS q
              FROM product_bundle_items bi LEFT JOIN s ON s.product_id = bi.child_product_id GROUP BY bi.bundle_product_id),
       x AS (SELECT p.id, p.name, p.sku, p.category_id, p.base_price, p.cost_price, p.price_level_1, p.price_level_2, p.price_level_3,
-              p.price_level_4, p.price_level_5, p.ctid AS pos,
+              p.price_level_4, p.price_level_5, p.ctid AS pos, p.is_bundle, NULLIF(s.avg_cost, 0) AS avg_cost,
               CASE WHEN p.is_bundle AND bs.pid IS NOT NULL THEN bs.q ELSE COALESCE(s.q, 0) END AS stock
             FROM products p LEFT JOIN s ON s.product_id = p.id LEFT JOIN bs ON bs.pid = p.id)`;
-    const rows = await this.prisma.$queryRaw<{ id: string; total: number }[]>`${withX}
-      SELECT x.id, count(*) OVER ()::int AS total FROM x ${where} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`;
+    const rows = await this.prisma.$queryRaw<{ id: string; total: number; unit_cost: string | null }[]>`${withX}
+      SELECT x.id, count(*) OVER ()::int AS total, COALESCE(x.avg_cost, x.cost_price)::text AS unit_cost
+      FROM x ${where} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`;
     let stats: Record<string, number> | undefined;
     if (opts.stats) {
-      // as the inventory page summed its rows: value = stock (>= 0) x selling price, or cost when the price is 0
+      // stock value at COST (BUG-05 v1.5.3: it was stock x selling price): stock on hand x FIFO pool cost, else x the
+      // reference cost - the inventory report's rule (reports inventory tab); bundles hold no stock of their own;
+      // 0 for users who may not see costs
       const [r] = await this.prisma.$queryRaw<Record<string, string>[]>`${withX}
         SELECT count(*)::text AS "totalItems", COALESCE(sum(x.stock), 0)::text AS "totalBaseUnits",
-          COALESCE(sum(GREATEST(x.stock, 0) * CASE WHEN COALESCE(x.price_level_1, x.base_price) <> 0 THEN COALESCE(x.price_level_1, x.base_price)
-            WHEN ${!!opts.canViewCost} THEN x.cost_price ELSE 0 END), 0)::text AS "totalValuation",
+          COALESCE(sum(CASE WHEN ${!!opts.canViewCost} AND NOT x.is_bundle AND x.stock > 0
+            THEN x.stock * COALESCE(x.avg_cost, x.cost_price, 0) ELSE 0 END), 0)::text AS "totalValuation",
           count(*) FILTER (WHERE x.stock > 0 AND x.stock <= ${threshold})::text AS "lowStockCount",
           count(*) FILTER (WHERE x.stock = 0)::text AS "outOfStockCount",
           count(*) FILTER (WHERE x.stock < 0)::text AS "negativeStockCount"
@@ -598,7 +608,16 @@ export class ProductsService {
     const ids = rows.map((r) => r.id);
     const catalog = await this.catalogRows(this.prisma, { ids });
     const byId = new Map(catalog.map((r) => [r.id, r]));
-    const data = ids.map((id) => byId.get(id)).filter((r): r is CatalogRow => !!r);
+    const unitCostOf = new Map(rows.map((r) => [r.id, r.unit_cost]));
+    // unitCost: cost per unit for the cost columns (FIFO pool of the stock on hand, else the reference cost); a cost
+    // field, removed for users without VIEW_COST by the controller
+    const data = ids
+      .map((id) => byId.get(id))
+      .filter((r): r is CatalogRow => !!r)
+      .map((r) => {
+        const c = unitCostOf.get(r.id);
+        return { ...r, unitCost: c === null || c === undefined ? null : Number(c) };
+      });
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit), allCount: all, lowStockThreshold: threshold }, ...(stats ? { stats } : {}) };
   }
 

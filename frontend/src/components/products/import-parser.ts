@@ -140,7 +140,7 @@ export function buildImportPreview(rawJson: RawImportRow[], products: ProductRec
       const diffs: string[] = [];
 
       if (existing) {
-        const existingCost = Number(existing.costPrice !== undefined && existing.costPrice !== null ? existing.costPrice : (existing.cost ?? existing.basePrice ?? 0));
+        const existingCost = Number(existing.costPrice !== undefined && existing.costPrice !== null ? existing.costPrice : (existing.cost ?? 0));
         const existingPrice1 = Number(existing.priceLevel1 !== undefined && existing.priceLevel1 !== null ? existing.priceLevel1 : (existing.price ?? existing.basePrice ?? 0));
         const existingPrices = [existingPrice1, Number(existing.priceLevel2 || 0), Number(existing.priceLevel3 || 0), Number(existing.priceLevel4 || 0), Number(existing.priceLevel5 || 0)];
         const existingStock = Number(existing.stock ?? existing.computedStock ?? 0);

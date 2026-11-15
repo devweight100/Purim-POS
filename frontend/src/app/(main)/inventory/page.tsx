@@ -7,6 +7,7 @@ import { useDebouncedValue } from '@/lib/use-debounced-value';
 import Link from 'next/link';
 import { toStoreProduct, useProductStore } from '@/lib/store/product-store';
 import type { ApiProduct, Product } from '@/lib/types';
+import { displayUnitCost } from '@/lib/product-cost';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -656,7 +657,7 @@ export default function InventoryPage() {
 
                         {/* Cost */}
                         <TableCell className="py-3.5 text-right font-semibold text-slate-700 text-sm">
-                          {formatCurrency(p.basePrice || p.cost || 0)}
+                          {displayUnitCost(p) !== undefined ? formatCurrency(displayUnitCost(p)!) : '-'}
                         </TableCell>
 
                         {/* Stock Base Units */}
@@ -1155,8 +1156,8 @@ export default function InventoryPage() {
                   </b>
                 </div>
                 <div className="text-right">
-                  <span className="text-slate-500 block">ต้นทุนฐาน:</span>
-                  <b className="text-slate-700 font-bold">{formatCurrency(targetProduct.basePrice || 0)}</b>
+                  <span className="text-slate-500 block">ต้นทุน / หน่วย:</span>
+                  <b className="text-slate-700 font-bold">{displayUnitCost(targetProduct) !== undefined ? formatCurrency(displayUnitCost(targetProduct)!) : '-'}</b>
                 </div>
               </div>
             )}

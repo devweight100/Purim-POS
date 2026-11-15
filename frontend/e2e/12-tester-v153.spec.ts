@@ -251,3 +251,28 @@ test('BUG-04: shift cash counts are typed from the keyboard (Tab between notes, 
     await ctx.close();
   }
 });
+
+test('BUG-05: cost columns and stock value use the recorded cost (12), never the selling price (20)', async ({ page }) => {
+  type PageRes = { data: Array<{ id: string; unitCost?: number | null }>; stats: { totalValuation: number } };
+  const pageRes = () => api<PageRes>('GET', `/products/page?page=1&limit=5&stats=1&q=${encodeURIComponent(NAME)}`, adminToken);
+  const before = await pageRes();
+  expect(before.data[0].unitCost).toBe(COST);
+  // +1 at the batch cost moves the stock value by the cost, not by the price
+  await api('POST', '/inventory/adjust', adminToken, { productId: state.productId, type: 'ADD', amount: 1, reason: 'ปรับยอดเริ่มต้น' });
+  const after = await pageRes();
+  expect(after.stats.totalValuation - before.stats.totalValuation).toBeCloseTo(COST, 6);
+  // the cashier sees no cost at all
+  const cashierRows = await api<PageRes>('GET', `/products/page?page=1&limit=5&q=${encodeURIComponent(NAME)}`, await apiLogin(CASHIER));
+  expect(cashierRows.data[0]).not.toHaveProperty('unitCost');
+
+  await uiLogin(page, ADMIN.username, ADMIN.password);
+  await expect(page).toHaveURL(/\/pos/);
+  await page.goto('/products');
+  await page.getByPlaceholder(/ค้นหา/).first().fill(NAME);
+  await expect(page.locator('tr').filter({ hasText: NAME }).getByTestId('product-cost')).toHaveText('฿12');
+  await page.goto('/inventory');
+  await page.getByPlaceholder('ค้นหาชื่อสินค้า, SKU, บาร์โค้ด...').fill(NAME);
+  const row = page.locator('tr').filter({ hasText: NAME });
+  await expect(row).toContainText('฿12');
+  await expect(row).not.toContainText('฿20');
+});

@@ -1043,7 +1043,7 @@ export function CreateSupplierReturnModal({
                               type="button"
                               onClick={() => {
                                 setSelectedProduct(p);
-                                setOverstockCost(String(p.costPrice || p.basePrice || 0));
+                                setOverstockCost(String(p.costPrice || 0));
                                 setProductSearch('');
                               }}
                               className="w-full p-2 text-left hover:bg-sky-50 flex justify-between items-center text-xs"
@@ -1053,7 +1053,7 @@ export function CreateSupplierReturnModal({
                                 <p className="text-[10px] text-slate-400 font-mono">SKU: {p.sku} | สต็อกคงเหลือ: {p.stock || 0} ชิ้น</p>
                               </div>
                               <span className="font-bold text-sky-700 font-mono">
-                                ทุน: {formatCurrency(p.costPrice || p.basePrice || 0)}
+                                ทุน: {formatCurrency(p.costPrice || 0)}
                               </span>
                             </button>
                           ))

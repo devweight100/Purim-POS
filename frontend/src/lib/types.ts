@@ -81,6 +81,8 @@ export interface Product {
   /** same as basePrice / costPrice (product-store sets both names) */
   price?: number;
   cost?: number;
+  /** cost per unit of the stock on hand (GET /products/page rows: FIFO pool, else the reference cost); cost-visible users only */
+  stockUnitCost?: number;
   /** supplier links as the server sent them */
   suppliers?: Array<{ id?: string; supplierId?: string; supplierSku?: string | null; unitCost?: number | string | null; isPreferred?: boolean; supplier?: { id?: string; name?: string } | null }>;
   /** older product shapes: supplier object or name */
@@ -754,6 +756,8 @@ export interface ApiProductSupplierLink {
 /** Product as the server sends it (GET /products, /products/:id, /products/barcode/:code). */
 export interface ApiProduct {
   id: string;
+  /** GET /products/page rows: cost per unit of the stock on hand (FIFO pool, else costPrice); VIEW_COST only */
+  unitCost?: DecimalJson | null;
   name?: string;
   sku: string;
   categoryId?: string | null;

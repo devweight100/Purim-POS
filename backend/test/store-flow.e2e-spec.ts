@@ -1249,10 +1249,27 @@ d('store flow (e2e)', () => {
       }
       // rows are the catalogue rows
       const one = (await api('get', '/products/page?page=1&limit=1&q=LIST-A_1', A).expect(200)).body.data[0];
-      expect(one).toEqual(catalog.find((p) => p.sku === 'LIST-A_1'));
+      const { unitCost: oneCost, ...oneRow } = one;
+      expect(oneRow).toEqual(catalog.find((p) => p.sku === 'LIST-A_1'));
+      expect(typeof oneCost === 'number' || oneCost === null).toBe(true);
       // inventory cards over every product
       const st = (await api('get', '/products/page?page=1&limit=1&stats=1', A).expect(200)).body.stats;
-      const val = rows.reduce((s, p) => s + Math.max(0, p.stock) * (p.basePrice || Number(catalog.find((x) => x.id === p.id).costPrice) || 0), 0);
+      // BUG-05 v1.5.3: valued at cost (FIFO pool of the stock on hand, else the reference cost), never the selling price
+      const pdb = new PrismaClient();
+      const batches = await pdb.stockBatch.findMany({ select: { productId: true, quantityRemaining: true, unitCost: true } });
+      const prods = await pdb.product.findMany({ select: { id: true, isBundle: true, costPrice: true } });
+      await pdb.$disconnect();
+      const val = prods.reduce((sum, p) => {
+        if (p.isBundle) return sum;
+        const mine = batches.filter((b) => b.productId === p.id);
+        const stockQ = mine.reduce((t, b) => t + Number(b.quantityRemaining), 0);
+        if (stockQ <= 0) return sum;
+        const pos = mine.filter((b) => Number(b.quantityRemaining) > 0);
+        const posQ = pos.reduce((t, b) => t + Number(b.quantityRemaining), 0);
+        const posV = pos.reduce((t, b) => t + Number(b.quantityRemaining) * Number(b.unitCost), 0);
+        const unit = posQ > 0 && posV > 0 ? posV / posQ : Number(p.costPrice ?? 0);
+        return sum + stockQ * unit;
+      }, 0);
       expect(st.totalItems).toBe(rows.length);
       expect(st.totalBaseUnits).toBeCloseTo(rows.reduce((s, p) => s + p.stock, 0), 6);
       expect(st.totalValuation).toBeCloseTo(val, 6);

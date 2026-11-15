@@ -23,7 +23,21 @@ Status per bug: reproduced? / real cause / fix / files / test.
   picture / calculator icon still opens the numpad (touch). Payment cash amount: typed + Enter (BUG-01).
   Close-shift "เงินสดที่นับได้" was already a normal input. Test: e2e/12 "BUG-04" (open 1x500 + 2x100 by keyboard,
   close-shift count by keyboard -> 700, "พอดี").
-- BUG-05..BUG-10: investigated (findings below), not fixed yet.
+- BUG-05: DONE. Real cause (tester's guess "fallback to price" half right): data was correct (cost_price 12, batch
+  unit_cost 12); the screens read the wrong field: toStoreProduct() maps `basePrice` = SELLING price, and the
+  products table "ต้นทุน" column, the inventory "ต้นทุน / หน่วย" column and the adjust dialog "ต้นทุนฐาน" displayed
+  p.basePrice; the inventory card value (GET /products/page stats, perf task 3) faithfully ported the old browser
+  sum stock x selling price (also counted bundles). Fix: /products/page rows carry `unitCost` (FIFO pool of the stock
+  on hand, else cost_price; a cost field, stripped without VIEW_COST), `sort=cost`; stats.totalValuation = stock x
+  that cost, bundles excluded, 0 without VIEW_COST (same rule as the reports inventory tab); frontend
+  lib/product-cost.ts displayUnitCost() used by ProductTableRow (+ pack rows), inventory row + adjust dialog.
+  Same selling-price-as-cost fallbacks removed in BundleItemsSection, CreateSupplierReturnModal,
+  supplier-return-service (also fell back to the unit selling price), import-parser diff. Profit reports already use
+  recorded COGS (unchanged). The +24 adjustment creates a batch at the product cost (12, costValue 288) - correct.
+  Tests: backend store-flow paged-products test now checks the value against an independent FIFO/cost computation
+  and the row unitCost; Playwright e2e/12 "BUG-05" (API unitCost 12, +1 moves value by 12, cashier has no unitCost,
+  products + inventory rows show ฿12).
+- BUG-06..BUG-10: investigated (findings below), not fixed yet.
 - Final verification: not run yet.
 
 ## Findings so far (WIP)

@@ -146,7 +146,7 @@ export type UpdateForm = <K extends keyof ProductForm>(key: K, value: ProductFor
 export type SetForm = (updater: (prev: ProductForm) => ProductForm) => void;
 
 // ─── Table ────────────────────────────────────────────────────────────
-export type SortKey = 'name' | 'stock' | 'basePrice' | PriceLevelKey;
+export type SortKey = 'name' | 'stock' | 'basePrice' | 'cost' | PriceLevelKey;
 export type SortDir = 'asc' | 'desc';
 export type StockFilter = 'all' | 'low' | 'out';
 

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatCurrency } from "@/lib/utils";
+import { displayUnitCost } from "@/lib/product-cost";
 import { computeMultipliers, getProductBarcodes, lowStockThreshold } from "./product-helpers";
 import { priceLevelKey, type CategoryOption, type PackagingUnitForm, type ProductImageItem, type ProductRecord } from "./types";
 
@@ -25,6 +26,8 @@ export function ProductTableRow({
   onEdit: () => void;
 }) {
   const stock = p.stock ?? 0;
+  // cost of the stock on hand, else the reference cost - never the selling price (BUG-05)
+  const unitCostOf = displayUnitCost(p);
   const lowThreshold = lowStockThreshold(p);
   const isNegativeStock = stock < 0;
   const isLowStock = stock > 0 && stock <= lowThreshold;
@@ -110,7 +113,7 @@ export function ProductTableRow({
           </Badge>
         </TableCell>
         <TableCell className="text-center text-slate-500 text-sm whitespace-nowrap">{p.unit || "-"}</TableCell>
-        <TableCell className="text-right text-slate-600 text-sm whitespace-nowrap">{p.basePrice != null ? formatCurrency(p.basePrice) : "-"}</TableCell>
+        <TableCell className="text-right text-slate-600 text-sm whitespace-nowrap" data-testid="product-cost">{unitCostOf !== undefined ? formatCurrency(unitCostOf) : "-"}</TableCell>
         <TableCell className="text-right font-semibold text-emerald-600 whitespace-nowrap">{p.priceLevel1 != null ? formatCurrency(p.priceLevel1) : p.basePrice != null ? formatCurrency(p.basePrice) : "-"}</TableCell>
         {[2,3,4,5].map(n => { const v = p[priceLevelKey(n)]; return <TableCell key={n} className="text-right text-slate-600 whitespace-nowrap">{v != null ? formatCurrency(v) : "-"}</TableCell>; })}
         <TableCell className="text-center">
@@ -122,7 +125,7 @@ export function ProductTableRow({
       {isExpanded && pkgUnits.map((unit, ui) => {
         const mult = pkgMults[ui];
         const unitStock = Math.floor(stock / mult);
-        const unitCost = p.basePrice != null ? Number(p.basePrice) * mult : null;
+        const unitCost = unitCostOf !== undefined ? unitCostOf * mult : null;
         return (
           <TableRow key={`${p.id}-pkg-${ui}`} className="bg-sky-50/40 border-sky-100 hover:bg-sky-50/60">
             <TableCell className="py-2" />

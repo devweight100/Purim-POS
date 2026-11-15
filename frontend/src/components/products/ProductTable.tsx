@@ -52,7 +52,7 @@ export function ProductTable({ data, f, sel, onEdit }: {
               <TableHead className="text-slate-500 whitespace-nowrap">หมวดหมู่</TableHead>
               <TableHead className={`${sortableHead} text-right`} onClick={() => handleSort("stock")}>จำนวน <SortIcon col="stock" sortKey={sortKey} sortDir={sortDir} /></TableHead>
               <TableHead className="text-slate-500 text-center whitespace-nowrap">หน่วย</TableHead>
-              <TableHead className={`${sortableHead} text-right`} onClick={() => handleSort("basePrice")}>ต้นทุน <SortIcon col="basePrice" sortKey={sortKey} sortDir={sortDir} /></TableHead>
+              <TableHead className={`${sortableHead} text-right`} onClick={() => handleSort("cost")}>ต้นทุน <SortIcon col="cost" sortKey={sortKey} sortDir={sortDir} /></TableHead>
               {PRICE_LEVELS.map(n => (
                 <TableHead key={n} className={`${sortableHead} text-right`} onClick={() => handleSort(priceLevelKey(n))}>
                   ราคา {n} <SortIcon col={priceLevelKey(n)} sortKey={sortKey} sortDir={sortDir} />
