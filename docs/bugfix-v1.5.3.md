@@ -45,7 +45,16 @@ Status per bug: reproduced? / real cause / fix / files / test.
   backend/src/products/dto/create-product.dto.ts, frontend/src/components/products/useProductForm.ts,
   product-helpers.ts, types.ts. Tests: backend store-flow "BUG-06" (create/update/omitted/bad row 400, 67/67),
   Playwright e2e/12 "BUG-06" (edit shows supplier + 12, change to 11 saved and shown).
-- BUG-12, BUG-10: investigated (findings below), not fixed yet.
+- BUG-12: DONE (reproduced in parts). Causes: (1) ghost click: the method cards sit where "ย้อนกลับ" was; on
+  1280x720 / 1093x614 the back button's centre is inside the "แบ่งชำระ (Split)" card, so the 2nd click of a double
+  click (or quick repeated clicks) opened Split "by itself"; (2) Escape with the numpad open closed the numpad AND the
+  payment window (sibling Base UI dialogs both handle Escape). Fix: PaymentModal ignores a method pick within 600 ms
+  of going back (goBackToMethods); NumpadPopup handles Escape in the capture phase and stops it (only the numpad
+  closes). Files: PaymentModal.tsx (with BUG-01), NumpadPopup.tsx. Test: e2e/12 "BUG-12" (asserts the overlap at
+  1280x720, double click stays on the method screen, Escape closes one window at a time).
+  Not changed: other sibling dialogs opened over a dialog (ApprovalDialog, ReceiptPdfModal over the payment window)
+  may still close both on Escape - left for the keyboard audit.
+- BUG-10: investigated (findings below), not fixed yet.
 - Final verification: not run yet.
 
 ## Findings so far (WIP)
