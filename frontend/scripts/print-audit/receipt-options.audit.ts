@@ -90,7 +90,7 @@ for (const c of CASES) {
     await api('PATCH', '/settings', token, { ...STORE, receiptHeader: 'ยินดีต้อนรับ เปิดทุกวัน 07:00-18:00', vatEnabled: c.vat, receiptOptions: c.options });
 
     // settings page: options card + live preview (slip, then A4); also refreshes this device's settings copy
-    await page.goto('/settings');
+    await page.goto('/settings?tab=sales');
     const card = page.getByTestId('receipt-options');
     await expect(card).toBeVisible();
     await expect(page.getByTestId('receipt-preview-slip')).toBeVisible();
