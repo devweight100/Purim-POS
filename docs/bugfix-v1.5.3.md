@@ -149,7 +149,46 @@ which also have a keyboard way); (2) no horizontal scroll at 1366x768, 1920x1080
   price levels 2-5 on 200 products). Scratch audit (every sidebar page x 3 sizes, document + inner horizontal overflow):
   initial failures: /pos (category chips row), /orders, /customers, /debts, /products (all 3 sizes), /inventory,
   /claim-inventory, /purchase-orders, /payables, all /reports pages (tab bar + tables).
-- BUG-07 + BUG-08 (products): IN PROGRESS.
+- BUG-07: DONE. Cause: 15 columns (barcode, SKU, name, category, stock, unit, cost, prices 1-5, edit) all
+  `whitespace-nowrap` inside an overflow-x-auto container (1593 px wide). Fix: table-fixed, SKU + barcodes under the
+  name (wraps, 2 lines max), category column only >= 1280 px (otherwise under the name), prices 2-5 hidden by default
+  ("แสดงราคา 2–5" toggle, remembered per browser, stacked in one column), edit column always on screen; sort headers
+  are real buttons. Shared table cells (ui/table.tsx) no longer force nowrap. Files: components/products/
+  ProductTable.tsx, ProductTableRow.tsx, ProductFilters.tsx, components/ui/table.tsx. Test: e2e 13 "BUG-07/08".
+- BUG-08: DONE. Shared hook lib/use-row-nav.ts (roving tabindex: Tab enters the table, ↑/↓/Home/End move, Enter or a
+  click on the row opens it; buttons inside the row keep their own action). Used on products (edit), orders (detail),
+  customers (detail), suppliers (edit), debts (history), purchase orders (detail), supplier returns (document),
+  payables (bill details), users (edit), categories (edit), inventory (stock card). ↓ in the products search box
+  jumps into the table. Claims rows have no "open" action (not changed). Tests: e2e 13 products + orders.
+- BUG-09: DONE. Spacing tokens in globals.css @theme: gap-btn (8 px), gap-btn-lg (12 px), p-edge / px-edge (16 px).
+  POS: top bar gap 12 + 16 px edge, history button outlined, categories wrap (max 2 rows, then scroll down), grid /
+  cart / summary / action bar 16 px from the edges, action bar gap 12, cart row buttons wrap with 8 px. Open-shift /
+  close-shift count: tiles 16 px apart, note picture and input 12 px apart, close X no longer over the total.
+  Tabs (ui/tabs.tsx), filter chips, status bars and row action buttons of the main pages: 8 px and wrap.
+  Test: e2e/layout.ts spacingIssues() on every main page x 3 sizes + POS bars / money grid (e2e 13).
+- BUG-11: DONE. form/QuickCreateDialog.tsx: "+ สร้างหมวดหมู่" (MANAGE_INVENTORY) and "+ เพิ่มผู้จำหน่าย"
+  (MANAGE_PURCHASES) open a small dialog (focus in the field, Enter saves, Escape closes only it); the list is reloaded
+  and the new item selected (supplier: first empty supplier row, or a new row); the form keeps its input. The old row
+  button is now "เพิ่มแถวผู้จำหน่าย" (e2e 12 updated). Ctrl+Enter saves the product form. Test: e2e 13 "BUG-11".
+- Audit fixes: report tab bar wraps, row-number column hidden below 1280 px on report tables, shifts / payables tables
+  tighter below 1280 px (payables hides "#" and the two deduction columns there - they are in the bill details),
+  orders / debts action buttons wrap. Escape / backdrop click: lib/dialog-stack.ts - only the topmost open dialog
+  closes (Base UI dialogs, sheets and the hand-made claim windows, which now also close on Escape). Visible focus
+  (global :focus-visible outline). Sidebar: aria-expanded on groups (they were keyboard buttons already; a collapsed
+  group's links appear after Enter), closed mobile drawer inert. POS: product cards focusable (↓ from search, arrows
+  move, Enter adds: reaches search results beyond the first 32), bill discount / points rows are buttons. PO supplier
+  tiles keyboard buttons. F2/F3/F4/F9/F10/F12 work (e2e 13).
+- Server follow-ups: DONE. PrismaService announces a transaction's writes at its COMMIT only (BEGIN/COMMIT/ROLLBACK
+  tracked; read-only commits and rollbacks announce nothing); product/stock events only when product_changes got
+  rows. TRUNCATE ("ล้างข้อมูลทั้งหมด") announces the truncated entities and the delta-sync epoch includes
+  product_changes' file node, so other terminals' old cursors get a full catalogue (deleted products vanish without
+  F5). Tests: backend prisma.service.spec.ts (6 cases), product-catalog.spec.ts (3-part epoch); manual SSE check:
+  GET /shifts/current + /products/sync x3 -> no event, category PATCH -> one event.
+
+## Out of scope / left
+- Sidebar menu links are stacked 2 px apart (menu items, mouse allowed by the owner; not counted by the spacing test).
+- Toasts (bottom right) cover the POS action bar for ~3 s after adding an item (not changed).
+- Dialog interiors other than the POS ones (PDF previews etc.) were not audited at 1093x614.
 
 ## Next
-BUG-08 other tables, BUG-09, BUG-11, audit fixes, server follow-ups, Playwright spec 13, verification.
+Finish spacing sweep, run e2e 13 + full verification, PROJECT_STATUS, screenshots.
