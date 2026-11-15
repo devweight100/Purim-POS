@@ -217,7 +217,7 @@ export function ClassicProductPanel({ pos }: { pos: PosController }) {
         )}
 
         {/* Logout last, away from the sale buttons */}
-        <PosLogoutButton variant="classic" />
+        <PosLogoutButton variant="classic" compact />
       </div>
 
       {/* Categories */}

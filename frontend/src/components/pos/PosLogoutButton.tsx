@@ -19,7 +19,8 @@ const BUTTON_CLASS: Record<Variant, string> = {
 };
 
 /** "ออกจากระบบ" for the sales screens: confirms, then signs out and goes to the login page. */
-export function PosLogoutButton({ variant = 'classic', className = '' }: { variant?: Variant; className?: string }) {
+/** `compact`: icon only below 2xl screens (the POS toolbar stays on one line). */
+export function PosLogoutButton({ variant = 'classic', className = '', compact = false }: { variant?: Variant; className?: string; compact?: boolean }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const userName = useAuthStore((s) => s.user?.fullName || s.user?.name || s.user?.username || '');
@@ -43,7 +44,7 @@ export function PosLogoutButton({ variant = 'classic', className = '' }: { varia
         aria-label="ออกจากระบบ"
       >
         <LogOut className="w-4 h-4" />
-        <span className="hidden sm:inline">ออกจากระบบ</span>
+        <span className={compact ? "hidden 2xl:inline" : "hidden sm:inline"}>ออกจากระบบ</span>
       </button>
 
       <Dialog open={open} onOpenChange={setOpen}>
