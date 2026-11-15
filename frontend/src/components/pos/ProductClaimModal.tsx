@@ -99,7 +99,7 @@ export function ProductClaimModal({
   const { products, fetchProducts } = useProductStore();
 
   // Search only when keyword is entered
-  const handleSearch = async () => {
+  const handleSearch = async (isLatest: () => boolean = () => true) => {
     const trimmed = searchKeyword.trim();
     if (!trimmed) {
       setEligibleItems([]);
@@ -109,8 +109,9 @@ export function ProductClaimModal({
       const results = await fetchClaimEligibleItems({
         searchKeyword: trimmed,
       });
-      setEligibleItems(results);
+      if (isLatest()) setEligibleItems(results);
     } catch (err) {
+      if (!isLatest()) return;
       setEligibleItems([]);
       toast.error('ค้นหาบิลจากเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่: ' + ((err as { message?: string } | null)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
     }
@@ -151,12 +152,15 @@ export function ProductClaimModal({
   }
 
   // Search the server for claimable bills while the dialog is open
+  // (every bill on the server is searched: wait for a pause in typing, keep only the latest answer)
+  const searchSeq = useRef(0);
   useEffect(() => {
     if (!open || !searchKeyword.trim()) return;
-    const search = async () => {
-      await handleSearch(); // sets state only after the request
-    };
-    void search();
+    const seq = ++searchSeq.current;
+    const timer = setTimeout(() => {
+      void handleSearch(() => seq === searchSeq.current); // sets state only after the request
+    }, 300);
+    return () => clearTimeout(timer);
   }, [open, searchKeyword, isBackoffice]);
 
   // When an item is selected, initialize selectedClaimUnit and reset claim qty to 1

@@ -817,6 +817,21 @@ export class OrdersService {
         { note: { contains: q, mode: 'insensitive' } },
         { items: { some: { product: { OR: [{ name: { contains: q, mode: 'insensitive' } }, { sku: { contains: q, mode: 'insensitive' } }] } } } },
       ];
+      // claim search (POS claim / eligibility): the claim screen also matches the parts of a bundle (the
+      // bundle snapshot kept on the bill line, or the bundle's current parts) and the walk-in name
+      // "ลูกค้าทั่วไป". The screen filters the rows again with its own rules; this only has to find them.
+      if (query.scope === 'claim') {
+        const like = `%${q.replace(/[\\%_]/g, (c: string) => '\\' + c)}%`;
+        const bundleLines: Array<{ order_id: string }> = await this.prisma.$queryRaw`
+          SELECT DISTINCT order_id FROM order_items WHERE bundle_data IS NOT NULL AND bundle_data::text ILIKE ${like}`;
+        const childMatch = { OR: [{ name: { contains: q, mode: 'insensitive' } }, { sku: { contains: q, mode: 'insensitive' } }] };
+        where.OR.push({ items: { some: { product: { bundleItems: { some: { childProduct: childMatch } } } } } });
+        if (bundleLines.length) where.OR.push({ id: { in: bundleLines.map((r) => r.order_id) } });
+        if ('ลูกค้าทั่วไป'.includes(q.toLowerCase())) where.OR.push({ customerId: null });
+        if (typeof query.customerId === 'string' && query.customerId) where.OR.push({ customerId: query.customerId });
+      }
+    } else if (query.scope === 'claim' && typeof query.customerId === 'string' && query.customerId) {
+      where.customerId = query.customerId;
     }
     const completedWhere = { ...where, status: OrderStatus.COMPLETED };
     const [orders, total, aggregate, completedCount, returnsAgg] = await Promise.all([

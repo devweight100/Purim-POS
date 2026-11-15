@@ -138,6 +138,7 @@ export async function getCustomerProductStock(params: {
   const eligibleItems = await fetchClaimEligibleItems({
     customerPhone: customerPhone || undefined,
     customerName: customerName || undefined,
+    customerId: customerId || undefined,
   });
 
   // Filter strictly by customer if id, phone, or name provided

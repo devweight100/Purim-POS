@@ -237,6 +237,8 @@ export interface ClaimVerificationQuery {
   productId?: string;
   sku?: string;
   searchKeyword?: string;
+  /** Server search only: also the bills of this customer (the caller filters by customer itself). */
+  customerId?: string;
 }
 
 /**
@@ -245,11 +247,7 @@ export interface ClaimVerificationQuery {
  * Throws when the server cannot be reached (claim quotas must never come from stale data).
  */
 export async function fetchClaimEligibleItems(query: ClaimVerificationQuery): Promise<ClaimEligibleItem[]> {
-  const [res] = await Promise.all([
-    apiFetch<ApiListResponse<ApiOrderLike> | null>('/orders?limit=500'),
-    fetchReplacementWarranties(),
-  ]);
-  const backendOrders: ApiOrderLike[] = (res && !Array.isArray(res) ? res.data : undefined) || (Array.isArray(res) ? res : []);
+  const [backendOrders] = await Promise.all([fetchClaimSearchOrders(query), fetchReplacementWarranties()]);
   const allClaims: ClaimRecord[] = await fetchClaimsOfOrders(backendOrders.map((b) => b.id || '').filter(Boolean));
 
   const orderMap = new Map<string, ClaimOrderRow>();
@@ -286,6 +284,37 @@ export async function fetchClaimEligibleItems(query: ClaimVerificationQuery): Pr
   });
 
   return verifyClaimEligibility(query, Array.from(orderMap.values()), allClaims);
+}
+
+/** At most this many matching bills (newest first) are read for one claim search. */
+export const CLAIM_SEARCH_MAX_BILLS = 1000;
+
+/** The text the server searches for a claim query: the keyword, else the bill number / phone / name / SKU. */
+export function claimSearchText(query: ClaimVerificationQuery): string {
+  return (query.searchKeyword || query.orderNumber || query.customerPhone || query.customerName || query.sku || '').trim();
+}
+
+/**
+ * Bills for a claim search, over every bill on the server (was the newest 500 bills only):
+ * GET /orders?scope=claim&search=... (bill number, customer name / phone, note, product / bundle part name or
+ * SKU; voided bills left out), newest first, up to CLAIM_SEARCH_MAX_BILLS. The eligibility rules
+ * (verifyClaimEligibility) then filter these exactly as before. No search text = no bills.
+ */
+export async function fetchClaimSearchOrders(query: ClaimVerificationQuery): Promise<ApiOrderLike[]> {
+  const text = claimSearchText(query);
+  if (!text && !query.customerId) return [];
+  const out: ApiOrderLike[] = [];
+  const limit = 500;
+  for (let page = 1; out.length < CLAIM_SEARCH_MAX_BILLS; page++) {
+    const params = new URLSearchParams({ scope: 'claim', statusGroup: 'completed', page: String(page), limit: String(limit) });
+    if (text) params.set('search', text);
+    if (query.customerId) params.set('customerId', query.customerId);
+    const res = await apiFetch<{ data: ApiOrderLike[]; meta?: { total?: number } } | null>(`/orders?${params}`);
+    if (!res || !Array.isArray(res.data)) throw new Error('ข้อมูลบิลจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+    out.push(...res.data);
+    if (res.data.length < limit || out.length >= Number(res.meta?.total ?? 0)) break;
+  }
+  return out.slice(0, CLAIM_SEARCH_MAX_BILLS);
 }
 
 export function verifyClaimEligibility(

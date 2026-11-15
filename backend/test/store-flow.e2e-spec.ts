@@ -1869,4 +1869,50 @@ d('store flow (e2e)', () => {
       await screens.compare(every);
     });
   });
+
+  describe('claim search over every bill (was the newest 500 bills)', () => {
+    it('GET /orders?scope=claim finds a bill older than the newest 500 by bill number, phone, name, product, bundle part, customer', async () => {
+      const db = new PrismaClient();
+      const tag = `CLS${Date.now()}`;
+      let oldId = '';
+      let voidId = '';
+      let customerId = '';
+      try {
+        const admin = await db.user.findFirstOrThrow({ where: { username: 'admin' } });
+        const product = await db.product.create({ data: { name: `สินค้าเก่า ${tag}`, sku: `${tag}-P`, basePrice: 50, costPrice: 20, unit: 'ชิ้น' } });
+        const customer = await db.customer.create({ data: { name: `ลูกค้าเก่า ${tag}`, phone: `09${String(Date.now()).slice(-8)}` } });
+        customerId = customer.id;
+        const old = new Date('2018-03-01T03:00:00Z');
+        const line = { productId: product.id, quantity: 1, unitPrice: 50, total: 50, bundleData: [{ productId: product.id, productName: `ชิ้นส่วน ${tag}`, sku: `${tag}-PART`, quantityPerBundle: 1, totalQuantity: 1, unitPrice: 50 }] };
+        const o1 = await db.order.create({ data: { orderNumber: `${tag}-OLD`, userId: admin.id, customerId: customer.id, subtotal: 50, totalAmount: 50, createdAt: old, items: { create: [line] } } });
+        const o2 = await db.order.create({ data: { orderNumber: `${tag}-VOID`, userId: admin.id, customerId: customer.id, status: 'VOIDED', subtotal: 50, totalAmount: 50, createdAt: old, items: { create: [{ ...line, bundleData: undefined }] } } });
+        oldId = o1.id;
+        voidId = o2.id;
+        const newer = new Date();
+        await db.order.createMany({
+          data: Array.from({ length: 520 }, (_, k) => ({ orderNumber: `${tag}-N${k}`, userId: admin.id, subtotal: 1, totalAmount: 1, createdAt: new Date(newer.getTime() - k * 1000) })),
+        });
+      } finally {
+        await db.$disconnect();
+      }
+      // the old claim screen read only these
+      const capped = (await api('get', '/orders?limit=500', A).expect(200)).body.data as any[];
+      expect(capped.some((o) => o.id === oldId)).toBe(false);
+      const ids = async (q: string, token = A) => ((await api('get', `/orders?scope=claim&statusGroup=completed&limit=500&${q}`, token).expect(200)).body.data as any[]).map((o) => o.id);
+      const phone = (await api('get', `/orders/${oldId}`, A).expect(200)).body.customer.phone;
+      for (const q of [`${tag}-OLD`, phone, `ลูกค้าเก่า ${tag}`, `สินค้าเก่า ${tag}`, `${tag}-P`, `ชิ้นส่วน ${tag}`, `${tag}-PART`]) {
+        const found = await ids('search=' + encodeURIComponent(q));
+        expect(found).toContain(oldId);
+        expect(found).not.toContain(voidId); // voided bills are never claimable
+      }
+      expect(await ids(`customerId=${customerId}`)).toEqual([oldId]);
+      // bundle snapshot only in claim scope; the orders page search is unchanged
+      expect(((await api('get', `/orders?search=${encodeURIComponent(`ชิ้นส่วน ${tag}`)}`, A).expect(200)).body.data as any[]).length).toBe(0);
+      // the walk-in name matches bills without a customer (as the claim screen's rule does)
+      const walkIn = await ids('search=' + encodeURIComponent('ลูกค้าทั่วไป'));
+      expect(walkIn.length).toBe(500);
+      // a cashier (POS_SELL) can search too
+      expect(await ids('search=' + encodeURIComponent(`${tag}-OLD`), C)).toEqual([oldId]);
+    });
+  });
 });
