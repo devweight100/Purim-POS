@@ -57,7 +57,17 @@ Status per bug: reproduced? / real cause / fix / files / test.
 - BUG-10: DONE. Cause: openAdjustDialog and the type buttons preset a reason ("ตรวจนับพบสินค้าเกิน" / ...), and
   "อื่นๆ" with no text silently saved "ปรับยอดสต็อก". Fix (inventory/page.tsx): no preset, a note "กรุณาเลือกเหตุผล
   ก่อนยืนยัน", confirm disabled (and a toast guard) until a reason is chosen / typed. Test: e2e/12 setup step.
-- Final verification: see below.
+- Final verification (2026-11-15): backend tsc + jest 122 + e2e 67/67 (fresh DB); frontend tsc, eslint 0 errors
+  (271 warnings), vitest 183, next build, Playwright 31/31 on a fresh DB; desktop node --check main.js preload.js.
+  All bugs of this round DONE: 01 02 03 04 05 06 12 10.
+
+## Uncertain / not reproduced exactly
+- BUG-01: the tester's exact trigger was not reproduced at 1366x768 / 1920x1080 at 100% scaling (sale works there).
+  Reproduced only on short windows (Windows display scaling); the other silent paths (hung outbox lock / IndexedDB,
+  2 s toast) were found by reading the code and are now guarded. If it still happens, ask for the screen size /
+  Windows scaling and the desktop log (userData/purim-pos.log).
+- BUG-03: graceful close keeps storage on Linux; loss reproduced with SIGKILL. The Windows close path was not run.
+- BUG-02 "เหลือ 0": reproduced as the up-to-15 s poll delay with the POS open while stock changed elsewhere.
 - Final verification: not run yet.
 
 ## Findings so far (WIP)
@@ -119,4 +129,9 @@ supplier "บริษัททดสอบ จำกัด", bank account 000-0
 stock 0 -> 24 via inventory "ปรับยอด" with reason "ปรับยอดเริ่มต้น".
 
 ## Notes for BUG-07/08/09/11 (other agent)
+- POS grid shows only the first 32 products ("แสดง 32 จากทั้งหมด 75") - you must search to reach the rest.
+- Products table: edit only through the pencil button (no row click / keyboard); many columns -> horizontal scroll at
+  1366 px; inventory sidebar links are inside collapsed groups (not reachable by keyboard until expanded).
+- Payment dialog: other sibling dialogs opened over it (ApprovalDialog, ReceiptPdfModal) may still close both on Escape.
+- `getByRole('button', { name: 'ปิดกะ' })` also matches "เปิดกะ" (substring): use exact: true in tests (02-shop-day).
 - Product form labels were not tied to inputs; added aria-labels on name, prices, supplier rows, reference cost.
