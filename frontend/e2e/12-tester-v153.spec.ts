@@ -70,7 +70,7 @@ test('setup + BUG-10: product made through the form, stock 0 -> 24 through the i
   await page.getByRole('button', { name: 'เพิ่มสินค้าใหม่' }).click();
   const form = page.getByRole('dialog').filter({ hasText: 'เพิ่มสินค้าใหม่' });
   await form.getByLabel('ชื่อสินค้า *', { exact: true }).fill(NAME);
-  await form.getByRole('button', { name: 'เพิ่มผู้จำหน่าย' }).click();
+  await form.getByRole('button', { name: 'เพิ่มแถวผู้จำหน่าย' }).click();
   await form.getByLabel('ผู้จำหน่าย 1', { exact: true }).selectOption({ label: SUPPLIER });
   await form.getByLabel('ต้นทุน/ชิ้น ผู้จำหน่าย 1', { exact: true }).fill(String(COST));
   await form.getByLabel('ต้นทุนอ้างอิง (สำหรับแสดงผล/ประมาณการ)', { exact: true }).fill(String(COST));

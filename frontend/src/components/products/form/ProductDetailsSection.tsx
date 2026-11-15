@@ -8,12 +8,14 @@ import { generateEAN13 } from "../product-helpers";
 import type { CategoryOption, ProductForm, UpdateForm } from "../types";
 
 /** Product type (standard / bundle), name, unit, category, size, color, stock (read only), low-stock alert, EAN-13 SKU. */
-export function ProductDetailsSection({ form, updateForm, categories, currentStock }: {
+export function ProductDetailsSection({ form, updateForm, categories, currentStock, onCreateCategory }: {
   form: ProductForm;
   updateForm: UpdateForm;
   categories: CategoryOption[];
   /** stock of the product being edited (0 for a new one) */
   currentStock: number;
+  /** opens the "new category" dialog; omitted when the user may not create categories */
+  onCreateCategory?: () => void;
 }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5">
@@ -67,9 +69,16 @@ export function ProductDetailsSection({ form, updateForm, categories, currentSto
           <Input value={form.unit} onChange={e => updateForm("unit", e.target.value)} className="h-10 border-slate-300" />
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">หมวดหมู่</label>
-          <select value={form.categoryId} onChange={e => updateForm("categoryId", e.target.value)} className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary">
-            <option value="">เลือกหมวดหมู่</option>
+          <div className="flex items-center justify-between gap-btn">
+            <label htmlFor="product-form-category" className="text-sm font-medium text-slate-700">หมวดหมู่</label>
+            {onCreateCategory && (
+              <button type="button" onClick={onCreateCategory} className="rounded text-xs font-bold text-primary hover:underline focus-visible:ring-2 focus-visible:ring-sky-400 outline-none">
+                + สร้างหมวดหมู่
+              </button>
+            )}
+          </div>
+          <select id="product-form-category" value={form.categoryId} onChange={e => updateForm("categoryId", e.target.value)} className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary">
+            <option value="">{categories.length === 0 ? "ยังไม่มีหมวดหมู่ (กด + สร้างหมวดหมู่)" : "เลือกหมวดหมู่"}</option>
             {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
           </select>
         </div>

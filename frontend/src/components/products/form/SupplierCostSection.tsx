@@ -8,11 +8,13 @@ import { formatCurrency } from "@/lib/utils";
 import type { ProductForm, ProductSupplierEntry, SetForm, SupplierOption, UpdateForm } from "../types";
 
 /** Suppliers with their last cost, the average of those costs, and the reference cost field (form.basePrice). */
-export function SupplierCostSection({ form, setForm, updateForm, suppliers }: {
+export function SupplierCostSection({ form, setForm, updateForm, suppliers, onCreateSupplier }: {
   form: ProductForm;
   setForm: SetForm;
   updateForm: UpdateForm;
   suppliers: SupplierOption[];
+  /** opens the "new supplier" dialog; omitted when the user may not create suppliers */
+  onCreateSupplier?: () => void;
 }) {
   const addSupplierEntry = () => setForm(prev => ({ ...prev, supplierEntries: [...prev.supplierEntries, { supplierId: "", lastCost: "", notes: "" }] }));
   const updateSupplierEntry = (i: number, key: keyof ProductSupplierEntry, val: string) =>
@@ -28,14 +30,21 @@ export function SupplierCostSection({ form, setForm, updateForm, suppliers }: {
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-btn">
         <div className="flex items-center gap-2">
           <Building2 className="h-4 w-4 text-primary" />
           <h3 className="font-semibold text-slate-900">ผู้จำหน่ายและต้นทุน</h3>
         </div>
-        <Button type="button" variant="outline" size="sm" className="h-8 text-xs border-primary text-primary hover:bg-primary/5" onClick={addSupplierEntry}>
-          <Plus className="w-3 h-3 mr-1" /> เพิ่มผู้จำหน่าย
-        </Button>
+        <div className="flex flex-wrap items-center gap-btn">
+          {onCreateSupplier && (
+            <Button type="button" variant="ghost" size="sm" className="h-8 text-xs text-primary hover:bg-primary/5" onClick={onCreateSupplier}>
+              + เพิ่มผู้จำหน่าย
+            </Button>
+          )}
+          <Button type="button" variant="outline" size="sm" className="h-8 text-xs border-primary text-primary hover:bg-primary/5" onClick={addSupplierEntry}>
+            <Plus className="w-3 h-3 mr-1" /> เพิ่มแถวผู้จำหน่าย
+          </Button>
+        </div>
       </div>
 
       {/* Cost strategy note */}
@@ -52,7 +61,7 @@ export function SupplierCostSection({ form, setForm, updateForm, suppliers }: {
       {form.supplierEntries.length === 0 ? (
         <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 py-5 text-center text-sm text-slate-400">
           <Building2 className="w-7 h-7 mx-auto text-slate-200 mb-1" />
-          <p>ยังไม่มีผู้จำหน่าย — คลิก &quot;เพิ่มผู้จำหน่าย&quot; เพื่อเพิ่ม</p>
+          <p>ยังไม่มีผู้จำหน่าย — คลิก &quot;เพิ่มแถวผู้จำหน่าย&quot; เพื่อเลือก{suppliers.length === 0 ? " (ยังไม่มีผู้จำหน่ายในระบบ: กด \"+ เพิ่มผู้จำหน่าย\")" : ""}</p>
         </div>
       ) : (
         <div className="space-y-2">

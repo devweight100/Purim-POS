@@ -36,7 +36,7 @@ export default function ProductsPage() {
       <ProductTable data={data} f={filters} sel={selection} onEdit={productForm.handleOpenEdit} />
 
       {/* Dialog */}
-      <ProductFormDialog state={productForm} products={data.catalog} onNeedCatalog={data.ensureCatalog} categories={data.categories} suppliers={data.suppliers} />
+      <ProductFormDialog state={productForm} products={data.catalog} onNeedCatalog={data.ensureCatalog} categories={data.categories} suppliers={data.suppliers} reloadCategories={data.reloadCategories} reloadSuppliers={data.reloadSuppliers} />
 
       {/* ─── EXCEL IMPORT PREVIEW DIALOG (SMART SELECTIVE DIFF & CHUNKING) ─── */}
       <ImportPreviewDialog state={productImport} />

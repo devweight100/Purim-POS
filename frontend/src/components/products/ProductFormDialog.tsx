@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
+import { hasPermission } from "@/lib/permissions";
+import { useAuthStore } from "@/lib/store/auth-store";
+import { QuickCreateDialog } from "./form/QuickCreateDialog";
 import { PackagePlus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,15 +19,38 @@ import type { ProductFormState } from "./useProductForm";
 import type { CategoryOption, ProductRecord, SupplierOption } from "./types";
 
 /** Add / edit product dialog: images, details, bundle, barcodes, suppliers & cost, prices, pack units, wholesale. */
-export function ProductFormDialog({ state, products, onNeedCatalog, categories, suppliers }: {
+export function ProductFormDialog({ state, products, onNeedCatalog, categories, suppliers, reloadCategories, reloadSuppliers }: {
   state: ProductFormState;
   /** every product (bundle item picker); loaded with onNeedCatalog when a bundle is edited */
   products: ProductRecord[];
   onNeedCatalog: () => Promise<unknown>;
   categories: CategoryOption[];
   suppliers: SupplierOption[];
+  reloadCategories: () => Promise<void>;
+  reloadSuppliers: () => Promise<void>;
 }) {
   const { dialogMode, editingProduct, form, setForm, updateForm, handleSave, close } = state;
+  // BUG-11: create a missing category / supplier without leaving (or losing) the form
+  const user = useAuthStore((st) => st.user);
+  const canCreateCategory = hasPermission(user, "MANAGE_INVENTORY");
+  const canCreateSupplier = hasPermission(user, "MANAGE_PURCHASES");
+  const [quick, setQuick] = useState<null | "category" | "supplier">(null);
+  const createCategory = async (name: string) => {
+    const created = await apiFetch<{ id: string }>("/categories", { method: "POST", body: JSON.stringify({ name }) });
+    await reloadCategories().catch(() => undefined);
+    updateForm("categoryId", created.id);
+  };
+  const createSupplier = async (name: string) => {
+    const created = await apiFetch<{ id: string }>("/suppliers", { method: "POST", body: JSON.stringify({ name }) });
+    await reloadSuppliers().catch(() => undefined);
+    setForm(prev => {
+      const blank = prev.supplierEntries.findIndex(e => !e.supplierId);
+      const supplierEntries = blank >= 0
+        ? prev.supplierEntries.map((e, i) => i === blank ? { ...e, supplierId: created.id } : e)
+        : [...prev.supplierEntries, { supplierId: created.id, lastCost: "", notes: "" }];
+      return { ...prev, supplierEntries };
+    });
+  };
   const needCatalog = dialogMode !== null && form.isBundle;
   useEffect(() => {
     if (needCatalog) void onNeedCatalog().catch(() => undefined);
@@ -31,7 +58,13 @@ export function ProductFormDialog({ state, products, onNeedCatalog, categories, 
 
   return (
     <Dialog open={dialogMode !== null} onOpenChange={open => { if (!open) close(); }}>
-      <DialogContent className="flex flex-col bg-white p-0 text-slate-900 sm:max-w-5xl max-h-[92dvh] overflow-hidden gap-0">
+      <DialogContent
+        className="flex flex-col bg-white p-0 text-slate-900 sm:max-w-5xl max-h-[92dvh] overflow-hidden gap-0"
+        onKeyDown={e => {
+          // Ctrl+Enter saves from anywhere in the form (plain Enter is left to the fields: barcode scanners send Enter)
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && quick === null) { e.preventDefault(); void handleSave(); }
+        }}
+      >
         <DialogHeader className="border-b border-slate-200 px-6 py-4 shrink-0">
           <DialogTitle className="flex items-center gap-2 text-lg font-bold">
             {dialogMode === "edit" ? <><Pencil className="h-5 w-5 text-primary" /> แก้ไขสินค้า: {editingProduct?.name}</> : <><PackagePlus className="h-5 w-5 text-primary" /> เพิ่มสินค้าใหม่</>}
@@ -44,13 +77,13 @@ export function ProductFormDialog({ state, products, onNeedCatalog, categories, 
               {/* 0. รูปภาพสินค้า */}
               <ProductImagesSection images={form.images} setForm={setForm} />
               {/* 1. รายละเอียดสินค้า */}
-              <ProductDetailsSection form={form} updateForm={updateForm} categories={categories} currentStock={editingProduct ? (editingProduct.stock ?? 0) : 0} />
+              <ProductDetailsSection form={form} updateForm={updateForm} categories={categories} currentStock={editingProduct ? (editingProduct.stock ?? 0) : 0} onCreateCategory={canCreateCategory ? () => setQuick("category") : undefined} />
               {/* รายการสินค้าในชุด (Bundle Items) */}
               {form.isBundle && <BundleItemsSection form={form} setForm={setForm} products={products} editingProductId={editingProduct?.id} />}
               {/* 2. บาร์โค้ดทั้งหมด */}
               <BarcodesSection form={form} setForm={setForm} suppliers={suppliers} />
               {/* 3. ผู้จำหน่ายและต้นทุน */}
-              <SupplierCostSection form={form} setForm={setForm} updateForm={updateForm} suppliers={suppliers} />
+              <SupplierCostSection form={form} setForm={setForm} updateForm={updateForm} suppliers={suppliers} onCreateSupplier={canCreateSupplier ? () => setQuick("supplier") : undefined} />
               {/* 4. ราคาขาย */}
               <PricesSection form={form} updateForm={updateForm} />
               {/* 5. Packaging units */}
@@ -66,10 +99,26 @@ export function ProductFormDialog({ state, products, onNeedCatalog, categories, 
         {/* ✅ Footer มี padding ด้านล่าง pb-7 เพื่อเว้นระยะห่างขอบล่างกับปุ่มไม่ให้ชิดกัน */}
         <DialogFooter className="border-t border-slate-200 bg-slate-50 px-6 pt-5 pb-7 shrink-0 flex-row gap-3 justify-end">
           <Button variant="outline" className="border-slate-300 text-slate-600 px-6 h-10 font-medium" onClick={close}>ยกเลิก</Button>
-          <Button className={`px-8 h-10 font-bold ${dialogMode === "edit" ? "bg-sky-500 text-white hover:bg-sky-600" : "bg-primary text-white hover:bg-primary/90"}`} onClick={handleSave}>
+          <Button className={`px-8 h-10 font-bold ${dialogMode === "edit" ? "bg-sky-500 text-white hover:bg-sky-600" : "bg-primary text-white hover:bg-primary/90"}`} onClick={handleSave} title="Ctrl+Enter">
             {dialogMode === "edit" ? "บันทึกการแก้ไข" : "บันทึกสินค้า"}
           </Button>
         </DialogFooter>
+        <QuickCreateDialog
+          open={quick === "category"}
+          onOpenChange={o => setQuick(o ? "category" : null)}
+          title="สร้างหมวดหมู่ใหม่"
+          label="ชื่อหมวดหมู่"
+          placeholder="เช่น เครื่องดื่ม"
+          onCreate={createCategory}
+        />
+        <QuickCreateDialog
+          open={quick === "supplier"}
+          onOpenChange={o => setQuick(o ? "supplier" : null)}
+          title="เพิ่มผู้จำหน่ายใหม่"
+          label="ชื่อบริษัท / ผู้จำหน่าย"
+          placeholder="เช่น บริษัท ปุริม ซัพพลาย จำกัด"
+          onCreate={createSupplier}
+        />
       </DialogContent>
     </Dialog>
   );

@@ -101,6 +101,16 @@ export function useProducts(query: ProductPageQuery) {
     void run();
   }, []);
 
+  /** Re-read the category / supplier lists (after one was created from the product form, BUG-11). */
+  const reloadCategories = useCallback(async () => {
+    const cats = await apiFetch<ApiCategory[] | null>("/categories");
+    setCategories(cacheServerCategories(cats) as CategoryOption[]);
+  }, []);
+  const reloadSuppliers = useCallback(async () => {
+    const supps: unknown = await apiFetch("/suppliers");
+    setSuppliers(Array.isArray(supps) ? (supps as SupplierOption[]) : []);
+  }, []);
+
   /** Reload the current page (retry button / after saving). */
   const loadData = useCallback(() => {
     setLoading(true);
@@ -124,7 +134,7 @@ export function useProducts(query: ProductPageQuery) {
 
   return {
     products, total, allCount,
-    categories, suppliers,
+    categories, suppliers, reloadCategories, reloadSuppliers,
     loading, loadError,
     allPackaging, setAllPackaging,
     allImages, setAllImages,
