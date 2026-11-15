@@ -504,7 +504,7 @@ export function Sidebar() {
 
       {/* Mobile drawer */}
       {/* closed drawer is inert: its links must not take the keyboard focus while off screen */}
-      <div inert={!mobileOpen} className={cn(
+      <div data-slot="sidebar" inert={!mobileOpen} className={cn(
         'lg:hidden fixed top-0 left-0 h-full w-64 bg-sidebar z-50 flex flex-col transition-transform duration-300 shadow-2xl border-r border-sidebar-border',
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       )}>
@@ -512,7 +512,7 @@ export function Sidebar() {
       </div>
 
       {/* Desktop sidebar */}
-      <div className="hidden lg:flex fixed top-0 left-0 h-full w-[240px] bg-sidebar flex-col z-50 border-r border-sidebar-border">
+      <div data-slot="sidebar" className="hidden lg:flex fixed top-0 left-0 h-full w-[240px] bg-sidebar flex-col z-50 border-r border-sidebar-border">
         {renderNavContent(desktopScrollRef, false)}
       </div>
     </>
