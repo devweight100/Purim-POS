@@ -142,12 +142,16 @@ export function NumpadPopup({
           setValue('');
         }
       } else if (key === 'Escape' || code === 'Escape') {
+        // only this numpad closes: the window under it (payment, shift count) must stay open (BUG-12 v1.5.3)
+        e.preventDefault();
+        e.stopImmediatePropagation();
         onOpenChange(false);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    // capture phase: runs before the dialogs' own document-level Escape handling
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [open, value, isFirstKey, onConfirm, onOpenChange, allowDecimals, fullAmount]);
 
   const displayFormatted = quantityMode

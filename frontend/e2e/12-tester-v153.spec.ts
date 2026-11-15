@@ -37,7 +37,7 @@ const tile = (page: Page) => page.getByTestId('pos-product-card').filter({ hasTe
 
 async function openShiftIfAsked(page: Page) {
   const dlg = page.getByRole('dialog').filter({ hasText: 'ระบุเงินในลิ้นชัก' });
-  await dlg.or(page.getByRole('button', { name: 'ปิดกะ' })).first().waitFor();
+  await dlg.or(page.getByRole('button', { name: 'ปิดกะ', exact: true })).first().waitFor();
   if (await dlg.isVisible()) {
     await dlg.getByLabel('ยอดเงินรวมในลิ้นชัก', { exact: true }).fill('700');
     await dlg.getByRole('button', { name: 'ตกลง' }).click();
@@ -85,8 +85,8 @@ test('setup: product made through the form, stock 0 -> 24 through the inventory 
   await adj.getByPlaceholder('ระบุจำนวนตัวเลข...').fill('24');
   await adj.getByText('ปรับยอดเริ่มต้น', { exact: true }).click();
   await adj.getByRole('button', { name: 'ยืนยันปรับยอดสต็อก' }).click();
-  await expect(page.getByText(/0 ➔ 24/)).toBeVisible();
-  expect(await stockOf()).toBe(24);
+  await expect(page.getByText(/ปรับสต็อก .* เรียบร้อย: 0 ➔ 24/)).toBeVisible();
+  await expect.poll(stockOf).toBe(24);
 });
 
 test('BUG-01: cash sale of 2 on a short window (Windows display scaling): confirm visible, typing + Enter saves, stock 24 -> 22', async ({ browser }) => {
@@ -201,7 +201,7 @@ test('BUG-03: the open shift survives a restart that lost the browser storage: t
     await expect(banner).toContainText('฿700');
     await banner.locator('div').filter({ hasText: opened.shift.shiftNumber }).getByRole('button', { name: 'ใช้กะนี้ต่อที่เครื่องนี้' }).click();
     await expect(dlg2).toBeHidden();
-    await expect(page2.getByRole('button', { name: 'ปิดกะ' })).toBeVisible();
+    await expect(page2.getByRole('button', { name: 'ปิดกะ', exact: true })).toBeVisible();
     // same shift, same float, no second shift opened
     expect(await page2.evaluate(() => localStorage.getItem('purim_terminal_id'))).toBe(terminalId);
     const now = await api<{ shift: { id: string }; startingCash: number | string }>('GET', `/shifts/current?terminalId=${terminalId}`, await apiLogin(CASHIER));
@@ -209,7 +209,7 @@ test('BUG-03: the open shift survives a restart that lost the browser storage: t
     expect(Number(now.startingCash)).toBe(700);
     // a reload keeps it without asking again
     await page2.reload();
-    await expect(page2.getByRole('button', { name: 'ปิดกะ' })).toBeVisible();
+    await expect(page2.getByRole('button', { name: 'ปิดกะ', exact: true })).toBeVisible();
     await expect(page2.getByRole('dialog').filter({ hasText: 'ระบุเงินในลิ้นชัก' })).toHaveCount(0);
   } finally {
     await second.close();
@@ -235,7 +235,7 @@ test('BUG-04: shift cash counts are typed from the keyboard (Tab between notes, 
     await expect(dlg).toBeHidden();
 
     // closing: count the drawer the same way
-    await page.getByRole('button', { name: 'ปิดกะ' }).click();
+    await page.getByRole('button', { name: 'ปิดกะ', exact: true }).click();
     const close = page.getByRole('dialog').filter({ hasText: 'ปิดกะการขาย (Close Shift)' });
     await close.getByTitle('คลิกเพื่อนับแบงค์และเหรียญเหมือนตอนเปิดกะ').click();
     const count = page.getByRole('dialog').filter({ hasText: 'ยอดเงินสดจากการนับแบงค์/เหรียญ' });
@@ -301,4 +301,43 @@ test('BUG-06: the supplier and its cost chosen when creating the product are sav
   await expect.poll(supplierRows).toEqual([[SUPPLIER, 11]]);
   form = await openEdit();
   await expect(form.getByLabel('ต้นทุน/ชิ้น ผู้จำหน่าย 1', { exact: true })).toHaveValue('11');
+});
+
+test('BUG-12: double click on ย้อนกลับ does not open the method card under the pointer; Escape closes one window at a time', async ({ browser }) => {
+  const { ctx, page } = await cashierPage(browser, { width: 1280, height: 720 });
+  try {
+    await tile(page).click();
+    await page.getByRole('button', { name: 'ชำระเงิน' }).first().click();
+    const pay = page.getByRole('dialog').first();
+    await pay.getByRole('button', { name: /เงินสด \(Cash\)/ }).click();
+    const back = (await pay.getByRole('button', { name: 'ย้อนกลับ' }).boundingBox())!;
+    const x = back.x + back.width / 2;
+    const y = back.y + back.height / 2;
+    await page.mouse.click(x, y);
+    // the second click of the double click lands on the "แบ่งชำระ" card (this window size puts it there)
+    const split = (await pay.getByRole('button', { name: /แบ่งชำระ \(Split\)/ }).boundingBox())!;
+    expect(x >= split.x && x <= split.x + split.width && y >= split.y && y <= split.y + split.height).toBe(true);
+    await page.mouse.click(x, y);
+    await expect(pay).toContainText('เลือกช่องทางการชำระเงิน');
+    await expect(pay).not.toContainText('รับชำระแบบแบ่งจ่าย');
+    // a deliberate click a moment later still works
+    await page.waitForTimeout(700);
+    await pay.getByRole('button', { name: /เงินสด \(Cash\)/ }).click();
+    await expect(pay).toContainText('รับชำระด้วยเงินสด');
+
+    // Escape with the numpad open closes only the numpad, the next Escape the payment window; nothing else opens
+    const dialogs = page.locator('[role="dialog"]');
+    await pay.getByRole('button', { name: 'เปิด Numpad' }).click();
+    await expect(dialogs.filter({ hasText: 'ระบุจำนวนเงินสดที่รับ' })).toHaveCount(1);
+    await expect(dialogs).toHaveCount(2);
+    await page.keyboard.press('Escape');
+    await expect(dialogs).toHaveCount(1);
+    await expect(dialogs).toContainText('รับชำระด้วยเงินสด');
+    await page.keyboard.press('Escape');
+    await expect(dialogs).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(dialogs).toHaveCount(0);
+  } finally {
+    await ctx.close();
+  }
 });
