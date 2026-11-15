@@ -90,7 +90,19 @@ export function useProductForm(data: ProductsData, setExpandedRows: Dispatch<Set
 
     let persistedProduct: Partial<ProductRecord> | null = null;
     try {
-      const payload = productToApiPayload(updatedProductObj);
+      const payload = {
+        ...productToApiPayload(updatedProductObj),
+        // supplier rows of the form (BUG-06: never sent, so they were lost on save). A blank cost is left out:
+        // the server then keeps the stored one (users who may not see costs get blank costs in the form).
+        supplierEntries: form.supplierEntries
+          .filter((e) => e.supplierId)
+          .map((e, i) => ({
+            supplierId: e.supplierId,
+            ...(e.lastCost !== '' && Number.isFinite(Number(e.lastCost)) ? { unitCost: Number(e.lastCost) } : {}),
+            ...(e.notes.trim() ? { supplierSku: e.notes.trim() } : {}),
+            isPreferred: i === 0,
+          })),
+      };
       persistedProduct = editingProduct?.id
         ? await api.products.update(editingProduct.id, payload)
         : await api.products.create(payload);

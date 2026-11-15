@@ -276,3 +276,29 @@ test('BUG-05: cost columns and stock value use the recorded cost (12), never the
   await expect(row).toContainText('฿12');
   await expect(row).not.toContainText('฿20');
 });
+
+test('BUG-06: the supplier and its cost chosen when creating the product are saved and shown when editing; edits are saved', async ({ page }) => {
+  const supplierRows = async () =>
+    (await api<{ supplierEntries: Array<{ supplier?: { name?: string } | null; supplierName?: string; unitCost: number | string }> }>('GET', `/products/${state.productId}`, adminToken))
+      .supplierEntries.map((e) => [e.supplierName || e.supplier?.name, Number(e.unitCost)]);
+  expect(await supplierRows()).toEqual([[SUPPLIER, COST]]);
+
+  await uiLogin(page, ADMIN.username, ADMIN.password);
+  await expect(page).toHaveURL(/\/pos/);
+  await page.goto('/products');
+  await page.getByPlaceholder('ค้นหาชื่อ, รหัส, บาร์โค้ด...').fill(NAME);
+  const openEdit = async () => {
+    await page.locator('tr').filter({ hasText: NAME }).getByRole('button').last().click();
+    return page.getByRole('dialog').filter({ hasText: 'แก้ไขสินค้า' });
+  };
+  let form = await openEdit();
+  await expect(form).not.toContainText('ยังไม่มีผู้จำหน่าย');
+  await expect(form.getByLabel('ผู้จำหน่าย 1', { exact: true }).locator('option:checked')).toHaveText(SUPPLIER);
+  await expect(form.getByLabel('ต้นทุน/ชิ้น ผู้จำหน่าย 1', { exact: true })).toHaveValue(String(COST));
+  await form.getByLabel('ต้นทุน/ชิ้น ผู้จำหน่าย 1', { exact: true }).fill('11');
+  await form.getByRole('button', { name: 'บันทึกการแก้ไข' }).click();
+  await expect(form).toBeHidden();
+  await expect.poll(supplierRows).toEqual([[SUPPLIER, 11]]);
+  form = await openEdit();
+  await expect(form.getByLabel('ต้นทุน/ชิ้น ผู้จำหน่าย 1', { exact: true })).toHaveValue('11');
+});

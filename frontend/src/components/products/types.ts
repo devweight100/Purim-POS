@@ -52,7 +52,7 @@ export interface ProductRecord {
   isBundle?: boolean;
   bundleItems?: Array<{ childProductId?: string; productId?: string; quantity?: number | string }>;
   supplierId?: string | null;
-  supplierEntries?: Array<{ supplierId?: string }>;
+  supplierEntries?: Array<{ supplierId?: string; lastCost?: number | string | null; unitCost?: number | string | null; notes?: string | null }>;
   imageUrl?: string | null;
   defaultSellingUnitId?: string | null;
 }

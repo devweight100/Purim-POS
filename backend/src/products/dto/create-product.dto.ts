@@ -77,6 +77,33 @@ export class ProductBundleItemDto {
   quantity!: number;
 }
 
+/** A supplier of the product with its purchase cost (product form "ผู้จำหน่ายและต้นทุน"). */
+export class ProductSupplierEntryDto {
+  @IsString()
+  @IsNotEmpty()
+  supplierId!: string;
+
+  @IsNumber()
+  @IsOptional()
+  unitCost?: number;
+
+  @IsNumber()
+  @IsOptional()
+  lastCost?: number;
+
+  @IsString()
+  @IsOptional()
+  supplierSku?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isPreferred?: boolean;
+}
+
 export class CreateProductDto {
   @IsString()
   @IsNotEmpty()
@@ -166,4 +193,14 @@ export class CreateProductDto {
   @ValidateNested({ each: true })
   @Type(() => ProductBundleItemDto)
   bundleItems?: ProductBundleItemDto[];
+
+  /**
+   * Supplier rows (BUG-06 v1.5.3: the global whitelist pipe dropped this field, so suppliers chosen in the product
+   * form were never saved). Sent = replaces the product's supplier list; omitted = kept.
+   */
+  @IsArray()
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => ProductSupplierEntryDto)
+  supplierEntries?: ProductSupplierEntryDto[];
 }

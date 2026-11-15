@@ -218,6 +218,23 @@ d('store flow (e2e)', () => {
   });
 
   describe('purchasing', () => {
+    it('BUG-06: supplier rows of the product form are saved on create and on update (were dropped by the whitelist)', async () => {
+      const sup = (await api('post', '/suppliers', A, { name: 'บริษัททดสอบ จำกัด E2E' }).expect(201)).body;
+      const sku = 'BUG06-' + Date.now();
+      const made = (await api('post', '/products', A, { name: 'น้ำดื่มทดสอบ BUG06', sku, basePrice: 20, priceLevel1: 20, costPrice: 12, unit: 'ขวด',
+        supplierEntries: [{ supplierId: sup.id, unitCost: 12, supplierSku: 'S-1', isPreferred: true }] }).expect(201)).body;
+      const read = async () => (await api('get', `/products/${made.id}`, A).expect(200)).body;
+      let p = await read();
+      expect(p.supplierEntries.map((e: any) => [e.supplierId, Number(e.unitCost), e.supplierSku])).toEqual([[sup.id, 12, 'S-1']]);
+      await api('patch', `/products/${made.id}`, A, { name: 'น้ำดื่มทดสอบ BUG06', sku, basePrice: 20, supplierEntries: [{ supplierId: sup.id, unitCost: 11 }] }).expect(200);
+      p = await read();
+      expect(p.supplierEntries.map((e: any) => Number(e.unitCost))).toEqual([11]);
+      // omitted = kept
+      await api('patch', `/products/${made.id}`, A, { name: 'น้ำดื่มทดสอบ BUG06', sku, basePrice: 20 }).expect(200);
+      expect((await read()).supplierEntries).toHaveLength(1);
+      // an unknown field inside a row is still refused like any bad input
+      await api('patch', `/products/${made.id}`, A, { name: 'x', sku, basePrice: 20, supplierEntries: [{ supplierId: 5 }] }).expect(400);
+    });
     it('PO → receive → supplier return note → pay with the credit deducted', async () => {
       const sup = (await api('post', '/suppliers', A, { name: 'E2E Supplier', creditTerms: 30 })).body;
       const po = (await api('post', '/purchase-orders', A, { supplierId: sup.id, status: 'ISSUED', items: [{ productId: state.p.id, quantity: 10, unitCost: 5 }] }).expect(201)).body;

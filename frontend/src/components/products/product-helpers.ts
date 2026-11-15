@@ -262,7 +262,14 @@ export function productToForm(p: ProductRecord): ProductForm {
           return { barcode: o.barcode || "", supplierId: o.supplierId || "", label: o.label || "" };
         })
       : [{ barcode: "", supplierId: "", label: "" }],
-    supplierEntries: [],
+    // the product's suppliers as saved (BUG-06: the edit form always started empty)
+    supplierEntries: (Array.isArray(p.supplierEntries) ? p.supplierEntries : [])
+      .filter((e) => e && e.supplierId)
+      .map((e) => ({
+        supplierId: String(e.supplierId),
+        lastCost: e.lastCost !== undefined && e.lastCost !== null && e.lastCost !== '' ? String(e.lastCost) : '',
+        notes: e.notes ?? '',
+      })),
     packagingUnits: getProductPackagingUnits(p),
     images: getProductImages(p),
     wholesaleSteps: getProductWholesaleSteps(p),

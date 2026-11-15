@@ -37,7 +37,15 @@ Status per bug: reproduced? / real cause / fix / files / test.
   Tests: backend store-flow paged-products test now checks the value against an independent FIFO/cost computation
   and the row unitCost; Playwright e2e/12 "BUG-05" (API unitCost 12, +1 moves value by 12, cashier has no unitCost,
   products + inventory rows show ฿12).
-- BUG-06..BUG-10: investigated (findings below), not fixed yet.
+- BUG-06: DONE. Real cause, two layers: (1) the form never sent the rows (useProductForm built the payload without
+  supplierEntries; productToForm always started with []) - already so before the 70066b1 refactor; (2) even if sent,
+  CreateProductDto had no `supplierEntries`, so the global ValidationPipe({whitelist}) dropped it. Fix: DTO
+  ProductSupplierEntryDto + supplierEntries (sent = replaces, omitted = kept; costs of users without VIEW_COST kept
+  by the existing preserveCosts path); form sends rows (blank cost left out) and loads them on edit. Files:
+  backend/src/products/dto/create-product.dto.ts, frontend/src/components/products/useProductForm.ts,
+  product-helpers.ts, types.ts. Tests: backend store-flow "BUG-06" (create/update/omitted/bad row 400, 67/67),
+  Playwright e2e/12 "BUG-06" (edit shows supplier + 12, change to 11 saved and shown).
+- BUG-12, BUG-10: investigated (findings below), not fixed yet.
 - Final verification: not run yet.
 
 ## Findings so far (WIP)
