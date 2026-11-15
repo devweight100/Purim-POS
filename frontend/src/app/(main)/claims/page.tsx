@@ -491,7 +491,7 @@ export default function ClaimsPage() {
               <span>รายการ จากทั้งหมด {total} รายการ</span>
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-btn">
               <Button
                 size="sm"
                 variant="outline"

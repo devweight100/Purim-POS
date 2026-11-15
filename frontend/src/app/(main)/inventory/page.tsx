@@ -784,7 +784,7 @@ export default function InventoryPage() {
               </div>
 
               {/* Page Buttons */}
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-btn">
                 <Button
                   variant="outline"
                   size="sm"
@@ -970,7 +970,7 @@ export default function InventoryPage() {
                 </select>
               </div>
 
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-btn">
                 <Button
                   variant="outline"
                   size="sm"

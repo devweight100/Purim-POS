@@ -462,7 +462,7 @@ export default function CustomersPage() {
 
         {/* Customers Table */}
         <div className="w-full">
-          <Table className="w-full">
+          <Table className="w-full table-fixed">
             <TableHeader className="bg-slate-50/90 border-b border-slate-200">
               <TableRow>
                 <TableHead className="w-[28%] text-slate-600 font-bold text-xs uppercase">รหัส / ชื่อสมาชิก & บริษัท</TableHead>

@@ -492,7 +492,7 @@ export default function ClaimInventoryPage() {
         <TabsContent value="products" className="m-0 space-y-3">
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
                 <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">
@@ -625,7 +625,7 @@ export default function ClaimInventoryPage() {
 
                           {/* 10. Actions */}
                           <td className="py-3.5 px-3.5 text-center">
-                            <div className="flex items-center justify-center gap-btn">
+                            <div className="flex flex-wrap items-center justify-center gap-btn">
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -664,7 +664,7 @@ export default function ClaimInventoryPage() {
                   แสดงหน้า {currentPage} จากทั้งหมด {totalProductPages} หน้า (รวม {productTotal} สินค้า)
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-btn">
                   <Button
                     variant="outline"
                     size="sm"
@@ -957,7 +957,7 @@ export default function ClaimInventoryPage() {
                 <div className="text-slate-500 font-medium">
                   แสดงหน้า {recordsPage} จากทั้งหมด {totalRecordPages} หน้า (รวม {filteredCount} ใบเคลม)
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-btn">
                   <Button variant="outline" size="sm" onClick={() => setRecordsPage((p) => Math.max(1, p - 1))} disabled={recordsPage === 1} className="h-7 w-7 p-0">
                     <ChevronLeft className="w-3.5 h-3.5" />
                   </Button>

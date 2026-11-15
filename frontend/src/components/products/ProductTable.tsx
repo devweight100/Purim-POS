@@ -25,7 +25,7 @@ function SortButton({ col, label, f, align = "left" }: { col: SortKey; label: st
     <button
       type="button"
       onClick={() => f.handleSort(col)}
-      className={`inline-flex items-center rounded font-bold text-slate-500 hover:text-sky-600 select-none outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${align === "right" ? "justify-end w-full" : ""}`}
+      className={`flex w-full items-center rounded font-bold text-slate-500 hover:text-sky-600 select-none outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${align === "right" ? "justify-end" : "justify-start"}`}
     >
       {label} <SortIcon col={col} sortKey={f.sortKey} sortDir={f.sortDir} />
     </button>

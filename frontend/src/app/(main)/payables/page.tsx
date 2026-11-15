@@ -503,7 +503,7 @@ export default function PayablesPage() {
                         />
                       </th>
                       <th className="py-3.5 px-2 text-center w-12">#</th>
-                      <th className="py-3.5 px-3.5 text-left min-w-[170px]">เลขที่บิลผู้จำหน่าย (Invoice)</th>
+                      <th className="py-3.5 px-3.5 text-left min-w-[120px]">เลขที่บิลผู้จำหน่าย (Invoice)</th>
                       <th className="py-3.5 px-3 text-left w-32">เลขที่ PO</th>
                       <th className="py-3.5 px-3 text-center w-28">วันที่บิล</th>
                       <th className="py-3.5 px-3 text-left">บริษัทผู้จำหน่าย</th>
