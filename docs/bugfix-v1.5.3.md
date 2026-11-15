@@ -54,7 +54,10 @@ Status per bug: reproduced? / real cause / fix / files / test.
   1280x720, double click stays on the method screen, Escape closes one window at a time).
   Not changed: other sibling dialogs opened over a dialog (ApprovalDialog, ReceiptPdfModal over the payment window)
   may still close both on Escape - left for the keyboard audit.
-- BUG-10: investigated (findings below), not fixed yet.
+- BUG-10: DONE. Cause: openAdjustDialog and the type buttons preset a reason ("ตรวจนับพบสินค้าเกิน" / ...), and
+  "อื่นๆ" with no text silently saved "ปรับยอดสต็อก". Fix (inventory/page.tsx): no preset, a note "กรุณาเลือกเหตุผล
+  ก่อนยืนยัน", confirm disabled (and a toast guard) until a reason is chosen / typed. Test: e2e/12 setup step.
+- Final verification: see below.
 - Final verification: not run yet.
 
 ## Findings so far (WIP)

@@ -302,7 +302,7 @@ export default function InventoryPage() {
     setTargetProduct(prod || products[0] || null);
     setAdjustType('ADD');
     setAdjustAmount('');
-    setAdjustReason('ตรวจนับพบสินค้าเกิน');
+    setAdjustReason(''); // no preset reason: the user picks one (BUG-10)
     setAdjustCustomReason('');
     setIsAdjustModalOpen(true);
   };
@@ -326,8 +326,11 @@ export default function InventoryPage() {
       return;
     }
 
-    const finalReason =
-      adjustReason === 'other' ? adjustCustomReason.trim() || 'ปรับยอดสต็อก' : adjustReason;
+    if (!adjustReason || (adjustReason === 'other' && !adjustCustomReason.trim())) {
+      toast.error('กรุณาเลือกเหตุผลการปรับสต็อก');
+      return;
+    }
+    const finalReason = adjustReason === 'other' ? adjustCustomReason.trim() : adjustReason;
 
     if ((adjustType === 'ADD' || adjustType === 'SUB') && numAmount <= 0) {
       toast.error('จำนวนที่ปรับต้องมากกว่า 0');
@@ -1170,7 +1173,7 @@ export default function InventoryPage() {
                   type="button"
                   onClick={() => {
                     setAdjustType('ADD');
-                    setAdjustReason('ตรวจนับพบสินค้าเกิน');
+                    setAdjustReason(''); // no preset reason: the user picks one (BUG-10)
                   }}
                   className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${
                     adjustType === 'ADD'
@@ -1186,7 +1189,7 @@ export default function InventoryPage() {
                   type="button"
                   onClick={() => {
                     setAdjustType('SUB');
-                    setAdjustReason('สินค้าชำรุด / เสียหาย');
+                    setAdjustReason(''); // no preset reason: the user picks one (BUG-10)
                   }}
                   className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${
                     adjustType === 'SUB'
@@ -1202,7 +1205,7 @@ export default function InventoryPage() {
                   type="button"
                   onClick={() => {
                     setAdjustType('SET');
-                    setAdjustReason('ตรวจนับสต็อกจริงประจำงวด');
+                    setAdjustReason(''); // no preset reason: the user picks one (BUG-10)
                   }}
                   className={`p-3 rounded-xl border flex flex-col items-center gap-1.5 transition-all ${
                     adjustType === 'SET'
@@ -1254,6 +1257,7 @@ export default function InventoryPage() {
             {/* Reason Selection */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-700 block">เหตุผล / สาเหตุในการปรับสต็อก *</label>
+              {!adjustReason && <p data-testid="adjust-reason-required" className="text-xs font-semibold text-amber-700">กรุณาเลือกเหตุผลก่อนยืนยัน</p>}
               <div className="space-y-1.5 text-xs">
                 {(adjustType === 'ADD'
                   ? [
@@ -1326,7 +1330,7 @@ export default function InventoryPage() {
             </Button>
             <Button
               onClick={handleSaveAdjustment}
-              disabled={adjustAmount === '' || Number(adjustAmount) < 0}
+              disabled={adjustAmount === '' || Number(adjustAmount) < 0 || !adjustReason || (adjustReason === 'other' && !adjustCustomReason.trim())}
               className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-7 h-11 shadow-sm text-sm"
             >
               <CheckCircle2 className="w-4 h-4 mr-2" /> ยืนยันปรับยอดสต็อก

@@ -60,7 +60,7 @@ test.beforeAll(async () => {
   await api('POST', '/suppliers', adminToken, { name: SUPPLIER });
 });
 
-test('setup: product made through the form, stock 0 -> 24 through the inventory dialog', async ({ page }) => {
+test('setup + BUG-10: product made through the form, stock 0 -> 24 through the inventory dialog (reason must be chosen)', async ({ page }) => {
   await uiLogin(page, ADMIN.username, ADMIN.password);
   await expect(page).toHaveURL(/\/pos/);
   await page.goto('/products');
@@ -83,7 +83,12 @@ test('setup: product made through the form, stock 0 -> 24 through the inventory 
   await page.locator('tr').filter({ hasText: NAME }).getByRole('button', { name: /ปรับยอด/ }).click();
   const adj = page.getByRole('dialog').filter({ hasText: 'ปรับยอดสต็อกสินค้า' });
   await adj.getByPlaceholder('ระบุจำนวนตัวเลข...').fill('24');
+  // BUG-10: no reason chosen in advance; confirming needs one
+  await expect(adj.locator('input[name=adjustReason]:checked')).toHaveCount(0);
+  await expect(adj.getByTestId('adjust-reason-required')).toBeVisible();
+  await expect(adj.getByRole('button', { name: 'ยืนยันปรับยอดสต็อก' })).toBeDisabled();
   await adj.getByText('ปรับยอดเริ่มต้น', { exact: true }).click();
+  await expect(adj.getByTestId('adjust-reason-required')).toHaveCount(0);
   await adj.getByRole('button', { name: 'ยืนยันปรับยอดสต็อก' }).click();
   await expect(page.getByText(/ปรับสต็อก .* เรียบร้อย: 0 ➔ 24/)).toBeVisible();
   await expect.poll(stockOf).toBe(24);
