@@ -17,7 +17,7 @@ export function PricesSection({ form, updateForm }: { form: ProductForm; updateF
         {PRICE_LEVELS.map(n => (
           <div key={n} className="space-y-1.5">
             <label className="text-xs font-medium text-slate-600">ราคา {n}</label>
-            <Input type="number" min="0" step="0.01" value={form[priceLevelKey(n)]} onChange={e => updateForm(priceLevelKey(n), e.target.value)} className="h-9 border-slate-300 text-right text-sm" />
+            <Input aria-label={`ราคา ${n}`} type="number" min="0" step="0.01" value={form[priceLevelKey(n)]} onChange={e => updateForm(priceLevelKey(n), e.target.value)} className="h-9 border-slate-300 text-right text-sm" />
           </div>
         ))}
       </div>

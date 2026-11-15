@@ -60,7 +60,7 @@ export function ProductDetailsSection({ form, updateForm, categories, currentSto
 
         <div className="space-y-1.5 sm:col-span-2">
           <label className="text-sm font-medium text-slate-700">ชื่อสินค้า *</label>
-          <Input value={form.name} onChange={e => updateForm("name", e.target.value)} className="h-10 border-slate-300" />
+          <Input aria-label="ชื่อสินค้า *" value={form.name} onChange={e => updateForm("name", e.target.value)} className="h-10 border-slate-300" />
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">หน่วยย่อยสุด</label>

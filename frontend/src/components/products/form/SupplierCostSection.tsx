@@ -60,14 +60,14 @@ export function SupplierCostSection({ form, setForm, updateForm, suppliers }: {
             <div key={i} className="grid grid-cols-[1fr_120px_1fr_auto] gap-2 items-end">
               <div className="space-y-1">
                 {i === 0 && <label className="text-xs font-medium text-slate-500">ผู้จำหน่าย</label>}
-                <select value={entry.supplierId} onChange={e => updateSupplierEntry(i, "supplierId", e.target.value)} className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary">
+                <select aria-label={`ผู้จำหน่าย ${i + 1}`} value={entry.supplierId} onChange={e => updateSupplierEntry(i, "supplierId", e.target.value)} className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary">
                   <option value="">เลือกผู้จำหน่าย</option>
                   {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
               <div className="space-y-1">
                 {i === 0 && <label className="text-xs font-medium text-slate-500">ต้นทุน/ชิ้น</label>}
-                <Input type="number" min="0" step="0.01" value={entry.lastCost} onChange={e => updateSupplierEntry(i, "lastCost", e.target.value)} className="h-9 border-slate-300 text-sm text-right" />
+                <Input aria-label={`ต้นทุน/ชิ้น ผู้จำหน่าย ${i + 1}`} type="number" min="0" step="0.01" value={entry.lastCost} onChange={e => updateSupplierEntry(i, "lastCost", e.target.value)} className="h-9 border-slate-300 text-sm text-right" />
               </div>
               <div className="space-y-1">
                 {i === 0 && <label className="text-xs font-medium text-slate-500">หมายเหตุ</label>}
@@ -96,7 +96,7 @@ export function SupplierCostSection({ form, setForm, updateForm, suppliers }: {
       <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-3">
         <div className="flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">ต้นทุนอ้างอิง (สำหรับแสดงผล/ประมาณการ)</label>
-          <Input type="number" min="0" step="0.01" value={form.basePrice} onChange={e => updateForm("basePrice", e.target.value)} className="h-10 border-slate-300 text-right max-w-[160px]" />
+          <Input aria-label="ต้นทุนอ้างอิง (สำหรับแสดงผล/ประมาณการ)" type="number" min="0" step="0.01" value={form.basePrice} onChange={e => updateForm("basePrice", e.target.value)} className="h-10 border-slate-300 text-right max-w-[160px]" />
         </div>
         <p className="text-xs text-slate-400 flex-1">ต้นทุนจริงคำนวณจาก FIFO เมื่อมีการขาย ตัวเลขนี้ใช้แสดงในรายงานประมาณการเท่านั้น</p>
       </div>

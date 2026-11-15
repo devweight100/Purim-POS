@@ -12,6 +12,8 @@ import type { ApiProduct, CheckoutRequest, CheckoutResult } from './types';
 
 const DB_NAME = 'purim_pos_offline_db';
 const DB_VERSION = 1;
+/** longest wait for the offline database to open */
+const OPEN_TIMEOUT_MS = 8000;
 
 /** A server product as kept in IndexedDB: prices as numbers and a flat barcode index. */
 export interface CachedProduct extends Omit<ApiProduct, 'barcodes' | 'basePrice' | 'costPrice'> {
@@ -42,6 +44,13 @@ function openDB(): Promise<IDBDatabase> {
     }
 
     const request = indexedDB.open(DB_NAME, DB_VERSION);
+    // An open that never answers (e.g. queued behind a database delete another connection blocks) must not
+    // hang the caller - a sale used to wait forever with a greyed-out button and no message.
+    let settled = false;
+    const timer = setTimeout(() => {
+      settled = true;
+      reject(new Error('ที่เก็บข้อมูลในเครื่อง (IndexedDB) ไม่ตอบสนอง กรุณาปิดแท็บ/หน้าต่าง POS อื่น แล้วโหลดหน้าใหม่ (F5)'));
+    }, OPEN_TIMEOUT_MS);
 
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
@@ -62,11 +71,14 @@ function openDB(): Promise<IDBDatabase> {
     };
 
     request.onsuccess = () => {
+      clearTimeout(timer);
+      if (settled) { request.result.close(); return; }
+      settled = true;
       request.result.onversionchange = () => request.result.close();
       resolve(request.result);
     };
-    request.onblocked = () => reject(new Error('กรุณาปิดแท็บ POS อื่นก่อนอัปเดตที่เก็บข้อมูล'));
-    request.onerror = () => reject(request.error);
+    request.onblocked = () => { clearTimeout(timer); settled = true; reject(new Error('กรุณาปิดแท็บ POS อื่นก่อนอัปเดตที่เก็บข้อมูล')); };
+    request.onerror = () => { clearTimeout(timer); settled = true; reject(request.error); };
   });
 }
 

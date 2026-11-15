@@ -29,6 +29,7 @@ function ClassicProductCard({
 
   return (
     <div
+      data-testid="pos-product-card"
       onClick={() => onAddToCart(product, activeUnit)}
       className="relative flex cursor-pointer select-none flex-col rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-xs transition-all hover:border-sky-400 hover:bg-sky-50/40 hover:shadow-md group"
     >

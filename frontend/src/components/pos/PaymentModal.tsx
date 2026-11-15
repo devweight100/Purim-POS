@@ -90,8 +90,15 @@ export function PaymentModal({
   
   // Cash & QR tracking
   const [cashReceived, setCashReceived] = useState<number>(0);
+  /** the cash amount as typed in the "รับเงินสดมา" field (keyboard entry) */
+  const [cashText, setCashText] = useState('');
   const [qrReceived, setQrReceived] = useState<number>(0);
   const [numpadTarget, setNumpadTarget] = useState<NumpadTarget>('NONE');
+  /** why the last confirm did not save (shown in the dialog, next to the buttons; a toast alone was easy to miss) */
+  const [payError, setPayError] = useState<string | null>(null);
+  const cashInputRef = useRef<HTMLInputElement | null>(null);
+  /** when the cashier last went back to the method screen (a second click on "ย้อนกลับ" must not pick a method) */
+  const backAtRef = useRef(0);
 
   // Bank accounts for QR payment & Split payment
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
@@ -110,12 +117,18 @@ export function PaymentModal({
   // Cash method logic
   const isCashSufficient = cashReceived >= total;
   const change = isCashSufficient ? cashReceived - total : 0;
+  const cashHint = isCashSufficient
+    ? null
+    : cashReceived > 0
+    ? `รับเงินยังไม่พอ ขาดอีก ${formatCurrency(Math.round((total - cashReceived) * 100) / 100)}`
+    : 'พิมพ์จำนวนเงินที่รับมา หรือกดธนบัตร แล้วกด Enter';
 
   // Split method logic
   const splitTotalReceived = cashReceived + qrReceived;
   const splitRemaining = Math.max(0, total - splitTotalReceived);
   const splitChange = Math.max(0, splitTotalReceived - total);
   const isSplitSufficient = splitTotalReceived >= total;
+  const splitHint = isSplitSufficient ? null : `ยอดรับยังไม่ครบ ขาดอีก ${formatCurrency(splitRemaining)}`;
 
   // Auto-close countdown timer state for SUCCESS step
   const [countdown, setCountdown] = useState<number>(5);
@@ -124,6 +137,8 @@ export function PaymentModal({
   const openChangedForClose = useHasChanged(open);
   if (openChangedForClose && !open) {
     setCashReceived(0);
+    setCashText('');
+    setPayError(null);
     setQrReceived(0);
     setNumpadTarget('NONE');
     setStep('METHOD');
@@ -170,22 +185,66 @@ export function PaymentModal({
     onOpenChange(isOpen);
   };
 
+  /** cash received as a number (buttons / numpad) and the text of the typing field together */
+  const setCash = (amount: number) => {
+    const n = Math.max(0, Math.round(amount * 100) / 100);
+    setCashReceived(n);
+    setCashText(n > 0 ? String(n) : '');
+    setPayError(null);
+  };
+
+  /** typing in the "รับเงินสดมา" field: digits and at most 2 decimals */
+  const onCashTyped = (raw: string) => {
+    const text = raw.replace(/,/g, '').replace(/[^\d.]/g, '');
+    if (!/^\d{0,9}(\.\d{0,2})?$/.test(text)) return;
+    setCashText(text);
+    setCashReceived(text === '' || text === '.' ? 0 : Number(text));
+    setPayError(null);
+  };
+
+  const focusCashInput = () => {
+    // after a banknote button the keyboard goes back to the amount field: Enter confirms, digits type
+    setTimeout(() => cashInputRef.current?.focus({ preventScroll: true }), 0);
+  };
+
+  const goBackToMethods = () => {
+    backAtRef.current = Date.now();
+    setPayError(null);
+    setStep('METHOD');
+  };
+
   const handleSelectMethod = (m: Method) => {
+    // the method cards sit where "ย้อนกลับ" was: a double click on "ย้อนกลับ" used to open the card under the
+    // pointer (e.g. แบ่งชำระ) by itself
+    if (Date.now() - backAtRef.current < 600) return;
     setMethod(m);
     setStep('PROCESS');
-    if (m === 'CASH') setCashReceived(0);
+    setPayError(null);
+    if (m === 'CASH') setCash(0);
     if (m === 'SPLIT') {
-      setCashReceived(0);
+      setCash(0);
       setQrReceived(0);
     }
   };
 
   const addCash = (amount: number) => {
-    setCashReceived(prev => prev + amount);
+    setCash(cashReceived + amount);
+    focusCashInput();
   };
 
   const exactCash = () => {
-    setCashReceived(total);
+    setCash(total);
+    focusCashInput();
+  };
+
+  /** Enter in the amount field */
+  const confirmCashByKeyboard = () => {
+    if (isSubmitting) return;
+    if (!isCashSufficient) {
+      setPayError(cashHint);
+      return;
+    }
+    void handleConfirmPayment();
   };
 
   const handleConfirmPayment = async () => {
@@ -202,10 +261,17 @@ export function PaymentModal({
       ? Number(attachedClaim.discountAmount ?? attachedClaim.totalClaimValue ?? (attachedClaim.quantity || 1) * (attachedClaim.unitPrice || 0))
       : 0;
 
+    setPayError(null);
     if (attachedClaim && claimFaceValue > claimDiscountAmt) {
-      toast.error(
-        `ยอดบิลยังไม่พอใช้ส่วนลดเคลม ${formatCurrency(claimFaceValue)} ได้ครบ กรุณาเพิ่มสินค้าอีก ${formatCurrency(claimFaceValue - claimDiscountAmt)} หรือยกเลิกส่วนลดเคลมก่อนชำระ`
-      );
+      const msg = `ยอดบิลยังไม่พอใช้ส่วนลดเคลม ${formatCurrency(claimFaceValue)} ได้ครบ กรุณาเพิ่มสินค้าอีก ${formatCurrency(claimFaceValue - claimDiscountAmt)} หรือยกเลิกส่วนลดเคลมก่อนชำระ`;
+      setPayError(msg);
+      toast.error(msg);
+      return;
+    }
+    if (!orderToEditPayment && !shiftStore.currentShift?.id) {
+      const msg = 'ยังไม่ได้เปิดกะของเครื่องนี้ จึงบันทึกการขายไม่ได้ — ปิดหน้านี้แล้วกดปุ่ม "เปิดกะ" ก่อนขาย';
+      setPayError(msg);
+      toast.error(msg);
       return;
     }
     
@@ -549,10 +615,14 @@ export function PaymentModal({
       }
       approvalIdRef.current = null;
       if (!backendOrder && error instanceof ApiError && !isRetryableError(error)) operationId.current = null;
-      toast.error('บันทึกการชำระเงินไม่ได้: ' + (error instanceof Error ? error.message : String(error)));
+      const msg = 'บันทึกการชำระเงินไม่ได้: ' + (error instanceof Error ? error.message : String(error));
+      setPayError(msg);
+      toast.error(msg);
     }
     } catch (error) {
-      toast.error('บันทึกไม่ได้: ' + (error instanceof Error ? error.message : String(error)));
+      const msg = 'บันทึกไม่ได้: ' + (error instanceof Error ? error.message : String(error));
+      setPayError(msg);
+      toast.error(msg);
     } finally { submitting.current = false; setIsSubmitting(false); }
   };
 
@@ -568,6 +638,8 @@ export function PaymentModal({
     setSelectedBank(accs.find(a => a.isDefault) || accs[0] || null);
 
     setCashReceived(0);
+    setCashText('');
+    setPayError(null);
     setQrReceived(0);
     setNumpadTarget('NONE');
 
@@ -606,9 +678,9 @@ export function PaymentModal({
   };
 
   const handleNumpadConfirm = (val: number) => {
-    if (numpadTarget === 'CASH') setCashReceived(val);
+    if (numpadTarget === 'CASH') { setCash(val); focusCashInput(); }
     if (numpadTarget === 'QR') setQrReceived(val);
-    if (numpadTarget === 'SPLIT_CASH') setCashReceived(val);
+    if (numpadTarget === 'SPLIT_CASH') setCash(val);
     if (numpadTarget === 'SPLIT_QR') setQrReceived(val);
     setNumpadTarget('NONE');
   };
@@ -639,7 +711,7 @@ export function PaymentModal({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent aria-busy={isSubmitting} className="w-[calc(100vw-1rem)] sm:w-[90vw] max-w-6xl h-[90dvh] max-h-[850px] flex flex-col p-3 sm:p-8 overflow-y-auto bg-white border-slate-200 text-slate-900 shadow-2xl rounded-3xl">
+        <DialogContent aria-busy={isSubmitting} className="w-[calc(100vw-1rem)] sm:w-[90vw] max-w-6xl h-[90dvh] max-h-[850px] flex flex-col p-3 pb-0 sm:p-8 sm:pb-0 overflow-y-auto bg-white border-slate-200 text-slate-900 shadow-2xl rounded-3xl">
           <DialogHeader className="shrink-0 pb-3 border-b border-slate-100 mb-4">
             <DialogTitle className="text-2xl font-bold flex items-center gap-3">
               <CreditCard className="w-8 h-8 text-sky-500" />
@@ -785,12 +857,27 @@ export function PaymentModal({
                   </div>
                   
                   <div className="p-5 bg-sky-50 border-2 border-sky-300 rounded-3xl relative group shadow-sm">
-                    <p className="text-sm text-sky-800 font-bold mb-1">รับเงินสดมา (กดช่องนี้เพื่อพิมพ์/เปิด Numpad)</p>
-                    <div 
-                      className="text-5xl font-extrabold text-sky-600 cursor-pointer py-2 font-mono"
-                      onClick={() => setNumpadTarget('CASH')}
-                    >
-                      {formatCurrency(cashReceived)}
+                    <label htmlFor="pos-cash-received" className="text-sm text-sky-800 font-bold mb-1 block">รับเงินสดมา (พิมพ์ตัวเลขได้เลย · Enter = ยืนยัน)</label>
+                    <div className="flex items-baseline gap-1 pr-12 font-mono">
+                      <span className="text-4xl font-extrabold text-sky-600">฿</span>
+                      <input
+                        id="pos-cash-received"
+                        ref={cashInputRef}
+                        data-testid="cash-received-input"
+                        autoFocus
+                        inputMode="decimal"
+                        autoComplete="off"
+                        placeholder="0"
+                        value={cashText}
+                        onChange={(e) => onCashTyped(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            confirmCashByKeyboard();
+                          }
+                        }}
+                        className="w-full min-w-0 bg-transparent py-2 text-5xl font-extrabold text-sky-600 outline-none placeholder:text-sky-300"
+                      />
                     </div>
                     <Button 
                       size="icon" 
@@ -798,6 +885,7 @@ export function PaymentModal({
                       className="absolute top-4 right-4 h-10 w-10 border-sky-300 bg-white text-sky-600 hover:bg-sky-100 shadow-sm"
                       onClick={() => setNumpadTarget('CASH')}
                       title="กดเพื่อเปิด Numpad"
+                      aria-label="เปิด Numpad"
                     >
                       <Edit3 className="w-5 h-5" />
                     </Button>
@@ -836,23 +924,28 @@ export function PaymentModal({
                       พอดี (฿{total.toFixed(0)})
                     </Button>
                   </div>
-                  <Button variant="ghost" className="w-full text-slate-500 hover:text-red-600 font-semibold" onClick={() => setCashReceived(0)}>
+                  <Button variant="ghost" className="w-full text-slate-500 hover:text-red-600 font-semibold" onClick={() => { setCash(0); focusCashInput(); }}>
                     ล้างยอดเงินสด
                   </Button>
                 </div>
               </div>
 
-              <div className="flex gap-4 mt-8 pt-4 border-t border-slate-200">
-                <Button variant="outline" className="w-44 h-14 text-base border-slate-300 rounded-2xl font-semibold" onClick={() => setStep('METHOD')}>
-                  ย้อนกลับ
-                </Button>
-                <Button 
-                  className="flex-1 h-14 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xl rounded-2xl shadow-lg" 
-                  disabled={isSubmitting || !isCashSufficient}
-                  onClick={handleConfirmPayment}
-                >
-                  ยืนยันรับเงินสด
-                </Button>
+              {/* Always on screen: sticks to the bottom of the dialog when the content is taller than a short
+                  window (Windows display scaling / small screens used to push it under the dialog edge). */}
+              <div data-testid="payment-footer" className="sticky bottom-0 z-10 -mx-3 sm:-mx-8 mt-6 border-t border-slate-200 bg-white px-3 sm:px-8 pt-3 pb-3 sm:pb-6">
+                <PaymentFooterMessage error={payError} hint={cashHint} />
+                <div className="flex gap-4">
+                  <Button variant="outline" className="w-36 sm:w-44 h-14 text-base border-slate-300 rounded-2xl font-semibold" onClick={goBackToMethods}>
+                    ย้อนกลับ
+                  </Button>
+                  <Button
+                    className="flex-1 h-14 bg-sky-500 hover:bg-sky-600 text-white font-bold text-xl rounded-2xl shadow-lg"
+                    disabled={isSubmitting || !isCashSufficient}
+                    onClick={handleConfirmPayment}
+                  >
+                    {isSubmitting ? 'กำลังบันทึก...' : 'ยืนยันรับเงินสด (Enter)'}
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -948,7 +1041,7 @@ export function PaymentModal({
                     >
                       <CheckCircle2 className="w-6 h-6 mr-2" /> ลูกค้าชำระเงินเรียบร้อยแล้ว
                     </Button>
-                    <Button variant="outline" className="h-12 border-slate-300 text-slate-600 rounded-2xl font-semibold" onClick={() => setStep('METHOD')}>
+                    <Button variant="outline" className="h-12 border-slate-300 text-slate-600 rounded-2xl font-semibold" onClick={goBackToMethods}>
                       ย้อนกลับ
                     </Button>
                   </div>
@@ -1075,17 +1168,20 @@ export function PaymentModal({
                     )}
                   </div>
 
-                  <div className="flex gap-4 pt-6">
-                    <Button variant="outline" className="w-36 h-14 border-slate-300 rounded-2xl font-semibold text-base" onClick={() => setStep('METHOD')}>
-                      ย้อนกลับ
-                    </Button>
-                    <Button 
-                      className="flex-1 h-14 bg-sky-500 hover:bg-sky-600 text-white font-bold text-lg rounded-2xl shadow-lg" 
-                      disabled={isSubmitting || !isSplitSufficient}
-                      onClick={handleConfirmPayment}
-                    >
-                      ยืนยันรับเงิน
-                    </Button>
+                  <div data-testid="payment-footer" className="sticky bottom-0 z-10 -mx-3 sm:mx-0 border-t border-slate-100 bg-white px-3 sm:px-0 pt-3 pb-3 sm:pb-6">
+                    <PaymentFooterMessage error={payError} hint={splitHint} />
+                    <div className="flex gap-4">
+                      <Button variant="outline" className="w-36 h-14 border-slate-300 rounded-2xl font-semibold text-base" onClick={goBackToMethods}>
+                        ย้อนกลับ
+                      </Button>
+                      <Button
+                        className="flex-1 h-14 bg-sky-500 hover:bg-sky-600 text-white font-bold text-lg rounded-2xl shadow-lg"
+                        disabled={isSubmitting || !isSplitSufficient}
+                        onClick={handleConfirmPayment}
+                      >
+                        {isSubmitting ? 'กำลังบันทึก...' : 'ยืนยันรับเงิน'}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1106,7 +1202,7 @@ export function PaymentModal({
               </div>
 
               <div className="flex gap-4 justify-center pt-6">
-                <Button variant="outline" className="w-40 h-14 text-base border-slate-300 rounded-2xl font-semibold" onClick={() => setStep('METHOD')}>
+                <Button variant="outline" className="w-40 h-14 text-base border-slate-300 rounded-2xl font-semibold" onClick={goBackToMethods}>
                   ย้อนกลับ
                 </Button>
                 <Button className="w-56 h-14 bg-sky-500 hover:bg-sky-600 text-white font-bold text-lg rounded-2xl shadow-lg" onClick={handleConfirmPayment} disabled={isSubmitting}>
@@ -1182,6 +1278,8 @@ export function PaymentModal({
               </div>
             </div>
           )}
+          {/* bottom padding of the dialog (the sticky cash / split footers bring their own) */}
+          {!(step === 'PROCESS' && total > 0 && (method === 'CASH' || method === 'SPLIT')) && <div aria-hidden className="h-3 shrink-0 sm:h-8" />}
         </DialogContent>
       </Dialog>
 
@@ -1225,5 +1323,19 @@ export function PaymentModal({
         }}
       />
     </>
+  );
+}
+
+/** Why the confirm button cannot save right now (error of the last try, else what is missing). */
+function PaymentFooterMessage({ error, hint }: { error: string | null; hint: string | null }) {
+  if (!error && !hint) return null;
+  return (
+    <p
+      role={error ? 'alert' : 'status'}
+      data-testid="payment-message"
+      className={`mb-2 text-sm font-bold ${error ? 'rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700' : 'text-slate-500'}`}
+    >
+      {error || hint}
+    </p>
   );
 }

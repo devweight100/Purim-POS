@@ -18,12 +18,50 @@ function ownerId(): string | undefined {
   catch { return undefined; }
 }
 let sequence: Promise<unknown> = Promise.resolve();
-function exclusively<T>(work: () => Promise<T>): Promise<T> {
-  const run = async (): Promise<T> => typeof navigator !== 'undefined' && navigator.locks
-    ? await navigator.locks.request('purim-order-outbox', work) : await work();
+const OUTBOX_LOCK = 'purim-order-outbox';
+/** How long a sale waits for the outbox (another tab / the background sender) before it reports instead of hanging. */
+export const CHECKOUT_LOCK_WAIT_MS = 20_000;
+const busyError = () => new ApiError('ระบบกำลังส่งบิลค้างอยู่ กรุณารอสักครู่แล้วกดยืนยันอีกครั้ง (บิลนี้ยังไม่ถูกบันทึก)', 409);
+/**
+ * Runs `work` alone (this page and every other tab of the same origin). With `waitMs`, waiting for the turn is
+ * limited: past it the caller gets busyError() and `work` never runs. Once `work` has started it is never cut short
+ * (a sale that may already be on the server must not be reported as unsaved).
+ */
+function exclusively<T>(work: () => Promise<T>, waitMs?: number): Promise<T> {
+  let entered = false;
+  let gaveUp = false;
+  const deadline = waitMs ? Date.now() + waitMs : 0;
+  const run = async (): Promise<T> => {
+    entered = true;
+    if (gaveUp) throw busyError();
+    if (typeof navigator === 'undefined' || !navigator.locks) return await work();
+    if (!deadline) return await navigator.locks.request(OUTBOX_LOCK, work);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.max(0, deadline - Date.now()));
+    try {
+      return await navigator.locks.request(OUTBOX_LOCK, { signal: controller.signal }, async () => {
+        clearTimeout(timer);
+        return await work();
+      });
+    } catch (error) {
+      if (controller.signal.aborted && (error as { name?: string } | null)?.name === 'AbortError') throw busyError();
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
   const next = sequence.then(run, run);
   sequence = next.catch(() => undefined);
-  return next;
+  if (!deadline) return next;
+  return new Promise<T>((resolve, reject) => {
+    // still queued behind earlier work of this page at the deadline: give up (work will not run)
+    const timer = setTimeout(() => {
+      if (entered) return;
+      gaveUp = true;
+      reject(busyError());
+    }, waitMs);
+    next.then(resolve, reject).finally(() => clearTimeout(timer));
+  });
 }
 export async function refreshOutboxStatus() {
   const rows = await getPendingOfflineOrders();
@@ -74,7 +112,7 @@ export async function submitOrder(data: CheckoutRequest): Promise<CheckoutResult
       toast.warning('ยังบันทึกฐานข้อมูลไม่ได้ เก็บบิลในเครื่องแล้ว และจะส่งให้อัตโนมัติเมื่อเชื่อมต่อได้', { duration: 8000 });
       return { ...data, id: order.clientOrderId, orderNumber: order.orderNumber, createdAt: order.createdAt, isOfflineSaved: true, status: 'PENDING_SYNC' };
     } finally { await refreshOutboxStatus().catch(() => useConnectionStatus.setState({ error: 'อ่านสถานะคิวไม่ได้ กรุณาตรวจสอบพื้นที่จัดเก็บ' })); }
-  });
+  }, CHECKOUT_LOCK_WAIT_MS);
 }
 // Older versions kept a bill history in localStorage ('pos_completed_orders'); its unsent bills
 // are moved into the outbox once (as "failed", to be checked by hand: legacy IDs were created
