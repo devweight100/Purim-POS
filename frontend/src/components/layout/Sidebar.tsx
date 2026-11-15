@@ -17,7 +17,6 @@ import { cn } from '@/lib/utils';
 import { performLogout } from '@/lib/logout';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { canAccessRoute } from '@/lib/permissions';
-import { PwaInstallButton } from '@/components/common/PwaInstallButton';
 import { useDocumentSearchStore } from '@/lib/store/document-search-store';
 
 interface SubMenuItem {
@@ -34,19 +33,51 @@ interface NavGroup {
   items: SubMenuItem[];
 }
 
+// Ordered by how often a shop uses them: daily selling work first, owner tools and system pages last.
 const navGroups: NavGroup[] = [
+  {
+    id: 'sales',
+    title: 'งานขาย & ลูกค้า',
+    icon: ShoppingCart,
+    items: [
+      { href: '/orders', label: 'ประวัติการขาย (บิล)', icon: ClipboardList },
+      { href: '/customers', label: 'ลูกค้าสมาชิก', icon: Users },
+      { href: '/debts', label: 'ลูกหนี้ & ค้างชำระ', icon: Receipt },
+      { href: '/claims', label: 'เคลมสินค้า (ลูกค้า)', icon: ShieldAlert },
+      { href: '/shifts', label: 'ประวัติการปิดกะ', icon: History },
+    ],
+  },
+  {
+    id: 'inventory',
+    title: 'สินค้า & คลังสินค้า',
+    icon: Package,
+    items: [
+      { href: '/products', label: 'รายการสินค้า & ราคา', icon: Package },
+      { href: '/inventory', label: 'คลังสินค้า & สต็อก', icon: Warehouse },
+      { href: '/categories', label: 'หมวดหมู่สินค้า', icon: FolderTree },
+      { href: '/claim-inventory', label: 'สต๊อกของเคลม', icon: PackageX },
+    ],
+  },
+  {
+    id: 'purchasing',
+    title: 'จัดซื้อ & ผู้จำหน่าย',
+    icon: Truck,
+    items: [
+      { href: '/purchase-orders', label: 'ใบสั่งซื้อสินค้า (PO)', icon: FileText },
+      { href: '/payables', label: 'เจ้าหนี้การค้า & จ่ายเงิน', icon: HandCoins },
+      { href: '/supplier-returns', label: 'ส่งเคลม & ใบลดหนี้บริษัท', icon: ArrowLeftRight },
+      { href: '/suppliers', label: 'บริษัทผู้จำหน่าย', icon: Truck },
+    ],
+  },
   {
     id: 'overview',
     title: 'ภาพรวม & รายงาน',
     icon: BarChart3,
     items: [
-      { href: '/master-control', label: '🚀 แผงควบคุมเครื่องแม่ (Master Command)', icon: Radio },
-      { href: '/monitor', label: '🕹️ มอนิเตอร์ร้าน (Pixel View)', icon: Gamepad2 },
       { href: '/dashboard', label: 'แดชบอร์ดสรุปภาพรวม', icon: LayoutDashboard },
-      { href: '/m', label: 'มุมมองมือถือ', icon: Smartphone },
-      { 
-        href: '/reports', 
-        label: 'รายงาน & สถิติธุรกิจ', 
+      {
+        href: '/reports',
+        label: 'รายงาน & สถิติธุรกิจ',
         icon: BarChart3,
         children: [
           { href: '/reports/sales', label: 'ยอดขาย & กำไรขั้นต้น', icon: TrendingUp },
@@ -57,52 +88,28 @@ const navGroups: NavGroup[] = [
           { href: '/reports/purchases', label: 'ยอดจัดซื้อ & สถิติของเคลม', icon: Truck },
         ],
       },
+      { href: '/m', label: 'มุมมองมือถือ', icon: Smartphone },
     ],
   },
   {
-    id: 'sales',
-    title: 'งานขาย & ลูกค้า',
-    icon: ShoppingCart,
+    id: 'finance',
+    title: 'การเงิน',
+    icon: Wallet,
     items: [
-      { href: '/orders', label: 'ประวัติการขาย (Orders)', icon: ClipboardList },
-      { href: '/shifts', label: 'ประวัติการปิดกะ', icon: History },
-      { href: '/debts', label: 'ลูกหนี้ & ค้างชำระ', icon: Receipt },
-      { href: '/customers', label: 'ข้อมูลลูกค้าสมาชิก', icon: Users },
-      { href: '/claims', label: 'เคลมสินค้า (ลูกค้า)', icon: ShieldAlert },
-    ],
-  },
-  {
-    id: 'inventory',
-    title: 'สินค้า & คลังสินค้า',
-    icon: Package,
-    items: [
-      { href: '/products', label: 'รายการสินค้า & ราคา', icon: Package },
-      { href: '/categories', label: 'หมวดหมู่สินค้า', icon: FolderTree },
-      { href: '/inventory', label: 'คลังสินค้า & สต็อก', icon: Warehouse },
-      { href: '/claim-inventory', label: 'สต๊อกของเคลม', icon: PackageX },
-    ],
-  },
-  {
-    id: 'purchasing',
-    title: 'จัดซื้อ & คู่ค้าบริษัท',
-    icon: Truck,
-    items: [
-      { href: '/suppliers', label: 'บริษัทผู้จำหน่าย', icon: Truck },
-      { href: '/purchase-orders', label: 'ใบสั่งซื้อสินค้า (PO)', icon: FileText },
-      { href: '/payables', label: 'เจ้าหนี้การค้า & จ่ายเงิน', icon: HandCoins },
-      { href: '/supplier-returns', label: 'ส่งเคลม & ใบลดหนี้บริษัท', icon: ArrowLeftRight },
+      { href: '/finance', label: 'เงินสด / บัญชี / ค่าใช้จ่าย', icon: Wallet },
+      { href: '/accounts', label: 'บัญชีธนาคาร & QR Code', icon: Building2 },
+      { href: '/approvals', label: 'การอนุมัติ (ส่วนลด / ต่ำกว่าทุน)', icon: ShieldCheck },
     ],
   },
   {
     id: 'system',
-    title: 'การเงิน & การตั้งค่า',
+    title: 'ตั้งค่า & ระบบ',
     icon: Settings,
     items: [
-      { href: '/finance', label: 'การเงิน: เงินสด / บัญชี / ค่าใช้จ่าย', icon: Wallet },
-      { href: '/approvals', label: 'การอนุมัติ (ส่วนลด / ต่ำกว่าทุน)', icon: ShieldCheck },
-      { href: '/accounts', label: 'บัญชีธนาคาร & QR Code', icon: Building2 },
-      { href: '/users', label: 'จัดการพนักงาน & สิทธิ์ (Admin)', icon: UserCog },
-      { href: '/settings', label: 'ตั้งค่าร้านค้า & ระบบ', icon: Settings },
+      { href: '/settings', label: 'ตั้งค่าร้าน', icon: Settings },
+      { href: '/users', label: 'พนักงาน & สิทธิ์', icon: UserCog },
+      { href: '/master-control', label: 'แผงควบคุมเครื่องแม่', icon: Radio },
+      { href: '/monitor', label: 'มอนิเตอร์ร้าน (Pixel View)', icon: Gamepad2 },
     ],
   },
 ];
@@ -119,10 +126,11 @@ export function Sidebar() {
 
   // Group accordion state (open all by default)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    overview: true,
     sales: true,
     inventory: true,
     purchasing: true,
+    overview: true,
+    finance: true,
     system: true,
   });
 
@@ -440,7 +448,6 @@ export function Sidebar() {
 
       {/* User Footer Profile */}
       <div className="p-3 border-t border-sidebar-border shrink-0 bg-sidebar">
-        <PwaInstallButton className="w-full justify-center mb-2.5" />
         <div className="flex items-center px-2 mb-2">
           <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center shrink-0">
             <span className="text-indigo-700 text-xs font-bold">{user?.name?.charAt(0)?.toUpperCase() || 'P'}</span>

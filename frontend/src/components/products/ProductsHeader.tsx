@@ -1,10 +1,9 @@
 "use client";
 
 import { useRef } from "react";
-import Link from "next/link";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { Download, FileSpreadsheet, FolderTree, Package, Plus, Upload } from "lucide-react";
+import { Download, FileSpreadsheet, Package, Plus, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildExportWorkbook, buildTemplateWorkbook } from "@/lib/product-import";
 import { pickProductCost } from "./product-helpers";
@@ -94,12 +93,6 @@ export function ProductsHeader({ loadAll, onImportFile, onAdd }: {
         >
           <FileSpreadsheet className="w-4 h-4 mr-1.5 text-sky-600" /> โหลด Template
         </Button>
-
-        <Link href="/categories" className="w-full sm:w-auto">
-          <Button variant="outline" className="h-10 w-full border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs">
-            <FolderTree className="w-4 h-4 mr-1.5 text-slate-700" /> จัดการหมวดหมู่
-          </Button>
-        </Link>
 
         <Button className="h-10 w-full bg-indigo-600 px-5 font-bold text-white hover:bg-indigo-700 shadow-2xs cursor-pointer sm:w-auto" onClick={onAdd}>
           <Plus className="w-4 h-4 mr-1.5" /> เพิ่มสินค้าใหม่
