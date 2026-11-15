@@ -61,13 +61,9 @@ export const useProductStore = create<ProductStore>((set, get) => ({
 let inflight: Promise<void> | null = null;
 let queued: Promise<void> | null = null;
 
-type StoreSet = (partial: Partial<ProductStore>) => void;
-let storeSet: StoreSet;
-let storeGet: () => ProductStore;
-
 async function loadProducts(opts?: { offlineCache?: boolean }): Promise<void> {
-  const set = storeSet;
-  const get = storeGet;
+  const set = (partial: Partial<ProductStore>) => useProductStore.setState(partial);
+  const get = useProductStore.getState;
   {
     const offlineCache = opts?.offlineCache ?? onPosScreen();
     set({ isLoading: true, error: null });
@@ -162,8 +158,6 @@ async function loadProducts(opts?: { offlineCache?: boolean }): Promise<void> {
     }
   }
 }
-storeSet = useProductStore.setState;
-storeGet = useProductStore.getState;
 
 /** Cover photo of a product: its small copy (catalogue rows carry URLs), else old cached rows' base64 data. */
 function coverImage(p: ApiProduct | CachedProduct): string | null {

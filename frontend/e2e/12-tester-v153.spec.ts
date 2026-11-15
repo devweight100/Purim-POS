@@ -51,6 +51,9 @@ async function cashierPage(browser: Browser, viewport: { width: number; height: 
   await uiLogin(page, CASHIER.username, CASHIER.password);
   await expect(page).toHaveURL(/\/pos/);
   await openShiftIfAsked(page);
+  // the POS grid shows the first products only: search for ours (a full test run has ~75 products)
+  await page.getByPlaceholder(/ค้นหาชื่อสินค้า, หมวดหมู่, SKU/).fill(NAME);
+  await expect(tile(page)).toBeVisible();
   return { ctx, page };
 }
 
