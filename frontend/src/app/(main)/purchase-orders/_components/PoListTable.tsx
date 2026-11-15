@@ -120,7 +120,7 @@ export function PoListTable({
                   </TableCell>
                   <TableCell className="text-center">{poStatusBadge(po.status)}</TableCell>
                   <TableCell className="text-center">
-                    <div className="flex gap-1.5 justify-center items-center">
+                    <div className="flex flex-wrap gap-btn justify-center items-center">
                       <Button 
                         variant="ghost" 
                         size="icon" 

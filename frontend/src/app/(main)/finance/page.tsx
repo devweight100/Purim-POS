@@ -196,7 +196,7 @@ export default function FinancePage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1 rounded-2xl border border-slate-200 bg-white p-1.5 print:hidden">
+      <div className="flex flex-wrap gap-btn rounded-2xl border border-slate-200 bg-white p-1.5 print:hidden">
         {([
           ['overview', 'ภาพรวม & รายการเงิน'],
           ['recurring', `ค่าใช้จ่ายประจำ${overview?.recurring && overview.recurring.overdue + overview.recurring.due7 > 0 ? ' •' : ''}`],

@@ -262,7 +262,7 @@ export default function DashboardPage() {
 
         {/* Time Filters Toolbar */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 p-1 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+          <div className="flex flex-wrap items-center gap-btn p-1 bg-white rounded-2xl border border-slate-200 shadow-2xs">
             {[
               { id: "today", label: "วันนี้" },
               { id: "7days", label: "7 วันล่าสุด" },

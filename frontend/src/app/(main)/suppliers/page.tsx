@@ -239,7 +239,7 @@ export default function SuppliersPage() {
                       {supp.creditTerms ? `${supp.creditTerms} วัน` : "-"}
                     </td>
                     <td className="py-4 px-6 text-right">
-                      <div className="flex items-center justify-end gap-1">
+                      <div className="flex items-center justify-end gap-btn">
                         <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(supp)}>
                           <Edit className="w-4 h-4 text-slate-600" />
                         </Button>

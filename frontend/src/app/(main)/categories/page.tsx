@@ -226,7 +226,7 @@ export default function CategoriesPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-center">
-                        <div className="flex items-center justify-center gap-1">
+                        <div className="flex items-center justify-center gap-btn">
                           <Button
                             variant="ghost"
                             size="icon"

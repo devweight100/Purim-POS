@@ -288,7 +288,7 @@ function DebtsContent() {
       <div className="bg-white rounded-xl border border-slate-200 p-2 sm:p-2.5 shadow-2xs space-y-2">
         {/* Status Tabs (All / Unpaid / Overdue / Paid) & Customer Type Filter */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-          <div className="flex flex-wrap gap-1 p-0.5 bg-slate-100 rounded-lg border border-slate-200/80">
+          <div className="flex flex-wrap gap-btn p-0.5 bg-slate-100 rounded-lg border border-slate-200/80">
             <button
               type="button"
               onClick={() => setStatusTab('all')}
@@ -613,7 +613,7 @@ function DebtsContent() {
               </select>
             </div>
 
-            <div className="flex items-center gap-0.5">
+            <div className="flex items-center gap-btn">
               <Button
                 variant="outline"
                 size="sm"

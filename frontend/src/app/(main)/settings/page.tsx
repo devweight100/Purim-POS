@@ -580,7 +580,7 @@ export default function SettingsPage() {
       )}
 
       {/* groups of settings */}
-      <div role="tablist" aria-label="หมวดการตั้งค่า" className="flex gap-1.5 overflow-x-auto pb-1 border-b border-slate-200">
+      <div role="tablist" aria-label="หมวดการตั้งค่า" className="flex flex-wrap gap-btn pb-1 border-b border-slate-200">
         {tabs.map((t) => {
           const active = t.id === activeTab;
           return (

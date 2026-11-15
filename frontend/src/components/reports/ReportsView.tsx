@@ -519,7 +519,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
             <span>ช่วงเวลาการวิเคราะห์:</span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1">
+          <div className="flex flex-wrap items-center gap-btn">
             {[
               { key: 'today', label: 'วันนี้' },
               { key: 'yesterday', label: 'เมื่อวาน' },

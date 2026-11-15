@@ -435,7 +435,7 @@ export default function CustomersPage() {
           </div>
 
           {/* Type Filters */}
-          <div className="flex gap-1.5 w-full lg:w-auto overflow-x-auto pb-1 lg:pb-0">
+          <div className="flex flex-wrap gap-btn w-full lg:w-auto pb-1 lg:pb-0">
             {[
               { value: 'all', label: 'ทั้งหมด' },
               { value: 'INDIVIDUAL', label: '👤 บุคคลธรรมดา' },
@@ -601,7 +601,7 @@ export default function CustomersPage() {
 
                       {/* Actions */}
                       <TableCell className="py-3.5 text-center">
-                        <div className="flex items-center justify-center gap-1">
+                        <div className="flex items-center justify-center gap-btn">
                           <Button
                             size="sm"
                             variant="ghost"

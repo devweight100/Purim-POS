@@ -76,7 +76,7 @@ export function OrdersToolbar({
       <div className="bg-white rounded-2xl border border-slate-200 p-3.5 shadow-xs space-y-3">
         {/* Status Tabs */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <div className="flex flex-wrap gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200/80">
+          <div className="flex flex-wrap gap-btn p-1 bg-slate-100 rounded-xl border border-slate-200/80">
             <button
               type="button"
               onClick={() => changeStatusTab("all")}

@@ -261,7 +261,7 @@ export default function AccountsPage() {
               )}
               {acc.isDefault && <div />}
               
-              <div className="flex gap-1.5">
+              <div className="flex gap-btn">
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-sky-600" onClick={() => handleOpenEdit(acc)}>
                   <Edit className="w-4 h-4" />
                 </Button>

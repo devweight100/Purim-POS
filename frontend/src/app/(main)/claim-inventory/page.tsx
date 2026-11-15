@@ -625,7 +625,7 @@ export default function ClaimInventoryPage() {
 
                           {/* 10. Actions */}
                           <td className="py-3.5 px-3.5 text-center">
-                            <div className="flex items-center justify-center gap-1.5">
+                            <div className="flex items-center justify-center gap-btn">
                               <Button
                                 size="sm"
                                 variant="outline"

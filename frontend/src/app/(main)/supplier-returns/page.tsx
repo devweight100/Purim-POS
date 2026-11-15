@@ -472,7 +472,7 @@ export default function SupplierReturnsPage() {
                         </td>
 
                           <td className="py-3 px-3.5 text-center">
-                            <div className="flex items-center justify-center gap-1 flex-nowrap whitespace-nowrap">
+                            <div className="flex flex-wrap items-center justify-center gap-btn">
                               <Button
                                 size="sm"
                                 variant="outline"

@@ -456,7 +456,7 @@ export default function InventoryPage() {
       {/* Compact 1-Row Combined Bar: Sleek Segmented Tabs + Mini Summary Stats */}
       <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5 bg-white p-2 sm:px-3 sm:py-2 rounded-xl border border-slate-200 shadow-2xs">
         {/* Sleek Segmented Pill Tabs */}
-        <div className="flex flex-wrap gap-1 bg-slate-100/90 p-1 rounded-lg border border-slate-200/80">
+        <div className="flex flex-wrap gap-btn bg-slate-100/90 p-1 rounded-lg border border-slate-200/80">
           <button
             type="button"
             onClick={() => setActiveTab('inventory')}
@@ -555,7 +555,7 @@ export default function InventoryPage() {
             </div>
 
             {/* Status Filter buttons */}
-            <div className="flex gap-1.5 w-full lg:w-auto overflow-x-auto pb-1 lg:pb-0">
+            <div className="flex flex-wrap gap-btn w-full lg:w-auto pb-1 lg:pb-0">
               {[
                 { value: 'all', label: 'ทั้งหมด' },
                 ...(stats.negativeStockCount > 0
@@ -722,7 +722,7 @@ export default function InventoryPage() {
 
                         {/* Actions */}
                         <TableCell className="py-3.5 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
+                          <div className="flex items-center justify-center gap-btn">
                             <Button
                               size="sm"
                               variant="outline"

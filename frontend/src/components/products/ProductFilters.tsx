@@ -39,7 +39,7 @@ export function ProductFilters({ f, categories, suppliers, totalCount }: {
           <option value="all">🏢 ทุกผู้จำหน่าย</option>
           {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
+        <div className="flex flex-wrap gap-btn rounded-lg border border-slate-200 bg-white p-1">
           {STOCK_OPTIONS.map(opt => (
             <button type="button" key={opt.key} aria-pressed={f.stockFilter === opt.key} onClick={() => f.setStockFilter(opt.key)} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${f.stockFilter === opt.key ? "bg-slate-200 text-slate-900" : "text-slate-500 hover:bg-slate-100"}`}>{opt.label}</button>
           ))}
