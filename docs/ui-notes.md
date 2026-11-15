@@ -76,4 +76,4 @@ reset keeps backup-before-reset). The sale flow has no extra click.
 
 ### Next
 
-- Full verification (backend tsc / jest / e2e, frontend tsc / eslint / vitest / build, Playwright all), PROJECT_STATUS entry.
+- Nothing; verification done (see PROJECT_STATUS 2026-11-15). Owner questions above remain.
