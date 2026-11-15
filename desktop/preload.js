@@ -2,6 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   isDesktop: true,
+  // durable sales-terminal id of this machine (null until the page stores one)
+  getTerminalId: () => ipcRenderer.sendSync('terminal-id-get'),
+  setTerminalId: (id) => ipcRenderer.sendSync('terminal-id-set', id),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   checkAppUpdate: () => ipcRenderer.invoke('app-update-check'),
   installAppUpdate: () => ipcRenderer.invoke('app-update-install'),

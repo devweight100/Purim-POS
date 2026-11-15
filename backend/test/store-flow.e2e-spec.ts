@@ -152,6 +152,29 @@ d('store flow (e2e)', () => {
     it('opens a second shift', async () => {
       state.shift2 = (await api('post', '/shifts/open', C, { startingCash: 500, terminalId: 'e2e-term-2' }).expect(201)).body.shift;
     });
+    it('BUG-03: a device whose terminal id was lost finds its open shift and can continue it (not a live device elsewhere)', async () => {
+      // the restarted device has a new id: no current shift there, but the shift is listed with its float
+      expect((await api('get', '/shifts/current?terminalId=e2e-term-new', C).expect(200)).body).toEqual({});
+      const rows = (await api('get', '/shifts/mine-elsewhere?terminalId=e2e-term-new', C).expect(200)).body;
+      const row = rows.find((r: any) => r.id === state.shift2.id);
+      expect(row).toMatchObject({ terminalId: 'e2e-term-2', startingCash: 500, canContinueHere: true, activeSecondsAgo: null });
+      // only the caller's own shifts, never the asking terminal's own shift
+      expect((await api('get', '/shifts/mine-elsewhere?terminalId=e2e-term-2', C).expect(200)).body.some((r: any) => r.id === state.shift2.id)).toBe(false);
+      expect((await api('get', '/shifts/mine-elsewhere?terminalId=e2e-term-new', A).expect(200)).body.some((r: any) => r.id === state.shift2.id)).toBe(false);
+      // heard from the same address a moment ago: that was this machine before its restart -> may continue
+      await api('post', '/server-control/ping', C, { terminalId: 'e2e-term-2', terminalName: 'x' }).expect(201);
+      expect((await api('get', '/shifts/mine-elsewhere?terminalId=e2e-term-new', C)).body.find((r: any) => r.id === state.shift2.id).canContinueHere).toBe(true);
+      // alive at another address: another device uses it -> cannot be taken over
+      await api('post', '/server-control/ping', C, { terminalId: 'e2e-term-2', terminalName: 'x' }).set('X-Forwarded-For', '10.9.9.9').expect(201);
+      const live = (await api('get', '/shifts/mine-elsewhere?terminalId=e2e-term-new', C)).body.find((r: any) => r.id === state.shift2.id);
+      expect(live).toMatchObject({ canContinueHere: false });
+      expect(live.activeSecondsAgo).toBeLessThanOrEqual(5);
+      // continuing = asking with the old id: the same shift, same float
+      const cur = (await api('get', '/shifts/current?terminalId=e2e-term-2', C).expect(200)).body;
+      expect(cur.shift.id).toBe(state.shift2.id);
+      expect(Number(cur.startingCash ?? cur.shift.startingCash)).toBe(500);
+      await api('post', '/server-control/ping', C, { terminalId: 'e2e-term-2', terminalName: 'x' }).expect(201); // back to this address
+    });
     it('a 20% bill discount by a cashier needs approval (limit 10%)', async () => {
       const r = await sale(C, state.price, { discountAmount: Math.round(state.price * 2 * 0.2 * 100) / 100 }).expect(409);
       expect(r.body.code).toBe('APPROVAL_REQUIRED');

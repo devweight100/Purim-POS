@@ -1,5 +1,7 @@
 import { Controller, Get, Post, Body, Param, Query, UseGuards, Request, BadRequestException } from '@nestjs/common';
 import { ShiftsService } from './shifts.service';
+import { ServerControlService } from '../server-control/server-control.service';
+import { telemetryClientIp } from '../server-control/telemetry-input';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
@@ -15,12 +17,27 @@ function parseMoney(v: unknown, label: string, optional = false): number {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('shifts')
 export class ShiftsController {
-  constructor(private readonly shiftsService: ShiftsService) {}
+  constructor(
+    private readonly shiftsService: ShiftsService,
+    private readonly serverControl: ServerControlService,
+  ) {}
 
   @RequirePermissions('POS_SELL')
   @Get('current')
   getCurrentShift(@Request() req: any, @Query('terminalId') terminalId?: string) {
     return this.shiftsService.getCurrentShift(req.user.id, terminalId);
+  }
+
+  /** The caller's open shifts left on other terminal ids (continue one on this device after its id was lost). */
+  @RequirePermissions('POS_SELL')
+  @Get('mine-elsewhere')
+  getMineElsewhere(@Request() req: any, @Query('terminalId') terminalId?: string) {
+    return this.shiftsService.openShiftsElsewhere(
+      req.user.id,
+      typeof terminalId === 'string' ? terminalId : undefined,
+      (id) => this.serverControl.lastPing(id),
+      telemetryClientIp(req),
+    );
   }
 
   @RequirePermissions('POS_SELL', 'VIEW_REPORTS')

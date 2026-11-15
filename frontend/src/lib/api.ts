@@ -156,6 +156,18 @@ export async function apiFetch<T = UntypedJson>(endpoint: string, options: Reque
 // UNIFIED API METHODS FOR ALL MODULES
 // ──────────────────────────────────────────────
 
+/** GET /shifts/mine-elsewhere row */
+export interface ShiftElsewhere {
+  id: string;
+  shiftNumber: string;
+  terminalId: string;
+  openedAt: string;
+  startingCash: number;
+  /** last heartbeat of that terminal (null = not seen since the server started) */
+  activeSecondsAgo: number | null;
+  canContinueHere: boolean;
+}
+
 export const api = {
   // 1. Auth & Users (Admin Panel ready)
   auth: {
@@ -175,6 +187,9 @@ export const api = {
     close: (shiftId: string, actualCash: number, note?: string) =>
       apiFetch<ApiShiftRecord>(`/shifts/${shiftId}/close`, { method: 'POST', body: JSON.stringify({ actualCash, note }) }),
     getSummary: (shiftId: string) => apiFetch<ApiShiftSummary>(`/shifts/${shiftId}/summary`),
+    /** the caller's open shifts left on other terminal ids (this device's id was lost) */
+    mineElsewhere: () =>
+      apiFetch<ShiftElsewhere[]>('/shifts/mine-elsewhere?terminalId=' + encodeURIComponent(getTerminalId())),
     addCashMovement: (shiftId: string, p1: CashMovementRequest | 'in' | 'out', p2?: number, p3?: string) => {
       const body = typeof p1 === 'object' ? p1 : { type: p1, amount: p2, reason: p3 };
       return apiFetch<ApiCashMovement>(`/shifts/${shiftId}/cash-movements`, { method: 'POST', body: JSON.stringify(body) });

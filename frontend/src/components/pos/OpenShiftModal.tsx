@@ -14,6 +14,8 @@ import {
 import { LogIn, Coins, SkipForward, RotateCcw, Calculator } from 'lucide-react';
 import { kickCashDrawer } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
+import { api, type ShiftElsewhere } from '@/lib/api';
+import { setTerminalId } from '@/lib/terminal-id';
 
 interface OpenShiftModalProps {
   open: boolean;
@@ -49,7 +51,29 @@ const MONEY_ITEMS: MoneyItem[] = [
 ];
 
 export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
-  const { openShift } = useShiftStore();
+  const { openShift, fetchCurrentShift } = useShiftStore();
+  // BUG-03: the user's shift still open under this device's previous (lost) terminal id
+  const [elsewhere, setElsewhere] = useState<ShiftElsewhere[]>([]);
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    api.shifts
+      .mineElsewhere()
+      .then((rows) => { if (!cancelled) setElsewhere(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (!cancelled) setElsewhere([]); });
+    return () => { cancelled = true; };
+  }, [open]);
+
+  const continueShift = async (s: ShiftElsewhere) => {
+    setTerminalId(s.terminalId);
+    const shift = await fetchCurrentShift();
+    if (shift?.isOpen) {
+      toast.success(`ใช้กะ ${s.shiftNumber} ต่อที่เครื่องนี้ (เงินตั้งต้น ${formatCurrency(s.startingCash)})`);
+      onOpenChange(false);
+    } else {
+      toast.error('ใช้กะเดิมต่อไม่ได้ กรุณาลองใหม่');
+    }
+  };
   const { user } = useAuthStore();
 
   // Quantities for each banknote / coin
@@ -151,18 +175,25 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
 
             <div className="flex items-center gap-3">
               {/* Direct Edit / Display with Numpad Trigger */}
-              <div 
-                className="text-right cursor-pointer flex items-center gap-2 group"
-                onClick={() => setShowTotalNumpad(true)}
+              <div
+                className="text-right flex items-center gap-2 group"
                 title="กรอกยอดเงินรวมโดยตรง"
               >
-                <Calculator className="w-5 h-5 text-slate-400 group-hover:text-sky-600 transition-colors" />
+                <button type="button" onClick={() => setShowTotalNumpad(true)} aria-label="เปิด Numpad ยอดเงินรวม" className="rounded-lg p-1 hover:bg-sky-50">
+                  <Calculator className="w-5 h-5 text-slate-400 group-hover:text-sky-600 transition-colors" />
+                </button>
                 <input
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      void handleConfirmOpen();
+                    }
+                  }}
                   type="number"
                   value={isDirectMode ? directTotal : (calculatedTotal > 0 ? calculatedTotal : '')}
                   onChange={(e) => handleDirectTotalChange(e.target.value)}
                   placeholder="ยอดรวม"
-                  className="text-3xl sm:text-4xl font-black text-right bg-transparent border-b-2 border-transparent focus:border-sky-500 outline-none w-40 sm:w-52 text-slate-900 font-mono tracking-tight cursor-pointer"
+                  className="text-3xl sm:text-4xl font-black text-right bg-transparent border-b-2 border-transparent focus:border-sky-500 outline-none w-40 sm:w-52 text-slate-900 font-mono tracking-tight cursor-text"
                   aria-label="ยอดเงินรวมในลิ้นชัก"
                 />
               </div>
@@ -179,6 +210,29 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
               )}
             </div>
           </div>
+
+          {elsewhere.length > 0 && (
+            <div data-testid="shift-elsewhere" className="mb-3 shrink-0 space-y-2 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+              <p className="font-bold">คุณมีกะที่ยังเปิดอยู่ ไม่ต้องนับเงินใหม่ถ้าเป็นเครื่องนี้</p>
+              {elsewhere.map((s) => (
+                <div key={s.id} className="flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    กะ {s.shiftNumber} · เปิดเมื่อ {new Date(s.openedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })} · เงินตั้งต้น {formatCurrency(s.startingCash)}
+                    {!s.canContinueHere && ' · กำลังใช้งานอยู่ที่เครื่องอื่น'}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={!s.canContinueHere}
+                    onClick={() => void continueShift(s)}
+                    className="bg-amber-500 font-bold text-white hover:bg-amber-600"
+                  >
+                    ใช้กะนี้ต่อที่เครื่องนี้
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Section Title */}
           <div className="flex items-center justify-between text-xs font-black text-slate-700 px-1 mb-2 shrink-0">
@@ -242,13 +296,21 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
                         type="number"
                         min="0"
                         value={qty}
-                        readOnly
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setNumpadItem(item);
+                        // typed straight from the keyboard (Tab between notes, Enter = ตกลง); the note / coin picture
+                        // next to it opens the on-screen numpad for touch screens
+                        inputMode="numeric"
+                        step="1"
+                        aria-label={`จำนวน ${item.label}`}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => handleQtyChange(item.key, e.target.value === '' ? 0 : Math.floor(Number(e.target.value)))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            void handleConfirmOpen();
+                          }
                         }}
                         placeholder="0"
-                        className="h-11 text-center font-extrabold text-base bg-white border-slate-300 rounded-xl focus:border-sky-500 text-slate-900 shadow-inner cursor-pointer"
+                        className="h-11 text-center font-extrabold text-base bg-white border-slate-300 rounded-xl focus:border-sky-500 text-slate-900 shadow-inner cursor-text"
                       />
                     </div>
                   </div>

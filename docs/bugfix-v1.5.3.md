@@ -10,7 +10,14 @@ Status per bug: reproduced? / real cause / fix / files / test.
   src/lib/store/product-store.ts (refresh asked during a load runs again after it), src/components/pos/classic/
   ClassicProductPanel.tsx (stock badge always shown). Test: e2e/12 "BUG-02" (adjust elsewhere -> card within 6 s,
   sale lowers card and server equally, new window same number).
-- BUG-03..BUG-10: investigated (findings below), not fixed yet.
+- BUG-03: DONE. Files: desktop/main.js + preload.js (terminal id kept in the app config, sync IPC; page storage
+  flushed every 10 s / on close / before quit), frontend/src/lib/terminal-id.ts (desktop copy wins, existing id handed
+  over on upgrade), src/lib/api.ts + src/components/pos/OpenShiftModal.tsx (banner "ใช้กะนี้ต่อที่เครื่องนี้"),
+  backend shifts.service/controller/module + server-control.service (GET /shifts/mine-elsewhere). Tests: backend e2e
+  "BUG-03" (store-flow, 66/66), Playwright e2e/12 "BUG-03" (storage lost -> continue same shift, ฿700, reload keeps
+  it), Electron scratch run: SIGKILL right after opening the shift -> relaunch: same terminal id, no count prompt.
+  (OpenShiftModal also carries the BUG-04 keyboard change, committed with it.)
+- BUG-04..BUG-10: investigated (findings below), not fixed yet.
 - Final verification: not run yet.
 
 ## Findings so far (WIP)
@@ -51,8 +58,10 @@ Note: `pkill -f "next start"` does not kill `next-server` (process renames itsel
 - Reproduced in Electron: app ended without a clean shutdown (SIGKILL ~ crash / power off / Task Manager / Windows
   shutdown): localStorage of that session lost -> new terminal id (and logged out) -> server correctly says "no
   open shift for this terminal" -> count prompt; old shift stays OPEN orphaned. Clean close keeps it (Linux).
-- Plan: desktop keeps a durable terminal id in its config + flushStorageData on close; web offers to continue the
-  user's open shift left on a lost terminal id.
+- Fix: desktop keeps a durable terminal id in its config + flushStorageData; web offers to continue the user's open
+  shift left on a lost terminal id (refused when that terminal sent a heartbeat in the last 60 s from ANOTHER IP =
+  another live device; same IP = this machine before its restart). Old desktop apps (no getTerminalId) still get
+  the banner path.
 
 ### BUG-04: confirmed in code: OpenShiftModal count inputs are readOnly (only click opens numpad).
 ### BUG-05: confirmed: DB correct (cost_price 12, stock batch unit_cost 12, audit costValue 288); products list /

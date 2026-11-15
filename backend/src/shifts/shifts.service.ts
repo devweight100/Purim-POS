@@ -120,6 +120,9 @@ export function shiftFigures(shift: any) {
   };
 }
 
+/** A terminal that sent its heartbeat this recently is a live device (ClientDbSync pings every 15 s). */
+export const SHIFT_TERMINAL_LIVE_SECONDS = 60;
+
 @Injectable()
 export class ShiftsService {
   constructor(private prisma: PrismaService, @Optional() private approvals?: ApprovalsService) {}
@@ -135,6 +138,39 @@ export class ShiftsService {
       if (legacy) shift = await db.shift.update({ where: { id: legacy.id }, data: { terminalId } });
     }
     return shift ? this.getShiftSummary(shift.id, db) : null;
+  }
+
+  /**
+   * The user's open shifts on OTHER terminal ids than `terminalId` (BUG-03 v1.5.3: a device whose terminal id was
+   * lost - storage not written before the app ended - sees "no open shift" while its shift is still open under the
+   * old id). `activeSecondsAgo`: when that terminal last sent its heartbeat (null = not seen since the server
+   * started); a terminal seen in the last minute from ANOTHER address is a live device and cannot be taken over
+   * (from the caller's own address it is this machine before its restart).
+   */
+  async openShiftsElsewhere(
+    userId: string,
+    terminalId: string | undefined,
+    lastPing: (terminalId: string) => { at: number; ip: string } | null,
+    callerIp: string,
+  ) {
+    const rows = await this.prisma.shift.findMany({
+      where: { userId, status: ShiftStatus.OPEN, terminalId: { not: null, ...(terminalId ? { notIn: [terminalId] } : {}) } },
+      orderBy: { openedAt: 'desc' },
+      take: 5,
+      select: { id: true, shiftNumber: true, terminalId: true, openedAt: true, startingCash: true },
+    });
+    const now = Date.now();
+    return rows.map((r) => {
+      const seen = r.terminalId ? lastPing(r.terminalId) : null;
+      const activeSecondsAgo = seen === null ? null : Math.max(0, Math.round((now - seen.at) / 1000));
+      const liveElsewhere = seen !== null && activeSecondsAgo! <= SHIFT_TERMINAL_LIVE_SECONDS && seen.ip !== callerIp;
+      return {
+        ...r,
+        startingCash: Number(r.startingCash),
+        activeSecondsAgo,
+        canContinueHere: !liveElsewhere,
+      };
+    });
   }
 
   async openShift(userId: string, startingCash: number, note?: string, terminalId?: string) {

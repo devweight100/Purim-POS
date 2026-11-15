@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, net, Menu, dialog, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, net, Menu, dialog, nativeImage, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -311,6 +311,7 @@ function createWindow() {
     if (missedPings >= 3) { missedPings = 0; onHang('page frozen for about 15 s'); }
   }, 5000);
 
+  mainWindow.on('close', flushPageStorage);
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -584,6 +585,35 @@ ipcMain.handle('get-server-url', () => {
 ipcMain.handle('save-server-url', (event, url) => {
   return saveConfig({ serverUrl: url.trim().replace(/\/+$/, '') });
 });
+
+// This machine's sales-terminal id (the server keys the open shift and the cash drawer on it). Kept in the config
+// file, not only in the page's localStorage: storage the page wrote shortly before the app ended without a clean
+// shutdown (crash, power off, killed) is lost, and a new id meant "no open shift" -> count the float again (BUG-03).
+const TERMINAL_ID_RE = /^[A-Za-z0-9_-]{8,100}$/;
+ipcMain.on('terminal-id-get', (event) => {
+  const id = loadConfig().terminalId;
+  event.returnValue = typeof id === 'string' && TERMINAL_ID_RE.test(id) ? id : null;
+});
+ipcMain.on('terminal-id-set', (event, id) => {
+  const ok = typeof id === 'string' && TERMINAL_ID_RE.test(id);
+  if (ok && loadConfig().terminalId !== id) {
+    saveConfig({ terminalId: id });
+    log(`[Terminal] id saved ${id.slice(0, 6)}...`);
+  }
+  event.returnValue = ok;
+});
+
+/** Write the page's localStorage / IndexedDB to disk now (login, cart, cached shift survive an abrupt end). */
+function flushPageStorage() {
+  if (!app.isReady()) return;
+  try {
+    session.defaultSession.flushStorageData();
+  } catch (err) {
+    log(`[Storage] flush failed: ${err && err.message}`);
+  }
+}
+setInterval(flushPageStorage, 10000).unref();
+app.on('before-quit', flushPageStorage);
 
 ipcMain.handle('get-config', () => {
   return loadConfig();

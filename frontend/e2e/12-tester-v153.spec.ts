@@ -175,3 +175,43 @@ test('BUG-02: the POS card always shows stock left and follows a stock adjustmen
     await again.ctx.close();
   }
 });
+
+test('BUG-03: the open shift survives a restart that lost the browser storage: the POS offers to continue it (same float)', async ({ browser }) => {
+  // first run of the day: open the shift with ฿700 counted as 500x1 + 100x2
+  const first = await browser.newContext({ viewport: { width: 1366, height: 768 }, locale: 'th-TH' });
+  const page1 = await first.newPage();
+  await uiLogin(page1, CASHIER.username, CASHIER.password);
+  const dlg1 = page1.getByRole('dialog').filter({ hasText: 'ระบุเงินในลิ้นชัก' });
+  await expect(dlg1).toBeVisible();
+  await dlg1.getByLabel('ยอดเงินรวมในลิ้นชัก', { exact: true }).fill('700');
+  await dlg1.getByRole('button', { name: 'ตกลง' }).click();
+  await expect(page1.getByText(/เปิดกะสำเร็จ! เงินตั้งต้นลิ้นชัก ฿700/)).toBeVisible();
+  const terminalId = await page1.evaluate(() => localStorage.getItem('purim_terminal_id'));
+  const opened = await api<{ shift: { id: string; shiftNumber: string } }>('GET', `/shifts/current?terminalId=${terminalId}`, await apiLogin(CASHIER));
+  await first.close();
+
+  // the app comes back with its storage gone (ended without a clean shutdown): new terminal id, logged out
+  const second = await browser.newContext({ viewport: { width: 1366, height: 768 }, locale: 'th-TH' });
+  const page2 = await second.newPage();
+  try {
+    await uiLogin(page2, CASHIER.username, CASHIER.password);
+    const dlg2 = page2.getByRole('dialog').filter({ hasText: 'ระบุเงินในลิ้นชัก' });
+    const banner = dlg2.getByTestId('shift-elsewhere');
+    await expect(banner).toContainText(opened.shift.shiftNumber);
+    await expect(banner).toContainText('฿700');
+    await banner.locator('div').filter({ hasText: opened.shift.shiftNumber }).getByRole('button', { name: 'ใช้กะนี้ต่อที่เครื่องนี้' }).click();
+    await expect(dlg2).toBeHidden();
+    await expect(page2.getByRole('button', { name: 'ปิดกะ' })).toBeVisible();
+    // same shift, same float, no second shift opened
+    expect(await page2.evaluate(() => localStorage.getItem('purim_terminal_id'))).toBe(terminalId);
+    const now = await api<{ shift: { id: string }; startingCash: number | string }>('GET', `/shifts/current?terminalId=${terminalId}`, await apiLogin(CASHIER));
+    expect(now.shift.id).toBe(opened.shift.id);
+    expect(Number(now.startingCash)).toBe(700);
+    // a reload keeps it without asking again
+    await page2.reload();
+    await expect(page2.getByRole('button', { name: 'ปิดกะ' })).toBeVisible();
+    await expect(page2.getByRole('dialog').filter({ hasText: 'ระบุเงินในลิ้นชัก' })).toHaveCount(0);
+  } finally {
+    await second.close();
+  }
+});
