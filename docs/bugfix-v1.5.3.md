@@ -135,3 +135,21 @@ stock 0 -> 24 via inventory "ปรับยอด" with reason "ปรับย
 - Payment dialog: other sibling dialogs opened over it (ApprovalDialog, ReceiptPdfModal) may still close both on Escape.
 - `getByRole('button', { name: 'ปิดกะ' })` also matches "เปิดกะ" (substring): use exact: true in tests (02-shop-day).
 - Product form labels were not tied to inputs; added aria-labels on name, prices, supplier rows, reference cost.
+
+---
+
+# Round 2 (BUG-07, 08, 09, 11 + keyboard / no-horizontal-scroll audit)
+
+Owner requirements checked everywhere: (1) keyboard first (mouse optional except picking menu items / product rows,
+which also have a keyboard way); (2) no horizontal scroll at 1366x768, 1920x1080 and 1093x614 (= 1366x768 at Windows
+125 %); (3) >= 8 px between buttons, >= 16 px from the window edge.
+
+## Progress
+- Tooling: dev DB r2_dev_test (10k products, 5k customers, 100k orders, POs, debts; long Thai names, 8 categories,
+  price levels 2-5 on 200 products). Scratch audit (every sidebar page x 3 sizes, document + inner horizontal overflow):
+  initial failures: /pos (category chips row), /orders, /customers, /debts, /products (all 3 sizes), /inventory,
+  /claim-inventory, /purchase-orders, /payables, all /reports pages (tab bar + tables).
+- BUG-07 + BUG-08 (products): IN PROGRESS.
+
+## Next
+BUG-08 other tables, BUG-09, BUG-11, audit fixes, server follow-ups, Playwright spec 13, verification.

@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
+import { useRowNav } from "@/lib/use-row-nav";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -9,7 +11,7 @@ import { ProductTableRow } from "./ProductTableRow";
 import { ITEMS_PER_PAGE, type ProductFiltersState } from "./useProductFilters";
 import type { ProductsData } from "./useProducts";
 import type { ProductSelection } from "./useProductSelection";
-import { PRICE_LEVELS, priceLevelKey, type ProductRecord, type SortDir, type SortKey } from "./types";
+import { priceLevelKey, type ProductRecord, type SortDir, type SortKey } from "./types";
 
 function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey | null; sortDir: SortDir }) {
   if (sortKey !== col) return <ChevronsUpDown className="w-3 h-3 ml-1 text-slate-400 inline" />;
@@ -18,7 +20,26 @@ function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey | 
     : <ChevronDown className="w-3 h-3 ml-1 text-sky-500 inline" />;
 }
 
-const sortableHead = "text-slate-500 whitespace-nowrap cursor-pointer hover:text-sky-600 select-none";
+function SortButton({ col, label, f, align = "left" }: { col: SortKey; label: string; f: ProductFiltersState; align?: "left" | "right" }) {
+  return (
+    <button
+      type="button"
+      onClick={() => f.handleSort(col)}
+      className={`inline-flex items-center rounded font-bold text-slate-500 hover:text-sky-600 select-none outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${align === "right" ? "justify-end w-full" : ""}`}
+    >
+      {label} <SortIcon col={col} sortKey={f.sortKey} sortDir={f.sortDir} />
+    </button>
+  );
+}
+
+const PRICES_KEY = "purim_products_show_prices";
+const readShowPrices = () => { try { return localStorage.getItem(PRICES_KEY) === "1"; } catch { return false; } };
+
+/**
+ * Column widths: the table is `table-fixed` so it always fits its container (no horizontal scroll at
+ * 1093 px = 1366x768 at Windows 125 %); the name column takes the rest and wraps. Price levels 2-5 are
+ * hidden by default ("แสดงราคา 2–5" shows them stacked in one column).
+ */
 
 /** Product table (sortable headers, row selection, expandable pack units) with pagination. */
 export function ProductTable({ data, f, sel, onEdit }: {
@@ -28,15 +49,31 @@ export function ProductTable({ data, f, sel, onEdit }: {
   onEdit: (p: ProductRecord) => void;
 }) {
   const { categories, loading, loadError, allPackaging, allImages, loadData } = data;
-  const { filteredCount, paginatedList, currentPage, setCurrentPage, totalPages, sortKey, sortDir, handleSort } = f;
+  const { filteredCount, paginatedList, currentPage, setCurrentPage, totalPages } = f;
+  const [showPrices, setShowPrices] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- per-viewer preference, read after hydration
+  useEffect(() => { setShowPrices(readShowPrices()); }, []);
+  const changeShowPrices = (on: boolean) => {
+    setShowPrices(on);
+    try { localStorage.setItem(PRICES_KEY, on ? "1" : "0"); } catch { /* private window: not remembered */ }
+  };
+  const nav = useRowNav(paginatedList.length, (i) => onEdit(paginatedList[i]));
+  const cols = showPrices ? 11 : 10;
 
   return (
     <div className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
-      <div className="overflow-x-auto">
-        <Table>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-2 text-xs text-slate-500">
+        <span>คลิกแถว หรือเลือกด้วยปุ่ม ↑/↓ แล้วกด Enter เพื่อแก้ไขสินค้า</span>
+        <div className="inline-flex items-center gap-2 font-semibold text-slate-600">
+          <Checkbox id="products-show-prices" checked={showPrices} onCheckedChange={changeShowPrices} />
+          <label htmlFor="products-show-prices" className="cursor-pointer">แสดงราคา 2–5</label>
+        </div>
+      </div>
+      <div>
+        <Table className="table-fixed">
           <TableHeader className="bg-slate-50">
             <TableRow className="border-slate-200 hover:bg-transparent">
-              <TableHead className="w-10 text-center">
+              <TableHead className="w-10 px-2 text-center">
                 <div className="flex justify-center">
                   <Checkbox
                     checked={sel.isCurrentPageSelected}
@@ -45,30 +82,25 @@ export function ProductTable({ data, f, sel, onEdit }: {
                   />
                 </div>
               </TableHead>
-              <TableHead className="w-8"></TableHead>
-              <TableHead className="text-slate-500 text-center whitespace-nowrap">บาร์โค้ด</TableHead>
-              <TableHead className="text-slate-500 whitespace-nowrap">รหัสสินค้า</TableHead>
-              <TableHead className={sortableHead} onClick={() => handleSort("name")}>ชื่อสินค้า <SortIcon col="name" sortKey={sortKey} sortDir={sortDir} /></TableHead>
-              <TableHead className="text-slate-500 whitespace-nowrap">หมวดหมู่</TableHead>
-              <TableHead className={`${sortableHead} text-right`} onClick={() => handleSort("stock")}>จำนวน <SortIcon col="stock" sortKey={sortKey} sortDir={sortDir} /></TableHead>
-              <TableHead className="text-slate-500 text-center whitespace-nowrap">หน่วย</TableHead>
-              <TableHead className={`${sortableHead} text-right`} onClick={() => handleSort("cost")}>ต้นทุน <SortIcon col="cost" sortKey={sortKey} sortDir={sortDir} /></TableHead>
-              {PRICE_LEVELS.map(n => (
-                <TableHead key={n} className={`${sortableHead} text-right`} onClick={() => handleSort(priceLevelKey(n))}>
-                  ราคา {n} <SortIcon col={priceLevelKey(n)} sortKey={sortKey} sortDir={sortDir} />
-                </TableHead>
-              ))}
-              <TableHead className="text-slate-500 text-center whitespace-nowrap">แก้ไข</TableHead>
+              <TableHead className="w-9 px-1"><span className="sr-only">ขนาดบรรจุ</span></TableHead>
+              <TableHead className="px-3"><SortButton col="name" label="ชื่อสินค้า / รหัส / บาร์โค้ด" f={f} /></TableHead>
+              <TableHead className="hidden xl:table-cell w-40 text-slate-500 px-3">หมวดหมู่</TableHead>
+              <TableHead className="w-20 text-right px-3"><SortButton col="stock" label="จำนวน" f={f} align="right" /></TableHead>
+              <TableHead className="w-16 text-slate-500 text-center px-2">หน่วย</TableHead>
+              <TableHead className="w-24 text-right px-3"><SortButton col="cost" label="ต้นทุน" f={f} align="right" /></TableHead>
+              <TableHead className="w-24 text-right px-3"><SortButton col={priceLevelKey(1)} label="ราคา 1" f={f} align="right" /></TableHead>
+              {showPrices && <TableHead className="w-28 text-right text-slate-500 px-3">ราคา 2–5</TableHead>}
+              <TableHead className="w-14 text-slate-500 text-center px-1">แก้ไข</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody {...nav.bodyProps}>
             {loading ? (
-              <TableRow><TableCell colSpan={15} className="text-center h-32 text-slate-500">กำลังโหลด...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={cols} className="text-center h-32 text-slate-500">กำลังโหลด...</TableCell></TableRow>
             ) : loadError ? (
-              <TableRow><TableCell colSpan={15}><LoadErrorState message={loadError} onRetry={() => loadData()} /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={cols}><LoadErrorState message={loadError} onRetry={() => loadData()} /></TableCell></TableRow>
             ) : filteredCount === 0 ? (
-              <TableRow><TableCell colSpan={15} className="text-center h-40 text-slate-400">ไม่พบสินค้าที่ตรงกับเงื่อนไข</TableCell></TableRow>
-            ) : paginatedList.map((p) => (
+              <TableRow><TableCell colSpan={cols} className="text-center h-40 text-slate-400">ไม่พบสินค้าที่ตรงกับเงื่อนไข</TableCell></TableRow>
+            ) : paginatedList.map((p, i) => (
               <ProductTableRow
                 key={p.id}
                 p={p}
@@ -80,6 +112,8 @@ export function ProductTable({ data, f, sel, onEdit }: {
                 onToggleExpand={() => sel.toggleExpand(p.id)}
                 onToggleSelect={() => sel.toggleSelectProduct(p.id)}
                 onEdit={() => onEdit(p)}
+                showPrices={showPrices}
+                rowNav={nav.rowProps(i)}
               />
             ))}
           </TableBody>
