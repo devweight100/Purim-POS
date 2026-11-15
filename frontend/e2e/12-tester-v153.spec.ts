@@ -79,6 +79,7 @@ test('setup: product made through the form, stock 0 -> 24 through the inventory 
   state.productId = created!.id;
 
   await page.goto('/inventory');
+  await page.getByPlaceholder('ค้นหาชื่อสินค้า, SKU, บาร์โค้ด...').fill(NAME);
   await page.locator('tr').filter({ hasText: NAME }).getByRole('button', { name: /ปรับยอด/ }).click();
   const adj = page.getByRole('dialog').filter({ hasText: 'ปรับยอดสต็อกสินค้า' });
   await adj.getByPlaceholder('ระบุจำนวนตัวเลข...').fill('24');

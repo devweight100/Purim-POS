@@ -847,7 +847,17 @@ export function PaymentModal({
 
           {/* STEP 2: PROCESS (CASH) */}
           {step === 'PROCESS' && total > 0 && method === 'CASH' && (
-            <div className="py-2 flex-1 flex flex-col justify-between">
+            <div
+              className="py-2 flex-1 flex flex-col justify-between"
+              onKeyDownCapture={(e) => {
+                // Enter anywhere on the cash screen confirms (a focused banknote button must not add its note again);
+                // only "ย้อนกลับ" keeps its own Enter
+                if (e.key !== 'Enter' || (e.target as HTMLElement).closest('[data-own-enter]')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                confirmCashByKeyboard();
+              }}
+            >
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                 {/* Left side: Received Cash & Calculator */}
                 <div className="border-b border-slate-200 pb-6 lg:border-b-0 lg:border-r lg:pb-0 lg:pr-8 space-y-6">
@@ -870,12 +880,6 @@ export function PaymentModal({
                         placeholder="0"
                         value={cashText}
                         onChange={(e) => onCashTyped(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            confirmCashByKeyboard();
-                          }
-                        }}
                         className="w-full min-w-0 bg-transparent py-2 text-5xl font-extrabold text-sky-600 outline-none placeholder:text-sky-300"
                       />
                     </div>
@@ -935,7 +939,7 @@ export function PaymentModal({
               <div data-testid="payment-footer" className="sticky bottom-0 z-10 -mx-3 sm:-mx-8 mt-6 border-t border-slate-200 bg-white px-3 sm:px-8 pt-3 pb-3 sm:pb-6">
                 <PaymentFooterMessage error={payError} hint={cashHint} />
                 <div className="flex gap-4">
-                  <Button variant="outline" className="w-36 sm:w-44 h-14 text-base border-slate-300 rounded-2xl font-semibold" onClick={goBackToMethods}>
+                  <Button data-own-enter variant="outline" className="w-36 sm:w-44 h-14 text-base border-slate-300 rounded-2xl font-semibold" onClick={goBackToMethods}>
                     ย้อนกลับ
                   </Button>
                   <Button

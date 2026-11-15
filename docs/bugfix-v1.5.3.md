@@ -4,7 +4,8 @@ Branch `ccr-8f8b0741-si1a0o`. Order: 01, 02, 03, 04, 05, 06, 12, 10. (07/08/09/1
 Status per bug: reproduced? / real cause / fix / files / test.
 
 ## Progress
-- BUG-01: fix in code (PaymentModal, order outbox, offline-db), regression spec e2e/12-tester-v153.spec.ts being made green. NOT committed as done yet.
+- BUG-01: DONE. Files: frontend/src/components/pos/PaymentModal.tsx, src/lib/order-sync-service.ts, src/lib/offline-db.ts.
+  Tests: e2e/12-tester-v153.spec.ts (BUG-01 x2: 1093x614 typing + Enter, 1366/1920 banknote + Enter, stock 24->22), vitest src/lib/__tests__/checkout-no-hang.test.ts.
 - BUG-02..BUG-10: investigated (findings below), not fixed yet.
 - Final verification: not run yet.
 
@@ -24,7 +25,8 @@ Note: `pkill -f "next start"` does not kill `next-server` (process renames itsel
   forever if the outbox lock (navigator.locks) or IndexedDB open never answers -> button disabled with no message.
 - Fix: sticky footer always inside the dialog; amount field is a real input (type digits, Enter confirms, says
   "ขาดอีก ฿x"); inline error in the dialog; no-shift check with a clear message; outbox lock wait limited to 20 s
-  and IndexedDB open to 8 s (error instead of hang; work already started is never cut short).
+  and IndexedDB open to 8 s (error instead of hang; work already started is never cut short). Enter anywhere on the
+  cash screen confirms (capture handler; before, Enter on the focused ฿50 button added another ฿50).
 
 ### BUG-02 (POS tile "เหลือ 0" after +24)
 - POS tile shows stock ONLY when <= low-stock threshold (red "เหลือ N"); with 24 it shows nothing ("unknown").
