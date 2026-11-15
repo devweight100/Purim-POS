@@ -190,5 +190,10 @@ which also have a keyboard way); (2) no horizontal scroll at 1366x768, 1920x1080
 - Toasts (bottom right) cover the POS action bar for ~3 s after adding an item (not changed).
 - Dialog interiors other than the POS ones (PDF previews etc.) were not audited at 1093x614.
 
-## Next
-Finish spacing sweep, run e2e 13 + full verification, PROJECT_STATUS, screenshots.
+- Second sweep with the data of a full e2e run found more (customers / claim-inventory / payables / reports at
+  1093 px, pager buttons 4 px apart, product sort header click): fixed (table cells px-2 below 1280 px, customers
+  table-fixed, claim-stock hides category + last date below 1280 px, pagers gap-btn, sort buttons fill the header).
+- Final verification (2026-11-15): backend tsc + jest 128 + e2e 68/68 (fresh DB); frontend tsc, eslint 0 errors
+  (271 warnings), vitest 183, next build; Playwright 37/37 on a fresh DB (e2e 13: 6 tests); desktop untouched,
+  node --check main.js preload.js. Screenshots (1366x768, dsf 1): before/after products, POS, open-shift dialog
+  (+ products at 1093x614) in the session scratchpad round2-screens/.
