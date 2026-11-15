@@ -161,13 +161,21 @@ export function CountCashModal({ open, onOpenChange, onConfirm }: CountCashModal
                         type="number"
                         min="0"
                         value={qty}
-                        readOnly
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setNumpadItem(item);
+                        // typed straight from the keyboard (Tab between notes, Enter = ตกลง); the note / coin picture
+                        // next to it opens the on-screen numpad for touch screens
+                        inputMode="numeric"
+                        step="1"
+                        aria-label={`จำนวน ${item.label}`}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => handleQtyChange(item.key, e.target.value === '' ? 0 : Math.floor(Number(e.target.value)))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            void handleConfirm();
+                          }
                         }}
                         placeholder="0"
-                        className="h-11 text-center font-extrabold text-base bg-white border-slate-300 rounded-xl focus:border-sky-500 text-slate-900 shadow-inner cursor-pointer"
+                        className="h-11 text-center font-extrabold text-base bg-white border-slate-300 rounded-xl focus:border-sky-500 text-slate-900 shadow-inner cursor-text"
                       />
                     </div>
                   </div>

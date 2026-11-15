@@ -17,7 +17,13 @@ Status per bug: reproduced? / real cause / fix / files / test.
   "BUG-03" (store-flow, 66/66), Playwright e2e/12 "BUG-03" (storage lost -> continue same shift, ฿700, reload keeps
   it), Electron scratch run: SIGKILL right after opening the shift -> relaunch: same terminal id, no count prompt.
   (OpenShiftModal also carries the BUG-04 keyboard change, committed with it.)
-- BUG-04..BUG-10: investigated (findings below), not fixed yet.
+- BUG-04: DONE. Cause: the note/coin count inputs of the open-shift and close-shift count screens were readOnly
+  (click = numpad only); the total field opened the numpad on any click. Fix: OpenShiftModal.tsx + CountCashModal.tsx
+  inputs editable (inputMode numeric, aria-label "จำนวน แบงค์ 500 ฿"...), Tab between them, Enter = ตกลง, the note
+  picture / calculator icon still opens the numpad (touch). Payment cash amount: typed + Enter (BUG-01).
+  Close-shift "เงินสดที่นับได้" was already a normal input. Test: e2e/12 "BUG-04" (open 1x500 + 2x100 by keyboard,
+  close-shift count by keyboard -> 700, "พอดี").
+- BUG-05..BUG-10: investigated (findings below), not fixed yet.
 - Final verification: not run yet.
 
 ## Findings so far (WIP)

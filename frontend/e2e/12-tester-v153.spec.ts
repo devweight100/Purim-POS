@@ -215,3 +215,39 @@ test('BUG-03: the open shift survives a restart that lost the browser storage: t
     await second.close();
   }
 });
+
+test('BUG-04: shift cash counts are typed from the keyboard (Tab between notes, Enter confirms) when opening and closing', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, locale: 'th-TH' });
+  const page = await ctx.newPage();
+  try {
+    await uiLogin(page, CASHIER.username, CASHIER.password);
+    const dlg = page.getByRole('dialog').filter({ hasText: 'ระบุเงินในลิ้นชัก' });
+    await expect(dlg).toBeVisible();
+    await dlg.getByLabel('จำนวน แบงค์ 500 ฿').focus();
+    await page.keyboard.type('1');
+    await page.keyboard.press('Tab'); // -> 100
+    await expect(dlg.getByLabel('จำนวน แบงค์ 100 ฿')).toBeFocused();
+    await page.keyboard.type('2');
+    await expect(page.getByRole('dialog').filter({ hasText: 'ระบุจำนวน:' })).toHaveCount(0); // no numpad in the way
+    await expect(dlg.getByLabel('ยอดเงินรวมในลิ้นชัก', { exact: true })).toHaveValue('700');
+    await page.keyboard.press('Enter');
+    await expect(page.getByText(/เปิดกะสำเร็จ! เงินตั้งต้นลิ้นชัก ฿700/)).toBeVisible();
+    await expect(dlg).toBeHidden();
+
+    // closing: count the drawer the same way
+    await page.getByRole('button', { name: 'ปิดกะ' }).click();
+    const close = page.getByRole('dialog').filter({ hasText: 'ปิดกะการขาย (Close Shift)' });
+    await close.getByTitle('คลิกเพื่อนับแบงค์และเหรียญเหมือนตอนเปิดกะ').click();
+    const count = page.getByRole('dialog').filter({ hasText: 'ยอดเงินสดจากการนับแบงค์/เหรียญ' });
+    await count.getByLabel('จำนวน แบงค์ 500 ฿').focus();
+    await page.keyboard.type('1');
+    await page.keyboard.press('Tab');
+    await page.keyboard.type('2');
+    await page.keyboard.press('Enter');
+    await expect(count).toBeHidden();
+    await expect(close.getByPlaceholder('0.00')).toHaveValue('700');
+    await expect(close).toContainText('ยอดเงินสดในลิ้นชักพอดี');
+  } finally {
+    await ctx.close();
+  }
+});
