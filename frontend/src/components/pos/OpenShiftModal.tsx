@@ -159,10 +159,10 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[92vh] bg-white border-slate-200 text-slate-900 rounded-3xl p-5 shadow-2xl flex flex-col overflow-hidden">
+        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[92vh] bg-white border-slate-200 text-slate-900 rounded-3xl p-5 pt-12 shadow-2xl flex flex-col overflow-hidden">
           
           {/* Top Header: POSPOS Style - Large Total Display */}
-          <div className="bg-slate-100/90 border border-slate-200 rounded-2xl p-4 flex items-center justify-between shrink-0 mb-3">
+          <div className="bg-slate-100/90 border border-slate-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-btn-lg shrink-0 mb-3">
             <div className="space-y-1">
               <div className="text-sm font-bold text-slate-700 flex items-center gap-2">
                 <LogIn className="w-5 h-5 text-sky-600" />
@@ -245,7 +245,7 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
 
           {/* Main 3-Column Grid Layout (POSPOS Design with Theme Colors) */}
           <div className="flex-1 overflow-y-auto pr-1 pb-2">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            <div data-testid="money-grid" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {MONEY_ITEMS.map((item) => {
                 const qty = counts[item.key] ?? '';
 
@@ -253,7 +253,7 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
                   <div 
                     key={item.key} 
                     onClick={() => setNumpadItem(item)}
-                    className="flex items-center justify-between bg-slate-50 hover:bg-sky-50/50 hover:border-sky-300 p-2.5 rounded-2xl border border-slate-200 transition-all shadow-2xs group cursor-pointer"
+                    className="flex items-center justify-between gap-btn-lg bg-slate-50 hover:bg-sky-50/50 hover:border-sky-300 p-3 rounded-2xl border border-slate-200 transition-all shadow-2xs group cursor-pointer"
                     title={`คลิกเพื่อใส่จำนวน ${item.label}`}
                   >
                     {/* Visual Banknote Rectangle OR Coin Circle (Theme Colors) */}
@@ -291,7 +291,7 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
                     </div>
 
                     {/* Quantity Display / Input Box */}
-                    <div className="flex-1 ml-3">
+                    <div className="flex-1">
                       <Input
                         type="number"
                         min="0"
@@ -320,7 +320,7 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
           </div>
 
           {/* Bottom Action Bar: POSPOS Large Blue Confirm Button & Skip Button */}
-          <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row gap-3 shrink-0">
+          <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row gap-btn-lg shrink-0">
             <Button
               type="button"
               variant="outline"

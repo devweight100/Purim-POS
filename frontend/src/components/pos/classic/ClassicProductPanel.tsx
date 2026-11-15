@@ -17,22 +17,57 @@ import type { Product, ProductUnit } from '@/lib/types';
 import { PosLogoutButton } from '../PosLogoutButton';
 import { PosScannerInput } from '../PosDialogs';
 
+/** Arrow keys between the product cards (the grid's column count is read from the layout). */
+function moveInGrid(card: HTMLElement, key: string) {
+  const cards = Array.from(card.parentElement?.querySelectorAll<HTMLElement>('[data-testid="pos-product-card"]') ?? []);
+  const i = cards.indexOf(card);
+  const cols = Math.max(1, cards.filter((c) => c.offsetTop === cards[0].offsetTop).length);
+  const next = key === 'ArrowRight' ? i + 1 : key === 'ArrowLeft' ? i - 1 : key === 'ArrowDown' ? i + cols : i - cols;
+  if (key === 'ArrowUp' && i - cols < 0) {
+    // above the first row: back to the search box
+    document.querySelector<HTMLInputElement>('input[aria-label^="ค้นหาสินค้า"]')?.focus();
+    return;
+  }
+  const target = cards[Math.max(0, Math.min(cards.length - 1, next))];
+  if (!target) return;
+  cards.forEach((c) => (c.tabIndex = c === target ? 0 : -1));
+  target.focus();
+  target.scrollIntoView({ block: 'nearest' });
+}
+
 function ClassicProductCard({
   product,
   searchQuery,
   onAddToCart,
+  tabIndex,
 }: {
   product: Product;
   searchQuery: string;
   onAddToCart: (product: Product, unit: ProductUnit) => void;
+  tabIndex: number;
 }) {
   const { units, activeUnit, isLowStock, pickUnit } = useProductCardUnit(product, searchQuery);
 
   return (
     <div
       data-testid="pos-product-card"
+      role="button"
+      tabIndex={tabIndex}
+      aria-label={`${product.name} ${formatCurrency(activeUnit.price)} (Enter = เพิ่มลงตะกร้า)`}
       onClick={() => onAddToCart(product, activeUnit)}
-      className="relative flex cursor-pointer select-none flex-col rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-xs transition-all hover:border-sky-400 hover:bg-sky-50/40 hover:shadow-md group"
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          onAddToCart(product, activeUnit);
+        } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          e.stopPropagation();
+          moveInGrid(e.currentTarget, e.key);
+        }
+      }}
+      className="relative flex cursor-pointer select-none flex-col rounded-2xl border border-slate-200 bg-white p-3 sm:p-4 shadow-xs transition-all hover:border-sky-400 hover:bg-sky-50/40 hover:shadow-md group outline-none focus-visible:ring-4 focus-visible:ring-sky-400 focus-visible:border-sky-500"
     >
       {product.isBundle && (
         <Badge className="absolute top-2 left-2 bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-bold z-10">
@@ -134,7 +169,7 @@ export function ClassicProductPanel({ pos }: { pos: PosController }) {
       <PosScannerInput pos={pos} />
 
       {/* Toolbar */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white p-2.5 sm:px-3 sm:py-2.5">
+      <div data-testid="pos-top-bar" className="flex shrink-0 flex-wrap items-center gap-btn-lg border-b border-slate-200 bg-white px-edge py-2.5">
         {/* Back to the back office (the first page this user may open; none = no button) */}
         {backOfficeHome && (
           <Link
@@ -154,10 +189,18 @@ export function ClassicProductPanel({ pos }: { pos: PosController }) {
             placeholder="ค้นหาชื่อสินค้า, หมวดหมู่, SKU (พิมพ์ค้นหา)..."
             value={filter.searchQuery}
             onChange={(e) => filter.setSearchQuery(e.target.value)}
+            aria-label="ค้นหาสินค้า (Enter = เพิ่มรายการแรก, ↓ = เลือกจากตาราง)"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
                 pos.handleSearchEnter();
+              } else if (e.key === 'ArrowDown') {
+                const first = document.querySelector<HTMLElement>('[data-pos-grid] [data-testid="pos-product-card"]');
+                if (first) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  first.focus();
+                }
               }
             }}
             className="h-11 bg-white pl-9 text-xs sm:text-sm font-medium"
@@ -169,6 +212,7 @@ export function ClassicProductPanel({ pos }: { pos: PosController }) {
           size="icon"
           variant="outline"
           className="h-11 w-11 shrink-0 border-slate-300 bg-white shadow-2xs"
+          aria-label="เปิดกล้องสแกนบาร์โค้ด"
           onClick={() => d.setShowBarcodeScan(true)}
           title="เปิดกล้องสแกนบาร์โค้ด"
         >
@@ -201,9 +245,9 @@ export function ClassicProductPanel({ pos }: { pos: PosController }) {
 
         {/* Order History (Ctrl+H) */}
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
-          className="h-11 text-slate-600 hover:text-primary font-bold text-xs hidden lg:flex items-center"
+          className="h-11 border-slate-300 text-slate-600 hover:text-primary font-bold text-xs hidden lg:flex items-center"
           onClick={() => d.setShowOrderHistoryModal((prev) => !prev)}
           title="ประวัติการขาย (Ctrl+H)"
         >
@@ -228,9 +272,11 @@ export function ClassicProductPanel({ pos }: { pos: PosController }) {
       </div>
 
       {/* Categories */}
-      <div className="flex shrink-0 gap-2 overflow-x-auto border-b border-slate-200 bg-slate-50 p-3 sm:p-4 no-scrollbar">
+      {/* wraps (max 2 rows, then scrolls down) instead of scrolling sideways */}
+      <div className="flex shrink-0 flex-wrap gap-btn max-h-[6.25rem] overflow-y-auto border-b border-slate-200 bg-slate-50 px-edge py-3" role="toolbar" aria-label="หมวดหมู่สินค้า">
         <Button
           variant={activeCategory === null ? 'default' : 'outline'}
+          aria-pressed={activeCategory === null}
           className={activeCategory === null ? 'bg-primary hover:bg-primary/90 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'}
           onClick={() => filter.setActiveCategory(null)}
         >
@@ -240,27 +286,29 @@ export function ClassicProductPanel({ pos }: { pos: PosController }) {
           <Button
             key={c.id}
             variant={activeCategory === c.id ? 'default' : 'outline'}
-            className={activeCategory === c.id ? 'bg-primary hover:bg-primary/90 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'}
+            aria-pressed={activeCategory === c.id}
+            className={`max-w-[16rem] ${activeCategory === c.id ? 'bg-primary hover:bg-primary/90 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'}`}
             onClick={() => filter.setActiveCategory(c.id)}
+            title={c.name}
           >
-            {c.name}
+            <span className="truncate">{c.name}</span>
           </Button>
         ))}
       </div>
 
       {/* Status info bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-100 border-b border-slate-200 text-xs text-slate-600 font-medium">
-        <span>แสดง {filter.visibleProducts.length} จากทั้งหมด {filter.filteredProducts.length} รายการ</span>
+      <div className="flex flex-wrap items-center justify-between gap-btn px-edge py-2 bg-slate-100 border-b border-slate-200 text-xs text-slate-600 font-medium">
+        <span>แสดง {filter.visibleProducts.length} จากทั้งหมด {filter.filteredProducts.length} รายการ · ↓ จากช่องค้นหา = เลือกด้วยลูกศร + Enter</span>
         <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded flex items-center gap-1 font-semibold">
           ⚡ สแกนเนอร์บาร์โค้ดทำงานอัตโนมัติ ไม่ต้องคลิกช่องค้นหา
         </span>
       </div>
 
       {/* Product Grid */}
-      <div className="flex-1 overflow-visible bg-slate-50 p-3 sm:p-4 lg:overflow-y-auto">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-          {filter.visibleProducts.map((p) => (
-            <ClassicProductCard key={p.id} product={p} searchQuery={filter.searchQuery} onAddToCart={pos.addProductFromCard} />
+      <div className="flex-1 overflow-visible bg-slate-50 p-edge lg:overflow-y-auto">
+        <div data-pos-grid className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          {filter.visibleProducts.map((p, i) => (
+            <ClassicProductCard key={p.id} product={p} searchQuery={filter.searchQuery} onAddToCart={pos.addProductFromCard} tabIndex={i === 0 ? 0 : -1} />
           ))}
         </div>
 

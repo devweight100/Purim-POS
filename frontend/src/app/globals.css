@@ -5,6 +5,11 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* Spacing tokens (owner requirement, round 2): >= 8 px between buttons (gap-btn), >= 16 px from the window
+     edge (p-edge / px-edge). Used by the POS bars and dialogs; e2e/13-keyboard-layout.spec.ts measures them. */
+  --spacing-btn: 0.5rem;
+  --spacing-btn-lg: 0.75rem;
+  --spacing-edge: 1rem;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sarabun), var(--font-inter), ui-sans-serif, system-ui, sans-serif;

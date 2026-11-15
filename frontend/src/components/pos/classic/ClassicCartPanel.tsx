@@ -19,7 +19,7 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
   return (
     <div id="pos-cart" className="flex w-full shrink-0 flex-col bg-white lg:w-[420px] xl:w-[450px]">
       {/* Cart Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white p-4">
+      <div className="flex shrink-0 items-center justify-between gap-btn border-b border-slate-200 bg-white p-edge">
         <div className="flex items-center gap-2 text-slate-700">
           <ShoppingCart className="w-5 h-5 text-primary" />
           <span className="font-bold text-base">ตะกร้าสินค้า</span>
@@ -34,7 +34,7 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
       </div>
 
       {/* Customer Selection */}
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 p-3">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-edge py-3">
         <div className="min-w-0">
           <div className="text-sm font-bold text-slate-800 truncate">
             {cart.customerName ? `👤 ${cart.customerName}` : '👤 ลูกค้าทั่วไป'}
@@ -53,7 +53,7 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-btn shrink-0">
           <Button
             size="sm"
             variant="outline"
@@ -86,7 +86,7 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
       </div>
 
       {/* Cart Item List */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-edge">
         {/* Pending Claims Discount Banner */}
         {cart.pendingClaims && cart.pendingClaims.length > 0 && (
           <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 mb-3 text-xs shadow-xs space-y-1.5 animate-in fade-in">
@@ -224,8 +224,8 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between pt-1">
-                    <div className="flex items-center gap-1">
+                  <div className="flex flex-wrap items-center justify-between gap-btn pt-1">
+                    <div className="flex flex-wrap items-center gap-btn">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -275,11 +275,12 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
                         <span>{hasClaim ? `เคลมฟรี ${item.claimQuantity}` : 'เคลม'}</span>
                       </Button>
                     </div>
-                    <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-1">
+                    <div className="flex items-center gap-btn rounded-lg border border-slate-200 bg-slate-50 p-1">
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-9 w-9 text-slate-600 hover:bg-white hover:text-slate-900 shadow-sm"
+                        aria-label={`ลดจำนวน ${item.name}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedIndex(idx);
@@ -304,6 +305,7 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
                         variant="ghost"
                         size="icon"
                         className="h-9 w-9 text-slate-600 hover:bg-white hover:text-slate-900 shadow-sm"
+                        aria-label={`เพิ่มจำนวน ${item.name}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           setSelectedIndex(idx);
@@ -323,7 +325,7 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
       </div>
 
       {/* Cart Summary */}
-      <div className="shrink-0 space-y-2.5 border-t border-slate-200 bg-white p-4">
+      <div className="shrink-0 space-y-2.5 border-t border-slate-200 bg-white p-edge">
         {/* Bill Note Input (Touch Screen Mode) */}
         <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200">
           <span className="text-xs font-bold text-slate-500 shrink-0">📝 โน้ตบิล:</span>
@@ -425,7 +427,7 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
       </div>
 
       {/* Actions */}
-      <div className="grid shrink-0 grid-cols-3 gap-2 bg-slate-50 p-3 sm:p-4">
+      <div data-testid="pos-action-bar" className="grid shrink-0 grid-cols-3 gap-btn-lg bg-slate-50 p-edge">
         <Button
           type="button"
           variant="outline"

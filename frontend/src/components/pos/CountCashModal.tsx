@@ -79,7 +79,7 @@ export function CountCashModal({ open, onOpenChange, onConfirm }: CountCashModal
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[92vh] bg-white border-slate-200 text-slate-900 rounded-3xl p-5 shadow-2xl flex flex-col overflow-hidden">
+        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[92vh] bg-white border-slate-200 text-slate-900 rounded-3xl p-5 pt-12 shadow-2xl flex flex-col overflow-hidden">
           {/* Header Display */}
           <DialogHeader className="pb-2 border-b border-slate-100 shrink-0">
             <DialogTitle className="text-xl font-bold text-slate-900 flex items-center justify-between">
@@ -113,7 +113,7 @@ export function CountCashModal({ open, onOpenChange, onConfirm }: CountCashModal
 
           {/* POSPOS Grid Layout */}
           <div className="flex-1 overflow-y-auto pr-1 pb-2">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            <div data-testid="money-grid" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
               {MONEY_ITEMS.map((item) => {
                 const qty = counts[item.key] ?? '';
 
@@ -121,7 +121,7 @@ export function CountCashModal({ open, onOpenChange, onConfirm }: CountCashModal
                   <div
                     key={item.key}
                     onClick={() => setNumpadItem(item)}
-                    className="flex items-center justify-between bg-slate-50 hover:bg-sky-50/50 hover:border-sky-300 p-2.5 rounded-2xl border border-slate-200 transition-all shadow-2xs group cursor-pointer"
+                    className="flex items-center justify-between gap-btn-lg bg-slate-50 hover:bg-sky-50/50 hover:border-sky-300 p-3 rounded-2xl border border-slate-200 transition-all shadow-2xs group cursor-pointer"
                     title={`คลิกเพื่อใส่จำนวน ${item.label}`}
                   >
                     {/* Visual Badge */}
@@ -156,7 +156,7 @@ export function CountCashModal({ open, onOpenChange, onConfirm }: CountCashModal
                     </div>
 
                     {/* Input Box */}
-                    <div className="flex-1 ml-3">
+                    <div className="flex-1">
                       <Input
                         type="number"
                         min="0"
@@ -185,7 +185,7 @@ export function CountCashModal({ open, onOpenChange, onConfirm }: CountCashModal
           </div>
 
           {/* Action Button */}
-          <div className="pt-3 border-t border-slate-100 flex gap-3 shrink-0">
+          <div className="pt-4 border-t border-slate-100 flex gap-btn-lg shrink-0">
             <Button
               type="button"
               variant="outline"
