@@ -1,5 +1,6 @@
 'use client';
 
+import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { 
@@ -284,6 +285,7 @@ export default function PayablesPage() {
   const pageOpenBills = filteredBills.filter((b) => b.remainingPayable > 0);
   const selectedTotal = Object.values(selectedBills).reduce((s, b) => s + b.remainingPayable, 0);
 
+  const billNav = useRowNav(filteredBills.length, (i) => handleOpenDetails(filteredBills[i]));
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7 font-sans">
       {loadError && <LoadErrorState message={loadError} onRetry={() => void refreshData()} retrying={loading} />}
@@ -513,9 +515,9 @@ export default function PayablesPage() {
                       <th className="py-3.5 px-3 text-center font-bold text-sm whitespace-nowrap">การจัดการ</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100" {...billNav.bodyProps}>
                     {filteredBills.map((bill, idx) => (
-                      <tr key={bill.poId} className="hover:bg-slate-50/70 transition-colors">
+                      <tr key={bill.poId} className={`hover:bg-slate-50/70 transition-colors ${ROW_NAV_CLASS}`} {...billNav.rowProps(idx)}>
                         <td className="py-3.5 px-3 text-center">
                           {bill.remainingPayable > 0 ? (
                             <Checkbox

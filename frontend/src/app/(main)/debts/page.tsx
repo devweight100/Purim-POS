@@ -1,5 +1,6 @@
 'use client';
 
+import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { DebtRecord, DebtPaymentInstallment, DebtStatus } from '@/lib/types';
@@ -180,6 +181,7 @@ function DebtsContent() {
     ? debts.find(d => d.customerId === activeCustomerIdFilter)?.customerName || customerNameParam || 'สมาชิกที่เลือก'
     : null;
 
+  const debtNav = useRowNav(paginatedDebts.length, (i) => handleOpenHistory(paginatedDebts[i]));
   return (
     <div className="mx-auto max-w-[1600px] space-y-2 p-2.5 sm:p-3.5 lg:p-4 font-sans">
       {/* ─── PAGE HEADER (Standard Consistent Header) ─── */}
@@ -385,14 +387,14 @@ function DebtsContent() {
           <Table>
             <TableHeader className="bg-slate-50/90 border-b border-slate-200">
               <TableRow className="hover:bg-transparent">
-                <TableHead className="font-bold text-slate-700 text-sm py-2 pl-3 text-center w-16">ลำดับ</TableHead>
+                <TableHead className="hidden xl:table-cell font-bold text-slate-700 text-sm py-2 pl-3 text-center w-16">ลำดับ</TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 w-[130px]">เลขที่บิล</TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 text-center w-[140px]">วันที่บิล</TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 min-w-[190px]">ลูกค้า / ผู้ซื้อ</TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 text-right w-[110px]">ยอดเต็มบิล</TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 text-right w-[110px]">ชำระแล้ว</TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 text-right w-[120px]">คงค้างชำระ</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm py-2 text-center w-[150px]">
+                <TableHead className="hidden xl:table-cell font-bold text-slate-700 text-sm py-2 text-center w-[150px]">
                   ความคืบหน้าชำระ
                 </TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 text-center w-[120px]">สถานะ</TableHead>
@@ -400,7 +402,7 @@ function DebtsContent() {
               </TableRow>
             </TableHeader>
 
-            <TableBody className="divide-y divide-slate-100">
+            <TableBody className="divide-y divide-slate-100" {...debtNav.bodyProps}>
               {loading ? (
                 <TableRow>
                   <TableCell colSpan={10} className="text-center py-8 text-slate-400 text-sm">
@@ -432,9 +434,9 @@ function DebtsContent() {
                   const progressPct = debt.progressPercent;
 
                   return (
-                    <TableRow key={debt.orderId} className="hover:bg-slate-50/70 transition-colors">
+                    <TableRow key={debt.orderId} className={`hover:bg-slate-50/70 transition-colors ${ROW_NAV_CLASS}`} {...debtNav.rowProps(idx)}>
                       {/* 1. Index (ลำดับ) */}
-                      <TableCell className="py-2 pl-3 text-center font-mono font-bold text-slate-500 text-sm">
+                      <TableCell className="hidden xl:table-cell py-2 pl-3 text-center font-mono font-bold text-slate-500 text-sm">
                         {(currentPage - 1) * pageSize + idx + 1}
                       </TableCell>
 
@@ -496,7 +498,7 @@ function DebtsContent() {
                       </TableCell>
 
                       {/* 6. Pastel Progress Bar */}
-                      <TableCell className="py-1.5 sm:py-2 text-center px-2">
+                      <TableCell className="hidden xl:table-cell py-1.5 sm:py-2 text-center px-2">
                         <div className="space-y-0.5 max-w-[125px] mx-auto">
                           <div className="flex items-center justify-between text-[11px] font-semibold">
                             <span className={isPaid ? 'text-teal-700 font-bold' : isPartial ? 'text-indigo-700 font-bold' : 'text-slate-500'}>

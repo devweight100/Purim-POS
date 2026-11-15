@@ -1,5 +1,6 @@
 'use client';
 
+import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { RowDeleteMenu } from '@/components/common/RowDeleteMenu';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -207,6 +208,7 @@ export default function CustomersPage() {
     setSelectedCustomer(cust);
     setIsDetailOpen(true);
   };
+  const customerNav = useRowNav(filteredCustomers.length, (i) => handleOpenDetail(filteredCustomers[i]));
 
   // Save Customer
   const handleSaveCustomer = async () => {
@@ -471,7 +473,7 @@ export default function CustomersPage() {
                 <TableHead className="w-[10%] text-center text-slate-600 font-bold text-xs uppercase">จัดการ</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody {...customerNav.bodyProps}>
               {loadError ? (
                 <TableRow>
                   <TableCell colSpan={6}>
@@ -485,13 +487,13 @@ export default function CustomersPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredCustomers.map((c) => {
+                filteredCustomers.map((c, ci) => {
                   const isCompany = c.type === 'COMPANY';
                   const hasCredit = (c.creditLimit || 0) > 0;
                   const hasDebt = (c.currentDebt || 0) > 0;
 
                   return (
-                    <TableRow key={c.id} className="hover:bg-slate-50/80 border-slate-100 transition-colors">
+                    <TableRow key={c.id} className={`hover:bg-slate-50/80 border-slate-100 transition-colors ${ROW_NAV_CLASS}`} {...customerNav.rowProps(ci)}>
                       {/* Name & Type */}
                       <TableCell className="py-3.5">
                         <div className="flex items-start gap-2.5">

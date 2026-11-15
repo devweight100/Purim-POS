@@ -2,6 +2,7 @@
 
 import { Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { focusRowNav } from "@/lib/use-row-nav";
 import type { ProductFiltersState } from "./useProductFilters";
 import type { CategoryOption, StockFilter, SupplierOption } from "./types";
 
@@ -25,20 +26,22 @@ export function ProductFilters({ f, categories, suppliers, totalCount }: {
       <div className="mb-4 flex flex-wrap gap-3 items-center">
         <div className="relative min-w-[200px] flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input placeholder="ค้นหาชื่อ, รหัส, บาร์โค้ด..." className="pl-9 bg-white border-slate-300 h-10" value={f.search} onChange={e => f.setSearch(e.target.value)} />
-          {f.search && <button onClick={() => f.setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>}
+          <Input placeholder="ค้นหาชื่อ, รหัส, บาร์โค้ด..." className="pl-9 bg-white border-slate-300 h-10" value={f.search} onChange={e => f.setSearch(e.target.value)}
+            aria-label="ค้นหาสินค้า (↓ = ไปที่ตาราง)"
+            onKeyDown={e => { if (e.key === "ArrowDown") { e.preventDefault(); focusRowNav(document.querySelector("[data-row-nav-root]")); } }} />
+          {f.search && <button type="button" aria-label="ล้างคำค้นหา" onClick={() => f.setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>}
         </div>
-        <select value={f.categoryFilter} onChange={e => f.setCategoryFilter(e.target.value)} className={selectClass}>
+        <select aria-label="กรองตามหมวดหมู่" value={f.categoryFilter} onChange={e => f.setCategoryFilter(e.target.value)} className={selectClass}>
           <option value="all">📁 ทุกหมวดหมู่</option>
           {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
         </select>
-        <select value={f.supplierFilter} onChange={e => f.setSupplierFilter(e.target.value)} className={selectClass}>
+        <select aria-label="กรองตามผู้จำหน่าย" value={f.supplierFilter} onChange={e => f.setSupplierFilter(e.target.value)} className={selectClass}>
           <option value="all">🏢 ทุกผู้จำหน่าย</option>
           {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         <div className="flex gap-1 rounded-lg border border-slate-200 bg-white p-1">
           {STOCK_OPTIONS.map(opt => (
-            <button key={opt.key} onClick={() => f.setStockFilter(opt.key)} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${f.stockFilter === opt.key ? "bg-slate-200 text-slate-900" : "text-slate-500 hover:bg-slate-100"}`}>{opt.label}</button>
+            <button type="button" key={opt.key} aria-pressed={f.stockFilter === opt.key} onClick={() => f.setStockFilter(opt.key)} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${f.stockFilter === opt.key ? "bg-slate-200 text-slate-900" : "text-slate-500 hover:bg-slate-100"}`}>{opt.label}</button>
           ))}
         </div>
       </div>

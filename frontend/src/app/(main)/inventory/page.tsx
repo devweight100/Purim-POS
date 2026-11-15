@@ -1,5 +1,6 @@
 'use client';
 
+import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { getLowStockThreshold } from '@/lib/store-settings-storage';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
@@ -411,6 +412,7 @@ export default function InventoryPage() {
     }
   };
 
+  const stockNav = useRowNav(paginatedProducts.length, (i) => openStockCardDialog(paginatedProducts[i]));
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
       {loadError && <LoadErrorState message={loadError} onRetry={() => void reloadData()} retrying={isLoading} />}
@@ -610,7 +612,7 @@ export default function InventoryPage() {
                   </TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody {...stockNav.bodyProps}>
                 {isLoading ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center h-48 text-slate-500">
@@ -624,7 +626,7 @@ export default function InventoryPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  paginatedProducts.map((p: InvProduct) => {
+                  paginatedProducts.map((p: InvProduct, pi: number) => {
                     const stock = Number(p.stock !== undefined && p.stock !== null ? p.stock : 0);
                     const minAlert = p.minStockAlert !== undefined && p.minStockAlert !== null ? Number(p.minStockAlert) : getLowStockThreshold();
                     const isNegative = stock < 0;
@@ -632,7 +634,7 @@ export default function InventoryPage() {
                     const isOut = stock === 0;
 
                     return (
-                      <TableRow key={p.id} className="hover:bg-slate-50/80 border-slate-100 transition-colors">
+                      <TableRow key={p.id} className={`hover:bg-slate-50/80 border-slate-100 transition-colors ${ROW_NAV_CLASS}`} {...stockNav.rowProps(pi)}>
                         {/* Product Info */}
                         <TableCell className="py-3.5">
                           <div className="space-y-0.5">

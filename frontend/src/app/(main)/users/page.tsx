@@ -1,5 +1,6 @@
 'use client';
 
+import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import React, { useState, useEffect } from 'react';
 import { 
   Users, UserPlus, Shield, ShieldCheck, KeyRound,
@@ -196,6 +197,7 @@ export default function UsersManagementPage() {
     u.role.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const userNav = useRowNav(filteredUsers.length, (i) => openEditModal(filteredUsers[i]));
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Page Header */}
@@ -294,7 +296,7 @@ export default function UsersManagementPage() {
                 <th className="py-3.5 px-6 text-right">การกระทำ</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100" {...userNav.bodyProps}>
               {loading ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-400">
@@ -309,10 +311,10 @@ export default function UsersManagementPage() {
                   </td>
                 </tr>
               ) : (
-                filteredUsers.map((u) => {
+                filteredUsers.map((u, ui) => {
                   const permCount = Array.isArray(u.permissions) ? u.permissions.length : 0;
                   return (
-                    <tr key={u.id} className="hover:bg-slate-50/70 transition-colors">
+                    <tr key={u.id} className={`hover:bg-slate-50/70 transition-colors ${ROW_NAV_CLASS}`} {...userNav.rowProps(ui)}>
                       <td className="py-4 px-6">
                         <div className="font-medium text-slate-800">{u.fullName}</div>
                         <div className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">

@@ -1,4 +1,5 @@
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import {
   Table, TableBody, TableCell, TableHead,
   TableHeader, TableRow
@@ -37,6 +38,7 @@ export function PoListTable({
   statusCounts, page, setPage, total, pageSize, filteredPOs, loading, loadError, setStatusFilter, fetchPOs, handleViewDetail,
   openEditDialog, openIssueConfirmDialog, openReceiveDialog, openStatusChangeDialog, openCancelDialog,
 }: Props) {
+  const poNav = useRowNav(filteredPOs.length, (i) => handleViewDetail(filteredPOs[i].id));
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
       <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 p-4">
@@ -75,7 +77,7 @@ export function PoListTable({
               <TableHead className="text-slate-700 font-bold text-sm text-center">จัดการ</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody {...poNav.bodyProps}>
             {loading ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center h-32 text-slate-500 text-sm">
@@ -96,7 +98,7 @@ export function PoListTable({
               </TableRow>
             ) : (
               filteredPOs.map((po, idx) => (
-                <TableRow key={po.id} className="border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors" onClick={() => handleViewDetail(po.id)}>
+                <TableRow key={po.id} className={`border-slate-100 hover:bg-slate-50 transition-colors ${ROW_NAV_CLASS}`} {...poNav.rowProps(idx)}>
                   <TableCell className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
                     {idx + 1}
                   </TableCell>

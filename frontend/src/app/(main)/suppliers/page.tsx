@@ -1,5 +1,6 @@
 "use client";
 
+import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { RowDeleteMenu } from '@/components/common/RowDeleteMenu';
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
@@ -170,6 +171,7 @@ export default function SuppliersPage() {
       (s.phone || "").toLowerCase().includes(term)
     );
   });
+  const supplierNav = useRowNav(filtered.length, (i) => handleOpenEdit(filtered[i]));
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
@@ -213,7 +215,7 @@ export default function SuppliersPage() {
                 <TableHead className="py-3.5 px-6 text-right font-semibold">จัดการ</TableHead>
               </TableRow>
             </TableHeader>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100" {...supplierNav.bodyProps}>
               {loading ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-400">
@@ -227,8 +229,8 @@ export default function SuppliersPage() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((supp) => (
-                  <TableRow key={supp.id} className="hover:bg-slate-50/70">
+                filtered.map((supp, si) => (
+                  <TableRow key={supp.id} className={`hover:bg-slate-50/70 ${ROW_NAV_CLASS}`} {...supplierNav.rowProps(si)}>
                     <td className="py-4 px-6 font-medium text-slate-900">{supp.name}</td>
                     <td className="py-4 px-4 text-slate-600">{supp.contactName || "-"}</td>
                     <td className="py-4 px-4 text-slate-600">{supp.phone || "-"}</td>

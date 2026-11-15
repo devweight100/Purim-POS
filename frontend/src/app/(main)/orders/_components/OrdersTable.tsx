@@ -26,6 +26,7 @@ import {
   History,
 } from "lucide-react";
 import { LoadErrorState } from "@/components/common/LoadErrorState";
+import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { isCreditOrderFullyPaid, isOrderCredit, type OrderAction, type OrderRow } from "./order-shared";
 
 interface Props {
@@ -57,13 +58,14 @@ export function OrdersTable({
   totalPages, handleRowClick, handleOpenCreditHistory, handleOpenA4Receipt, handleOpenSlipReceipt, handleStartEditPayment,
   handleStartEditItems, handleStartRepeatOrder, handleStartEditNote, handleStartVoid, setReturnOrderId,
 }: Props) {
+  const nav = useRowNav(paginatedOrders.length, (i) => handleRowClick(paginatedOrders[i]));
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
       <div className="overflow-x-auto">
         <Table>
           <TableHeader className="bg-slate-50/90 border-b border-slate-200">
             <TableRow className="hover:bg-transparent">
-              <TableHead className="font-bold text-slate-800 text-sm py-3.5 pl-4 text-center w-16">ลำดับ</TableHead>
+              <TableHead className="hidden xl:table-cell font-bold text-slate-800 text-sm py-3.5 pl-4 text-center w-16">ลำดับ</TableHead>
               <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-left w-[130px]">เลขออเดอร์</TableHead>
               <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-center w-[150px]">วันที่ทำรายการ</TableHead>
               <TableHead className="font-bold text-slate-800 text-sm py-3.5">ลูกค้า / ผู้ซื้อ</TableHead>
@@ -77,7 +79,7 @@ export function OrdersTable({
             </TableRow>
           </TableHeader>
 
-          <TableBody className="divide-y divide-slate-100">
+          <TableBody className="divide-y divide-slate-100" {...nav.bodyProps}>
             {loading ? (
               <TableRow>
                 <TableCell colSpan={9} className="text-center py-12 text-slate-400 text-sm">
@@ -111,11 +113,11 @@ export function OrdersTable({
                 return (
                   <TableRow
                     key={order.id || order.orderNumber}
-                    className="hover:bg-slate-50/70 transition-colors cursor-pointer"
-                    onClick={() => handleRowClick(order)}
+                    className={`hover:bg-slate-50/70 transition-colors ${ROW_NAV_CLASS}`}
+                    {...nav.rowProps(idx)}
                   >
                     {/* 1. Index (ลำดับ) */}
-                    <TableCell className="py-3.5 pl-4 text-center font-mono font-bold text-slate-500 text-sm">
+                    <TableCell className="hidden xl:table-cell py-3.5 pl-4 text-center font-mono font-bold text-slate-500 text-sm">
                       {(currentPage - 1) * pageSize + idx + 1}
                     </TableCell>
 

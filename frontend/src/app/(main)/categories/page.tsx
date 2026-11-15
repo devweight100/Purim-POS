@@ -1,5 +1,6 @@
 "use client";
 
+import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { RowDeleteMenu } from '@/components/common/RowDeleteMenu';
 import { useEffect, useState, useMemo } from "react";
 import { api, apiFetch } from "@/lib/api";
@@ -136,6 +137,7 @@ export default function CategoriesPage() {
     }
   };
 
+  const categoryNav = useRowNav(filteredCategories.length, (i) => handleOpenEdit(filteredCategories[i]));
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
       {/* Header */}
@@ -186,7 +188,7 @@ export default function CategoriesPage() {
                 <TableHead className="text-slate-500 text-center w-32">จัดการ</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
+            <TableBody {...categoryNav.bodyProps}>
               {loading ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center h-32 text-slate-500">กำลังโหลด...</TableCell>
@@ -200,10 +202,10 @@ export default function CategoriesPage() {
                   <TableCell colSpan={5} className="text-center h-36 text-slate-400">ไม่พบหมวดหมู่สินค้า</TableCell>
                 </TableRow>
               ) : (
-                filteredCategories.map(cat => {
+                filteredCategories.map((cat, ci) => {
                   const count = productCountMap[cat.id] || 0;
                   return (
-                    <TableRow key={cat.id} className="border-slate-100 hover:bg-slate-50">
+                    <TableRow key={cat.id} className={`border-slate-100 hover:bg-slate-50 ${ROW_NAV_CLASS}`} {...categoryNav.rowProps(ci)}>
                       <TableCell className="text-center">
                         <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-xl mx-auto shadow-sm">
                           {cat.icon || "📦"}

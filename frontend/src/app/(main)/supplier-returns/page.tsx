@@ -1,5 +1,6 @@
 'use client';
 
+import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { useState, useEffect } from 'react';
 import { 
   Building2, Plus, Search, Filter, FileText, Download, Printer, 
@@ -197,6 +198,7 @@ export default function SupplierReturnsPage() {
     return matchesSearch && matchesSupplier;
   });
 
+  const noteNav = useRowNav(filteredNotes.length, (i) => handleViewPdf(filteredNotes[i]));
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7 font-sans">
       {loadError && <LoadErrorState message={loadError} onRetry={() => void refreshData()} retrying={loading} />}
@@ -394,10 +396,10 @@ export default function SupplierReturnsPage() {
                       <th className="py-3.5 px-3.5 text-center font-bold text-sm whitespace-nowrap w-36">การจัดการ</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  <tbody className="divide-y divide-slate-100" {...noteNav.bodyProps}>
                     {filteredNotes.map((note, idx) => {
                       return (
-                        <tr key={note.id} className="hover:bg-slate-50/70 transition-colors">
+                        <tr key={note.id} className={`hover:bg-slate-50/70 transition-colors ${ROW_NAV_CLASS}`} {...noteNav.rowProps(idx)}>
                         <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
                           {idx + 1}
                         </td>
