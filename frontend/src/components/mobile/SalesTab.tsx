@@ -219,7 +219,7 @@ function SalesChart({ d, range }: { d: MobileDashboard; range: MobileRange }) {
           <span className="text-slate-400">สูงสุด {baht(Math.max(0, ...bars.map((b) => b.value)))}</span>
         )}
       </p>
-      <div className="flex h-36 items-end gap-[3px]" data-testid="sales-chart">
+      <div className="flex h-36 items-end gap-[3px] sm:gap-btn" data-testid="sales-chart">
         {bars.map((b, i) => (
           <button
             key={i}

@@ -71,7 +71,7 @@ export default function MobileSummaryPage() {
 
   return (
     <>
-      <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-slate-200 bg-white/95 pr-1 pl-4 backdrop-blur pt-[env(safe-area-inset-top)] box-content">
+      <header className="sticky top-0 z-20 flex h-14 items-center gap-btn border-b border-slate-200 bg-white/95 px-edge backdrop-blur pt-[env(safe-area-inset-top)] box-content">
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-[17px] leading-tight font-extrabold text-slate-900" data-testid="mobile-store-name">
             {storeName}
@@ -113,7 +113,7 @@ export default function MobileSummaryPage() {
         aria-label="เมนูมุมมองมือถือ"
         className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-2px_8px_rgba(15,23,42,0.06)]"
       >
-        <ul className="mx-auto grid max-w-xl grid-cols-4">
+        <ul className="mx-auto grid max-w-xl grid-cols-4 gap-btn px-edge">
           {TABS.map(({ key, label, icon: Icon }) => {
             const active = tab === key;
             return (
