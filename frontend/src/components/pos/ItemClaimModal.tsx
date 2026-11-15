@@ -1,5 +1,6 @@
 'use client';
 
+import { useStackedEscape } from '@/lib/dialog-stack';
 import React, { useState, useEffect } from 'react';
 import { ShieldCheck, AlertCircle, X, Check, Info } from 'lucide-react';
 import { CartItem } from '../../lib/types';
@@ -24,6 +25,7 @@ export const ItemClaimModal: React.FC<ItemClaimModalProps> = ({
   onConfirm,
 }) => {
   const { customerId, customerName, getEffectivePrice } = useCartStore();
+  useStackedEscape(isOpen && !!item, onClose);
 
   const [loading, setLoading] = useState(false);
   const allowDecimalQty = useAllowDecimalQty();
@@ -112,7 +114,7 @@ export const ItemClaimModal: React.FC<ItemClaimModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">

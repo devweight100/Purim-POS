@@ -4,11 +4,14 @@ import * as React from "react"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/lib/utils"
+import { useDialogStack } from "@/lib/dialog-stack"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
-function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+function Dialog({ open, defaultOpen, onOpenChange, ...props }: DialogPrimitive.Root.Props) {
+  // only the topmost open dialog closes on Escape / backdrop click (see lib/dialog-stack.ts)
+  const stacked = useDialogStack(open, defaultOpen, onOpenChange)
+  return <DialogPrimitive.Root data-slot="dialog" defaultOpen={defaultOpen} {...props} {...stacked} />
 }
 
 function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {

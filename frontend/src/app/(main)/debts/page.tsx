@@ -390,7 +390,7 @@ function DebtsContent() {
                 <TableHead className="hidden xl:table-cell font-bold text-slate-700 text-sm py-2 pl-3 text-center w-16">ลำดับ</TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 w-[130px]">เลขที่บิล</TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 text-center w-[140px]">วันที่บิล</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm py-2 min-w-[190px]">ลูกค้า / ผู้ซื้อ</TableHead>
+                <TableHead className="font-bold text-slate-700 text-sm py-2 min-w-[140px]">ลูกค้า / ผู้ซื้อ</TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 text-right w-[110px]">ยอดเต็มบิล</TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 text-right w-[110px]">ชำระแล้ว</TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 text-right w-[120px]">คงค้างชำระ</TableHead>
@@ -398,7 +398,7 @@ function DebtsContent() {
                   ความคืบหน้าชำระ
                 </TableHead>
                 <TableHead className="font-bold text-slate-700 text-sm py-2 text-center w-[120px]">สถานะ</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm py-2 text-center w-[165px] pr-3">การจัดการ</TableHead>
+                <TableHead className="font-bold text-slate-700 text-sm py-2 text-center pr-3">การจัดการ</TableHead>
               </TableRow>
             </TableHeader>
 
@@ -470,7 +470,7 @@ function DebtsContent() {
                               <User className="w-3 h-3" /> บุคคล
                             </span>
                           )}
-                          <span className="truncate max-w-[190px]">{debt.customerName}</span>
+                          <span className="line-clamp-2 break-words">{debt.customerName}</span>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 font-mono">
@@ -544,7 +544,7 @@ function DebtsContent() {
 
                       {/* 8. Action Buttons */}
                       <TableCell className="py-1.5 sm:py-2 pr-3 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
+                        <div className="flex flex-wrap items-center justify-center gap-btn">
                           {/* Pay Button */}
                           {!isPaid ? (
                             <Button

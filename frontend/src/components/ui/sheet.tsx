@@ -4,11 +4,14 @@ import * as React from "react"
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/lib/utils"
+import { useDialogStack } from "@/lib/dialog-stack"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
-function Sheet({ ...props }: SheetPrimitive.Root.Props) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+function Sheet({ open, defaultOpen, onOpenChange, ...props }: SheetPrimitive.Root.Props) {
+  // only the topmost open dialog / sheet closes on Escape / backdrop click (see lib/dialog-stack.ts)
+  const stacked = useDialogStack(open, defaultOpen, onOpenChange)
+  return <SheetPrimitive.Root data-slot="sheet" defaultOpen={defaultOpen} {...props} {...stacked} />
 }
 
 function SheetTrigger({ ...props }: SheetPrimitive.Trigger.Props) {

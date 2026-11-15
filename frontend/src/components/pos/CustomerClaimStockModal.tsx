@@ -1,5 +1,6 @@
 'use client';
 
+import { useStackedEscape } from '@/lib/dialog-stack';
 import React, { useState, useEffect } from 'react';
 import { useHasChanged } from '@/lib/pos/use-has-changed';
 import {
@@ -77,6 +78,9 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
   // Refund sub-modal or mode
   const [refundMode, setRefundMode] = useState<'NONE' | 'CASH' | 'TRANSFER'>('NONE');
   const [isProcessing, setIsProcessing] = useState(false);
+  // Escape: the refund confirmation first, then this window (only when it is the topmost dialog)
+  useStackedEscape(isOpen && refundMode === 'NONE', onClose);
+  useStackedEscape(isOpen && refundMode !== 'NONE', () => setRefundMode('NONE'));
 
   const hasStockQuery = !!(customerId || customerName || searchQuery.trim());
 
@@ -333,7 +337,7 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
@@ -682,7 +686,7 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
 
         {/* Refund Mode Confirmation Modal */}
         {refundMode !== 'NONE' && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
+          <div role="dialog" aria-modal="true" className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
             <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4 text-sm animate-in zoom-in-95 duration-150">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
