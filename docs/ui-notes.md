@@ -54,17 +54,20 @@ cash-approval limit mixed in the shop-info card, receipt texts, printer / drawer
 Not changed: business logic, calculations, printing output, data, API permissions (DELETE /products and reset stay ADMIN;
 reset keeps backup-before-reset). The sale flow has no extra click.
 
-### Asked the owner? (kept as is, please decide)
+### Owner's answers (2026-11-15) and what was done
 
-- Managers no longer see the backup card (it is in ระบบ, admin only). The backend still lets a MANAGER create / list backups.
-  Should managers have a backup button somewhere?
-- "ลบสินค้าทั้งหมด" has no automatic backup on the server (the full reset has). Add one?
-- Products page "ลบที่เลือก" (bulk delete of ticked rows, confirm dialog) stays on the products page: it is an everyday
-  clean-up, not a delete-all. Move it to ระบบ too?
-- `ProductClaimModal` is mounted in the POS but nothing opens it (the POS uses "สิทธิ์เคลม"); the claims page uses it. Remove from the POS?
-- Loyalty points settings ("ตั้งค่าสะสมแต้ม") live on the customers page. Move to ตั้งค่า > การขายและใบเสร็จ?
-- Monitor (Pixel View) and แผงควบคุมเครื่องแม่: kept, moved to the bottom group. Still used?
-- pos-neo layout keeps logout next to its back button (separate design); change too?
+| # | Question | Answer | Done |
+|---|----------|--------|------|
+| 1 | Backup button for managers? | Yes (backup only) | ตั้งค่า > ระบบ now shows to ADMIN and MANAGER: เวอร์ชันระบบ + สำรองข้อมูล (create / list / check). The red พื้นที่อันตราย stays ADMIN only (also in the API). Server matched: `POST /server-control/backup` and `GET /server-control/backups` now ADMIN + MANAGER (list no longer needs VIEW_REPORTS); download of a file and the off-site folder stay ADMIN. |
+| 2 | Back up before "ลบสินค้าทั้งหมด"? | Yes, like the full reset | `DELETE /products` backs up first (`ServerControlService.backupBeforeWipe`, shared with the reset) and returns 400 with nothing deleted when the backup fails; the answer names the backup file (shown in the toast). Card + dialog text say so. Backend e2e. |
+| 3 | Move products "ลบที่เลือก" to ระบบ? | No | Unchanged. |
+| 4 | Remove the unused claim dialog from the POS? | Yes | `ProductClaimModal` + its PDF dialog and state removed from `PosDialogs` / `use-pos-dialogs`; the claims page keeps the component. |
+| 5 | Loyalty settings to ตั้งค่า? | No | Unchanged (customers page). |
+| 6 | Master Control (แผงควบคุมเครื่องแม่) still used? | Remove | `app/master-control` deleted, sidebar item, route permission and the desktop-app menu item removed; `/master-control` redirects to `/monitor` (old desktop apps keep the menu item until updated). Backend unchanged: its only API (`GET /server-control/telemetry`) is used by the monitor. Monitor (Pixel View) kept. |
+| 7 | pos-neo? | Remove | `app/pos-neo`, `components/pos/neo/*`, `PosNeoListLayout`, `NEO_POS`, the neo logout style and the `pos_neo_screen_mode` key removed. There was no setting / toggle choosing it and the desktop app always opens `/pos`; `/pos-neo` (and `/pos-neo/...`) redirect to `/pos` (next.config `redirects`), so a bookmark or terminal pointing at it gets the normal POS. |
+
+Tests: backend e2e "backups: ADMIN and MANAGER" and "delete all products: backup first"; Playwright `11-settings-system`
+(manager sees ระบบ with backup, presses it, no download / danger zone) and a new test for the removed-screen redirects.
 
 ### Done
 
@@ -76,4 +79,4 @@ reset keeps backup-before-reset). The sale flow has no extra click.
 
 ### Next
 
-- Nothing; verification done (see PROJECT_STATUS 2026-11-15). Owner questions above remain.
+- Nothing; verification done (see PROJECT_STATUS 2026-11-15, owner answers entry).
