@@ -1,5 +1,6 @@
 'use client';
 
+import { RowDeleteMenu } from '@/components/common/RowDeleteMenu';
 import { useState, useEffect, useRef } from 'react';
 import { BankAccount, fetchBankAccountsFromBackend } from '@/lib/bank-account-storage';
 import { api } from '@/lib/api';
@@ -12,7 +13,7 @@ import {
   DialogTitle, DialogFooter
 } from '@/components/ui/dialog';
 import { 
-  Building2, Plus, QrCode, Trash2, Edit, 
+  Building2, Plus, QrCode, Edit, 
   CheckCircle2, Info, Star, Upload, CreditCard 
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -153,6 +154,9 @@ export default function AccountsPage() {
       toast.error('ต้องมีบัญชีการเงินอย่างน้อย 1 บัญชี');
       return;
     }
+    // deleting used to happen on one click, with no question
+    const target = accounts.find(a => a.id === id);
+    if (!confirm(`ต้องการลบบัญชี "${target?.bankName || ''} ${target?.accountNumber || ''}" ใช่หรือไม่?`)) return;
     try {
       const deleting = accounts.find(a => a.id === id);
       await api.bankAccounts.delete(id);
@@ -261,9 +265,7 @@ export default function AccountsPage() {
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-sky-600" onClick={() => handleOpenEdit(acc)}>
                   <Edit className="w-4 h-4" />
                 </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:bg-red-50 hover:text-red-600" onClick={() => handleDelete(acc.id)}>
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                <RowDeleteMenu label="ลบบัญชีนี้" onDelete={() => handleDelete(acc.id)} />
               </div>
             </div>
           </div>

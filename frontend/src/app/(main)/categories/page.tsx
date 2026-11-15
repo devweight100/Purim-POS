@@ -1,5 +1,6 @@
 "use client";
 
+import { RowDeleteMenu } from '@/components/common/RowDeleteMenu';
 import { useEffect, useState, useMemo } from "react";
 import { api, apiFetch } from "@/lib/api";
 import { fetchCategoriesFromBackend, CategoryItem } from "@/lib/category-storage";
@@ -9,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { FolderTree, Plus, Pencil, Trash2, Search, Tag, AlertTriangle, X } from "lucide-react";
+import { FolderTree, Plus, Pencil, Search, Tag, AlertTriangle, X } from "lucide-react";
 import { toast } from "sonner";
 
 const emojiPresets = ["🥤", "🥬", "🍿", "🏠", "✏️", "📦", "👕", "💊", "⚡", "📱", "🚗", "🍔", "🍺", "🎨", "🐾", "🛍️"];
@@ -232,14 +233,7 @@ export default function CategoriesPage() {
                           >
                             <Pencil className="w-4 h-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50"
-                            onClick={() => setDeletingCat(cat)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          <RowDeleteMenu label="ลบหมวดหมู่" onDelete={() => setDeletingCat(cat)} />
                         </div>
                       </TableCell>
                     </TableRow>

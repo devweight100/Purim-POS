@@ -1,12 +1,13 @@
 "use client";
 
+import { RowDeleteMenu } from '@/components/common/RowDeleteMenu';
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Search, Plus, Edit, Trash2, Building2 } from "lucide-react";
+import { Search, Plus, Edit, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { LoadErrorState, errorMessage } from "@/components/common/LoadErrorState";
 
@@ -240,9 +241,7 @@ export default function SuppliersPage() {
                         <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(supp)}>
                           <Edit className="w-4 h-4 text-slate-600" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(supp.id, supp.name)}>
-                          <Trash2 className="w-4 h-4 text-rose-500" />
-                        </Button>
+                        <RowDeleteMenu label="ลบผู้จำหน่าย" onDelete={() => handleDelete(supp.id, supp.name)} />
                       </div>
                     </td>
                   </TableRow>

@@ -1,5 +1,6 @@
 'use client';
 
+import { RowDeleteMenu } from '@/components/common/RowDeleteMenu';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
@@ -34,7 +35,6 @@ import {
   Search,
   UserPlus,
   Edit,
-  Trash2,
   Building2,
   User,
   CreditCard,
@@ -618,15 +618,7 @@ export default function CustomersPage() {
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDeleteCustomer(c)}
-                            className="h-8 w-8 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
-                            title="ลบสมาชิก"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          <RowDeleteMenu label="ลบสมาชิก" onDelete={() => handleDeleteCustomer(c)} />
                         </div>
                       </TableCell>
                     </TableRow>
