@@ -20,6 +20,8 @@ import { Customer, useCustomerById, calculateEarnedPoints } from '@/lib/customer
 import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
 import { toast } from 'sonner';
 import { PosLogoutButton } from '@/components/pos/PosLogoutButton';
+import { useAuthStore } from '@/lib/store/auth-store';
+import { backOfficeHomeFor } from '@/lib/permissions';
 import { formatQty, subQty } from '@/lib/qty';
 
 interface PosListLayoutProps {
@@ -69,6 +71,7 @@ export function PosListLayout({
   onSelectCartIndex
 }: PosListLayoutProps) {
   const cart = useCartStore();
+  const backOfficeHome = backOfficeHomeFor(useAuthStore((st) => st.user));
   const { products } = useProductStore();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -405,8 +408,9 @@ export function PosListLayout({
       {/* ─── 1. TOP CONTROL & DIGITAL LED DISPLAY BAR ─── */}
       <div className="bg-white p-3 sm:p-4 border-b border-slate-200 flex items-start gap-3 shrink-0 shadow-sm">
         {/* Program logo = back to main menu */}
+{backOfficeHome ? (
         <Link
-          href="/dashboard"
+          href={backOfficeHome}
           className="shrink-0 block w-13 h-13 rounded-xl overflow-hidden shadow-sm ring-1 ring-slate-200 hover:ring-2 hover:ring-indigo-400 transition-all"
           title="กลับไปเมนูหลัก"
           aria-label="กลับไปเมนูหลัก"
@@ -414,6 +418,10 @@ export function PosListLayout({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/icon.svg" alt="" className="w-full h-full" draggable={false} />
         </Link>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/icon.svg" alt="" className="shrink-0 block w-13 h-13 rounded-xl shadow-sm ring-1 ring-slate-200" draggable={false} />
+        )}
       <div className="flex-1 min-w-0 grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-center">
         
         {/* Left Search & Note Input Area (4 cols) */}

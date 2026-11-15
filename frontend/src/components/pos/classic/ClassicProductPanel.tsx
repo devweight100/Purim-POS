@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { formatCurrency } from '@/lib/utils';
 import { useDocumentSearchStore } from '@/lib/store/document-search-store';
+import { useAuthStore } from '@/lib/store/auth-store';
+import { backOfficeHomeFor } from '@/lib/permissions';
 import { useProductCardUnit } from '@/lib/pos/use-product-card-unit';
 import type { PosController } from '@/lib/pos/use-pos-controller';
 import type { PosViewMode } from '@/lib/pos/pos-variant';
@@ -101,6 +103,7 @@ function ClassicProductCard({
 export function ClassicProductPanel({ pos }: { pos: PosController }) {
   const { cart, dialogs: d, filter, categories } = pos;
   const { activeCategory } = filter;
+  const backOfficeHome = backOfficeHomeFor(useAuthStore((st) => st.user));
 
   return (
     <div className="flex min-w-0 flex-1 flex-col border-b border-slate-200 lg:border-b-0 lg:border-r">
@@ -125,17 +128,17 @@ export function ClassicProductPanel({ pos }: { pos: PosController }) {
 
       {/* Toolbar */}
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white p-2.5 sm:px-3 sm:py-2.5">
-        {/* Back to Dashboard */}
-        <Link
-          href="/dashboard"
-          className="h-11 px-3 rounded-xl border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-2xs transition-colors"
-          title="กลับไปหน้าแดชบอร์ด / เมนูหลัก"
-        >
-          <ArrowLeft className="w-4 h-4 text-slate-500" />
-          <span className="hidden sm:inline">แดชบอร์ด</span>
-        </Link>
-
-        <PosLogoutButton variant="classic" />
+        {/* Back to the back office (the first page this user may open; none = no button) */}
+        {backOfficeHome && (
+          <Link
+            href={backOfficeHome}
+            className="h-11 px-3 rounded-xl border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-2xs transition-colors"
+            title="กลับไปเมนูหลัก (หลังร้าน)"
+          >
+            <ArrowLeft className="w-4 h-4 text-slate-500" />
+            <span className="hidden sm:inline">เมนูหลัก</span>
+          </Link>
+        )}
 
         {/* Search Input */}
         <div className="relative flex-1 min-w-[180px]">
@@ -212,6 +215,9 @@ export function ClassicProductPanel({ pos }: { pos: PosController }) {
             <span className="hidden sm:inline">ปิดกะ</span>
           </Button>
         )}
+
+        {/* Logout last, away from the sale buttons */}
+        <PosLogoutButton variant="classic" />
       </div>
 
       {/* Categories */}

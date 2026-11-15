@@ -6,6 +6,8 @@ import { Search, ScanLine, PauseCircle, Clock, LogOut, Receipt, ArrowLeft, Store
 import { useDocumentSearchStore } from '@/lib/store/document-search-store';
 import type { PosController } from '@/lib/pos/use-pos-controller';
 import { PosLogoutButton } from '../PosLogoutButton';
+import { useAuthStore } from '@/lib/store/auth-store';
+import { backOfficeHomeFor } from '@/lib/permissions';
 
 const formatClock = () => new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -22,6 +24,7 @@ function NeoClock() {
 /** Editing-bill banner and the top bar of the neo screen (navigation, search, mode, shift). */
 export function NeoHeader({ pos }: { pos: PosController }) {
   const { cart, dialogs: d, filter } = pos;
+  const backOfficeHome = backOfficeHomeFor(useAuthStore((st) => st.user));
 
   return (
     <>
@@ -47,14 +50,16 @@ export function NeoHeader({ pos }: { pos: PosController }) {
 
           {/* Left Brand & Navigation */}
           <div className="flex items-center gap-2 shrink-0">
+            {backOfficeHome && (
             <Link
-              href="/dashboard"
+              href={backOfficeHome}
               className="group flex items-center gap-1.5 rounded-lg border-2 border-black bg-[#FEF08A] px-2.5 py-1.5 text-xs font-black text-black shadow-[2px_2px_0px_#000] transition-all hover:bg-[#FDE047] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
-              title="กลับหน้าแดชบอร์ดหลัก"
+              title="กลับไปเมนูหลัก (หลังร้าน)"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">แดชบอร์ด</span>
+              <span className="hidden sm:inline">เมนูหลัก</span>
             </Link>
+            )}
 
             <PosLogoutButton variant="neo" />
 

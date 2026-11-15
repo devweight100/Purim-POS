@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,7 +18,7 @@ import { toast } from "sonner";
 import { 
   Save, Store, Building2, ArrowRight, Settings, Coins, 
   FileText, MessageSquare, Sparkles, CheckCircle2, Eye, Printer, Phone, MapPin, Hash, Mail,
-  Trash2, AlertTriangle, RefreshCcw, ShieldAlert
+  Trash2, AlertTriangle, RefreshCcw, ShieldAlert, Package, Wallet, Users, Server, PackageX
 } from "lucide-react";
 import Link from "next/link";
 import { Database, DownloadCloud, ShieldCheck } from "lucide-react";
@@ -38,8 +38,6 @@ import {
   getCashDrawerConfig, 
   saveCashDrawerConfig, 
   kickCashDrawer, 
-  connectWebSerialPrinter, 
-  isWebSerialSupported, 
   CashDrawerConfig 
 } from "@/lib/cash-drawer-service";
 import { 
@@ -54,6 +52,9 @@ import { ReceiptOptionsSection, ReceiptPreview, LayoutTabs, type ReceiptLayout }
 import { formatCurrency } from "@/lib/utils";
 import { VersionDetails } from "@/components/common/VersionInfo";
 import { clearLocalShopData } from '@/lib/local-data-reset';
+import { clearCachedProducts } from '@/lib/offline-db';
+import { canAccessRoute } from '@/lib/permissions';
+import { settingsTabsFor, parseSettingsTab, type SettingsTab } from '@/lib/settings-tabs';
 
 /** Printer reported by the desktop (Electron) app. */
 type InstalledPrinter = { name: string; isDefault?: boolean };
@@ -149,7 +150,7 @@ function BackupSection() {
     iso ? new Date(iso).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" }) : "-";
 
   return (
-    <Card className="bg-white border-slate-200 shadow-2xs mt-6">
+    <Card className="bg-white border-slate-200 shadow-2xs">
       <CardHeader className="pb-3 border-b border-slate-100">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -258,6 +259,60 @@ function BackupSection() {
   );
 }
 
+/** Words typed to confirm the irreversible operations of ระบบ (ตั้งค่า > ระบบ). */
+const CLEAR_PRODUCTS_WORD = "ลบสินค้าทั้งหมด";
+const RESET_WORD = "RESET";
+
+/** Save button of a settings tab (every tab saves the same store settings record). */
+function SaveBar({ onSave, label = "บันทึกการตั้งค่า" }: { onSave: () => void; label?: string }) {
+  return (
+    <div className="pt-2 flex justify-end">
+      <Button
+        type="button"
+        onClick={onSave}
+        className="bg-sky-600 hover:bg-sky-700 text-white font-bold h-10 px-5 rounded-xl shadow-2xs gap-2 cursor-pointer"
+      >
+        <Save className="w-4 h-4" /> {label}
+      </Button>
+    </div>
+  );
+}
+
+/** A card that only links to another page (settings that live on their own page). */
+function LinkCard({ href, icon: Icon, title, text, button }: { href: string; icon: React.ElementType; title: string; text: string; button: string }) {
+  return (
+    <Card className="bg-white border-slate-200 shadow-2xs">
+      <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 py-4 px-5">
+        <div>
+          <CardTitle className="flex items-center text-base text-slate-900 font-bold">
+            <Icon className="w-5 h-5 mr-2.5 text-sky-600" /> {title}
+          </CardTitle>
+          <CardDescription className="text-slate-500 text-xs mt-0.5">{text}</CardDescription>
+        </div>
+        <Link href={href}>
+          <Button variant="outline" className="font-bold h-10 px-4 shrink-0 text-xs sm:text-sm rounded-xl">
+            {button} <ArrowRight className="w-4 h-4 ml-1.5" />
+          </Button>
+        </Link>
+      </CardHeader>
+    </Card>
+  );
+}
+
+function SectionCard({ icon: Icon, title, text, children, className = "" }: { icon: React.ElementType; title: string; text?: string; children: React.ReactNode; className?: string }) {
+  return (
+    <Card className={`bg-white border-slate-200 shadow-2xs ${className}`}>
+      <CardHeader className="pb-3 border-b border-slate-100">
+        <CardTitle className="flex items-center text-lg text-slate-900 font-bold">
+          <Icon className="w-5 h-5 mr-2.5 text-sky-600" /> {title}
+        </CardTitle>
+        {text && <CardDescription className="text-slate-500 text-xs">{text}</CardDescription>}
+      </CardHeader>
+      <CardContent className="space-y-4 pt-4">{children}</CardContent>
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<StoreSettings>(DEFAULT_STORE_SETTINGS);
   const [loading, setLoading] = useState(true);
@@ -265,6 +320,26 @@ export default function SettingsPage() {
   const [receiptLayout, setReceiptLayout] = useState<ReceiptLayout>("slip");
   const [storeLoadError, setStoreLoadError] = useState<string | null>(null);
   const [drawerConfig, setDrawerConfig] = useState<CashDrawerConfig>(getCashDrawerConfig());
+
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === "ADMIN";
+  // which group of settings is shown (?tab= in the address, so a link can open one directly)
+  const [tab, setTab] = useState<SettingsTab>("store");
+  const tabs = settingsTabsFor(user?.role);
+  const activeTab: SettingsTab = tabs.some((t) => t.id === tab) ? tab : "store";
+  const selectTab = (next: SettingsTab) => {
+    setTab(next);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", next);
+      window.history.replaceState(window.history.state, "", url.toString());
+    } catch { /* address bar not updated: the tab still changes */ }
+  };
+
+  // ระบบ > ลบสินค้าทั้งหมด
+  const [isClearProductsOpen, setIsClearProductsOpen] = useState(false);
+  const [clearProductsText, setClearProductsText] = useState("");
+  const [isClearingProducts, setIsClearingProducts] = useState(false);
 
   // Reset database state
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
@@ -299,8 +374,11 @@ export default function SettingsPage() {
     let mounted = true;
     const run = async () => { await reloadStoreSettings(() => mounted); };
     void run();
+    // the tab asked for in the address (?tab=stock ...), read once after hydration
+    const askedTab = parseSettingsTab(new URLSearchParams(window.location.search).get("tab"));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from the address after hydration
+    if (askedTab) setTab(askedTab);
     // Browser-only values (drawer config in localStorage, the Electron bridge) exist only after hydration.
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- read once from the browser after hydration
     setDrawerConfig(getCashDrawerConfig());
 
     // Check if running inside Electron desktop app and fetch Windows printers
@@ -327,8 +405,8 @@ export default function SettingsPage() {
 
 
   const handleResetAllData = async () => {
-    if (confirmText.trim() !== "RESET") {
-      toast.error("กรุณาพิมพ์คำว่า RESET เพื่อยืนยัน");
+    if (confirmText.trim() !== RESET_WORD) {
+      toast.error(`กรุณาพิมพ์คำว่า ${RESET_WORD} เพื่อยืนยัน`);
       return;
     }
 
@@ -357,6 +435,29 @@ export default function SettingsPage() {
       toast.error((err as Error | undefined)?.message || "ไม่สามารถรีเซ็ตฐานข้อมูลได้");
     } finally {
       setIsResetting(false);
+    }
+  };
+
+  const handleClearAllProducts = async () => {
+    if (clearProductsText.trim() !== CLEAR_PRODUCTS_WORD) {
+      toast.error(`กรุณาพิมพ์คำว่า ${CLEAR_PRODUCTS_WORD} เพื่อยืนยัน`);
+      return;
+    }
+    setIsClearingProducts(true);
+    try {
+      const result = await api.products.deleteAll();
+      const count = Number(result?.deleted || 0);
+      // the only local product data is the POS offline cache
+      await clearCachedProducts();
+      useProductStore.setState({ products: [] });
+      toast.success(`ลบสินค้าทั้งหมดเรียบร้อย${count > 0 ? ` ${count} รายการ` : ""}`);
+      setIsClearProductsOpen(false);
+      setClearProductsText("");
+    } catch (err) {
+      // the server still has the products: change nothing here
+      toast.error("ลบสินค้าทั้งหมดไม่สำเร็จ: " + ((err as Error | undefined)?.message || "ติดต่อเซิร์ฟเวอร์ไม่ได้"));
+    } finally {
+      setIsClearingProducts(false);
     }
   };
 
@@ -459,25 +560,16 @@ export default function SettingsPage() {
     }
   };
 
-  const handleConnectSerial = async () => {
-    const res = await connectWebSerialPrinter();
-    if (res.success) {
-      toast.success(res.message);
-    } else {
-      toast.error(res.message);
-    }
-  };
 
   if (loading) return <div className="p-4 text-slate-500 sm:p-6 lg:p-8">Loading...</div>;
-
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7 font-sans">
       <div>
         <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
-          <Settings className="w-6 h-6 text-sky-500" /> ตั้งค่าระบบร้านค้า & ใบเสร็จ (Settings)
+          <Settings className="w-6 h-6 text-sky-500" /> ตั้งค่าร้าน
         </h1>
         <p className="text-xs text-slate-500 mt-0.5">
-          จัดการข้อมูลร้านค้า เลขผู้เสียภาษี ข้อความหัว-ท้ายใบเสร็จสลิป และอุปกรณ์ต่อพ่วง
+          แยกเป็นหมวด เลือกหมวดด้านล่าง — ค่าแต่ละอย่างอยู่ที่เดียว
         </p>
       </div>
 
@@ -485,50 +577,34 @@ export default function SettingsPage() {
         <LoadErrorState message={storeLoadError} onRetry={() => void reloadStoreSettings()} />
       )}
 
-      {/* Direct Banner Link to Financial Accounts & QR Management */}
-      <Card className="bg-gradient-to-r from-sky-50 to-blue-50 border border-sky-200 shadow-2xs">
-        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-4 px-5">
-          <div>
-            <CardTitle className="flex items-center text-lg text-sky-950 font-bold">
-              <Building2 className="w-5 h-5 mr-2.5 text-sky-600" />
-              จัดการบัญชีการเงิน & รูป QR Code
-            </CardTitle>
-            <CardDescription className="text-sky-700 text-xs mt-0.5">
-              เพิ่ม/แก้ไข บัญชีธนาคาร (กสิกรไทย, ไทยพาณิชย์ ฯลฯ) และอัปโหลดรูป QR Code สแกนจ่าย
-            </CardDescription>
-          </div>
-          <Link href="/accounts">
-            <Button className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-10 px-4 shadow-2xs shrink-0 text-xs sm:text-sm rounded-xl">
-              เปิดหน้าจัดการบัญชี <ArrowRight className="w-4 h-4 ml-1.5" />
-            </Button>
-          </Link>
-        </CardHeader>
-      </Card>
+      {/* groups of settings */}
+      <div role="tablist" aria-label="หมวดการตั้งค่า" className="flex gap-1.5 overflow-x-auto pb-1 border-b border-slate-200">
+        {tabs.map((t) => {
+          const active = t.id === activeTab;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              data-testid={`settings-tab-${t.id}`}
+              onClick={() => selectTab(t.id)}
+              className={`shrink-0 px-3.5 py-2 rounded-t-xl text-sm font-bold border-b-2 transition-colors cursor-pointer ${
+                active
+                  ? t.id === "system" ? "border-rose-600 text-rose-700 bg-rose-50" : "border-sky-600 text-sky-800 bg-sky-50"
+                  : "border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+              }`}
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
 
-      {/* 2-Column Responsive Layout: Form on Left, Real-Time Preview on Right */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* ─── LEFT COLUMN: SETTINGS FORM (7 cols) ─── */}
-        <div className="lg:col-span-7 space-y-5">
-          {/* what slips / A4 documents show: first, so it sits next to the live preview */}
-          <ReceiptOptionsSection
-            settings={settings}
-            onChange={setSettings}
-            layout={receiptLayout}
-            onLayoutChange={setReceiptLayout}
-            disabled={!!storeLoadError}
-          />
-          {/* Card 1: ข้อมูลร้านค้า & เอกสาร */}
-          <Card className="bg-white border-slate-200 shadow-2xs">
-            <CardHeader className="pb-3 border-b border-slate-100">
-              <CardTitle className="flex items-center text-lg text-slate-900 font-bold">
-                <Store className="w-5 h-5 mr-2.5 text-sky-600" />
-                ข้อมูลร้านค้า & นิติบุคคล
-              </CardTitle>
-              <CardDescription className="text-slate-500 text-xs">
-                ข้อมูลนี้จะแสดงบนใบเสร็จรับเงิน ใบกำกับภาษี และเอกสารการเคลมสินค้า
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 pt-4">
+      {/* ─── ข้อมูลร้าน ─── */}
+      {activeTab === "store" && (
+        <div className="max-w-4xl" role="tabpanel">
+          <SectionCard icon={Store} title="ข้อมูลร้านค้า & นิติบุคคล" text="แสดงบนใบเสร็จ ใบกำกับภาษี และเอกสารการเคลมสินค้า">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
@@ -561,7 +637,69 @@ export default function SettingsPage() {
                   />
                 </div>
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Hash className="w-3.5 h-3.5 text-slate-500" />
+                    <span>เลขประจำตัวผู้เสียภาษี (Tax ID 13 หลัก)</span>
+                  </label>
+                  <Input 
+                    value={settings.taxId || ''}
+                    onChange={e => setSettings({...settings, taxId: e.target.value})}
+                    placeholder="เช่น 0105555555555"
+                    maxLength={18}
+                    className="bg-white border-slate-300 font-mono font-bold text-slate-900"
+                  />
+                </div>
 
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Phone className="w-3.5 h-3.5 text-slate-500" />
+                    <span>เบอร์โทรศัพท์ติดต่อ</span>
+                  </label>
+                  <Input 
+                    value={settings.storePhone || ''}
+                    onChange={e => setSettings({...settings, storePhone: e.target.value})}
+                    placeholder="เช่น 02-123-4567, 081-234-5678"
+                    className="bg-white border-slate-300 font-mono text-slate-900"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-slate-500" />
+                  <span>อีเมล / Line ID / ช่องทางติดต่อเพิ่มเติม</span>
+                </label>
+                <Input 
+                  value={settings.storeEmail || ''}
+                  onChange={e => setSettings({...settings, storeEmail: e.target.value})}
+                  placeholder="เช่น Line: @purimpos, contact@purim.com"
+                  className="bg-white border-slate-300 text-slate-900"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-slate-500" />
+                  <span>ที่อยู่ร้านค้า (แสดงบนหัวบิล)</span>
+                </label>
+                <Textarea 
+                  value={settings.storeAddress || ''}
+                  onChange={e => setSettings({...settings, storeAddress: e.target.value})}
+                  placeholder="เลขที่ ถนน แขวง/ตำบล เขต/อำเภอ จังหวัด รหัสไปรษณีย์"
+                  className="bg-white border-slate-300 text-slate-900 h-20 text-xs leading-relaxed"
+                />
+              </div>
+            <SaveBar onSave={() => void handleSaveStore()} label="บันทึกข้อมูลร้าน" />
+          </SectionCard>
+        </div>
+      )}
+
+      {/* ─── การขายและใบเสร็จ ─── */}
+      {activeTab === "sales" && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start" role="tabpanel">
+          <div className="lg:col-span-7 space-y-5">
+            <SectionCard icon={Coins} title="การขาย" text="ภาษีขายและการขายเป็นจำนวนทศนิยม ใช้กับทุกเครื่อง">
               {/* VAT on sales (store-wide). Purchases are separate and not affected. */}
               <div className={`rounded-xl border p-3.5 space-y-2.5 ${settings.vatEnabled ? 'border-emerald-300 bg-emerald-50/60' : 'border-slate-200 bg-slate-50'}`}>
                 <label className="flex items-start gap-3 cursor-pointer">
@@ -597,7 +735,6 @@ export default function SettingsPage() {
                 )}
                 <p className="text-[11px] text-slate-500 pl-8">มีผลกับบิลขายใหม่ทุกเครื่องทันทีหลังกดบันทึก (บิลเก่าไม่เปลี่ยน) · ภาษีฝั่งซื้อแยกตามบิลซื้อ ไม่เกี่ยวกับตัวเลือกนี้</p>
               </div>
-
               {/* Decimal quantities (store-wide): sell by metre / kg / cubic metre */}
               <div className={`rounded-xl border p-3.5 space-y-1.5 ${settings.allowDecimalQty ? 'border-sky-300 bg-sky-50/60' : 'border-slate-200 bg-slate-50'}`}>
                 <label className="flex items-start gap-3 cursor-pointer">
@@ -619,105 +756,16 @@ export default function SettingsPage() {
                 </label>
                 <p className="text-[11px] text-slate-500 pl-8">มีผลกับทุกเครื่องหลังกดบันทึก · รายการเดิมที่มีทศนิยมยังคงอยู่แม้จะปิดภายหลัง</p>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label htmlFor="low-stock-threshold" className="text-xs font-bold text-slate-700">
-                    เกณฑ์สินค้าใกล้หมด (ชิ้น)
-                  </label>
-                  <Input
-                    id="low-stock-threshold"
-                    type="number"
-                    min={0}
-                    step={qtyStep(settings.allowDecimalQty === true)}
-                    inputMode={qtyInputMode(settings.allowDecimalQty === true)}
-                    value={String(lowStockInput)}
-                    onChange={e => setSettings({ ...settings, lowStockThreshold: e.target.value } as unknown as StoreSettings)}
-                    aria-invalid={!!storeFieldErrors.lowStockThreshold}
-                    className={`bg-white font-mono font-bold text-slate-900 ${storeFieldErrors.lowStockThreshold ? 'border-rose-400' : 'border-slate-300'}`}
-                  />
-                  {storeFieldErrors.lowStockThreshold
-                    ? <p role="alert" className="text-[11px] font-bold text-rose-600">{storeFieldErrors.lowStockThreshold}</p>
-                    : <p className="text-[11px] text-slate-500">สินค้าที่คงเหลือเท่านี้หรือน้อยกว่าจะถือว่าใกล้หมด ใช้ทุกหน้าและรายงาน</p>}
-                </div>
-                <div className="space-y-1.5">
-                  <label htmlFor="cash-movement-approval-limit" className="text-xs font-bold text-slate-700">
-                    วงเงินนำเงินเข้า/ออกลิ้นชักที่ต้องให้ผู้จัดการอนุมัติ (0 = ทุกครั้ง)
-                  </label>
-                  <Input
-                    id="cash-movement-approval-limit"
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    inputMode="decimal"
-                    value={String(cashLimitInput)}
-                    onChange={e => setSettings({ ...settings, cashMovementApprovalLimit: e.target.value } as unknown as StoreSettings)}
-                    aria-invalid={!!storeFieldErrors.cashMovementApprovalLimit}
-                    className={`bg-white font-mono font-bold text-slate-900 ${storeFieldErrors.cashMovementApprovalLimit ? 'border-rose-400' : 'border-slate-300'}`}
-                  />
-                  {storeFieldErrors.cashMovementApprovalLimit
-                    ? <p role="alert" className="text-[11px] font-bold text-rose-600">{storeFieldErrors.cashMovementApprovalLimit}</p>
-                    : <p className="text-[11px] text-slate-500">นำเงินเข้า/ออกเกินยอดนี้ (บาท) ต้องใช้ PIN ผู้จัดการ</p>}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <Hash className="w-3.5 h-3.5 text-slate-500" />
-                    <span>เลขประจำตัวผู้เสียภาษี (Tax ID 13 หลัก)</span>
-                  </label>
-                  <Input 
-                    value={settings.taxId || ''}
-                    onChange={e => setSettings({...settings, taxId: e.target.value})}
-                    placeholder="เช่น 0105555555555"
-                    maxLength={18}
-                    className="bg-white border-slate-300 font-mono font-bold text-slate-900"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <Phone className="w-3.5 h-3.5 text-slate-500" />
-                    <span>เบอร์โทรศัพท์ติดต่อ</span>
-                  </label>
-                  <Input 
-                    value={settings.storePhone || ''}
-                    onChange={e => setSettings({...settings, storePhone: e.target.value})}
-                    placeholder="เช่น 02-123-4567, 081-234-5678"
-                    className="bg-white border-slate-300 font-mono text-slate-900"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 text-slate-500" />
-                  <span>อีเมล / Line ID / ช่องทางติดต่อเพิ่มเติม</span>
-                </label>
-                <Input 
-                  value={settings.storeEmail || ''}
-                  onChange={e => setSettings({...settings, storeEmail: e.target.value})}
-                  placeholder="เช่น Line: @purimpos, contact@purim.com"
-                  className="bg-white border-slate-300 text-slate-900"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                  <span>ที่อยู่ร้านค้า (แสดงบนหัวบิล)</span>
-                </label>
-                <Textarea 
-                  value={settings.storeAddress || ''}
-                  onChange={e => setSettings({...settings, storeAddress: e.target.value})}
-                  placeholder="เลขที่ ถนน แขวง/ตำบล เขต/อำเภอ จังหวัด รหัสไปรษณีย์"
-                  className="bg-white border-slate-300 text-slate-900 h-20 text-xs leading-relaxed"
-                />
-              </div>
-            </CardContent>
-          </Card>
-
+              <SaveBar onSave={() => void handleSaveStore()} />
+            </SectionCard>
+            {/* what slips / A4 documents show: next to the live preview */}
+            <ReceiptOptionsSection
+              settings={settings}
+              onChange={setSettings}
+              layout={receiptLayout}
+              onLayoutChange={setReceiptLayout}
+              disabled={!!storeLoadError}
+            />
           {/* Card 2: ข้อความบนใบเสร็จแบบสลิป (Header & Footer) */}
           <Card className="bg-white border-slate-200 shadow-2xs">
             <CardHeader className="pb-3 border-b border-slate-100">
@@ -765,19 +813,104 @@ export default function SettingsPage() {
                 />
                 <p className="text-[11px] text-slate-400">ใส่ข้อความแจ้งเงื่อนไขการเคลม หรือช่องทางติดต่อทางโซเชียลมีเดียได้</p>
               </div>
-
-              <div className="pt-2">
-                <Button 
-                  type="button"
-                  onClick={handleSaveStore}
-                  className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold h-11 rounded-xl shadow-2xs gap-2 cursor-pointer transition-all active:scale-[0.98]"
-                >
-                  <Save className="w-4 h-4" /> บันทึกรายละเอียดร้านค้า & ข้อความใบเสร็จ
-                </Button>
-              </div>
+              <SaveBar onSave={() => void handleSaveStore()} label="บันทึกข้อความใบเสร็จ" />
             </CardContent>
           </Card>
+          </div>
 
+          {/* ─── LIVE RECEIPT PREVIEW ─── */}
+        <div className="lg:col-span-5 lg:sticky lg:top-4 space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <Eye className="w-4 h-4 text-indigo-600" />
+              <span className="text-sm font-bold text-slate-900">
+                {receiptLayout === "slip" ? "ตัวอย่างสลิป (ความกว้างพอดีกระดาษ 80mm)" : "ตัวอย่างใบเสร็จ A4 (ย่อ 50%)"}
+              </span>
+            </div>
+            <LayoutTabs value={receiptLayout} onChange={setReceiptLayout} />
+          </div>
+
+          <div className="bg-slate-200/70 p-4 sm:p-5 rounded-2xl border border-slate-300 flex justify-center shadow-inner overflow-x-auto">
+            {/* The EXACT SAME components that print (80 mm slip / A4 receipt) */}
+            <ReceiptPreview settings={settings} layout={receiptLayout} />
+          </div>
+
+          <p className="text-[11px] text-center text-slate-500 font-sans">
+            ตัวอย่างนี้ใช้แม่แบบเดียวกับที่พิมพ์จริง เปลี่ยนตัวเลือกแล้วเห็นผลทันที (กดบันทึกเพื่อใช้กับทุกเครื่อง)
+          </p>
+        </div>
+        </div>
+      )}
+
+      {/* ─── สินค้าและสต็อก ─── */}
+      {activeTab === "stock" && (
+        <div className="max-w-4xl space-y-4" role="tabpanel">
+          <SectionCard icon={Package} title="สินค้าและสต็อก" text="ใช้กับหน้าสินค้า คลังสินค้า แดชบอร์ด มือถือ และรายงาน">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label htmlFor="low-stock-threshold" className="text-xs font-bold text-slate-700">
+                    เกณฑ์สินค้าใกล้หมด (ชิ้น)
+                  </label>
+                  <Input
+                    id="low-stock-threshold"
+                    type="number"
+                    min={0}
+                    step={qtyStep(settings.allowDecimalQty === true)}
+                    inputMode={qtyInputMode(settings.allowDecimalQty === true)}
+                    value={String(lowStockInput)}
+                    onChange={e => setSettings({ ...settings, lowStockThreshold: e.target.value } as unknown as StoreSettings)}
+                    aria-invalid={!!storeFieldErrors.lowStockThreshold}
+                    className={`bg-white font-mono font-bold text-slate-900 ${storeFieldErrors.lowStockThreshold ? 'border-rose-400' : 'border-slate-300'}`}
+                  />
+                  {storeFieldErrors.lowStockThreshold
+                    ? <p role="alert" className="text-[11px] font-bold text-rose-600">{storeFieldErrors.lowStockThreshold}</p>
+                    : <p className="text-[11px] text-slate-500">สินค้าที่คงเหลือเท่านี้หรือน้อยกว่าจะถือว่าใกล้หมด ใช้ทุกหน้าและรายงาน</p>}
+                </div>
+            </div>
+            <SaveBar onSave={() => void handleSaveStore()} />
+          </SectionCard>
+          {canAccessRoute(user, "/categories") && (
+            <LinkCard href="/categories" icon={Package} title="หมวดหมู่สินค้า" text="เพิ่ม / แก้ไขหมวดหมู่ที่ใช้จัดกลุ่มสินค้า" button="เปิดหน้าหมวดหมู่" />
+          )}
+        </div>
+      )}
+
+      {/* ─── การเงิน ─── */}
+      {activeTab === "finance" && (
+        <div className="max-w-4xl space-y-4" role="tabpanel">
+          <SectionCard icon={Wallet} title="เงินในลิ้นชัก" text="การนำเงินเข้า / ออกลิ้นชักที่หน้าขาย">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label htmlFor="cash-movement-approval-limit" className="text-xs font-bold text-slate-700">
+                    วงเงินนำเงินเข้า/ออกลิ้นชักที่ต้องให้ผู้จัดการอนุมัติ (0 = ทุกครั้ง)
+                  </label>
+                  <Input
+                    id="cash-movement-approval-limit"
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    inputMode="decimal"
+                    value={String(cashLimitInput)}
+                    onChange={e => setSettings({ ...settings, cashMovementApprovalLimit: e.target.value } as unknown as StoreSettings)}
+                    aria-invalid={!!storeFieldErrors.cashMovementApprovalLimit}
+                    className={`bg-white font-mono font-bold text-slate-900 ${storeFieldErrors.cashMovementApprovalLimit ? 'border-rose-400' : 'border-slate-300'}`}
+                  />
+                  {storeFieldErrors.cashMovementApprovalLimit
+                    ? <p role="alert" className="text-[11px] font-bold text-rose-600">{storeFieldErrors.cashMovementApprovalLimit}</p>
+                    : <p className="text-[11px] text-slate-500">นำเงินเข้า/ออกเกินยอดนี้ (บาท) ต้องใช้ PIN ผู้จัดการ</p>}
+                </div>
+            </div>
+            <SaveBar onSave={() => void handleSaveStore()} />
+          </SectionCard>
+          {canAccessRoute(user, "/accounts") && (
+            <LinkCard href="/accounts" icon={Building2} title="บัญชีธนาคาร & รูป QR Code" text="เพิ่ม / แก้ไขบัญชีธนาคารและรูป QR สำหรับรับโอน" button="เปิดหน้าบัญชีธนาคาร" />
+          )}
+        </div>
+      )}
+
+      {/* ─── เครื่องพิมพ์และลิ้นชัก (this device) ─── */}
+      {activeTab === "devices" && (
+        <div className="max-w-5xl" role="tabpanel">
           {/* Card 3: ตั้งค่าลิ้นชักเก็บเงิน & เครื่องพิมพ์ใบเสร็จ */}
           <Card className="bg-white border-slate-200 shadow-2xs">
             <CardHeader className="pb-3 border-b border-slate-100">
@@ -1002,88 +1135,141 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </div>
+      )}
 
-        {/* ─── RIGHT COLUMN: LIVE REAL-TIME RECEIPT SLIP PREVIEW (5 cols) ─── */}
-        <div className="lg:col-span-5 lg:sticky lg:top-4 space-y-3">
-          <div className="flex items-center justify-between px-1">
-            <div className="flex items-center gap-2">
-              <Eye className="w-4 h-4 text-indigo-600" />
-              <span className="text-sm font-bold text-slate-900">
-                {receiptLayout === "slip" ? "ตัวอย่างสลิป (ความกว้างพอดีกระดาษ 80mm)" : "ตัวอย่างใบเสร็จ A4 (ย่อ 50%)"}
-              </span>
-            </div>
-            <LayoutTabs value={receiptLayout} onChange={setReceiptLayout} />
-          </div>
-
-          <div className="bg-slate-200/70 p-4 sm:p-5 rounded-2xl border border-slate-300 flex justify-center shadow-inner overflow-x-auto">
-            {/* The EXACT SAME components that print (80 mm slip / A4 receipt) */}
-            <ReceiptPreview settings={settings} layout={receiptLayout} />
-          </div>
-
-          <p className="text-[11px] text-center text-slate-500 font-sans">
-            ตัวอย่างนี้ใช้แม่แบบเดียวกับที่พิมพ์จริง เปลี่ยนตัวเลือกแล้วเห็นผลทันที (กดบันทึกเพื่อใช้กับทุกเครื่อง)
-          </p>
+      {/* ─── ผู้ใช้และสิทธิ์ ─── */}
+      {activeTab === "users" && (
+        <div className="max-w-4xl space-y-4" role="tabpanel">
+          {canAccessRoute(user, "/users") && (
+            <LinkCard href="/users" icon={Users} title="พนักงาน & สิทธิ์" text="เพิ่มพนักงาน กำหนดตำแหน่ง สิทธิ์การใช้งาน และรหัส PIN" button="เปิดหน้าพนักงาน" />
+          )}
+          {canAccessRoute(user, "/approvals") && (
+            <LinkCard href="/approvals" icon={ShieldCheck} title="การอนุมัติด้วย PIN ผู้จัดการ" text="ประวัติและคำขออนุมัติ (ส่วนลด / ขายต่ำกว่าทุน / เงินเข้าออกลิ้นชัก)" button="เปิดหน้าการอนุมัติ" />
+          )}
+          {!canAccessRoute(user, "/users") && !canAccessRoute(user, "/approvals") && (
+            <p className="text-sm text-slate-500">บัญชีนี้ไม่มีสิทธิ์จัดการพนักงานหรือการอนุมัติ</p>
+          )}
         </div>
-      </div>
+      )}
 
-      {/* ─── DANGER ZONE: SYSTEM & DATABASE RESET (Clean Light Theme with Rose Accent) ─── */}
-      <BackupSection />
+      {/* ─── ระบบ (admin only): version, backups and the irreversible operations ─── */}
+      {activeTab === "system" && isAdmin && (
+        <div className="max-w-5xl space-y-5" role="tabpanel">
+          <Card className="bg-white border-slate-200 shadow-2xs">
+            <CardHeader className="pb-3 border-b border-slate-100">
+              <CardTitle className="flex items-center text-lg text-slate-900 font-bold">
+                <Server className="w-5 h-5 mr-2.5 text-sky-600" /> เวอร์ชันระบบ
+              </CardTitle>
+              <CardDescription className="text-slate-500 text-xs">รุ่นที่กำลังใช้งานจริง และตรวจว่าหลังอัปเดต ได้ build และเปิดเซิร์ฟเวอร์ใหม่แล้วหรือยัง</CardDescription>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <VersionDetails />
+            </CardContent>
+          </Card>
 
-      <Card className="bg-white border-slate-200 shadow-2xs mt-6">
-        <CardHeader className="pb-3 border-b border-slate-100">
-          <CardTitle className="text-lg text-slate-900 font-bold">เวอร์ชันระบบ</CardTitle>
-          <CardDescription className="text-slate-500 text-xs">รุ่นที่กำลังใช้งานจริง และตรวจว่าหลัง git pull / อัปเดต ได้ build และเปิดเซิร์ฟเวอร์ใหม่แล้วหรือยัง</CardDescription>
-        </CardHeader>
-        <CardContent className="pt-4">
-          <VersionDetails />
-        </CardContent>
-      </Card>
+          <BackupSection />
 
-      <Card className="bg-white border border-rose-200 shadow-2xs rounded-2xl overflow-hidden mt-6">
-        <CardHeader className="pb-3 border-b border-rose-100 bg-rose-50/40">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 border border-rose-200 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-4 h-4" />
+          {/* DANGER ZONE: kept apart from everything else, each action needs a typed word */}
+          <section data-testid="danger-zone" className="rounded-2xl border-2 border-rose-300 bg-rose-50/40 p-4 sm:p-5 space-y-4 mt-8">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-700 border border-rose-200 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
-                <CardTitle className="text-base font-bold text-rose-950 flex items-center gap-2">
-                  <span>จัดการฐานข้อมูล & ล้างข้อมูลระบบ (System Data Reset)</span>
-                  <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px] font-bold">
-                    Admin Only
-                  </Badge>
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-500">
-                  ล้างข้อมูลทั้งหมดในฐานข้อมูล รวมยอดเงินในการเงิน (เงินสด/ธนาคาร) โดยจะคงเหลือไว้เฉพาะผู้ใช้งาน admin และการตั้งค่าร้าน
-                </CardDescription>
+                <h2 className="text-base font-black text-rose-950 flex items-center gap-2">
+                  พื้นที่อันตราย — ลบข้อมูลถาวร
+                  <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px] font-bold">เฉพาะ Admin</Badge>
+                </h2>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  ใช้เฉพาะตอนเริ่มระบบใหม่หรือนำเข้าข้อมูลใหม่ทั้งหมด กู้คืนไม่ได้ ควรกด &quot;สำรองข้อมูลตอนนี้&quot; ด้านบนก่อนทุกครั้ง
+                </p>
               </div>
             </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1 text-xs text-slate-600">
-            <p className="font-semibold text-slate-800">
-              ⚠️ รายการที่จะถูกล้างทั้งหมด:
-            </p>
-            <p className="text-slate-500">
-              • ออเดอร์และประวัติการขายทั้งหมด • รายการสินค้า สต็อก และหมวดหมู่ • ข้อมูลลูกหนี้ เจ้าหนี้ และผู้จำหน่าย • ประวัติกะและเงินทอน • การเคลมสินค้า • บัญชีผู้ใช้อื่นๆ ทั้งหมด (คงเหลือเฉพาะ <span className="font-bold text-slate-800">user: admin</span>)
-            </p>
-          </div>
 
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={() => {
-              setConfirmText("");
-              setIsResetModalOpen(true);
-            }}
-            className="bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white font-bold text-xs h-10 px-4 rounded-xl shadow-xs gap-2 shrink-0 cursor-pointer"
-          >
-            <Trash2 className="w-4 h-4" />
-            <span>ล้างข้อมูลทั้งหมดในระบบ (Reset Database)</span>
-          </Button>
-        </CardContent>
-      </Card>
+            <div className="rounded-xl border border-rose-200 bg-white p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-xs text-slate-600 space-y-0.5">
+                <p className="text-sm font-bold text-slate-900">ลบสินค้าทั้งหมด</p>
+                <p>ลบรายการสินค้า ราคา บาร์โค้ด ขนาดบรรจุ รูปสินค้า และ cache สินค้าในเครื่อง — ใช้ก่อนนำเข้าสินค้าใหม่ทั้งหมด (สินค้าที่มีบิลขายแล้วลบไม่ได้)</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                data-testid="open-clear-products"
+                onClick={() => {
+                  setClearProductsText("");
+                  setIsClearProductsOpen(true);
+                }}
+                className="border-rose-300 text-rose-700 hover:bg-rose-50 font-bold text-xs h-10 px-4 rounded-xl gap-2 shrink-0 cursor-pointer"
+              >
+                <PackageX className="w-4 h-4" /> ลบสินค้าทั้งหมด...
+              </Button>
+            </div>
+
+            <div className="rounded-xl border border-rose-200 bg-white p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-xs text-slate-600 space-y-0.5">
+                <p className="text-sm font-bold text-slate-900">ล้างข้อมูลทั้งหมดในระบบ</p>
+                <p>
+                  ลบออเดอร์ ประวัติการขาย สินค้า สต็อก หมวดหมู่ ลูกหนี้ เจ้าหนี้ ผู้จำหน่าย กะ ยอดเงินสด/ธนาคาร การเคลม และบัญชีผู้ใช้อื่น
+                  (คงไว้เฉพาะ <span className="font-bold text-slate-800">admin</span> และการตั้งค่าร้าน) — ระบบสำรองข้อมูลให้ก่อนล้างเสมอ
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                data-testid="open-reset-database"
+                onClick={() => {
+                  setConfirmText("");
+                  setIsResetModalOpen(true);
+                }}
+                className="border-rose-300 text-rose-700 hover:bg-rose-50 font-bold text-xs h-10 px-4 rounded-xl gap-2 shrink-0 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" /> ล้างข้อมูลทั้งหมด...
+              </Button>
+            </div>
+          </section>
+
+          {/* ─── DELETE ALL PRODUCTS CONFIRMATION ─── */}
+          <Dialog open={isClearProductsOpen} onOpenChange={(o) => { if (!isClearingProducts) setIsClearProductsOpen(o); }}>
+            <DialogContent className="sm:max-w-md bg-white border border-slate-200 p-6 rounded-2xl shadow-xl">
+              <DialogHeader className="space-y-2">
+                <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center mx-auto mb-1">
+                  <ShieldAlert className="w-6 h-6" />
+                </div>
+                <DialogTitle className="text-center text-lg font-black text-slate-900">ยืนยันการลบสินค้าทั้งหมด?</DialogTitle>
+                <DialogDescription className="text-center text-xs text-slate-600 leading-relaxed">
+                  สินค้า ราคา บาร์โค้ด ขนาดบรรจุ และรูปสินค้า <strong className="text-rose-600 font-bold">จะถูกลบถาวร กู้คืนไม่ได้</strong> (ยกเว้นจากไฟล์สำรองข้อมูล)
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 py-3 border-y border-slate-100 my-2">
+                <label className="text-xs font-bold text-slate-700 block">
+                  พิมพ์คำว่า <span className="text-rose-600 font-black">{CLEAR_PRODUCTS_WORD}</span> เพื่อยืนยัน:
+                </label>
+                <Input
+                  data-testid="clear-products-confirm-input"
+                  value={clearProductsText}
+                  onChange={(e) => setClearProductsText(e.target.value)}
+                  placeholder={CLEAR_PRODUCTS_WORD}
+                  className="text-center font-bold text-sm border-slate-300 focus-visible:ring-rose-500 h-10 rounded-xl"
+                  autoFocus
+                />
+              </div>
+              <DialogFooter className="flex sm:justify-between gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setIsClearProductsOpen(false)} disabled={isClearingProducts} className="w-full sm:w-auto text-xs font-bold rounded-xl h-10 cursor-pointer">
+                  ยกเลิก
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => void handleClearAllProducts()}
+                  disabled={clearProductsText.trim() !== CLEAR_PRODUCTS_WORD || isClearingProducts}
+                  className="w-full sm:w-auto bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl h-10 gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {isClearingProducts ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <PackageX className="w-4 h-4" />}
+                  {isClearingProducts ? "กำลังลบ..." : "ยืนยันลบสินค้าทั้งหมด"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
       {/* ─── RESET CONFIRMATION MODAL ─── */}
       <Dialog open={isResetModalOpen} onOpenChange={setIsResetModalOpen}>
@@ -1096,7 +1282,7 @@ export default function SettingsPage() {
               ยืนยันการล้างข้อมูลทั้งหมดในระบบ?
             </DialogTitle>
             <DialogDescription className="text-center text-xs text-slate-600 leading-relaxed">
-              การกระทำนี้จะ <strong className="text-rose-600 font-bold">ลบข้อมูลทั้งหมดในฐานข้อมูลอย่างถาวร</strong> (ออเดอร์, สินค้า, ลูกค้า, เจ้าหนี้, สต็อก, กะ, ยอดเงินสด/ธนาคาร, ค่าใช้จ่าย, การคืนสินค้า ฯลฯ) และ <strong className="text-slate-900">ไม่สามารถกู้คืนได้</strong> โดยจะคงเหลือไว้เฉพาะผู้ใช้งาน <code className="bg-slate-100 text-indigo-700 px-1 py-0.5 rounded font-mono font-bold">admin</code> และการตั้งค่าร้าน (ระบบสำรองข้อมูลอัตโนมัติก่อนล้างไม่ได้ ควรกดสำรองข้อมูลก่อน)
+              การกระทำนี้จะ <strong className="text-rose-600 font-bold">ลบข้อมูลทั้งหมดในฐานข้อมูลอย่างถาวร</strong> (ออเดอร์, สินค้า, ลูกค้า, เจ้าหนี้, สต็อก, กะ, ยอดเงินสด/ธนาคาร, ค่าใช้จ่าย, การคืนสินค้า ฯลฯ) และ <strong className="text-slate-900">ไม่สามารถกู้คืนได้</strong> โดยจะคงเหลือไว้เฉพาะผู้ใช้งาน <code className="bg-slate-100 text-indigo-700 px-1 py-0.5 rounded font-mono font-bold">admin</code> และการตั้งค่าร้าน — ระบบจะสำรองข้อมูลให้ก่อนล้างทุกครั้ง ถ้าสำรองไม่สำเร็จจะไม่ลบอะไรเลย
             </DialogDescription>
           </DialogHeader>
 
@@ -1105,6 +1291,7 @@ export default function SettingsPage() {
               พิมพ์คำว่า <span className="text-rose-600 font-mono font-black">RESET</span> เพื่อยืนยัน:
             </label>
             <Input
+              data-testid="reset-confirm-input"
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
               placeholder="พิมพ์ RESET ตรงนี้..."
@@ -1127,7 +1314,7 @@ export default function SettingsPage() {
               type="button"
               variant="destructive"
               onClick={handleResetAllData}
-              disabled={confirmText.trim() !== "RESET" || isResetting}
+              disabled={confirmText.trim() !== RESET_WORD || isResetting}
               className="w-full sm:w-auto bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl h-10 gap-1.5 cursor-pointer disabled:opacity-50"
             >
               {isResetting ? (
@@ -1145,6 +1332,8 @@ export default function SettingsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+        </div>
+      )}
     </div>
   );
 }

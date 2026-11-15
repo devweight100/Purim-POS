@@ -90,3 +90,14 @@ export function canAccessRoute(
 
   return true;
 }
+
+/** Back-office pages the POS "เมนูหลัก" button may open, most useful first. */
+const BACK_OFFICE_HOMES = ['/dashboard', '/orders', '/products', '/customers', '/claims', '/shifts'];
+
+/**
+ * Where the POS "back to the main menu" button goes for this user: the first back-office page they may open
+ * (a cashier without VIEW_REPORTS used to land on the "no access" page), or null = hide the button.
+ */
+export function backOfficeHomeFor(user: PermissionUser | null | undefined): string | null {
+  return BACK_OFFICE_HOMES.find((route) => canAccessRoute(user, route)) ?? null;
+}
