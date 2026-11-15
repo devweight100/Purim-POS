@@ -314,6 +314,8 @@ export function Sidebar() {
               <button
                 type="button"
                 onClick={() => toggleGroup(group.id)}
+                aria-expanded={isOpen}
+                aria-controls={`nav-group-${group.id}${isMobile ? '-m' : ''}`}
                 className={cn(
                   'w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-sm font-bold transition-colors group',
                   isGroupActive
@@ -335,7 +337,7 @@ export function Sidebar() {
 
               {/* Submenu Items (หัวข้อย่อย) */}
               {isOpen && (
-                <div className="ml-3 pl-2.5 border-l-2 border-slate-200/80 space-y-0.5 py-0.5">
+                <div id={`nav-group-${group.id}${isMobile ? '-m' : ''}`} className="ml-3 pl-2.5 border-l-2 border-slate-200/80 space-y-0.5 py-0.5">
                   {group.items.map((item) => {
                     const hasChildren = Boolean(item.children && item.children.length > 0);
                     const isChildActive = hasChildren && Boolean(item.children?.some((c) => pathname === c.href));
@@ -380,6 +382,8 @@ export function Sidebar() {
                               }}
                               className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors ml-1"
                               title="ย่อ/ขยายเมนูย่อยรายงาน"
+                              aria-label="ย่อ/ขยายเมนูย่อยรายงาน"
+                              aria-expanded={isSubOpen}
                             >
                               <ChevronDown
                                 className={cn(
@@ -485,6 +489,7 @@ export function Sidebar() {
         className="lg:hidden fixed top-3 left-3 z-50 p-2.5 rounded-xl bg-white text-slate-900 shadow-md border border-slate-200"
         onClick={() => setMobileOpen(!mobileOpen)}
         aria-label="Toggle Menu"
+        aria-expanded={mobileOpen}
       >
         {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
       </button>
@@ -498,7 +503,8 @@ export function Sidebar() {
       )}
 
       {/* Mobile drawer */}
-      <div className={cn(
+      {/* closed drawer is inert: its links must not take the keyboard focus while off screen */}
+      <div inert={!mobileOpen} className={cn(
         'lg:hidden fixed top-0 left-0 h-full w-64 bg-sidebar z-50 flex flex-col transition-transform duration-300 shadow-2xl border-r border-sidebar-border',
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       )}>

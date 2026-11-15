@@ -349,7 +349,8 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
         </div>
 
         <div className="flex justify-between items-center text-sm">
-          <div
+          <button
+            type="button"
             className="flex cursor-pointer items-center gap-1 border-b border-dashed border-slate-300 pb-0.5 text-slate-600 hover:text-primary font-medium"
             title="คลิกเพื่อเพิ่มส่วนลดท้ายบิล"
             onClick={() => d.setShowBillDiscount(true)}
@@ -360,7 +361,7 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
                 {cart.billDiscountValue}{cart.billDiscountType === 'percent' ? '%' : '฿'}
               </Badge>
             )}
-          </div>
+          </button>
           <span className="text-red-600 font-bold">
             {cart.getBillDiscountAmount() > 0 ? `-${formatCurrency(cart.getBillDiscountAmount())}` : '฿0.00'}
           </span>
@@ -369,13 +370,14 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
         {/* Separate Points Discount Row */}
         {cart.getPointsDiscountAmount() > 0 && (
           <div className="flex justify-between items-center text-sm">
-            <div
+            <button
+              type="button"
               className="flex cursor-pointer items-center gap-1 text-amber-800 font-bold hover:text-amber-900"
               onClick={() => d.setShowRedeemModal(true)}
               title="คลิกเพื่อแก้ไขการใช้แต้ม"
             >
               <span>🎁 ส่วนลดจากแต้ม ({cart.pointsUsed.toLocaleString()} แต้ม)</span>
-            </div>
+            </button>
             <span className="text-amber-700 font-black">-{formatCurrency(cart.getPointsDiscountAmount())}</span>
           </div>
         )}

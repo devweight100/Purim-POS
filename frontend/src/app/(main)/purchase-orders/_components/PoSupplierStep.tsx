@@ -61,8 +61,11 @@ export function PoSupplierStep({ editingPo, searchSupplier, setSearchSupplier, f
           {filteredSuppliers.map((supplier) => (
             <div 
               key={supplier.id}
-              className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-sky-400 cursor-pointer transition-all flex flex-col items-center text-center group"
+              role="button"
+              tabIndex={0}
+              className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md hover:border-sky-400 cursor-pointer transition-all flex flex-col items-center text-center group focus-visible:ring-4 focus-visible:ring-sky-400"
               onClick={() => handleSelectSupplier(supplier)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelectSupplier(supplier); } }}
             >
               <div className="w-14 h-14 bg-sky-100 text-sky-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-inner">
                 <Building2 className="w-7 h-7" />
