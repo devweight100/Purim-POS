@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { DebtRecord, DebtPaymentInstallment, PaymentMethodType } from '@/lib/types';
 import { recordDebtPayment } from '@/lib/debt-service';
-import { loadBankAccounts } from '@/lib/bank-account-storage';
+import { fetchBankAccountsFromBackend, loadBankAccounts, type BankAccount } from '@/lib/bank-account-storage';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,24 +45,31 @@ export function PayDebtModal({
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   const submitting = useRef(false);
-  const bankAccounts = useMemo(() => loadBankAccounts(), []);
+  // Bank accounts: the last server list, refreshed each time the dialog opens (the dialog is mounted
+  // with the page, often before the first list arrived; offline it keeps the last list)
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(() => loadBankAccounts());
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    fetchBankAccountsFromBackend()
+      .then((accs) => { if (alive) setBankAccounts(accs); })
+      .catch(() => { /* offline: keep the last list */ });
+    return () => { alive = false; };
+  }, [open]);
 
   // Initialize form state whenever modal opens with a debt record (adjusted while rendering)
   // (null until the first render, so a modal mounted already open is filled in too)
-  const [seen, setSeen] = useState<{ debtRecord: typeof debtRecord; open: boolean; bankAccounts: typeof bankAccounts } | null>(null);
-  if (!seen || seen.debtRecord !== debtRecord || seen.open !== open || seen.bankAccounts !== bankAccounts) {
-    setSeen({ debtRecord, open, bankAccounts });
+  const [seen, setSeen] = useState<{ debtRecord: typeof debtRecord; open: boolean } | null>(null);
+  if (!seen || seen.debtRecord !== debtRecord || seen.open !== open) {
+    setSeen({ debtRecord, open });
     if (debtRecord && open) {
       setPayMode('FULL');
       setAmountInput(debtRecord.remainingDebt.toString());
       setPaymentMethod('CASH');
       setReferenceNo('');
       setNote('');
-      if (bankAccounts.length > 0) {
-        // preselect the store's default bank account (the server rejects unknown accounts)
-        const def = bankAccounts.find((b) => b.isDefault) || bankAccounts[0];
-        setSelectedBank(`${def.bankName} (${def.accountNumber})`);
-      }
+      // '' = the store's default bank account (the server rejects unknown accounts)
+      setSelectedBank('');
     } else {
       setPayMode('FULL');
       setAmountInput('');
@@ -77,8 +84,11 @@ export function PayDebtModal({
   const currentRemaining = debtRecord.remainingDebt;
   const numAmount = parseFloat(amountInput) || 0;
 
-  // QR for the amount being paid: generated PromptPay QR when the account has an ID, else its image
-  const selectedBankAccount = bankAccounts.find((b) => `${b.bankName} (${b.accountNumber})` === selectedBank) || null;
+  // Chosen bank account (default account until the user picks one). QR for the amount being paid:
+  // generated PromptPay QR when the account has an ID, else its uploaded image.
+  const bankLabel = (b: BankAccount) => `${b.bankName} (${b.accountNumber})`;
+  const selectedBankAccount =
+    bankAccounts.find((b) => bankLabel(b) === selectedBank) || bankAccounts.find((b) => b.isDefault) || bankAccounts[0] || null;
   const selectedPromptPay = promptPayOf(selectedBankAccount);
 
   // New remaining calculation preview
@@ -123,9 +133,9 @@ export function PayDebtModal({
         numAmount,
         paymentMethod,
         {
-          accountLabel: (paymentMethod === 'TRANSFER' || paymentMethod === 'QR_PROMPTPAY') ? selectedBank : undefined,
+          accountLabel: (paymentMethod === 'TRANSFER' || paymentMethod === 'QR_PROMPTPAY') && selectedBankAccount ? bankLabel(selectedBankAccount) : undefined,
           bankAccountId: (paymentMethod === 'TRANSFER' || paymentMethod === 'QR_PROMPTPAY')
-            ? bankAccounts.find((b) => `${b.bankName} (${b.accountNumber})` === selectedBank)?.id
+            ? selectedBankAccount?.id
             : undefined,
           referenceNo: referenceNo.trim() || undefined,
           note: note.trim() || undefined,
@@ -299,7 +309,8 @@ export function PayDebtModal({
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-700">เข้าบัญชีธนาคาร:</label>
               <select
-                value={selectedBank}
+                aria-label="เข้าบัญชีธนาคาร"
+                value={selectedBankAccount ? bankLabel(selectedBankAccount) : ''}
                 onChange={(e) => setSelectedBank(e.target.value)}
                 className="w-full h-9 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 outline-none focus:border-sky-500"
               >
