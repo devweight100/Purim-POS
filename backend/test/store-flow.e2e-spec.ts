@@ -12,6 +12,7 @@ import { Test } from '@nestjs/testing';
 import { execSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import request from 'supertest';
+import * as httpModule from 'http';
 import { AppModule } from '../src/app.module';
 import { PrismaClient } from '@prisma/client';
 import * as legacy from './legacy/reports-client-legacy';
@@ -2062,12 +2063,11 @@ d('store flow (e2e)', () => {
       return body ? r.send(body) : r;
     };
     const lineCalls: { path: string; auth?: string; body: string }[] = [];
-    let lineServer: import('http').Server;
+    let lineServer: httpModule.Server;
 
     beforeAll(async () => {
       // mock of api.line.me: ID-token verify ("good-token" -> U123...) and message push
-      const httpMod = await import('http');
-      lineServer = httpMod.createServer((req, res) => {
+      lineServer = httpModule.createServer((req, res) => {
         let body = '';
         req.on('data', (c) => (body += c));
         req.on('end', () => {
@@ -2245,7 +2245,12 @@ d('store flow (e2e)', () => {
       const reqs = (await api('get', '/online-shop/link-requests', C).expect(200)).body;
       const r = reqs.find((x: any) => x.lineUserId === 'dev-member1');
       expect(r.matches).toEqual([{ id: shop.member.id, name: 'ช่างสมศักดิ์ ออนไลน์', phone: '089-555-0001' }]);
-      await api('post', `/online-shop/link-requests/${r.id}/decide`, C, { approve: true, customerId: shop.member.id }).expect(403);
+      // a seller without discount rights may see the request but not approve it (approval grants member prices)
+      await api('post', '/auth/register', A, { username: 'seller1', password: 'Sell@test99', fullName: 'พนักงานขายล้วน', role: 'CASHIER', permissions: ['POS_SELL'] }).expect(201);
+      const S = (await api('post', '/auth/login', undefined, { username: 'seller1', password: 'Sell@test99' }).expect(201)).body.access_token;
+      expect((await api('get', '/online-shop/link-requests', S).expect(200)).body.length).toBeGreaterThan(0);
+      await api('post', `/online-shop/link-requests/${r.id}/decide`, S, { approve: true, customerId: shop.member.id }).expect(403);
+      await api('get', '/online-shop/config', S).expect(403);
       await api('post', `/online-shop/link-requests/${r.id}/decide`, A, { approve: true }).expect(400);
       await api('post', `/online-shop/link-requests/${r.id}/decide`, A, { approve: true, customerId: shop.member.id }).expect(201);
       await api('post', `/online-shop/link-requests/${r.id}/decide`, A, { approve: true, customerId: shop.member.id }).expect(400);

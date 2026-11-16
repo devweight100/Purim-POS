@@ -1,74 +1,21 @@
 import * as http from 'http';
 import type { NextFunction, Request, Response } from 'express';
 
-/**
- * What the internet may reach through the Cloudflare Tunnel (docs/online-shop.md, "Tunnel isolation").
- *
- * A request is PUBLIC when it came through the tunnel: it carries our gateway mark (`x-purim-public`, set by
- * the gateway port cloudflared points at), any header Cloudflare adds to proxied requests, or its Host is the
- * shop's public host name (SHOP_PUBLIC_HOST). Public requests may only reach the shop page, its public API and
- * the static files the page needs. The check fails closed: a LAN request that fakes those headers only
- * restricts itself.
- */
-export const PUBLIC_MARK = 'x-purim-public';
-const CF_HEADERS = ['cf-ray', 'cf-connecting-ip', 'cf-visitor', 'cf-ipcountry', 'cf-worker', 'cf-access-jwt-assertion'];
+import { cleanPath, isPublicHeaders, parseHosts, PUBLIC_API_PREFIX, PUBLIC_MARK, publicApiAllowed, publicPathAllowed } from '../../../shared/src/public-exposure';
+
+export { cleanPath, PUBLIC_API_PREFIX, PUBLIC_MARK, publicApiAllowed, publicPathAllowed };
 
 type HeaderBag = Record<string, string | string[] | undefined>;
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) || '';
 
+/** The shop's public host names (SHOP_PUBLIC_HOST, comma separated): requests for them are public. */
 export function publicHosts(): string[] {
-  return String(process.env.SHOP_PUBLIC_HOST || '')
-    .split(',')
-    .map((h) => h.trim().toLowerCase())
-    .filter(Boolean);
+  return parseHosts(process.env.SHOP_PUBLIC_HOST);
 }
 
+/** Came through the Cloudflare Tunnel (rules in shared/src/public-exposure.ts). */
 export function isPublicRequest(headers: HeaderBag): boolean {
-  if (headers[PUBLIC_MARK] !== undefined) return true;
-  for (const h of CF_HEADERS) if (headers[h] !== undefined) return true;
-  if (/cloudflare/i.test(first(headers['cdn-loop']))) return true;
-  const hosts = publicHosts();
-  if (hosts.length) {
-    const host = [first(headers['host']), first(headers['x-forwarded-host'])]
-      .map((h) => h.split(',')[0].trim().toLowerCase().replace(/:\d+$/, ''));
-    if (host.some((h) => h && hosts.includes(h))) return true;
-  }
-  return false;
-}
-
-/** Path part of a URL without query, decoded once; '' when it cannot be decoded (rejected). */
-export function cleanPath(url: string): string {
-  const p = String(url || '').split('?')[0].split('#')[0];
-  try {
-    const d = decodeURIComponent(p);
-    // no traversal / backslashes / encoded slashes games
-    if (d.includes('..') || d.includes('\\') || d.includes('\0')) return '';
-    return d;
-  } catch {
-    return '';
-  }
-}
-
-export const PUBLIC_API_PREFIX = '/api/public/shop/';
-
-/** Backend: the only API paths a public request may call. */
-export function publicApiAllowed(path: string): boolean {
-  const p = cleanPath(path);
-  return p.startsWith(PUBLIC_API_PREFIX) && p.length > PUBLIC_API_PREFIX.length;
-}
-
-/** Gateway / Next: every path the shop page needs (page, its API, static build files, icon). */
-export function publicPathAllowed(path: string): boolean {
-  const p = cleanPath(path);
-  if (!p) return false;
-  return (
-    p === '/shop' ||
-    p.startsWith('/shop/') ||
-    publicApiAllowed(p) ||
-    /^\/_next\/static\/[A-Za-z0-9._\-/~]+$/.test(p) ||
-    p === '/favicon.ico' ||
-    p === '/icon.svg'
-  );
+  return isPublicHeaders((n) => (headers[n] === undefined ? undefined : first(headers[n])), publicHosts());
 }
 
 /** Express middleware: public requests reach only the public shop API; everything else is 404. */

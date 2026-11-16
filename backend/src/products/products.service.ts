@@ -680,7 +680,7 @@ export class ProductsService {
         p.base_price AS "basePrice", p.cost_price AS "costPrice",
         p.price_level_1 AS "priceLevel1", p.price_level_2 AS "priceLevel2", p.price_level_3 AS "priceLevel3",
         p.price_level_4 AS "priceLevel4", p.price_level_5 AS "priceLevel5",
-        p.unit, p.image_url AS "imageUrl", p.is_bundle AS "isBundle", p.is_active AS "isActive",
+        p.unit, p.image_url AS "imageUrl", p.is_bundle AS "isBundle", p.is_service AS "isService", p.is_active AS "isActive",
         p.created_at AS "createdAt", p.updated_at AS "updatedAt",
         COALESCE(bc.j, '[]'::json) AS barcodes, COALESCE(pu.j, '[]'::json) AS "packagingUnits",
         COALESCE(im.j, '[]'::json) AS images, COALESCE(wp.j, '[]'::json) AS "wholesalePrices",

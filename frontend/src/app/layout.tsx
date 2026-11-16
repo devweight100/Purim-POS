@@ -1,10 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Sarabun } from "next/font/google";
 import "./globals.css";
-import Providers from "@/components/providers";
-import { AuthGuard } from "@/components/auth/AuthGuard";
-import { ClientDbSync } from "@/components/common/ClientDbSync";
-import { GlobalDocumentSearch } from "@/components/common/GlobalDocumentSearch";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -36,11 +32,8 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${sarabun.variable} font-sans antialiased min-h-dvh bg-background text-foreground flex flex-col`}
       >
-        <Providers>
-          <ClientDbSync />
-          <GlobalDocumentSearch />
-          <AuthGuard>{children}</AuthGuard>
-        </Providers>
+        {/* back office chrome lives in (backoffice)/layout.tsx; the online shop has its own in shop/layout.tsx */}
+        {children}
       </body>
     </html>
   );

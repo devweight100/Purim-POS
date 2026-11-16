@@ -28,7 +28,7 @@ import { buildPromptPayPayload, isValidPromptPayAmount, maskPromptPayId, normali
 import { round2 } from '../../../shared/src/money';
 
 export const DELIVERY_SKU = 'SYS-DELIVERY-FEE';
-const ORDER_LOCK = 7; // pg_advisory_xact_lock(742091, 7): online order numbers
+// pg_advisory_xact_lock(742091, 7): online order numbers / edits (literal: a bound parameter makes the call ambiguous)
 const PAYABLE: OnlineOrderStatus[] = ['ACCEPTED', 'PREPARING', 'DELIVERING'];
 
 class TooMany extends HttpException {
@@ -337,6 +337,30 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
     return [...merged.values()];
   }
 
+  /**
+   * Cart check before ordering: current prices at the visitor's level, unavailable lines flagged (no exception),
+   * delivery fee for the chosen way. Same pricing as placeOrder.
+   */
+  async quote(ctx: PublicCtx, body: any) {
+    this.hit(ctx);
+    await this.requireOpen();
+    const raw: any[] = Array.isArray(body?.items) ? body.items.slice(0, ONLINE_LIMITS.maxLines) : [];
+    const who = await this.levelOf(ctx.session);
+    const lines: { productId: string; unitId: string | null; ok: boolean; name?: string; unitName?: string; quantity: number; unitPrice: number; total: number; problem: string | null }[] = [];
+    for (const it of raw) {
+      try {
+        const [l] = await this.priceLines(this.prisma, [it], who.level, { requireStock: true });
+        lines.push({ productId: l.productId, unitId: l.unitId, ok: true, name: l.productName, unitName: l.unitName, quantity: l.quantity, unitPrice: l.unitPrice, total: onlineLineTotal(l), problem: null });
+      } catch (e: any) {
+        lines.push({ productId: String(it?.productId || ''), unitId: it?.unitId ?? null, ok: false, quantity: Number(it?.quantity) || 0, unitPrice: 0, total: 0, problem: String(e?.response?.message || e?.message || 'สั่งไม่ได้') });
+      }
+    }
+    const fulfillment: Fulfillment = body?.fulfillment === 'DELIVERY' ? 'DELIVERY' : 'PICKUP';
+    const fee = deliveryFeeFor(fulfillment, who.fee);
+    const totals = onlineOrderTotals(lines.filter((l) => l.ok), fee);
+    return { lines, ...totals, fulfillment, level: who.level };
+  }
+
   async placeOrder(ctx: PublicCtx, body: any) {
     const s = this.requireSession(ctx);
     // placed orders per LINE account / address (failed attempts only count towards the general limit)
@@ -358,7 +382,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
     if (open >= ONLINE_LIMITS.maxOpenOrders) throw new BadRequestException(`มีออเดอร์รอร้านยืนยันอยู่ ${open} รายการแล้ว กรุณารอร้านยืนยันก่อน`);
     const who = await this.levelOf(s);
     const order = await this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(742091, ${ORDER_LOCK})`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(742091, 7)`;
       const lines = await this.priceLines(tx, body?.items, who.level, { requireStock: true });
       const fee = deliveryFeeFor(fulfillment, who.fee);
       const totals = onlineOrderTotals(lines, fee);
@@ -641,7 +665,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async loadEditable(tx: Prisma.TransactionClient, id: string, allowed: OnlineOrderStatus[]) {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(742091, ${ORDER_LOCK})`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(742091, 7)`;
     const o = await tx.onlineOrder.findUnique({ where: { id } });
     if (!o) throw new NotFoundException('ไม่พบออเดอร์ออนไลน์');
     if (!allowed.includes(o.status as OnlineOrderStatus)) throw new BadRequestException(`ออเดอร์นี้อยู่ในสถานะ "${ONLINE_STATUS_LABELS[o.status as OnlineOrderStatus]}" แก้ไขไม่ได้`);
@@ -684,7 +708,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
     const to = String(body?.status || '') as OnlineOrderStatus;
     if (to === 'CANCELLED') return this.reject(id, body);
     await this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(742091, ${ORDER_LOCK})`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(742091, 7)`;
       const o = await tx.onlineOrder.findUnique({ where: { id } });
       if (!o) throw new NotFoundException('ไม่พบออเดอร์ออนไลน์');
       if (!nextStatuses(o.status as OnlineOrderStatus, o.fulfillment as Fulfillment).includes(to)) throw new BadRequestException('เปลี่ยนสถานะนี้ไม่ได้');

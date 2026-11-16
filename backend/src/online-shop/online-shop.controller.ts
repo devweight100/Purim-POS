@@ -77,6 +77,11 @@ export class OnlineShopPublicController {
     res.status(200).end(png);
   }
 
+  @Post('quote')
+  quote(@Request() req: any, @Body() body: any) {
+    return this.shop.quote(ctxOf(req), body);
+  }
+
   @Post('orders')
   placeOrder(@Request() req: any, @Body() body: any) {
     return this.shop.placeOrder(ctxOf(req), body);

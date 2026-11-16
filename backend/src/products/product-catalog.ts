@@ -31,6 +31,7 @@ export const catalogSelect = {
   unit: true,
   imageUrl: true,
   isBundle: true,
+  isService: true,
   isActive: true,
   createdAt: true,
   updatedAt: true,
