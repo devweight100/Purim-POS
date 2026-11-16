@@ -6,15 +6,14 @@ import { baht } from '@/lib/shop/shop-api';
 import { ProductPhoto, QtyStepper } from '@/components/shop/ProductCard';
 import { btn } from '@/components/shop/ShopShell';
 import { useQuote } from '@/components/shop/useQuote';
-import { useEffect, useState } from 'react';
+import { useHydrated } from '@/lib/shop/use-hydrated';
 
 /** Cart: change quantities, remove, totals with the delivery fee (or "ร้านจะแจ้ง"). */
 export default function ShopCartPage() {
   const { lines, setQty, remove } = useShopCart();
   const member = useShopSession((s) => s.me?.member);
   const config = useShopSession((s) => s.config);
-  const [hydrated, setHydrated] = useState(false);
-  useEffect(() => setHydrated(true), []);
+  const hydrated = useHydrated();
   const { quote, error, problemOf } = useQuote('PICKUP');
   if (!hydrated) return null;
 

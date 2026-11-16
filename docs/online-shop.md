@@ -25,15 +25,16 @@ Branch `ccr-8f8b0741-si1a0o`. Owner request 2026-11-16. A later agent: read this
 Detection is fail-closed: anything that looks like it came through Cloudflare is public. A LAN request that spoofs those headers only restricts itself.
 
 ## Plan / done
-1. [ ] Schema + migration (`online_orders`, `online_order_items`, `line_link_requests`, `shop_visitors`, `online_shop_config`, `products.is_service` + seeded ค่าส่ง product), shared calculations + tests.
-2. [ ] Backend: exposure middleware + gateway, online-shop module (public + admin), LINE service (verify, push, PNG QR), checkout link, service product handling, customer deliveryFee validation, realtime entities. e2e.
-3. [ ] Frontend: root layout split (back office chrome in `(backoffice)` group), shop pages (mobile, big UI).
+1. [x] Schema + migration (`online_orders`, `online_order_items`, `line_link_requests`, `shop_visitors`, `online_shop_config`, `products.is_service` + seeded ค่าส่ง product), shared calculations + tests.
+2. [x] Backend: exposure middleware + gateway, online-shop module (public + admin), LINE service (verify, push, PNG QR), checkout link, service product handling, customer deliveryFee validation, realtime entities. e2e.
+3. [x] Frontend: root layout split (back office chrome in `(backoffice)` group), shop pages (mobile, big UI).
 4. [ ] Back office: /online-orders page (badge, sound, toast), link requests, POS held-bills section, settings section (LINE), customer field ค่าส่ง.
 5. [ ] Installer: Thai guide (LINE OA, LINE Developers, LIFF, domain on Cloudflare, cloudflared service) + config/script.
 6. [ ] Playwright (shop mobile 390x844, back office 3 sizes), screenshots, full verification, PROJECT_STATUS.
 
 ## Next
-- Step 1.
+- Step 4 (back office page, POS held-bills section, settings section, customer field). Dev servers: scratchpad/shop/seed-demo.mjs fills a demo DB.
+- Backend e2e: online shop block in `backend/test/store-flow.e2e-spec.ts` (79/79 at step 2); exposure unit tests `backend/src/online-shop/public-exposure.spec.ts`.
 
 ## Setup guide
 See `Installer/Server/คู่มือร้านออนไลน์ LINE (Cloudflare Tunnel).txt` (written in step 5).

@@ -92,6 +92,11 @@
   scrollbar-color: #cbd5e1 transparent;
 }
 
+/* Online shop: its border utilities (high-contrast outlines for older customers) must win over the rule above */
+.shop-root * {
+  border-color: revert-layer;
+}
+
 body {
   background-color: var(--background);
   color: var(--foreground);

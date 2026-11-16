@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
+import { useHydrated } from '@/lib/shop/use-hydrated';
 import { useShopCart, useShopSession } from '@/lib/shop/shop-store';
 import { baht } from '@/lib/shop/shop-api';
 
@@ -13,11 +14,6 @@ export const btn = {
   danger: 'inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border-2 border-red-700 bg-white px-4 text-lg font-bold text-red-700 active:bg-red-50 focus-visible:outline focus-visible:outline-4 focus-visible:outline-amber-400',
 };
 
-function useHydrated() {
-  const [ok, setOk] = useState(false);
-  useEffect(() => setOk(true), []);
-  return ok;
-}
 
 export function ShopShell({ children }: { children: React.ReactNode }) {
   const { status, error, config, me, init } = useShopSession();
@@ -36,7 +32,7 @@ export function ShopShell({ children }: { children: React.ReactNode }) {
   const showCartBar = hydrated && status === 'ready' && count > 0 && !/^\/shop\/(cart|checkout|orders)/.test(path);
 
   return (
-    <div className="min-h-dvh w-full bg-slate-50 text-[18px] leading-relaxed text-slate-900">
+    <div className="shop-root min-h-dvh w-full bg-slate-50 text-[18px] leading-relaxed text-slate-900">
       <header className="sticky top-0 z-30 border-b-2 border-emerald-900 bg-emerald-800 text-white">
         <div className="mx-auto flex max-w-xl items-center gap-2 px-3 py-2">
           {!isHome ? (

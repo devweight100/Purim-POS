@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useHydrated } from '@/lib/shop/use-hydrated';
 import { ONLINE_LIMITS } from '@shared/online-shop';
 import { baht, shopFetch, type ShopOrder } from '@/lib/shop/shop-api';
 import { useShopCart, useShopSession } from '@/lib/shop/shop-store';
@@ -16,21 +17,15 @@ export default function ShopCheckoutPage() {
   const router = useRouter();
   const { config, me, refreshMe } = useShopSession();
   const { lines, fulfillment, setFulfillment, clear } = useShopCart();
-  const [hydrated, setHydrated] = useState(false);
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
+  const hydrated = useHydrated();
+  // filled from the contact remembered by the shop (the shell renders pages only once the visitor is known)
+  const [name, setName] = useState(() => me?.contact.name || '');
+  const [phone, setPhone] = useState(() => me?.contact.phone || '');
+  const [address, setAddress] = useState(() => me?.contact.address || '');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
-    setHydrated(true);
-    setName(me?.contact.name || '');
-    setPhone(me?.contact.phone || '');
-    setAddress(me?.contact.address || '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fill once from the remembered contact
-  }, []);
   // a way the shop does not offer is never preselected
   const way = fulfillment === 'DELIVERY' && !config?.allowDelivery ? 'PICKUP' : fulfillment === 'PICKUP' && !config?.allowPickup ? 'DELIVERY' : fulfillment;
   const { quote, error: quoteErr } = useQuote(way);

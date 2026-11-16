@@ -55,7 +55,8 @@ function ProductList() {
   );
 
   useEffect(() => {
-    void load(1);
+    const t = setTimeout(() => void load(1), 0); // (not inside the effect body: load sets state)
+    return () => clearTimeout(t);
   }, [load, level]);
 
   const title = q ? `ค้นหา "${q}"` : categoryName || 'สินค้าทั้งหมด';
