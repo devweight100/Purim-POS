@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'vitest';
 import { onlineOrderCartItems } from '../online-order-cart';
 import { cartTotals } from '@shared/pricing';
 
