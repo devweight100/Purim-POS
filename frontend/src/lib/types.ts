@@ -187,6 +187,8 @@ export interface Customer {
   taxId?: string;
   memberTier?: 'normal' | 'silver' | 'gold' | 'vip';
   priceLevel?: 1 | 2 | 3 | 4 | 5;
+  /** online shop delivery fee (ค่าส่ง) for this member; null = the shop tells each time */
+  deliveryFee?: number | null;
   creditLimit?: number;
   creditTerms?: number;
   currentDebt?: number;

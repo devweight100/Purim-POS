@@ -6,6 +6,7 @@ export const SETTINGS_TABS = [
   { id: 'finance', label: 'การเงิน' },
   { id: 'devices', label: 'เครื่องพิมพ์และลิ้นชัก' },
   { id: 'users', label: 'ผู้ใช้และสิทธิ์' },
+  { id: 'online', label: 'ร้านออนไลน์ (LINE)', roles: ['ADMIN'] },
   { id: 'system', label: 'ระบบ', roles: ['ADMIN', 'MANAGER'] },
 ] as const;
 

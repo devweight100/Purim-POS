@@ -1,5 +1,6 @@
 "use client";
 
+import { OnlineShopSettings } from '@/components/settings/OnlineShopSettings';
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1153,6 +1154,9 @@ export default function SettingsPage() {
           )}
         </div>
       )}
+
+      {/* ─── ร้านออนไลน์ (ADMIN): LINE / LIFF settings; the Messaging API token never comes back from the server ─── */}
+      {activeTab === "online" && <OnlineShopSettings />}
 
       {/* ─── ระบบ (ADMIN + MANAGER): version, backups; the irreversible operations: ADMIN only ─── */}
       {activeTab === "system" && (

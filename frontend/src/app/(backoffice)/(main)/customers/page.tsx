@@ -1,5 +1,6 @@
 'use client';
 
+import { CustomerOnlineFields } from '@/components/online-orders/CustomerOnlineFields';
 import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { RowDeleteMenu } from '@/components/common/RowDeleteMenu';
 import { useEffect, useState } from 'react';
@@ -251,6 +252,7 @@ export default function CustomersPage() {
         address: formData.address?.trim() || null,
         type: formData.type || 'INDIVIDUAL',
         priceLevel: formData.priceLevel || 1,
+        deliveryFee: formData.deliveryFee ?? null,
         creditLimit: creditLimitNum,
         creditTerms: creditTermsNum,
         isCreditBlocked: Boolean(formData.isCreditBlocked),
@@ -920,6 +922,13 @@ export default function CustomersPage() {
                     💡 เมื่อเลือกลูกค้ารายนี้ในหน้าขายหน้าร้าน (POS) ระบบจะดึงราคาขายตามระดับนี้ให้อัตโนมัติ
                   </p>
                 </div>
+
+                <CustomerOnlineFields
+                  key={selectedCustomer?.id || 'new'}
+                  customerId={selectedCustomer?.id}
+                  value={formData.deliveryFee}
+                  onChange={(v) => setFormData({ ...formData, deliveryFee: v })}
+                />
 
                 <div className="border-t border-slate-200 pt-3 space-y-3">
                   {/* 1. Credit Terms */}

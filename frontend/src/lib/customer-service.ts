@@ -23,6 +23,8 @@ export interface Customer {
 
   // 2. ระดับราคา
   priceLevel: 1 | 2 | 3 | 4 | 5; // ระดับราคา 1 ถึง 5 (1=ทั่วไป, 2=สมาชิก, 3=ช่าง/ขายส่ง, 4=VIP, 5=ตัวแทน)
+  /** online shop delivery fee (ค่าส่ง); null = the shop tells each time */
+  deliveryFee?: number | null;
 
   // 3. & 4. การให้และใช้คะแนนสะสม (Loyalty Program)
   points: number; // แต้มสะสมคงเหลือปัจจุบัน
