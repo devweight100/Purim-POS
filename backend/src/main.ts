@@ -65,6 +65,11 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3001;
   await app.listen(port, '0.0.0.0'); // Listen on all network interfaces (LAN & Localhost)
+  // The Next.js /api rewrite keeps connections alive and reuses them: Node's default 5 s idle timeout closed a
+  // socket just as the proxy reused it (ECONNRESET -> HTTP 500 in the browser). Keep idle sockets longer.
+  const server = app.getHttpServer();
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 66_000;
   console.log(`🚀 Purim POS Backend is running on: http://localhost:${port}/api and http://0.0.0.0:${port}/api`);
 
   // Online shop gateway: the ONLY port cloudflared may point at (127.0.0.1). SHOP_GATEWAY_PORT=0 turns it off.
