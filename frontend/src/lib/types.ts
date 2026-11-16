@@ -1361,6 +1361,9 @@ export interface ApiBankAccount {
   branch?: string | null;
   qrImageUrl?: string | null;
   qrCodeUrl?: string | null;
+  /** PromptPay ID for a generated QR (MOBILE / NATIONAL_ID / EWALLET, digits only). */
+  promptpayType?: string | null;
+  promptpayId?: string | null;
   color?: string | null;
   isDefault?: boolean;
 }
@@ -1371,6 +1374,8 @@ export interface BankAccountWriteRequest {
   accountNumber?: string;
   branch?: string | null;
   qrCodeUrl?: string | null;
+  promptpayType?: string | null;
+  promptpayId?: string | null;
   color?: string;
   isDefault?: boolean;
 }

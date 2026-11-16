@@ -17,6 +17,15 @@ import {
   CheckCircle2, Info, Star, Upload, CreditCard 
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { PromptPayQr } from '@/components/common/PromptPayQr';
+import { promptPayOf } from '@/lib/promptpay-qr';
+import { maskPromptPayId, normalizePromptPayId, PROMPTPAY_TYPE_LABELS, type PromptPayIdType } from '@shared/promptpay';
+
+const PROMPTPAY_PLACEHOLDER: Record<PromptPayIdType, string> = {
+  MOBILE: 'เช่น 081-234-5678',
+  NATIONAL_ID: 'เลข 13 หลัก เช่น 1-2345-67890-12-1',
+  EWALLET: 'เลข 15 หลัก',
+};
 
 const BANK_PRESETS = [
   { name: 'ธนาคารกสิกรไทย (KBank)', color: '#10b981' },
@@ -27,6 +36,18 @@ const BANK_PRESETS = [
   { name: 'พร้อมเพย์ (PromptPay)', color: '#3b82f6' },
   { name: 'ธนาคารออมสิน (GSB)', color: '#ec4899' },
 ];
+
+/** Card preview of a generated PromptPay QR (a ฿1.00 sample). */
+function AccountPromptPayPreview({ acc }: { acc: BankAccount }) {
+  const pp = promptPayOf(acc);
+  if (!pp) return null;
+  return (
+    <div className="flex flex-col items-center py-2" data-testid="account-promptpay">
+      <PromptPayQr type={pp.type} id={pp.id} amount={1} size={128} compact />
+      <span className="mt-1 text-[11px] text-slate-500">ตัวอย่าง QR พร้อมเพย์ล็อกยอด (ยอดจริงสร้างตอนรับเงิน)</span>
+    </div>
+  );
+}
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
@@ -40,6 +61,8 @@ export default function AccountsPage() {
   const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
   const [color, setColor] = useState('#3b82f6');
   const [isDefault, setIsDefault] = useState(false);
+  const [promptpayType, setPromptpayType] = useState<PromptPayIdType | ''>('');
+  const [promptpayId, setPromptpayId] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -78,6 +101,8 @@ export default function AccountsPage() {
     setQrImageUrl(null);
     setColor(BANK_PRESETS[0].color);
     setIsDefault(accounts.length === 0);
+    setPromptpayType('');
+    setPromptpayId('');
     setIsDialogOpen(true);
   };
 
@@ -89,6 +114,9 @@ export default function AccountsPage() {
     setQrImageUrl(acc.qrImageUrl || null);
     setColor(acc.color || '#3b82f6');
     setIsDefault(!!acc.isDefault);
+    const pp = promptPayOf(acc);
+    setPromptpayType(pp?.type ?? '');
+    setPromptpayId(pp?.id ?? '');
     setIsDialogOpen(true);
   };
 
@@ -120,9 +148,14 @@ export default function AccountsPage() {
     reader.readAsDataURL(file);
   };
 
+  // PromptPay ID typed in the form: checked as the user types (the server checks again)
+  const promptpayCheck = promptpayType && promptpayId.trim() ? normalizePromptPayId(promptpayType, promptpayId) : null;
+
   const handleSave = async () => {
     if (!accountName.trim()) { toast.error('กรุณาระบุชื่อบัญชี'); return; }
     if (!accountNumber.trim()) { toast.error('กรุณาระบุเลขที่บัญชี / เบอร์พร้อมเพย์'); return; }
+    if (promptpayType && !promptpayId.trim()) { toast.error('กรุณาระบุหมายเลขพร้อมเพย์ หรือเลือก "ไม่ใช้"'); return; }
+    if (promptpayCheck && !promptpayCheck.ok) { toast.error(promptpayCheck.error); return; }
     if (saving) return;
 
     const body = {
@@ -130,6 +163,8 @@ export default function AccountsPage() {
       accountName: accountName.trim(),
       accountNumber: accountNumber.trim(),
       qrCodeUrl: qrImageUrl || null,
+      promptpayType: promptpayCheck?.ok ? promptpayType || null : null,
+      promptpayId: promptpayCheck?.ok ? promptpayCheck.id : null,
       // the first account always becomes the default one
       // (and the shop always keeps one default account)
       isDefault: isDefault || accounts.length === 0 || !!editingAccount?.isDefault,
@@ -138,7 +173,7 @@ export default function AccountsPage() {
     setSaving(true);
     try {
       if (editingAccount) await api.bankAccounts.update(editingAccount.id, body);
-      else await api.bankAccounts.create({ ...body, qrCodeUrl: body.qrCodeUrl || undefined });
+      else await api.bankAccounts.create({ ...body, qrCodeUrl: body.qrCodeUrl || undefined, promptpayType: body.promptpayType || undefined, promptpayId: body.promptpayId || undefined });
       toast.success(`${editingAccount ? 'แก้ไข' : 'เพิ่ม'}บัญชีการเงินสำเร็จ`);
       setIsDialogOpen(false);
       await reload();
@@ -233,8 +268,10 @@ export default function AccountsPage() {
                 </span>
               </div>
 
-              {/* QR Code Preview */}
-              {acc.qrImageUrl ? (
+              {/* QR Code Preview: generated PromptPay QR (฿1.00 sample) first, else the uploaded image */}
+              {promptPayOf(acc) ? (
+                <AccountPromptPayPreview acc={acc} />
+              ) : acc.qrImageUrl ? (
                 <div className="flex justify-center py-2">
                   <div className="w-36 h-36 border-2 border-slate-200 rounded-xl overflow-hidden bg-white p-1 shadow-inner flex items-center justify-center">
                     <img src={acc.qrImageUrl} alt="QR Code" className="w-full h-full object-contain" />
@@ -262,7 +299,7 @@ export default function AccountsPage() {
               {acc.isDefault && <div />}
               
               <div className="flex gap-btn">
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-sky-600" onClick={() => handleOpenEdit(acc)}>
+                <Button variant="ghost" size="icon" aria-label={`แก้ไขบัญชี ${acc.bankName}`} className="h-8 w-8 text-slate-500 hover:text-sky-600" onClick={() => handleOpenEdit(acc)}>
                   <Edit className="w-4 h-4" />
                 </Button>
                 <RowDeleteMenu label="ลบบัญชีนี้" onDelete={() => handleDelete(acc.id)} />
@@ -320,12 +357,61 @@ export default function AccountsPage() {
               />
             </div>
 
-            {/* QR Code Upload */}
+            {/* PromptPay ID: QR with the amount locked, generated offline */}
+            <div className="rounded-xl border border-sky-200 bg-sky-50/50 p-3 space-y-2">
+              <label htmlFor="promptpayType" className="text-sm font-semibold text-slate-700 block">
+                พร้อมเพย์สำหรับสร้าง QR ล็อกยอด (ไม่บังคับ)
+              </label>
+              <select
+                id="promptpayType"
+                data-testid="promptpay-type"
+                value={promptpayType}
+                onChange={(e) => setPromptpayType(e.target.value as PromptPayIdType | '')}
+                className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold outline-none focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400"
+              >
+                <option value="">ไม่ใช้ (แสดงรูป QR ที่อัปโหลด)</option>
+                {(Object.keys(PROMPTPAY_TYPE_LABELS) as PromptPayIdType[]).map((t) => (
+                  <option key={t} value={t}>{PROMPTPAY_TYPE_LABELS[t]}</option>
+                ))}
+              </select>
+              {promptpayType && (
+                <>
+                  <Input
+                    aria-label="หมายเลขพร้อมเพย์"
+                    data-testid="promptpay-id"
+                    inputMode="numeric"
+                    placeholder={PROMPTPAY_PLACEHOLDER[promptpayType]}
+                    value={promptpayId}
+                    onChange={(e) => setPromptpayId(e.target.value)}
+                    aria-invalid={promptpayCheck ? !promptpayCheck.ok : undefined}
+                    className="h-10 border-slate-300 bg-white font-mono text-sm font-bold"
+                  />
+                  {promptpayCheck && !promptpayCheck.ok && (
+                    <p role="alert" className="text-xs font-semibold text-red-600">{promptpayCheck.error}</p>
+                  )}
+                  {promptpayCheck?.ok && (
+                    <div className="flex items-center gap-3">
+                      <PromptPayQr type={promptpayType} id={promptpayCheck.id} amount={1} accountName={accountName.trim() || undefined} size={120} compact />
+                      <p className="text-xs text-slate-600">
+                        ตัวอย่าง QR ฿1.00 ลองสแกนด้วยแอปธนาคารได้ (ไม่ต้องโอน) ตอนรับเงินระบบจะสร้าง QR ตามยอดจริง
+                        <br />แสดงหมายเลขแบบซ่อน: <b className="font-mono">{maskPromptPayId(promptpayType, promptpayCheck.id)}</b>
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* QR Code Upload (fallback, e.g. merchant QR such as K Shop that cannot be generated) */}
             <div>
-              <label className="text-sm font-semibold text-slate-700 block mb-1.5">รูป QR Code สแกนจ่าย</label>
-              <div 
+              <label className="text-sm font-semibold text-slate-700 block mb-1.5">
+                รูป QR Code สแกนจ่าย {promptpayType ? '(สำรอง)' : ''}
+              </label>
+              <p className="text-xs text-slate-500 mb-1.5">ใช้เมื่อไม่ได้ตั้งพร้อมเพย์ เช่น QR ร้านค้า K Shop / แม่มณี</p>
+              <button
+                type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-300 rounded-xl p-4 bg-slate-50 hover:bg-slate-100 cursor-pointer flex flex-col items-center justify-center gap-2 text-center transition-colors"
+                className="w-full border-2 border-dashed border-slate-300 rounded-xl p-4 bg-slate-50 hover:bg-slate-100 cursor-pointer flex flex-col items-center justify-center gap-2 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
               >
                 {qrImageUrl ? (
                   <div className="relative group">
@@ -339,7 +425,7 @@ export default function AccountsPage() {
                     <p className="text-xs text-slate-400">ไฟล์รูปภาพ (JPG, PNG)</p>
                   </>
                 )}
-              </div>
+              </button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -366,11 +452,11 @@ export default function AccountsPage() {
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0 pt-3 border-t border-slate-100">
+          <DialogFooter className="gap-btn pt-3 border-t border-slate-100">
             <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="border-slate-300 text-slate-600">
               ยกเลิก
             </Button>
-            <Button onClick={handleSave} className="bg-sky-500 hover:bg-sky-600 text-white font-bold">
+            <Button onClick={handleSave} disabled={saving} data-testid="account-save" className="bg-sky-500 hover:bg-sky-600 text-white font-bold">
               บันทึกบัญชี
             </Button>
           </DialogFooter>

@@ -6,7 +6,7 @@ Branch `ccr-8f8b0741-si1a0o`. Offline generator, no bank API. Payment is still c
 1. [x] `shared/src/promptpay.ts`: payload (EMVCo / Thai QR: 000201, 010212|11, 29 AID A000000677010111 + 01/02/03, 5303764, 54 amount, 5802TH, 6304 CRC16-CCITT-FALSE), ID validation (mobile, 13-digit ID checksum, 15-digit e-wallet), mask. Tests `shared/test/promptpay.spec.ts`.
 2. [x] Prisma: `bank_accounts.promptpay_type` (enum) + `promptpay_id`, migration, service validation, e2e.
    - Migration `20261130000000_bank_promptpay` (enum `PromptPayIdType`, columns, CHECK pair). Validation in `cleanBankInput` via shared `normalizePromptPayId`. e2e 69/69.
-3. [ ] Frontend QR renderer (`qrcode-generator`, pinned) + accounts form (type, ID, live ฿1.00 preview).
+3. [x] Frontend QR renderer (`qrcode-generator` 2.0.4 exact, MIT, no deps; `lib/promptpay-qr.ts`, `components/common/PromptPayQr.tsx` SVG with data-payload) + accounts form (type, ID, live ฿1.00 preview, upload area now a button). `jsqr` 1.4.0 (dev) decodes in tests.
 4. [ ] POS QR payment, split payment, debt payment (PayDebtModal) use the generated QR when the account has a PromptPay ID, else the uploaded image.
 5. [ ] Playwright: set PromptPay ID, sell with QR, decode QR, amount in payload. Layout at 1366x768 / 1920x1080 / 1093x614.
 6. [ ] Full verification, PROJECT_STATUS, screenshot.

@@ -9,6 +9,9 @@ export interface BankAccount {
   branch?: string | null;
   qrImageUrl?: string | null;
   qrCodeUrl?: string | null;
+  /** PromptPay ID: when set, payment screens generate a QR with the amount locked instead of the image. */
+  promptpayType?: string | null;
+  promptpayId?: string | null;
   color?: string;
   isDefault?: boolean;
 }
@@ -30,6 +33,8 @@ export function normalizeBankAccount(a: ApiBankAccount | null | undefined, idx =
     branch: a?.branch ?? null,
     qrImageUrl: qr,
     qrCodeUrl: qr,
+    promptpayType: a?.promptpayType ?? null,
+    promptpayId: a?.promptpayId ?? null,
     color: a?.color || '#3b82f6',
     isDefault: Boolean(a?.isDefault),
   };
