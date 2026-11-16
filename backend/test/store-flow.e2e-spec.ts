@@ -2053,6 +2053,340 @@ d('store flow (e2e)', () => {
     });
   });
 
+  describe('online shop (LINE LIFF): tunnel isolation, catalogue, orders, links, POS payment', () => {
+    const shop: Record<string, any> = {};
+    const pub = (method: 'get' | 'post', path: string, token?: string, body?: any, headers: Record<string, string> = {}) => {
+      const r = (http as any)[method]('/api/public/shop' + path);
+      if (token) r.set('Authorization', 'Bearer ' + token);
+      for (const [k, v] of Object.entries(headers)) r.set(k, v);
+      return body ? r.send(body) : r;
+    };
+    const lineCalls: { path: string; auth?: string; body: string }[] = [];
+    let lineServer: import('http').Server;
+
+    beforeAll(async () => {
+      // mock of api.line.me: ID-token verify ("good-token" -> U123...) and message push
+      const httpMod = await import('http');
+      lineServer = httpMod.createServer((req, res) => {
+        let body = '';
+        req.on('data', (c) => (body += c));
+        req.on('end', () => {
+          lineCalls.push({ path: req.url || '', auth: req.headers.authorization, body });
+          res.setHeader('content-type', 'application/json');
+          if (req.url === '/oauth2/v2.1/verify') {
+            const q = new URLSearchParams(body);
+            if (q.get('id_token') === 'good-token' && q.get('client_id') === '1650000000') {
+              res.end(JSON.stringify({ iss: 'https://access.line.me', sub: 'U1234567890abcdef', aud: '1650000000', exp: 9999999999, name: 'คุณสมชาย LINE' }));
+            } else {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: 'invalid_request', error_description: 'Invalid IdToken.' }));
+            }
+          } else if (req.url === '/v2/bot/message/push') {
+            res.end('{}');
+          } else if (req.url === '/v2/bot/info') {
+            res.end(JSON.stringify({ displayName: 'ร้านทดสอบ OA' }));
+          } else {
+            res.statusCode = 404;
+            res.end('{}');
+          }
+        });
+      });
+      await new Promise<void>((r) => lineServer.listen(0, '127.0.0.1', () => r()));
+      process.env.LINE_API_BASE = `http://127.0.0.1:${(lineServer.address() as any).port}`;
+
+      shop.cat = (await api('post', '/categories', A, { name: 'ร้านออนไลน์ หมวดปูน' }).expect(201)).body.id;
+      const mk = async (body: any) => (await api('post', '/products', A, { costPrice: 40, unit: 'ถุง', categoryId: shop.cat, ...body }).expect(201)).body;
+      const PNG1 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+      shop.p1 = await mk({
+        name: 'ปูนซีเมนต์ออนไลน์', sku: 'ONL-CEMENT', basePrice: 100, priceLevel1: 100, priceLevel2: 90, priceLevel3: 85,
+        packagingUnits: [{ name: 'แพค', qtyPerPrev: 6, priceLevel1: 570, priceLevel3: 480 }, { name: 'ลัง', qtyPerPrev: 4, priceLevel2: 2000 }],
+        images: [{ dataUrl: `data:image/png;base64,${PNG1}`, thumbDataUrl: `data:image/png;base64,${PNG1}`, name: 'c.png', isCover: true }],
+      });
+      shop.p2 = await mk({ name: 'ทรายออนไลน์ (หมด)', sku: 'ONL-SAND', basePrice: 50, priceLevel1: 50 });
+      shop.p3 = await mk({ name: 'สินค้าออนไลน์ปิดขาย', sku: 'ONL-OFF', basePrice: 10, priceLevel1: 10 });
+      await api('patch', `/products/${shop.p3.id}`, A, { isActive: false }).expect(200);
+      await api('post', '/inventory/adjust', A, { productId: shop.p1.id, type: 'SET', amount: 50, reason: 'e2e online' }).expect(201);
+      const full = (await api('get', `/products/${shop.p1.id}`, A).expect(200)).body;
+      shop.pack = full.packagingUnits.find((u: any) => u.name === 'แพค').id;
+      shop.case = full.packagingUnits.find((u: any) => u.name === 'ลัง').id;
+    });
+    afterAll(async () => {
+      delete process.env.LINE_API_BASE;
+      await new Promise((r) => lineServer?.close(r));
+    });
+
+    it('tunnel isolation: requests that came through Cloudflare / the gateway reach only /api/public/shop/*', async () => {
+      const tunnel: Record<string, string>[] = [{ 'cf-ray': '8f00aa-SIN' }, { 'cf-connecting-ip': '203.0.113.9' }, { 'x-purim-public': '1' }, { 'cdn-loop': 'cloudflare' }, { 'cf-visitor': '{"scheme":"https"}' }];
+      for (const h of tunnel) {
+        for (const path of ['/products', '/auth/me', '/settings', '/orders', '/online-shop/orders', '/events/stream', '/product-images/x', '/auth/default-pin']) {
+          const r = (http as any).get('/api' + path).set('Authorization', 'Bearer ' + A);
+          for (const [k, v] of Object.entries(h)) r.set(k, v);
+          await r.expect(404);
+        }
+        await (http as any).post('/api/auth/login').set(h).send({ username: 'admin', password: 'Admin@test99' }).expect(404);
+        await (http as any).get('/api/public/shopx').set(h).expect(404);
+        await (http as any).get('/api/public/shop/..%2F..%2Fproducts').set(h).expect(404);
+        await pub('get', '/config', undefined, undefined, h).expect(200);
+      }
+      // the shop's own host name (SHOP_PUBLIC_HOST) is public too, whatever the headers
+      process.env.SHOP_PUBLIC_HOST = 'shop.example.com';
+      try {
+        await (http as any).get('/api/products').set('Host', 'shop.example.com').set('Authorization', 'Bearer ' + A).expect(404);
+        await (http as any).get('/api/products').set('X-Forwarded-Host', 'SHOP.example.com:443').set('Authorization', 'Bearer ' + A).expect(404);
+        await pub('get', '/config', undefined, undefined, { Host: 'shop.example.com' }).expect(200);
+      } finally {
+        delete process.env.SHOP_PUBLIC_HOST;
+      }
+      // the LAN back office is unchanged
+      await api('get', '/products?limit=1', A).expect(200);
+    });
+
+    it('closed until an admin turns it on; LINE settings are ADMIN only and the token is never returned', async () => {
+      expect((await pub('get', '/config').expect(200)).body).toMatchObject({ open: false, liffId: null, devLogin: true });
+      await pub('get', '/products').expect(403);
+      await api('get', '/online-shop/config', C).expect(403);
+      await api('put', '/online-shop/config', C, { enabled: true }).expect(403);
+      await api('put', '/online-shop/config', A, { liffId: 'bad id' }).expect(400);
+      await api('put', '/online-shop/config', A, { publicBaseUrl: 'http://shop.example.com' }).expect(400);
+      const saved = (await api('put', '/online-shop/config', A, { enabled: true, messagingToken: 'tok-' + 'x'.repeat(40) + 'WXYZ', publicBaseUrl: 'https://shop.example.com/', levelNames: { 3: 'ส่งพิเศษช่าง' } }).expect(200)).body;
+      expect(saved).toMatchObject({ enabled: true, hasMessagingToken: true, messagingTokenHint: '••••WXYZ', publicBaseUrl: 'https://shop.example.com' });
+      expect(JSON.stringify(saved)).not.toContain('xxxxxxxx');
+      expect(JSON.stringify((await api('get', '/online-shop/config', A).expect(200)).body)).not.toContain('xxxxxxxx');
+      expect((await api('post', '/online-shop/config/test-line', A).expect(201)).body).toEqual({ ok: true, name: 'ร้านทดสอบ OA' });
+      const cfg = (await pub('get', '/config').expect(200)).body;
+      expect(cfg).toMatchObject({ open: true, devLogin: true, allowPickup: true, allowDelivery: true });
+      expect(cfg.levelNames[3]).toBe('ส่งพิเศษช่าง');
+      expect(JSON.stringify(cfg)).not.toMatch(/tok-|messaging/i);
+    });
+
+    it('test profile only from the LAN while LINE login is not configured', async () => {
+      await pub('post', '/session', undefined, { dev: { id: 'guest1', name: 'ลูกค้าทดสอบ' } }, { 'cf-ray': 'x' }).expect(403);
+      await pub('post', '/session', undefined, {}).expect(400);
+      const s = (await pub('post', '/session', undefined, { dev: { id: 'guest1', name: 'ลูกค้าทดสอบ' } }).expect(201)).body;
+      expect(s.token).toBeTruthy();
+      expect(s.member).toBeNull();
+      expect(s.profile).toMatchObject({ name: 'ลูกค้าทดสอบ', test: true });
+      shop.guest = s.token;
+      await pub('get', '/me', 'garbage.token').expect(401);
+      await pub('get', '/me', s.token.slice(0, -2) + 'xx').expect(401);
+    });
+
+    it('catalogue: retail prices for guests, units, in-stock flag only; no cost / stock / inactive / service products', async () => {
+      const r = (await pub('get', '/products?q=ออนไลน์').expect(200)).body;
+      const names = r.items.map((i: any) => i.name);
+      expect(names).toEqual(expect.arrayContaining(['ปูนซีเมนต์ออนไลน์', 'ทรายออนไลน์ (หมด)']));
+      expect(names).not.toContain('สินค้าออนไลน์ปิดขาย');
+      const cement = r.items.find((i: any) => i.name === 'ปูนซีเมนต์ออนไลน์');
+      expect(Object.keys(cement).sort()).toEqual(['categoryId', 'id', 'imageUrl', 'inStock', 'name', 'units']);
+      expect(cement.units).toEqual([
+        { id: null, name: 'ถุง', price: 100, inStock: true },
+        { id: shop.pack, name: 'แพค', price: 570, inStock: true },
+        { id: shop.case, name: 'ลัง', price: 2400, inStock: true }, // 24 per case, 50 in stock
+      ]);
+      expect(cement.inStock).toBe(true);
+      const json = JSON.stringify(r);
+      for (const banned of ['cost', 'stock"', 'supplier', 'sku', 'barcode', '"50']) expect(json).not.toContain(banned);
+      expect(r.items.find((i: any) => i.name === 'ทรายออนไลน์ (หมด)').inStock).toBe(false);
+      // photo through the public prefix (thumbnail)
+      expect(cement.imageUrl).toMatch(/^\/api\/public\/shop\/images\/[0-9a-f-]{36}$/);
+      const img = await (http as any).get(cement.imageUrl).set('cf-ray', 'x').expect(200);
+      expect(img.headers['content-type']).toBe('image/png');
+      // category tiles and category filter
+      const cats = (await pub('get', '/categories').expect(200)).body;
+      expect(cats.find((c: any) => c.id === shop.cat)).toMatchObject({ name: 'ร้านออนไลน์ หมวดปูน', count: 2, imageUrl: cement.imageUrl });
+      const inCat = (await pub('get', `/products?categoryId=${shop.cat}`).expect(200)).body;
+      expect(inCat.items.map((i: any) => i.name).sort()).toEqual(['ทรายออนไลน์ (หมด)', 'ปูนซีเมนต์ออนไลน์']);
+      // paging
+      const p1 = (await pub('get', `/products?categoryId=${shop.cat}&limit=1`).expect(200)).body;
+      expect(p1).toMatchObject({ total: 2, hasMore: true, page: 1 });
+    });
+
+    it('orders: server prices (client prices ignored), stock / unit / size checks, pickup = 0, guest delivery = shop will tell', async () => {
+      await pub('post', '/orders', undefined, { items: [] }).expect(401);
+      const base = { contactName: 'คุณแขก', contactPhone: '081-111-2222', fulfillment: 'PICKUP' };
+      await pub('post', '/orders', shop.guest, { ...base, items: [{ productId: shop.p2.id, unitId: null, quantity: 1 }] }).expect(400); // out of stock
+      await pub('post', '/orders', shop.guest, { ...base, items: [{ productId: shop.p3.id, unitId: null, quantity: 1 }] }).expect(400); // inactive
+      await pub('post', '/orders', shop.guest, { ...base, items: [{ productId: shop.p1.id, unitId: 'nope', quantity: 1 }] }).expect(400);
+      await pub('post', '/orders', shop.guest, { ...base, items: [{ productId: shop.p1.id, unitId: null, quantity: 1.5 }] }).expect(400);
+      await pub('post', '/orders', shop.guest, { ...base, items: Array.from({ length: 61 }, () => ({ productId: shop.p1.id, unitId: null, quantity: 1 })) }).expect(400);
+      await pub('post', '/orders', shop.guest, { ...base, contactPhone: '12', items: [{ productId: shop.p1.id, unitId: null, quantity: 1 }] }).expect(400);
+      await pub('post', '/orders', shop.guest, { ...base, fulfillment: 'DELIVERY', address: '', items: [{ productId: shop.p1.id, unitId: null, quantity: 1 }] }).expect(400);
+      const o = (await pub('post', '/orders', shop.guest, { ...base, items: [{ productId: shop.p1.id, unitId: null, quantity: 2, unitPrice: 1 }, { productId: shop.p1.id, unitId: shop.pack, quantity: 1, price: 1 }] }).expect(201)).body;
+      expect(o).toMatchObject({ status: 'NEW', fulfillment: 'PICKUP', subtotal: 770, deliveryFee: 0, feePending: false, totalAmount: 770 });
+      expect(o.orderNo).toMatch(/^WEB-\d{6}-\d{3}$/);
+      expect(o.items.map((i: any) => [i.name, i.unitName, i.quantity, i.unitPrice])).toEqual([['ปูนซีเมนต์ออนไลน์', 'ถุง', 2, 100], ['ปูนซีเมนต์ออนไลน์', 'แพค', 1, 570]]);
+      shop.pickup = o;
+      const d = (await pub('post', '/orders', shop.guest, { ...base, fulfillment: 'DELIVERY', address: '99 หมู่ 1 ต.ทดสอบ', items: [{ productId: shop.p1.id, unitId: shop.case, quantity: 1 }] }).expect(201)).body;
+      expect(d).toMatchObject({ deliveryFee: null, feePending: true, subtotal: 2400, totalAmount: 2400 });
+      shop.guestDelivery = d;
+      // contact remembered for next time
+      expect((await pub('get', '/me', shop.guest).expect(200)).body.contact).toEqual({ name: 'คุณแขก', phone: '0811112222', address: '99 หมู่ 1 ต.ทดสอบ' });
+      // only the owner sees an order
+      const other = (await pub('post', '/session', undefined, { dev: { id: 'other' } }).expect(201)).body.token;
+      await pub('get', `/orders/${o.id}`, other).expect(404);
+      expect((await pub('get', '/orders', other).expect(200)).body).toEqual([]);
+      expect((await pub('get', '/orders', shop.guest).expect(200)).body).toHaveLength(2);
+      // the realtime badge count
+      expect((await api('get', '/online-shop/counts', C).expect(200)).body).toMatchObject({ new: 2 });
+    });
+
+    it('link request -> staff approval (managers / discount rights only) -> member prices and the member delivery fee', async () => {
+      const member = (await api('post', '/customers', A, { name: 'ช่างสมศักดิ์ ออนไลน์', phone: '089-555-0001', priceLevel: 3, deliveryFee: 'abc' }).expect(400));
+      expect(String(member.body.message)).toContain('ค่าส่ง');
+      shop.member = (await api('post', '/customers', A, { name: 'ช่างสมศักดิ์ ออนไลน์', phone: '089-555-0001', priceLevel: 3, deliveryFee: 80 }).expect(201)).body;
+      expect(shop.member.deliveryFee).toBe(80);
+      expect((await api('patch', `/customers/${shop.member.id}`, A, { deliveryFee: 10001 }).expect(400)).body.message).toContain('ค่าส่ง');
+      const s = (await pub('post', '/session', undefined, { dev: { id: 'member1', name: 'สมศักดิ์' } }).expect(201)).body;
+      shop.memberToken = s.token;
+      await pub('post', '/link', s.token, { phone: '12' }).expect(400);
+      const me = (await pub('post', '/link', s.token, { phone: '0895550001' }).expect(201)).body;
+      expect(me.linkRequest).toMatchObject({ status: 'PENDING', phone: '0895550001' });
+      expect(me.member).toBeNull(); // never linked by phone alone
+      const reqs = (await api('get', '/online-shop/link-requests', C).expect(200)).body;
+      const r = reqs.find((x: any) => x.lineUserId === 'dev-member1');
+      expect(r.matches).toEqual([{ id: shop.member.id, name: 'ช่างสมศักดิ์ ออนไลน์', phone: '089-555-0001' }]);
+      await api('post', `/online-shop/link-requests/${r.id}/decide`, C, { approve: true, customerId: shop.member.id }).expect(403);
+      await api('post', `/online-shop/link-requests/${r.id}/decide`, A, { approve: true }).expect(400);
+      await api('post', `/online-shop/link-requests/${r.id}/decide`, A, { approve: true, customerId: shop.member.id }).expect(201);
+      await api('post', `/online-shop/link-requests/${r.id}/decide`, A, { approve: true, customerId: shop.member.id }).expect(400);
+      const me2 = (await pub('get', '/me', s.token).expect(200)).body;
+      expect(me2.member).toEqual({ name: 'ช่างสมศักดิ์ ออนไลน์', level: 3, levelName: 'ส่งพิเศษช่าง', deliveryFee: 80 });
+      expect((await api('get', `/online-shop/customers/${shop.member.id}/line`, C).expect(200)).body.map((v: any) => v.lineUserId)).toEqual(['dev-member1']);
+      // level 3 prices: base 85, pack own 480, case = 85 x 24
+      const cement = (await pub('get', '/products?q=ปูนซีเมนต์ออนไลน์', s.token).expect(200)).body.items[0];
+      expect(cement.units.map((u: any) => u.price)).toEqual([85, 480, 2040]);
+      // guests still see retail
+      expect((await pub('get', '/products?q=ปูนซีเมนต์ออนไลน์', shop.guest).expect(200)).body.items[0].units[0].price).toBe(100);
+      const o = (await pub('post', '/orders', s.token, { contactName: 'สมศักดิ์', contactPhone: '0895550001', fulfillment: 'DELIVERY', address: 'ไซต์งาน ซอย 5', items: [{ productId: shop.p1.id, unitId: null, quantity: 4 }] }).expect(201)).body;
+      expect(o).toMatchObject({ subtotal: 340, deliveryFee: 80, totalAmount: 420, feePending: false });
+      shop.memberOrder = o;
+      // a rejected request can be made again; a linked account cannot ask again
+      await pub('post', '/link', s.token, { phone: '0895550001' }).expect(400);
+    });
+
+    it('staff: guest delivery needs a fee before accepting; edits re-price on the server; LINE messages are pushed', async () => {
+      const id = shop.guestDelivery.id;
+      await api('post', `/online-shop/orders/${id}/accept`, C, {}).expect(400); // fee unknown
+      await api('post', `/online-shop/orders/${id}/accept`, C, { deliveryFee: -5 }).expect(400);
+      // staff changes the quantity, sets a price and the fee, picks the member (customer level kept unless asked)
+      const upd = (await api('patch', `/online-shop/orders/${id}`, C, { items: [{ productId: shop.p1.id, unitId: shop.case, quantity: 2, unitPrice: 2300 }, { productId: shop.p1.id, unitId: null, quantity: 1 }], deliveryFee: 120 }).expect(200)).body;
+      expect(upd).toMatchObject({ subtotal: 4700, deliveryFee: 120, totalAmount: 4820, status: 'NEW' });
+      const before = lineCalls.length;
+      const acc = (await api('post', `/online-shop/orders/${id}/accept`, C, {}).expect(201)).body;
+      expect(acc.status).toBe('ACCEPTED');
+      expect(acc.nextStatuses).toEqual(['PREPARING', 'DELIVERING', 'DONE', 'CANCELLED']);
+      await api('post', `/online-shop/orders/${id}/accept`, C, {}).expect(400);
+      // dev profiles are never pushed to LINE
+      await new Promise((r) => setTimeout(r, 300));
+      expect(lineCalls.slice(before).filter((c) => c.path === '/v2/bot/message/push')).toHaveLength(0);
+      expect((await api('get', `/online-shop/orders/${id}`, C).expect(200)).body.lineNotice).toContain('โปรไฟล์ทดสอบ');
+      // the customer sees the total and a PromptPay QR (default bank with a PromptPay ID) with the amount locked
+      await api('post', '/bank-accounts', A, { bankName: 'กสิกรไทย', accountName: 'ร้าน Online E2E', accountNumber: '777-0-00001-1', promptpayType: 'MOBILE', promptpayId: '0812345678', isDefault: true }).expect(201);
+      const mine = (await pub('get', `/orders/${id}`, shop.guest).expect(200)).body;
+      expect(mine).toMatchObject({ status: 'ACCEPTED', totalAmount: 4820, deliveryFee: 120 });
+      expect(mine.payment).toMatchObject({ amount: 4820, accountName: 'ร้าน Online E2E', maskedId: expect.stringContaining('5678') });
+      expect(mine.payment.payload).toContain('54074820.00');
+      // pickup order rejected with a reason -> customer sees it
+      await api('post', `/online-shop/orders/${shop.pickup.id}/reject`, C, { reason: '' }).expect(400);
+      await api('post', `/online-shop/orders/${shop.pickup.id}/reject`, C, { reason: 'ของหมดชั่วคราว' }).expect(201);
+      expect((await pub('get', `/orders/${shop.pickup.id}`, shop.guest).expect(200)).body).toMatchObject({ status: 'CANCELLED', rejectReason: 'ของหมดชั่วคราว' });
+      await api('patch', `/online-shop/orders/${shop.pickup.id}`, C, { deliveryFee: 10 }).expect(400);
+    });
+
+    it('accepted order -> POS bill with a ค่าส่ง service line (no stock) -> paid once; void reopens it', async () => {
+      const id = shop.memberOrder.id;
+      await api('get', `/online-shop/orders/${id}/pos`, C).expect(400); // not accepted yet
+      await api('post', `/online-shop/orders/${id}/accept`, C, {}).expect(201);
+      const pos = (await api('get', `/online-shop/orders/${id}/pos`, C).expect(200)).body;
+      expect(pos.customer).toMatchObject({ id: shop.member.id });
+      expect(pos.lines.map((l: any) => [l.name, l.quantity, l.unitPrice])).toEqual([['ปูนซีเมนต์ออนไลน์', 4, 85], ['ค่าส่ง', 1, 80]]);
+      const fee = pos.lines[1];
+      const db = new PrismaClient();
+      try {
+        const svc = await db.product.findUnique({ where: { id: fee.productId } });
+        expect(svc).toMatchObject({ sku: 'SYS-DELIVERY-FEE', isService: true });
+        // not in the shop catalogue, not in stock filters
+        expect((await pub('get', '/products?q=ค่าส่ง', shop.guest).expect(200)).body.items).toEqual([]);
+        const outIds = (await api('get', '/products/page?stock=out&limit=500', A).expect(200)).body.data.map((p: any) => p.id);
+        expect(outIds).not.toContain(fee.productId);
+        let open = await db.shift.findFirst({ where: { status: 'OPEN', user: { username: 'cashier1' } } });
+        if (!open) open = (await api('post', '/shifts/open', C, { startingCash: 500, terminalId: 'e2e-online' }).expect(201)).body.shift;
+        const stockBefore = Number((await api('get', `/products/${shop.p1.id}/stock`, A)).body.computedStock);
+        const sale = {
+          clientOrderId: randomUUID(), shiftId: open!.id, customerId: shop.member.id, onlineOrderId: id,
+          items: pos.lines.map((l: any) => ({ productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice, unitId: l.unitId, unitName: l.unitName, conversionFactor: l.factor })),
+          payments: [{ method: 'CASH', amount: 420 }],
+        };
+        const bill = (await api('post', '/orders/checkout', C, sale).expect(201)).body;
+        expect(Number(bill.totalAmount)).toBe(420);
+        expect(Number((await api('get', `/products/${shop.p1.id}/stock`, A)).body.computedStock)).toBe(stockBefore - 4);
+        expect(await db.stockBatch.count({ where: { productId: fee.productId } })).toBe(0);
+        expect(await db.auditLog.count({ where: { entityId: fee.productId, action: { startsWith: 'STOCK' } } })).toBe(0);
+        const paid = (await api('get', `/online-shop/orders/${id}`, C).expect(200)).body;
+        expect(paid).toMatchObject({ status: 'ACCEPTED', posOrder: { id: bill.id, totalAmount: 420 } }); // delivery: staff closes it
+        expect((await pub('get', `/orders/${id}`, shop.memberToken).expect(200)).body).toMatchObject({ paid: true, payment: null });
+        await api('post', '/orders/checkout', C, { ...sale, clientOrderId: randomUUID() }).expect(400); // paid once
+        await api('patch', `/online-shop/orders/${id}`, C, { deliveryFee: 10 }).expect(400); // paid: no edits
+        // voiding the POS bill: stock back for the cement only, the online order is payable again
+        await api('post', `/orders/${bill.id}/void`, A, { reason: 'e2e online void' }).expect(201);
+        expect(await db.stockBatch.count({ where: { productId: fee.productId } })).toBe(0);
+        expect((await api('get', `/online-shop/orders/${id}`, C).expect(200)).body.posOrder).toBeNull();
+        // pay again, then the status flow to done
+        await api('post', '/orders/checkout', C, { ...sale, clientOrderId: randomUUID() }).expect(201);
+        await api('post', `/online-shop/orders/${id}/status`, C, { status: 'NEW' }).expect(400);
+        expect((await api('post', `/online-shop/orders/${id}/status`, C, { status: 'DELIVERING' }).expect(201)).body.status).toBe('DELIVERING');
+        expect((await api('post', `/online-shop/orders/${id}/status`, C, { status: 'DONE' }).expect(201)).body.status).toBe('DONE');
+        // the guest's accepted order is unpaid: closing it needs a confirmation
+        await api('post', `/online-shop/orders/${shop.guestDelivery.id}/status`, C, { status: 'DONE' }).expect(409);
+      } finally {
+        await db.$disconnect();
+      }
+    });
+
+    it('LIFF ID token verified with LINE; the test profile is off once LINE login is configured; pushes go to LINE with the token', async () => {
+      await api('put', '/online-shop/config', A, { liffId: '1650000000-AbCdEfGh', loginChannelId: '1650000000' }).expect(200);
+      expect((await pub('get', '/config').expect(200)).body).toMatchObject({ open: true, liffId: '1650000000-AbCdEfGh', devLogin: false });
+      await pub('post', '/session', undefined, { dev: { id: 'x' } }).expect(403);
+      await pub('post', '/session', undefined, { idToken: 'forged' }).expect(401);
+      const s = (await pub('post', '/session', undefined, { idToken: 'good-token' }, { 'cf-ray': 'abc', 'cf-connecting-ip': '198.51.100.7' }).expect(201)).body;
+      expect(s.profile).toMatchObject({ name: 'คุณสมชาย LINE', test: false });
+      const before = lineCalls.length;
+      const o = (await pub('post', '/orders', s.token, { contactName: 'สมชาย', contactPhone: '0899999999', fulfillment: 'PICKUP', items: [{ productId: shop.p1.id, unitId: null, quantity: 1 }] }, { 'cf-ray': 'abc' }).expect(201)).body;
+      await api('post', `/online-shop/orders/${o.id}/accept`, C, {}).expect(201);
+      await new Promise((r) => setTimeout(r, 500));
+      const pushes = lineCalls.slice(before).filter((c) => c.path === '/v2/bot/message/push');
+      expect(pushes).toHaveLength(2);
+      expect(pushes[0].auth).toBe('Bearer tok-' + 'x'.repeat(40) + 'WXYZ');
+      const accepted = JSON.parse(pushes[1].body);
+      expect(accepted.to).toBe('U1234567890abcdef');
+      expect(accepted.messages[0].text).toContain('ยืนยันออเดอร์');
+      expect(accepted.messages[0].text).toContain('100.00');
+      const image = accepted.messages[1];
+      expect(image.type).toBe('image');
+      expect(image.originalContentUrl).toMatch(new RegExp(`^https://shop.example.com/api/public/shop/qr/${o.id}.png\\?a=100.00&s=`));
+      // the QR image link works through the tunnel; a changed amount or signature does not
+      const path = image.originalContentUrl.replace('https://shop.example.com', '');
+      const png = await (http as any).get(path).set('cf-ray', 'x').buffer(true).parse((res: any, cb: any) => { const b: Buffer[] = []; res.on('data', (c: Buffer) => b.push(c)); res.on('end', () => cb(null, Buffer.concat(b))); }).expect(200);
+      expect(png.headers['content-type']).toBe('image/png');
+      expect((png.body as Buffer).subarray(1, 4).toString()).toBe('PNG');
+      await (http as any).get(path.replace('a=100.00', 'a=1.00')).expect(404);
+      await (http as any).get(path.slice(0, -3) + 'xyz').expect(404);
+      expect((await api('get', `/online-shop/orders/${o.id}`, C).expect(200)).body.lineNotice).toContain('ส่ง LINE แล้ว');
+      // put the shop back in test mode for the rest of the suite
+      await api('put', '/online-shop/config', A, { liffId: '', loginChannelId: '' }).expect(200);
+    });
+
+    it('customer may cancel only while new; open-order limit', async () => {
+      const t = (await pub('post', '/session', undefined, { dev: { id: 'canceller' } }).expect(201)).body.token;
+      const body = { contactName: 'ยกเลิก', contactPhone: '0811111111', fulfillment: 'PICKUP', items: [{ productId: shop.p1.id, unitId: null, quantity: 1 }] };
+      const o = (await pub('post', '/orders', t, body).expect(201)).body;
+      expect((await pub('post', `/orders/${o.id}/cancel`, t).expect(201)).body.status).toBe('CANCELLED');
+      await pub('post', `/orders/${o.id}/cancel`, t).expect(400);
+      for (let i = 0; i < 5; i++) await pub('post', '/orders', t, body).expect(201);
+      await pub('post', '/orders', t, body).expect(429); // 6 per 10 minutes per LINE account
+    });
+  });
+
   describe('bank account PromptPay ID (QR with the amount locked)', () => {
     it('stores a validated ID, rejects bad ones, clears it, cashier cannot set it', async () => {
       const created = (await api('post', '/bank-accounts', A, { bankName: 'พร้อมเพย์ (PromptPay)', accountName: 'ร้าน E2E', accountNumber: '999-0-00001-1', promptpayType: 'MOBILE', promptpayId: '081-234-5678' }).expect(201)).body;

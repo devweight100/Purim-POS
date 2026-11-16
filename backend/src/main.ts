@@ -6,9 +6,14 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { json, urlencoded } from 'express';
 import compression from 'compression';
+import { isPublicRequest, publicApiAllowed, publicExposureMiddleware, startShopGateway } from './online-shop/public-exposure';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // FIRST: requests that came through the Cloudflare Tunnel (online shop) reach only /api/public/shop/*.
+  // (Also applied by AppModule for every route; this one covers /uploads and unknown paths too.)
+  app.use(publicExposureMiddleware);
   
   // gzip JSON responses (the product list / reports compress ~10x; the Next.js /api rewrite passes the encoded
   // body through). Never the realtime event stream: compression would buffer the events.
@@ -28,10 +33,10 @@ async function bootstrap() {
   app.use(urlencoded({ limit: '50mb', extended: true }));
 
   // Enable CORS for localhost and all LAN network clients
-  app.enableCors({
-    origin: true,
-    credentials: true,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+  // (never for the online shop: its page is same-origin, and tunnel requests get no CORS at all)
+  app.enableCors((req: any, cb: (err: Error | null, options: any) => void) => {
+    const shop = isPublicRequest(req.headers) || publicApiAllowed(req.originalUrl || req.url || '');
+    cb(null, { origin: !shop, credentials: !shop, methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS' });
   });
 
   // Global prefix for clean API routing
@@ -61,5 +66,16 @@ async function bootstrap() {
   const port = process.env.PORT || 3001;
   await app.listen(port, '0.0.0.0'); // Listen on all network interfaces (LAN & Localhost)
   console.log(`🚀 Purim POS Backend is running on: http://localhost:${port}/api and http://0.0.0.0:${port}/api`);
+
+  // Online shop gateway: the ONLY port cloudflared may point at (127.0.0.1). SHOP_GATEWAY_PORT=0 turns it off.
+  const gatewayPort = Number(process.env.SHOP_GATEWAY_PORT ?? 3080);
+  if (Number.isInteger(gatewayPort) && gatewayPort > 0) {
+    startShopGateway({
+      port: gatewayPort,
+      host: '127.0.0.1',
+      target: process.env.FRONTEND_INTERNAL_URL || `http://127.0.0.1:${process.env.POS_PORT || 3000}`,
+      log: (m) => console.log(m),
+    });
+  }
 }
 bootstrap();

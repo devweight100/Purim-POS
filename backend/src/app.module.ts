@@ -1,4 +1,4 @@
-﻿import { Module } from '@nestjs/common';
+﻿import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { QtyResponseInterceptor } from './common/qty-response.interceptor';
@@ -27,6 +27,8 @@ import { ServerControlModule } from './server-control/server-control.module';
 import { VersionModule } from './version/version.module';
 import { FinanceModule } from './finance/finance.module';
 import { ApprovalsModule } from './approvals/approvals.module';
+import { OnlineShopModule } from './online-shop/online-shop.module';
+import { publicExposureMiddleware } from './online-shop/public-exposure';
 
 @Module({
   imports: [
@@ -54,9 +56,15 @@ import { ApprovalsModule } from './approvals/approvals.module';
     EventsModule,
     FinanceModule,
     ApprovalsModule,
+    OnlineShopModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_INTERCEPTOR, useClass: QtyResponseInterceptor }],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  /** Requests that came through the Cloudflare Tunnel reach only /api/public/shop/* (docs/online-shop.md). */
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(publicExposureMiddleware).forRoutes('*');
+  }
+}
 

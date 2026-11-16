@@ -320,7 +320,7 @@ function inventoryCte(nowIso: string, threshold: number, canSeeCost: boolean) {
       LEFT JOIN st ON st.product_id = p.id
       LEFT JOIN recv ON recv.product_id = p.id
       LEFT JOIN sale ON sale.product_id = p.id
-      WHERE NOT p.is_bundle),
+      WHERE NOT p.is_bundle AND NOT p.is_service),
     costed AS (
       SELECT b.*, CASE WHEN b.stock > 0 THEN (CASE WHEN b.stock * b.avg_cost > 0 THEN b.stock * b.avg_cost ELSE b.stock * b.fallback END) ELSE 0 END AS cost_val
       FROM base b),
@@ -397,7 +397,7 @@ export async function inventorySnapshotSql(db: Db, threshold: number) {
              SUM(b.quantity_remaining::float8 * b.unit_cost::float8) FILTER (WHERE b.quantity_remaining > 0) AS pos_val
       FROM stock_batches b WHERE b.quantity_remaining <> 0 GROUP BY b.product_id),
     x AS (
-      SELECT p.is_bundle, GREATEST(0, COALESCE(st.net, 0))::float8 AS qty, p.cost_price::float8 AS cost,
+      SELECT (p.is_bundle OR p.is_service) AS is_bundle, GREATEST(0, COALESCE(st.net, 0))::float8 AS qty, p.cost_price::float8 AS cost,
              COALESCE(p.price_level_1, p.base_price, 0)::float8 AS retail,
              CASE WHEN COALESCE(st.pos_qty, 0) > 0 THEN st.pos_val / st.pos_qty ELSE 0 END AS avg_cost
       FROM products p LEFT JOIN st ON st.product_id = p.id

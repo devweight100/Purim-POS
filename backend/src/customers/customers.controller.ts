@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
 import { customerPageIds, parseCustomerPageQuery } from './customer-list';
+import { parseDeliveryFee } from '../../../shared/src/online-shop';
 import { CHANGE_LOG_KEEP_MS, cursorUsable, decodeCursor, encodeCursor } from '../products/product-catalog';
 
 /** Profile fields that control store credit: only debt managers may change them. */
@@ -16,6 +17,14 @@ export function canManageCredit(user: any): boolean {
   if (user.role === 'ADMIN' || user.role === 'MANAGER') return true;
   const perms: string[] = Array.isArray(user.permissions) ? user.permissions.map(String) : [];
   return perms.includes('ALL') || perms.includes('MANAGE_DEBTS');
+}
+
+/** ค่าส่ง (online shop delivery fee) of a member: number 0-10,000 or null (= the shop tells per order). */
+export function checkDeliveryFee(details: Record<string, any>) {
+  if (details.deliveryFee === undefined) return;
+  const f = parseDeliveryFee(details.deliveryFee);
+  if (!f.ok) throw new BadRequestException(f.error);
+  details.deliveryFee = f.value;
 }
 
 const sameCreditValue = (field: string, a: any, b: any) =>
@@ -97,6 +106,7 @@ export class CustomersController {
     if (!data || typeof data !== 'object') throw new BadRequestException('ข้อมูลลูกค้าไม่ถูกต้อง');
     const { name, phone, email, address, note, id, points, createdAt, updatedAt, currentDebt, profile: ignoredProfile, ...profile } = data;
     Object.assign(profile, checkCreditFields(profile, CREDIT_DEFAULTS, req?.user));
+    checkDeliveryFee(profile);
     const cleanPhoneValue = cleanPhone(phone);
     if (cleanPhoneValue && (await this.prisma.customer.findUnique({ where: { phone: cleanPhoneValue } }))) {
       throw new ConflictException('เบอร์โทรศัพท์นี้มีลูกค้าใช้อยู่แล้ว');
@@ -229,6 +239,7 @@ export class CustomersController {
     const { name, phone, email, address, note, id: ignoredId, points, createdAt, updatedAt, currentDebt, debts, profile: ignoredProfile, ...details } = data;
     const current = (existing.profile as any) || {};
     Object.assign(details, checkCreditFields(details, current, req?.user));
+    checkDeliveryFee(details);
     const profile = { ...current, ...details };
     const cleanPhoneValue = cleanPhone(phone);
     if (cleanPhoneValue && (await this.prisma.customer.findFirst({ where: { phone: cleanPhoneValue, id: { not: id } } }))) {

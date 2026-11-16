@@ -306,7 +306,7 @@ export class ReportsService {
       }),
       // Include negative (oversold) batches so they net against positive stock.
       this.prisma.stockBatch.findMany({ where: { quantityRemaining: { not: 0 } }, select: { productId: true, quantityRemaining: true, unitCost: true } }),
-      this.prisma.product.findMany({ where: { isActive: true }, select: { id: true, sku: true, name: true, costPrice: true, basePrice: true, priceLevel1: true, isBundle: true } }),
+      this.prisma.product.findMany({ where: { isActive: true }, select: { id: true, sku: true, name: true, costPrice: true, basePrice: true, priceLevel1: true, isBundle: true, isService: true } }),
       this.lowStockThreshold(),
       // last time each product was received (PO receipt, return, adjustment): new stock is not "dead"
       this.prisma.stockBatch.groupBy({ by: ['productId'], where: { quantityReceived: { gt: 0 } }, _max: { receivedAt: true } }),

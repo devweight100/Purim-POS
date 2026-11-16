@@ -62,6 +62,6 @@ export class InventoryController {
     const settings = await this.prisma.storeSettings.findFirst({ select: { lowStockThreshold: true } });
     const threshold = Number(thresholdStr) > 0 ? Number(thresholdStr) : Number(settings?.lowStockThreshold ?? 5);
     const products = await this.stockList();
-    return costFilterFor(req?.user)(products.filter(p => p.computedStock <= threshold));
+    return costFilterFor(req?.user)(products.filter(p => !p.isService && p.computedStock <= threshold));
   }
 }

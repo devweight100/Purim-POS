@@ -558,6 +558,8 @@ export class ProductsService {
     const settings = await this.prisma.storeSettings.findFirst({ select: { lowStockThreshold: true } });
     const thresholdRaw = Number(settings?.lowStockThreshold);
     const threshold = Number.isFinite(thresholdRaw) && thresholdRaw >= 0 ? thresholdRaw : 5;
+    // service lines (ค่าส่ง) hold no stock: never in a stock filter
+    if (stock !== 'all') conds.push(Prisma.sql`NOT x.is_service`);
     if (stock === 'out') conds.push(Prisma.sql`x.stock = 0`);
     if (stock === 'low') conds.push(Prisma.sql`x.stock > 0 AND x.stock <= ${threshold}`);
     if (stock === 'normal') conds.push(Prisma.sql`x.stock > ${threshold}`);
@@ -576,7 +578,7 @@ export class ProductsService {
                MIN(floor(COALESCE(s.q, 0) / COALESCE(NULLIF(bi.quantity, 0), 1) + 0.000000001)) AS q
              FROM product_bundle_items bi LEFT JOIN s ON s.product_id = bi.child_product_id GROUP BY bi.bundle_product_id),
       x AS (SELECT p.id, p.name, p.sku, p.category_id, p.base_price, p.cost_price, p.price_level_1, p.price_level_2, p.price_level_3,
-              p.price_level_4, p.price_level_5, p.ctid AS pos, p.is_bundle, NULLIF(s.avg_cost, 0) AS avg_cost,
+              p.price_level_4, p.price_level_5, p.ctid AS pos, p.is_bundle, p.is_service, NULLIF(s.avg_cost, 0) AS avg_cost,
               CASE WHEN p.is_bundle AND bs.pid IS NOT NULL THEN bs.q ELSE COALESCE(s.q, 0) END AS stock
             FROM products p LEFT JOIN s ON s.product_id = p.id LEFT JOIN bs ON bs.pid = p.id)`;
     const rows = await this.prisma.$queryRaw<{ id: string; total: number; unit_cost: string | null }[]>`${withX}
@@ -591,9 +593,9 @@ export class ProductsService {
         SELECT count(*)::text AS "totalItems", COALESCE(sum(x.stock), 0)::text AS "totalBaseUnits",
           COALESCE(sum(CASE WHEN ${!!opts.canViewCost} AND NOT x.is_bundle AND x.stock > 0
             THEN x.stock * COALESCE(x.avg_cost, x.cost_price, 0) ELSE 0 END), 0)::text AS "totalValuation",
-          count(*) FILTER (WHERE x.stock > 0 AND x.stock <= ${threshold})::text AS "lowStockCount",
-          count(*) FILTER (WHERE x.stock = 0)::text AS "outOfStockCount",
-          count(*) FILTER (WHERE x.stock < 0)::text AS "negativeStockCount"
+          count(*) FILTER (WHERE NOT x.is_service AND x.stock > 0 AND x.stock <= ${threshold})::text AS "lowStockCount",
+          count(*) FILTER (WHERE NOT x.is_service AND x.stock = 0)::text AS "outOfStockCount",
+          count(*) FILTER (WHERE NOT x.is_service AND x.stock < 0)::text AS "negativeStockCount"
         FROM x`;
       stats = Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Number(v) || 0]));
     }
@@ -802,7 +804,7 @@ export class ProductsService {
     const [settings, rawRows, sums] = await Promise.all([
       this.prisma.storeSettings.findFirst({ select: { lowStockThreshold: true } }),
       this.prisma.$queryRaw<{ id: string; name: string; sku: string; isBundle: boolean; barcodes: string[] | null; bundleItems: { childProductId: string; quantity: string }[] | null }[]>`
-        SELECT p.id, p.name, p.sku, p.is_bundle AS "isBundle",
+        SELECT p.id, p.name, p.sku, (p.is_bundle OR p.is_service) AS "isBundle", -- no stock of its own
           (SELECT array_agg(b.barcode ORDER BY b.created_at, b.id) FROM product_barcodes b WHERE b.product_id = p.id) AS barcodes,
           (SELECT json_agg(json_build_object('childProductId', bi.child_product_id, 'quantity', bi.quantity::text))
              FROM product_bundle_items bi WHERE bi.bundle_product_id = p.id) AS "bundleItems"

@@ -479,7 +479,7 @@ export function calculateInventoryValuationReport(
   let deadstockCostVal = 0;
   let lowStockCount = 0;
 
-  const items: InventoryValuationItem[] = products.filter((p) => !p.isBundle).map((p) => {
+  const items: InventoryValuationItem[] = products.filter((p) => !p.isBundle && !p.isService).map((p) => {
     const batchInfo = p.id ? batchValuationByProduct?.[p.id] : undefined;
     const stock = Math.max(0, Number(batchInfo?.quantityRemaining ?? p.stock ?? p.quantity ?? 0));
     // IMPORTANT: Use explicit costPrice for cost and priceLevel1/basePrice for retail price!

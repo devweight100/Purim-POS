@@ -33,6 +33,9 @@ const TABLE_ENTITY: Record<string, RealtimeEntity> = {
   claim_inventory: 'claim',
   bank_accounts: 'bankAccount',
   store_settings: 'settings',
+  online_orders: 'onlineOrder',
+  online_order_items: 'onlineOrder',
+  line_link_requests: 'onlineOrder',
 };
 
 const WRITE_RE = /^\s*(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:"[^"]+"\.)?"([^"]+)"/i;

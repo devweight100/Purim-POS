@@ -8,6 +8,7 @@ import { createHash } from 'crypto';
 import { ApprovalsService, ApprovalReason } from '../approvals/approvals.service';
 import * as ledger from '../finance/ledger';
 import { validateCheckoutInput, lineAmounts, checkPointsDiscount, claimableBaseQty, paidPerBaseUnit, round2, MAX_ITEM_QTY } from './checkout-guards';
+import { linkOnlineOrder, unlinkOnlineOrder } from '../online-shop/online-order-payment';
 import { billTotals, earnedPoints, normVatRate, vatIncluded } from '../../../shared/src/pricing';
 import { addQty, decimalQtyAllowed, hasMax2Decimals, mulQty, parseQty, qn, subQty } from '../common/qty';
 
@@ -202,6 +203,9 @@ export class OrdersService {
               },
             });
           }
+        } else if (product.isService) {
+          // Service line (e.g. ค่าส่ง): no stock, no cost
+          itemCogs = 0;
         } else {
           // Standard single product
           const prevStockAgg = await tx.stockBatch.aggregate({
@@ -481,6 +485,9 @@ export class OrdersService {
       // 6. Money ledger: where the money of this sale actually landed
       await this.postOrderPayments(tx, order.id, order.orderNumber, order.payments, shift.terminalId, userId);
 
+      // 7. Online order paid by this bill (opened from the POS held-bills sheet)
+      if (data.onlineOrderId) await linkOnlineOrder(tx, String(data.onlineOrderId), order.id);
+
       return order;
     });
   }
@@ -659,6 +666,9 @@ export class OrdersService {
               },
             });
           }
+        } else if (item.product?.isService) {
+          // service line (ค่าส่ง): nothing was taken from stock
+          continue;
         } else {
           const restoreQty = qn(item.baseQuantity ?? item.quantity);
           const prevStockAgg = await tx.stockBatch.aggregate({
@@ -702,6 +712,9 @@ export class OrdersService {
           });
         }
       }
+
+      // An online order paid by this bill is payable again (pickup orders closed by the payment reopen)
+      await unlinkOnlineOrder(tx, order.id);
 
       return tx.order.update({
         where: { id },

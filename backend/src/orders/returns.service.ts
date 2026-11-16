@@ -85,7 +85,8 @@ export class ReturnsService {
         const baseQty = qty === left ? subQty(itemBase, returnedBase.get(item.id) || 0) : mulQty(qty, factor);
         const lineRefund = round2((Number(item.total) * qty / itemQty) * billFactor);
         const unitCost = Number(item.unitCost);
-        const restock = line.restock !== false;
+        // service lines (ค่าส่ง) never went out of stock: nothing to put back
+        const restock = line.restock !== false && !item.product.isService;
         refund += lineRefund;
 
         if (restock) {
