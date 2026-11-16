@@ -486,7 +486,13 @@ export class OrdersService {
       await this.postOrderPayments(tx, order.id, order.orderNumber, order.payments, shift.terminalId, userId);
 
       // 7. Online order paid by this bill (opened from the POS held-bills sheet)
-      if (data.onlineOrderId) await linkOnlineOrder(tx, String(data.onlineOrderId), order.id);
+      if (data.onlineOrderId) {
+        await linkOnlineOrder(tx, String(data.onlineOrderId), order.id, {
+          userId,
+          manager: cashierUser?.role === 'ADMIN' || cashierUser?.role === 'MANAGER',
+          terminalId: shift.terminalId || null,
+        });
+      }
 
       return order;
     });

@@ -2186,7 +2186,8 @@ d('store flow (e2e)', () => {
       ]);
       expect(cement.inStock).toBe(true);
       const json = JSON.stringify(r);
-      for (const banned of ['cost', 'stock"', 'supplier', 'sku', 'barcode', '"50']) expect(json).not.toContain(banned);
+      for (const banned of ['cost', 'stock"', 'supplier', 'sku', 'barcode']) expect(json).not.toContain(banned);
+      expect(json).not.toMatch(/"50(\.0+)?"/); // the stock quantity as a decimal string (a uuid may start with 50)
       expect(r.items.find((i: any) => i.name === 'ทรายออนไลน์ (หมด)').inStock).toBe(false);
       // photo through the public prefix (thumbnail)
       expect(cement.imageUrl).toMatch(/^\/api\/public\/shop\/images\/[0-9a-f-]{36}$/);
@@ -2301,9 +2302,9 @@ d('store flow (e2e)', () => {
 
     it('accepted order -> POS bill with a ค่าส่ง service line (no stock) -> paid once; void reopens it', async () => {
       const id = shop.memberOrder.id;
-      await api('get', `/online-shop/orders/${id}/pos`, C).expect(400); // not accepted yet
+      await api('post', `/online-shop/orders/${id}/pos`, C, {}).expect(400); // not accepted yet
       await api('post', `/online-shop/orders/${id}/accept`, C, {}).expect(201);
-      const pos = (await api('get', `/online-shop/orders/${id}/pos`, C).expect(200)).body;
+      const pos = (await api('post', `/online-shop/orders/${id}/pos`, C, {}).expect(201)).body;
       expect(pos.customer).toMatchObject({ id: shop.member.id });
       expect(pos.lines.map((l: any) => [l.name, l.quantity, l.unitPrice])).toEqual([['ปูนซีเมนต์ออนไลน์', 4, 85], ['ค่าส่ง', 1, 80]]);
       const fee = pos.lines[1];
@@ -2331,7 +2332,7 @@ d('store flow (e2e)', () => {
         const paid = (await api('get', `/online-shop/orders/${id}`, C).expect(200)).body;
         expect(paid).toMatchObject({ status: 'ACCEPTED', posOrder: { id: bill.id, totalAmount: 420 } }); // delivery: staff closes it
         expect((await pub('get', `/orders/${id}`, shop.memberToken).expect(200)).body).toMatchObject({ paid: true, payment: null });
-        await api('post', '/orders/checkout', C, { ...sale, clientOrderId: randomUUID() }).expect(400); // paid once
+        await api('post', '/orders/checkout', C, { ...sale, clientOrderId: randomUUID() }).expect(409); // paid once
         await api('patch', `/online-shop/orders/${id}`, C, { deliveryFee: 10 }).expect(400); // paid: no edits
         // voiding the POS bill: stock back for the cement only, the online order is payable again
         await api('post', `/orders/${bill.id}/void`, A, { reason: 'e2e online void' }).expect(201);
@@ -2380,6 +2381,142 @@ d('store flow (e2e)', () => {
       expect((await api('get', `/online-shop/orders/${o.id}`, C).expect(200)).body.lineNotice).toContain('ส่ง LINE แล้ว');
       // put the shop back in test mode for the rest of the suite
       await api('put', '/online-shop/config', A, { liffId: '', loginChannelId: '' }).expect(200);
+    });
+
+    describe('claim lock + one POS bill per online order (owner 2026-11-16)', () => {
+      const staff: Record<string, { token: string; id: string; name: string }> = {};
+      const mkUser = async (key: string, role: 'CASHIER' | 'MANAGER', perms: string[]) => {
+        const tag = String(Date.now()).slice(-6) + key.length;
+        const username = `cl${key}${tag}`;
+        const fullName = `${role === 'MANAGER' ? 'ผู้จัดการ' : 'แคชเชียร์'} ${key}`;
+        await api('post', '/auth/register', A, { username, password: `Cl#Pw${tag}`, fullName, role, pinCode: String(2000 + ((Number(tag) + key.length * 977) % 7000)), permissions: perms }).expect(201);
+        let login = await api('post', '/auth/login', undefined, { username, password: `Cl#Pw${tag}` }).expect(201);
+        if (login.body.user.mustChangePassword) {
+          await api('post', '/auth/change-password', login.body.access_token, { currentPassword: `Cl#Pw${tag}`, newPassword: `Cl#Pw2${tag}`, newPin: String(1000 + ((Number(tag) + key.length * 311) % 8000)) }).expect(201);
+          login = await api('post', '/auth/login', undefined, { username, password: `Cl#Pw2${tag}` }).expect(201);
+        }
+        staff[key] = { token: login.body.access_token, id: login.body.user.id, name: fullName };
+      };
+      const place = async (who: string, fulfillment: 'PICKUP' | 'DELIVERY' = 'PICKUP') => {
+        const t = (await pub('post', '/session', undefined, { dev: { id: who } }).expect(201)).body.token;
+        return (await pub('post', '/orders', t, { contactName: `ลูกค้า ${who}`, contactPhone: '0822222222', fulfillment, address: fulfillment === 'DELIVERY' ? '99 ถนนทดสอบ' : undefined, items: [{ productId: shop.p1.id, unitId: null, quantity: 1 }] }).expect(201)).body;
+      };
+      let me = '';
+
+      beforeAll(async () => {
+        await mkUser('two', 'CASHIER', ['POS_SELL']);
+        await mkUser('mgr', 'MANAGER', ['POS_SELL']);
+        me = (await api('get', '/auth/me', C).expect(200)).body.id;
+      });
+
+      it('two cashiers claim at the same moment: one wins, the other gets 409 with the holder and is refused everything', async () => {
+        const o = await place('claim-race');
+        const C2 = staff.two.token;
+        const [r1, r2] = await Promise.all([api('post', `/online-shop/orders/${o.id}/claim`, C, {}), api('post', `/online-shop/orders/${o.id}/claim`, C2, {})]);
+        expect([r1.status, r2.status].sort()).toEqual([201, 409]);
+        const [winner, loser, loserToken] = r1.status === 201 ? [me, r2, C2] : [staff.two.id, r1, C];
+        const winnerToken = loserToken === C ? C2 : C;
+        expect(loser.body).toMatchObject({ code: 'ONLINE_ORDER_CLAIMED', canTakeOver: false, claimedBy: { id: winner } });
+        expect(loser.body.message).toContain('กำลังจัดโดย');
+        // claiming again by the holder is fine (same claim time)
+        const d1 = (await api('post', `/online-shop/orders/${o.id}/claim`, winnerToken, {}).expect(201)).body;
+        expect(d1.claim).toMatchObject({ userId: winner });
+        const d2 = (await api('get', `/online-shop/orders/${o.id}`, loserToken).expect(200)).body;
+        expect(d2.claim.at).toBe(d1.claim.at);
+        const row = (await api('get', '/online-shop/orders?status=open&limit=100', loserToken).expect(200)).body.data.find((r: any) => r.id === o.id);
+        expect(row.claim).toMatchObject({ userId: winner });
+        // everything else is refused for the other cashier
+        await api('patch', `/online-shop/orders/${o.id}`, loserToken, { note: 'x' }).expect(409);
+        await api('post', `/online-shop/orders/${o.id}/accept`, loserToken, {}).expect(409);
+        await api('post', `/online-shop/orders/${o.id}/reject`, loserToken, { reason: 'ไม่' }).expect(409);
+        await api('post', `/online-shop/orders/${o.id}/picking-slip`, loserToken).expect(409);
+        await api('post', `/online-shop/orders/${o.id}/release`, loserToken).expect(409);
+        await api('post', `/online-shop/orders/${o.id}/claim`, loserToken, { takeover: true }).expect(403);
+        // the holder accepts, the other cannot change the status or open it as a bill
+        await api('post', `/online-shop/orders/${o.id}/accept`, winnerToken, {}).expect(201);
+        await api('post', `/online-shop/orders/${o.id}/status`, loserToken, { status: 'PREPARING' }).expect(409);
+        await api('post', `/online-shop/orders/${o.id}/pos`, loserToken, {}).expect(409);
+        // the customer cannot cancel an order the shop is preparing
+        const t = (await pub('post', '/session', undefined, { dev: { id: 'claim-race' } }).expect(201)).body.token;
+        await pub('post', `/orders/${o.id}/cancel`, t).expect(400);
+        // the holder releases ("ปล่อยงาน"); the other may now take it
+        expect((await api('post', `/online-shop/orders/${o.id}/release`, winnerToken).expect(201)).body.claim).toBeNull();
+        expect((await api('post', `/online-shop/orders/${o.id}/status`, loserToken, { status: 'PREPARING' }).expect(201)).body.claim).toMatchObject({ userId: loserToken === C ? me : staff.two.id });
+        // reject releases the claim
+        const rej = (await api('post', `/online-shop/orders/${o.id}/reject`, loserToken, { reason: 'ทดสอบ' }).expect(201)).body;
+        expect(rej).toMatchObject({ status: 'CANCELLED', claim: null });
+        await api('post', `/online-shop/orders/${o.id}/claim`, C, {}).expect(400); // closed
+      });
+
+      it('accept / picking slip claim automatically; slip has no prices and counts reprints; manager takeover is audited', async () => {
+        const o = await place('claim-slip', 'DELIVERY');
+        const slip = (await api('post', `/online-shop/orders/${o.id}/picking-slip`, C).expect(201)).body;
+        expect(slip).toMatchObject({ orderNo: o.orderNo, fulfillment: 'DELIVERY', address: '99 ถนนทดสอบ', phone: '0822222222', reprint: false, printCount: 1 });
+        expect(slip.items).toEqual([{ name: 'ปูนซีเมนต์ออนไลน์', unitName: 'ถุง', quantity: 1, parts: [] }]);
+        expect(JSON.stringify(slip)).not.toMatch(/price|total|amount|subtotal|fee/i);
+        expect((await api('post', `/online-shop/orders/${o.id}/picking-slip`, C).expect(201)).body).toMatchObject({ reprint: true, printCount: 2 });
+        expect((await api('get', `/online-shop/orders/${o.id}`, staff.two.token).expect(200)).body).toMatchObject({ claim: { userId: me }, pickingPrintCount: 2 });
+        // a manager is told who holds it, then takes it over explicitly
+        const M = staff.mgr.token;
+        const refused = (await api('post', `/online-shop/orders/${o.id}/accept`, M, { deliveryFee: 50 }).expect(409)).body;
+        expect(refused).toMatchObject({ code: 'ONLINE_ORDER_CLAIMED', canTakeOver: true });
+        const took = (await api('post', `/online-shop/orders/${o.id}/claim`, M, { takeover: true }).expect(201)).body;
+        expect(took.claim).toMatchObject({ userId: staff.mgr.id, name: staff.mgr.name });
+        const db = new PrismaClient();
+        try {
+          const log = await db.auditLog.findFirst({ where: { action: 'ONLINE_ORDER_TAKEOVER', entityId: o.id } });
+          expect(log?.userId).toBe(staff.mgr.id);
+          expect(log?.details).toMatchObject({ orderNo: o.orderNo, fromUserId: me, toUserId: staff.mgr.id });
+        } finally {
+          await db.$disconnect();
+        }
+        await api('post', `/online-shop/orders/${o.id}/accept`, C, { deliveryFee: 50 }).expect(409);
+        expect((await api('post', `/online-shop/orders/${o.id}/accept`, M, { deliveryFee: 50 }).expect(201)).body).toMatchObject({ status: 'ACCEPTED', claim: { userId: staff.mgr.id } });
+        // done releases
+        const done = (await api('post', `/online-shop/orders/${o.id}/status`, M, { status: 'DONE', unpaidOk: true }).expect(201)).body;
+        expect(done).toMatchObject({ status: 'DONE', claim: null });
+        await api('post', `/online-shop/orders/${o.id}/picking-slip`, M).expect(400);
+      });
+
+      it('one POS bill per online order: other terminal refused at open and at checkout; concurrent checkouts -> one bill', async () => {
+        const o = await place('claim-pos');
+        await api('post', `/online-shop/orders/${o.id}/accept`, C, {}).expect(201);
+        const db = new PrismaClient();
+        try {
+          let open = await db.shift.findFirst({ where: { status: 'OPEN', user: { username: 'cashier1' } } });
+          if (!open) open = (await api('post', '/shifts/open', C, { startingCash: 500, terminalId: 'e2e-online' }).expect(201)).body.shift;
+          const here = open!.terminalId || 'e2e-online';
+          const pos = (await api('post', `/online-shop/orders/${o.id}/pos`, C, { terminalId: here }).expect(201)).body;
+          const other = (await api('post', `/online-shop/orders/${o.id}/pos`, C, { terminalId: 'e2e-other-terminal' }).expect(409)).body;
+          expect(other).toMatchObject({ code: 'ONLINE_ORDER_OPEN_ELSEWHERE', terminalId: here });
+          await api('post', `/online-shop/orders/${o.id}/pos`, staff.two.token, { terminalId: here }).expect(409); // claimed by cashier1
+          // moved to another terminal: this terminal's checkout is refused
+          await api('post', `/online-shop/orders/${o.id}/pos`, C, { terminalId: 'e2e-other-terminal', force: true }).expect(201);
+          // own bill numbers: the refusal must come from the online-order link, not a bill-number clash
+          const sale = (clientOrderId: string) => ({
+            clientOrderId, orderNumber: `ORD-E2E${clientOrderId.slice(0, 8)}`, shiftId: open!.id, onlineOrderId: o.id,
+            items: pos.lines.map((l: any) => ({ productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice, unitId: l.unitId, unitName: l.unitName, conversionFactor: l.factor })),
+            payments: [{ method: 'CASH', amount: 100 }],
+          });
+          if (open!.terminalId) await api('post', '/orders/checkout', C, sale(randomUUID())).expect(409);
+          await api('post', `/online-shop/orders/${o.id}/pos`, C, { terminalId: here, force: true }).expect(201);
+          // two checkouts of the same online order at the same moment: one bill, the other refused
+          const ids = [randomUUID(), randomUUID()];
+          const rs = await Promise.all(ids.map((id) => api('post', '/orders/checkout', C, sale(id))));
+          expect(rs.map((r) => r.status).sort()).toEqual([201, 409]);
+          const ok = rs.find((r) => r.status === 201)!;
+          expect(rs.find((r) => r.status === 409)!.body.message).toContain(o.orderNo);
+          const bills = await db.order.count({ where: { clientOrderId: { in: ids } } });
+          expect(bills).toBe(1);
+          const after = (await api('get', `/online-shop/orders/${o.id}`, C).expect(200)).body;
+          expect(after).toMatchObject({ status: 'DONE', posOrder: { id: ok.body.id }, claim: null });
+          // a retry of the SAME bill returns it (idempotent), a new bill is refused
+          expect((await api('post', '/orders/checkout', C, sale(ids[rs.indexOf(ok)])).expect(201)).body.id).toBe(ok.body.id);
+          await api('post', '/orders/checkout', C, sale(randomUUID())).expect(409);
+        } finally {
+          await db.$disconnect();
+        }
+      });
     });
 
     it('customer may cancel only while new; open-order limit', async () => {

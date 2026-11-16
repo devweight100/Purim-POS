@@ -131,6 +131,7 @@ model User {
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
   orders      Order[]
+  claimedOnlineOrders OnlineOrder[] @relation("OnlineOrderClaimedBy")
   shifts      Shift[]
   auditLogs   AuditLog[]
 
@@ -1299,15 +1300,26 @@ model OnlineOrder {
   doneAt         DateTime?         @map("done_at")
   cancelledAt    DateTime?         @map("cancelled_at")
   lineNotice     String?           @map("line_notice") // last LINE push result shown to staff
+  /// staff member preparing the order (claim lock, docs/online-shop.md "Claim lock"); null = nobody yet
+  claimedById    String?           @map("claimed_by_id")
+  claimedAt      DateTime?         @map("claimed_at")
+  /// terminal that opened the order as a POS bill (one terminal at a time; checkout refuses the others)
+  posTerminalId  String?           @map("pos_terminal_id")
+  posOpenedAt    DateTime?         @map("pos_opened_at")
+  /// picking slip (ใบจัดของ) prints: the 2nd and later are marked "พิมพ์ซ้ำ"
+  pickingPrintCount Int            @default(0) @map("picking_print_count")
+  pickingPrintedAt  DateTime?      @map("picking_printed_at")
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @default(now()) @updatedAt @map("updated_at")
 
   customer       Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  claimedBy      User?             @relation("OnlineOrderClaimedBy", fields: [claimedById], references: [id], onDelete: SetNull)
   items          OnlineOrderItem[]
 
   @@index([status, createdAt])
   @@index([lineUserId, createdAt])
   @@index([customerId])
+  @@index([claimedById])
   @@map("online_orders")
 }
 

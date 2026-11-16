@@ -8,6 +8,7 @@ import { LineMessage, LineService, ShopConfigRow } from './line.service';
 import { issueSession, RateLimiter, readSession, safeEqual, ShopSession, signValue } from './shop-session';
 import { onlineOrderPaid$ } from './online-order-payment';
 import { qrPng } from './qr-png';
+import { CLAIMABLE, claimRefusal, claimTime, ensureClaim, isManager, RELEASED, StaffUser, tryClaim } from './online-order-claim';
 import {
   deliveryFeeFor,
   Fulfillment,
@@ -463,8 +464,8 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
   async cancelMine(ctx: PublicCtx, id: string) {
     this.hit(ctx);
     const s = this.requireSession(ctx);
-    const r = await this.prisma.onlineOrder.updateMany({ where: { id: String(id).slice(0, 64), lineUserId: s.sub, status: 'NEW' }, data: { status: 'CANCELLED', cancelledAt: new Date(), rejectReason: 'ลูกค้ายกเลิกเอง' } });
-    if (!r.count) throw new BadRequestException('ยกเลิกไม่ได้ ร้านรับออเดอร์นี้แล้ว กรุณาโทรหาร้าน');
+    const r = await this.prisma.onlineOrder.updateMany({ where: { id: String(id).slice(0, 64), lineUserId: s.sub, status: 'NEW', claimedById: null }, data: { status: 'CANCELLED', cancelledAt: new Date(), rejectReason: 'ลูกค้ายกเลิกเอง' } });
+    if (!r.count) throw new BadRequestException('ยกเลิกไม่ได้ ร้านรับออเดอร์หรือกำลังจัดของแล้ว กรุณาโทรหาร้าน');
     return this.myOrder(ctx, id);
   }
 
@@ -560,7 +561,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
     const search = text(q?.search, 60);
     if (search) where.OR = [{ orderNo: { contains: search, mode: 'insensitive' } }, { contactName: { contains: search, mode: 'insensitive' } }, { contactPhone: { contains: search.replace(/\D/g, '') || search } }];
     const [rows, total] = await Promise.all([
-      this.prisma.onlineOrder.findMany({ where, orderBy: [{ createdAt: status === 'open' || status === 'NEW' ? 'asc' : 'desc' }, { id: 'asc' }], skip: (page - 1) * limit, take: limit, include: { customer: { select: { id: true, name: true } }, _count: { select: { items: true } } } }),
+      this.prisma.onlineOrder.findMany({ where, orderBy: [{ createdAt: status === 'open' || status === 'NEW' ? 'asc' : 'desc' }, { id: 'asc' }], skip: (page - 1) * limit, take: limit, include: { customer: { select: { id: true, name: true } }, claimedBy: { select: { id: true, fullName: true, username: true } }, _count: { select: { items: true } } } }),
       this.prisma.onlineOrder.count({ where }),
     ]);
     return {
@@ -568,6 +569,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
         id: r.id, orderNo: r.orderNo, status: r.status, fulfillment: r.fulfillment, contactName: r.contactName, contactPhone: r.contactPhone,
         customer: r.customer, itemCount: r._count.items, subtotal: money(r.subtotal), deliveryFee: r.deliveryFee === null ? null : money(r.deliveryFee),
         totalAmount: money(r.totalAmount), paid: !!r.paidAt, posOrderId: r.posOrderId, createdAt: r.createdAt,
+        claim: claimOf(r), pickingPrintCount: r.pickingPrintCount,
       })),
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
@@ -576,7 +578,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
   async detail(id: string) {
     const o = await this.prisma.onlineOrder.findUnique({
       where: { id },
-      include: { items: { orderBy: { sortOrder: 'asc' }, include: { product: { select: { sku: true, isActive: true } } } }, customer: { select: { id: true, name: true, phone: true, profile: true } } },
+      include: { items: { orderBy: { sortOrder: 'asc' }, include: { product: { select: { sku: true, isActive: true } } } }, customer: { select: { id: true, name: true, phone: true, profile: true } }, claimedBy: { select: { id: true, fullName: true, username: true } } },
     });
     if (!o) throw new NotFoundException('ไม่พบออเดอร์ออนไลน์');
     const visitor = await this.prisma.shopVisitor.findUnique({ where: { lineUserId: o.lineUserId }, select: { displayName: true, customerId: true } });
@@ -594,6 +596,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
       visitorLinkedTo: visitor?.customerId || null,
       posOrder: pos ? { id: pos.id, orderNumber: pos.orderNumber, totalAmount: money(pos.totalAmount), status: pos.status } : null,
       nextStatuses: nextStatuses(o.status as OnlineOrderStatus, o.fulfillment as Fulfillment),
+      claim: claimOf(o), posTerminalId: o.posTerminalId, posOpenedAt: o.posOpenedAt, pickingPrintCount: o.pickingPrintCount, pickingPrintedAt: o.pickingPrintedAt,
       items: o.items.map((i) => ({ id: i.id, productId: i.productId, sku: i.product.sku, name: i.productName, unitId: i.unitId, unitName: i.unitName, factor: i.factor, quantity: Number(i.quantity), unitPrice: money(i.unitPrice), total: money(i.total), active: i.product.isActive })),
     };
   }
@@ -664,26 +667,118 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
     return totals;
   }
 
-  private async loadEditable(tx: Prisma.TransactionClient, id: string, allowed: OnlineOrderStatus[]) {
+  /** Order to change: status allowed, not paid, and claimed by the caller (claimed now when nobody holds it). */
+  private async loadEditable(tx: Prisma.TransactionClient, id: string, allowed: OnlineOrderStatus[], user: StaffUser) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(742091, 7)`;
     const o = await tx.onlineOrder.findUnique({ where: { id } });
     if (!o) throw new NotFoundException('ไม่พบออเดอร์ออนไลน์');
     if (!allowed.includes(o.status as OnlineOrderStatus)) throw new BadRequestException(`ออเดอร์นี้อยู่ในสถานะ "${ONLINE_STATUS_LABELS[o.status as OnlineOrderStatus]}" แก้ไขไม่ได้`);
     if (o.posOrderId) throw new BadRequestException('ออเดอร์นี้ชำระเงินแล้ว แก้ไขไม่ได้');
+    await ensureClaim(tx, id, user);
     return o;
   }
 
-  async update(id: string, body: any) {
+  // ───────────────────────── claim lock (online-order-claim.ts) ─────────────────────────
+
+  /** "รับจัดออเดอร์นี้": claim for the caller; ADMIN / MANAGER with takeover=true take it from someone else (audited). */
+  async claim(id: string, body: any, user: StaffUser) {
     await this.prisma.$transaction(async (tx) => {
-      const o = await this.loadEditable(tx, id, ['NEW', ...PAYABLE]);
+      if (await tryClaim(tx, id, user.id)) return;
+      if (body?.takeover !== true) await claimRefusal(tx, id, user);
+      if (!isManager(user)) throw new ForbiddenException('เฉพาะผู้ดูแลหรือผู้จัดการเท่านั้นที่ปลดล็อก/โอนออเดอร์ได้');
+      const o = await tx.onlineOrder.findUnique({ where: { id }, include: { claimedBy: { select: { fullName: true, username: true } } } });
+      if (!o) throw new NotFoundException('ไม่พบออเดอร์ออนไลน์');
+      if (!(CLAIMABLE as readonly string[]).includes(o.status)) throw new BadRequestException(`ออเดอร์ ${o.orderNo} ปิดแล้ว`);
+      const now = new Date();
+      // conditional on the holder we saw: a release / another takeover in between makes this change nothing
+      const n = await tx.$executeRaw`UPDATE "online_orders" SET "claimed_by_id" = ${user.id}, "claimed_at" = ${now}, "updated_at" = ${now}
+        WHERE "id" = ${id} AND "claimed_by_id" IS NOT DISTINCT FROM ${o.claimedById}`;
+      if (!n) throw new ConflictException('ออเดอร์นี้เพิ่งเปลี่ยนผู้จัด กรุณาลองใหม่');
+      await tx.auditLog.create({
+        data: {
+          userId: user.id, action: 'ONLINE_ORDER_TAKEOVER', entity: 'OnlineOrder', entityId: id,
+          details: { orderNo: o.orderNo, fromUserId: o.claimedById, fromName: o.claimedBy?.fullName || o.claimedBy?.username || null, fromSince: o.claimedAt, toUserId: user.id, toName: user.fullName || user.username || null },
+        },
+      });
+    });
+    return this.detail(id);
+  }
+
+  /** "ปล่อยงาน": the holder gives the order back (ADMIN / MANAGER may release anyone's, audited). */
+  async release(id: string, user: StaffUser) {
+    await this.prisma.$transaction(async (tx) => {
+      const o = await tx.onlineOrder.findUnique({ where: { id }, include: { claimedBy: { select: { fullName: true, username: true } } } });
+      if (!o) throw new NotFoundException('ไม่พบออเดอร์ออนไลน์');
+      if (!o.claimedById) return;
+      const mine = o.claimedById === user.id;
+      if (!mine && !isManager(user)) await claimRefusal(tx, id, user);
+      const now = new Date();
+      await tx.$executeRaw`UPDATE "online_orders" SET "claimed_by_id" = NULL, "claimed_at" = NULL, "updated_at" = ${now}
+        WHERE "id" = ${id} AND "claimed_by_id" = ${o.claimedById}`;
+      if (!mine) {
+        await tx.auditLog.create({
+          data: { userId: user.id, action: 'ONLINE_ORDER_RELEASE', entity: 'OnlineOrder', entityId: id, details: { orderNo: o.orderNo, fromUserId: o.claimedById, fromName: o.claimedBy?.fullName || o.claimedBy?.username || null } },
+        });
+      }
+    });
+    return this.detail(id);
+  }
+
+  /**
+   * Picking slip (ใบจัดของ) of an online order: claims it, counts the print (2nd+ = reprint) and returns what
+   * the slip shows: names, units, quantities, bundle parts, customer / delivery. No prices.
+   */
+  async pickingSlip(id: string, user: StaffUser) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(742091, 7)`;
+      await ensureClaim(tx, id, user);
+      const o = await tx.onlineOrder.update({
+        where: { id },
+        data: { pickingPrintCount: { increment: 1 }, pickingPrintedAt: new Date() },
+        include: {
+          customer: { select: { name: true } },
+          items: {
+            orderBy: { sortOrder: 'asc' },
+            include: { product: { select: { name: true, unit: true, isService: true, isBundle: true, bundleItems: { include: { childProduct: { select: { name: true, unit: true } } } } } } },
+          },
+        },
+      });
+      return {
+        orderNo: o.orderNo,
+        createdAt: o.createdAt,
+        customerName: o.customer?.name || o.contactName,
+        contactName: o.contactName,
+        phone: o.contactPhone,
+        address: o.fulfillment === 'DELIVERY' ? o.address : null,
+        fulfillment: o.fulfillment,
+        note: o.note,
+        reprint: o.pickingPrintCount > 1,
+        printCount: o.pickingPrintCount,
+        items: o.items
+          .filter((i) => !i.product.isService)
+          .map((i) => ({
+            name: i.productName,
+            unitName: i.unitName,
+            quantity: Number(i.quantity),
+            parts: i.product.isBundle
+              ? i.product.bundleItems.map((b) => ({ name: b.childProduct.name, unitName: b.childProduct.unit || 'ชิ้น', quantity: Number(b.quantity) * Number(i.quantity) * (i.factor || 1) }))
+              : [],
+          })),
+      };
+    }, { timeout: 15000 });
+  }
+
+  async update(id: string, body: any, user: StaffUser) {
+    await this.prisma.$transaction(async (tx) => {
+      const o = await this.loadEditable(tx, id, ['NEW', ...PAYABLE], user);
       await this.applyEdits(tx, o, body);
     }, { timeout: 15000 });
     return this.detail(id);
   }
 
-  async accept(id: string, body: any, user: any) {
+  async accept(id: string, body: any, user: StaffUser) {
     await this.prisma.$transaction(async (tx) => {
-      const o = await this.loadEditable(tx, id, ['NEW']);
+      const o = await this.loadEditable(tx, id, ['NEW'], user);
       const totals = await this.applyEdits(tx, o, body || {});
       if (totals.feePending) throw new BadRequestException('กรุณาใส่ค่าส่งก่อนรับออเดอร์');
       if (totals.subtotal <= 0) throw new BadRequestException('ออเดอร์ต้องมีสินค้า');
@@ -693,42 +788,63 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
     return this.detail(id);
   }
 
-  async reject(id: string, body: any) {
+  async reject(id: string, body: any, user: StaffUser) {
     const reason = text(body?.reason, 300);
     if (!reason) throw new BadRequestException('กรุณาระบุเหตุผลที่ยกเลิก (ลูกค้าจะเห็นข้อความนี้)');
     await this.prisma.$transaction(async (tx) => {
-      await this.loadEditable(tx, id, ['NEW', ...PAYABLE]);
-      await tx.onlineOrder.update({ where: { id }, data: { status: 'CANCELLED', rejectReason: reason, cancelledAt: new Date() } });
+      await this.loadEditable(tx, id, ['NEW', ...PAYABLE], user);
+      await tx.onlineOrder.update({ where: { id }, data: { status: 'CANCELLED', rejectReason: reason, cancelledAt: new Date(), ...RELEASED } });
     });
     void this.notify(id, 'CANCELLED');
     return this.detail(id);
   }
 
-  async setStatus(id: string, body: any) {
+  async setStatus(id: string, body: any, user: StaffUser) {
     const to = String(body?.status || '') as OnlineOrderStatus;
-    if (to === 'CANCELLED') return this.reject(id, body);
+    if (to === 'CANCELLED') return this.reject(id, body, user);
     await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(742091, 7)`;
       const o = await tx.onlineOrder.findUnique({ where: { id } });
       if (!o) throw new NotFoundException('ไม่พบออเดอร์ออนไลน์');
       if (!nextStatuses(o.status as OnlineOrderStatus, o.fulfillment as Fulfillment).includes(to)) throw new BadRequestException('เปลี่ยนสถานะนี้ไม่ได้');
+      await ensureClaim(tx, id, user);
       if (to === 'DONE' && !o.posOrderId && body?.unpaidOk !== true) throw new ConflictException({ statusCode: 409, code: 'NOT_PAID', message: 'ออเดอร์นี้ยังไม่ได้รับเงินในหน้าขาย ยืนยันปิดออเดอร์โดยไม่รับเงิน?' });
-      await tx.onlineOrder.update({ where: { id }, data: { status: to, ...(to === 'DONE' ? { doneAt: new Date() } : {}) } });
+      await tx.onlineOrder.update({ where: { id }, data: { status: to, ...(to === 'DONE' ? { doneAt: new Date(), ...RELEASED } : {}) } });
     });
     void this.notify(id, to);
     return this.detail(id);
   }
 
   /** Cart lines for the POS (agreed prices; ค่าส่ง as a service line). */
-  async posPayload(id: string) {
-    const o = await this.prisma.onlineOrder.findUnique({
-      where: { id },
-      include: { items: { orderBy: { sortOrder: 'asc' }, include: { product: { select: { id: true, sku: true, name: true, isBundle: true, isActive: true } } } }, customer: { select: { id: true, name: true } } },
-    });
-    if (!o) throw new NotFoundException('ไม่พบออเดอร์ออนไลน์');
-    if (!PAYABLE.includes(o.status as OnlineOrderStatus)) throw new BadRequestException('ต้องกดรับออเดอร์ก่อนจึงจะเปิดบิลได้');
-    if (o.posOrderId) throw new BadRequestException('ออเดอร์นี้ชำระเงินแล้ว');
-    if (o.deliveryFee === null) throw new BadRequestException('กรุณาใส่ค่าส่งก่อน');
+  /**
+   * Open as a POS bill: claims the order and records the terminal. Another terminal is refused (409
+   * ONLINE_ORDER_OPEN_ELSEWHERE) unless `force` (the holder moves the bill here; the old terminal's checkout is then
+   * refused, see linkOnlineOrder).
+   */
+  async posPayload(id: string, user: StaffUser, opts: { terminalId?: string; force?: boolean } = {}) {
+    const terminalId = text(opts.terminalId, 100) || null;
+    const o = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(742091, 7)`;
+      const cur = await tx.onlineOrder.findUnique({ where: { id } });
+      if (!cur) throw new NotFoundException('ไม่พบออเดอร์ออนไลน์');
+      if (!PAYABLE.includes(cur.status as OnlineOrderStatus)) throw new BadRequestException('ต้องกดรับออเดอร์ก่อนจึงจะเปิดบิลได้');
+      if (cur.posOrderId) throw new BadRequestException('ออเดอร์นี้ชำระเงินแล้ว');
+      if (cur.deliveryFee === null) throw new BadRequestException('กรุณาใส่ค่าส่งก่อน');
+      await ensureClaim(tx, id, user);
+      if (terminalId && cur.posTerminalId && cur.posTerminalId !== terminalId && !opts.force) {
+        throw new ConflictException({
+          statusCode: 409,
+          code: 'ONLINE_ORDER_OPEN_ELSEWHERE',
+          message: `ออเดอร์ ${cur.orderNo} เปิดเป็นบิลอยู่ที่เครื่อง ${cur.posTerminalId}${cur.posOpenedAt ? ` (${claimTime(cur.posOpenedAt)} น.)` : ''} — ย้ายมาเปิดที่เครื่องนี้แทน? (เครื่องเดิมจะรับเงินบิลนี้ไม่ได้)`,
+          terminalId: cur.posTerminalId,
+        });
+      }
+      if (terminalId) await tx.onlineOrder.update({ where: { id }, data: { posTerminalId: terminalId, posOpenedAt: new Date() } });
+      return tx.onlineOrder.findUniqueOrThrow({
+        where: { id },
+        include: { items: { orderBy: { sortOrder: 'asc' }, include: { product: { select: { id: true, sku: true, name: true, isBundle: true, isActive: true } } } }, customer: { select: { id: true, name: true } } },
+      });
+    }, { timeout: 15000 });
     const fee = money(o.deliveryFee);
     const lines = o.items.map((i) => ({ productId: i.productId, sku: i.product.sku, name: i.product.name, unitId: i.unitId, unitName: i.unitName, factor: i.factor, quantity: Number(i.quantity), unitPrice: money(i.unitPrice), isBundle: i.product.isBundle }));
     if (fee > 0) {
@@ -866,6 +982,12 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
     if (!c.messagingToken) return { ok: false, error: 'ยังไม่ได้ใส่ Channel access token' };
     return this.line.botInfo(c.messagingToken);
   }
+}
+
+/** Who is preparing the order (list / detail). */
+function claimOf(o: { claimedById: string | null; claimedAt: Date | null; claimedBy?: { id: string; fullName: string; username: string } | null }) {
+  if (!o.claimedById) return null;
+  return { userId: o.claimedById, name: o.claimedBy?.fullName || o.claimedBy?.username || '-', at: o.claimedAt };
 }
 
 const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

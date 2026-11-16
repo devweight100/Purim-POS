@@ -137,8 +137,8 @@ export class OnlineShopAdminController {
 
   @RequirePermissions('POS_SELL')
   @Patch('orders/:id')
-  update(@Param('id') id: string, @Body() body: any) {
-    return this.shop.update(id, body);
+  update(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+    return this.shop.update(id, body, req.user);
   }
 
   @RequirePermissions('POS_SELL')
@@ -149,20 +149,42 @@ export class OnlineShopAdminController {
 
   @RequirePermissions('POS_SELL')
   @Post('orders/:id/reject')
-  reject(@Param('id') id: string, @Body() body: any) {
-    return this.shop.reject(id, body);
+  reject(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+    return this.shop.reject(id, body, req.user);
   }
 
   @RequirePermissions('POS_SELL')
   @Post('orders/:id/status')
-  status(@Param('id') id: string, @Body() body: any) {
-    return this.shop.setStatus(id, body);
+  status(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+    return this.shop.setStatus(id, body, req.user);
   }
 
+  /** "รับจัดออเดอร์นี้" (claim lock); body { takeover: true } = ADMIN / MANAGER take it from someone else */
   @RequirePermissions('POS_SELL')
-  @Get('orders/:id/pos')
-  pos(@Param('id') id: string) {
-    return this.shop.posPayload(id);
+  @Post('orders/:id/claim')
+  claim(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+    return this.shop.claim(id, body, req.user);
+  }
+
+  /** "ปล่อยงาน" */
+  @RequirePermissions('POS_SELL')
+  @Post('orders/:id/release')
+  release(@Param('id') id: string, @Request() req: any) {
+    return this.shop.release(id, req.user);
+  }
+
+  /** picking slip data (claims the order, counts the print) */
+  @RequirePermissions('POS_SELL')
+  @Post('orders/:id/picking-slip')
+  pickingSlip(@Param('id') id: string, @Request() req: any) {
+    return this.shop.pickingSlip(id, req.user);
+  }
+
+  /** open as a POS bill (claims it, records the terminal): body { terminalId, force } */
+  @RequirePermissions('POS_SELL')
+  @Post('orders/:id/pos')
+  pos(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+    return this.shop.posPayload(id, req.user, { terminalId: body?.terminalId, force: body?.force === true });
   }
 
   @RequirePermissions('POS_SELL')

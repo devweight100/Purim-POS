@@ -32,6 +32,35 @@ Detection is fail-closed: anything that looks like it came through Cloudflare is
 5. [x] Installer: `Installer/Server/คู่มือร้านออนไลน์ LINE (Cloudflare Tunnel).txt`, `Installer/Server/setup/setup-cloudflare-tunnel.ps1` (remotely-managed tunnel token -> Windows service, SHOP_PUBLIC_HOST in backend/.env, gateway self-check), `purim-server.js` passes SHOP_PUBLIC_HOST to Next. Not added to the server control app (ServerControl.cs) — the script + guide are enough for a one-time setup.
 6. [x] Tests: backend e2e block "online shop (LINE LIFF)" in `backend/test/store-flow.e2e-spec.ts` (9 tests), jest `public-exposure.spec.ts`, vitest `online-order-cart.test.ts`, Playwright `frontend/e2e/15-online-shop.spec.ts` (4 tests). Verification (2026-11-16): backend jest 159, e2e 79/79, frontend vitest 213, eslint 0 errors, next build, Playwright 45/45, empty migration diff.
 
+## Claim lock + picking slip (owner request 2026-11-16, round 2)
+Owner: "cashier 1 and cashier 2 both see it, both go pick the goods" -> one staff member prepares an order; and a
+picking slip "ใบจัดของ" (names, units, quantities, customer; NO prices).
+
+### Claim lock (backend `online-order-claim.ts`)
+- Columns (migration `20261202000000_online_order_claim`): `claimed_by_id` (FK users, SET NULL), `claimed_at`,
+  `pos_terminal_id`, `pos_opened_at`, `picking_print_count`, `picking_printed_at`.
+- Claim = ONE conditional `UPDATE online_orders ... WHERE status open AND (claimed_by_id IS NULL OR = me)`; PostgreSQL
+  re-checks the WHERE after a concurrent commit, so of two cashiers pressing at once exactly one wins; the other gets
+  409 `ONLINE_ORDER_CLAIMED` with `claimedBy {id, name}`, `claimedAt`, `canTakeOver`.
+- `POST /online-shop/orders/:id/claim` ("รับจัดออเดอร์นี้"; `{takeover:true}` = ADMIN / MANAGER take it over, audit log
+  `ONLINE_ORDER_TAKEOVER` with from / to), `POST .../release` ("ปล่อยงาน": holder; managers may release anyone's, audit
+  `ONLINE_ORDER_RELEASE`), `POST .../picking-slip` (claims, counts prints, returns the slip data without prices).
+- Edit / accept / reject / status / open as POS bill / picking slip claim automatically when nobody holds the order and
+  are refused (409) while someone else does. Reject / cancel / done (also a pickup order finished by its payment)
+  release it. The customer cannot cancel from LINE once a staff member holds the order.
+- One POS bill per online order: `POST .../pos` (was GET) claims the order and records the terminal; another
+  terminal gets 409 `ONLINE_ORDER_OPEN_ELSEWHERE` unless it confirms (`force`), which moves the bill there. Checkout
+  (`linkOnlineOrder`) refuses an order held by someone else (unless ADMIN / MANAGER), an order moved to another
+  terminal, and links with ONE conditional `UPDATE ... WHERE pos_order_id IS NULL`: of two simultaneous checkouts the
+  second changes no row and is rolled back (409). A retry of the same bill (same clientOrderId) returns the bill.
+
+### Progress
+1. [x] Backend claim lock + one-bill link + picking slip data; e2e block "claim lock + one POS bill per online order"
+   (concurrent claim, refusals, manager takeover audit, reprint count, other-terminal refusal, concurrent checkout).
+2. [ ] Frontend: shared slip `PickingSlipView` + print; buttons (online orders, POS cart / held bills / history,
+   orders page); claim badge + realtime.
+3. [ ] Tests (vitest slip content, Playwright two cashiers + print payloads), slip images, full verification.
+
 ## Next / open
 - Owner: register LINE OA + LINE Developers + domain + tunnel (guide), set PromptPay ID on the default bank, set ค่าส่ง on members, choose level names.
 - Not done: customer cannot edit an order after placing it (cancel while ใหม่ and re-order); no stock reservation for online orders (stock is taken when the POS bill is paid); PromptPay QR not on printed documents; ServerControl.cs has no tunnel button.
