@@ -18,6 +18,8 @@ import {
   FileText, ArrowRight, ShieldCheck, AlertCircle 
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { PromptPayQr } from '@/components/common/PromptPayQr';
+import { promptPayOf } from '@/lib/promptpay-qr';
 
 interface PayDebtModalProps {
   open: boolean;
@@ -74,6 +76,10 @@ export function PayDebtModal({
 
   const currentRemaining = debtRecord.remainingDebt;
   const numAmount = parseFloat(amountInput) || 0;
+
+  // QR for the amount being paid: generated PromptPay QR when the account has an ID, else its image
+  const selectedBankAccount = bankAccounts.find((b) => `${b.bankName} (${b.accountNumber})` === selectedBank) || null;
+  const selectedPromptPay = promptPayOf(selectedBankAccount);
 
   // New remaining calculation preview
   const previewRemaining = Math.max(0, currentRemaining - numAmount);
@@ -303,6 +309,23 @@ export function PayDebtModal({
                   </option>
                 ))}
               </select>
+            </div>
+          )}
+
+          {paymentMethod === 'QR_PROMPTPAY' && selectedBankAccount && (selectedPromptPay || selectedBankAccount.qrImageUrl) && (
+            <div className="flex justify-center rounded-2xl border-2 border-slate-200 bg-white p-3" data-testid="debt-qr">
+              {selectedPromptPay ? (
+                <PromptPayQr
+                  type={selectedPromptPay.type}
+                  id={selectedPromptPay.id}
+                  amount={numAmount}
+                  accountName={selectedBankAccount.accountName}
+                  size={220}
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element -- data: URL uploaded by the owner
+                <img src={selectedBankAccount.qrImageUrl!} alt="QR PromptPay" className="w-56 h-56 object-contain" />
+              )}
             </div>
           )}
 

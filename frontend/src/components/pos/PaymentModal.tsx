@@ -18,6 +18,8 @@ import { ReceiptPdfModal, ReceiptData } from './ReceiptPdfModal';
 import { orderToReceiptData, summarizePaymentMethods, isCreditMethod } from '@/lib/receipt-mapper';
 import { printThermalReceiptDirect } from './ThermalReceiptView';
 import { loadBankAccounts, BankAccount } from '@/lib/bank-account-storage';
+import { PromptPayQr } from '@/components/common/PromptPayQr';
+import { promptPayOf } from '@/lib/promptpay-qr';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe } from '@/lib/pdf-print-service';
 
@@ -122,6 +124,9 @@ export function PaymentModal({
     : cashReceived > 0
     ? `รับเงินยังไม่พอ ขาดอีก ${formatCurrency(Math.round((total - cashReceived) * 100) / 100)}`
     : 'พิมพ์จำนวนเงินที่รับมา หรือกดธนบัตร แล้วกด Enter';
+
+  // PromptPay ID of the chosen account: QR generated with the amount locked (else the uploaded image)
+  const selectedPromptPay = promptPayOf(selectedBank);
 
   // Split method logic
   const splitTotalReceived = cashReceived + qrReceived;
@@ -985,7 +990,18 @@ export function PaymentModal({
                     {selectedBank?.bankName || 'QR PromptPay'}
                   </Badge>
 
-                  {/* XL QR Image */}
+                  {/* XL QR: generated PromptPay QR for the amount (follows the numpad), else the uploaded image */}
+                  {selectedPromptPay && selectedBank ? (
+                    <div className="w-full max-w-80 border-2 border-slate-200 rounded-3xl bg-white p-3 shadow-md">
+                      <PromptPayQr
+                        type={selectedPromptPay.type}
+                        id={selectedPromptPay.id}
+                        amount={qrReceived > 0 ? qrReceived : total}
+                        accountName={selectedBank.accountName}
+                        size={260}
+                      />
+                    </div>
+                  ) : (
                   <div className="w-full max-w-72 aspect-square border-2 border-slate-200 rounded-3xl overflow-hidden bg-white p-4 shadow-md flex items-center justify-center mb-4">
                     {selectedBank?.qrImageUrl ? (
                       <img src={selectedBank.qrImageUrl} alt="QR PromptPay" className="w-full h-full object-contain" />
@@ -996,11 +1012,14 @@ export function PaymentModal({
                       </div>
                     )}
                   </div>
+                  )}
 
+                  {!selectedPromptPay && (
                   <div className="space-y-1">
                     <p className="text-sm text-slate-600">ชื่อบัญชี: <b className="text-slate-900 text-base">{selectedBank?.accountName || 'ร้านปุริม'}</b></p>
                     <p className="text-sm text-slate-600">เลขที่บัญชี / พร้อมเพย์: <b className="font-mono text-slate-900 text-xl font-bold">{selectedBank?.accountNumber || '081-234-5678'}</b></p>
                   </div>
+                  )}
                 </div>
 
                 {/* Right: Net Amount & Confirm */}
@@ -1139,7 +1158,18 @@ export function PaymentModal({
                       <span className="text-slate-600">ยอดรวมรับแล้ว:</span>
                       <span className="font-extrabold text-slate-900 text-2xl">{formatCurrency(splitTotalReceived)}</span>
                     </div>
-                    {selectedBank && qrReceived > 0 && (
+                    {selectedBank && selectedPromptPay ? (
+                      <div className="rounded-2xl border border-sky-200 bg-white p-3">
+                        <p className="text-xs font-bold text-sky-900 mb-1 text-center">QR พร้อมเพย์ สำหรับยอดโอน ({selectedBank.bankName})</p>
+                        <PromptPayQr
+                          type={selectedPromptPay.type}
+                          id={selectedPromptPay.id}
+                          amount={qrReceived}
+                          accountName={selectedBank.accountName}
+                          size={200}
+                        />
+                      </div>
+                    ) : selectedBank && qrReceived > 0 && (
                       <div className="text-xs text-sky-800 bg-sky-100/70 p-3 rounded-xl font-medium border border-sky-200">
                         บัญชีโอนเงิน: <b>{selectedBank.bankName}</b> ({selectedBank.accountNumber})
                       </div>

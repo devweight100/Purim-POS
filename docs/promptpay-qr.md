@@ -7,7 +7,7 @@ Branch `ccr-8f8b0741-si1a0o`. Offline generator, no bank API. Payment is still c
 2. [x] Prisma: `bank_accounts.promptpay_type` (enum) + `promptpay_id`, migration, service validation, e2e.
    - Migration `20261130000000_bank_promptpay` (enum `PromptPayIdType`, columns, CHECK pair). Validation in `cleanBankInput` via shared `normalizePromptPayId`. e2e 69/69.
 3. [x] Frontend QR renderer (`qrcode-generator` 2.0.4 exact, MIT, no deps; `lib/promptpay-qr.ts`, `components/common/PromptPayQr.tsx` SVG with data-payload) + accounts form (type, ID, live ฿1.00 preview, upload area now a button). `jsqr` 1.4.0 (dev) decodes in tests.
-4. [ ] POS QR payment, split payment, debt payment (PayDebtModal) use the generated QR when the account has a PromptPay ID, else the uploaded image.
+4. [x] POS QR payment (amount = numpad amount or bill total), split (QR portion only; hint when 0), PayDebtModal (amount being paid; image fallback) use `PromptPayQr` when the account has a PromptPay ID. No other receive-payment dialog shows a bank QR (orders page "change payment method" has no QR). Money recorded unchanged.
 5. [ ] Playwright: set PromptPay ID, sell with QR, decode QR, amount in payload. Layout at 1366x768 / 1920x1080 / 1093x614.
 6. [ ] Full verification, PROJECT_STATUS, screenshot.
 
