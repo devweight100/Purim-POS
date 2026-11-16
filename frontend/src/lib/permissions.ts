@@ -19,6 +19,8 @@ export const ROUTE_PERMISSIONS: Record<string, PermissionRequirement> = {
   '/dashboard': 'VIEW_REPORTS',
   '/reports': 'VIEW_REPORTS',
   '/orders': ['POS_SELL', 'VIEW_REPORTS'],
+  // GET /online-shop/* needs POS_SELL (approving LINE links additionally POS_DISCOUNT / manager, checked by the API)
+  '/online-orders': 'POS_SELL',
   '/shifts': ['POS_SELL', 'VIEW_REPORTS'],
   '/debts': 'MANAGE_DEBTS',
   '/customers': ['POS_SELL', 'MANAGE_DEBTS', 'VIEW_REPORTS'],

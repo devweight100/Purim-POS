@@ -369,6 +369,8 @@ export function PaymentModal({
           pending: (cart.pendingClaims || []).filter((c) => c.resolutionType === 'STORE_DISCOUNT').map((c) => ({ orderId: c.orderId, productId: c.productId, quantity: c.quantity })),
         },
         customerId: cart.customerId,
+        // online order opened from the held-bills sheet: the server marks it paid by this bill
+        onlineOrderId: cart.onlineOrderId || undefined,
         shiftId: shiftStore.currentShift?.id,
         createdAt: new Date().toISOString(),
         discountAmount: Math.min(

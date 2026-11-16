@@ -9,7 +9,7 @@ import { Gamepad2,
   Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, 
   FolderTree, Building2, Receipt, ShieldAlert, ArrowLeftRight, HandCoins,
   ChevronDown, History, PackageX, TrendingUp, Sparkles, Coins, Boxes, UserCog,
-  ScanLine,
+  ScanLine, ShoppingBag,
   Wallet, ShieldCheck, Smartphone,
   type LucideIcon,
 } from 'lucide-react';
@@ -18,6 +18,7 @@ import { performLogout } from '@/lib/logout';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { canAccessRoute } from '@/lib/permissions';
 import { useDocumentSearchStore } from '@/lib/store/document-search-store';
+import { useOnlineCounts } from '@/lib/online-orders';
 
 interface SubMenuItem {
   href: string;
@@ -40,6 +41,7 @@ const navGroups: NavGroup[] = [
     title: 'งานขาย & ลูกค้า',
     icon: ShoppingCart,
     items: [
+      { href: '/online-orders', label: 'ออเดอร์ออนไลน์ (LINE)', icon: ShoppingBag },
       { href: '/orders', label: 'ประวัติการขาย (บิล)', icon: ClipboardList },
       { href: '/customers', label: 'ลูกค้าสมาชิก', icon: Users },
       { href: '/debts', label: 'ลูกหนี้ & ค้างชำระ', icon: Receipt },
@@ -118,6 +120,8 @@ export function Sidebar() {
   const router = useRouter();
   const { user } = useAuthStore();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const onlineCounts = useOnlineCounts((s) => s.counts);
+  const onlineBadge = (onlineCounts?.new || 0) + (onlineCounts?.linkRequests || 0);
 
   // Persistent scroll position refs
   const desktopScrollRef = useRef<HTMLDivElement>(null);
@@ -439,6 +443,11 @@ export function Sidebar() {
                       >
                         <ItemIcon className={cn('w-4 h-4 shrink-0 mr-2.5', isSelfActive ? 'text-white' : 'text-slate-400')} />
                         <span className="truncate">{item.label}</span>
+                        {item.href === '/online-orders' && onlineBadge > 0 && (
+                          <span data-testid="online-orders-badge" aria-label={`${onlineBadge} รายการใหม่`} className="ml-auto pl-2 shrink-0">
+                            <span className="inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[11px] font-black text-white">{onlineBadge}</span>
+                          </span>
+                        )}
                       </Link>
                     );
                   })}

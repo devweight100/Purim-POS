@@ -236,6 +236,8 @@ export function ClientDbSync() {
     };
     // (no refresh on 'shift' events: reading the current shift itself emits one -> endless loop)
     const stop = startRealtime(token, (e: RealtimeEvent) => {
+      // other screens listen too (online-order badge)
+      window.dispatchEvent(new CustomEvent('purim:realtime', { detail: e }));
       if (e.entity === 'product' || e.entity === 'stock' || e.entity === 'category' || e.entity === 'supplier') {
         soon('products', () => useProductStore.getState().fetchProducts());
       } else if (e.entity === 'customer' || e.entity === 'debt') {

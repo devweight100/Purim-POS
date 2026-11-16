@@ -7,6 +7,8 @@ import { formatQty } from '@/lib/qty';
 import { CLASSIC_POS } from '@/lib/pos/pos-variant';
 import { usePosController } from '@/lib/pos/use-pos-controller';
 import { PosDialogs } from '@/components/pos/PosDialogs';
+import { OnlineOrderWatcher } from '@/components/online-orders/OnlineOrderWatcher';
+import { OnlineOrderCartBanner } from '@/components/online-orders/PosOnlineOrders';
 import { PosListLayout } from '@/components/pos/PosListLayout';
 import { ClassicProductPanel } from '@/components/pos/classic/ClassicProductPanel';
 import { ClassicCartPanel } from '@/components/pos/classic/ClassicCartPanel';
@@ -29,6 +31,8 @@ export default function POSPage() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-slate-50 pb-20 lg:pb-0 text-slate-900 lg:h-screen lg:overflow-hidden" onClick={pos.handleEmptySpaceClick}>
+      <OnlineOrderWatcher />
+      <OnlineOrderCartBanner />
       <a href="#pos-cart" className="lg:hidden fixed bottom-3 left-3 right-3 z-40 rounded-xl bg-sky-700 px-4 py-3 text-center font-bold text-white shadow-lg">ดูตะกร้า / ชำระเงิน</a>
 
       {/* --- MAIN CONTENT --- */}

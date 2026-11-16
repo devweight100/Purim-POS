@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/sheet';
 import { PlayCircle, Trash2, Clock, User, ShoppingBag } from 'lucide-react';
 import { addQty, formatQty } from '@/lib/qty';
+import { PosOnlineOrders } from '@/components/online-orders/PosOnlineOrders';
 
 interface HeldBillsSheetProps {
   open: boolean;
@@ -39,6 +40,7 @@ export function HeldBillsSheet({ open, onOpenChange }: HeldBillsSheetProps) {
         </SheetHeader>
 
         <div className="flex flex-col gap-4 overflow-y-auto h-[calc(100vh-140px)] no-scrollbar pb-10">
+          {open && <PosOnlineOrders onOpened={() => onOpenChange(false)} />}
           {heldBills.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-52 text-slate-400 gap-3">
               <Clock className="w-16 h-16 opacity-30 text-slate-300" />

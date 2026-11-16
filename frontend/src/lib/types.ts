@@ -168,6 +168,8 @@ export interface HeldBill {
   pointsUsed?: number;
   note?: string;
   pendingClaims?: PendingClaimItem[];
+  /** online order (LINE shop) this bill pays */
+  onlineOrderId?: string | null;
   heldAt: string;
 }
 
@@ -939,6 +941,8 @@ export interface CheckoutRequest {
   terminalId?: string;
   orderNumber?: string;
   customerId?: string | null;
+  /** online order (LINE shop) paid by this bill */
+  onlineOrderId?: string;
   shiftId?: string;
   createdAt?: string;
   discountAmount?: number;

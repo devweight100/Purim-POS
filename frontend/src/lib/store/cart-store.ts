@@ -56,6 +56,8 @@ interface CartStore {
   isVatEnabled: boolean;
   heldBills: HeldBill[];
   editingOrderId: string | null;
+  /** online order (LINE shop) loaded into this cart; checkout links the bill to it */
+  onlineOrderId: string | null;
 
   // Actions
   addItem: (product: Product, unit?: ProductUnit) => void;
@@ -78,6 +80,8 @@ interface CartStore {
   setVatEnabled: (enabled: boolean) => void;
   setCustomer: (id: string | null, name: string | null) => void;
   setEditingOrderId: (id: string | null) => void;
+  /** Replace the cart with an accepted online order (agreed prices, ค่าส่ง line, member). The current cart is held. */
+  loadOnlineOrder: (o: { id: string; orderNo: string; customerId: string | null; customerName: string | null; note: string; items: CartItem[] }) => void;
   clearCart: () => void;
   holdBill: (label?: string) => void;
   recallBill: (id: string) => void;
@@ -120,7 +124,7 @@ const CART_STORAGE_VERSION = 1;
 
 type PersistedCart = Pick<CartStore,
   'items' | 'customerId' | 'customerName' | 'billDiscountType' | 'billDiscountValue' | 'pointsDiscountValue' |
-  'pointsUsed' | 'attachedClaim' | 'pendingClaims' | 'note' | 'heldBills' | 'editingOrderId'>;
+  'pointsUsed' | 'attachedClaim' | 'pendingClaims' | 'note' | 'heldBills' | 'editingOrderId' | 'onlineOrderId'>;
 
 const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const discType = (v: unknown): 'none' | 'baht' | 'percent' => (v === 'baht' || v === 'percent' ? v : 'none');
@@ -153,6 +157,7 @@ export function sanitizePersistedCart(raw: unknown): Partial<PersistedCart> {
     note: typeof r.note === 'string' ? r.note : '',
     heldBills,
     editingOrderId: typeof r.editingOrderId === 'string' ? r.editingOrderId : null,
+    onlineOrderId: typeof r.onlineOrderId === 'string' ? r.onlineOrderId : null,
   };
 }
 
@@ -173,6 +178,26 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
   isVatEnabled: loadStoreSettings().vatEnabled === true,
   heldBills: [],
   editingOrderId: null,
+  onlineOrderId: null,
+
+  loadOnlineOrder: (o) => {
+    const state = get();
+    if (state.items.length > 0) get().holdBill();
+    set({
+      items: o.items,
+      customerId: o.customerId,
+      customerName: o.customerName,
+      billDiscountType: 'none' as const,
+      billDiscountValue: 0,
+      pointsDiscountValue: 0,
+      pointsUsed: 0,
+      attachedClaim: null,
+      pendingClaims: [],
+      note: o.note,
+      editingOrderId: null,
+      onlineOrderId: o.id,
+    });
+  },
 
   setEditingOrderId: (id: string | null) => {
     set({ editingOrderId: id });
@@ -405,6 +430,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
       pendingClaims: [],
       note: '',
       editingOrderId: null,
+      onlineOrderId: null,
     });
   },
 
@@ -424,6 +450,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
       pointsUsed: state.pointsUsed,
       pendingClaims: [...state.pendingClaims],
       note: state.note,
+      onlineOrderId: state.onlineOrderId,
       heldAt: new Date().toISOString(),
     };
 
@@ -440,6 +467,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
       pendingClaims: [],
       note: '',
       editingOrderId: null,
+      onlineOrderId: null,
     }));
   },
 
@@ -463,6 +491,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
       pointsUsed: bill.pointsUsed || 0,
       pendingClaims: bill.pendingClaims || [],
       note: bill.note || '',
+      onlineOrderId: bill.onlineOrderId || null,
       heldBills: s.heldBills.filter((b) => b.id !== id),
     }));
   },
@@ -519,6 +548,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
     note: s.note,
     heldBills: s.heldBills,
     editingOrderId: s.editingOrderId,
+    onlineOrderId: s.onlineOrderId,
   }),
   // Unknown/older versions: keep whatever still validates instead of throwing away parked bills
   migrate: (persisted) => sanitizePersistedCart(persisted) as unknown as CartStore,
