@@ -62,7 +62,7 @@ export function publicPathAllowed(path: string): boolean {
     p === '/shop' ||
     p.startsWith('/shop/') ||
     publicApiAllowed(p) ||
-    /^\/_next\/static\/[A-Za-z0-9._\-/~]+$/.test(p) ||
+    /^\/_next\/static\/[A-Za-z0-9._\-/~[\]()@+]+$/.test(p) ||
     p === '/favicon.ico' ||
     p === '/icon.svg'
   );
