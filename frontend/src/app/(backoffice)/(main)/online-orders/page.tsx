@@ -10,7 +10,9 @@ import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { ONLINE_STATUS_LABELS, type OnlineOrderStatus } from '@shared/online-shop';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { OnlineOrderDetail, StatusPill } from '@/components/online-orders/OnlineOrderDetail';
+import { ClaimBadge, OnlineOrderDetail, StatusPill } from '@/components/online-orders/OnlineOrderDetail';
+import { useAuthStore } from '@/lib/store/auth-store';
+import type { OnlineClaim } from '@/lib/online-order-actions';
 import { LinkRequests } from '@/components/online-orders/LinkRequests';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +30,7 @@ interface OnlineOrderRow {
   totalAmount: number;
   paid: boolean;
   createdAt: string;
+  claim: OnlineClaim | null;
 }
 
 const FILTERS: { value: string; label: string }[] = [
@@ -46,6 +49,7 @@ function OnlineOrdersInner() {
   const router = useRouter();
   const tab = params.get('tab') === 'links' ? 'links' : 'orders';
   const counts = useOnlineCounts((s) => s.counts);
+  const meId = useAuthStore((s) => s.user?.id);
   const refreshCounts = useOnlineCounts((s) => s.refresh);
   const [filter, setFilter] = useState('open');
   const [search, setSearch] = useState('');
@@ -134,7 +138,10 @@ function OnlineOrdersInner() {
             {error && <p className="text-sm font-semibold text-rose-700">{error}</p>}
             {rows?.length === 0 && <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-slate-500">ไม่มีออเดอร์ในหัวข้อนี้</p>}
             <ul className="space-y-2">
-              {rows?.map((r) => (
+              {rows?.map((r) => {
+                // a new order nobody has taken yet stands out
+                const fresh = r.status === 'NEW' && !r.claim;
+                return (
                 <li key={r.id}>
                   <button
                     type="button"
@@ -143,7 +150,7 @@ function OnlineOrdersInner() {
                     aria-current={selected === r.id}
                     className={cn(
                       'w-full rounded-xl border bg-white p-3 text-left shadow-xs transition hover:border-emerald-400 focus-visible:outline-2 focus-visible:outline-sky-500',
-                      selected === r.id ? 'border-emerald-600 ring-2 ring-emerald-200' : 'border-slate-200',
+                      selected === r.id ? 'border-emerald-600 ring-2 ring-emerald-200' : fresh ? 'border-amber-400 border-l-8 bg-amber-50' : 'border-slate-200',
                     )}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -159,10 +166,14 @@ function OnlineOrdersInner() {
                         {r.deliveryFee === null && r.fulfillment === 'DELIVERY' ? ' + ค่าส่ง?' : ''}
                       </span>
                     </div>
-                    <div className="text-xs text-slate-500">{when(r.createdAt)}</div>
+                    <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-xs text-slate-500">{when(r.createdAt)}</span>
+                      <ClaimBadge claim={r.claim} meId={meId} status={r.status} />
+                    </div>
                   </button>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </section>
           <section aria-label="รายละเอียดออเดอร์" className={cn('min-w-0', !selected && 'hidden xl:block')}>

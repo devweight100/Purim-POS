@@ -1,9 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { ArrowLeft, Check, Plus, Trash2, X, Store, Truck, ShoppingCart } from 'lucide-react';
+import { ArrowLeft, Check, Plus, Trash2, X, Store, Truck, ShoppingCart, ClipboardList, Hand, LockOpen, Undo2 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useCartStore } from '@/lib/store/cart-store';
@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { onlineOrderCartItems } from '@/lib/online-order-cart';
+import { useAuthStore } from '@/lib/store/auth-store';
+import { claimLabel, claimOrder, fetchPosPayload, isClaimConflict, printOnlinePickingSlip, releaseOrder, type OnlineClaim } from '@/lib/online-order-actions';
 
 interface DetailItem {
   id?: string;
@@ -52,6 +54,31 @@ interface Detail {
   posOrder: { id: string; orderNumber: string; totalAmount: number; status: string } | null;
   nextStatuses: OnlineOrderStatus[];
   items: DetailItem[];
+  claim: OnlineClaim | null;
+  pickingPrintCount: number;
+}
+
+const OPEN: OnlineOrderStatus[] = ['NEW', 'ACCEPTED', 'PREPARING', 'DELIVERING'];
+
+/** Colored "who is preparing" badge (list rows, detail, POS sheet). */
+export function ClaimBadge({ claim, meId, status }: { claim: OnlineClaim | null; meId?: string; status: OnlineOrderStatus }) {
+  if (!OPEN.includes(status)) return null;
+  if (!claim) {
+    return status === 'NEW' ? (
+      <span data-testid="claim-badge" className="rounded-full border border-amber-400 bg-amber-100 px-2 py-0.5 text-xs font-black text-amber-900">ยังไม่มีคนจัด</span>
+    ) : (
+      <span data-testid="claim-badge" className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-xs font-bold text-slate-700">ยังไม่มีคนจัด</span>
+    );
+  }
+  const mine = claim.userId === meId;
+  return (
+    <span
+      data-testid="claim-badge"
+      className={`rounded-full border px-2 py-0.5 text-xs font-bold ${mine ? 'border-sky-400 bg-sky-100 text-sky-900' : 'border-rose-300 bg-rose-50 text-rose-900'}`}
+    >
+      {mine ? claimLabel(claim).replace(/^กำลังจัดโดย [^·]+/, 'คุณกำลังจัด ') : claimLabel(claim)}
+    </span>
+  );
 }
 
 const PILL: Record<OnlineOrderStatus, string> = {
@@ -78,11 +105,18 @@ const isBaseUnit = (id: string) => /^u-.*-base$/.test(id);
 /** One online order: edit items / prices / fee / member, accept, reject, status, open in the POS. */
 export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBack: () => void; onChanged: () => void }) {
   const router = useRouter();
+  const me = useAuthStore((s) => s.user);
+  const manager = me?.role === 'ADMIN' || me?.role === 'MANAGER';
+  const [takeoverOpen, setTakeoverOpen] = useState(false);
   const [d, setD] = useState<Detail | null>(null);
   const [items, setItems] = useState<DetailItem[]>([]);
   const [fee, setFee] = useState('');
   const [customer, setCustomer] = useState<Detail['customer']>(null);
   const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(false);
+  useEffect(() => {
+    dirtyRef.current = dirty;
+  }, [dirty]);
   const [busy, setBusy] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reason, setReason] = useState('');
@@ -108,7 +142,35 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
     return () => clearTimeout(t);
   }, [load]);
 
-  const editable = !!d && !d.posOrder && ['NEW', 'ACCEPTED', 'PREPARING', 'DELIVERING'].includes(d.status);
+  // other terminals claim / change the order: refresh live (keeps unsaved edits, updates status + claim)
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const on = (e: Event) => {
+      if ((e as CustomEvent<{ entity?: string }>).detail?.entity !== 'onlineOrder') return;
+      clearTimeout(t);
+      t = setTimeout(() => {
+        apiFetch<Detail>(`/online-shop/orders/${id}`).then(
+          (x) => {
+            if (dirtyRef.current) setD(x);
+            else apply(x);
+          },
+          () => undefined,
+        );
+      }, 300);
+    };
+    window.addEventListener('purim:realtime', on);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('purim:realtime', on);
+    };
+  }, [id, apply]);
+
+  const heldByOther = !!d?.claim && d.claim.userId !== me?.id;
+  const lockReason = heldByOther ? `${claimLabel(d?.claim)} — ทำรายการไม่ได้จนกว่าจะปล่อยงาน${manager ? ' (หรือกด "ปลดล็อก/โอนมาที่ฉัน")' : ''}` : undefined;
+  // unpaid open order: actions shown; for someone else's order they stay visible but disabled (with the reason)
+  const actionable = !!d && !d.posOrder && ['NEW', 'ACCEPTED', 'PREPARING', 'DELIVERING'].includes(d.status);
+  const editable = actionable && !heldByOther;
+  const isOpen = !!d && OPEN.includes(d.status);
   const feeParsed = parseDeliveryFee(fee);
   const totals = useMemo(() => {
     const f = parseDeliveryFee(fee);
@@ -132,6 +194,33 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
       onChanged();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'ทำรายการไม่สำเร็จ');
+      if (isClaimConflict(e)) void load();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const claim = () => run(() => claimOrder<Detail>(d.id), `รับจัดออเดอร์ ${d.orderNo} แล้ว`);
+  const release = () => run(() => releaseOrder<Detail>(d.id), 'ปล่อยงานแล้ว คนอื่นรับจัดต่อได้');
+  const takeover = () =>
+    run(async () => {
+      const r = await claimOrder<Detail>(d.id, true);
+      setTakeoverOpen(false);
+      return r;
+    }, `โอนออเดอร์ ${d.orderNo} มาที่คุณแล้ว (บันทึกในประวัติ)`);
+  const printSlip = async () => {
+    if (dirty) {
+      toast.error('บันทึกการแก้ไขก่อน แล้วจึงพิมพ์ใบจัดของ');
+      return;
+    }
+    setBusy(true);
+    try {
+      await printOnlinePickingSlip(d.id);
+      toast.success(`ส่งพิมพ์ใบจัดของ ${d.orderNo} แล้ว`);
+      await load();
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'พิมพ์ใบจัดของไม่สำเร็จ');
+      if (isClaimConflict(e)) void load();
     } finally {
       setBusy(false);
     }
@@ -169,13 +258,15 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
       return;
     }
     try {
-      const p = await apiFetch<Parameters<typeof onlineOrderCartItems>[0]>(`/online-shop/orders/${d.id}/pos`);
+      const p = await fetchPosPayload(d.id);
+      if (!p) return;
       const cartItems = onlineOrderCartItems(p, useProductStore.getState().products as never);
       const c = (p as unknown as { customer: { id: string; name: string } | null }).customer;
       useCartStore.getState().loadOnlineOrder({ id: p.id, orderNo: p.orderNo, customerId: c?.id || null, customerName: c?.name || null, note: p.note, items: cartItems });
       router.push('/pos');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'เปิดในหน้าขายไม่สำเร็จ');
+      if (isClaimConflict(e)) void load();
     }
   };
 
@@ -201,6 +292,42 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
         </div>
         <StatusPill status={d.status} paid={!!d.paidAt} />
       </div>
+
+      {isOpen && (
+        <div
+          data-testid="claim-bar"
+          className={`flex flex-wrap items-center justify-between gap-btn rounded-xl border-2 p-3 ${!d.claim ? 'border-amber-400 bg-amber-50' : heldByOther ? 'border-rose-300 bg-rose-50' : 'border-sky-300 bg-sky-50'}`}
+        >
+          <div className="min-w-0 text-sm">
+            <ClaimBadge claim={d.claim} meId={me?.id} status={d.status} />
+            <p className="mt-1 font-semibold text-slate-700">
+              {!d.claim
+                ? 'ยังไม่มีใครรับจัด — กดรับจัดก่อนไปหยิบของ กันสองคนจัดซ้ำ'
+                : heldByOther
+                  ? `ปุ่มทำรายการปิดอยู่: ${d.claim.name} กำลังจัดออเดอร์นี้`
+                  : 'คุณเป็นผู้จัดออเดอร์นี้ เครื่องอื่นทำรายการไม่ได้'}
+              {d.pickingPrintCount > 0 ? ` · พิมพ์ใบจัดของแล้ว ${d.pickingPrintCount} ครั้ง` : ''}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-btn">
+            {!d.claim && (
+              <Button disabled={busy} onClick={() => void claim()} className="gap-1 bg-amber-600 hover:bg-amber-700 text-white">
+                <Hand className="w-4 h-4" /> รับจัดออเดอร์นี้
+              </Button>
+            )}
+            {d.claim && !heldByOther && (
+              <Button disabled={busy} variant="outline" onClick={() => void release()} className="gap-1">
+                <Undo2 className="w-4 h-4" /> ปล่อยงาน
+              </Button>
+            )}
+            {heldByOther && manager && (
+              <Button disabled={busy} variant="outline" onClick={() => setTakeoverOpen(true)} className="gap-1 border-rose-400 text-rose-800 hover:bg-rose-100">
+                <LockOpen className="w-4 h-4" /> ปลดล็อก/โอนมาที่ฉัน
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-3 md:grid-cols-2 text-sm">
         <div className="rounded-xl bg-slate-50 p-3 space-y-1">
@@ -306,14 +433,20 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
         <div className="flex justify-between border-t border-slate-200 pt-1 text-base"><span className="font-bold">ยอดรวม</span><b className="font-mono text-emerald-800">{formatCurrency(totals.total)}{totals.feePending && d.fulfillment === 'DELIVERY' ? ' + ค่าส่ง' : ''}</b></div>
       </div>
 
+      {heldByOther && <p className="rounded-lg bg-rose-50 p-2 text-sm font-semibold text-rose-800" role="status">{lockReason}</p>}
       {d.rejectReason && <p className="rounded-lg bg-rose-50 p-2 text-sm text-rose-800">เหตุผลที่ยกเลิก: {d.rejectReason}</p>}
       {d.posOrder && <p className="rounded-lg bg-emerald-50 p-2 text-sm text-emerald-900">รับเงินแล้ว บิล {d.posOrder.orderNumber} ({formatCurrency(d.posOrder.totalAmount)})</p>}
       <p className="text-xs text-slate-500">LINE: {d.lineNotice || 'ยังไม่มีการแจ้ง'}</p>
 
       <div className="flex flex-wrap gap-btn border-t border-slate-100 pt-3">
         {d.status === 'NEW' && (
-          <Button disabled={busy} onClick={() => void accept()} className="gap-1 bg-emerald-700 hover:bg-emerald-800 text-white">
+          <Button disabled={busy || heldByOther} title={lockReason} onClick={() => void accept()} className="gap-1 bg-emerald-700 hover:bg-emerald-800 text-white">
             <Check className="w-4 h-4" /> รับออเดอร์
+          </Button>
+        )}
+        {isOpen && (
+          <Button disabled={busy || heldByOther} title={lockReason || 'พิมพ์ใบจัดของ (ชื่อสินค้า หน่วย จำนวน ไม่มีราคา) — รับจัดออเดอร์ให้อัตโนมัติ'} variant="outline" onClick={() => void printSlip()} className="gap-1 border-slate-400">
+            <ClipboardList className="w-4 h-4" /> พิมพ์ใบจัดของ{d.pickingPrintCount > 0 ? ' (ซ้ำ)' : ''}
           </Button>
         )}
         {editable && d.status !== 'NEW' && (
@@ -322,16 +455,16 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
         {editable && d.status === 'NEW' && dirty && (
           <Button disabled={busy} variant="outline" onClick={() => void save()}>บันทึก (ยังไม่รับ)</Button>
         )}
-        {editable && d.status !== 'NEW' && (
-          <Button disabled={busy} onClick={() => void openInPos()} className="gap-1 bg-sky-600 hover:bg-sky-700 text-white">
+        {actionable && d.status !== 'NEW' && (
+          <Button disabled={busy || heldByOther} title={lockReason} onClick={() => void openInPos()} className="gap-1 bg-sky-600 hover:bg-sky-700 text-white">
             <ShoppingCart className="w-4 h-4" /> รับเงินที่หน้าขาย
           </Button>
         )}
         {d.nextStatuses.filter((s) => s !== 'CANCELLED').map((s) => (
-          <Button key={s} disabled={busy} variant="outline" onClick={() => void setStatus(s)}>{ONLINE_STATUS_LABELS[s]}</Button>
+          <Button key={s} disabled={busy || heldByOther} title={lockReason} variant="outline" onClick={() => void setStatus(s)}>{ONLINE_STATUS_LABELS[s]}</Button>
         ))}
-        {editable && (
-          <Button disabled={busy} variant="outline" className="gap-1 text-rose-700 border-rose-300 hover:bg-rose-50" onClick={() => setRejectOpen(true)}>
+        {actionable && (
+          <Button disabled={busy || heldByOther} title={lockReason} variant="outline" className="gap-1 text-rose-700 border-rose-300 hover:bg-rose-50" onClick={() => setRejectOpen(true)}>
             <X className="w-4 h-4" /> ยกเลิกออเดอร์
           </Button>
         )}
@@ -345,6 +478,19 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
           <DialogFooter className="gap-btn">
             <Button variant="outline" onClick={() => setRejectOpen(false)}>ไม่ยกเลิก</Button>
             <Button disabled={busy || !reason.trim()} className="bg-rose-600 hover:bg-rose-700 text-white" onClick={() => void reject()}>ยืนยันยกเลิก</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={takeoverOpen} onOpenChange={setTakeoverOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>ปลดล็อก/โอนออเดอร์ {d.orderNo}</DialogTitle></DialogHeader>
+          <p className="text-sm">
+            {claimLabel(d.claim)} — โอนมาเป็นของคุณ? คนเดิมจะทำรายการต่อไม่ได้ (ควรบอกเขาก่อนว่าหยุดหยิบของ) และระบบจะบันทึกไว้ในประวัติการใช้งาน
+          </p>
+          <DialogFooter className="gap-btn">
+            <Button variant="outline" onClick={() => setTakeoverOpen(false)}>ไม่โอน</Button>
+            <Button disabled={busy} className="bg-rose-600 hover:bg-rose-700 text-white" onClick={() => void takeover()}>ยืนยันโอนมาที่ฉัน</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
