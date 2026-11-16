@@ -30,8 +30,9 @@ import { Badge } from '@/components/ui/badge';
 import { 
   Clock, Search, Calendar, ChevronDown, FileText, 
   RotateCcw, Ban, CheckCircle2, AlertTriangle, TrendingUp,
-  Package, CreditCard, Edit3
+  Package, CreditCard, Edit3, ClipboardList
 } from 'lucide-react';
+import { printOrderPickingSlip } from '@/lib/pos/picking';
 import { toast } from 'sonner';
 import { addQty } from '@/lib/qty';
 
@@ -599,6 +600,15 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                               >
                                 <FileText className="w-4 h-4 text-sky-600" />
                                 <span>ดูใบเสร็จ</span>
+                              </DropdownMenuItem>
+
+                              {/* 2b. Picking slip (no prices), reprint */}
+                              <DropdownMenuItem
+                                onClick={() => void printOrderPickingSlip(order)}
+                                className="cursor-pointer py-2 px-3 text-slate-700 hover:bg-slate-100 rounded-lg flex items-center gap-2"
+                              >
+                                <ClipboardList className="w-4 h-4 text-slate-600" />
+                                <span>พิมพ์ใบจัดของ</span>
                               </DropdownMenuItem>
 
                               {/* 3. Repeat Order */}

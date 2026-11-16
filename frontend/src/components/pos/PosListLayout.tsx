@@ -10,8 +10,9 @@ import { getProductAvailableUnits, getDefaultSelectedUnit } from '@/lib/product-
 import { 
   Grid, Calculator, ChevronDown, Edit3, Trash2, 
   Clock, User, ShoppingBag, ScanLine, StickyNote, Coins,
-  ShieldCheck, ShieldAlert, Package, ArrowLeft, LogIn, LogOut
+  ShieldCheck, ShieldAlert, Package, ArrowLeft, LogIn, LogOut, ClipboardList
 } from 'lucide-react';
+import { printCartPickingSlip } from '@/lib/pos/picking';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { NumpadPopup } from './NumpadPopup';
 import { ItemNotePopup } from './ItemNotePopup';
@@ -914,6 +915,18 @@ export function PosListLayout({
             <ShoppingBag className="w-4 h-4" />
             <span>พักบิล</span>
             <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(Ctrl+P)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void printCartPickingSlip()}
+            disabled={cart.items.length === 0}
+            className="flex items-center gap-1.5 bg-white hover:bg-slate-100 text-slate-800 border-2 border-slate-300 font-extrabold px-3 py-2 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0 disabled:opacity-50"
+            title="พิมพ์ใบจัดของของตะกร้านี้ (ชื่อสินค้า หน่วย จำนวน ไม่มีราคา) (F8)"
+          >
+            <ClipboardList className="w-4 h-4" />
+            <span>ใบจัดของ</span>
+            <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(F8)</span>
           </button>
 
           <button 

@@ -26,6 +26,8 @@ export const SLIP_OPTION_KEYS = [
   'showNote',
   'showPaymentDetails',
   'showPoints',
+  // not shown on the receipt: also print a picking slip (ใบจัดของ, no prices) after each POS sale
+  'autoPickingSlip',
 ] as const;
 
 export const A4_OPTION_KEYS = [
@@ -62,6 +64,7 @@ export const DEFAULT_SLIP_OPTIONS: SlipReceiptOptions = {
   showNote: true,
   showPaymentDetails: true,
   showPoints: true,
+  autoPickingSlip: false,
 };
 
 /** A4: everything. */

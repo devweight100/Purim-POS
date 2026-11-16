@@ -9,6 +9,7 @@ import { addQty, subQty } from '@/lib/qty';
 import type { CartItem } from '@/lib/types';
 import type { PosDialogs } from './use-pos-dialogs';
 import type { CartSelection } from './use-cart-selection';
+import { printCartPickingSlip } from './picking';
 
 const EMPTY_CART_WARNING = 'ยังไม่มีสินค้าในตะกร้า';
 
@@ -37,7 +38,7 @@ function keyIs(e: KeyboardEvent, code: string, key: string) {
  * Page shortcuts of the POS screens:
  * F2 quantity, F3 item discount (empty cart: left to the global document search), F4 price,
  * arrows select a row, Delete removes it, +/- change its quantity, F9 cash drawer,
- * F10 / Ctrl+P / Ctrl+Shift+P hold bill or held bills, F12 payment, Ctrl+H history,
+ * F8 picking slip (ใบจัดของ) of the cart, F10 / Ctrl+P / Ctrl+Shift+P hold bill or held bills, F12 payment, Ctrl+H history,
  * Ctrl+M member, Ctrl+E clear cart.
  *
  * The listener is registered once; useEffectEvent gives it the current dialogs and selection on every
@@ -118,6 +119,9 @@ export function usePosKeyboard({ dialogs, selection, scannerInputRef }: PosKeybo
         e.preventDefault();
         useCartStore.getState().updateQuantity(target.productId, subQty(target.quantity, 1), target.unitId);
       }
+    } else if (keyIs(e, 'F8', 'f8')) {
+      e.preventDefault();
+      void printCartPickingSlip();
     } else if (keyIs(e, 'F9', 'f9')) {
       e.preventDefault();
       dialogs.setShowCashDrawerModal((prev) => !prev);

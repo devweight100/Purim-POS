@@ -859,7 +859,7 @@ export class OrdersService {
         skip,
         take: limit,
         include: {
-          items: { include: { product: { select: { id: true, name: true, sku: true } } } },
+          items: { include: { product: { select: { id: true, name: true, sku: true, unit: true, isService: true } } } },
           payments: true,
           customer: { select: { id: true, name: true, phone: true } },
           user: { select: { id: true, fullName: true } },

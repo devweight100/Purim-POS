@@ -7,7 +7,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import { PlayCircle, Trash2, Clock, User, ShoppingBag } from 'lucide-react';
+import { PlayCircle, Trash2, Clock, User, ShoppingBag, ClipboardList } from 'lucide-react';
+import { printHeldBillPickingSlip } from '@/lib/pos/picking';
 import { addQty, formatQty } from '@/lib/qty';
 import { PosOnlineOrders } from '@/components/online-orders/PosOnlineOrders';
 
@@ -108,6 +109,15 @@ export function HeldBillsSheet({ open, onOpenChange }: HeldBillsSheetProps) {
                     >
                       <PlayCircle className="w-5 h-5" />
                       เรียกคืนบิลนี้
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-12 px-3 border-slate-300 bg-white text-slate-700 hover:bg-slate-100 rounded-xl font-bold gap-1"
+                      onClick={() => void printHeldBillPickingSlip(bill)}
+                      title="พิมพ์ใบจัดของของบิลนี้ (ไม่มีราคา)"
+                    >
+                      <ClipboardList className="w-5 h-5" />
+                      ใบจัดของ
                     </Button>
                     <Button 
                       variant="outline" 

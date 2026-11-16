@@ -103,7 +103,7 @@ export function bundleParts(bundleData: unknown, baseQty: number, unitOf?: UnitL
 /** POS cart / held bill -> picking slip */
 export function cartToPickingSlip(
   cart: { items: CartItem[]; customerName?: string | null; note?: string | null },
-  opts: { source: 'cart' | 'held'; docNo?: string; createdAt?: string; unitOf?: UnitLookup; isService?: (productId: string) => boolean },
+  opts: { source: 'cart' | 'held' | 'bill'; docNo?: string; createdAt?: string; unitOf?: UnitLookup; isService?: (productId: string) => boolean },
 ): PickingSlipData {
   return {
     source: opts.source,

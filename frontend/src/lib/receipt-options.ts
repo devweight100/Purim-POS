@@ -41,6 +41,7 @@ export const SLIP_ONLY_LABELS: Array<[SlipOptionKey, string]> = [
   ['showNote', 'หมายเหตุของบิล'],
   ['showPaymentDetails', 'รับเงิน / เงินทอน'],
   ['showPoints', 'แต้มสะสม'],
+  ['autoPickingSlip', 'พิมพ์ใบจัดของอัตโนมัติหลังขาย (ชื่อสินค้า หน่วย จำนวน ไม่มีราคา)'],
 ];
 
 export const A4_ONLY_LABELS: Array<[A4OptionKey, string]> = [

@@ -17,6 +17,9 @@ import { NumpadPopup } from './NumpadPopup';
 import { ReceiptPdfModal, ReceiptData } from './ReceiptPdfModal';
 import { orderToReceiptData, summarizePaymentMethods, isCreditMethod } from '@/lib/receipt-mapper';
 import { printThermalReceiptDirect } from './ThermalReceiptView';
+import { cartToPickingSlip } from '@/lib/picking-slip';
+import { productUnitLookup } from '@/lib/pos/picking';
+import { getReceiptOptions } from '@/lib/receipt-options';
 import { loadBankAccounts, BankAccount } from '@/lib/bank-account-storage';
 import { PromptPayQr } from '@/components/common/PromptPayQr';
 import { promptPayOf } from '@/lib/promptpay-qr';
@@ -613,6 +616,15 @@ export function PaymentModal({
       setStep('SUCCESS');
       setShowReceiptPdf(false);
       triggerDirectPrint(completedReceipt);
+      // optional (Settings > รูปแบบใบเสร็จ, off by default): the picking slip of this sale, after the receipt
+      if (getReceiptOptions(loadStoreSettings()).slip.autoPickingSlip) {
+        const picking = cartToPickingSlip(cart, { source: 'bill', docNo: finalOrderNumber, createdAt: completedReceipt.createdAt, unitOf: productUnitLookup() });
+        if (picking.lines.length) {
+          setTimeout(() => {
+            void import('./PickingSlipView').then((m) => m.printPickingSlip(picking, loadStoreSettings()));
+          }, 1500);
+        }
+      }
     } catch (error) {
       if (!backendOrder && error instanceof ApiError && error.data?.code === 'APPROVAL_REQUIRED') {
         // ask a manager to approve with their PIN, then submit the same bill again

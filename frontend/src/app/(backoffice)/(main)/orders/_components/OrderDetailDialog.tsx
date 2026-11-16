@@ -8,7 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Ban, CreditCard, User, Printer, FileText, Edit3, RotateCcw, History } from "lucide-react";
+import { Ban, CreditCard, User, Printer, FileText, Edit3, RotateCcw, History, ClipboardList } from "lucide-react";
+import { printOrderPickingSlip } from "@/lib/pos/picking";
 import { isCreditOrderFullyPaid, isOrderCredit, type OrderAction, type OrderRow } from "./order-shared";
 
 interface Props {
@@ -173,6 +174,20 @@ export function OrderDetailDialog({
                 >
                   <Printer className="w-4 h-4" />
                   <span>พิมพ์สลิป 80mm</span>
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void printOrderPickingSlip(currentOrder);
+                  }}
+                  title="ใบจัดของ: ชื่อสินค้า หน่วย จำนวน ไม่มีราคา (พิมพ์ซ้ำ)"
+                  className="border-slate-300 text-slate-700 font-semibold text-xs h-9 px-3 rounded-xl gap-1.5"
+                >
+                  <ClipboardList className="w-4 h-4" />
+                  <span>พิมพ์ใบจัดของ</span>
                 </Button>
               </div>
 
