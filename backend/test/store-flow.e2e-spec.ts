@@ -2167,6 +2167,7 @@ d('store flow (e2e)', () => {
       expect(s.member).toBeNull();
       expect(s.profile).toMatchObject({ name: 'ลูกค้าทดสอบ', test: true });
       shop.guest = s.token;
+      await pub('get', '/me', s.token, undefined, { 'cf-ray': 'x' }).expect(401); // a test profile is LAN only
       await pub('get', '/me', 'garbage.token').expect(401);
       await pub('get', '/me', s.token.slice(0, -2) + 'xx').expect(401);
     });

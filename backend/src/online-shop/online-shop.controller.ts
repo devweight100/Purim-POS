@@ -18,7 +18,10 @@ function clientIp(req: any): string {
 function ctxOf(req: any): PublicCtx {
   const auth = String(req.headers.authorization || '');
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-  return { ip: clientIp(req), isPublic: isPublicRequest(req.headers), session: token ? readSession(token) : null };
+  const isPublic = isPublicRequest(req.headers);
+  const session = token ? readSession(token) : null;
+  // test profiles exist only for trying the shop inside the store: never accepted from the internet
+  return { ip: clientIp(req), isPublic, session: session && session.dev && isPublic ? null : session };
 }
 
 /**
