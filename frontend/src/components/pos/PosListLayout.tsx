@@ -1,5 +1,6 @@
 'use client';
 
+import { useOnlineCounts } from '@/lib/online-orders';
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useCartStore, validateDiscount } from '@/lib/store/cart-store';
@@ -70,6 +71,7 @@ export function PosListLayout({
   selectedCartIndex,
   onSelectCartIndex
 }: PosListLayoutProps) {
+  const onlinePayable = useOnlineCounts((s) => s.counts?.payable || 0);
   const cart = useCartStore();
   const backOfficeHome = backOfficeHomeFor(useAuthStore((st) => st.user));
   const { products } = useProductStore();
@@ -920,7 +922,7 @@ export function PosListLayout({
             className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
           >
             <Clock className="w-4 h-4" />
-            <span>ดูบิลพัก</span>
+            <span>ดูบิลพัก{onlinePayable ? ` · ออนไลน์ ${onlinePayable}` : ''}</span>
             <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(F10)</span>
           </button>
 

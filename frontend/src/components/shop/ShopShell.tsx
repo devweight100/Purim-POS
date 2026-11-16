@@ -40,7 +40,7 @@ export function ShopShell({ children }: { children: React.ReactNode }) {
               ‹
             </button>
           ) : null}
-          <Link href="/shop" className="min-w-0 flex-1 truncate text-xl font-bold">
+          <Link href="/shop" className="flex min-h-12 min-w-0 flex-1 items-center truncate text-xl font-bold">
             {config?.storeName || 'ร้านค้า'}
           </Link>
           {status === 'ready' && (

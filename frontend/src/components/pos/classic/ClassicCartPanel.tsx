@@ -10,11 +10,15 @@ import { Badge } from '@/components/ui/badge';
 import { formatCurrency } from '@/lib/utils';
 import { addQty, formatQty, mulQty, subQty } from '@/lib/qty';
 import type { PosController } from '@/lib/pos/use-pos-controller';
+import { useOnlineCounts } from '@/lib/online-orders';
 
 /** Right side of the classic touch screen: customer, cart rows, totals and the action buttons. */
 export function ClassicCartPanel({ pos }: { pos: PosController }) {
   const { cart, dialogs: d, activeCustomer } = pos;
   const { selectedIndex, setSelectedIndex, cartBottomRef } = pos.selection;
+  // parked bills on this terminal + accepted online orders waiting for payment (all terminals)
+  const onlinePayable = useOnlineCounts((s) => s.counts?.payable || 0);
+  const heldBadge = cart.heldBills.length + onlinePayable;
 
   return (
     <div id="pos-cart" className="flex w-full shrink-0 flex-col bg-white lg:w-[420px] xl:w-[450px]">
@@ -443,11 +447,11 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
         <Button
           variant="outline"
           className="h-14 border-slate-300 bg-white text-slate-700 hover:bg-slate-100 font-bold text-xs sm:text-sm flex flex-col items-center justify-center gap-1 shadow-xs"
-          onClick={() => cart.holdBill()}
-          disabled={cart.items.length === 0}
+          onClick={() => (cart.items.length ? cart.holdBill() : d.setShowHeldBills(true))}
+          title={cart.items.length ? 'พักบิลนี้ไว้ก่อน (F10)' : 'เปิดบิลที่พักไว้ และออเดอร์ออนไลน์ที่รอชำระ (F10)'}
         >
           <PauseCircle className="w-5 h-5 text-slate-600" />
-          <span>พักบิล</span>
+          <span>{cart.items.length ? 'พักบิล' : `บิลพัก${heldBadge ? ` (${heldBadge})` : ''}`}</span>
         </Button>
         <Button
           className="h-14 bg-primary text-white font-extrabold text-base sm:text-lg shadow-lg shadow-primary/20 hover:bg-primary/90 flex items-center justify-center gap-2"

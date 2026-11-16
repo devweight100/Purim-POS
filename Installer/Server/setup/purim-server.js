@@ -40,6 +40,16 @@ function say(msg) {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** A KEY=value line of backend/.env ('' when missing). */
+function backendEnv(key) {
+  try {
+    const line = fs.readFileSync(path.join(backendDir, '.env'), 'utf8').split(/\r?\n/).find((l) => l.trim().startsWith(key + '='));
+    return line ? line.slice(line.indexOf('=') + 1).trim().replace(/^"|"$/g, '') : '';
+  } catch {
+    return '';
+  }
+}
+
 function lanIps() {
   const out = [];
   for (const [name, list] of Object.entries(os.networkInterfaces())) {
@@ -275,7 +285,9 @@ async function main() {
     'frontend',
     frontendDir,
     [path.join('node_modules', 'next', 'dist', 'bin', 'next'), 'start', '-H', '0.0.0.0', '-p', String(FRONT_PORT)],
-    { NODE_ENV: 'production' },
+    // online shop: the shop's public host name (backend/.env, written by setup-cloudflare-tunnel.ps1) is internet
+    // traffic for the web server too (only /shop is served for it)
+    { NODE_ENV: 'production', SHOP_PUBLIC_HOST: process.env.SHOP_PUBLIC_HOST || backendEnv('SHOP_PUBLIC_HOST') || '' },
   );
 
   for (let i = 0; i < 60; i++) {
