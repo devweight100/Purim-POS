@@ -9,7 +9,7 @@ Branch `ccr-8f8b0741-si1a0o`. Offline generator, no bank API. Payment is still c
 3. [x] Frontend QR renderer (`qrcode-generator` 2.0.4 exact, MIT, no deps; `lib/promptpay-qr.ts`, `components/common/PromptPayQr.tsx` SVG with data-payload) + accounts form (type, ID, live ฿1.00 preview, upload area now a button). `jsqr` 1.4.0 (dev) decodes in tests.
 4. [x] POS QR payment (amount = numpad amount or bill total), split (QR portion only; hint when 0), PayDebtModal (amount being paid; image fallback) use `PromptPayQr` when the account has a PromptPay ID. No other receive-payment dialog shows a bank QR (orders page "change payment method" has no QR). Money recorded unchanged.
 5. [x] Playwright `e2e/14-promptpay.spec.ts` (4 tests): account form (checksum error, ฿1.00 preview decoded), QR sale (74.50, numpad -> 80.00, manual confirm, recorded QR 74.50), split (QR for transfer part), debt payment (111.75, partial 50). QR screenshots decoded with jsQR. Layout at 3 sizes; PayDebtModal method buttons 6 px -> 8 px apart.
-6. [ ] Full verification, PROJECT_STATUS, screenshot.
+6. [x] Full verification (see PROJECT_STATUS 2026-11-16): backend tsc, jest 139, e2e 69/69, empty migration diff, frontend tsc, eslint 0 errors, vitest 198, next build, Playwright 41/41. Screenshot of the POS QR at 1366x768 taken.
 
 ## Test vectors
 - crc16("123456789") = 0x29B1.
