@@ -12,7 +12,7 @@ import { onlineLineTotal, onlineOrderTotals, ONLINE_STATUS_LABELS, parseDelivery
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { onlineOrderCartItems } from './PosOnlineOrders';
+import { onlineOrderCartItems } from '@/lib/online-order-cart';
 
 interface DetailItem {
   id?: string;
