@@ -57,9 +57,33 @@ picking slip "ใบจัดของ" (names, units, quantities, customer; NO 
 ### Progress
 1. [x] Backend claim lock + one-bill link + picking slip data; e2e block "claim lock + one POS bill per online order"
    (concurrent claim, refusals, manager takeover audit, reprint count, other-terminal refusal, concurrent checkout).
-2. [ ] Frontend: shared slip `PickingSlipView` + print; buttons (online orders, POS cart / held bills / history,
-   orders page); claim badge + realtime.
-3. [ ] Tests (vitest slip content, Playwright two cashiers + print payloads), slip images, full verification.
+2. [x] Frontend: online orders page claim bar ("รับจัดออเดอร์นี้" / "ปล่อยงาน" / managers "ปลดล็อก/โอนมาที่ฉัน" with a
+   confirmation), colored badge "กำลังจัดโดย <ชื่อ> · เวลา" on rows and detail (live via the realtime `onlineOrder`
+   event), new unclaimed orders highlighted (amber, thick left edge, "ยังไม่มีคนจัด"); every action button stays
+   visible but disabled for others, the reason is shown. POS held-bills sheet: holder shown, "เปิดบิล" disabled for
+   others; opening on a second terminal asks before moving the bill.
+3. [x] Tests + verification (see PROJECT_STATUS 2026-11-16 "Claim lock + picking slip").
+
+### Picking slip "ใบจัดของ"
+- Nothing like it existed. One layout: `components/pos/PickingSlipView.tsx` (built from `slip-parts.tsx`, 288 CSS px
+  = the receipt slip width; the desktop app prints it as an ESC/POS raster picture, 576 dots for 80 mm, the same
+  layout scaled to 384 dots for 58 mm; a plain browser prints it as a picture through the print preview, like the
+  receipts). Data mappers `lib/picking-slip.ts` (cart / held bill / completed bill / online order), entry points
+  `lib/pos/picking.ts` and `lib/online-order-actions.ts`.
+- Content: shop name (small), "ใบจัดของ", reprint marker, document no. (บิลขาย / บิลพัก / ออเดอร์ออนไลน์), date-time
+  (Buddhist year), customer, online orders: "ส่ง (ร้านไปส่ง)" / "รับเองที่ร้าน" + phone + address (delivery), note;
+  per line a drawn tick box, name (wraps), quantity + unit (large), line note; bundles list their parts (each with a
+  tick box, quantity = per bundle x bundles x unit factor; parts from the bill snapshot, else the POS catalogue);
+  "รวม N รายการ"; "ผู้จัด ____ ผู้ตรวจ ____". No prices, money totals or VAT. Service lines (ค่าส่ง: SKU
+  SYS-DELIVERY-FEE or `products.is_service`) are left out.
+- Where: POS cart "ใบจัดของ" button (touch: cart header; list view: bottom bar) and F8 on both screens; held-bills
+  sheet per bill; POS sales history ⋯ "พิมพ์ใบจัดของ"; orders page bill detail "พิมพ์ใบจัดของ"; online order detail
+  "พิมพ์ใบจัดของ" (claims the order; server counts prints, 2nd+ marked "พิมพ์ซ้ำ"). A cart / held bill that pays an
+  online order prints that order's slip through the server. Reprints from history / orders page are marked "พิมพ์ซ้ำ".
+- Setting: ตั้งค่า > รูปแบบใบเสร็จ (สลิป) "พิมพ์ใบจัดของอัตโนมัติหลังขาย" (`receiptOptions.slip.autoPickingSlip`,
+  default off): prints the sale's slip 1.5 s after the receipt.
+- Limit: the desktop raster renderer caps one picture at 30,000 dots (~2.5 m of paper at 80 mm, about 500 short
+  lines); same limit as the receipts.
 
 ## Next / open
 - Owner: register LINE OA + LINE Developers + domain + tunnel (guide), set PromptPay ID on the default bank, set ค่าส่ง on members, choose level names.
