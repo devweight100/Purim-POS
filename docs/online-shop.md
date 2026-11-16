@@ -25,16 +25,17 @@ Branch `ccr-8f8b0741-si1a0o`. Owner request 2026-11-16. A later agent: read this
 Detection is fail-closed: anything that looks like it came through Cloudflare is public. A LAN request that spoofs those headers only restricts itself.
 
 ## Plan / done
-1. [x] Schema + migration (`online_orders`, `online_order_items`, `line_link_requests`, `shop_visitors`, `online_shop_config`, `products.is_service` + seeded ค่าส่ง product), shared calculations + tests.
-2. [x] Backend: exposure middleware + gateway, online-shop module (public + admin), LINE service (verify, push, PNG QR), checkout link, service product handling, customer deliveryFee validation, realtime entities. e2e.
-3. [x] Frontend: root layout split (back office chrome in `(backoffice)` group), shop pages (mobile, big UI).
-4. [ ] Back office: /online-orders page (badge, sound, toast), link requests, POS held-bills section, settings section (LINE), customer field ค่าส่ง.
-5. [ ] Installer: Thai guide (LINE OA, LINE Developers, LIFF, domain on Cloudflare, cloudflared service) + config/script.
-6. [ ] Playwright (shop mobile 390x844, back office 3 sizes), screenshots, full verification, PROJECT_STATUS.
+1. [x] Schema + migration `20261201000000_online_shop` (`online_orders`, `online_order_items`, `line_link_requests`, `shop_visitors`, `online_shop_config`, `products.is_service`), shared rules `shared/src/online-shop.ts` + `shared/src/public-exposure.ts` with tests (`shared/test/online-shop.spec.ts`, `public-exposure.spec.ts`). The ค่าส่ง product is created on first use (`OnlineShopService.ensureDeliveryProduct`), not by the migration.
+2. [x] Backend `backend/src/online-shop/`: `public-exposure.ts` (middleware in AppModule + first `app.use` in main.ts, gateway port), `online-shop.controller.ts` (public `/api/public/shop/*`: config, session, me, categories, products, images, quote, orders, orders/:id, cancel, link, qr png; staff `/api/online-shop/*`: counts, orders list/detail/edit/accept/reject/status/pos, link-requests + decide, customers/:id/line, unlink, config GET/PUT + test-line), `line.service.ts` (verify / push / bot info; `LINE_API_BASE` env for tests), `shop-session.ts` (HMAC session + rate limiter), `qr-png.ts` (PNG encoder), `online-order-payment.ts` (checkout link / void unlink). Checkout: `onlineOrderId`; service products skip FIFO / stock logs (checkout, void, returns) and stock filters / counts / valuation. Customer `deliveryFee` validated in the customers controller (profile JSON). Realtime entity `onlineOrder`.
+3. [x] Frontend: root layout is now minimal; back office chrome (Providers, ClientDbSync, document search, AuthGuard) moved to `app/(backoffice)/layout.tsx` (all old routes moved into that group, URLs unchanged). Shop: `app/shop/*` (+ `components/shop/*`, `lib/shop/*`). `proxy.ts` runs on every request and 404s public requests outside the allow list.
+4. [x] Back office: `/online-orders` (+ `components/online-orders/*`), sidebar item + badge, `OnlineOrderWatcher` (toast + chime, in back office layout and POS), POS held-bills sheet section + "บิลพัก (n)" button on the classic POS when the cart is empty, cart `onlineOrderId` (persisted, held bills keep it), settings tab `online` (ADMIN), customer form `CustomerOnlineFields`.
+5. [x] Installer: `Installer/Server/คู่มือร้านออนไลน์ LINE (Cloudflare Tunnel).txt`, `Installer/Server/setup/setup-cloudflare-tunnel.ps1` (remotely-managed tunnel token -> Windows service, SHOP_PUBLIC_HOST in backend/.env, gateway self-check), `purim-server.js` passes SHOP_PUBLIC_HOST to Next. Not added to the server control app (ServerControl.cs) — the script + guide are enough for a one-time setup.
+6. [x] Tests: backend e2e block "online shop (LINE LIFF)" in `backend/test/store-flow.e2e-spec.ts` (9 tests), jest `public-exposure.spec.ts`, vitest `online-order-cart.test.ts`, Playwright `frontend/e2e/15-online-shop.spec.ts` (4 tests). Verification numbers in PROJECT_STATUS.
 
-## Next
-- Step 4 (back office page, POS held-bills section, settings section, customer field). Dev servers: scratchpad/shop/seed-demo.mjs fills a demo DB.
-- Backend e2e: online shop block in `backend/test/store-flow.e2e-spec.ts` (79/79 at step 2); exposure unit tests `backend/src/online-shop/public-exposure.spec.ts`.
+## Next / open
+- Owner: register LINE OA + LINE Developers + domain + tunnel (guide), set PromptPay ID on the default bank, set ค่าส่ง on members, choose level names.
+- Not done: customer cannot edit an order after placing it (cancel while ใหม่ and re-order); no stock reservation for online orders (stock is taken when the POS bill is paid); PromptPay QR not on printed documents; ServerControl.cs has no tunnel button.
+- Rate limits are in memory (one backend process): 240 public requests / min / IP, 30 sessions / min / IP, 6 orders / 10 min / LINE user and 30 / IP, 5 link requests / hour.
 
 ## Setup guide
-See `Installer/Server/คู่มือร้านออนไลน์ LINE (Cloudflare Tunnel).txt` (written in step 5).
+See `Installer/Server/คู่มือร้านออนไลน์ LINE (Cloudflare Tunnel).txt`.

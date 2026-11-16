@@ -41,7 +41,7 @@ const navGroups: NavGroup[] = [
     title: 'งานขาย & ลูกค้า',
     icon: ShoppingCart,
     items: [
-      { href: '/online-orders', label: 'ออเดอร์ออนไลน์ (LINE)', icon: ShoppingBag },
+      { href: '/online-orders', label: 'ออเดอร์ออนไลน์', icon: ShoppingBag },
       { href: '/orders', label: 'ประวัติการขาย (บิล)', icon: ClipboardList },
       { href: '/customers', label: 'ลูกค้าสมาชิก', icon: Users },
       { href: '/debts', label: 'ลูกหนี้ & ค้างชำระ', icon: Receipt },
