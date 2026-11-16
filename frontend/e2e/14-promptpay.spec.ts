@@ -169,8 +169,9 @@ test('cashier sells with QR: the QR locks the bill total, follows the numpad amo
     // no automatic confirmation: the sale is saved only by the cashier's button (amount recorded as before)
     await dlg.getByRole('button', { name: 'ลูกค้าชำระเงินเรียบร้อยแล้ว' }).click();
     await expect(page.getByRole('dialog').filter({ hasText: 'ชำระเงินสำเร็จ!' })).toBeVisible();
-    const orders = await api<{ data?: { totalAmount: string; payments: { method: string; amount: string | number }[] }[] }>('GET', `/orders?limit=5&search=${encodeURIComponent(NAME)}`, adminToken);
-    const list = Array.isArray(orders) ? orders : orders.data ?? [];
+    type Row = { totalAmount: string; payments: { method: string; amount: string | number }[] };
+    const orders = await api<Row[] | { data?: Row[] }>('GET', `/orders?limit=5&search=${encodeURIComponent(NAME)}`, adminToken);
+    const list: Row[] = Array.isArray(orders) ? orders : orders.data ?? [];
     expect(list.length).toBeGreaterThan(0);
     expect(Number(list[0].totalAmount)).toBe(74.5);
     expect(list[0].payments.map((p) => [p.method, Number(p.amount)])).toEqual([['QR_PROMPTPAY', 74.5]]);

@@ -237,7 +237,7 @@ export function PayDebtModal({
             <div className="flex justify-between items-center">
               <label className="text-xs font-bold text-slate-800">ระบุจำนวนเงินที่รับชำระ (บาท):</label>
               {payMode === 'PARTIAL' && (
-                <div className="flex gap-1">
+                <div className="flex gap-btn">
                   {[25, 50, 75, 100].map((pct) => (
                     <button
                       key={pct}
@@ -276,7 +276,7 @@ export function PayDebtModal({
           {/* Payment Method Selector */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-700">ช่องทางการรับเงิน:</label>
-            <div className="grid grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-4 gap-btn">
               {[
                 { id: 'CASH' as PaymentMethodType, label: 'เงินสด', icon: Banknote },
                 { id: 'QR_PROMPTPAY' as PaymentMethodType, label: 'QR โอน', icon: QrCode },
