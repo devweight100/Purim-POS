@@ -1,8 +1,18 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { normalizePromptPayId, type PromptPayIdType } from '../../../shared/src/promptpay';
 
-type BankInput = { bankName?: string; accountName?: string; accountNumber?: string; branch?: string | null; qrCodeUrl?: string | null; isDefault?: boolean };
+type BankInput = {
+  bankName?: string;
+  accountName?: string;
+  accountNumber?: string;
+  branch?: string | null;
+  qrCodeUrl?: string | null;
+  promptpayType?: PromptPayIdType | null;
+  promptpayId?: string | null;
+  isDefault?: boolean;
+};
 
 /** Validate a bank account body. `partial` = PATCH (only the given fields, but at least one). */
 export function cleanBankInput(body: any, partial: boolean): BankInput {
@@ -26,6 +36,24 @@ export function cleanBankInput(body: any, partial: boolean): BankInput {
     if (body[key] === undefined) continue;
     if (body[key] !== null && typeof body[key] !== 'string') throw new BadRequestException('ข้อมูลบัญชีธนาคารไม่ถูกต้อง');
     out[key] = body[key] === null ? null : body[key].trim() || null;
+  }
+  // PromptPay ID (optional): sent as a pair; an empty / null ID (or type) removes it.
+  if (body.promptpayType !== undefined || body.promptpayId !== undefined) {
+    const rawId = body.promptpayId;
+    const rawType = body.promptpayType;
+    if ((rawId !== undefined && rawId !== null && typeof rawId !== 'string') || (rawType !== undefined && rawType !== null && typeof rawType !== 'string')) {
+      throw new BadRequestException('ข้อมูลพร้อมเพย์ไม่ถูกต้อง');
+    }
+    if (rawId === null || rawType === null || (typeof rawId === 'string' && rawId.trim() === '')) {
+      out.promptpayType = null;
+      out.promptpayId = null;
+    } else {
+      if (rawId === undefined || rawType === undefined) throw new BadRequestException('กรุณาระบุทั้งประเภทและหมายเลขพร้อมเพย์');
+      const n = normalizePromptPayId(rawType, rawId);
+      if (!n.ok) throw new BadRequestException(n.error);
+      out.promptpayType = rawType as PromptPayIdType;
+      out.promptpayId = n.id;
+    }
   }
   if (body.isDefault !== undefined) {
     if (typeof body.isDefault !== 'boolean') throw new BadRequestException('ค่าบัญชีหลักไม่ถูกต้อง');

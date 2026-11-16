@@ -2052,4 +2052,42 @@ d('store flow (e2e)', () => {
       }
     });
   });
+
+  describe('bank account PromptPay ID (QR with the amount locked)', () => {
+    it('stores a validated ID, rejects bad ones, clears it, cashier cannot set it', async () => {
+      const created = (await api('post', '/bank-accounts', A, { bankName: 'พร้อมเพย์ (PromptPay)', accountName: 'ร้าน E2E', accountNumber: '999-0-00001-1', promptpayType: 'MOBILE', promptpayId: '081-234-5678' }).expect(201)).body;
+      expect(created.promptpayType).toBe('MOBILE');
+      expect(created.promptpayId).toBe('0812345678');
+      const listed = (await api('get', '/bank-accounts', C).expect(200)).body.find((b: any) => b.id === created.id);
+      expect(listed).toMatchObject({ promptpayType: 'MOBILE', promptpayId: '0812345678' });
+
+      // 13-digit ID with a wrong check digit, wrong length, unknown type, half a pair
+      await api('patch', `/bank-accounts/${created.id}`, A, { promptpayType: 'NATIONAL_ID', promptpayId: '1234567890122' }).expect(400);
+      await api('patch', `/bank-accounts/${created.id}`, A, { promptpayType: 'EWALLET', promptpayId: '12345' }).expect(400);
+      await api('patch', `/bank-accounts/${created.id}`, A, { promptpayType: 'BANK', promptpayId: '0812345678' }).expect(400);
+      await api('patch', `/bank-accounts/${created.id}`, A, { promptpayId: '0812345678' }).expect(400);
+      await api('patch', `/bank-accounts/${created.id}`, A, { promptpayType: 'MOBILE', promptpayId: '0212345678' }).expect(400);
+      expect((await api('get', '/bank-accounts', A)).body.find((b: any) => b.id === created.id).promptpayId).toBe('0812345678');
+
+      const tax = (await api('patch', `/bank-accounts/${created.id}`, A, { promptpayType: 'NATIONAL_ID', promptpayId: '0-1055-36092-64-1' }).expect(200)).body;
+      expect(tax).toMatchObject({ promptpayType: 'NATIONAL_ID', promptpayId: '0105536092641' });
+      // other fields can change without touching the ID
+      expect((await api('patch', `/bank-accounts/${created.id}`, A, { accountName: 'ร้าน E2E 2' }).expect(200)).body.promptpayId).toBe('0105536092641');
+
+      await api('patch', `/bank-accounts/${created.id}`, C, { promptpayType: 'MOBILE', promptpayId: '0812345678' }).expect(403);
+
+      const cleared = (await api('patch', `/bank-accounts/${created.id}`, A, { promptpayType: null, promptpayId: '' }).expect(200)).body;
+      expect(cleared.promptpayType).toBeNull();
+      expect(cleared.promptpayId).toBeNull();
+
+      // the table keeps the pair together even outside the API
+      const db = new PrismaClient();
+      try {
+        await expect(db.$executeRawUnsafe(`UPDATE bank_accounts SET promptpay_id = '0812345678' WHERE id = $1`, created.id)).rejects.toThrow();
+      } finally {
+        await db.$disconnect();
+      }
+      await api('delete', `/bank-accounts/${created.id}`, A).expect(200);
+    });
+  });
 });

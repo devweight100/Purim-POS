@@ -11,6 +11,12 @@ datasource db {
 // ENUMS
 // ──────────────────────────────────────────────
 
+enum PromptPayIdType {
+  MOBILE
+  NATIONAL_ID
+  EWALLET
+}
+
 enum UserRole {
   ADMIN
   MANAGER
@@ -918,6 +924,10 @@ model BankAccount {
   accountNumber String   @unique @map("account_number")
   branch        String?
   qrCodeUrl     String?  @map("qr_code_url")
+  /// PromptPay ID for a generated QR with the amount locked (both set or both null; digits only,
+  /// mobile as 10 digits starting with 0). Without it the POS shows the uploaded QR image.
+  promptpayType PromptPayIdType? @map("promptpay_type")
+  promptpayId   String?  @map("promptpay_id")
   isDefault     Boolean  @default(false) @map("is_default")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
