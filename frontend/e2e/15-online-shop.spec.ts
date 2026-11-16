@@ -174,6 +174,10 @@ test('back office: badge, order detail, delivery fee, accept; the page fits 3 wi
   await expect(detail).toContainText('รับแล้ว');
   await expect(detail).toContainText('ไม่ได้ส่ง LINE (โปรไฟล์ทดสอบ)');
   await expect(detail.getByRole('button', { name: 'รับเงินที่หน้าขาย' })).toBeVisible();
+  // accepting claimed the order for the admin ("กำลังจัด"); the cashier takes the payment: give it back
+  await expect(page.getByTestId('claim-bar')).toContainText('คุณกำลังจัด');
+  await detail.getByRole('button', { name: 'ปล่อยงาน' }).click();
+  await expect(page.getByTestId('claim-bar')).toContainText('ยังไม่มีใครรับจัด');
   for (const size of SIZES) {
     await page.setViewportSize(size);
     expect(await horizontalOverflow(page)).toEqual([]);
