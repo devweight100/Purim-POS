@@ -23,5 +23,29 @@ cancelled (a reason is required). Probably in the Electron desktop app.
 3. Playwright: reject with a typed reason, link request reject, finance/payables/debts reason, nested dialog typing,
    no native dialog event anywhere in those flows; layout at 3 sizes.
 
+## Fix
+- `components/common/ReasonDialog.tsx`: shared in-page reason dialog (focus in the field with the default text
+  selected, Enter confirms, Escape closes only this dialog, confirm disabled while blank when required, fresh field
+  each time, Enter does not bubble to row-nav lists / outer dialogs through the React portal).
+- `lib/ask-dialog.ts` + `components/common/AskDialogHost.tsx` (mounted in Providers): `await askReason({...})`
+  (string | null) and `await askConfirm({...})` (boolean) for the call sites that used prompt / confirm inline.
+- Replaced every native dialog in the back office / POS: prompts in LinkRequests (reject link, default text kept,
+  may be blank as before), RecurringPanel (skip), finance page (cancel ledger row, cancel expense), payables (cancel
+  voucher: confirm + prompt merged into one dialog with the same warning text and default reason; cancel bill),
+  debts (cancel payment receipt, opened over the history dialog); the online-order reject dialog now uses
+  ReasonDialog. Confirms: online order "เสร็จแล้ว" unpaid, move bill to this terminal (fetchPosPayload), LINE
+  unlink, LINE token delete, bulk product delete, customer delete, supplier duplicate / delete, supplier return
+  cancel / restore, bank account delete, payable rollback (page + bill detail). Same API calls and validation.
+- eslint `no-restricted-globals` / `no-restricted-properties` forbid prompt / confirm / alert in `src/` (the
+  customer shop `src/app/shop/**` keeps its one confirm: phones, not the desktop app).
+- Desktop app untouched (the web UI is served by the server, so installed desktop clients get the fix).
+
+## Verified
+- Electron (real X keys): "เสร็จแล้ว" -> in-page confirm, real Escape closes it, reject reason typed with real keys,
+  Enter cancels the order with the reason; no native dialog.
+- e2e/18-reason-dialogs.spec.ts (5 tests, fail on any native dialog), src/lib/ask-dialog.test.ts.
+
 ## Done / next
 - [x] reproduced (scratchpad scripts rsn/x2.js, rsn/e.js)
+- [x] fix + tests
+- [ ] full verification, PROJECT_STATUS
