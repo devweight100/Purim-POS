@@ -167,9 +167,10 @@ test('LINE link request: "ไม่อนุมัติ" asks for the note in t
 
 test('finance: cancel an expense with a typed reason', async ({ page }) => {
   const native = noNativeDialogs(page);
-  const accounts = await api<{ id: string; type: string }[]>('GET', '/finance/accounts', adminToken);
+  const accounts = await api<{ id: string; type: string; balance: number }[]>('GET', '/finance/accounts', adminToken);
   const safe = accounts.find((a) => a.type === 'CASH_SAFE')!;
-  await api('POST', '/finance/owner', adminToken, { kind: 'CAPITAL', accountId: safe.id, amount: 1000, clientId: randomUUID() });
+  // earlier specs may leave the safe below zero: put in enough for the expense
+  await api('POST', '/finance/owner', adminToken, { kind: 'CAPITAL', accountId: safe.id, amount: Math.ceil(Math.max(0, -safe.balance)) + 1000, clientId: randomUUID() });
   const cats = await api<{ id: string }[]>('GET', '/finance/expense-categories', adminToken);
   const desc = `ค่าน้ำแข็ง ${TAG}`;
   const exp = await api<{ id: string }>('POST', '/finance/expenses', adminToken, { categoryId: cats[0].id, accountId: safe.id, amount: 45, description: desc, clientId: randomUUID() });

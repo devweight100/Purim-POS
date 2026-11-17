@@ -48,4 +48,4 @@ cancelled (a reason is required). Probably in the Electron desktop app.
 ## Done / next
 - [x] reproduced (scratchpad scripts rsn/x2.js, rsn/e.js)
 - [x] fix + tests
-- [ ] full verification, PROJECT_STATUS
+- [x] full verification, PROJECT_STATUS (Playwright 59/59, vitest 230, jest 159, backend e2e 84/84)
