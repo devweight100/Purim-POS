@@ -31,7 +31,7 @@ export function horizontalOverflow(page: Page): Promise<string[]> {
 
 /**
  * Spacing rule (round 2): buttons / links / selects that are on screen keep >= 8 px from a neighbour on the same
- * row (or column) and >= 16 px from the window edge. Only what is really visible counts (elementFromPoint), the
+ * row (or column) and >= 16 px from the window edge. Only what is really visible counts (elementFromPoint, clipped by scrolling ancestors), the
  * back-office sidebar and toasts are left out. `within` limits the check to one area.
  */
 export function spacingIssues(page: Page, within?: string): Promise<string[]> {
@@ -39,8 +39,20 @@ export function spacingIssues(page: Page, within?: string): Promise<string[]> {
     const root: ParentNode = sel ? document.querySelector(sel) ?? document : document;
     const vw = document.documentElement.clientWidth;
     const vh = window.innerHeight;
+    // the part of an element its scrolling / clipping ancestors leave on screen (a cart row scrolled half under
+    // the list's top edge only counts with its visible half)
+    const shown = (el: Element) => {
+      let { left, top, right, bottom } = el.getBoundingClientRect();
+      for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+        const cs = getComputedStyle(p);
+        if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+        const c = p.getBoundingClientRect();
+        left = Math.max(left, c.left); top = Math.max(top, c.top); right = Math.min(right, c.right); bottom = Math.min(bottom, c.bottom);
+      }
+      return new DOMRect(left, top, Math.max(0, right - left), Math.max(0, bottom - top));
+    };
     const visible = (el: Element) => {
-      const r = el.getBoundingClientRect();
+      const r = shown(el);
       if (r.width < 2 || r.height < 2 || r.top < 0 || r.bottom > vh || r.left < 0 || r.right > vw) return false;
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
       return !!hit && (el === hit || el.contains(hit) || hit.contains(el));
@@ -50,7 +62,7 @@ export function spacingIssues(page: Page, within?: string): Promise<string[]> {
       .filter(visible);
     // inner controls of a row button (a card with unit buttons) are judged inside their own group only
     const name = (b: Element) => ((b.getAttribute('aria-label') || b.textContent || b.tagName) as string).trim().replace(/\s+/g, ' ').slice(0, 24);
-    const rects = all.map((b) => b.getBoundingClientRect());
+    const rects = all.map(shown);
     const issues: string[] = [];
     for (let i = 0; i < all.length; i++) {
       const a = rects[i];

@@ -165,8 +165,30 @@ test('list view: same flow, highlighted table row 1 and the "ล่าสุด:
       await page.waitForTimeout(300);
       // nothing may scroll sideways, the bottom shortcut bar included (owner: never, also at 1093x614)
       for (const o of await horizontalOverflow(page)) problems.push(`${size.width}x${size.height} overflow: ${o}`);
+      // bottom bar: every button on screen, >= 8 px apart, >= 16 px from the window edge; ชำระเงิน one press away
+      for (const s of await spacingIssues(page, '[data-testid="pos-list-action-bar"]')) problems.push(`${size.width}x${size.height} bar spacing: ${s}`);
+      const bar = page.getByTestId('pos-list-action-bar');
+      for (const name of ['ประวัติ', 'ลูกค้า', 'สิทธิ์เคลม', 'เคลียร์', 'พักบิล', 'ใบจัดของ', 'ดูบิลพัก', 'เปิดลิ้นชัก', 'ปิดกะ', 'ออกจากระบบ']) {
+        if (!(await bar.getByRole('button', { name: new RegExp(`^${name}`) }).isVisible())) problems.push(`${size.width}x${size.height} bar: ${name} not visible`);
+      }
+      if (!(await bar.getByLabel('รูปแบบหน้าจอขาย').isVisible())) problems.push(`${size.width}x${size.height} bar: view select not visible`);
+      if (!(await page.getByRole('button', { name: /^ชำระเงิน/ }).isVisible())) problems.push(`${size.width}x${size.height} ชำระเงิน not visible`);
+      if (SHOTS && size.width === 1093) await page.screenshot({ path: path.join(SHOTS, 'list-1093x614-bottom-bar.png') });
     }
     expect(problems).toEqual([]);
+    await page.setViewportSize(SIZES[2]);
+    // the bar's shortcuts still work at the narrow size
+    await page.keyboard.press('F9');
+    const drawer = page.getByRole('dialog').filter({ hasText: 'เปิดลิ้นชัก / จัดการเงินสด' });
+    await expect(drawer).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(drawer).toBeHidden();
+    await page.keyboard.press('F12');
+    const payment = page.getByRole('dialog').filter({ hasText: 'เลือกช่องทางการชำระเงิน' });
+    await expect(payment).toBeVisible();
+    expect(await horizontalOverflow(page)).toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(payment).toBeHidden();
     await page.setViewportSize(SIZES[0]);
     await page.keyboard.press('Control+e');
     await expect(lastRow(page)).toHaveCount(0);
