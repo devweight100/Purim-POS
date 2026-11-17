@@ -174,10 +174,10 @@ test('back office: badge, order detail, delivery fee, accept; the page fits 3 wi
   await expect(detail).toContainText('รับแล้ว');
   await expect(detail).toContainText('ไม่ได้ส่ง LINE (โปรไฟล์ทดสอบ)');
   await expect(detail.getByRole('button', { name: 'รับเงินที่หน้าขาย' })).toBeVisible();
-  // accepting claimed the order for the admin ("กำลังจัด"); the cashier takes the payment: give it back
+  // accepting claimed the order for the admin ("กำลังจัด"); the cashier may take the payment anyway (the claim
+  // covers picking only), so it stays with the admin, who sees "จัดของเสร็จ"
   await expect(page.getByTestId('claim-bar')).toContainText('คุณกำลังจัด');
-  await detail.getByRole('button', { name: 'ปล่อยงาน' }).click();
-  await expect(page.getByTestId('claim-bar')).toContainText('ยังไม่มีใครรับจัด');
+  await expect(page.getByTestId('claim-bar').getByRole('button', { name: 'จัดของเสร็จ' })).toBeEnabled();
   for (const size of SIZES) {
     await page.setViewportSize(size);
     expect(await horizontalOverflow(page)).toEqual([]);
@@ -224,8 +224,11 @@ test('cashier opens the online order from the POS held bills and takes cash; the
     const sheet = page.getByRole('dialog').filter({ hasText: 'ออเดอร์ออนไลน์ (LINE) รอชำระ' });
     const row = sheet.getByTestId('pos-online-order').filter({ hasText: state.orderNo! });
     await expect(row).toContainText('฿3,260');
+    // the admin is still picking it: a warning, not a block
+    await expect(row.getByTestId('picking-note')).toContainText('ยังไม่ได้จัดของ · กำลังจัดโดย');
     await row.getByRole('button', { name: 'เปิดบิล' }).click();
     await expect(page.getByTestId('pos-online-banner')).toContainText(state.orderNo!);
+    await expect(page.getByTestId('pos-online-banner').getByTestId('picking-note')).toContainText('ยังไม่ได้จัดของ');
     await expect(page.locator('#pos-cart')).toContainText('ค่าส่ง');
     await page.getByRole('button', { name: 'ชำระเงิน' }).last().click();
     const pay = page.getByRole('dialog').filter({ hasText: 'เลือกช่องทางการชำระเงิน' });

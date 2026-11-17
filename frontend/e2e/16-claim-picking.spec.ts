@@ -9,7 +9,8 @@ import { horizontalOverflow, SIZES, spacingIssues } from './layout';
 /**
  * Claim lock + picking slip (docs/online-shop.md "Claim lock + picking slip"):
  * two cashiers in two browsers look at the same online order; one claims it, the other sees "กำลังจัดโดย …"
- * live (no reload) with the action buttons disabled. The holder prints the picking slip (desktop app path: the
+ * live (no reload) with the picking buttons disabled (payment stays open: owner 2026-11-17 "picking is for the
+ * picker"). A picks and presses "จัดของเสร็จ", B opens the bill, takes the cash and marks it กำลังไปส่ง / เสร็จ. The holder prints the picking slip (desktop app path: the
  * HTML job sent to the slip printer is captured and rendered at 80 mm and 58 mm); the POS prints the cart's slip
  * with F8 (bundle parts, no prices) and a reprint from the sales history; a plain browser prints the slip as a
  * picture (print preview path); a 40-line order with long names wraps and continues on the roll.
@@ -205,7 +206,7 @@ test('two cashiers: one claims, the other sees "กำลังจัดโด�
   for (const name of ['รับออเดอร์', /พิมพ์ใบจัดของ/, /ยกเลิกออเดอร์/]) await expect(b.getByRole('button', { name })).toBeDisabled();
   await expect(b.getByRole('button', { name: 'รับจัดออเดอร์นี้' })).toHaveCount(0);
   await expect(b.getByRole('button', { name: 'ปลดล็อก/โอนมาที่ฉัน' })).toHaveCount(0); // cashier: no takeover
-  await expect(b).toContainText('ทำรายการไม่ได้จนกว่าจะปล่อยงาน');
+  await expect(b).toContainText('งานจัดของทำไม่ได้จนกว่าจะปล่อยงาน');
   await expect(b.getByLabel('ค่าส่ง')).toHaveCount(0); // no edits
   for (const size of SIZES) {
     await B.page.setViewportSize(size);
@@ -243,17 +244,20 @@ test('the holder prints the picking slip (desktop raster job): no prices, delive
   await expect(a).toContainText('รับแล้ว');
   const b = B.page.getByTestId('online-order-detail');
   await expect(b).toContainText('รับแล้ว');
-  await expect(b.getByRole('button', { name: 'รับเงินที่หน้าขาย' })).toBeDisabled();
+  // picking stays A's; taking the payment does not
+  await expect(b.getByRole('button', { name: 'จัดของเสร็จ' })).toBeDisabled();
+  await expect(b.getByRole('button', { name: 'รับเงินที่หน้าขาย' })).toBeEnabled();
+  await expect(a.getByRole('button', { name: 'จัดของเสร็จ' })).toBeEnabled();
 });
 
-test('POS: the other cashier cannot open the claimed order as a bill; F8 prints the cart slip with bundle parts; history reprint', async ({ browser }) => {
-  // cashier 2 (plain browser): held bills show who holds the order, "เปิดบิล" disabled
+test('POS: the other cashier sees "ยังไม่ได้จัดของ · กำลังจัดโดย …" and may open the bill; F8 prints the cart slip with bundle parts; history reprint', async ({ browser }) => {
+  // cashier 2 (plain browser): held bills show who is picking the order; "เปิดบิล" stays enabled (a warning only)
   await B.page.goto('/pos');
   await ensureShift(B.page);
   await B.page.getByRole('button', { name: /^บิลพัก/ }).click();
   const sheetRow = B.page.getByRole('dialog').getByTestId('pos-online-order').filter({ hasText: orders.short.orderNo });
-  await expect(sheetRow).toContainText(`กำลังจัดโดย ${HOLDER}`);
-  await expect(sheetRow.getByRole('button', { name: 'เปิดบิล' })).toBeDisabled();
+  await expect(sheetRow.getByTestId('picking-note')).toHaveText(new RegExp(`ยังไม่ได้จัดของ · กำลังจัดโดย ${HOLDER}`));
+  await expect(sheetRow.getByRole('button', { name: 'เปิดบิล' })).toBeEnabled();
   await B.page.keyboard.press('Escape');
 
   // cashier 1 (desktop app): cart with a bundle -> F8
@@ -299,6 +303,66 @@ test('POS: the other cashier cannot open the claimed order as a bill; F8 prints 
   const fromOrders = await capturePrint(A.page, () => A.page.getByRole('dialog').last().getByRole('button', { name: 'พิมพ์ใบจัดของ' }).click());
   expect(fromOrders.html).toContain(orderNumber);
   expect(fromOrders.html).toContain('พิมพ์ซ้ำ');
+});
+
+test('A presses "จัดของเสร็จ"; B opens the bill, takes the cash and hands over (กำลังไปส่ง / เสร็จ) without any claim', async () => {
+  await A.page.goto('/online-orders');
+  await A.page.getByTestId('online-order-row').filter({ hasText: orders.short.orderNo }).click();
+  const a = A.page.getByTestId('online-order-detail');
+  await expect(a).toContainText(orders.short.orderNo);
+  // keyboard: the button is reachable and pressed with Enter
+  await a.getByRole('button', { name: 'จัดของเสร็จ' }).focus();
+  await A.page.keyboard.press('Enter');
+  await expect(A.page.getByTestId('claim-bar')).toContainText(`จัดโดย ${HOLDER}`);
+  await expect(a).toContainText('จัดเสร็จ รอรับเงิน/รอส่ง');
+  await expect(a.getByRole('button', { name: 'จัดของเสร็จ' })).toHaveCount(0);
+  for (const size of SIZES) {
+    await A.page.setViewportSize(size);
+    expect(await horizontalOverflow(A.page)).toEqual([]);
+    expect(await spacingIssues(A.page, 'main')).toEqual([]);
+  }
+  await A.page.setViewportSize({ width: 1366, height: 768 });
+  if (OUT) save('online-orders-picked-1366x768.png', await A.page.screenshot());
+
+  // B: held bills say who picked it; open, pay cash
+  const page = B.page;
+  await page.goto('/pos');
+  await ensureShift(page);
+  await page.getByRole('button', { name: /^บิลพัก/ }).click();
+  const sheet = page.getByRole('dialog').filter({ hasText: 'ออเดอร์ออนไลน์ (LINE) รอชำระ' });
+  const row = sheet.getByTestId('pos-online-order').filter({ hasText: orders.short.orderNo });
+  await expect(row.getByTestId('picking-note')).toContainText(`จัดโดย ${HOLDER}`);
+  for (const size of SIZES) {
+    await page.setViewportSize(size);
+    expect(await horizontalOverflow(page)).toEqual([]);
+  }
+  await page.setViewportSize({ width: 1366, height: 768 });
+  if (OUT) save('pos-held-bills-picked-1366x768.png', await page.screenshot());
+  await row.getByRole('button', { name: 'เปิดบิล' }).click();
+  await expect(page.getByTestId('pos-online-banner').getByTestId('picking-note')).toContainText(`จัดโดย ${HOLDER}`);
+  await page.getByRole('button', { name: 'ชำระเงิน' }).last().click();
+  const pay = page.getByRole('dialog').filter({ hasText: 'เลือกช่องทางการชำระเงิน' });
+  await expect(pay).toContainText('1,617.50'); // 3 x 165.50 + 12 x 89.25 + ค่าส่ง 50
+  await pay.getByRole('button', { name: /เงินสด \(Cash\)/ }).click();
+  const cash = page.getByRole('dialog').filter({ hasText: 'รับชำระด้วยเงินสด' });
+  await page.keyboard.type('2000');
+  await cash.getByRole('button', { name: /ยืนยันรับเงินสด/ }).click();
+  await expect(page.getByRole('dialog').filter({ hasText: 'ชำระเงินสำเร็จ!' })).toBeVisible();
+  const d = await api<{ status: string; posOrder: { totalAmount: number } | null; picked: { name: string } | null; claim: unknown }>('GET', `/online-shop/orders/${orders.short.id}`, adminToken);
+  expect(d).toMatchObject({ status: 'READY', posOrder: { totalAmount: 1617.5 }, picked: { name: HOLDER }, claim: null });
+
+  // B hands it over: delivery steps need no claim
+  await page.goto('/online-orders');
+  await page.getByTestId('online-order-row').filter({ hasText: orders.short.orderNo }).click();
+  const b = page.getByTestId('online-order-detail');
+  await expect(b).toContainText('รับเงินแล้ว');
+  await b.getByRole('button', { name: 'กำลังไปส่ง' }).click();
+  await expect(b.getByRole('button', { name: 'กำลังไปส่ง' })).toHaveCount(0);
+  await expect(b.getByText('กำลังไปส่ง', { exact: true })).toBeVisible();
+  await b.getByRole('button', { name: 'เสร็จแล้ว' }).click();
+  await expect(b.getByRole('button', { name: 'เสร็จแล้ว' })).toHaveCount(0);
+  await expect(b.getByText('เสร็จแล้ว', { exact: true })).toBeVisible();
+  await expect(b.getByTestId('picked-note')).toContainText(`จัดโดย ${HOLDER}`);
 });
 
 test('plain browser: F8 prints the slip as a picture through the print preview', async () => {

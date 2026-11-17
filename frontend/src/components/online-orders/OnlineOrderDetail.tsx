@@ -464,6 +464,7 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
 
       {heldByOther && <p className="rounded-lg bg-rose-50 p-2 text-sm font-semibold text-rose-800" role="status">{lockReason}</p>}
       {d.rejectReason && <p className="rounded-lg bg-rose-50 p-2 text-sm text-rose-800">เหตุผลที่ยกเลิก: {d.rejectReason}</p>}
+      {d.picked && !isOpen && <p data-testid="picked-note" className="rounded-lg bg-emerald-50 p-2 text-sm font-semibold text-emerald-900">✓ {pickedLabel(d.picked)}</p>}
       {d.posOrder && <p className="rounded-lg bg-emerald-50 p-2 text-sm text-emerald-900">รับเงินแล้ว บิล {d.posOrder.orderNumber} ({formatCurrency(d.posOrder.totalAmount)})</p>}
       <p className="text-xs text-slate-500">LINE: {d.lineNotice || 'ยังไม่มีการแจ้ง'}</p>
 
