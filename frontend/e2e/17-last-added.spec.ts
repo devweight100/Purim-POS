@@ -163,8 +163,8 @@ test('list view: same flow, highlighted table row 1 and the "ล่าสุด:
     for (const size of SIZES) {
       await page.setViewportSize(size);
       await page.waitForTimeout(300);
-      // the list view's bottom shortcut bar scrolls sideways by design (overflow-x-auto) at 1093 px - unchanged here
-      for (const o of await horizontalOverflow(page)) if (!o.startsWith('div.bg-white border-t border-slate-200 px-3')) problems.push(`${size.width}x${size.height} overflow: ${o}`);
+      // nothing may scroll sideways, the bottom shortcut bar included (owner: never, also at 1093x614)
+      for (const o of await horizontalOverflow(page)) problems.push(`${size.width}x${size.height} overflow: ${o}`);
     }
     expect(problems).toEqual([]);
     await page.setViewportSize(SIZES[0]);
