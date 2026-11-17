@@ -25,6 +25,9 @@ import { PosLogoutButton } from '@/components/pos/PosLogoutButton';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { backOfficeHomeFor } from '@/lib/permissions';
 import { formatQty, subQty } from '@/lib/qty';
+import { useLastTouchedRow } from '@/lib/pos/use-last-touched-row';
+import { cartLineKey } from '@/lib/store/cart-last-touched';
+import { LastAddedLine } from '@/components/pos/LastAddedLine';
 
 interface PosListLayoutProps {
   viewMode: 'touch_screen' | 'list_view';
@@ -154,12 +157,10 @@ export function PosListLayout({
     setTimeout(() => scannerInputRef.current?.focus(), 10);
   };
 
-  // Auto-scroll to bottom of list when items change
-  useEffect(() => {
-    if (cart.items.length > 0 && cartBottomRef.current) {
-      cartBottomRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [cart.items.length, cart.items]);
+  // Scroll to (and flash) the line touched last; other cart changes show the end of the list as before
+  const cartListRef = useRef<HTMLDivElement>(null);
+  const lastTouched = useLastTouchedRow(cartListRef, cartBottomRef, cart.items);
+  const lastKey = lastTouched ? cartLineKey(lastTouched) : null;
 
   // Filter products for search dropdown
   const filteredProducts = products.filter(p => {
@@ -629,8 +630,15 @@ export function PosListLayout({
       </div>
       </div>
 
+      {/* last scan / add, readable without looking at the list */}
+      {cart.items.length > 0 && lastKey && (
+        <div className="shrink-0 border-b border-slate-200 bg-white px-3 py-1.5 sm:px-4">
+          <LastAddedLine className="w-fit max-w-full text-sm" />
+        </div>
+      )}
+
       {/* ─── 2. MAIN TABLE CONTENT AREA ─── */}
-      <div className="flex-1 overflow-y-auto bg-white p-3 sm:p-4">
+      <div ref={cartListRef} className="flex-1 overflow-y-auto bg-white p-3 sm:p-4">
         {cart.items.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-400 min-h-64 py-12">
             {/* POSPOS Logo Graphic Scanner Placeholder */}
@@ -714,16 +722,22 @@ export function PosListLayout({
                   const effectivePrice = cart.getEffectivePrice(item);
                   const itemDiscount = cart.getItemDiscountAmount(item);
                   const isSelected = idx === selectedCartIndex;
+                  const lineKey = cartLineKey(item);
+                  const isLast = lineKey === lastKey;
 
                   return (
                     <tr 
-                      key={`${item.productId}-${item.unitId}`} 
+                      key={lineKey} 
                       id={`classic-list-cart-item-${idx}`}
+                      data-line-key={lineKey}
+                      data-last-added={isLast ? 'true' : undefined}
                       onClick={() => onSelectCartIndex?.(idx)}
                       className={`transition-colors cursor-pointer ${
                         isSelected 
-                          ? 'bg-sky-100/80 font-bold border-l-4 border-l-sky-600 shadow-2xs' 
-                          : 'hover:bg-slate-50/80'
+                          ? `bg-sky-100/80 font-bold border-l-4 border-l-sky-600 shadow-2xs${isLast ? ' pos-last-added' : ''}` 
+                          : isLast
+                            ? 'pos-last-added'
+                            : 'hover:bg-slate-50/80'
                       }`}
                     >
                       <td className="py-4 px-4 text-slate-900">
@@ -753,8 +767,14 @@ export function PosListLayout({
                           <Edit3 className="w-4 h-4 text-slate-400 hover:text-sky-600" />
                         </div>
                       </td>
-                      <td className="py-4 px-4 text-center">
+                      <td className="relative py-4 px-4 text-center">
+                        {isLast && lastTouched && lastTouched.delta !== 0 && (
+                          <span key={lastTouched.seq} className="pos-qty-bump" style={{ top: 4, right: 4 }} data-testid="pos-qty-bump" aria-hidden="true">
+                            {lastTouched.delta > 0 ? '+' : '−'}{formatQty(Math.abs(lastTouched.delta))}
+                          </span>
+                        )}
                         <div 
+                          data-qty-cell
                           onClick={() => onOpenNumpadQty?.(item)}
                           className="inline-flex items-center border border-slate-300 rounded-lg bg-white overflow-hidden shadow-sm h-10 w-24 cursor-pointer hover:border-sky-500 hover:bg-sky-50 transition-all"
                           title="คลิกเพื่อแก้ไขจำนวนด้วย Numpad (F2)"

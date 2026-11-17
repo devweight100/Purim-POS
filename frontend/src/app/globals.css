@@ -149,3 +149,54 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     outline-offset: 2px;
   }
 }
+
+/* POS cart: the line touched last (scan / add / qty / unit). Emerald = "just registered"; selection is sky,
+   errors rose/red, warnings amber. Components layer, so a selected row's utility background still wins and
+   the accent bar shows on top of the selection. The flash is done with element.animate (use-last-touched-row). */
+@layer components {
+  .pos-last-added {
+    background-color: #ecfdf5; /* emerald-50 */
+  }
+  /* left accent bar (a pseudo-element, so a selected row's ring / shadow does not hide it) */
+  div.pos-last-added,
+  tr.pos-last-added > td:first-child {
+    position: relative;
+  }
+  div.pos-last-added::before,
+  tr.pos-last-added > td:first-child::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 6px;
+    bottom: 6px;
+    width: 5px;
+    border-radius: 0 4px 4px 0;
+    background-color: #059669; /* emerald-600 */
+    pointer-events: none;
+  }
+  .pos-qty-bump {
+    position: absolute;
+    top: -10px;
+    right: -8px;
+    z-index: 2;
+    pointer-events: none;
+    border-radius: 9999px;
+    background-color: #047857; /* emerald-700, white text 5.5:1 */
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    padding: 3px 6px;
+    animation: pos-qty-bump 800ms ease-out forwards;
+  }
+  @keyframes pos-qty-bump {
+    0% { opacity: 0; transform: translateY(4px) scale(0.7); }
+    20% { opacity: 1; transform: translateY(0) scale(1.15); }
+    70% { opacity: 1; transform: translateY(-2px) scale(1); }
+    100% { opacity: 0; transform: translateY(-8px) scale(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    /* no motion: the "+1" stays as a static badge on the highlighted line */
+    .pos-qty-bump { animation: none; opacity: 1; }
+  }
+}

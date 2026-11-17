@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useCartStore } from '@/lib/store/cart-store';
 import type { CartItem } from '@/lib/types';
 import { scrollCartRowIntoView, type PosVariant } from './pos-variant';
@@ -21,22 +21,8 @@ export function useCartSelection(items: CartItem[], variant: PosVariant) {
   }
   const selectedIndex = Math.min(rawIndex, Math.max(0, itemsLength - 1));
 
-  // Scroll a newly added row into view
-  const prevLengthForScroll = useRef(itemsLength);
-  useEffect(() => {
-    if (itemsLength > prevLengthForScroll.current) {
-      scrollCartRowIntoView(variant, itemsLength - 1, 50);
-    }
-    prevLengthForScroll.current = itemsLength;
-  }, [itemsLength, variant]);
-
-  // Keep the end of the cart list in view when the cart changes
+  // End of the cart list; the list scrolls to the last touched row (or here) in useLastTouchedRow
   const cartBottomRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (items.length > 0 && cartBottomRef.current) {
-      cartBottomRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [items]);
 
   /** Arrow keys: move the selection one row and scroll it into view. */
   const moveSelection = (delta: 1 | -1) => {

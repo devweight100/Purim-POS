@@ -12,6 +12,10 @@ import { formatCurrency } from '@/lib/utils';
 import { addQty, formatQty, mulQty, subQty } from '@/lib/qty';
 import type { PosController } from '@/lib/pos/use-pos-controller';
 import { useOnlineCounts } from '@/lib/online-orders';
+import { useRef } from 'react';
+import { useLastTouchedRow } from '@/lib/pos/use-last-touched-row';
+import { cartLineKey } from '@/lib/store/cart-last-touched';
+import { LastAddedLine } from '@/components/pos/LastAddedLine';
 
 /** Right side of the classic touch screen: customer, cart rows, totals and the action buttons. */
 export function ClassicCartPanel({ pos }: { pos: PosController }) {
@@ -20,6 +24,9 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
   // parked bills on this terminal + accepted online orders waiting for payment (all terminals)
   const onlinePayable = useOnlineCounts((s) => s.counts?.payable || 0);
   const heldBadge = cart.heldBills.length + onlinePayable;
+  const listRef = useRef<HTMLDivElement>(null);
+  const lastTouched = useLastTouchedRow(listRef, cartBottomRef, cart.items);
+  const lastKey = lastTouched ? cartLineKey(lastTouched) : null;
 
   return (
     <div id="pos-cart" className="flex w-full shrink-0 flex-col bg-white lg:w-[420px] xl:w-[450px]">
@@ -104,7 +111,7 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
       </div>
 
       {/* Cart Item List */}
-      <div className="flex-1 overflow-y-auto p-edge">
+      <div ref={listRef} className="flex-1 overflow-y-auto p-edge">
         {/* Pending Claims Discount Banner */}
         {cart.pendingClaims && cart.pendingClaims.length > 0 && (
           <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 mb-3 text-xs shadow-xs space-y-1.5 animate-in fade-in">
@@ -171,13 +178,21 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
             {cart.items.map((item, idx) => {
               const isSelected = idx === selectedIndex;
               const hasClaim = !!item.claimQuantity && item.claimQuantity > 0;
+              const lineKey = cartLineKey(item);
+              const isLast = lineKey === lastKey;
               return (
                 <div
-                  key={`${item.productId}-${item.unitId}`}
+                  key={lineKey}
                   id={`classic-cart-item-${idx}`}
+                  data-line-key={lineKey}
+                  data-last-added={isLast ? 'true' : undefined}
                   onClick={() => setSelectedIndex(idx)}
                   className={`flex flex-col gap-2 rounded-xl border p-3.5 shadow-sm transition-all cursor-pointer ${
-                    isSelected ? 'border-sky-500 bg-sky-50/60 ring-2 ring-sky-400 shadow-md' : 'border-slate-200 bg-white hover:border-slate-300'
+                    isSelected
+                      ? `border-sky-500 bg-sky-50/60 ring-2 ring-sky-400 shadow-md${isLast ? ' pos-last-added' : ''}`
+                      : isLast
+                        ? 'pos-last-added border-emerald-400'
+                        : 'border-slate-200 bg-white hover:border-slate-300'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
@@ -293,7 +308,12 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
                         <span>{hasClaim ? `เคลมฟรี ${item.claimQuantity}` : 'เคลม'}</span>
                       </Button>
                     </div>
-                    <div className="flex items-center gap-btn rounded-lg border border-slate-200 bg-slate-50 p-1">
+                    <div className="relative flex items-center gap-btn rounded-lg border border-slate-200 bg-slate-50 p-1">
+                      {isLast && lastTouched && lastTouched.delta !== 0 && (
+                        <span key={lastTouched.seq} className="pos-qty-bump" data-testid="pos-qty-bump" aria-hidden="true">
+                          {lastTouched.delta > 0 ? '+' : '−'}{formatQty(Math.abs(lastTouched.delta))}
+                        </span>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -314,6 +334,7 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
                           setSelectedIndex(idx);
                           d.setQtyEditItem(item);
                         }}
+                        data-qty-cell
                         className="w-12 h-9 text-center text-sm font-bold bg-white border border-slate-200 rounded hover:border-sky-400 hover:bg-sky-50 transition-all cursor-pointer flex items-center justify-center text-slate-800 shadow-xs"
                         title="คลิกเพื่อแก้ไขจำนวนด้วย Numpad (F2)"
                       >
@@ -360,6 +381,8 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
             </button>
           )}
         </div>
+
+        <LastAddedLine />
 
         <div className="flex justify-between text-sm text-slate-600 font-medium">
           <span>ยอดรวมสินค้า ({cart.getItemCount()} ชิ้น)</span>
