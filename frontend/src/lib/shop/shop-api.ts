@@ -57,7 +57,7 @@ export interface ShopOrderItem {
   total: number;
 }
 
-export type ShopOrderStatus = 'NEW' | 'ACCEPTED' | 'PREPARING' | 'DELIVERING' | 'DONE' | 'CANCELLED';
+export type ShopOrderStatus = 'NEW' | 'ACCEPTED' | 'PREPARING' | 'READY' | 'DELIVERING' | 'DONE' | 'CANCELLED';
 
 export interface ShopOrder {
   id: string;

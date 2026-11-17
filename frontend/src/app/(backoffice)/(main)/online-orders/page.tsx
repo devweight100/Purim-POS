@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ClaimBadge, OnlineOrderDetail, StatusPill } from '@/components/online-orders/OnlineOrderDetail';
 import { useAuthStore } from '@/lib/store/auth-store';
-import type { OnlineClaim } from '@/lib/online-order-actions';
+import type { OnlineClaim, OnlinePicked } from '@/lib/online-order-actions';
 import { LinkRequests } from '@/components/online-orders/LinkRequests';
 import { cn } from '@/lib/utils';
 
@@ -31,12 +31,14 @@ interface OnlineOrderRow {
   paid: boolean;
   createdAt: string;
   claim: OnlineClaim | null;
+  picked: OnlinePicked | null;
 }
 
 const FILTERS: { value: string; label: string }[] = [
   { value: 'open', label: 'ต้องจัดการ' },
   { value: 'NEW', label: 'ใหม่' },
   { value: 'payable', label: 'รอรับเงิน' },
+  { value: 'READY', label: 'จัดเสร็จ' },
   { value: 'DONE', label: 'เสร็จแล้ว' },
   { value: 'CANCELLED', label: 'ยกเลิก' },
   { value: 'all', label: 'ทั้งหมด' },
@@ -126,6 +128,7 @@ function OnlineOrdersInner() {
                   {f.label}
                   {f.value === 'NEW' && counts?.new ? ` (${counts.new})` : ''}
                   {f.value === 'payable' && counts?.payable ? ` (${counts.payable})` : ''}
+                  {f.value === 'READY' && counts?.statuses?.READY ? ` (${counts.statuses.READY})` : ''}
                 </Button>
               ))}
             </div>
@@ -168,7 +171,7 @@ function OnlineOrdersInner() {
                     </div>
                     <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
                       <span className="text-xs text-slate-500">{when(r.createdAt)}</span>
-                      <ClaimBadge claim={r.claim} meId={meId} status={r.status} />
+                      <ClaimBadge claim={r.claim} meId={meId} status={r.status} picked={r.picked} />
                     </div>
                   </button>
                 </li>

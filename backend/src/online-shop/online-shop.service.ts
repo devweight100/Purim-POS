@@ -421,7 +421,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
     const fee = o.deliveryFee === null || o.deliveryFee === undefined ? null : money(o.deliveryFee);
     const status = o.status as OnlineOrderStatus;
     const base = {
-      id: o.id, orderNo: o.orderNo, status, statusLabel: ONLINE_STATUS_LABELS[status], fulfillment: o.fulfillment,
+      id: o.id, orderNo: o.orderNo, status, statusLabel: status === 'READY' ? 'จัดของเสร็จ' : ONLINE_STATUS_LABELS[status], fulfillment: o.fulfillment,
       contactName: o.contactName, contactPhone: o.contactPhone, address: o.address, note: o.note,
       subtotal: money(o.subtotal), deliveryFee: fee, feePending: fee === null, totalAmount: money(o.totalAmount),
       rejectReason: o.rejectReason, paid: !!o.paidAt, createdAt: o.createdAt, updatedAt: o.updatedAt,

@@ -7,6 +7,11 @@ export interface PosPayload {
   contactName: string;
   note: string;
   lines: { productId: string; sku: string; name: string; unitId: string | null; unitName: string; factor: number; quantity: number; unitPrice: number; isBundle: boolean }[];
+  fulfillment?: 'PICKUP' | 'DELIVERY';
+  /** "จัดของเสร็จ" (null = not picked yet: the POS warns, it never blocks the payment) */
+  picked?: { userId: string | null; name: string; at: string } | null;
+  /** who is picking it now (null = nobody) */
+  claim?: { userId: string; name: string; at: string | null } | null;
 }
 
 /** Turns an accepted online order into POS cart lines at the agreed prices (ค่าส่ง included as a service line). */

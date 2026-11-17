@@ -57,7 +57,7 @@ export default function ShopOrderPage({ params }: { params: Promise<{ id: string
           <StatusBadge status={o.status} label={o.statusLabel} />
           {o.paid && <span className="text-lg font-bold text-emerald-800">ชำระเงินแล้ว</span>}
         </div>
-        <p className="mt-2 text-xl font-semibold">{ONLINE_STATUS_CUSTOMER[o.status]}</p>
+        <p className="mt-2 text-xl font-semibold">{o.status === 'READY' ? (o.fulfillment === 'PICKUP' ? 'ของพร้อมแล้ว มารับที่ร้านได้เลย' : 'จัดของเสร็จแล้ว รอนำไปส่ง') : ONLINE_STATUS_CUSTOMER[o.status]}</p>
         {o.rejectReason && <p className="mt-1 text-lg font-bold text-red-800">เหตุผล: {o.rejectReason}</p>}
       </div>
 
