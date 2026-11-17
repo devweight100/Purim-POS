@@ -371,7 +371,7 @@ export function CashDrawerModal({
                 </div>
 
                 {/* Preset Chips */}
-                <div className="flex flex-wrap gap-1.5 pt-1">
+                <div className="flex flex-wrap gap-2 pt-1">
                   {amountPresets.map((p) => (
                     <button
                       key={p}
@@ -443,7 +443,7 @@ export function CashDrawerModal({
                 />
 
                 {/* Preset Reason Tags */}
-                <div className="flex flex-wrap gap-1.5 pt-1">
+                <div className="flex flex-wrap gap-2 pt-1">
                   {(mode === 'in' ? cashInReasons : cashOutReasons).map((r) => (
                     <button
                       key={r}

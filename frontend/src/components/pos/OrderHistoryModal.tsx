@@ -433,7 +433,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
           {/* Filter Bar (POSPOS Style) */}
           <div className="py-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 shrink-0">
             {/* Tabs */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200">
+            <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-2xl border border-slate-200">
               <button
                 type="button"
                 onClick={() => { setActiveTab('completed'); setCurrentPage(1); }}
@@ -681,7 +681,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
               <span>รายการ / หน้า (ทั้งหมด {filteredOrders.length} รายการ)</span>
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"

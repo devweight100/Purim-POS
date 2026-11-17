@@ -878,14 +878,15 @@ export function PosListLayout({
       </div>
 
       {/* ─── 3. BOTTOM ACTION SHORTCUTS BAR ─── */}
-      <div className="bg-white border-t border-slate-200 px-3 sm:px-4 py-2 flex flex-nowrap items-center gap-2 text-xs sm:text-sm shrink-0 shadow-lg overflow-x-auto">
-        <div className="flex flex-nowrap items-center gap-2 shrink-0">
+      <div data-testid="pos-list-action-bar" className="bg-white border-t border-slate-200 px-4 py-2 flex flex-wrap items-center gap-2 text-xs sm:text-sm shrink-0 shadow-lg">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
           <button 
             type="button"
             onClick={onOpenHistory} 
+            title="ประวัติการขาย (Ctrl+H)"
             className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
           >
-            <Clock className="w-4 h-4" />
+            <Clock className="hidden xl:block w-4 h-4" />
             <span>ประวัติ</span>
             <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(Ctrl+H)</span>
           </button>
@@ -893,9 +894,10 @@ export function PosListLayout({
           <button 
             type="button"
             onClick={onSelectCustomer} 
+            title="เลือกลูกค้า / สมาชิก (Ctrl+M)"
             className="flex items-center gap-1.5 bg-sky-500 hover:bg-sky-600 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
           >
-            <User className="w-4 h-4" />
+            <User className="hidden xl:block w-4 h-4" />
             <span>ลูกค้า</span>
             <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(Ctrl+M)</span>
           </button>
@@ -906,16 +908,17 @@ export function PosListLayout({
             className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
             title="เปิดคลังสินค้าลูกค้า & สิทธิ์เคลม"
           >
-            <Package className="w-4 h-4" />
+            <Package className="hidden xl:block w-4 h-4" />
             <span>สิทธิ์เคลม</span>
           </button>
           
           <button 
             type="button"
             onClick={() => cart.clearCart()} 
+            title="ล้างตะกร้า (Ctrl+E)"
             className="flex items-center gap-1.5 bg-rose-500 hover:bg-rose-600 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="hidden xl:block w-4 h-4" />
             <span>เคลียร์</span>
             <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(Ctrl+E)</span>
           </button>
@@ -930,9 +933,10 @@ export function PosListLayout({
                 onOpenHoldBills();
               }
             }} 
+            title="พักบิลปัจจุบัน / ดูบิลพักเมื่อตะกร้าว่าง (Ctrl+P)"
             className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
           >
-            <ShoppingBag className="w-4 h-4" />
+            <ShoppingBag className="hidden xl:block w-4 h-4" />
             <span>พักบิล</span>
             <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(Ctrl+P)</span>
           </button>
@@ -944,7 +948,7 @@ export function PosListLayout({
             className="flex items-center gap-1.5 bg-white hover:bg-slate-100 text-slate-800 border-2 border-slate-300 font-extrabold px-3 py-2 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0 disabled:opacity-50"
             title="พิมพ์ใบจัดของของตะกร้านี้ (ชื่อสินค้า หน่วย จำนวน ไม่มีราคา) (F8)"
           >
-            <ClipboardList className="w-4 h-4" />
+            <ClipboardList className="hidden xl:block w-4 h-4" />
             <span>ใบจัดของ</span>
             <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(F8)</span>
           </button>
@@ -952,9 +956,10 @@ export function PosListLayout({
           <button 
             type="button"
             onClick={onOpenHoldBills} 
+            title="ดูบิลที่พักไว้ และออเดอร์ออนไลน์ที่รอรับเงิน (F10)"
             className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
           >
-            <Clock className="w-4 h-4" />
+            <Clock className="hidden xl:block w-4 h-4" />
             <span>ดูบิลพัก{onlinePayable ? ` · ออนไลน์ ${onlinePayable}` : ''}</span>
             <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(F10)</span>
           </button>
@@ -965,7 +970,7 @@ export function PosListLayout({
             className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
             title="เปิดลิ้นชัก / บันทึกเงินเข้า-ออก (F9)"
           >
-            <Coins className="w-4 h-4" />
+            <Coins className="hidden xl:block w-4 h-4" />
             <span>เปิดลิ้นชัก</span>
             <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(F9)</span>
           </button>
@@ -977,7 +982,7 @@ export function PosListLayout({
               className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3 py-2.5 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
               title="เปิดกะการขาย"
             >
-              <LogIn className="w-4 h-4" />
+              <LogIn className="hidden xl:block w-4 h-4" />
               <span>เปิดกะ</span>
             </button>
           )}
@@ -988,15 +993,15 @@ export function PosListLayout({
               className="flex items-center gap-1.5 bg-white hover:bg-rose-50 text-rose-700 border-2 border-rose-300 font-extrabold px-3 py-2 min-h-[44px] rounded-lg shadow-sm transition-all text-xs sm:text-sm whitespace-nowrap shrink-0"
               title="ปิดกะ / นับเงินและพิมพ์ใบสรุปปิดกะ"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="hidden xl:block w-4 h-4" />
               <span>ปิดกะ</span>
             </button>
           )}
-          <PosLogoutButton className="min-h-[44px]" />
+          <PosLogoutButton compact className="min-h-[44px]" />
         </div>
 
         {/* Option Selector for Sales Screen View & Exit to Dashboard */}
-        <div className="flex items-center gap-2 ml-auto shrink-0">
+        <div className="flex items-center gap-2 ml-auto">
           <select
             aria-label="รูปแบบหน้าจอขาย"
             title="รูปแบบหน้าจอขาย" 

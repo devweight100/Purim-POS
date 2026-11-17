@@ -367,7 +367,7 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
             </div>
 
             {/* Filter Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+            <div className="flex flex-wrap items-center gap-2 pb-1 text-xs">
               {[
                 { key: 'ALL', label: 'ทั้งหมด' },
                 { key: 'ORDER', label: 'บิลขาย' },
