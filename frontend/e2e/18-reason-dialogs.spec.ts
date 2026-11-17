@@ -131,6 +131,7 @@ test('online order claimed by me: after an in-page confirm (was native) the reas
   await expect(detail).toBeVisible();
   expect((await api<{ status: string }>('GET', `/online-shop/orders/${o.id}`, adminToken)).status).toBe('ACCEPTED');
   await detail.getByRole('button', { name: 'ยกเลิกออเดอร์' }).click();
+  await expect(dlg.locator('#reject-reason')).toBeFocused();
   await expect(dlg.locator('#reject-reason')).toHaveValue('');
   await page.keyboard.type('ลูกค้าขอยกเลิก โทรแจ้งแล้ว');
   await dlg.getByRole('button', { name: 'ยืนยันยกเลิก' }).click();
