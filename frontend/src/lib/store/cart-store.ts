@@ -4,6 +4,7 @@ import { CartItem, HeldBill, Product, ProductUnit, ClaimRecord, PendingClaimItem
 import { calculateSmartRollupAndPricing } from '../cart-pricing';
 import { loadStoreSettings } from '../store-settings-storage';
 import { addQty, mulQty, roundQty } from '../qty';
+import { followTouchedLine, touchLine, type LastTouchedLine } from './cart-last-touched';
 import { cartLineDiscount, cartLineTotal, cartTotals, normVatRate, type CartLineInput } from '@shared/pricing';
 
 /** A cart line in the shape of the shared pricing functions. */
@@ -58,6 +59,8 @@ interface CartStore {
   editingOrderId: string | null;
   /** online order (LINE shop) loaded into this cart; checkout links the bill to it */
   onlineOrderId: string | null;
+  /** line the cashier touched last (highlighted + scrolled to on the POS); not persisted */
+  lastTouched: LastTouchedLine | null;
 
   // Actions
   addItem: (product: Product, unit?: ProductUnit) => void;
@@ -179,6 +182,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
   heldBills: [],
   editingOrderId: null,
   onlineOrderId: null,
+  lastTouched: null,
 
   loadOnlineOrder: (o) => {
     const state = get();
@@ -196,6 +200,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
       note: o.note,
       editingOrderId: null,
       onlineOrderId: o.id,
+      lastTouched: null,
     });
   },
 
@@ -257,7 +262,9 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
         };
         rawUpdated = [...state.items, newItem];
       }
-      return { items: calculateSmartRollupAndPricing(rawUpdated) };
+      const items = calculateSmartRollupAndPricing(rawUpdated);
+      const touchUnitId = existing ? existing.unitId : selectedUnit.id;
+      return { items, lastTouched: touchLine(state.items, items, product.id, touchUnitId, selectedUnit.factor || 1) };
     });
   },
 
@@ -268,7 +275,10 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
           ? !(i.productId === productId && i.unitId === unitId)
           : i.productId !== productId
       );
-      return { items: calculateSmartRollupAndPricing(rawUpdated) };
+      const items = calculateSmartRollupAndPricing(rawUpdated);
+      const lt = state.lastTouched;
+      const removedTouched = !!lt && lt.productId === productId && (!unitId || lt.unitId === unitId);
+      return { items, lastTouched: removedTouched ? null : followTouchedLine(lt, state.items, items) };
     });
   },
 
@@ -294,7 +304,10 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
         }
         return i;
       });
-      return { items: calculateSmartRollupAndPricing(rawUpdated) };
+      const items = calculateSmartRollupAndPricing(rawUpdated);
+      const target = state.items.find((i) => (unitId ? i.productId === productId && i.unitId === unitId : i.productId === productId));
+      if (!target) return { items, lastTouched: followTouchedLine(state.lastTouched, state.items, items) };
+      return { items, lastTouched: touchLine(state.items, items, productId, target.unitId, target.conversionFactor || 1) };
     });
   },
 
@@ -361,7 +374,9 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
             }
           : i
       );
-      return { items: calculateSmartRollupAndPricing(rawUpdated) };
+      const items = calculateSmartRollupAndPricing(rawUpdated);
+      const touched = touchLine(state.items, items, productId, unit.id, unit.factor || 1);
+      return { items, lastTouched: touched ? { ...touched, delta: 0 } : followTouchedLine(state.lastTouched, state.items, items) };
     });
   },
 
@@ -431,6 +446,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
       note: '',
       editingOrderId: null,
       onlineOrderId: null,
+      lastTouched: null,
     });
   },
 
@@ -468,6 +484,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
       note: '',
       editingOrderId: null,
       onlineOrderId: null,
+      lastTouched: null,
     }));
   },
 
@@ -492,6 +509,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
       pendingClaims: bill.pendingClaims || [],
       note: bill.note || '',
       onlineOrderId: bill.onlineOrderId || null,
+      lastTouched: null,
       heldBills: s.heldBills.filter((b) => b.id !== id),
     }));
   },
