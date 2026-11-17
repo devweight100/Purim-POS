@@ -111,7 +111,7 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
       </div>
 
       {/* Cart Item List */}
-      <div ref={listRef} className="flex-1 overflow-y-auto p-edge">
+      <div ref={listRef} className="flex-1 overflow-y-auto scroll-py-4 p-edge">
         {/* Pending Claims Discount Banner */}
         {cart.pendingClaims && cart.pendingClaims.length > 0 && (
           <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 mb-3 text-xs shadow-xs space-y-1.5 animate-in fade-in">

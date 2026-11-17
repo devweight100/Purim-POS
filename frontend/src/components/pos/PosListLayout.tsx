@@ -638,7 +638,7 @@ export function PosListLayout({
       )}
 
       {/* ─── 2. MAIN TABLE CONTENT AREA ─── */}
-      <div ref={cartListRef} className="flex-1 overflow-y-auto bg-white p-3 sm:p-4">
+      <div ref={cartListRef} className="flex-1 overflow-y-auto scroll-py-4 bg-white p-3 sm:p-4">
         {cart.items.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-400 min-h-64 py-12">
             {/* POSPOS Logo Graphic Scanner Placeholder */}
