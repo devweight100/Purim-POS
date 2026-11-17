@@ -12,7 +12,7 @@ Branch `ccr-8f8b0741-si1a0o`. Owner request 2026-11-16. A later agent: read this
 - Catalogue: every active non-service product. "มีของ" / "หมด" only (no numbers); out of stock cannot be added. Units: base + packaging units (ชิ้น / แพค / ลัง) with their price.
 - Prices are always computed on the server when the order is placed; client prices ignored.
 - Accepting an order makes it payable in the POS: the POS "บิลพัก" sheet lists accepted online orders (server-side, every terminal), "เปิดบิล" loads the items (agreed prices) + ค่าส่ง line + customer into the cart with `onlineOrderId`; checkout links the POS bill (`online_orders.pos_order_id`). Pickup orders become เสร็จ when paid; delivery orders stay until staff marks กำลังส่ง / เสร็จ. Voiding that POS bill unlinks it.
-- Status: NEW (ใหม่) -> ACCEPTED (รับแล้ว) -> PREPARING (เตรียมของ, optional) -> DELIVERING (กำลังส่ง, optional) -> DONE (เสร็จ) / CANCELLED (ยกเลิก, with reason).
+- Status: NEW (ใหม่) -> ACCEPTED (รับแล้ว) -> PREPARING (เตรียมของ, optional) -> READY (จัดเสร็จ รอรับเงิน/รอส่ง, set by "จัดของเสร็จ", 2026-11-17) -> DELIVERING (กำลังส่ง, optional) -> DONE (เสร็จ) / CANCELLED (ยกเลิก, with reason). Payable (open as a POS bill): ACCEPTED / PREPARING / READY / DELIVERING.
 - Permissions: online orders page + accept / edit / reject = `POS_SELL` (cashiers do this); price below the computed price needs the usual checkout approval at payment time; approving LINE links = ADMIN / MANAGER or `POS_DISCOUNT` (it grants prices). LINE settings = ADMIN only.
 - LINE config in a new table `online_shop_config` (single row): enabled, LIFF ID, LINE Login channel ID (ID-token verification), Messaging API channel access token (write-only, never returned), public base URL, pickup / delivery switches, notice, level names. Not configured -> on LAN / localhost the page offers a test profile ("โหมดทดสอบ"); through the tunnel the page says the shop is not open.
 - Session: `POST /api/public/shop/session` with the LIFF ID token -> verified by LINE's verify endpoint -> our own HMAC session token (7 days). Dev profile only when LIFF is not configured AND the request is not public.
@@ -45,14 +45,16 @@ picking slip "ใบจัดของ" (names, units, quantities, customer; NO 
 - `POST /online-shop/orders/:id/claim` ("รับจัดออเดอร์นี้"; `{takeover:true}` = ADMIN / MANAGER take it over, audit log
   `ONLINE_ORDER_TAKEOVER` with from / to), `POST .../release` ("ปล่อยงาน": holder; managers may release anyone's, audit
   `ONLINE_ORDER_RELEASE`), `POST .../picking-slip` (claims, counts prints, returns the slip data without prices).
-- Edit / accept / reject / status / open as POS bill / picking slip claim automatically when nobody holds the order and
-  are refused (409) while someone else does. Reject / cancel / done (also a pickup order finished by its payment)
-  release it. The customer cannot cancel from LINE once a staff member holds the order.
-- One POS bill per online order: `POST .../pos` (was GET) claims the order and records the terminal; another
+- Since 2026-11-17 (round 3 below) the claim covers the PICKING phase only. Picking actions claim automatically when
+  nobody holds the order and are refused (409) while someone else does: edit (items / qty / price / fee / member),
+  accept, reject, picking slip, status "เตรียมของ", "จัดของเสร็จ". Reject / cancel / done (also a pickup order finished
+  by its payment), "จัดของเสร็จ" and กำลังส่ง release it. The customer cannot cancel from LINE once a staff member
+  holds the order.
+- One POS bill per online order: `POST .../pos` (was GET) records the terminal (no claim: any cashier); another
   terminal gets 409 `ONLINE_ORDER_OPEN_ELSEWHERE` unless it confirms (`force`), which moves the bill there. Checkout
-  (`linkOnlineOrder`) refuses an order held by someone else (unless ADMIN / MANAGER), an order moved to another
-  terminal, and links with ONE conditional `UPDATE ... WHERE pos_order_id IS NULL`: of two simultaneous checkouts the
-  second changes no row and is rolled back (409). A retry of the same bill (same clientOrderId) returns the bill.
+  (`linkOnlineOrder`) refuses an order moved to another terminal and links with ONE conditional
+  `UPDATE ... WHERE pos_order_id IS NULL`: of two simultaneous checkouts the second changes no row and is rolled back
+  (409). A retry of the same bill (same clientOrderId) returns the bill. The payment never claims the order.
 
 ### Progress
 1. [x] Backend claim lock + one-bill link + picking slip data; e2e block "claim lock + one POS bill per online order"
@@ -63,6 +65,30 @@ picking slip "ใบจัดของ" (names, units, quantities, customer; NO 
    visible but disabled for others, the reason is shown. POS held-bills sheet: holder shown, "เปิดบิล" disabled for
    others; opening on a second terminal asks before moving the bill.
 3. [x] Tests + verification (see PROJECT_STATUS 2026-11-16 "Claim lock + picking slip").
+
+### Round 3 (owner 2026-11-17): picking is for the picker, payment for every cashier
+Owner: "Picking is for the picker. Once picking is done, every cashier can take payment and hand the goods to the
+customer." Before, whoever claimed / accepted held the order until done and even the cashier taking the payment got
+409 (`15-online-shop` had to press ปล่อยงาน first).
+- Picking actions (claim lock, see above): claim, edit, accept, reject, picking slip, เตรียมของ, and the new
+  "จัดของเสร็จ" (`POST /online-shop/orders/:id/picked`, ACCEPTED / PREPARING only, paid or not).
+- "จัดของเสร็จ": status READY ("จัดเสร็จ รอรับเงิน/รอส่ง"), `picked_by_id` / `picked_at` (migration
+  `20261203000000_online_order_picked`; kept for audit and shown "จัดโดย X · เวลา" on rows, detail, POS, also after
+  done), ends the claim (the POS bill terminal stays). Why a status and not only the two fields: the list filter
+  "จัดเสร็จ", the customer page and LINE need a state; READY sits between เตรียมของ and กำลังส่ง so the old flow is
+  unchanged. LINE push when configured: pickup "ของพร้อมแล้ว มารับที่ร้านได้เลย" (+ amount when unpaid), delivery
+  "จัดของเสร็จแล้ว รอนำไปส่ง". Editing the ITEMS of a READY order sends it back to รับแล้ว (picker cleared, the
+  editor holds it: pick again); fee / member / note edits keep READY.
+- Not claimed: open as a POS bill and checkout (any POS_SELL cashier, picked or not: customers may transfer by QR
+  right after acceptance), กำลังส่ง / เสร็จ. Payment never claims. Edits after payment stay impossible.
+- POS warns, never blocks: held-bills sheet row note "✓ จัดโดย X · เวลา" (green) or "ยังไม่ได้จัดของ · กำลังจัดโดย X"
+  (yellow), "เปิดบิล" enabled for everyone; the cart banner shows the same note live (realtime `onlineOrder`).
+  Online orders page: claim bar button "จัดของเสร็จ" (holder, or anyone when unclaimed: auto-claims; disabled with the
+  reason for others), "รับเงินที่หน้าขาย" and กำลังไปส่ง / เสร็จแล้ว enabled for everyone, filter "จัดเสร็จ".
+- Tests: e2e block "picking is for the picker, payment for every cashier" (B refused edit / print / picked / reject,
+  B opens + pays (concurrent checkouts -> one bill, idempotent retry), READY + picker recorded, delivery steps by B,
+  pay before picking, READY item edit -> re-pick); Playwright `16-claim-picking` two-cashier flow (A picks with the
+  keyboard, B pays cash and hands over), `15-online-shop` without the ปล่อยงาน workaround.
 
 ### Picking slip "ใบจัดของ"
 - Nothing like it existed. One layout: `components/pos/PickingSlipView.tsx` (built from `slip-parts.tsx`, 288 CSS px
