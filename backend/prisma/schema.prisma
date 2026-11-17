@@ -132,6 +132,7 @@ model User {
 
   orders      Order[]
   claimedOnlineOrders OnlineOrder[] @relation("OnlineOrderClaimedBy")
+  pickedOnlineOrders  OnlineOrder[] @relation("OnlineOrderPickedBy")
   shifts      Shift[]
   auditLogs   AuditLog[]
 
@@ -1207,6 +1208,7 @@ enum OnlineOrderStatus {
   NEW
   ACCEPTED
   PREPARING
+  READY
   DELIVERING
   DONE
   CANCELLED
@@ -1309,17 +1311,22 @@ model OnlineOrder {
   /// picking slip (ใบจัดของ) prints: the 2nd and later are marked "พิมพ์ซ้ำ"
   pickingPrintCount Int            @default(0) @map("picking_print_count")
   pickingPrintedAt  DateTime?      @map("picking_printed_at")
+  /// "จัดของเสร็จ": who picked the goods and when (kept for audit / display; the claim ends there)
+  pickedById     String?           @map("picked_by_id")
+  pickedAt       DateTime?         @map("picked_at")
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @default(now()) @updatedAt @map("updated_at")
 
   customer       Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
   claimedBy      User?             @relation("OnlineOrderClaimedBy", fields: [claimedById], references: [id], onDelete: SetNull)
+  pickedBy       User?             @relation("OnlineOrderPickedBy", fields: [pickedById], references: [id], onDelete: SetNull)
   items          OnlineOrderItem[]
 
   @@index([status, createdAt])
   @@index([lineUserId, createdAt])
   @@index([customerId])
   @@index([claimedById])
+  @@index([pickedById])
   @@map("online_orders")
 }
 

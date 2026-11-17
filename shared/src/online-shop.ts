@@ -151,12 +151,20 @@ export const ONLINE_LIMITS = {
   noteMax: 300,
 } as const;
 
-export type OnlineOrderStatus = 'NEW' | 'ACCEPTED' | 'PREPARING' | 'DELIVERING' | 'DONE' | 'CANCELLED';
+export type OnlineOrderStatus = 'NEW' | 'ACCEPTED' | 'PREPARING' | 'READY' | 'DELIVERING' | 'DONE' | 'CANCELLED';
+
+/** Accepted and not closed: can be opened as a POS bill and paid (by any cashier; the claim lock is for picking only). */
+export const ONLINE_PAYABLE_STATUSES: readonly OnlineOrderStatus[] = ['ACCEPTED', 'PREPARING', 'READY', 'DELIVERING'];
+/** Open orders (staff list "open", claimable). */
+export const ONLINE_OPEN_STATUSES: readonly OnlineOrderStatus[] = ['NEW', ...ONLINE_PAYABLE_STATUSES];
+/** Statuses from which "จัดของเสร็จ" (mark picked) is allowed. */
+export const ONLINE_PICKABLE_STATUSES: readonly OnlineOrderStatus[] = ['ACCEPTED', 'PREPARING'];
 
 export const ONLINE_STATUS_LABELS: Record<OnlineOrderStatus, string> = {
   NEW: 'ใหม่',
   ACCEPTED: 'รับแล้ว',
   PREPARING: 'กำลังเตรียมของ',
+  READY: 'จัดเสร็จ รอรับเงิน/รอส่ง',
   DELIVERING: 'กำลังไปส่ง',
   DONE: 'เสร็จแล้ว',
   CANCELLED: 'ยกเลิก',
@@ -167,17 +175,22 @@ export const ONLINE_STATUS_CUSTOMER: Record<OnlineOrderStatus, string> = {
   NEW: 'ร้านได้รับออเดอร์แล้ว รอร้านยืนยัน',
   ACCEPTED: 'ร้านยืนยันแล้ว',
   PREPARING: 'ร้านกำลังจัดของ',
+  READY: 'จัดของเสร็จแล้ว',
   DELIVERING: 'กำลังนำของไปส่ง',
   DONE: 'เรียบร้อยแล้ว',
   CANCELLED: 'ยกเลิกแล้ว',
 };
 
-/** Status changes staff may make (accept / reject have their own actions). */
+/**
+ * Status changes staff may make with the status buttons (accept / reject / "จัดของเสร็จ" -> READY have their own
+ * actions). Flow: NEW -> ACCEPTED -> (PREPARING) -> READY -> (DELIVERING) -> DONE, CANCELLED from any open status.
+ */
 export function nextStatuses(status: OnlineOrderStatus, fulfillment: Fulfillment): OnlineOrderStatus[] {
   switch (status) {
     case 'ACCEPTED':
       return fulfillment === 'DELIVERY' ? ['PREPARING', 'DELIVERING', 'DONE', 'CANCELLED'] : ['PREPARING', 'DONE', 'CANCELLED'];
     case 'PREPARING':
+    case 'READY':
       return fulfillment === 'DELIVERY' ? ['DELIVERING', 'DONE', 'CANCELLED'] : ['DONE', 'CANCELLED'];
     case 'DELIVERING':
       return ['DONE', 'CANCELLED'];

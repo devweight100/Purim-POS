@@ -489,7 +489,6 @@ export class OrdersService {
       if (data.onlineOrderId) {
         await linkOnlineOrder(tx, String(data.onlineOrderId), order.id, {
           userId,
-          manager: cashierUser?.role === 'ADMIN' || cashierUser?.role === 'MANAGER',
           terminalId: shift.terminalId || null,
         });
       }

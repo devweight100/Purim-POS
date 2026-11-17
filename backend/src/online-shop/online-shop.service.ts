@@ -8,7 +8,7 @@ import { LineMessage, LineService, ShopConfigRow } from './line.service';
 import { issueSession, RateLimiter, readSession, safeEqual, ShopSession, signValue } from './shop-session';
 import { onlineOrderPaid$ } from './online-order-payment';
 import { qrPng } from './qr-png';
-import { CLAIMABLE, claimRefusal, claimTime, ensureClaim, isManager, RELEASED, StaffUser, tryClaim } from './online-order-claim';
+import { CLAIMABLE, claimRefusal, claimTime, ensureClaim, isManager, RELEASED, StaffUser, tryClaim, UNCLAIMED } from './online-order-claim';
 import {
   deliveryFeeFor,
   Fulfillment,
@@ -17,6 +17,8 @@ import {
   normalizeLevel,
   normalizeThaiPhone,
   ONLINE_LIMITS,
+  ONLINE_PAYABLE_STATUSES,
+  ONLINE_PICKABLE_STATUSES,
   ONLINE_STATUS_LABELS,
   onlineLineTotal,
   onlineOrderTotals,
@@ -30,7 +32,7 @@ import { round2 } from '../../../shared/src/money';
 
 export const DELIVERY_SKU = 'SYS-DELIVERY-FEE';
 // pg_advisory_xact_lock(742091, 7): online order numbers / edits (literal: a bound parameter makes the call ambiguous)
-const PAYABLE: OnlineOrderStatus[] = ['ACCEPTED', 'PREPARING', 'DELIVERING'];
+const PAYABLE: OnlineOrderStatus[] = [...ONLINE_PAYABLE_STATUSES];
 
 class TooMany extends HttpException {
   constructor(msg = 'ทำรายการบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่') {
@@ -501,6 +503,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
       const o = await this.prisma.onlineOrder.findUnique({ where: { id: orderId }, include: { items: true } });
       if (!o) return;
       if (kind === 'DONE' && o.status !== 'DONE') return; // the payment transaction did not commit
+      if (kind === 'READY' && o.status !== 'READY') return; // changed again in between (edited -> re-pick)
       const c = await this.line.config();
       const store = (await this.prisma.storeSettings.findFirst({ select: { storeName: true } }))?.storeName || 'ร้าน';
       const base = c.publicBaseUrl && /^https:\/\//.test(c.publicBaseUrl) ? c.publicBaseUrl.replace(/\/+$/, '') : null;
@@ -522,6 +525,14 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
         msgs.push({ type: 'text', text: `ขออภัย ${store} ยกเลิกออเดอร์ ${o.orderNo}${o.rejectReason ? `\nเหตุผล: ${o.rejectReason}` : ''}\nสอบถามร้านได้ทาง LINE นี้` });
       } else if (kind === 'PREPARING') {
         msgs.push({ type: 'text', text: `${store} กำลังจัดของ ออเดอร์ ${o.orderNo}${link}` });
+      } else if (kind === 'READY') {
+        const unpaid = !o.paidAt;
+        msgs.push({
+          type: 'text',
+          text: o.fulfillment === 'PICKUP'
+            ? `${store} จัดของออเดอร์ ${o.orderNo} เสร็จแล้ว ของพร้อมแล้ว มารับที่ร้านได้เลย${unpaid ? `\nยอดชำระ ฿${fmt(money(o.totalAmount))} (ชำระที่ร้าน หรือโอนตาม QR ที่ส่งไปแล้ว)` : ''}${link}`
+            : `${store} จัดของออเดอร์ ${o.orderNo} เสร็จแล้ว รอนำไปส่ง${link}`,
+        });
       } else if (kind === 'DELIVERING') {
         msgs.push({ type: 'text', text: `${store} กำลังนำของไปส่ง ออเดอร์ ${o.orderNo}${link}` });
       } else if (kind === 'DONE') {
@@ -561,7 +572,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
     const search = text(q?.search, 60);
     if (search) where.OR = [{ orderNo: { contains: search, mode: 'insensitive' } }, { contactName: { contains: search, mode: 'insensitive' } }, { contactPhone: { contains: search.replace(/\D/g, '') || search } }];
     const [rows, total] = await Promise.all([
-      this.prisma.onlineOrder.findMany({ where, orderBy: [{ createdAt: status === 'open' || status === 'NEW' ? 'asc' : 'desc' }, { id: 'asc' }], skip: (page - 1) * limit, take: limit, include: { customer: { select: { id: true, name: true } }, claimedBy: { select: { id: true, fullName: true, username: true } }, _count: { select: { items: true } } } }),
+      this.prisma.onlineOrder.findMany({ where, orderBy: [{ createdAt: status === 'open' || status === 'NEW' ? 'asc' : 'desc' }, { id: 'asc' }], skip: (page - 1) * limit, take: limit, include: { customer: { select: { id: true, name: true } }, claimedBy: { select: { id: true, fullName: true, username: true } }, pickedBy: { select: { id: true, fullName: true, username: true } }, _count: { select: { items: true } } } }),
       this.prisma.onlineOrder.count({ where }),
     ]);
     return {
@@ -569,7 +580,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
         id: r.id, orderNo: r.orderNo, status: r.status, fulfillment: r.fulfillment, contactName: r.contactName, contactPhone: r.contactPhone,
         customer: r.customer, itemCount: r._count.items, subtotal: money(r.subtotal), deliveryFee: r.deliveryFee === null ? null : money(r.deliveryFee),
         totalAmount: money(r.totalAmount), paid: !!r.paidAt, posOrderId: r.posOrderId, createdAt: r.createdAt,
-        claim: claimOf(r), pickingPrintCount: r.pickingPrintCount,
+        claim: claimOf(r), picked: pickedOf(r), pickingPrintCount: r.pickingPrintCount,
       })),
       meta: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
@@ -578,7 +589,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
   async detail(id: string) {
     const o = await this.prisma.onlineOrder.findUnique({
       where: { id },
-      include: { items: { orderBy: { sortOrder: 'asc' }, include: { product: { select: { sku: true, isActive: true } } } }, customer: { select: { id: true, name: true, phone: true, profile: true } }, claimedBy: { select: { id: true, fullName: true, username: true } } },
+      include: { items: { orderBy: { sortOrder: 'asc' }, include: { product: { select: { sku: true, isActive: true } } } }, customer: { select: { id: true, name: true, phone: true, profile: true } }, claimedBy: { select: { id: true, fullName: true, username: true } }, pickedBy: { select: { id: true, fullName: true, username: true } } },
     });
     if (!o) throw new NotFoundException('ไม่พบออเดอร์ออนไลน์');
     const visitor = await this.prisma.shopVisitor.findUnique({ where: { lineUserId: o.lineUserId }, select: { displayName: true, customerId: true } });
@@ -596,7 +607,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
       visitorLinkedTo: visitor?.customerId || null,
       posOrder: pos ? { id: pos.id, orderNumber: pos.orderNumber, totalAmount: money(pos.totalAmount), status: pos.status } : null,
       nextStatuses: nextStatuses(o.status as OnlineOrderStatus, o.fulfillment as Fulfillment),
-      claim: claimOf(o), posTerminalId: o.posTerminalId, posOpenedAt: o.posOpenedAt, pickingPrintCount: o.pickingPrintCount, pickingPrintedAt: o.pickingPrintedAt,
+      claim: claimOf(o), picked: pickedOf(o), posTerminalId: o.posTerminalId, posOpenedAt: o.posOpenedAt, pickingPrintCount: o.pickingPrintCount, pickingPrintedAt: o.pickingPrintedAt,
       items: o.items.map((i) => ({ id: i.id, productId: i.productId, sku: i.product.sku, name: i.productName, unitId: i.unitId, unitName: i.unitName, factor: i.factor, quantity: Number(i.quantity), unitPrice: money(i.unitPrice), total: money(i.total), active: i.product.isActive })),
     };
   }
@@ -768,10 +779,34 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
     }, { timeout: 15000 });
   }
 
+  /**
+   * "จัดของเสร็จ": a picking action (claims the order when nobody holds it, refused while someone else does).
+   * Records who picked and when, ends the claim and moves the order to READY ("จัดเสร็จ รอรับเงิน/รอส่ง"); from
+   * then on any cashier takes the payment / hands the goods over. Allowed paid or not (a delivery order may be
+   * paid by QR before it is picked).
+   */
+  async markPicked(id: string, user: StaffUser) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(742091, 7)`;
+      const o = await tx.onlineOrder.findUnique({ where: { id } });
+      if (!o) throw new NotFoundException('ไม่พบออเดอร์ออนไลน์');
+      if (o.status === 'NEW') throw new BadRequestException('ต้องกดรับออเดอร์ก่อนจึงจะกดจัดของเสร็จได้');
+      if (!ONLINE_PICKABLE_STATUSES.includes(o.status as OnlineOrderStatus)) throw new BadRequestException(`ออเดอร์นี้อยู่ในสถานะ "${ONLINE_STATUS_LABELS[o.status as OnlineOrderStatus]}" กดจัดของเสร็จไม่ได้`);
+      await ensureClaim(tx, id, user);
+      await tx.onlineOrder.update({ where: { id }, data: { status: 'READY', pickedAt: new Date(), pickedById: user.id, ...UNCLAIMED } });
+    });
+    void this.notify(id, 'READY');
+    return this.detail(id);
+  }
+
   async update(id: string, body: any, user: StaffUser) {
     await this.prisma.$transaction(async (tx) => {
       const o = await this.loadEditable(tx, id, ['NEW', ...PAYABLE], user);
       await this.applyEdits(tx, o, body);
+      // items changed after "จัดของเสร็จ": the goods on the counter no longer match, pick again (editor holds it now)
+      if (o.status === 'READY' && Array.isArray(body?.items)) {
+        await tx.onlineOrder.update({ where: { id }, data: { status: 'ACCEPTED', pickedAt: null, pickedById: null } });
+      }
     }, { timeout: 15000 });
     return this.detail(id);
   }
@@ -807,19 +842,21 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
       const o = await tx.onlineOrder.findUnique({ where: { id } });
       if (!o) throw new NotFoundException('ไม่พบออเดอร์ออนไลน์');
       if (!nextStatuses(o.status as OnlineOrderStatus, o.fulfillment as Fulfillment).includes(to)) throw new BadRequestException('เปลี่ยนสถานะนี้ไม่ได้');
-      await ensureClaim(tx, id, user);
+      // "เตรียมของ" is a picking step (claim lock); กำลังส่ง / เสร็จ are hand-over steps any cashier may do
+      if (to === 'PREPARING') await ensureClaim(tx, id, user);
       if (to === 'DONE' && !o.posOrderId && body?.unpaidOk !== true) throw new ConflictException({ statusCode: 409, code: 'NOT_PAID', message: 'ออเดอร์นี้ยังไม่ได้รับเงินในหน้าขาย ยืนยันปิดออเดอร์โดยไม่รับเงิน?' });
-      await tx.onlineOrder.update({ where: { id }, data: { status: to, ...(to === 'DONE' ? { doneAt: new Date(), ...RELEASED } : {}) } });
+      await tx.onlineOrder.update({ where: { id }, data: { status: to, ...(to === 'DONE' ? { doneAt: new Date(), ...RELEASED } : to === 'DELIVERING' ? UNCLAIMED : {}) } });
     });
     void this.notify(id, to);
     return this.detail(id);
   }
 
-  /** Cart lines for the POS (agreed prices; ค่าส่ง as a service line). */
   /**
-   * Open as a POS bill: claims the order and records the terminal. Another terminal is refused (409
-   * ONLINE_ORDER_OPEN_ELSEWHERE) unless `force` (the holder moves the bill here; the old terminal's checkout is then
-   * refused, see linkOnlineOrder).
+   * Open as a POS bill (cart lines at the agreed prices; ค่าส่ง as a service line): records the terminal. Any
+   * cashier may do it once the order is accepted, picked or not and whoever holds the picking claim (the claim
+   * is not touched; `picked` / `claim` let the POS warn "ยังไม่ได้จัดของ"). Another terminal is refused (409
+   * ONLINE_ORDER_OPEN_ELSEWHERE) unless `force` (the bill moves here; the old terminal's checkout is then refused,
+   * see linkOnlineOrder).
    */
   async posPayload(id: string, user: StaffUser, opts: { terminalId?: string; force?: boolean } = {}) {
     const terminalId = text(opts.terminalId, 100) || null;
@@ -830,7 +867,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
       if (!PAYABLE.includes(cur.status as OnlineOrderStatus)) throw new BadRequestException('ต้องกดรับออเดอร์ก่อนจึงจะเปิดบิลได้');
       if (cur.posOrderId) throw new BadRequestException('ออเดอร์นี้ชำระเงินแล้ว');
       if (cur.deliveryFee === null) throw new BadRequestException('กรุณาใส่ค่าส่งก่อน');
-      await ensureClaim(tx, id, user);
+      if (!user?.id) throw new BadRequestException('ไม่ทราบผู้ใช้');
       if (terminalId && cur.posTerminalId && cur.posTerminalId !== terminalId && !opts.force) {
         throw new ConflictException({
           statusCode: 409,
@@ -842,7 +879,12 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
       if (terminalId) await tx.onlineOrder.update({ where: { id }, data: { posTerminalId: terminalId, posOpenedAt: new Date() } });
       return tx.onlineOrder.findUniqueOrThrow({
         where: { id },
-        include: { items: { orderBy: { sortOrder: 'asc' }, include: { product: { select: { id: true, sku: true, name: true, isBundle: true, isActive: true } } } }, customer: { select: { id: true, name: true } } },
+        include: {
+          items: { orderBy: { sortOrder: 'asc' }, include: { product: { select: { id: true, sku: true, name: true, isBundle: true, isActive: true } } } },
+          customer: { select: { id: true, name: true } },
+          claimedBy: { select: { id: true, fullName: true, username: true } },
+          pickedBy: { select: { id: true, fullName: true, username: true } },
+        },
       });
     }, { timeout: 15000 });
     const fee = money(o.deliveryFee);
@@ -851,7 +893,11 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
       const p = await this.ensureDeliveryProduct();
       lines.push({ productId: p.id, sku: p.sku, name: p.name, unitId: null, unitName: p.unit || 'ครั้ง', factor: 1, quantity: 1, unitPrice: fee, isBundle: false });
     }
-    return { id: o.id, orderNo: o.orderNo, customer: o.customer, contactName: o.contactName, totalAmount: money(o.totalAmount), note: `ออเดอร์ออนไลน์ ${o.orderNo}${o.fulfillment === 'DELIVERY' ? ' (ส่งของ)' : ' (รับที่ร้าน)'}`, lines };
+    return {
+      id: o.id, orderNo: o.orderNo, customer: o.customer, contactName: o.contactName, totalAmount: money(o.totalAmount),
+      note: `ออเดอร์ออนไลน์ ${o.orderNo}${o.fulfillment === 'DELIVERY' ? ' (ส่งของ)' : ' (รับที่ร้าน)'}`, lines,
+      fulfillment: o.fulfillment, picked: pickedOf(o), claim: claimOf(o),
+    };
   }
 
   /** The system service product "ค่าส่ง" (created on first use; reactivated / kept a service). */
@@ -988,6 +1034,12 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
 function claimOf(o: { claimedById: string | null; claimedAt: Date | null; claimedBy?: { id: string; fullName: string; username: string } | null }) {
   if (!o.claimedById) return null;
   return { userId: o.claimedById, name: o.claimedBy?.fullName || o.claimedBy?.username || '-', at: o.claimedAt };
+}
+
+/** "จัดโดย X · เวลา" (null = not marked จัดของเสร็จ). The picker's name stays even when the user is deleted later ("-"). */
+function pickedOf(o: { pickedAt: Date | null; pickedById: string | null; pickedBy?: { id: string; fullName: string; username: string } | null }) {
+  if (!o.pickedAt) return null;
+  return { userId: o.pickedById, name: o.pickedBy?.fullName || o.pickedBy?.username || '-', at: o.pickedAt };
 }
 
 const fmt = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

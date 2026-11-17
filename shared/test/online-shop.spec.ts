@@ -77,6 +77,10 @@ describe('misc', () => {
     expect(nextStatuses('PREPARING', 'DELIVERY')).toContain('DELIVERING');
     expect(nextStatuses('DONE', 'DELIVERY')).toEqual([]);
     expect(nextStatuses('NEW', 'DELIVERY')).toEqual([]);
+    // READY ("จัดของเสร็จ") is set by its own action, never by a status button; from READY: deliver / done
+    expect(nextStatuses('ACCEPTED', 'DELIVERY')).not.toContain('READY');
+    expect(nextStatuses('READY', 'DELIVERY')).toEqual(['DELIVERING', 'DONE', 'CANCELLED']);
+    expect(nextStatuses('READY', 'PICKUP')).toEqual(['DONE', 'CANCELLED']);
   });
   it('phones', () => {
     expect(normalizeThaiPhone('081-234-5678')).toBe('0812345678');

@@ -180,7 +180,14 @@ export class OnlineShopAdminController {
     return this.shop.pickingSlip(id, req.user);
   }
 
-  /** open as a POS bill (claims it, records the terminal): body { terminalId, force } */
+  /** "จัดของเสร็จ": records the picker, ends the claim, status READY */
+  @RequirePermissions('POS_SELL')
+  @Post('orders/:id/picked')
+  picked(@Param('id') id: string, @Request() req: any) {
+    return this.shop.markPicked(id, req.user);
+  }
+
+  /** open as a POS bill (any cashier, no claim; records the terminal): body { terminalId, force } */
   @RequirePermissions('POS_SELL')
   @Post('orders/:id/pos')
   pos(@Param('id') id: string, @Body() body: any, @Request() req: any) {

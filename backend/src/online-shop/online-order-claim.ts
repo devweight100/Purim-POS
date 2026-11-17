@@ -2,17 +2,21 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { Prisma } from '@prisma/client';
 
 /**
- * Claim lock of online orders (docs/online-shop.md "Claim lock"): one staff member prepares an order.
+ * Claim lock of online orders (docs/online-shop.md "Claim lock"): one staff member PICKS an order.
+ * Owner (2026-11-17): "Picking is for the picker. Once picking is done, every cashier can take payment and hand
+ * the goods to the customer."
  *
  * The claim is taken with ONE conditional UPDATE (only when nobody holds it, or the caller already does), so two
  * cashiers pressing at the same moment cannot both get it: PostgreSQL re-checks the WHERE after the first one
- * commits and the second UPDATE changes no row. Everything that acts on the order (edit, accept, reject, status,
- * open as a POS bill, picking slip) claims it first, and is refused while someone else holds it. ADMIN / MANAGER
- * may take it over explicitly (audit log ONLINE_ORDER_TAKEOVER).
+ * commits and the second UPDATE changes no row. Only the picking actions (edit items / qty / price / fee, accept,
+ * reject, picking slip, "เตรียมของ", "จัดของเสร็จ") claim it first and are refused while someone else holds it.
+ * Opening as a POS bill, payment and the delivery steps (กำลังส่ง / เสร็จ) are NOT claimed: any cashier may do
+ * them. "จัดของเสร็จ" records the picker and ends the claim. ADMIN / MANAGER may take it over explicitly (audit log
+ * ONLINE_ORDER_TAKEOVER).
  */
 
 /** statuses in which an order can be claimed (open orders) */
-export const CLAIMABLE = ['NEW', 'ACCEPTED', 'PREPARING', 'DELIVERING'] as const;
+export const CLAIMABLE = ['NEW', 'ACCEPTED', 'PREPARING', 'READY', 'DELIVERING'] as const;
 
 export interface StaffUser {
   id: string;
@@ -41,7 +45,7 @@ export async function tryClaim(db: Db, orderId: string, userId: string): Promise
         "claimed_at" = CASE WHEN "claimed_by_id" = ${userId} THEN "claimed_at" ELSE ${now} END,
         "updated_at" = ${now}
     WHERE "id" = ${orderId}
-      AND "status"::text IN ('NEW', 'ACCEPTED', 'PREPARING', 'DELIVERING')
+      AND "status"::text IN ('NEW', 'ACCEPTED', 'PREPARING', 'READY', 'DELIVERING')
       AND ("claimed_by_id" IS NULL OR "claimed_by_id" = ${userId})`;
   return n > 0;
 }
@@ -71,3 +75,5 @@ export async function ensureClaim(db: Db, orderId: string, user: StaffUser): Pro
 
 /** Fields that end a claim (reject / cancel / done). */
 export const RELEASED = { claimedById: null, claimedAt: null, posTerminalId: null, posOpenedAt: null } as const;
+/** Fields that end only the picking claim ("จัดของเสร็จ", กำลังส่ง): the POS bill terminal stays. */
+export const UNCLAIMED = { claimedById: null, claimedAt: null } as const;
