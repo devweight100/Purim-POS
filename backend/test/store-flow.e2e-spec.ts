@@ -2521,102 +2521,102 @@ d('store flow (e2e)', () => {
           await db.$disconnect();
         }
       });
-    });
 
-    describe('picking is for the picker, payment for every cashier (owner 2026-11-17)', () => {
-      it('A claims and picks; B cannot edit / print / mark picked but CAN open the bill and pay; double checkout -> one bill', async () => {
-        const A1 = staff.two;
-        const B = C; // cashier1
-        const t = (await pub('post', '/session', undefined, { dev: { id: 'pick-pay' } }).expect(201)).body.token;
-        const o = (await pub('post', '/orders', t, { contactName: 'ลูกค้า pick-pay', contactPhone: '0833333333', fulfillment: 'DELIVERY', address: '1 ถนนจัดของ', items: [{ productId: shop.p1.id, unitId: null, quantity: 2 }] }).expect(201)).body;
-        // NEW: "จัดของเสร็จ" needs an accepted order
-        await api('post', `/online-shop/orders/${o.id}/picked`, A1.token).expect(400);
-        expect((await api('post', `/online-shop/orders/${o.id}/accept`, A1.token, { deliveryFee: 40 }).expect(201)).body).toMatchObject({ status: 'ACCEPTED', claim: { userId: A1.id }, picked: null });
-        await api('post', `/online-shop/orders/${o.id}/picking-slip`, A1.token).expect(201);
-        // B: picking actions refused
-        await api('patch', `/online-shop/orders/${o.id}`, B, { items: [{ productId: shop.p1.id, unitId: null, quantity: 3 }] }).expect(409);
-        await api('patch', `/online-shop/orders/${o.id}`, B, { deliveryFee: 10 }).expect(409);
-        await api('post', `/online-shop/orders/${o.id}/picking-slip`, B).expect(409);
-        await api('post', `/online-shop/orders/${o.id}/picked`, B).expect(409);
-        await api('post', `/online-shop/orders/${o.id}/reject`, B, { reason: 'ไม่' }).expect(409);
-        // B: the payable list shows the order (not picked yet, held by A)
-        const row = (await api('get', '/online-shop/orders?status=payable&limit=100', B).expect(200)).body.data.find((r: any) => r.id === o.id);
-        expect(row).toMatchObject({ claim: { userId: A1.id }, picked: null });
-        // A: "จัดของเสร็จ" -> READY, picker recorded, claim ended
-        const picked = (await api('post', `/online-shop/orders/${o.id}/picked`, A1.token).expect(201)).body;
-        expect(picked).toMatchObject({ status: 'READY', claim: null, picked: { userId: A1.id, name: A1.name }, nextStatuses: ['DELIVERING', 'DONE', 'CANCELLED'] });
-        expect(new Date(picked.picked.at).getTime()).toBeGreaterThan(Date.now() - 60000);
-        await api('post', `/online-shop/orders/${o.id}/picked`, A1.token).expect(400); // already READY
-        const listed = (await api('get', '/online-shop/orders?status=READY&limit=100', B).expect(200)).body.data.find((r: any) => r.id === o.id);
-        expect(listed).toMatchObject({ status: 'READY', picked: { name: A1.name } });
+      describe('picking is for the picker, payment for every cashier (owner 2026-11-17)', () => {
+        it('A claims and picks; B cannot edit / print / mark picked but CAN open the bill and pay; double checkout -> one bill', async () => {
+          const A1 = staff.two;
+          const B = C; // cashier1
+          const t = (await pub('post', '/session', undefined, { dev: { id: 'pick-pay' } }).expect(201)).body.token;
+          const o = (await pub('post', '/orders', t, { contactName: 'ลูกค้า pick-pay', contactPhone: '0833333333', fulfillment: 'DELIVERY', address: '1 ถนนจัดของ', items: [{ productId: shop.p1.id, unitId: null, quantity: 2 }] }).expect(201)).body;
+          // NEW: "จัดของเสร็จ" needs an accepted order
+          await api('post', `/online-shop/orders/${o.id}/picked`, A1.token).expect(400);
+          expect((await api('post', `/online-shop/orders/${o.id}/accept`, A1.token, { deliveryFee: 40 }).expect(201)).body).toMatchObject({ status: 'ACCEPTED', claim: { userId: A1.id }, picked: null });
+          await api('post', `/online-shop/orders/${o.id}/picking-slip`, A1.token).expect(201);
+          // B: picking actions refused
+          await api('patch', `/online-shop/orders/${o.id}`, B, { items: [{ productId: shop.p1.id, unitId: null, quantity: 3 }] }).expect(409);
+          await api('patch', `/online-shop/orders/${o.id}`, B, { deliveryFee: 10 }).expect(409);
+          await api('post', `/online-shop/orders/${o.id}/picking-slip`, B).expect(409);
+          await api('post', `/online-shop/orders/${o.id}/picked`, B).expect(409);
+          await api('post', `/online-shop/orders/${o.id}/reject`, B, { reason: 'ไม่' }).expect(409);
+          // B: the payable list shows the order (not picked yet, held by A)
+          const row = (await api('get', '/online-shop/orders?status=payable&limit=100', B).expect(200)).body.data.find((r: any) => r.id === o.id);
+          expect(row).toMatchObject({ claim: { userId: A1.id }, picked: null });
+          // A: "จัดของเสร็จ" -> READY, picker recorded, claim ended
+          const picked = (await api('post', `/online-shop/orders/${o.id}/picked`, A1.token).expect(201)).body;
+          expect(picked).toMatchObject({ status: 'READY', claim: null, picked: { userId: A1.id, name: A1.name }, nextStatuses: ['DELIVERING', 'DONE', 'CANCELLED'] });
+          expect(new Date(picked.picked.at).getTime()).toBeGreaterThan(Date.now() - 60000);
+          await api('post', `/online-shop/orders/${o.id}/picked`, A1.token).expect(400); // already READY
+          const listed = (await api('get', '/online-shop/orders?status=READY&limit=100', B).expect(200)).body.data.find((r: any) => r.id === o.id);
+          expect(listed).toMatchObject({ status: 'READY', picked: { name: A1.name } });
 
-        // B opens it as a bill and pays (twice at once: one bill)
-        const db = new PrismaClient();
-        try {
-          let open = await db.shift.findFirst({ where: { status: 'OPEN', user: { username: 'cashier1' } } });
-          if (!open) open = (await api('post', '/shifts/open', B, { startingCash: 500, terminalId: 'e2e-online' }).expect(201)).body.shift;
-          const here = open!.terminalId || 'e2e-online';
-          const pos = (await api('post', `/online-shop/orders/${o.id}/pos`, B, { terminalId: here }).expect(201)).body;
-          expect(pos).toMatchObject({ fulfillment: 'DELIVERY', picked: { userId: A1.id }, claim: null });
-          expect(pos.lines.map((l: any) => l.unitPrice * l.quantity).reduce((a: number, b: number) => a + b, 0)).toBe(o.subtotal + 40);
-          const sale = (clientOrderId: string) => ({
-            clientOrderId, orderNumber: `ORD-E2P${clientOrderId.slice(0, 8)}`, shiftId: open!.id, onlineOrderId: o.id,
-            items: pos.lines.map((l: any) => ({ productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice, unitId: l.unitId, unitName: l.unitName, conversionFactor: l.factor })),
-            payments: [{ method: 'CASH', amount: o.subtotal + 40 }],
-          });
-          const ids = [randomUUID(), randomUUID()];
-          const rs = await Promise.all(ids.map((id) => api('post', '/orders/checkout', B, sale(id))));
-          expect(rs.map((r) => r.status).sort()).toEqual([201, 409]);
-          const ok = rs.find((r) => r.status === 201)!;
-          expect(await db.order.count({ where: { clientOrderId: { in: ids } } })).toBe(1);
-          // a delivery order stays open (READY, paid); the payment does not claim it
-          const paid = (await api('get', `/online-shop/orders/${o.id}`, A1.token).expect(200)).body;
-          expect(paid).toMatchObject({ status: 'READY', posOrder: { id: ok.body.id }, claim: null, picked: { userId: A1.id } });
-          expect(paid.paidAt).toBeTruthy();
-          // edits after payment stay impossible, for everyone
-          await api('patch', `/online-shop/orders/${o.id}`, A1.token, { note: 'x' }).expect(400);
-          await api('patch', `/online-shop/orders/${o.id}`, B, { note: 'x' }).expect(400);
-          // idempotent retry returns the bill
-          expect((await api('post', '/orders/checkout', B, sale(ids[rs.indexOf(ok)])).expect(201)).body.id).toBe(ok.body.id);
-          // delivery steps after payment: any cashier, no claim (A claims it again first: B is still allowed)
-          await api('post', `/online-shop/orders/${o.id}/claim`, A1.token, {}).expect(201);
-          expect((await api('post', `/online-shop/orders/${o.id}/status`, B, { status: 'DELIVERING' }).expect(201)).body).toMatchObject({ status: 'DELIVERING', claim: null });
-          expect((await api('post', `/online-shop/orders/${o.id}/status`, B, { status: 'DONE' }).expect(201)).body).toMatchObject({ status: 'DONE', claim: null, picked: { userId: A1.id } });
-        } finally {
-          await db.$disconnect();
-        }
-      });
+          // B opens it as a bill and pays (twice at once: one bill)
+          const db = new PrismaClient();
+          try {
+            let open = await db.shift.findFirst({ where: { status: 'OPEN', user: { username: 'cashier1' } } });
+            if (!open) open = (await api('post', '/shifts/open', B, { startingCash: 500, terminalId: 'e2e-online' }).expect(201)).body.shift;
+            const here = open!.terminalId || 'e2e-online';
+            const pos = (await api('post', `/online-shop/orders/${o.id}/pos`, B, { terminalId: here }).expect(201)).body;
+            expect(pos).toMatchObject({ fulfillment: 'DELIVERY', picked: { userId: A1.id }, claim: null });
+            expect(pos.lines.map((l: any) => l.unitPrice * l.quantity).reduce((a: number, b: number) => a + b, 0)).toBe(o.subtotal + 40);
+            const sale = (clientOrderId: string) => ({
+              clientOrderId, orderNumber: `ORD-E2P${clientOrderId.slice(0, 8)}`, shiftId: open!.id, onlineOrderId: o.id,
+              items: pos.lines.map((l: any) => ({ productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice, unitId: l.unitId, unitName: l.unitName, conversionFactor: l.factor })),
+              payments: [{ method: 'CASH', amount: o.subtotal + 40 }],
+            });
+            const ids = [randomUUID(), randomUUID()];
+            const rs = await Promise.all(ids.map((id) => api('post', '/orders/checkout', B, sale(id))));
+            expect(rs.map((r) => r.status).sort()).toEqual([201, 409]);
+            const ok = rs.find((r) => r.status === 201)!;
+            expect(await db.order.count({ where: { clientOrderId: { in: ids } } })).toBe(1);
+            // a delivery order stays open (READY, paid); the payment does not claim it
+            const paid = (await api('get', `/online-shop/orders/${o.id}`, A1.token).expect(200)).body;
+            expect(paid).toMatchObject({ status: 'READY', posOrder: { id: ok.body.id }, claim: null, picked: { userId: A1.id } });
+            expect(paid.paidAt).toBeTruthy();
+            // edits after payment stay impossible, for everyone
+            await api('patch', `/online-shop/orders/${o.id}`, A1.token, { note: 'x' }).expect(400);
+            await api('patch', `/online-shop/orders/${o.id}`, B, { note: 'x' }).expect(400);
+            // idempotent retry returns the bill
+            expect((await api('post', '/orders/checkout', B, sale(ids[rs.indexOf(ok)])).expect(201)).body.id).toBe(ok.body.id);
+            // delivery steps after payment: any cashier, no claim (A claims it again first: B is still allowed)
+            await api('post', `/online-shop/orders/${o.id}/claim`, A1.token, {}).expect(201);
+            expect((await api('post', `/online-shop/orders/${o.id}/status`, B, { status: 'DELIVERING' }).expect(201)).body).toMatchObject({ status: 'DELIVERING', claim: null });
+            expect((await api('post', `/online-shop/orders/${o.id}/status`, B, { status: 'DONE' }).expect(201)).body).toMatchObject({ status: 'DONE', claim: null, picked: { userId: A1.id } });
+          } finally {
+            await db.$disconnect();
+          }
+        });
 
-      it('B may pay before picking (QR right after acceptance); the pickup order is then done; READY item edits send it back to picking', async () => {
-        const A1 = staff.two;
-        const t = (await pub('post', '/session', undefined, { dev: { id: 'pay-first' } }).expect(201)).body.token;
-        const place2 = async () => (await pub('post', '/orders', t, { contactName: 'ลูกค้า pay-first', contactPhone: '0844444444', fulfillment: 'PICKUP', items: [{ productId: shop.p1.id, unitId: null, quantity: 1 }] }).expect(201)).body;
-        const o = await place2();
-        await api('post', `/online-shop/orders/${o.id}/accept`, A1.token, {}).expect(201);
-        const db = new PrismaClient();
-        try {
-          let open = await db.shift.findFirst({ where: { status: 'OPEN', user: { username: 'cashier1' } } });
-          if (!open) open = (await api('post', '/shifts/open', C, { startingCash: 500, terminalId: 'e2e-online' }).expect(201)).body.shift;
-          const pos = (await api('post', `/online-shop/orders/${o.id}/pos`, C, { terminalId: open!.terminalId || 'e2e-online' }).expect(201)).body;
-          expect(pos).toMatchObject({ picked: null, claim: { userId: A1.id } });
-          await api('post', '/orders/checkout', C, {
-            clientOrderId: randomUUID(), shiftId: open!.id, onlineOrderId: o.id,
-            items: pos.lines.map((l: any) => ({ productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice, unitId: l.unitId, unitName: l.unitName, conversionFactor: l.factor })),
-            payments: [{ method: 'CASH', amount: o.subtotal }],
-          }).expect(201);
-          expect((await api('get', `/online-shop/orders/${o.id}`, C).expect(200)).body).toMatchObject({ status: 'DONE', claim: null, picked: null });
-        } finally {
-          await db.$disconnect();
-        }
-        // READY + items edited: back to picking (ACCEPTED, picker cleared, the editor holds it)
-        const o2 = await place2();
-        await api('post', `/online-shop/orders/${o2.id}/accept`, A1.token, {}).expect(201);
-        await api('post', `/online-shop/orders/${o2.id}/picked`, A1.token).expect(201);
-        expect((await api('patch', `/online-shop/orders/${o2.id}`, C, { note: 'โทรก่อน' }).expect(200)).body).toMatchObject({ status: 'READY', claim: { userId: me } });
-        await api('post', `/online-shop/orders/${o2.id}/release`, C).expect(201);
-        const edited = (await api('patch', `/online-shop/orders/${o2.id}`, A1.token, { items: [{ productId: shop.p1.id, unitId: null, quantity: 2 }] }).expect(200)).body;
-        expect(edited).toMatchObject({ status: 'ACCEPTED', picked: null, claim: { userId: A1.id } });
-        await api('post', `/online-shop/orders/${o2.id}/reject`, A1.token, { reason: 'ทดสอบ' }).expect(201);
+        it('B may pay before picking (QR right after acceptance); the pickup order is then done; READY item edits send it back to picking', async () => {
+          const A1 = staff.two;
+          const t = (await pub('post', '/session', undefined, { dev: { id: 'pay-first' } }).expect(201)).body.token;
+          const place2 = async () => (await pub('post', '/orders', t, { contactName: 'ลูกค้า pay-first', contactPhone: '0844444444', fulfillment: 'PICKUP', items: [{ productId: shop.p1.id, unitId: null, quantity: 1 }] }).expect(201)).body;
+          const o = await place2();
+          await api('post', `/online-shop/orders/${o.id}/accept`, A1.token, {}).expect(201);
+          const db = new PrismaClient();
+          try {
+            let open = await db.shift.findFirst({ where: { status: 'OPEN', user: { username: 'cashier1' } } });
+            if (!open) open = (await api('post', '/shifts/open', C, { startingCash: 500, terminalId: 'e2e-online' }).expect(201)).body.shift;
+            const pos = (await api('post', `/online-shop/orders/${o.id}/pos`, C, { terminalId: open!.terminalId || 'e2e-online' }).expect(201)).body;
+            expect(pos).toMatchObject({ picked: null, claim: { userId: A1.id } });
+            await api('post', '/orders/checkout', C, {
+              clientOrderId: randomUUID(), shiftId: open!.id, onlineOrderId: o.id,
+              items: pos.lines.map((l: any) => ({ productId: l.productId, quantity: l.quantity, unitPrice: l.unitPrice, unitId: l.unitId, unitName: l.unitName, conversionFactor: l.factor })),
+              payments: [{ method: 'CASH', amount: o.subtotal }],
+            }).expect(201);
+            expect((await api('get', `/online-shop/orders/${o.id}`, C).expect(200)).body).toMatchObject({ status: 'DONE', claim: null, picked: null });
+          } finally {
+            await db.$disconnect();
+          }
+          // READY + items edited: back to picking (ACCEPTED, picker cleared, the editor holds it)
+          const o2 = await place2();
+          await api('post', `/online-shop/orders/${o2.id}/accept`, A1.token, {}).expect(201);
+          await api('post', `/online-shop/orders/${o2.id}/picked`, A1.token).expect(201);
+          expect((await api('patch', `/online-shop/orders/${o2.id}`, C, { note: 'โทรก่อน' }).expect(200)).body).toMatchObject({ status: 'READY', claim: { userId: me } });
+          await api('post', `/online-shop/orders/${o2.id}/release`, C).expect(201);
+          const edited = (await api('patch', `/online-shop/orders/${o2.id}`, A1.token, { items: [{ productId: shop.p1.id, unitId: null, quantity: 2 }] }).expect(200)).body;
+          expect(edited).toMatchObject({ status: 'ACCEPTED', picked: null, claim: { userId: A1.id } });
+          await api('post', `/online-shop/orders/${o2.id}/reject`, A1.token, { reason: 'ทดสอบ' }).expect(201);
+        });
       });
     });
 
