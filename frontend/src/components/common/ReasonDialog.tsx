@@ -75,10 +75,11 @@ function ReasonForm({
     if (disabled) return;
     void onConfirm(value.trim());
   };
-  // keys typed here belong to this dialog only: React bubbles them through the portal to the components that
-  // opened it (row-nav lists, POS key handlers, an outer dialog), so they stop at the form
+  // Enter belongs to this dialog: React bubbles keys through the portal to the components that opened it (row-nav
+  // lists open a row on Enter, an outer dialog may confirm on Enter), so it stops at the form. Escape is left to
+  // Base UI (its handler sits on the popup) and lib/dialog-stack.ts closes only the topmost dialog.
   const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === 'Escape') e.stopPropagation();
+    if (e.key === 'Enter') e.stopPropagation();
   };
 
   return (

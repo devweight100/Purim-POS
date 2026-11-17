@@ -90,6 +90,8 @@ const subscribe = (l: () => void) => {
   return () => listeners.delete(l);
 };
 const snapshot = () => queue;
+/** Pending requests, oldest first (the host shows the first). */
+export const pendingAsks = snapshot;
 const serverSnapshot = (): AskRequest[] => [];
 
 /** For the host: pending requests, oldest first (one is shown at a time). */
