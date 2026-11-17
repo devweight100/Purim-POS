@@ -113,7 +113,8 @@ test('touch screen: 25 scans, then item #1 again -> row 1 highlighted, scrolled 
 
     // the same line scanned again flashes again and counts on
     await scan(page, items[0].barcode);
-    expect(await lastRow(page).evaluate((el) => el.getAnimations().length)).toBeGreaterThan(0);
+    // the flash (Web Animation on the row), not just a CSS transition
+    expect(await lastRow(page).evaluate((el) => el.getAnimations().filter((x) => !(x instanceof CSSTransition)).length)).toBeGreaterThan(0);
     await expect(page.getByTestId('pos-last-added')).toContainText('× 3 ชิ้น');
 
     // + / - on another line moves the highlight there; removing it clears it
@@ -179,7 +180,7 @@ test('reduced motion: static highlight, no flash animation, instant scroll', asy
   try {
     await scanAll(page);
     await rescanFirst(page, 'classic-cart-item-0', 2);
-    expect(await lastRow(page).evaluate((el) => el.getAnimations().length)).toBe(0);
+    expect(await lastRow(page).evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
     expect(await lastRow(page).getByTestId('pos-qty-bump').evaluate((el) => getComputedStyle(el).animationName)).toBe('none');
     const bg = await lastRow(page).evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(bg).toBe('rgb(236, 253, 245)');

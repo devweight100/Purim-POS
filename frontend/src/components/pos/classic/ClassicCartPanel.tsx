@@ -187,7 +187,7 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
                   data-line-key={lineKey}
                   data-last-added={isLast ? 'true' : undefined}
                   onClick={() => setSelectedIndex(idx)}
-                  className={`flex flex-col gap-2 rounded-xl border p-3.5 shadow-sm transition-all cursor-pointer ${
+                  className={`flex flex-col gap-2 rounded-xl border p-3.5 shadow-sm transition-all motion-reduce:transition-none cursor-pointer ${
                     isSelected
                       ? `border-sky-500 bg-sky-50/60 ring-2 ring-sky-400 shadow-md${isLast ? ' pos-last-added' : ''}`
                       : isLast

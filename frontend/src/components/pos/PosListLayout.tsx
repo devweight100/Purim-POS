@@ -732,7 +732,7 @@ export function PosListLayout({
                       data-line-key={lineKey}
                       data-last-added={isLast ? 'true' : undefined}
                       onClick={() => onSelectCartIndex?.(idx)}
-                      className={`transition-colors cursor-pointer ${
+                      className={`transition-colors motion-reduce:transition-none cursor-pointer ${
                         isSelected 
                           ? `bg-sky-100/80 font-bold border-l-4 border-l-sky-600 shadow-2xs${isLast ? ' pos-last-added' : ''}` 
                           : isLast
