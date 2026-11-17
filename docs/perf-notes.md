@@ -1,5 +1,18 @@
 # Perf round — progress notes (delete a task's section when it is fully done)
 
+## Task 7: POS cart "last added line" highlight (owner request) — IN PROGRESS
+
+Branch ccr-8f8b0741-si1a0o (base 888990f).
+
+### Plan
+1. [ ] Store: `lastTouched` {productId, unitId, seq, delta} in cart-store (add / qty / unit set it; remove of that line,
+       clear / hold / recall / online order clear it; follows rollup re-keying). vitest.
+2. [ ] UI: both cart renderers (classic `ClassicCartPanel`, list `PosListLayout`): data-last-added row (emerald bg + left
+       accent), WAAPI flash ~700 ms on every touch, "+N" bump on the qty cell, scroll nearest (smooth unless reduced
+       motion) without focus change, "ล่าสุด: ..." line; replaces the old scroll-to-bottom on adds.
+3. [ ] Playwright 17-last-added (25 items scanned, rescan #1, reduced motion, layout 3 sizes, perf sanity), screenshots.
+4. [ ] Full verification, PROJECT_STATUS entry, drop test DBs.
+
 ## Task 6: remove the remaining claims caps (supplier returns grouped on the server, every claims screen complete) — DONE (summary in PROJECT_STATUS.md 2026-11-14)
 
 Branch ccr-8f8b0741-si1a0o (base 5b3dd01). Load DB perf_load on :5433 recreated (prepare-database.js + seed-load.sh +
