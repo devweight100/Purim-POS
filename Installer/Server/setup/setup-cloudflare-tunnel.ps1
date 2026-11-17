@@ -51,10 +51,19 @@ function Set-EnvLine([string]$Key, [string]$Value) {
   [IO.File]::WriteAllText($EnvFile, (($lines -join "`r`n") + "`r`n"), $utf8)
 }
 
+function Invoke-Cf([string[]]$CfArgs) {
+  # cloudflared logs to stderr; under ErrorActionPreference=Stop Windows PowerShell 5.1 turns that into a
+  # terminating NativeCommandError, so run it with Continue and judge by the exit code only
+  $old = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try { $out = & $cf @CfArgs 2>&1 | ForEach-Object { "$_" }; return @{ Code = $LASTEXITCODE; Out = ($out -join "`n") } }
+  finally { $ErrorActionPreference = $old }
+}
+
 if ($Uninstall) {
   $cf = Find-Cloudflared
   if ($cf) {
-    & $cf service uninstall 2>$null | Out-Null
+    $null = Invoke-Cf @('service', 'uninstall')
     Ok 'ถอน service cloudflared แล้ว (ร้านออนไลน์เข้าจากอินเทอร์เน็ตไม่ได้แล้ว)'
   } else { Warn 'ไม่พบ cloudflared' }
   Set-EnvLine 'SHOP_PUBLIC_HOST' ''
@@ -83,8 +92,10 @@ if (-not $cf) {
 Ok "cloudflared: $cf"
 
 # 2. service with the token (re-install replaces an older token)
-& $cf service uninstall 2>$null | Out-Null
-& $cf service install $Token | Out-Host
+$null = Invoke-Cf @('service', 'uninstall')
+Start-Sleep -Seconds 2
+$inst = Invoke-Cf @('service', 'install', $Token)
+if ($inst.Code -ne 0) { Write-Host $inst.Out; Fail 'ติดตั้ง service cloudflared ไม่สำเร็จ (ดูข้อความด้านบน: token ถูกต้องไหม?)' }
 Start-Sleep -Seconds 3
 $svc = Get-Service -Name 'Cloudflared' -ErrorAction SilentlyContinue
 if ($svc -and $svc.Status -eq 'Running') { Ok 'service Cloudflared ทำงานแล้ว (เปิดเองทุกครั้งที่เปิดเครื่อง)' } else { Warn 'service Cloudflared ยังไม่ทำงาน: เปิด services.msc แล้ว Start "Cloudflared agent"' }
