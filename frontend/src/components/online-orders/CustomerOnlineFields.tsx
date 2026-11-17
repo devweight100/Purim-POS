@@ -6,6 +6,7 @@ import { apiFetch } from '@/lib/api';
 import { parseDeliveryFee } from '@shared/online-shop';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { askConfirm } from '@/lib/ask-dialog';
 
 /**
  * Customer form: ค่าส่ง of the online shop (per member, empty = the shop tells each time) and the LINE accounts
@@ -22,7 +23,7 @@ export function CustomerOnlineFields({ customerId, value, onChange }: { customer
   }, [customerId]);
 
   const unlink = async (lineUserId: string) => {
-    if (!window.confirm('ยกเลิกการผูกบัญชี LINE นี้? ลูกค้าจะเห็นราคาปลีกในร้านออนไลน์')) return;
+    if (!(await askConfirm({ title: 'ยกเลิกการผูกบัญชี LINE นี้?', description: 'ลูกค้าจะเห็นราคาปลีกในร้านออนไลน์', confirmLabel: 'ยกเลิกการผูก', cancelLabel: 'ไม่ยกเลิก', danger: true }))) return;
     try {
       await apiFetch(`/online-shop/line/${encodeURIComponent(lineUserId)}`, { method: 'DELETE' });
       setLinked((l) => l.filter((x) => x.lineUserId !== lineUserId));

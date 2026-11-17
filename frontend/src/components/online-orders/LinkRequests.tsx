@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { apiFetch } from '@/lib/api';
+import { askReason } from '@/lib/ask-dialog';
 import { DEFAULT_LEVEL_NAMES, PRICE_LEVELS } from '@shared/online-shop';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -120,8 +121,15 @@ export function LinkRequests({ onChanged }: { onChanged: () => void }) {
                       สร้างสมาชิกใหม่และผูก
                     </Button>
                   </div>
-                  <Button size="sm" variant="outline" disabled={busy === r.id} className="text-rose-700 border-rose-300" onClick={() => {
-                    const note = window.prompt('เหตุผลที่ไม่อนุมัติ (ลูกค้าจะเห็น)', 'ตรวจสอบเบอร์ไม่ได้ กรุณาติดต่อร้าน');
+                  <Button size="sm" variant="outline" disabled={busy === r.id} className="text-rose-700 border-rose-300" onClick={async () => {
+                    const note = await askReason({
+                      title: 'ไม่อนุมัติคำขอผูกบัญชี LINE',
+                      label: 'เหตุผลที่ไม่อนุมัติ (ลูกค้าจะเห็น)',
+                      defaultValue: 'ตรวจสอบเบอร์ไม่ได้ กรุณาติดต่อร้าน',
+                      required: false,
+                      confirmLabel: 'ไม่อนุมัติ',
+                      inputId: 'link-reject-note',
+                    });
                     if (note !== null) void decide(r, { approve: false, note }, 'ไม่อนุมัติคำขอแล้ว');
                   }}>
                     ไม่อนุมัติ

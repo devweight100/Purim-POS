@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { toast } from 'sonner';
 import { CalendarClock, Plus } from 'lucide-react';
 import { FinAccount, FinCategory, fieldCls, newClientId, thaiDate } from './shared';
+import { askReason } from '@/lib/ask-dialog';
 
 interface Recurring {
   id: string; name: string; amount: number; frequency: 'MONTHLY' | 'WEEKLY' | 'YEARLY'; dayOfMonth?: number | null; dayOfWeek?: number | null; monthOfYear?: number | null;
@@ -37,7 +38,7 @@ export function RecurringPanel({ accounts, categories, onChanged }: { accounts: 
   }, [load]);
 
   const skip = async (r: Recurring) => {
-    const reason = window.prompt(`ข้ามงวด ${thaiDate(r.nextDueDate)} ของ "${r.name}" เพราะ?`);
+    const reason = await askReason({ title: `ข้ามงวด ${thaiDate(r.nextDueDate)} ของ "${r.name}"`, label: 'เหตุผลที่ข้ามงวดนี้', confirmLabel: 'ข้ามงวดนี้', danger: false, inputId: 'recurring-skip-reason' });
     if (!reason) return;
     try { await apiFetch(`/finance/recurring/${r.id}/skip`, { method: 'POST', body: JSON.stringify({ reason }) }); toast.success('ข้ามงวดนี้แล้ว'); void load(); }
     catch (err) { toast.error((err as Error | undefined)?.message || 'ไม่สำเร็จ'); }

@@ -49,6 +49,7 @@ import { SettlePayableModal } from '@/components/payables/SettlePayableModal';
 import { SettleMultipleBillsModal } from '@/components/payables/SettleMultipleBillsModal';
 import { PaymentVoucherModal } from '@/components/payables/PaymentVoucherModal';
 import { PayableBillDetailsModal } from '@/components/payables/PayableBillDetailsModal';
+import { askConfirm, askReason } from '@/lib/ask-dialog';
 
 const BILL_PAGE_SIZE = 50;
 const VOUCHER_PAGE_SIZE = 50;
@@ -197,10 +198,17 @@ export default function PayablesPage() {
       return;
     }
 
-    const confirmMsg = `ต้องการยกเลิกใบสำคัญจ่ายเลขที่ ${voucher.voucherNumber} หรือไม่?\n\n- ยอดเงินที่ชำระตามบิลทั้ง ${voucher.bills.length} ฉบับจะถูกคืนกลับสถานะเดิมเป็นหนี้ค้างชำระ\n- เครดิตใบลดหนี้ (ถ้ามี) จะถูกคืนกลับมาพร้อมใช้งาน\n\nกดยืนยันเพื่อดำเนินการ`;
-    if (!confirm(confirmMsg)) return;
-
-    const reason = prompt(`ระบุเหตุผลการยกเลิกใบสำคัญจ่าย ${voucher.voucherNumber}:`, 'ยกเลิกการชำระเงิน');
+    // one in-page dialog (was a native confirm + prompt): what happens, the reason, confirm
+    const reason = await askReason({
+      title: `ยกเลิกใบสำคัญจ่าย ${voucher.voucherNumber}`,
+      description: `- ยอดเงินที่ชำระตามบิลทั้ง ${voucher.bills.length} ฉบับจะถูกคืนกลับสถานะเดิมเป็นหนี้ค้างชำระ\n- เครดิตใบลดหนี้ (ถ้ามี) จะถูกคืนกลับมาพร้อมใช้งาน`,
+      label: 'เหตุผลการยกเลิก',
+      defaultValue: 'ยกเลิกการชำระเงิน',
+      required: false,
+      confirmLabel: 'ยืนยันยกเลิกใบสำคัญจ่าย',
+      cancelLabel: 'ไม่ยกเลิก',
+      inputId: 'voucher-cancel-reason',
+    });
     if (reason === null) return;
 
     const res = await cancelPaymentVoucher(voucher.id, reason, voucher);
@@ -249,7 +257,7 @@ export default function PayablesPage() {
   };
 
   const handleRollbackBill = async (bill: SupplierPayableBill) => {
-    if (!confirm(`ต้องการย้อนสถานะการชำระเงินของบิล ${bill.poNumber} หรือไม่?\n(ยอดเงินที่จ่ายและเครดิตใบลดหนี้จะถูกคืนกลับสถานะเดิม ยอดหนี้จะกลับมาค้างชำระ)`)) {
+    if (!(await askConfirm({ title: `ต้องการย้อนสถานะการชำระเงินของบิล ${bill.poNumber} หรือไม่?`, description: 'ยอดเงินที่จ่ายและเครดิตใบลดหนี้จะถูกคืนกลับสถานะเดิม ยอดหนี้จะกลับมาค้างชำระ', confirmLabel: 'ย้อนสถานะ', danger: true }))) {
       return;
     }
     const res = await rollbackPayableBillPayment(bill);
@@ -262,7 +270,7 @@ export default function PayablesPage() {
   };
 
   const handleCancelBillAction = async (bill: SupplierPayableBill) => {
-    const reason = prompt(`กรุณาระบุเหตุผลการยกเลิกบิล ${bill.poNumber}:`);
+    const reason = await askReason({ title: `ยกเลิกบิล ${bill.poNumber}`, label: 'เหตุผลการยกเลิกบิล', required: false, confirmLabel: 'ยืนยันยกเลิกบิล', cancelLabel: 'ไม่ยกเลิก', inputId: 'bill-cancel-reason' });
     if (reason === null) return;
     const res = await cancelPayableBill(bill.poId, reason, bill.poNumber);
     if (res.success) {

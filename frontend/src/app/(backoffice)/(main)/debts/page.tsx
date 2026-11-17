@@ -51,6 +51,7 @@ import { DebtHistoryModal } from '@/components/debts/DebtHistoryModal';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { toast } from 'sonner';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
+import { askReason } from '@/lib/ask-dialog';
 
 function DebtsContent() {
   const router = useRouter();
@@ -682,7 +683,7 @@ function DebtsContent() {
         debtRecord={selectedDebtForHistory}
         onSelectInstallment={handleSelectHistoryInstallment}
         onCancelInstallment={user?.role === 'ADMIN' || user?.role === 'MANAGER' ? async (inst) => {
-          const reason = window.prompt(`ยกเลิกใบรับชำระ ${inst.receiptNo || ''} ยอด ${inst.amountPaid} บาท เพราะ?`);
+          const reason = await askReason({ title: `ยกเลิกใบรับชำระ ${inst.receiptNo || ''} ยอด ${inst.amountPaid} บาท`, label: 'เหตุผลที่ยกเลิก', confirmLabel: 'ยืนยันยกเลิกใบรับชำระ', cancelLabel: 'ไม่ยกเลิก', inputId: 'debt-payment-cancel-reason' });
           if (!reason) return;
           try {
             await cancelDebtPayment(inst.id, reason);

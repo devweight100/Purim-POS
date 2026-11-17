@@ -8,6 +8,7 @@ import { PRICE_LEVELS, type PriceLevel } from '@shared/online-shop';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { askConfirm } from '@/lib/ask-dialog';
 
 interface AdminConfig {
   enabled: boolean;
@@ -136,7 +137,7 @@ export function OnlineShopSettings() {
             <Button disabled={saving} onClick={() => void save()}>{saving ? 'กำลังบันทึก…' : 'บันทึก'}</Button>
             <Button variant="outline" disabled={!c.hasMessagingToken} onClick={() => void test()}>ทดสอบการเชื่อมต่อ LINE</Button>
             {c.hasMessagingToken && (
-              <Button variant="outline" className="text-rose-700 border-rose-300" disabled={saving} onClick={() => { if (window.confirm('ลบ token ส่งข้อความ LINE?')) void save({ messagingToken: '' }); }}>
+              <Button variant="outline" className="text-rose-700 border-rose-300" disabled={saving} onClick={async () => { if (await askConfirm({ title: 'ลบ token ส่งข้อความ LINE?', confirmLabel: 'ลบ token', danger: true })) void save({ messagingToken: '' }); }}>
                 ลบ token
               </Button>
             )}

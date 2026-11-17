@@ -61,6 +61,7 @@ import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
+import { askConfirm } from '@/lib/ask-dialog';
 
 export default function CustomersPage() {
   const authUser = useAuthStore((st) => st.user);
@@ -288,7 +289,7 @@ export default function CustomersPage() {
 
   // Delete Customer
   const handleDeleteCustomer = async (cust: Customer) => {
-    if (confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลสมาชิก "${cust.name}"?`)) {
+    if (await askConfirm({ title: `คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลสมาชิก "${cust.name}"?`, confirmLabel: 'ลบสมาชิก', danger: true })) {
       try {
         await apiFetch(`/customers/${cust.id}`, { method: 'DELETE' });
         toast.success(`ลบสมาชิก "${cust.name}" เรียบร้อยแล้ว`);

@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Search, Plus, Edit, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { LoadErrorState, errorMessage } from "@/components/common/LoadErrorState";
+import { askConfirm } from '@/lib/ask-dialog';
 
 /** Supplier as listed / edited here (creditTerms is "" while its input is empty). */
 interface SupplierForm {
@@ -121,7 +122,7 @@ export default function SuppliersPage() {
     const duplicate = suppliers.find(
       (s) => s.id !== currentSupplier.id && String(s.name || "").trim().toLowerCase() === name.toLowerCase(),
     );
-    if (duplicate && !confirm(`มีผู้จำหน่ายชื่อ "${duplicate.name}" อยู่แล้ว ต้องการบันทึกซ้ำหรือไม่?`)) return;
+    if (duplicate && !(await askConfirm({ title: `มีผู้จำหน่ายชื่อ "${duplicate.name}" อยู่แล้ว ต้องการบันทึกซ้ำหรือไม่?`, confirmLabel: 'บันทึกซ้ำ' }))) return;
     const payload = {
       name,
       contactName: String(currentSupplier.contactName || "").trim() || null,
@@ -153,7 +154,7 @@ export default function SuppliersPage() {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`คุณต้องการลบผู้จำหน่าย "${name}" ใช่หรือไม่?`)) return;
+    if (!(await askConfirm({ title: `คุณต้องการลบผู้จำหน่าย "${name}" ใช่หรือไม่?`, confirmLabel: 'ลบผู้จำหน่าย', danger: true }))) return;
     try {
       await apiFetch(`/suppliers/${id}`, { method: "DELETE" });
       toast.success("ลบผู้จำหน่ายสำเร็จ");

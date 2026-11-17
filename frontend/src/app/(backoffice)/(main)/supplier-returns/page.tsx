@@ -29,6 +29,7 @@ import { SupplierReturnNote } from '@/lib/types';
 import { CreateSupplierReturnModal } from '@/components/supplier-returns/CreateSupplierReturnModal';
 import { SupplierReturnPdfModal } from '@/components/supplier-returns/SupplierReturnPdfModal';
 import { ChangeReturnStatusModal } from '@/components/supplier-returns/ChangeReturnStatusModal';
+import { askConfirm } from '@/lib/ask-dialog';
 
 export default function SupplierReturnsPage() {
   const [returnNotes, setReturnNotes] = useState<SupplierReturnNote[]>([]);
@@ -126,7 +127,7 @@ export default function SupplierReturnsPage() {
 
   // Cancel return note
   const handleCancelNote = async (note: SupplierReturnNote) => {
-    if (!confirm(`คุณต้องการยกเลิกเอกสารส่งคืน ${note.id} หรือไม่?\n(ระบบจะคืนสต็อกสินค้าปกติและคืนสถานะรายการเคลมให้)`)) {
+    if (!(await askConfirm({ title: `คุณต้องการยกเลิกเอกสารส่งคืน ${note.id} หรือไม่?`, description: 'ระบบจะคืนสต็อกสินค้าปกติและคืนสถานะรายการเคลมให้', confirmLabel: 'ยกเลิกเอกสาร', cancelLabel: 'ไม่ยกเลิก', danger: true }))) {
       return;
     }
 
@@ -141,7 +142,7 @@ export default function SupplierReturnsPage() {
 
   // Restore return note from trash
   const handleRestoreNote = async (note: SupplierReturnNote) => {
-    if (!confirm(`คุณต้องการกู้คืนเอกสารส่งคืน ${note.id} ออกจากถังขยะหรือไม่?`)) {
+    if (!(await askConfirm({ title: `คุณต้องการกู้คืนเอกสารส่งคืน ${note.id} ออกจากถังขยะหรือไม่?`, confirmLabel: 'กู้คืน' }))) {
       return;
     }
 

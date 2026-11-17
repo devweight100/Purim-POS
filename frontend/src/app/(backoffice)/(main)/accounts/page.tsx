@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { PromptPayQr } from '@/components/common/PromptPayQr';
 import { promptPayOf } from '@/lib/promptpay-qr';
 import { maskPromptPayId, normalizePromptPayId, PROMPTPAY_TYPE_LABELS, type PromptPayIdType } from '@shared/promptpay';
+import { askConfirm } from '@/lib/ask-dialog';
 
 const PROMPTPAY_PLACEHOLDER: Record<PromptPayIdType, string> = {
   MOBILE: 'เช่น 081-234-5678',
@@ -191,7 +192,7 @@ export default function AccountsPage() {
     }
     // deleting used to happen on one click, with no question
     const target = accounts.find(a => a.id === id);
-    if (!confirm(`ต้องการลบบัญชี "${target?.bankName || ''} ${target?.accountNumber || ''}" ใช่หรือไม่?`)) return;
+    if (!(await askConfirm({ title: `ต้องการลบบัญชี "${target?.bankName || ''} ${target?.accountNumber || ''}" ใช่หรือไม่?`, confirmLabel: 'ลบบัญชี', danger: true }))) return;
     try {
       const deleting = accounts.find(a => a.id === id);
       await api.bankAccounts.delete(id);

@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { onlineOrderCartItems } from '@/lib/online-order-cart';
+import { ReasonDialog } from '@/components/common/ReasonDialog';
+import { askConfirm } from '@/lib/ask-dialog';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { claimLabel, claimOrder, fetchPosPayload, isClaimConflict, markPicked, pickedLabel, printOnlinePickingSlip, releaseOrder, type OnlineClaim, type OnlinePicked } from '@/lib/online-order-actions';
 
@@ -127,7 +129,6 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
   }, [dirty]);
   const [busy, setBusy] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
-  const [reason, setReason] = useState('');
   const [pickOpen, setPickOpen] = useState<'product' | 'customer' | null>(null);
 
   const apply = useCallback((x: Detail) => {
@@ -250,11 +251,10 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
     }
     return run(() => apiFetch<Detail>(`/online-shop/orders/${d.id}/accept`, { method: 'POST', body: JSON.stringify(body()) }), `รับออเดอร์ ${d.orderNo} แล้ว — ไปรับเงินที่หน้าขาย (บิลพัก)`);
   };
-  const reject = () =>
+  const reject = (reason: string) =>
     run(async () => {
       const r = await apiFetch<Detail>(`/online-shop/orders/${d.id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) });
       setRejectOpen(false);
-      setReason('');
       return r;
     }, 'ยกเลิกออเดอร์แล้ว');
   const setStatus = async (status: OnlineOrderStatus) => {
@@ -264,7 +264,7 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
     }
     let unpaidOk = false;
     if (status === 'DONE' && !d.posOrder) {
-      if (!window.confirm('ออเดอร์นี้ยังไม่ได้รับเงินในหน้าขาย ปิดออเดอร์โดยไม่บันทึกการขาย?')) return;
+      if (!(await askConfirm({ title: 'ออเดอร์นี้ยังไม่ได้รับเงินในหน้าขาย', description: 'ปิดออเดอร์โดยไม่บันทึกการขาย?', confirmLabel: 'ปิดออเดอร์', danger: true }))) return;
       unpaidOk = true;
     }
     await run(() => apiFetch<Detail>(`/online-shop/orders/${d.id}/status`, { method: 'POST', body: JSON.stringify({ status, unpaidOk }) }), `เปลี่ยนเป็น "${ONLINE_STATUS_LABELS[status]}" แล้ว`);
@@ -502,17 +502,18 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
         )}
       </div>
 
-      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>ยกเลิกออเดอร์ {d.orderNo}</DialogTitle></DialogHeader>
-          <label className="text-sm font-semibold" htmlFor="reject-reason">เหตุผล (ลูกค้าจะเห็นข้อความนี้ใน LINE)</label>
-          <Input id="reject-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="เช่น สินค้าหมด / ส่งไม่ถึงพื้นที่" autoFocus />
-          <DialogFooter className="gap-btn">
-            <Button variant="outline" onClick={() => setRejectOpen(false)}>ไม่ยกเลิก</Button>
-            <Button disabled={busy || !reason.trim()} className="bg-rose-600 hover:bg-rose-700 text-white" onClick={() => void reject()}>ยืนยันยกเลิก</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ReasonDialog
+        open={rejectOpen}
+        onOpenChange={setRejectOpen}
+        onConfirm={(reason) => reject(reason)}
+        title={`ยกเลิกออเดอร์ ${d.orderNo}`}
+        label="เหตุผล (ลูกค้าจะเห็นข้อความนี้ใน LINE)"
+        inputId="reject-reason"
+        placeholder="เช่น สินค้าหมด / ส่งไม่ถึงพื้นที่"
+        cancelLabel="ไม่ยกเลิก"
+        confirmLabel="ยืนยันยกเลิก"
+        busy={busy}
+      />
 
       <Dialog open={takeoverOpen} onOpenChange={setTakeoverOpen}>
         <DialogContent>

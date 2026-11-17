@@ -18,6 +18,7 @@ import { formatCurrency } from '@/lib/utils';
 import { SupplierPayableBill, PayablePaymentEntry, rollbackPayableBillPayment } from '@/lib/payable-service';
 import { toast } from 'sonner';
 import type { ApiPurchaseOrderItem } from '@/lib/types';
+import { askConfirm } from '@/lib/ask-dialog';
 
 interface PayableBillDetailsModalProps {
   open: boolean;
@@ -46,11 +47,12 @@ export function PayableBillDetailsModal({
   if (!bill) return null;
 
   const handleRollbackPayment = async (paymentId?: string) => {
-    const confirmMsg = paymentId
-      ? `ต้องการยกเลิก/ย้อนสถานะการชำระเงินรอบนี้หรือไม่?\n(ยอดเงินสด/โอน และเครดิตใบลดหนี้จะถูกคืนกลับสถานะเดิม)`
-      : `ต้องการย้อนสถานะการชำระเงินทั้งหมดของบิล ${bill.poNumber} หรือไม่?\n(ยอดเงินที่จ่ายไปและเครดิตใบลดหนี้จะถูกคืนสถานะทั้งหมด และยอดหนี้จะกลับมาค้างชำระเต็มจำนวน)`;
-
-    if (!confirm(confirmMsg)) return;
+    const ok = await askConfirm(
+      paymentId
+        ? { title: 'ต้องการยกเลิก/ย้อนสถานะการชำระเงินรอบนี้หรือไม่?', description: 'ยอดเงินสด/โอน และเครดิตใบลดหนี้จะถูกคืนกลับสถานะเดิม', confirmLabel: 'ย้อนสถานะ', danger: true }
+        : { title: `ต้องการย้อนสถานะการชำระเงินทั้งหมดของบิล ${bill.poNumber} หรือไม่?`, description: 'ยอดเงินที่จ่ายไปและเครดิตใบลดหนี้จะถูกคืนสถานะทั้งหมด และยอดหนี้จะกลับมาค้างชำระเต็มจำนวน', confirmLabel: 'ย้อนสถานะ', danger: true },
+    );
+    if (!ok) return;
 
     setIsRollingBack(true);
     try {

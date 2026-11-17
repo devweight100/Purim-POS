@@ -5,6 +5,7 @@
  * only: claim / release / take over, print the picking slip, "จัดของเสร็จ". Opening as a POS bill (one terminal at
  * a time) and taking the payment are open to every cashier.
  */
+import { askConfirm } from './ask-dialog';
 import { apiFetch } from './api';
 import { ApiError } from './api-error';
 import { getTerminalId } from './terminal-id';
@@ -59,13 +60,16 @@ export const markPicked = <T>(id: string) => apiFetch<T>(`/online-shop/orders/${
  * open as a bill on another terminal the cashier is asked whether to move it here (the other terminal can then
  * not take payment). Returns null when the cashier said no.
  */
-export async function fetchPosPayload(id: string, confirmMove: (message: string) => boolean = (m) => window.confirm(m)): Promise<PosPayload | null> {
+export async function fetchPosPayload(
+  id: string,
+  confirmMove: (message: string) => boolean | Promise<boolean> = (m) => askConfirm({ title: 'ย้ายบิลมาที่เครื่องนี้?', description: m, confirmLabel: 'ย้ายมาที่เครื่องนี้' }),
+): Promise<PosPayload | null> {
   const terminalId = getTerminalId();
   try {
     return await apiFetch<PosPayload>(`/online-shop/orders/${id}/pos`, { method: 'POST', body: JSON.stringify({ terminalId }) });
   } catch (e) {
     if (e instanceof ApiError && e.status === 409 && e.data?.code === 'ONLINE_ORDER_OPEN_ELSEWHERE') {
-      if (!confirmMove(e.message)) return null;
+      if (!(await confirmMove(e.message))) return null;
       return apiFetch<PosPayload>(`/online-shop/orders/${id}/pos`, { method: 'POST', body: JSON.stringify({ terminalId, force: true }) });
     }
     throw e;

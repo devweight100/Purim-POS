@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { errorMessage } from "./product-helpers";
 import type { ProductsData } from "./useProducts";
 import type { ProductSelection } from "./useProductSelection";
+import { askConfirm } from '@/lib/ask-dialog';
 
 const withoutKeys = <T,>(prev: Record<string, T>, ids: string[]) => {
   const next = { ...prev };
@@ -26,7 +27,7 @@ export function BulkActionBar({ data, sel }: { data: ProductsData; sel: ProductS
       toast.info("กรุณาเลือกสินค้าที่ต้องการลบ");
       return;
     }
-    const ok = window.confirm(`ยืนยันลบสินค้า ${ids.length} รายการ? การลบนี้จะลบสินค้าออกจากฐานข้อมูล`);
+    const ok = await askConfirm({ title: `ยืนยันลบสินค้า ${ids.length} รายการ?`, description: 'การลบนี้จะลบสินค้าออกจากฐานข้อมูล', confirmLabel: 'ลบสินค้า', danger: true });
     if (!ok) return;
 
     setIsBulkDeleting(true);

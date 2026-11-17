@@ -18,6 +18,7 @@ import { RecurringPanel } from '@/components/finance/RecurringPanel';
 import { ForecastPanel } from '@/components/finance/ForecastPanel';
 import { ProfitLossPanel } from '@/components/finance/ProfitLossPanel';
 import { ReconcilePanel } from '@/components/finance/ReconcilePanel';
+import { askReason } from '@/lib/ask-dialog';
 
 type AccountType = 'CASH_DRAWER' | 'CASH_SAFE' | 'BANK' | 'CARD_CLEARING';
 interface MoneyAccount {
@@ -155,7 +156,7 @@ export default function FinancePage() {
   const needsOpening = accounts.filter((a) => a.type !== 'CASH_DRAWER' && !a.hasOpeningBalance);
 
   const cancelRow = async (row: LedgerRow) => {
-    const reason = window.prompt('เหตุผลที่ยกเลิกรายการนี้');
+    const reason = await askReason({ title: 'ยกเลิกรายการนี้', label: 'เหตุผลที่ยกเลิกรายการนี้', confirmLabel: 'ยืนยันยกเลิกรายการ', cancelLabel: 'ไม่ยกเลิก', inputId: 'finance-cancel-reason' });
     if (!reason) return;
     try {
       if (row.type === 'EXPENSE' && row.refId) {
@@ -473,7 +474,7 @@ export default function FinancePage() {
                     <td className="p-2 text-right">
                       {e.status !== 'CANCELLED' && (
                         <Button size="sm" variant="ghost" className="text-rose-600" onClick={async () => {
-                          const reason = window.prompt('เหตุผลที่ยกเลิกค่าใช้จ่ายนี้');
+                          const reason = await askReason({ title: `ยกเลิกค่าใช้จ่าย ${e.description}`, label: 'เหตุผลที่ยกเลิกค่าใช้จ่ายนี้', confirmLabel: 'ยืนยันยกเลิกค่าใช้จ่าย', cancelLabel: 'ไม่ยกเลิก', inputId: 'expense-cancel-reason' });
                           if (!reason) return;
                           try {
                             await apiFetch(`/finance/expenses/${e.id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) });
