@@ -350,6 +350,8 @@ test('A presses "จัดของเสร็จ"; B opens the bill, takes the
   await expect(page.getByRole('dialog').filter({ hasText: 'ชำระเงินสำเร็จ!' })).toBeVisible();
   const d = await api<{ status: string; posOrder: { totalAmount: number } | null; picked: { name: string } | null; claim: unknown }>('GET', `/online-shop/orders/${orders.short.id}`, adminToken);
   expect(d).toMatchObject({ status: 'READY', posOrder: { totalAmount: 1617.5 }, picked: { name: HOLDER }, claim: null });
+  await page.getByRole('button', { name: 'ปิดหน้าต่าง (เริ่มออเดอร์ใหม่)' }).click();
+  await expect(page.getByTestId('pos-online-banner')).toHaveCount(0); // the cart starts empty
 
   // B hands it over: delivery steps need no claim
   await page.goto('/online-orders');
