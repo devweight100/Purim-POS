@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { bangkokDate, bangkokDayKey, bangkokParts } from '@shared/bangkok-date';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -82,7 +82,7 @@ export function ProfitLossPanel() {
         <div className="rounded-2xl border border-slate-200 bg-white p-5 max-w-2xl text-sm">
           <div className="text-center mb-3">
             <div className="font-black text-base">งบกำไรขาดทุน</div>
-            <div className="text-slate-500">{new Date(data.period.from).toLocaleDateString('th-TH')} – {new Date(data.period.to).toLocaleDateString('th-TH')} ({data.orderCount} บิล)</div>
+            <div className="text-slate-500">{formatListDate(data.period.from)} – {formatListDate(data.period.to)} ({data.orderCount} บิล)</div>
           </div>
           <Row label="ยอดขายรวม VAT" value={data.salesInclVat} indent />
           <Row label="หัก ภาษีขาย (VAT)" value={data.outputVat} indent sign="-" />

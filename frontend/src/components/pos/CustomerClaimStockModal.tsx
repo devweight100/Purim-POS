@@ -1,4 +1,5 @@
 'use client';
+import { formatListDate } from '@/lib/utils';
 
 import { useStackedEscape } from '@/lib/dialog-stack';
 import React, { useState, useEffect } from 'react';
@@ -600,7 +601,7 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
                             <div className="flex items-center gap-2">
                               <span className="font-mono text-slate-800">{ord.orderNumber}</span>
                               <span className="text-slate-400">
-                                ({new Date(ord.orderDate).toLocaleDateString('th-TH')})
+                                ({formatListDate(ord.orderDate)})
                               </span>
                             </div>
                             <div className="flex items-center gap-3">

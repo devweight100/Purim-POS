@@ -6,7 +6,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { DebtRecord, DebtPaymentInstallment, DebtStatus } from '@/lib/types';
 import { fetchDebtPage, cancelDebtPayment, type DebtPageStats } from '@/lib/debt-service';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -449,11 +449,11 @@ function DebtsContent() {
                       {/* 3. Date (แยก col. วันที่) */}
                       <TableCell data-narrow="wrap" className="text-center font-mono whitespace-nowrap">
                         <div className="text-xs text-slate-600 font-bold">
-                          {new Date(debt.orderDate).toLocaleDateString('th-TH')}
+                          {formatListDate(debt.orderDate)}
                         </div>
                         {debt.dueDate && (
                           <div className={`text-[11px] font-sans font-medium flex flex-wrap items-center justify-center gap-x-1 mt-0.5 ${isOverdue ? 'text-rose-600 font-bold' : 'text-amber-700'}`}>
-                            <span className="whitespace-nowrap">ครบ {new Date(debt.dueDate).toLocaleDateString('th-TH')}</span>
+                            <span className="whitespace-nowrap">ครบ {formatListDate(debt.dueDate)}</span>
                             {isOverdue && <span className="text-[9.5px] bg-rose-100 text-rose-700 px-1 py-0.2 rounded font-bold whitespace-nowrap">เกินกำหนด</span>}
                           </div>
                         )}

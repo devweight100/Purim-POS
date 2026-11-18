@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDate } from '@/lib/utils';
 import { toast } from 'sonner';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 import { 
@@ -412,11 +412,7 @@ export default function SupplierReturnsPage() {
                         </td>
 
                         <td data-narrow="wrap" className="text-center font-mono whitespace-nowrap text-xs text-slate-600">
-                          {new Date(note.returnDate).toLocaleDateString('th-TH', {
-                            year: 'numeric',
-                            month: 'short',
-                            day: 'numeric',
-                          })}
+                          {formatListDate(note.returnDate)}
                         </td>
 
                         <td className="">
@@ -661,7 +657,7 @@ export default function SupplierReturnsPage() {
                         </td>
 
                         <td className="text-center font-mono whitespace-nowrap text-xs text-slate-500">
-                          {new Date(note.returnDate).toLocaleDateString('th-TH')}
+                          {formatListDate(note.returnDate)}
                         </td>
 
                         <td className="">

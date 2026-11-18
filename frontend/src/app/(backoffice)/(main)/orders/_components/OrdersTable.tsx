@@ -1,4 +1,4 @@
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatListDateTime } from '@/lib/utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -135,7 +135,7 @@ export function OrdersTable({
 
                     {/* 3. Date (แยก col. วันที่) */}
                     <TableCell data-narrow="wrap" className="text-center font-mono whitespace-nowrap text-xs text-slate-600">
-                      {new Date(order.createdAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}
+                      {formatListDateTime(order.createdAt)}
                     </TableCell>
 
                     {/* 4. Customer Name */}

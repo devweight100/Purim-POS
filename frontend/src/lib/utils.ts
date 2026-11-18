@@ -30,21 +30,9 @@ export function formatNumber(amount: number | string | null | undefined): string
   });
 }
 
+/** Tables / lists: "18 พ.ย. 69" (no time; round 4). Kept under the old name for its many callers. */
 export function formatDate(dateStr: string | Date | null | undefined): string {
-  if (!dateStr) return "-";
-  try {
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return "-";
-    return new Intl.DateTimeFormat('th-TH', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(date);
-  } catch {
-    return "-";
-  }
+  return listDate(dateStr);
 }
 
 const THAI_DIGITS = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"];

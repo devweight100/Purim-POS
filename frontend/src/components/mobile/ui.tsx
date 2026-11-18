@@ -1,5 +1,6 @@
 'use client';
 
+import { listDate, listDateTime } from '@shared/thai-date';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -70,12 +71,12 @@ export function EmptyState({ children }: { children: ReactNode }) {
 }
 
 const timeFmt = new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit' });
-const dateTimeFmt = new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const dateFmt = new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', day: 'numeric', month: 'short', year: '2-digit' });
 
 export const fmtTime = (iso: string | number | null | undefined) => (iso ? timeFmt.format(new Date(iso)) : '-');
-export const fmtDateTime = (iso: string | number | null | undefined) => (iso ? dateTimeFmt.format(new Date(iso)) : '-');
-export const fmtDate = (iso: string | number | null | undefined) => (iso ? dateFmt.format(new Date(iso)) : '-');
+/** bills (sales history) keep the time: "18 พ.ย. 69 14:05" (round 4, shared formatter) */
+export const fmtDateTime = (iso: string | number | null | undefined) => (iso ? listDateTime(iso) : '-');
+/** lists: "18 พ.ย. 69" */
+export const fmtDate = (iso: string | number | null | undefined) => (iso ? listDate(iso) : '-');
 
 export const PAYMENT_LABELS: Record<string, string> = {
   CASH: 'เงินสด',

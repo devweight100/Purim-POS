@@ -19,7 +19,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { formatCurrency, thaiBahtText } from '@/lib/utils';
+import { formatCurrency, thaiBahtText, formatListDate } from '@/lib/utils';
 import { 
   SupplierPayableBill, 
   PaymentVoucher, 
@@ -738,7 +738,7 @@ export function SettleMultipleBillsModal({
                                 {b.poNumber}
                               </td>
                               <td className="py-2.5 px-2 text-center text-slate-500 text-[11px]">
-                                {new Date(b.billDate).toLocaleDateString('th-TH')}
+                                {formatListDate(b.billDate)}
                               </td>
                               <td className="py-2.5 px-3 text-right font-mono text-slate-600">
                                 {formatCurrency(b.receivedAmount ?? b.totalAmount)}

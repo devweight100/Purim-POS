@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { bangkokDate, bangkokDayKey, bangkokDayStart, bangkokParts, bangkokStartOfDay, DAY_MS } from '@shared/bangkok-date';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -296,7 +296,7 @@ export default function FinancePage() {
                   {overview.payables.items.map((p) => (
                     <tr key={p.poId} className="border-t border-slate-100">
                       <td className={`p-1 whitespace-nowrap ${p.daysToDue < 0 ? 'text-rose-600 font-bold' : p.daysToDue <= 7 ? 'text-amber-700 font-semibold' : ''}`}>
-                        {new Date(p.dueDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}
+                        {formatListDate(p.dueDate)}
                         {p.daysToDue < 0 ? ` (เกิน ${-p.daysToDue} วัน)` : p.daysToDue === 0 ? ' (วันนี้)' : ` (อีก ${p.daysToDue} วัน)`}
                         {!p.dueDateSet && <span className="text-slate-400" title="ไม่ได้ระบุวันครบกำหนดใน PO ใช้เครดิตเทอมของผู้จำหน่าย"> *</span>}
                       </td>
@@ -437,7 +437,7 @@ export default function FinancePage() {
                 {rows.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-slate-400">ไม่มีรายการในช่วงนี้</td></tr>}
                 {rows.map((r) => (
                   <tr key={r.id} className={`border-t border-slate-100 ${r.isReversed || r.type === 'REVERSAL' ? 'text-slate-400' : ''}`}>
-                    <td className="p-2 whitespace-nowrap">{new Date(r.occurredAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                    <td className="p-2 whitespace-nowrap">{formatListDate(r.occurredAt)}</td>
                     <td className="p-2">{r.account.name}</td>
                     <td className="p-2">{r.typeLabel}{r.category ? ` · ${r.category.name}` : ''}{r.isReversed && <Badge className="ml-1 bg-slate-200 text-slate-600">ยกเลิกแล้ว</Badge>}</td>
                     <td className="p-2">{r.note}</td>
@@ -466,7 +466,7 @@ export default function FinancePage() {
                 {expenses.map((e) => (
                   <tr key={e.id} className={`border-t border-slate-100 ${e.status === 'CANCELLED' ? 'text-slate-400 line-through' : ''}`}>
                     <td className="p-2 font-mono whitespace-nowrap">{e.expenseNumber}</td>
-                    <td className="p-2">{new Date(e.paidAt).toLocaleDateString('th-TH')}</td>
+                    <td className="p-2">{formatListDate(e.paidAt)}</td>
                     <td className="p-2">{e.category.name}</td>
                     <td className="p-2">{e.description}{e.vendor ? ` (${e.vendor})` : ''}</td>
                     <td className="p-2">{e.account.name}</td>

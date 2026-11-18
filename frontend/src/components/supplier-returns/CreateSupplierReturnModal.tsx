@@ -16,7 +16,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDate } from '@/lib/utils';
 import { toast } from 'sonner';
 import { 
   loadSuppliers,
@@ -566,7 +566,7 @@ export function CreateSupplierReturnModal({
                         </Badge>
                       </div>
                       <p className="text-[10px] text-slate-500 mt-1">
-                        วันที่: {new Date(po.poDate).toLocaleDateString('th-TH')} | รวม {po.items.length} รายการ
+                        วันที่: {formatListDate(po.poDate)} | รวม {po.items.length} รายการ
                       </p>
                     </button>
                   ))}

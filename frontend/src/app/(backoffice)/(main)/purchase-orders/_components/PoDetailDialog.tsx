@@ -1,6 +1,6 @@
 import { useRouter } from 'next/navigation';
 import { normVatType } from '@shared/po-calc';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, formatListDateTime } from '@/lib/utils';
 import {
   Table, TableBody, TableCell, TableHead,
   TableHeader, TableRow
@@ -57,7 +57,7 @@ export function PoDetailDialog({
               </div>
               <div>
                 <span className="text-slate-500 block mb-1">วันที่สร้าง</span>
-                <span className="font-bold text-slate-900 text-base">{formatDate(currentPo.createdAt)}</span>
+                <span className="font-bold text-slate-900 text-base">{formatListDateTime(currentPo.createdAt)}</span>
               </div>
             </div>
             

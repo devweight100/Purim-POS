@@ -1,4 +1,5 @@
 'use client';
+import { formatListDateTime } from '@/lib/utils';
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -6,7 +7,7 @@ import { baht, shopFetch, type ShopOrder } from '@/lib/shop/shop-api';
 import { btn } from '@/components/shop/ShopShell';
 import { StatusBadge } from '@/components/shop/StatusBadge';
 
-const when = (iso: string) => new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const when = (iso: string) => formatListDateTime(iso); // online orders keep the time
 
 /** ออเดอร์ของฉัน: newest first, status in plain words. */
 export default function MyOrdersPage() {

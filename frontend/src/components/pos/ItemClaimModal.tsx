@@ -1,4 +1,5 @@
 'use client';
+import { formatListDate } from '@/lib/utils';
 
 import { useStackedEscape } from '@/lib/dialog-stack';
 import React, { useState, useEffect } from 'react';
@@ -194,7 +195,7 @@ export const ItemClaimModal: React.FC<ItemClaimModalProps> = ({
               </div>
               {latestOrder && (
                 <div className="text-xs text-slate-600 bg-white/80 p-2 rounded-lg border border-indigo-100/60">
-                  อ้างอิงบิลเดิม: <span className="font-semibold text-slate-800">{latestOrder.orderNumber}</span> ({new Date(latestOrder.orderDate).toLocaleDateString('th-TH')})
+                  อ้างอิงบิลเดิม: <span className="font-semibold text-slate-800">{latestOrder.orderNumber}</span> ({formatListDate(latestOrder.orderDate)})
                 </div>
               )}
             </div>

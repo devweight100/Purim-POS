@@ -50,7 +50,7 @@ import {
 import { LoadErrorState, errorMessage } from "@/components/common/LoadErrorState";
 import { isValidQty, qtyInputMode, qtyStep } from "@/lib/qty";
 import { ReceiptOptionsSection, ReceiptPreview, LayoutTabs, type ReceiptLayout } from "@/components/settings/ReceiptOptionsSection";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatListDateTime } from '@/lib/utils';
 import { VersionDetails } from "@/components/common/VersionInfo";
 import { clearLocalShopData } from '@/lib/local-data-reset';
 import { clearCachedProducts } from '@/lib/offline-db';
@@ -148,7 +148,7 @@ function BackupSection() {
   };
 
   const fmt = (iso?: string | null) =>
-    iso ? new Date(iso).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" }) : "-";
+    formatListDateTime(iso); // backups: several a day, the time is kept
 
   return (
     <Card className="bg-white border-slate-200 shadow-2xs">

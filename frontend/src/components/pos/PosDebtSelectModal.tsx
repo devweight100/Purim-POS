@@ -6,7 +6,7 @@ import { DebtRecord, DebtPaymentInstallment, Customer } from '@/lib/types';
 import { fetchDebtPage } from '@/lib/debt-service';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { useShiftStore } from '@/lib/store/shift-store';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -175,7 +175,7 @@ export function PosDebtSelectModal({
                           {debt.orderNumber}
                         </span>
                         <span className="text-xs text-slate-400 font-mono">
-                          {new Date(debt.orderDate).toLocaleDateString('th-TH')}
+                          {formatListDate(debt.orderDate)}
                         </span>
                       </div>
 

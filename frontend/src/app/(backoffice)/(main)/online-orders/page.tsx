@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ShoppingBag, Link2, RefreshCw } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDateTime } from '@/lib/utils';
 import { useOnlineCounts } from '@/lib/online-orders';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { ONLINE_STATUS_LABELS, type OnlineOrderStatus } from '@shared/online-shop';
@@ -44,7 +44,7 @@ const FILTERS: { value: string; label: string }[] = [
   { value: 'all', label: 'ทั้งหมด' },
 ];
 
-const when = (iso: string) => new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const when = (iso: string) => formatListDateTime(iso); // online orders list keeps the time (round 4)
 
 function OnlineOrdersInner() {
   const params = useSearchParams();

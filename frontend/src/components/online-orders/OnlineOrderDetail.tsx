@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { ArrowLeft, Check, Plus, Trash2, X, Store, Truck, ShoppingCart, ClipboardList, Hand, LockOpen, Undo2, PackageCheck } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDateTime } from '@/lib/utils';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useProductStore } from '@/lib/store/product-store';
 import { onlineLineTotal, onlineOrderTotals, ONLINE_STATUS_LABELS, parseDeliveryFee, type OnlineOrderStatus } from '@shared/online-shop';
@@ -109,7 +109,7 @@ export function StatusPill({ status, paid }: { status: OnlineOrderStatus; paid?:
   );
 }
 
-const when = (iso: string) => new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+const when = (iso: string) => formatListDateTime(iso); // detail view: date + time
 const isBaseUnit = (id: string) => /^u-.*-base$/.test(id);
 
 /** One online order: edit items / prices / fee / member, accept, reject, status, open in the POS. */

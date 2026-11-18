@@ -1,4 +1,5 @@
 'use client';
+import { formatListDateTime } from '@/lib/utils';
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -24,7 +25,7 @@ interface Req {
 /** "ระดับราคา 2 (ราคาส่ง)": the member's level (customers page) and the name the customer sees in the shop */
 const levelText = (m: { priceLevel?: number; levelName?: string }) => (m.priceLevel ? `ระดับราคา ${m.priceLevel}${m.levelName ? ` (${m.levelName})` : ''}` : '');
 
-const when = (iso: string) => new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const when = (iso: string) => formatListDateTime(iso); // online orders keep the time (round 4)
 
 /**
  * LINE accounts asking to be linked to a member (the member's price level and delivery fee then apply in the

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDate } from '@/lib/utils';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -84,7 +84,7 @@ export default function ApprovalsPage() {
             {rows.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-slate-400">ยังไม่มีรายการอนุมัติ</td></tr>}
             {rows.map((r) => (
               <tr key={r.id} className="border-t border-slate-100 align-top">
-                <td className="p-2 whitespace-nowrap">{new Date(r.createdAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                <td className="p-2 whitespace-nowrap">{formatListDate(r.createdAt)}</td>
                 <td className="p-2">{r.requestedBy}</td>
                 <td className="p-2">{(r.reasons || []).map((x, i) => <div key={i}>• {x.message}</div>)}{r.decisionNote && <div className="text-xs text-slate-500">หมายเหตุ: {r.decisionNote}</div>}</td>
                 <td className="p-2 text-right font-mono whitespace-nowrap">{formatCurrency(r.amount)}</td>

@@ -15,7 +15,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDate } from '@/lib/utils';
 import { toast } from 'sonner';
 import { 
   SupplierPayableBill, 
@@ -290,7 +290,7 @@ export function SettlePayableModal({
                           <div>
                             <span className="font-mono font-bold text-slate-900 text-xs">{note.id}</span>
                             <p className="text-[11px] text-slate-500">
-                              วันที่ {new Date(note.returnDate).toLocaleDateString('th-TH')} | เครดิตคงเหลือ: <strong className="text-emerald-700 font-mono">{formatCurrency(note.remainingCreditAmount)}</strong>
+                              วันที่ {formatListDate(note.returnDate)} | เครดิตคงเหลือ: <strong className="text-emerald-700 font-mono">{formatCurrency(note.remainingCreditAmount)}</strong>
                             </p>
                           </div>
                         </div>

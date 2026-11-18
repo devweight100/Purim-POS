@@ -1,5 +1,5 @@
 import { useCartStore } from '@/lib/store/cart-store';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, formatListDateTime } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -76,7 +76,7 @@ export function HeldBillsSheet({ open, onOpenChange }: HeldBillsSheetProps) {
                       </h4>
                       <p className="text-xs font-semibold text-slate-500 flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5" />
-                        พักบิลเมื่อ: {formatDate(new Date(bill.heldAt))}
+                        พักบิลเมื่อ: {formatListDateTime(bill.heldAt)}
                       </p>
 
                       {/* Prominent Member Customer Name Highlight Badge */}

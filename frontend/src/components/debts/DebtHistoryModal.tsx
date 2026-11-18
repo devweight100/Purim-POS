@@ -1,7 +1,7 @@
 'use client';
 
 import { DebtRecord, DebtPaymentInstallment } from '@/lib/types';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, formatListDate, formatListDateTime } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -76,7 +76,7 @@ export function DebtHistoryModal({
                 {debtRecord.customerType === 'COMPANY' ? <Building2 className="w-4 h-4 text-indigo-600" /> : <User className="w-4 h-4 text-sky-600" />}
                 {debtRecord.customerName}
               </span>
-              <span className="text-slate-500 font-mono">วันที่ซื้อ: {new Date(debtRecord.orderDate).toLocaleDateString('th-TH')}</span>
+              <span className="text-slate-500 font-mono">วันที่ซื้อ: {formatListDate(debtRecord.orderDate)}</span>
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-slate-200 text-xs">
@@ -155,7 +155,7 @@ export function DebtHistoryModal({
                       </span>
                       {getMethodBadge(inst.paymentMethod)}
                       <span className="text-[10px] text-slate-400 font-mono">
-                        {new Date(inst.paymentDate).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
+                        {formatListDateTime(inst.paymentDate)}
                       </span>
                     </div>
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { apiFetch } from '@/lib/api';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDateTime } from '@/lib/utils';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useProductStore } from '@/lib/store/product-store';
@@ -561,10 +561,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
 
                         {/* Date & Time */}
                         <td className="py-3.5 px-3 text-slate-600 font-semibold whitespace-nowrap">
-                          {new Date(order.createdAt).toLocaleString('th-TH', { 
-                            dateStyle: 'short', 
-                            timeStyle: 'short' 
-                          })}
+                          {formatListDateTime(order.createdAt)}
                         </td>
 
                         {/* Payment Method */}

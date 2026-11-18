@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { useAuthStore } from '@/lib/store/auth-store';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDateTime } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumpadPopup } from '@/components/pos/NumpadPopup';
@@ -217,7 +217,7 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
               {elsewhere.map((s) => (
                 <div key={s.id} className="flex flex-wrap items-center justify-between gap-2">
                   <span>
-                    กะ {s.shiftNumber} · เปิดเมื่อ {new Date(s.openedAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })} · เงินตั้งต้น {formatCurrency(s.startingCash)}
+                    กะ {s.shiftNumber} · เปิดเมื่อ {formatListDateTime(s.openedAt)} · เงินตั้งต้น {formatCurrency(s.startingCash)}
                     {!s.canContinueHere && ' · กำลังใช้งานอยู่ที่เครื่องอื่น'}
                   </span>
                   <Button

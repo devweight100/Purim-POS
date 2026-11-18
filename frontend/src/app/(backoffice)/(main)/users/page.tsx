@@ -1,4 +1,5 @@
 'use client';
+import { formatListDate } from '@/lib/utils';
 
 import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import React, { useState, useEffect } from 'react';
@@ -364,7 +365,7 @@ export default function UsersManagementPage() {
                         </button>
                       </td>
                       <td className="text-xs text-slate-500">
-                        {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('th-TH') : '-'}
+                        {u.lastLoginAt ? formatListDate(u.lastLoginAt) : '-'}
                       </td>
                       <td className="text-right">
                         <button
