@@ -90,8 +90,8 @@ test('product form: ชื่อผู้ผลิต under the name, ชื่�
 test('POS search finds a product by its manufacturer name and shows "ผู้ผลิต: …" under the shop name', async ({ page }) => {
   await login(page);
   await page.goto('/pos');
-  const skip = page.getByRole('button', { name: 'ข้ามการเปิดกะ' });
-  if (await skip.isVisible({ timeout: 5000 }).catch(() => false)) await skip.click();
+  // no shift open on this terminal: skip opening one (searching needs no shift)
+  await page.getByRole('button', { name: 'ข้ามการเปิดกะ' }).click();
   const search = page.getByRole('textbox', { name: /ค้นหาสินค้า/ }).first();
   await search.fill(`scg pvc pipe class 8.5 1in ${TAG}`.toLowerCase());
   const card = page.getByTestId('pos-product-card').filter({ hasText: SHOP });

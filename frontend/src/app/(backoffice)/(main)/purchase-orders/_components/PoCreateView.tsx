@@ -477,13 +477,13 @@ export function PoCreateView({
           <div className="flex min-h-0 w-full max-w-full flex-1 flex-col overflow-hidden bg-slate-50">
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3 sm:p-4">
               <div className="mb-4 flex shrink-0 flex-col gap-3 px-1 lg:flex-row lg:items-start lg:justify-between">
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-sm font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-amber-500" /> ตารางสั่งของ
                   </h3>
                   <p className="mt-1 text-xs text-slate-500">เลือกขอบเขตค้นหา สั่งสินค้าตามหน่วยบรรจุ แล้วกด [Enter] หรือคลิกเพิ่มสินค้าอย่างสะดวกรวดเร็ว</p>
                 </div>
-                <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center lg:w-auto">
+                <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center lg:w-auto lg:shrink-0">
                   {/* Radio Options */}
                   <div className="flex items-center gap-3 bg-white px-3 py-2 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 shadow-sm shrink-0">
                     <span className="font-bold text-slate-500">ค้นหา:</span>
@@ -496,7 +496,8 @@ export function PoCreateView({
                         onChange={() => setSearchScope('supplier')}
                         className="accent-sky-600 h-3.5 w-3.5"
                       />
-                      <span>เฉพาะผู้จำหน่ายนี้ ({selectedSupplier?.name || 'ซัพพลายเออร์'})</span>
+                      {/* the supplier's name is in the header: a long one here squeezed the search box */}
+                      <span title={selectedSupplier?.name || undefined}>เฉพาะผู้จำหน่ายนี้</span>
                     </label>
                     <label className="flex items-center gap-1.5 cursor-pointer hover:text-sky-600 font-semibold">
                       <input
