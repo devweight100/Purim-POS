@@ -19,7 +19,7 @@ import type {
 import { normalizeVoucherRow, type PaymentVoucher } from '@/lib/payable-service';
 import { mapReturnNote } from '@/lib/supplier-return-service';
 import { mapServerClaim } from '@/lib/claim-service';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDateTime } from '@/lib/utils';
 import { toast } from 'sonner';
 
 // Preview Modals
@@ -426,7 +426,7 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
                       {doc.description}
                     </p>
                     <p className="text-[11px] text-slate-400 font-mono">
-                      วันที่: {new Date(doc.date).toLocaleString('th-TH')}
+                      วันที่: {formatListDateTime(doc.date)}
                     </p>
                   </div>
 

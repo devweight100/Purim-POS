@@ -285,7 +285,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                     </div>
                     <div className="flex justify-between border-b border-slate-200/60 pb-1">
                       <span className="text-slate-500 font-medium">วันที่สั่งซื้อ:</span>
-                      <span className="font-bold text-slate-900">{formatDocDate(createdAt, { time: true })}</span>
+                      <span className="font-bold text-slate-900">{formatDocDate(createdAt)}</span>
                     </div>
                     <div className="flex justify-between border-b border-slate-200/60 pb-1">
                       <span className="text-slate-500 font-medium">เงื่อนไขการชำระเงิน:</span>
