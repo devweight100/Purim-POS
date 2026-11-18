@@ -99,3 +99,80 @@ Tests: backend e2e "backups: ADMIN and MANAGER" and "delete all products: backup
   groups, so it was left as is. README has no sidebar table.
 - Tests: vitest `back-office-home.test.ts`; Playwright `13-keyboard-layout` (group order with the divider, POS button on
   top, groups open, sales items in order, cashier sees only งานขาย & ลูกค้า and เมนูหลัก opens `/orders`).
+
+## Round 3 (2026-11-18): products price columns, collapsible sidebar, table survey
+
+Owner: make every column of the products table tighter so the price levels are their own columns (at least ราคา 1-3
+at 1366x768, 1-5 at 1920x1080), let the back-office menu fold away, and fix the same kind of problems in every other
+back-office table. Screenshots (before / after, seeded data with long Thai names, 3+ barcodes, prices 1-5, several
+pages of rows) are in the session scratchpad `ui-round3/` (not committed).
+
+### Products table (สินค้า > รายการสินค้า & ราคา)
+
+| Before | After |
+|--------|-------|
+| ราคา 1 only; "แสดงราคา 2–5" stacked 2-5 in one small column | "ราคา 1".."ราคา 5" as own columns, chosen by the table's own width (`components/products/product-columns.ts`): 5 when they fit (1366x768 and up, 1093x614 with the sidebar collapsed), at least 1-3 (1093x614 with the sidebar open) |
+| price toggle always shown | "แสดงราคา 4–5" only when 4-5 do not fit by themselves (then narrower 12 px numbers, no photo); remembered per browser (`purim_products_show_prices_45`) |
+| header "ราคา 1" | subtitle = the shop's level name without "ราคา" (online shop settings `levelNames`, e.g. ปลีก / ส่ง / ส่งพิเศษ; none when it is just "ราคาระดับ N"), read from `GET /online-shop/level-coverage` (`lib/use-level-names.ts`) |
+| sort on ราคา 1 only | every price column sorts (server already supported priceLevel1-5) |
+| จำนวน and หน่วย two columns | one column: stock badge with the unit under it |
+| category column from 1280 px | own column only on wide tables (>= 1300 px, i.e. 1920x1080); otherwise a small chip under the barcodes |
+| cost column always | only with VIEW_COST (ADMIN / permission); the API already left the value out for others |
+| 12-16 px cell padding, 40 px checkbox / 36 px chevron / 56 px edit columns | 8 px price cells, 32 / 28 / 40 px narrow columns, 13 px tabular numbers |
+
+Kept: row click / ↑↓ / Enter, sort headers, selection, chevron + pack rows (same columns), barcodes (3 + "+N"),
+"N ขนาดบรรจุ", search, filters, paging.
+
+### Sidebar (back office)
+
+- Button in the menu header ("ย่อแถบเมนู (Ctrl+B)") and **Ctrl+B** (desktop widths only, not in editable text) fold
+  the 240 px menu into a 64 px icon rail; the content area starts after it (`main` margin follows). State per device in
+  localStorage `purim_sidebar_collapsed` (`lib/store/sidebar-store.ts`, try/catch; first paint is expanded).
+- Rail (`components/layout/SidebarRail.tsx`): expand button, POS launcher, document search (F3), one icon per group
+  (same order, divider before การเงิน, groups the role cannot open stay hidden), user + logout. Every control has an
+  aria-label and a tooltip on hover and keyboard focus. The online orders badge sits on the งานขาย & ลูกค้า icon.
+- A group icon opens a flyout with the group's pages (reports with its sub-pages); `aria-expanded` / `aria-controls`,
+  Enter opens it with the focus on the first page, ↑/↓ move, Escape or a click outside closes it and gives the focus
+  back, choosing a page closes it.
+- The expanded menu stays mounted (hidden) while collapsed, so its open groups and scroll position survive a toggle.
+  Mobile drawer unchanged.
+
+### Shared table approach (all back-office tables)
+
+- `components/ui/table.tsx`: one density - 10 px cells, 40 px header row, 13 px headers (no 2xl padding jump);
+  `globals.css` `.tbl` gives plain `<table class="tbl">` the same padding (components layer, cell utilities still win).
+- The table box is a size container (`tbl-wrap`, set by ui/table; plain tables wrap in `<div class="tbl-wrap">`), so
+  columns react to the width the table really has (sidebar open or collapsed), not to the window:
+  `data-mid="hide"` (< 1150 px), `data-narrow="hide"` (< 1000 px), `data-narrow="wrap"` (date may wrap),
+  `data-act-label` (action button text hidden, icon + aria-label stay). Replaces the old viewport `max-xl:nth-child`
+  hiding in payables / claim stock / claims / shifts.
+- `components/ui/table-cells.tsx`: `tc` column classes, `ClampText`, `TwoLine`, `RowActions` for new tables.
+- Rules applied: document numbers, dates and money on one line; names clamp to 2 lines with a minimum width (never one
+  word per line); action buttons side by side (no stacking); fixed percentage widths removed (auto layout).
+
+### Per page (1366x768, both sidebar states, also 1093x614 / 1920x1080)
+
+| Page | Before | After |
+|------|--------|-------|
+| ประวัติการขาย (orders) | bill numbers broken over 2 lines, customer names one word per line, 3 action buttons stacked | one-line numbers, customer clamped, actions in a row; narrow table: รายการ hidden, date wraps, A4 / 80mm icon only |
+| ลูกหนี้ (debts) | bill numbers in 3 lines, customer 1 word per line, 2 stacked buttons | one-line, clamped names, buttons in a row; progress hidden < 1150 px, ยอดเต็มบิล < 1000 px |
+| ใบสั่งซื้อ (PO) | action icons wrapped to 2 rows | one row, right aligned; # hidden / date wraps when narrow |
+| เจ้าหนี้ (payables) | sideways scroll at 1366 (12 columns, supplier in 6 lines) | invoice + PO + bill date in one column; ส่วนลด / ประกบลดหนี้ hidden < 1150 px, # / จ่ายแล้ว / "จาก PO" < 1000 px (all in the bill details); ดูเอกสาร icon only |
+| ส่งเคลมบริษัท (supplier returns) | 3 stacked action buttons, supplier 4 lines | buttons in a row; # / อ้างอิง PO hidden and labels icon-only when narrow |
+| เคลมสินค้า (claims) | no product shown | **new column สินค้าที่เคลม**; # / จำนวน hidden when narrow |
+| สต๊อกของเคลม | sideways scroll at 1366, product name one word per line | category moved under the name (no data removed); # / ทุน/หน่วย hidden < 1150 px |
+| คลังสินค้า | SKU / barcode broken over lines | name clamp + codes on one line each, category chip truncated |
+| ลูกค้าสมาชิก | names cut to one line, earn/redeem rate text in every row | names 2 lines; the member's earn/redeem rate is the tooltip of the points badge |
+| ผู้จำหน่าย | phone / e-mail broken over lines | phone one line, e-mail truncated with tooltip, edit button has a name |
+| ประวัติปิดกะ | sideways scroll at 1366 | shorter headers, time on one line; รอบ / เงินทอน / เข้า-ออก hidden when narrow, print icon only |
+| รายงาน (6 tabs) | product / customer / supplier names one word per line | names clamp with a minimum width; inventory: ราคาทุน / มูลค่าขาย hidden when narrow; customers: average hidden, date wraps |
+| การเงิน | range buttons 4 px apart | 8 px |
+| หมวดหมู่, พนักงาน, อนุมัติ, บัญชี, ออเดอร์ออนไลน์ | fine | density only |
+
+Columns hidden only when the table is narrow are listed above; nothing was removed outright (category in claim stock
+moved under the name; the earn/redeem rate moved into a tooltip).
+
+Tests: vitest `product-columns.test.ts`; Playwright `21-table-layout.spec.ts` (price columns at 3 sizes in both
+sidebar states, level names, price sort, keyboard + chevron; sidebar button / Ctrl+B / reload / rail by Tab / flyout
+Enter-↓-Escape / phone drawer; 24 table pages without sideways scroll and with 8 / 16 px spacing at 3 sizes in both
+sidebar states); `13-keyboard-layout` and `20-product-sku` follow the new price columns.
