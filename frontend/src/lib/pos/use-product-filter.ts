@@ -2,15 +2,20 @@
 
 import { useMemo, useState } from 'react';
 import type { Product } from '@/lib/types';
+import { matchesOtherNames } from '@shared/product-names';
 
-/** Products matching the search text (name, SKU, unit barcode or unit name) and the chosen category. */
+/**
+ * Products matching the search text (name, SKU, unit barcode or unit name, or another name of the product:
+ * ชื่อผู้ผลิต / ชื่อ / รหัสสินค้าของผู้ขาย) and the chosen category.
+ */
 export function filterPosProducts(products: Product[], searchQuery: string, categoryId: string | null): Product[] {
   const q = searchQuery.toLowerCase();
   return products.filter((p) => {
     const matchesSearch =
       p.name.toLowerCase().includes(q) ||
       p.sku.toLowerCase().includes(q) ||
-      p.units.some((u) => (u.barcode && u.barcode.includes(searchQuery)) || (u.unitName && u.unitName.toLowerCase().includes(q)));
+      p.units.some((u) => (u.barcode && u.barcode.includes(searchQuery)) || (u.unitName && u.unitName.toLowerCase().includes(q))) ||
+      matchesOtherNames(p, searchQuery);
     const matchesCategory = categoryId ? p.categoryId === categoryId : true;
     return matchesSearch && matchesCategory;
   });

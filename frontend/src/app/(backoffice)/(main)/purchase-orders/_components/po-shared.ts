@@ -124,13 +124,15 @@ export interface CostSource {
   lastCost?: unknown;
   costPrice?: unknown;
   cost?: unknown;
-  supplierEntries?: Array<{ supplierId?: string; isPreferred?: boolean; lastCost?: unknown; unitCost?: unknown }>;
+  supplierEntries?: Array<{ supplierId?: string; isPreferred?: boolean; lastCost?: unknown; unitCost?: unknown; supplierProductName?: string | null; supplierSku?: string | null }>;
 }
 
 /** Product as used by the order table (a server product, or a PO line standing in for one). */
 export interface PoProductLike extends CostSource {
   id: string;
   name: string;
+  /** ชื่อผู้ผลิต (search + supplier-name documents) */
+  manufacturerName?: string | null;
   sku: string;
   stock?: number;
   unit?: string;

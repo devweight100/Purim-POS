@@ -33,6 +33,9 @@ export interface LookupProduct {
   id: string;
   name: string;
   sku: string;
+  /** other names (the search also matches them; shown as a hint when they matched) */
+  manufacturerName?: string | null;
+  suppliers?: { supplierProductName: string | null; supplierSku: string | null }[];
   unit: string;
   category: string | null;
   isBundle: boolean;

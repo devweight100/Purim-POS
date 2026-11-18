@@ -1,5 +1,7 @@
 'use client';
 
+import { matchesOtherNames } from '@shared/product-names';
+import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { calculatePurchaseBill, normVatType, toBaseUnitLine, type PoVatType } from '@shared/po-calc';
 import { apiFetch } from '@/lib/api';
@@ -355,7 +357,8 @@ export function PoCreateView({
     return list.filter(p =>
       (p.name || '').toLowerCase().includes(q) ||
       (p.sku || '').toLowerCase().includes(q) ||
-      (p.barcodes && p.barcodes.some((b) => (b.barcode || '').includes(q)))
+      (p.barcodes && p.barcodes.some((b) => (b.barcode || '').includes(q))) ||
+      matchesOtherNames(p, q)
     );
   }, [supplierProducts, searchScope, selectedSupplier, searchProduct]);
 
@@ -367,7 +370,8 @@ export function PoCreateView({
     return bound.filter(p =>
       (p.name || '').toLowerCase().includes(q) ||
       (p.sku || '').toLowerCase().includes(q) ||
-      (p.barcodes && p.barcodes.some((b) => (b.barcode || '').includes(q)))
+      (p.barcodes && p.barcodes.some((b) => (b.barcode || '').includes(q))) ||
+      matchesOtherNames(p, q)
     );
   }, [supplierProducts, selectedSupplier, catalogSearch]);
 
@@ -556,6 +560,7 @@ export function PoCreateView({
                                     </button>
                                     <div className="min-w-0">
                                       <div className="truncate text-sm font-bold text-slate-900">{product.name}</div>
+                                      <SearchMatchHint product={product} query={searchProduct} />
                                       <div className="truncate text-xs text-slate-500 flex items-center gap-1.5">
                                         <span>{product.sku}</span>
                                         <span>·</span>

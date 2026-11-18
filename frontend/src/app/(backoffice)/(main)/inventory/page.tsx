@@ -1,5 +1,6 @@
 'use client';
 
+import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { getLowStockThreshold } from '@/lib/store-settings-storage';
 import { useState, useEffect, useMemo, useRef } from 'react';
@@ -627,6 +628,7 @@ export default function InventoryPage() {
                             <span className="font-bold text-slate-900 text-[13px] line-clamp-2 break-words hover:text-sky-600 transition-colors" title={p.name}>
                               {p.name}
                             </span>
+                            <SearchMatchHint product={p} query={debouncedSearch} />
                             <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-slate-400 font-mono">
                               <span className="whitespace-nowrap">SKU: {p.sku || '-'}</span>
                               {p.barcodes && p.barcodes.length > 0 && (

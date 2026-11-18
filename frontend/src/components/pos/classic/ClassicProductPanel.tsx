@@ -1,5 +1,6 @@
 'use client';
 
+import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import Link from 'next/link';
 import { Search, ScanLine, Clock, LogOut, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -95,6 +96,7 @@ function ClassicProductCard({
       </div>
 
       <div className="mb-1 line-clamp-2 font-black text-sm leading-snug text-slate-900">{product.name}</div>
+      <SearchMatchHint product={product} query={searchQuery} className="mb-1" />
       <div className="mb-2 text-xs text-slate-400 font-mono">{product.sku}</div>
 
       {/* Packaging Units Selector Buttons */}

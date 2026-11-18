@@ -1,4 +1,5 @@
 import { formatCurrency } from '@/lib/utils';
+import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import { Button } from '@/components/ui/button';
 import {
   Dialog, DialogContent, DialogHeader,
@@ -95,6 +96,7 @@ export function PoSupplierCatalogDialog({
                           </button>
                           <div className="min-w-0">
                             <div className="truncate text-base font-semibold text-slate-900">{product.name}</div>
+                            <SearchMatchHint product={product} query={catalogSearch} />
                             <div className="truncate text-xs text-slate-500 font-mono">{product.sku}</div>
                           </div>
                         </div>

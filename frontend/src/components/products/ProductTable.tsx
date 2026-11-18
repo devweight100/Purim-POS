@@ -134,6 +134,7 @@ export function ProductTable({ data, f, sel, onEdit }: {
               <ProductTableRow
                 key={p.id}
                 p={p}
+                searchText={f.query.search}
                 categories={categories}
                 pkgUnits={allPackaging[p.id] || []}
                 isExpanded={sel.expandedRows.has(p.id)}

@@ -1,5 +1,7 @@
 'use client';
 
+import { matchesOtherNames } from '@shared/product-names';
+import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { 
@@ -202,7 +204,7 @@ export function ProductClaimModal({
         const barcodeMatch = (u.barcode || '').toLowerCase().includes(q);
         const unitNameMatch = (u.unitName || '').toLowerCase().includes(q);
 
-        if (nameMatch || skuMatch || barcodeMatch || unitNameMatch) {
+        if (nameMatch || skuMatch || barcodeMatch || unitNameMatch || matchesOtherNames(p, q)) {
           matches.push({ product: p, unit: u });
         }
       });
@@ -912,6 +914,7 @@ export function ProductClaimModal({
                                 >
                                   <div>
                                     <div className="font-bold text-slate-900">{p.name} ({u.unitName})</div>
+                                    <SearchMatchHint product={p} query={replacementSearch} />
                                     <div className="text-[10px] text-slate-500 font-mono">
                                       บาร์โค้ด: {u.barcode || '-'} | SKU: {p.sku} | สต็อกคงเหลือ: {p.stock ?? '-'} {u.unitName}
                                     </div>

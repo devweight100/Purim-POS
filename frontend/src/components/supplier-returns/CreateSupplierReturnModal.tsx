@@ -1,5 +1,7 @@
 'use client';
 
+import { matchesOtherNames } from '@shared/product-names';
+import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import { useState, useEffect, useMemo } from 'react';
 import { 
   Building2, CheckCircle2, FileText, Plus, Trash2, 
@@ -59,6 +61,9 @@ type ReturnProduct = {
   units?: Array<{ name?: string; unitName?: string }>;
   basePrice?: number | null;
   costPrice?: number | null;
+  /** other names (search: ชื่อผู้ผลิต / ชื่อ / รหัสสินค้าของผู้ขาย) */
+  manufacturerName?: string | null;
+  supplierEntries?: Array<{ supplierId?: string; supplierProductName?: string | null; supplierSku?: string | null }>;
 };
 
 export function CreateSupplierReturnModal({
@@ -466,7 +471,8 @@ export function CreateSupplierReturnModal({
 
   const filteredSupplierProducts = supplierProducts.filter((p) =>
     (p.name || '').toLowerCase().includes(productSearch.toLowerCase()) ||
-    (p.sku || '').toLowerCase().includes(productSearch.toLowerCase())
+    (p.sku || '').toLowerCase().includes(productSearch.toLowerCase()) ||
+    matchesOtherNames(p, productSearch)
   );
 
   return (
@@ -1050,6 +1056,7 @@ export function CreateSupplierReturnModal({
                             >
                               <div>
                                 <p className="font-bold text-slate-800">{p.name}</p>
+                                <SearchMatchHint product={p} query={productSearch} />
                                 <p className="text-[10px] text-slate-400 font-mono">SKU: {p.sku} | สต็อกคงเหลือ: {p.stock || 0} ชิ้น</p>
                               </div>
                               <span className="font-bold text-sky-700 font-mono">

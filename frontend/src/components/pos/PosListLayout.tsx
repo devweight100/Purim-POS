@@ -1,5 +1,7 @@
 'use client';
 
+import { matchesOtherNames } from '@shared/product-names';
+import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import { useOnlineCounts } from '@/lib/online-orders';
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
@@ -171,7 +173,8 @@ export function PosListLayout({
            p.units?.some(u => 
              (u.barcode && u.barcode.toLowerCase().includes(q)) ||
              (u.unitName && u.unitName.toLowerCase().includes(q))
-           );
+           ) ||
+           matchesOtherNames(p, searchQuery);
   }).slice(0, 10);
 
   const handleSelectProduct = (product: Product, specificUnit?: ProductUnit) => {
@@ -514,6 +517,7 @@ export function PosListLayout({
                     >
                       <div className="flex-1 min-w-0 pr-3">
                         <div className="font-extrabold text-base text-slate-900 truncate">{p.name}</div>
+                        <SearchMatchHint product={p} query={searchQuery} />
                         <div className="text-xs text-slate-500 font-mono flex items-center gap-1.5">
                           <span>SKU: {p.sku}</span>
                           <span>·</span>

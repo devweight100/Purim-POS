@@ -1,5 +1,6 @@
 'use client';
 
+import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import { useEffect, useRef, useState } from 'react';
 import { Search, X } from 'lucide-react';
 import { LoadErrorState } from '@/components/common/LoadErrorState';
@@ -111,6 +112,7 @@ export function StockTab({ onActiveUrl }: { onActiveUrl: (url: string) => void }
             <ResultPage
               key={i}
               url={i === 0 ? firstUrl : lookupUrl(query, filter, i + 1)}
+              query={query}
               isLast={i === pages - 1}
               onMore={() => setPages(pages + 1)}
             />
@@ -121,7 +123,7 @@ export function StockTab({ onActiveUrl }: { onActiveUrl: (url: string) => void }
   );
 }
 
-function ResultPage({ url, isLast, onMore }: { url: string; isLast: boolean; onMore: () => void }) {
+function ResultPage({ url, query, isLast, onMore }: { url: string; query: string; isLast: boolean; onMore: () => void }) {
   const { data, error, loading } = useMobileData<LookupResponse>(url);
   if (error && !data) return <LoadErrorState message={error} onRetry={() => reloadMobileData(url)} retrying={loading} />;
   if (!data) return <ListSkeleton rows={2} />;
@@ -130,7 +132,7 @@ function ResultPage({ url, isLast, onMore }: { url: string; isLast: boolean; onM
       <ul className="space-y-3">
         {data.data.map((p) => (
           <li key={p.id}>
-            <ProductCard p={p} canViewCost={data.canViewCost} />
+            <ProductCard p={p} canViewCost={data.canViewCost} query={query} />
           </li>
         ))}
       </ul>
@@ -149,7 +151,7 @@ function ResultPage({ url, isLast, onMore }: { url: string; isLast: boolean; onM
 
 const price = (v: number | null | undefined) => (v === null || v === undefined ? '–' : Number(v).toLocaleString('th-TH', { maximumFractionDigits: 2 }));
 
-function ProductCard({ p, canViewCost }: { p: LookupProduct; canViewCost: boolean }) {
+function ProductCard({ p, canViewCost, query }: { p: LookupProduct; canViewCost: boolean; query: string }) {
   const units = [
     { name: p.unit, size: 1, prices: p.prices },
     ...p.packs.map((u) => ({ name: u.name, size: u.factor, prices: u.prices })),
@@ -163,6 +165,7 @@ function ProductCard({ p, canViewCost }: { p: LookupProduct; canViewCost: boolea
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <h3 className="text-[16px] leading-snug font-bold text-slate-900">{p.name}</h3>
+          <SearchMatchHint product={p} query={query} className="text-[13px]" />
           <p className="mt-0.5 truncate text-[13px] text-slate-500">
             {p.sku}
             {p.category ? ` · ${p.category}` : ''}

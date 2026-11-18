@@ -1,5 +1,6 @@
 "use client";
 
+import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import { Fragment, type HTMLAttributes } from "react";
 import { ROW_NAV_CLASS } from "@/lib/use-row-nav";
 import { ChevronRight, Pencil } from "lucide-react";
@@ -33,9 +34,11 @@ function StockQty({ value, unit, badgeClass, prefix, unitClass = "text-slate-500
 
 /** One product row, plus one sub-row per pack unit when expanded. */
 export function ProductTableRow({
-  p, categories, pkgUnits, isExpanded, isSelected, onToggleExpand, onToggleSelect, onEdit, layout, showCost, rowNav,
+  p, searchText, categories, pkgUnits, isExpanded, isSelected, onToggleExpand, onToggleSelect, onEdit, layout, showCost, rowNav,
 }: {
   p: ProductRecord;
+  /** the search the page shows: a match from another name gets a small hint under the name */
+  searchText?: string;
   categories: CategoryOption[];
   pkgUnits: PackagingUnitForm[];
   isExpanded: boolean;
@@ -97,6 +100,7 @@ export function ProductTableRow({
                 </span>
               )}
             </div>
+            <SearchMatchHint product={p} query={searchText} />
             {(pkgUnits.length > 0 || (!layout.showCategory && category?.name)) && (
               <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-normal text-slate-500">
                 {pkgUnits.length > 0 && (
