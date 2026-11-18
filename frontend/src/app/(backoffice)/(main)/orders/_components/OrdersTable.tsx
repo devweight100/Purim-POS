@@ -65,7 +65,7 @@ export function OrdersTable({
         <Table>
           <TableHeader className="bg-slate-50/90 border-b border-slate-200">
             <TableRow className="hover:bg-transparent">
-              <TableHead className="hidden xl:table-cell font-bold text-slate-800 text-sm pl-4 text-center w-16">ลำดับ</TableHead>
+              <TableHead data-mid="hide" className="hidden xl:table-cell font-bold text-slate-800 text-sm pl-4 text-center w-12">#</TableHead>
               <TableHead className="font-bold text-slate-800 text-sm text-left">เลขออเดอร์</TableHead>
               <TableHead className="font-bold text-slate-800 text-sm text-center">วันที่</TableHead>
               <TableHead className="font-bold text-slate-800 text-sm">ลูกค้า / ผู้ซื้อ</TableHead>
@@ -117,12 +117,12 @@ export function OrdersTable({
                     {...nav.rowProps(idx)}
                   >
                     {/* 1. Index (ลำดับ) */}
-                    <TableCell className="hidden xl:table-cell pl-4 text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
+                    <TableCell data-mid="hide" className="hidden xl:table-cell pl-4 text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
                       {(currentPage - 1) * pageSize + idx + 1}
                     </TableCell>
 
                     {/* 2. Order Number */}
-                    <TableCell className="font-mono whitespace-nowrap">
+                    <TableCell className="font-mono">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="font-bold text-indigo-600 text-[13px] whitespace-nowrap">{order.orderNumber}</span>
                         {order.hasClaims && (

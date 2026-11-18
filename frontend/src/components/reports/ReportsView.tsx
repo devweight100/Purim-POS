@@ -885,7 +885,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                     <TableHead className="text-center w-10 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
                     <TableHead className="text-left text-slate-700 font-bold text-sm">บาร์โค้ด / SKU</TableHead>
                     <TableHead className="text-left min-w-44 xl:min-w-56 text-slate-700 font-bold text-sm">ชื่อสินค้า</TableHead>
-                    <TableHead className="text-center text-slate-700 font-bold text-sm">หมวดหมู่</TableHead>
+                    <TableHead data-narrow="hide" className="text-center text-slate-700 font-bold text-sm">หมวดหมู่</TableHead>
                     <TableHead className="text-right text-slate-700 font-bold text-sm">จำนวนที่ขายได้</TableHead>
                     <TableHead className="text-right text-slate-700 font-bold text-sm">ยอดขายรวม</TableHead>
                     <TableHead className="text-right text-slate-700 font-bold text-sm">ต้นทุนรวม</TableHead>
@@ -915,7 +915,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td className="font-bold text-slate-900 text-[13px] min-w-44 xl:min-w-56">
                             <span className="line-clamp-2 break-words" title={p.name}>{p.name}</span>
                           </td>
-                          <td className="text-center">
+                          <td data-narrow="hide" className="text-center">
                             <Badge variant="outline" className="text-xs h-auto max-w-36 truncate block" title={formatCategory(p.category)}>{formatCategory(p.category)}</Badge>
                           </td>
                           <td className="text-right font-mono whitespace-nowrap font-black text-indigo-700 text-sm">

@@ -79,9 +79,10 @@ test('table: name + barcodes only (no code), pack count, no sideways scroll at 3
     const cellBox = (await nameCell.boundingBox())!;
     const nameBox = (await long.getByTitle(LONG, { exact: true }).boundingBox())!;
     expect(nameBox.x + nameBox.width).toBeLessThanOrEqual(cellBox.x + cellBox.width + 1);
-    // the name column is no longer most of the table: cost and price 1 sit within the first ~3/4 of a wide table
+    // the name column is not most of the table (round 3: price levels 1-5 are their own columns; at 1920 the name
+    // keeps what is left after category, cost and 5 prices, a bit under half)
     const tableBox = (await table.boundingBox())!;
-    expect(cellBox.width).toBeLessThan(tableBox.width * 0.42);
+    expect(cellBox.width).toBeLessThan(tableBox.width * 0.5);
     const edit = long.getByRole('button', { name: `แก้ไข ${LONG}` });
     const editBox = (await edit.boundingBox())!;
     expect(editBox.x + editBox.width).toBeLessThanOrEqual(size.width);
