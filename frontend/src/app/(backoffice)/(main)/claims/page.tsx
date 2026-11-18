@@ -346,30 +346,32 @@ export default function ClaimsPage() {
       {/* ─── MAIN CLAIMS TABLE ─── */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-2xs overflow-hidden">
         <div className="overflow-x-auto">
+          {/* round 3: the claimed product is shown (it was only in the printed document); "#" and จำนวน hidden when the table is narrow */}
           <Table>
             <TableHeader className="bg-slate-50">
               <TableRow className="border-b border-slate-200 text-slate-700 font-bold text-sm">
-                <TableHead className="pl-4 text-center w-16 font-bold text-sm">ลำดับ</TableHead>
-                <TableHead className="text-left w-36 font-bold text-sm">เลขที่เคลม</TableHead>
-                <TableHead className="text-center w-40 font-bold text-sm">วันที่ทำรายการ</TableHead>
-                <TableHead className="text-center font-bold text-sm">ลูกค้า</TableHead>
-                <TableHead className="text-center w-36 font-bold text-sm">จำนวนที่เคลม</TableHead>
-                <TableHead className="text-right w-36 font-bold text-sm">มูลค่าเคลม (฿)</TableHead>
-                <TableHead className="text-center w-36 font-bold text-sm">วิธีดำเนินการ</TableHead>
-                <TableHead className="text-center w-32 pr-4 font-bold text-sm whitespace-nowrap">การจัดการ</TableHead>
+                <TableHead data-narrow="hide" className="pl-4 text-center w-10 font-bold text-sm">#</TableHead>
+                <TableHead className="text-left font-bold text-sm">เลขที่เคลม</TableHead>
+                <TableHead className="text-center font-bold text-sm">วันที่</TableHead>
+                <TableHead className="text-left min-w-32 xl:min-w-40 font-bold text-sm">ลูกค้า</TableHead>
+                <TableHead className="text-left min-w-32 xl:min-w-48 font-bold text-sm">สินค้าที่เคลม</TableHead>
+                <TableHead data-narrow="hide" className="text-center font-bold text-sm">จำนวน</TableHead>
+                <TableHead className="text-right font-bold text-sm">มูลค่าเคลม</TableHead>
+                <TableHead className="text-center font-bold text-sm">วิธีดำเนินการ</TableHead>
+                <TableHead className="text-right pr-4 font-bold text-sm">การจัดการ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody className="divide-y divide-slate-100">
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-12 text-slate-400 text-sm">
+                  <TableCell colSpan={9} className="text-center py-12 text-slate-400 text-sm">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
                     กำลังโหลดข้อมูลรายการเคลม...
                   </TableCell>
                 </TableRow>
               ) : paginatedClaims.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-14 text-slate-400 text-sm">
+                  <TableCell colSpan={9} className="text-center py-14 text-slate-400 text-sm">
                     <div className="flex flex-col items-center gap-2">
                       <ShieldAlert className="w-8 h-8 text-slate-300" />
                       <span className="font-bold text-slate-600 text-base">ไม่พบประวัติการรับเคลมสินค้า</span>
@@ -390,13 +392,13 @@ export default function ClaimsPage() {
                     className="hover:bg-slate-50/70 transition-colors"
                   >
                     {/* 1. Index (ลำดับ) */}
-                    <TableCell className="py-3.5 pl-4 text-center font-mono font-bold text-slate-500 text-sm">
+                    <TableCell data-narrow="hide" className="pl-4 text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
                       {(currentPage - 1) * pageSize + idx + 1}
                     </TableCell>
 
                     {/* 2. Claim ID */}
-                    <TableCell className="py-3.5 font-mono">
-                      <div className="font-bold text-indigo-600 text-[15px]">{claim.id}</div>
+                    <TableCell className="font-mono whitespace-nowrap">
+                      <div className="font-bold text-indigo-600 text-sm">{claim.id}</div>
                       {claim.returnDocId && (
                         <div className="mt-1">
                           <Link
@@ -412,15 +414,15 @@ export default function ClaimsPage() {
                     </TableCell>
 
                     {/* 3. Date (แยก col. วันที่) */}
-                    <TableCell className="py-3.5 text-center font-mono text-xs text-slate-600">
+                    <TableCell data-narrow="wrap" className="text-center font-mono whitespace-nowrap text-xs text-slate-600">
                       {formatDate(claim.claimDate)}
                     </TableCell>
 
                     {/* 4. Customer Column (Center Align) */}
-                    <TableCell className="py-3.5 text-center">
-                      <div className="font-bold text-slate-900 text-[15px] flex items-center justify-center gap-1.5">
+                    <TableCell className="min-w-32 xl:min-w-40">
+                      <div className="font-bold text-slate-900 text-[13px] flex items-center gap-1.5">
                         <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span>{claim.customerName || 'ลูกค้าทั่วไป'}</span>
+                        <span className="line-clamp-2 break-words" title={claim.customerName || ''}>{claim.customerName || 'ลูกค้าทั่วไป'}</span>
                       </div>
                       {claim.customerPhone && (
                         <div className="text-xs text-slate-400 font-mono mt-0.5">
@@ -429,9 +431,14 @@ export default function ClaimsPage() {
                       )}
                     </TableCell>
 
+                    {/* 4b. Product (round 3) */}
+                    <TableCell className="min-w-32 xl:min-w-48" data-testid="claim-product">
+                      <span className="line-clamp-2 break-words text-[13px] text-slate-800" title={claim.productName || ''}>{claim.productName || '-'}</span>
+                    </TableCell>
+
                     {/* 5. Total Claim Quantity */}
-                    <TableCell className="py-3.5 text-center font-mono">
-                      <div className="font-bold text-[15px] text-slate-900">
+                    <TableCell data-narrow="hide" className="text-center font-mono whitespace-nowrap">
+                      <div className="font-bold text-sm text-slate-900">
                         {claim.baseQuantity !== undefined ? claim.baseQuantity : (claim.quantity * (claim.conversionFactor || 1))} {claim.conversionFactor && claim.conversionFactor > 1 ? (claim.replacementUnitName || 'ชิ้น') : (claim.unitName || 'ชิ้น')}
                       </div>
                       {claim.conversionFactor && claim.conversionFactor > 1 && (
@@ -442,28 +449,29 @@ export default function ClaimsPage() {
                     </TableCell>
 
                     {/* 6. Total Claim Value */}
-                    <TableCell className="py-3.5 text-right font-mono">
-                      <span className="font-black text-[15px] sm:text-base text-slate-900 block">
+                    <TableCell className="text-right font-mono whitespace-nowrap">
+                      <span className="font-black text-sm text-slate-900 block">
                         {formatCurrency(claim.totalClaimValue)}
                       </span>
                     </TableCell>
 
                     {/* 7. Resolution */}
-                    <TableCell className="py-3.5 text-center">
+                    <TableCell className="text-center whitespace-nowrap">
                       {getResolutionBadge(claim.resolutionType)}
                     </TableCell>
 
                     {/* 8. Action: Print */}
-                    <TableCell className="py-3.5 pr-4 text-center">
+                    <TableCell className="pr-4 w-px whitespace-nowrap text-right">
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={(e) => handlePrintPdf(claim, e)}
                         className="h-8 px-3 text-xs text-indigo-700 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 rounded-xl font-bold gap-1.5 whitespace-nowrap"
                         title="พิมพ์ใบรับเคลม / ดูรายละเอียด"
+                        aria-label="พิมพ์"
                       >
                         <Printer className="w-3.5 h-3.5" />
-                        <span>พิมพ์เอกสาร</span>
+                        <span data-act-label>พิมพ์</span>
                       </Button>
                     </TableCell>
                   </TableRow>

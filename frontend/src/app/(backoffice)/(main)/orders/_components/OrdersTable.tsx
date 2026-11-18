@@ -65,16 +65,16 @@ export function OrdersTable({
         <Table>
           <TableHeader className="bg-slate-50/90 border-b border-slate-200">
             <TableRow className="hover:bg-transparent">
-              <TableHead className="hidden xl:table-cell font-bold text-slate-800 text-sm py-3.5 pl-4 text-center w-16">ลำดับ</TableHead>
-              <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-left w-[130px]">เลขออเดอร์</TableHead>
-              <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-center w-[150px]">วันที่ทำรายการ</TableHead>
-              <TableHead className="font-bold text-slate-800 text-sm py-3.5">ลูกค้า / ผู้ซื้อ</TableHead>
-              <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-right w-[100px]">รายการ</TableHead>
-              <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-right w-[120px]">ยอดรวมสุทธิ</TableHead>
-              <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-center w-[140px]">ช่องทางชำระ</TableHead>
-              <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-center w-[120px]">สถานะ</TableHead>
-              <TableHead className="font-bold text-slate-800 text-sm py-3.5 text-center pr-4">
-                🖨️ พิมพ์ / จัดการ
+              <TableHead className="hidden xl:table-cell font-bold text-slate-800 text-sm pl-4 text-center w-16">ลำดับ</TableHead>
+              <TableHead className="font-bold text-slate-800 text-sm text-left">เลขออเดอร์</TableHead>
+              <TableHead className="font-bold text-slate-800 text-sm text-center">วันที่</TableHead>
+              <TableHead className="font-bold text-slate-800 text-sm">ลูกค้า / ผู้ซื้อ</TableHead>
+              <TableHead data-narrow="hide" className="font-bold text-slate-800 text-sm text-right">รายการ</TableHead>
+              <TableHead className="font-bold text-slate-800 text-sm text-right">ยอดสุทธิ</TableHead>
+              <TableHead className="font-bold text-slate-800 text-sm text-center">ชำระโดย</TableHead>
+              <TableHead className="font-bold text-slate-800 text-sm text-center">สถานะ</TableHead>
+              <TableHead className="font-bold text-slate-800 text-sm text-center pr-4">
+                พิมพ์ / จัดการ
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -117,14 +117,14 @@ export function OrdersTable({
                     {...nav.rowProps(idx)}
                   >
                     {/* 1. Index (ลำดับ) */}
-                    <TableCell className="hidden xl:table-cell py-3.5 pl-4 text-center font-mono font-bold text-slate-500 text-sm">
+                    <TableCell className="hidden xl:table-cell pl-4 text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
                       {(currentPage - 1) * pageSize + idx + 1}
                     </TableCell>
 
                     {/* 2. Order Number */}
-                    <TableCell className="py-3.5 font-mono">
+                    <TableCell className="font-mono whitespace-nowrap">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-bold text-indigo-600 text-[15px]">{order.orderNumber}</span>
+                        <span className="font-bold text-indigo-600 text-[13px] whitespace-nowrap">{order.orderNumber}</span>
                         {order.hasClaims && (
                           <span className="text-[10px] text-amber-700 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded font-bold font-sans">
                             ⚠️ เคลมแล้ว
@@ -134,30 +134,30 @@ export function OrdersTable({
                     </TableCell>
 
                     {/* 3. Date (แยก col. วันที่) */}
-                    <TableCell className="py-3.5 text-center font-mono text-xs text-slate-600">
+                    <TableCell data-narrow="wrap" className="text-center font-mono whitespace-nowrap text-xs text-slate-600">
                       {new Date(order.createdAt).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}
                     </TableCell>
 
                     {/* 4. Customer Name */}
-                    <TableCell className="py-3.5">
-                      <div className="font-bold text-slate-900 text-[15px] flex items-center gap-1.5">
-                        <User className="w-3.5 h-3.5 text-slate-400" />
-                        <span>{order.customerName || (typeof order.customer === "object" ? order.customer?.name : order.customer) || "ลูกค้าทั่วไป"}</span>
+                    <TableCell className="">
+                      <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5 min-w-40">
+                        <User className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                        <span className="line-clamp-2 break-words">{order.customerName || (typeof order.customer === "object" ? order.customer?.name : order.customer) || "ลูกค้าทั่วไป"}</span>
                       </div>
                     </TableCell>
 
                     {/* 5. Items Count */}
-                    <TableCell className="py-3.5 text-right font-bold text-[15px] text-slate-700 font-mono">
+                    <TableCell data-narrow="hide" className="text-right font-bold text-sm text-slate-700 font-mono whitespace-nowrap">
                       {itemsCount} รายการ
                     </TableCell>
 
                     {/* 6. Total Amount */}
-                    <TableCell className="py-3.5 text-right font-black text-[15px] sm:text-base text-slate-900 font-mono">
+                    <TableCell className="text-right font-black text-sm text-slate-900 font-mono whitespace-nowrap">
                       {formatCurrency(total)}
                     </TableCell>
 
                     {/* 5. Payment Channel */}
-                    <TableCell className="py-3 text-center">
+                    <TableCell className="text-center">
                       <div className="flex gap-1 justify-center flex-wrap">
                         {order.payments && order.payments.length > 0 ? (
                           order.payments.map((p, i: number) => (
@@ -197,7 +197,7 @@ export function OrdersTable({
                     </TableCell>
 
                     {/* 6. Status Badge (Credit bills that are fully settled show 'สำเร็จ' in green!) */}
-                    <TableCell className="py-3 text-center">
+                    <TableCell className="text-center">
                       {isVoid ? (
                         <Badge className="bg-rose-100 text-rose-700 border-rose-300 line-through font-bold text-[10.5px]">
                           ยกเลิกแล้ว
@@ -224,8 +224,8 @@ export function OrdersTable({
                     </TableCell>
 
                     {/* 7. Action & Print Buttons */}
-                    <TableCell className="py-3 pr-4 text-center" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex flex-wrap items-center justify-center gap-btn">
+                    <TableCell className="pr-4 text-center w-px whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex flex-nowrap items-center justify-center gap-btn">
                         {/* If Credit Bill -> Always show the Payment History button */}
                         {isCredit ? (
                           <Button
@@ -233,9 +233,10 @@ export function OrdersTable({
                             onClick={(e) => handleOpenCreditHistory(order, e)}
                             className="h-8 px-2.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow-xs gap-1"
                             title="ดูประวัติการชำระเงินเชื่อ และพิมพ์ใบเสร็จตามจริง"
+                                aria-label="ประวัติชำระ"
                           >
                             <History className="w-3.5 h-3.5" />
-                            <span>ประวัติชำระ</span>
+                            <span data-act-label>ประวัติชำระ</span>
                           </Button>
                         ) : (
                           /* Standard A4 Print Button */
@@ -244,9 +245,10 @@ export function OrdersTable({
                             onClick={(e) => handleOpenA4Receipt(order, e)}
                             className="h-8 px-2.5 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs gap-1"
                             title="พิมพ์ใบเสร็จรับเงิน / ใบกำกับภาษีเต็มรูปแบบ (A4)"
+                                aria-label="พิมพ์ A4"
                           >
                             <FileText className="w-3.5 h-3.5" />
-                            <span>พิมพ์ A4</span>
+                            <span data-act-label>พิมพ์ A4</span>
                           </Button>
                         )}
 
@@ -257,9 +259,10 @@ export function OrdersTable({
                           onClick={(e) => handleOpenSlipReceipt(order, e)}
                           className="h-8 px-2 text-xs font-semibold text-slate-700 border-slate-300 hover:bg-slate-100 rounded-xl"
                           title="พิมพ์สลิป 80mm"
+                                aria-label="80mm"
                         >
-                          <Printer className="w-3.5 h-3.5 mr-1" />
-                          <span>80mm</span>
+                          <Printer className="w-3.5 h-3.5" />
+                          <span data-act-label>80mm</span>
                         </Button>
 
                         {/* More Options Dropdown */}

@@ -64,7 +64,7 @@ export function RecurringPanel({ accounts, categories, onChanged }: { accounts: 
         </div>
       )}
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-        <table className="w-full text-sm">
+        <table className="tbl w-full text-sm">
           <thead className="bg-slate-50 text-slate-600"><tr>
             <th className="p-2 text-left">รายการ</th><th className="p-2 text-left">รอบ</th><th className="p-2 text-left">ครบกำหนดถัดไป</th>
             <th className="p-2 text-right">จำนวนเงิน</th><th className="p-2 text-left">จ่ายจาก</th><th className="p-2" />
@@ -80,7 +80,7 @@ export function RecurringPanel({ accounts, categories, onChanged }: { accounts: 
                   {r.status === 'OVERDUE' && <Badge className="bg-rose-600 text-white">เกิน {-r.daysToDue} วัน</Badge>}
                   {r.status === 'DUE_SOON' && <Badge className="bg-amber-500 text-white">{r.daysToDue === 0 ? 'วันนี้' : `อีก ${r.daysToDue} วัน`}</Badge>}
                 </td>
-                <td className="p-2 text-right font-mono">{formatCurrency(r.amount)}</td>
+                <td className="p-2 text-right font-mono whitespace-nowrap">{formatCurrency(r.amount)}</td>
                 <td className="p-2">{r.account?.name || '-'}</td>
                 <td className="p-2 text-right whitespace-nowrap">
                   {r.isActive && <Button size="sm" className="bg-rose-600 hover:bg-rose-700 text-white" onClick={() => setPayTarget(r)}>จ่าย</Button>}

@@ -68,10 +68,10 @@ export function PoListTable({
         <Table>
           <TableHeader className="bg-slate-50 border-b border-slate-200">
             <TableRow className="border-slate-200 hover:bg-transparent">
-              <TableHead className="text-slate-700 font-bold text-sm text-center w-16">ลำดับ</TableHead>
-              <TableHead className="text-slate-700 font-bold text-sm w-36">เลข PO</TableHead>
+              <TableHead data-narrow="hide" className="text-slate-700 font-bold text-sm text-center w-12">#</TableHead>
+              <TableHead className="text-slate-700 font-bold text-sm">เลข PO</TableHead>
               <TableHead className="text-slate-700 font-bold text-sm">ผู้จำหน่าย</TableHead>
-              <TableHead className="text-slate-700 font-bold text-sm text-center w-36">วันที่สร้าง</TableHead>
+              <TableHead className="text-slate-700 font-bold text-sm text-center">วันที่สร้าง</TableHead>
               <TableHead className="text-slate-700 font-bold text-sm text-right">ยอดรวมสุทธิ</TableHead>
               <TableHead className="text-slate-700 font-bold text-sm text-center">สถานะ</TableHead>
               <TableHead className="text-slate-700 font-bold text-sm text-center">จัดการ</TableHead>
@@ -99,13 +99,13 @@ export function PoListTable({
             ) : (
               filteredPOs.map((po, idx) => (
                 <TableRow key={po.id} className={`border-slate-100 hover:bg-slate-50 transition-colors ${ROW_NAV_CLASS}`} {...poNav.rowProps(idx)}>
-                  <TableCell className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                  <TableCell data-narrow="hide" className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
                     {idx + 1}
                   </TableCell>
-                  <TableCell className="font-bold text-slate-900 text-[15px] font-mono">{po.poNumber}</TableCell>
-                  <TableCell className="text-slate-900 font-bold text-[15px]">{po.supplier?.name || po.supplierName || "-"}</TableCell>
-                  <TableCell className="text-slate-600 text-center font-mono text-xs">{formatDate(po.createdAt)}</TableCell>
-                  <TableCell className="text-right text-slate-900 font-black text-[15px] sm:text-base font-mono">
+                  <TableCell className="font-bold text-slate-900 text-sm font-mono whitespace-nowrap">{po.poNumber}</TableCell>
+                  <TableCell className="text-slate-900 font-bold text-sm min-w-40 xl:min-w-48"><span className="line-clamp-2 break-words" title={po.supplier?.name || po.supplierName || ""}>{po.supplier?.name || po.supplierName || "-"}</span></TableCell>
+                  <TableCell data-narrow="wrap" className="text-slate-600 text-center font-mono whitespace-nowrap text-xs">{formatDate(po.createdAt)}</TableCell>
+                  <TableCell className="text-right text-slate-900 font-black text-sm font-mono whitespace-nowrap">
                     <div>{formatCurrency(po.totalAmount)}</div>
                     {po.deductedReturns && po.deductedReturns.length > 0 && (
                       <div className="text-[10.5px] text-emerald-700 font-normal mt-0.5">
@@ -119,8 +119,8 @@ export function PoListTable({
                     )}
                   </TableCell>
                   <TableCell className="text-center">{poStatusBadge(po.status)}</TableCell>
-                  <TableCell className="text-center">
-                    <div className="flex flex-wrap gap-btn justify-center items-center">
+                  <TableCell className="text-center w-px whitespace-nowrap">
+                    <div className="flex flex-nowrap gap-btn justify-end items-center">
                       <Button 
                         variant="ghost" 
                         size="icon" 

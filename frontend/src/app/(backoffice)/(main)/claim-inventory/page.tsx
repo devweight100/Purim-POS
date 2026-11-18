@@ -492,53 +492,33 @@ export default function ClaimInventoryPage() {
         <TabsContent value="products" className="m-0 space-y-3">
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
-              <Table className="max-xl:[&_tr>*:not([colspan]):nth-child(1)]:hidden max-xl:[&_tr>*:not([colspan]):nth-child(4)]:hidden max-xl:[&_tr>*:not([colspan]):nth-child(9)]:hidden">
+              {/* round 3: category under the name (was its own column); "#" and ทุน/หน่วย hidden when the table is under 1150 px */}
+              <Table>
                 <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">
-                      ลำดับ
-                    </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left w-36 text-slate-700 font-bold text-sm">
-                      บาร์โค้ด / SKU
-                    </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left text-slate-700 font-bold text-sm">
-                      ชื่อสินค้าเคลม
-                    </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-28 text-slate-700 font-bold text-sm">
-                      หมวดหมู่
-                    </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left w-52 text-slate-700 font-bold text-sm">
-                      บริษัทผู้จำหน่าย
-                    </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">
-                      จำนวนของเคลม
-                    </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-32 text-slate-700 font-bold text-sm">
-                      ทุน/หน่วย
-                    </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-40 text-slate-700 font-bold text-sm">
-                      มูลค่าทุนรวม
-                    </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-36 text-slate-700 font-bold text-sm">
-                      รับเคลมล่าสุด
-                    </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-36 text-slate-700 font-bold text-sm whitespace-nowrap">
-                      การจัดการ
-                    </TableHead>
+                    <TableHead data-mid="hide" className="text-center w-10 text-slate-700 font-bold text-sm">#</TableHead>
+                    <TableHead className="text-left text-slate-700 font-bold text-sm">บาร์โค้ด / SKU</TableHead>
+                    <TableHead className="text-left min-w-44 xl:min-w-56 text-slate-700 font-bold text-sm">ชื่อสินค้าเคลม / หมวดหมู่</TableHead>
+                    <TableHead className="text-left min-w-44 text-slate-700 font-bold text-sm">บริษัทผู้จำหน่าย</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">จำนวนเคลม</TableHead>
+                    <TableHead data-mid="hide" className="text-right text-slate-700 font-bold text-sm">ทุน/หน่วย</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">มูลค่าทุนรวม</TableHead>
+                    <TableHead className="text-center text-slate-700 font-bold text-sm">รับเคลมล่าสุด</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">การจัดการ</TableHead>
                   </TableRow>
                 </TableHeader>
 
                 <TableBody className="divide-y divide-slate-100">
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-12 text-slate-400 text-sm">
+                      <TableCell colSpan={9} className="text-center py-12 text-slate-400 text-sm">
                         <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
                         กำลังโหลดข้อมูลสต๊อกของเคลม...
                       </TableCell>
                     </TableRow>
                   ) : paginatedProducts.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-14 text-slate-400 text-sm">
+                      <TableCell colSpan={9} className="text-center py-14 text-slate-400 text-sm">
                         <div className="flex flex-col items-center gap-2">
                           <PackageX className="w-10 h-10 text-slate-300" />
                           <span className="font-bold text-slate-600 text-base">ไม่พบสินค้าในสต๊อกของเคลม</span>
@@ -556,26 +536,29 @@ export default function ClaimInventoryPage() {
                       return (
                         <tr key={`${item.productId}_${item.sku}_${idx}`} className="hover:bg-slate-50/70 transition-colors">
                           {/* 1. Sequence (ลำดับ) */}
-                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                          <td data-mid="hide" className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
                             {(currentPage - 1) * pageSize + idx + 1}
                           </td>
 
                           {/* 2. Barcode / SKU */}
-                          <td className="py-3.5 px-3.5 font-mono">
-                            <span className="font-bold text-indigo-700 text-[15px] block">
+                          <td className="font-mono whitespace-nowrap">
+                            <span className="font-bold text-indigo-700 text-sm block">
                               {item.sku || '-'}
                             </span>
                           </td>
 
                           {/* 3. Product Name */}
-                          <td className="py-3.5 px-3.5">
-                            <span className="font-bold text-slate-900 text-[15px] block">
+                          <td className="min-w-44 xl:min-w-56">
+                            <span className="font-bold text-slate-900 text-[13px] line-clamp-2 break-words" title={item.productName}>
                               {item.productName}
                             </span>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-xs text-slate-500 font-mono">
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+                              <span className="text-xs text-slate-500 font-mono whitespace-nowrap">
                                 รวม {item.claimCount} ใบเคลม
                               </span>
+                              {item.category && (
+                                <span className="max-w-full truncate rounded-full border border-slate-300 bg-slate-50 px-1.5 text-[11px] text-slate-700" title={item.category}>{item.category}</span>
+                              )}
                               {item.inStockPieces > 0 && item.inStockPieces < item.totalPieces && (
                                 <span className="text-[11px] text-amber-700 font-bold bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
                                   รอส่ง {item.inStockPieces} / ส่งแล้ว {item.totalPieces - item.inStockPieces}
@@ -584,48 +567,41 @@ export default function ClaimInventoryPage() {
                             </div>
                           </td>
 
-                          {/* 4. Category */}
-                          <td className="py-3.5 px-3.5 text-center">
-                            <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-300 font-medium text-xs">
-                              {item.category}
-                            </Badge>
-                          </td>
-
                           {/* 5. Supplier */}
-                          <td className="py-3.5 px-3.5">
-                            <div className="font-bold text-slate-800 text-[15px] flex items-center gap-1.5">
+                          <td className="min-w-44">
+                            <div className="font-bold text-slate-800 text-[13px] flex items-center gap-1.5">
                               <Truck className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                              <span className="truncate max-w-[200px]">{item.supplierName}</span>
+                              <span className="line-clamp-2 break-words" title={item.supplierName}>{item.supplierName}</span>
                             </div>
                           </td>
 
                           {/* 6. Quantity of Claim Pieces */}
-                          <td className="py-3.5 px-3.5 text-right font-mono">
-                            <span className="text-[15px] sm:text-base font-black text-rose-600 block">
+                          <td className="text-right font-mono whitespace-nowrap">
+                            <span className="text-sm font-black text-rose-600 block">
                               {displayQty} <span className="text-xs font-bold text-slate-500 font-sans">{item.unitName}</span>
                             </span>
                           </td>
 
                           {/* 7. Cost per Unit */}
-                          <td className="py-3.5 px-3.5 text-right font-mono text-slate-700 text-sm sm:text-[15px]">
+                          <td data-mid="hide" className="text-right font-mono whitespace-nowrap text-slate-700 text-sm sm:text-sm">
                             {formatCurrency(item.costPrice)}
                           </td>
 
                           {/* 8. Total Cost Value */}
-                          <td className="py-3.5 px-3.5 text-right font-mono">
-                            <span className="font-black text-[15px] sm:text-base text-slate-900 block">
+                          <td className="text-right font-mono whitespace-nowrap">
+                            <span className="font-black text-sm text-slate-900 block">
                               {formatCurrency(displayCost)}
                             </span>
                           </td>
 
                           {/* 9. Latest Claim Date (แยก col. วันที่) */}
-                          <td className="py-3.5 px-3.5 text-center font-mono text-xs text-slate-600">
+                          <td data-narrow="wrap" className="text-center font-mono whitespace-nowrap text-xs text-slate-600">
                             {formatDate(item.latestClaimDate)}
                           </td>
 
                           {/* 10. Actions */}
-                          <td className="py-3.5 px-3.5 text-center">
-                            <div className="flex flex-wrap items-center justify-center gap-btn">
+                          <td className="w-px whitespace-nowrap">
+                            <div className="flex flex-nowrap items-center justify-end gap-btn">
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -634,7 +610,7 @@ export default function ClaimInventoryPage() {
                                 title="ดูประวัติใบเคลมทั้งหมดของสินค้านี้"
                               >
                                 <Eye className="w-3.5 h-3.5 text-indigo-600" />
-                                <span>ดูใบเคลม ({item.claimCount})</span>
+                                <span>ใบเคลม ({item.claimCount})</span>
                               </Button>
 
                               <Link href="/supplier-returns">
@@ -719,25 +695,25 @@ export default function ClaimInventoryPage() {
               <Table>
                 <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">
+                    <TableHead className="text-center w-16 text-slate-700 font-bold text-sm">
                       ลำดับ
                     </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left text-slate-700 font-bold text-sm">
+                    <TableHead className="text-left text-slate-700 font-bold text-sm">
                       บริษัทผู้จำหน่าย
                     </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-36 text-slate-700 font-bold text-sm">
+                    <TableHead className="text-center text-slate-700 font-bold text-sm">
                       จำนวนรายการสินค้า
                     </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-40 text-slate-700 font-bold text-sm">
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">
                       จำนวนชิ้นเคลมรวม
                     </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-48 text-slate-700 font-bold text-sm">
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">
                       มูลค่าต้นทุนรวม
                     </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-36 text-slate-700 font-bold text-sm">
+                    <TableHead className="text-center text-slate-700 font-bold text-sm">
                       รับเคลมล่าสุด
                     </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-52 text-slate-700 font-bold text-sm whitespace-nowrap">
+                    <TableHead className="text-center text-slate-700 font-bold text-sm">
                       การจัดการ
                     </TableHead>
                   </TableRow>
@@ -758,15 +734,15 @@ export default function ClaimInventoryPage() {
                       return (
                         <tr key={supp.supplierId} className="hover:bg-slate-50/70 transition-colors">
                           {/* 1. Sequence (ลำดับ) */}
-                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
                             {idx + 1}
                           </td>
 
                           {/* 2. Supplier Name & Phone */}
-                          <td className="py-3.5 px-3.5">
-                            <div className="font-bold text-slate-900 text-[15px] flex items-center gap-1.5">
+                          <td className="min-w-44 xl:min-w-56">
+                            <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
                               <Truck className="w-4 h-4 text-indigo-600 shrink-0" />
-                              <span>{supp.supplierName}</span>
+                              <span className="line-clamp-2 break-words" title={supp.supplierName}>{supp.supplierName}</span>
                             </div>
                             {supp.supplierPhone && (
                               <span className="text-xs text-slate-500 font-mono mt-0.5 block">
@@ -776,32 +752,32 @@ export default function ClaimInventoryPage() {
                           </td>
 
                           {/* 3. Product Count */}
-                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-[15px] text-slate-800">
+                          <td className="text-center font-mono whitespace-nowrap font-bold text-sm text-slate-800">
                             {supp.productCount} รายการ
                           </td>
 
                           {/* 4. Total Pieces */}
-                          <td className="py-3.5 px-3.5 text-right font-mono">
-                            <span className="text-[15px] sm:text-base font-black text-rose-600 block">
+                          <td className="text-right font-mono whitespace-nowrap">
+                            <span className="text-sm font-black text-rose-600 block">
                               {displayQty} <span className="text-xs font-bold text-slate-500 font-sans">ชิ้น</span>
                             </span>
                           </td>
 
                           {/* 5. Total Cost Value */}
-                          <td className="py-3.5 px-3.5 text-right font-mono">
-                            <span className="font-black text-[15px] sm:text-base text-slate-900 block">
+                          <td className="text-right font-mono whitespace-nowrap">
+                            <span className="font-black text-sm text-slate-900 block">
                               {formatCurrency(displayCost)}
                             </span>
                           </td>
 
                           {/* 6. Latest Claim Date (แยก col. วันที่) */}
-                          <td className="py-3.5 px-3.5 text-center font-mono text-xs text-slate-600">
+                          <td className="text-center font-mono whitespace-nowrap text-xs text-slate-600">
                             {formatDate(supp.latestClaimDate)}
                           </td>
 
                           {/* 7. Actions */}
-                          <td className="py-3.5 px-3.5 text-center">
-                            <div className="flex items-center justify-center gap-2">
+                          <td className="w-px whitespace-nowrap">
+                            <div className="flex flex-nowrap items-center justify-end gap-btn">
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -844,28 +820,28 @@ export default function ClaimInventoryPage() {
               <Table>
                 <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">
+                    <TableHead className="text-center w-16 text-slate-700 font-bold text-sm">
                       ลำดับ
                     </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left w-36 text-slate-700 font-bold text-sm">
+                    <TableHead className="text-left w-36 text-slate-700 font-bold text-sm">
                       เลขที่เคลม
                     </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-36 text-slate-700 font-bold text-sm">
+                    <TableHead className="text-center w-36 text-slate-700 font-bold text-sm">
                       วันที่รับเคลม
                     </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left text-slate-700 font-bold text-sm">
+                    <TableHead className="text-left text-slate-700 font-bold text-sm">
                       สินค้าเคลม
                     </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left w-48 text-slate-700 font-bold text-sm">
+                    <TableHead className="text-left w-48 text-slate-700 font-bold text-sm">
                       ผู้จำหน่าย
                     </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-32 text-slate-700 font-bold text-sm">
+                    <TableHead className="text-right w-32 text-slate-700 font-bold text-sm">
                       จำนวน
                     </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">
+                    <TableHead className="text-right w-36 text-slate-700 font-bold text-sm">
                       มูลค่าทุน
                     </TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-36 text-slate-700 font-bold text-sm">
+                    <TableHead className="text-center w-36 text-slate-700 font-bold text-sm">
                       สถานะส่งคืน
                     </TableHead>
                   </TableRow>
@@ -882,13 +858,13 @@ export default function ClaimInventoryPage() {
                     filteredClaims.map((claim, idx) => (
                       <tr key={claim.id} className="hover:bg-slate-50/70 transition-colors">
                         {/* 1. Sequence */}
-                        <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                        <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
                           {(recordsPage - 1) * RECORDS_PAGE + idx + 1}
                         </td>
 
                         {/* 2. Claim Ticket ID */}
-                        <td className="py-3.5 px-3.5 font-mono">
-                          <span className="font-bold text-indigo-700 text-[15px] block">
+                        <td className="font-mono whitespace-nowrap">
+                          <span className="font-bold text-indigo-700 text-sm block">
                             {claim.claimId}
                           </span>
                           {claim.orderNumber && (
@@ -899,39 +875,39 @@ export default function ClaimInventoryPage() {
                         </td>
 
                         {/* 3. Claim Date (แยก col. วันที่) */}
-                        <td className="py-3.5 px-3.5 text-center font-mono text-xs text-slate-600">
+                        <td className="text-center font-mono whitespace-nowrap text-xs text-slate-600">
                           {formatDate(claim.claimDate)}
                         </td>
 
                         {/* 4. Product Name & Defect */}
-                        <td className="py-3.5 px-3.5">
-                          <p className="font-bold text-slate-900 text-[15px]">{claim.productName}</p>
+                        <td className="">
+                          <p className="font-bold text-slate-900 text-sm">{claim.productName}</p>
                           <p className="text-xs text-rose-600 font-medium mt-0.5">
                             อาการ: {claim.defectReason}
                           </p>
                         </td>
 
                         {/* 5. Supplier */}
-                        <td className="py-3.5 px-3.5">
+                        <td className="">
                           <span className="font-bold text-slate-800 text-sm block">
                             {claim.supplierName}
                           </span>
                         </td>
 
                         {/* 6. Quantity */}
-                        <td className="py-3.5 px-3.5 text-right font-mono">
-                          <span className="font-black text-rose-600 text-[15px] block">
+                        <td className="text-right font-mono whitespace-nowrap">
+                          <span className="font-black text-rose-600 text-sm block">
                             {claim.quantity} <span className="text-xs font-bold text-slate-500 font-sans">{claim.unitName}</span>
                           </span>
                         </td>
 
                         {/* 7. Cost Value */}
-                        <td className="py-3.5 px-3.5 text-right font-mono font-black text-slate-900 text-[15px]">
+                        <td className="text-right font-mono whitespace-nowrap font-black text-slate-900 text-sm">
                           {formatCurrency(claim.totalCostValue)}
                         </td>
 
                         {/* 8. Status Badge */}
-                        <td className="py-3.5 px-3.5 text-center">
+                        <td className="text-center">
                           {claim.returnDocId ? (
                             <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 text-xs font-bold px-2 py-0.5">
                               ✓ ส่งคืนใน {claim.returnDocId}
@@ -1029,22 +1005,22 @@ export default function ClaimInventoryPage() {
                   <TableBody className="divide-y divide-slate-100 text-xs">
                     {modalClaims.map((c, i) => (
                       <TableRow key={c.id}>
-                        <td className="py-2.5 px-3 text-center font-mono text-slate-500 font-bold">
+                        <td className="py-2.5 px-3 text-center font-mono whitespace-nowrap text-slate-500 font-bold">
                           {i + 1}
                         </td>
-                        <td className="py-2.5 px-3 font-mono font-bold text-indigo-700">
+                        <td className="py-2.5 px-3 font-mono whitespace-nowrap font-bold text-indigo-700">
                           {c.claimId}
                         </td>
-                        <td className="py-2.5 px-3 text-center font-mono text-slate-600">
+                        <td className="py-2.5 px-3 text-center font-mono whitespace-nowrap text-slate-600">
                           {formatDate(c.claimDate)}
                         </td>
                         <td className="py-2.5 px-3 text-slate-800">
                           {c.defectReason}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-600">
+                        <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap font-bold text-rose-600">
                           {c.quantity} {c.unitName}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                        <td className="py-2.5 px-3 text-right font-mono whitespace-nowrap font-bold text-slate-900">
                           {formatCurrency(c.totalCostValue)}
                         </td>
                         <td className="py-2.5 px-3 text-center">

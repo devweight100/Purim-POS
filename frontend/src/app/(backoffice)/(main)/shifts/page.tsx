@@ -520,20 +520,20 @@ export default function ShiftsHistoryPage() {
               </div>
 
               {/* Table of Shifts in this Day */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm max-xl:[&_th]:px-2 max-xl:[&_td]:px-2 max-xl:[&_tr>*:first-child]:hidden">
+              <div className="tbl-wrap overflow-x-auto">
+                <table className="tbl w-full text-sm">
                   <thead className="bg-slate-100/70 text-slate-700 font-bold border-b border-slate-200 text-sm">
                     <tr>
-                      <th className="p-3.5 text-center w-20">รอบที่</th>
-                      <th className="p-3.5 text-left">รหัสกะ / แคชเชียร์</th>
-                      <th className="p-3.5 text-left">เวลาเปิด - ปิดกะ (ระยะเวลา)</th>
-                      <th className="p-3.5 text-right">เงินทอนเปิดกะ</th>
-                      <th className="p-3.5 text-right">ยอดขายรวมในกะ</th>
-                      <th className="p-3.5 text-right">เงินเข้า/ออกลิ้นชัก</th>
-                      <th className="p-3.5 text-right">เงินควรมี (Expected)</th>
-                      <th className="p-3.5 text-right">เงินนับได้จริง (Actual)</th>
-                      <th className="p-3.5 text-center">ผลการปิดกะ</th>
-                      <th className="p-3.5 text-center w-36">พิมพ์ใบสรุป</th>
+                      <th data-narrow="hide" className="text-center w-12">รอบ</th>
+                      <th className="text-left">รหัสกะ / แคชเชียร์</th>
+                      <th className="text-left">เวลาเปิด - ปิด</th>
+                      <th data-narrow="hide" className="text-right">เงินทอนเปิดกะ</th>
+                      <th className="text-right">ยอดขายในกะ</th>
+                      <th data-narrow="hide" className="text-right">เข้า/ออกลิ้นชัก</th>
+                      <th className="text-right" title="เงินควรมี (Expected)">เงินควรมี</th>
+                      <th className="text-right" title="เงินนับได้จริง (Actual)">นับได้จริง</th>
+                      <th className="text-center">ผลการปิดกะ</th>
+                      <th className="text-right">พิมพ์ใบสรุป</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -545,15 +545,15 @@ export default function ShiftsHistoryPage() {
                       return (
                         <tr key={shift.shiftId} className="hover:bg-slate-50/70 transition-colors">
                           {/* Round Number */}
-                          <td className="p-3.5 text-center">
+                          <td data-narrow="hide" className="text-center">
                             <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-indigo-50 text-indigo-700 font-black text-sm">
                               {roundNumber}
                             </span>
                           </td>
 
                           {/* Shift ID & Cashier */}
-                          <td className="p-3.5">
-                            <span className="font-mono font-bold text-slate-900 text-[15px] block">
+                          <td className="whitespace-nowrap">
+                            <span className="font-mono font-bold text-slate-900 text-[13px] block">
                               {shift.shiftId}
                             </span>
                             <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
@@ -563,8 +563,8 @@ export default function ShiftsHistoryPage() {
                           </td>
 
                           {/* Time & Duration */}
-                          <td className="p-3.5">
-                            <div className="font-bold text-slate-800 text-[15px] flex items-center gap-1.5">
+                          <td className="min-w-36">
+                            <div className="font-bold text-slate-800 text-sm flex items-center gap-1.5 whitespace-nowrap">
                               <Clock className="w-3.5 h-3.5 text-slate-400" />
                               <span>{openTime} - {closeTime} น.</span>
                             </div>
@@ -574,13 +574,13 @@ export default function ShiftsHistoryPage() {
                           </td>
 
                           {/* Opening Cash */}
-                          <td className="p-3.5 text-right font-mono font-bold text-slate-700 text-sm">
+                          <td data-narrow="hide" className="text-right font-mono whitespace-nowrap font-bold text-slate-700 text-sm">
                             {formatCurrency(shift.openingCash)}
                           </td>
 
                           {/* Total Sales */}
-                          <td className="p-3.5 text-right font-mono">
-                            <span className="font-bold text-slate-900 block text-[15px]">
+                          <td className="text-right font-mono whitespace-nowrap">
+                            <span className="font-bold text-slate-900 block text-sm">
                               {formatCurrency(shift.totalSales)}
                             </span>
                             <span className="text-[11px] text-slate-500 block">
@@ -589,7 +589,7 @@ export default function ShiftsHistoryPage() {
                           </td>
 
                           {/* Cash In / Out */}
-                          <td className="p-3.5 text-right font-mono text-xs">
+                          <td data-narrow="hide" className="text-right font-mono whitespace-nowrap text-xs">
                             {shift.cashIn > 0 && (
                               <span className="text-emerald-700 block font-semibold">
                                 +{formatCurrency(shift.cashIn)}
@@ -606,17 +606,17 @@ export default function ShiftsHistoryPage() {
                           </td>
 
                           {/* Expected Cash */}
-                          <td className="p-3.5 text-right font-mono font-bold text-slate-800 text-[15px]">
+                          <td className="text-right font-mono whitespace-nowrap font-bold text-slate-800 text-sm">
                             {formatCurrency(shift.expectedCash)}
                           </td>
 
                           {/* Actual Cash */}
-                          <td className="p-3.5 text-right font-mono font-black text-slate-900 text-[15px] sm:text-base">
+                          <td className="text-right font-mono whitespace-nowrap font-black text-slate-900 text-sm">
                             {formatCurrency(shift.actualCash)}
                           </td>
 
                           {/* Discrepancy Status Badge */}
-                          <td className="p-3.5 text-center">
+                          <td className="text-center whitespace-nowrap">
                             {diff === 0 ? (
                               <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 font-bold text-[10.5px] gap-1">
                                 <CheckCircle2 className="w-3 h-3 text-emerald-600" />
@@ -636,16 +636,17 @@ export default function ShiftsHistoryPage() {
                           </td>
 
                           {/* Actions: Print Slip */}
-                          <td className="p-3.5 text-center">
+                          <td className="w-px whitespace-nowrap text-right">
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => handlePrintSlip(shift)}
                               className="h-8 px-2.5 rounded-xl border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs gap-1.5 shadow-2xs"
                               title="พิมพ์ใบสรุปปิดกะ (Slip 80mm / A4)"
+                              aria-label="พิมพ์สลิปซ้ำ"
                             >
                               <Printer className="w-3.5 h-3.5" />
-                              <span>พิมพ์สลิปซ้ำ</span>
+                              <span data-act-label>พิมพ์สลิปซ้ำ</span>
                             </Button>
                           </td>
                         </tr>

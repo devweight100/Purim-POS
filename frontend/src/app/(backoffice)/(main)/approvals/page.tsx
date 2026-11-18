@@ -75,7 +75,7 @@ export default function ApprovalsPage() {
       )}
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-        <table className="w-full text-sm">
+        <table className="tbl w-full text-sm">
           <thead className="bg-slate-50 text-slate-600"><tr>
             <th className="p-2 text-left">เวลา</th><th className="p-2 text-left">ผู้ขอ</th><th className="p-2 text-left">เหตุผล</th>
             <th className="p-2 text-right">ยอดบิล</th><th className="p-2 text-left">ผู้อนุมัติ</th><th className="p-2 text-left">วิธี</th><th className="p-2 text-left">สถานะ</th>
@@ -87,7 +87,7 @@ export default function ApprovalsPage() {
                 <td className="p-2 whitespace-nowrap">{new Date(r.createdAt).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</td>
                 <td className="p-2">{r.requestedBy}</td>
                 <td className="p-2">{(r.reasons || []).map((x, i) => <div key={i}>• {x.message}</div>)}{r.decisionNote && <div className="text-xs text-slate-500">หมายเหตุ: {r.decisionNote}</div>}</td>
-                <td className="p-2 text-right font-mono">{formatCurrency(r.amount)}</td>
+                <td className="p-2 text-right font-mono whitespace-nowrap">{formatCurrency(r.amount)}</td>
                 <td className="p-2">{r.approvedBy || '-'}</td>
                 <td className="p-2">{r.channel === 'PIN' ? 'PIN ที่เครื่องขาย' : 'ส่งคำขอ'}</td>
                 <td className="p-2"><Badge className={`${STATUS[r.status]?.cls || 'bg-slate-400'} text-white`}>{STATUS[r.status]?.label || r.status}</Badge></td>

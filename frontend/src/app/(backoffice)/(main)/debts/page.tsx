@@ -388,18 +388,18 @@ function DebtsContent() {
           <Table>
             <TableHeader className="bg-slate-50/90 border-b border-slate-200">
               <TableRow className="hover:bg-transparent">
-                <TableHead className="hidden xl:table-cell font-bold text-slate-700 text-sm py-2 pl-3 text-center w-16">ลำดับ</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm py-2 w-[130px]">เลขที่บิล</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm py-2 text-center w-[140px]">วันที่บิล</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm py-2 min-w-[140px]">ลูกค้า / ผู้ซื้อ</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm py-2 text-right w-[110px]">ยอดเต็มบิล</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm py-2 text-right w-[110px]">ชำระแล้ว</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm py-2 text-right w-[120px]">คงค้างชำระ</TableHead>
-                <TableHead className="hidden xl:table-cell font-bold text-slate-700 text-sm py-2 text-center w-[150px]">
+                <TableHead className="hidden xl:table-cell font-bold text-slate-700 text-sm pl-3 text-center w-16">ลำดับ</TableHead>
+                <TableHead className="font-bold text-slate-700 text-sm">เลขที่บิล</TableHead>
+                <TableHead className="font-bold text-slate-700 text-sm text-center">วันที่บิล</TableHead>
+                <TableHead className="font-bold text-slate-700 text-sm min-w-40 xl:min-w-48">ลูกค้า / ผู้ซื้อ</TableHead>
+                <TableHead data-narrow="hide" className="font-bold text-slate-700 text-sm text-right">ยอดเต็มบิล</TableHead>
+                <TableHead className="font-bold text-slate-700 text-sm text-right">ชำระแล้ว</TableHead>
+                <TableHead className="font-bold text-slate-700 text-sm text-right">คงค้าง</TableHead>
+                <TableHead data-mid="hide" className="hidden xl:table-cell font-bold text-slate-700 text-sm text-center">
                   ความคืบหน้าชำระ
                 </TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm py-2 text-center w-[120px]">สถานะ</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm py-2 text-center pr-3">การจัดการ</TableHead>
+                <TableHead className="font-bold text-slate-700 text-sm text-center">สถานะ</TableHead>
+                <TableHead className="font-bold text-slate-700 text-sm text-center pr-3">การจัดการ</TableHead>
               </TableRow>
             </TableHeader>
 
@@ -437,31 +437,31 @@ function DebtsContent() {
                   return (
                     <TableRow key={debt.orderId} className={`hover:bg-slate-50/70 transition-colors ${ROW_NAV_CLASS}`} {...debtNav.rowProps(idx)}>
                       {/* 1. Index (ลำดับ) */}
-                      <TableCell className="hidden xl:table-cell py-2 pl-3 text-center font-mono font-bold text-slate-500 text-sm">
+                      <TableCell className="hidden xl:table-cell pl-3 text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
                         {(currentPage - 1) * pageSize + idx + 1}
                       </TableCell>
 
                       {/* 2. Order Number */}
-                      <TableCell className="py-2 font-mono">
-                        <span className="font-bold text-slate-900 text-[15px] block">{debt.orderNumber}</span>
+                      <TableCell className="font-mono whitespace-nowrap">
+                        <span className="font-bold text-slate-900 text-[13px] block whitespace-nowrap">{debt.orderNumber}</span>
                       </TableCell>
 
                       {/* 3. Date (แยก col. วันที่) */}
-                      <TableCell className="py-2 text-center font-mono">
+                      <TableCell data-narrow="wrap" className="text-center font-mono whitespace-nowrap">
                         <div className="text-xs text-slate-600 font-bold">
                           {new Date(debt.orderDate).toLocaleDateString('th-TH')}
                         </div>
                         {debt.dueDate && (
-                          <div className={`text-[11px] font-sans font-medium flex items-center justify-center gap-1 mt-0.5 ${isOverdue ? 'text-rose-600 font-bold' : 'text-amber-700'}`}>
-                            <span>ครบกำหนด: {new Date(debt.dueDate).toLocaleDateString('th-TH')}</span>
-                            {isOverdue && <span className="text-[9.5px] bg-rose-100 text-rose-700 px-1 py-0.2 rounded font-bold">เกินกำหนด</span>}
+                          <div className={`text-[11px] font-sans font-medium flex flex-wrap items-center justify-center gap-x-1 mt-0.5 ${isOverdue ? 'text-rose-600 font-bold' : 'text-amber-700'}`}>
+                            <span className="whitespace-nowrap">ครบ {new Date(debt.dueDate).toLocaleDateString('th-TH')}</span>
+                            {isOverdue && <span className="text-[9.5px] bg-rose-100 text-rose-700 px-1 py-0.2 rounded font-bold whitespace-nowrap">เกินกำหนด</span>}
                           </div>
                         )}
                       </TableCell>
 
                       {/* 4. Customer Name, Phone & Type */}
-                      <TableCell className="py-2">
-                        <div className="flex items-center gap-1.5 font-bold text-slate-900 text-[15px] leading-snug">
+                      <TableCell className="">
+                        <div className="flex items-center gap-1.5 font-bold text-slate-900 text-sm leading-snug min-w-44">
                           {debt.customerType === 'COMPANY' ? (
                             <span className="inline-flex items-center gap-1 text-[11px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0 font-medium">
                               <Building2 className="w-3 h-3" /> นิติบุคคล
@@ -471,7 +471,7 @@ function DebtsContent() {
                               <User className="w-3 h-3" /> บุคคล
                             </span>
                           )}
-                          <span className="line-clamp-2 break-words">{debt.customerName}</span>
+                          <span className="line-clamp-2 break-words" title={debt.customerName}>{debt.customerName}</span>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 font-mono">
@@ -482,24 +482,24 @@ function DebtsContent() {
                       </TableCell>
 
                       {/* 3. Total Amount */}
-                      <TableCell className="py-1.5 sm:py-2 text-right font-bold text-sm text-slate-800 font-mono">
+                      <TableCell data-narrow="hide" className="text-right font-bold text-sm text-slate-800 font-mono whitespace-nowrap">
                         {formatCurrency(debt.totalAmount)}
                       </TableCell>
 
                       {/* 4. Paid Amount */}
-                      <TableCell className="py-1.5 sm:py-2 text-right font-bold text-sm text-emerald-600 font-mono">
+                      <TableCell className="text-right font-bold text-sm text-emerald-600 font-mono whitespace-nowrap">
                         {formatCurrency(debt.paidAmount)}
                       </TableCell>
 
                       {/* 5. Remaining Balance */}
-                      <TableCell className="py-1.5 sm:py-2 text-right font-black font-mono">
+                      <TableCell className="text-right font-black font-mono whitespace-nowrap">
                         <span className={debt.remainingDebt > 0 ? 'text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-100 inline-block font-extrabold text-sm' : 'text-slate-400 text-sm'}>
                           {formatCurrency(debt.remainingDebt)}
                         </span>
                       </TableCell>
 
                       {/* 6. Pastel Progress Bar */}
-                      <TableCell className="hidden xl:table-cell py-1.5 sm:py-2 text-center px-2">
+                      <TableCell data-mid="hide" className="hidden xl:table-cell text-center px-2">
                         <div className="space-y-0.5 max-w-[125px] mx-auto">
                           <div className="flex items-center justify-between text-[11px] font-semibold">
                             <span className={isPaid ? 'text-teal-700 font-bold' : isPartial ? 'text-indigo-700 font-bold' : 'text-slate-500'}>
@@ -527,25 +527,25 @@ function DebtsContent() {
                       </TableCell>
 
                       {/* 7. Status Badge */}
-                      <TableCell className="py-1.5 sm:py-2 text-center">
+                      <TableCell className="text-center">
                         {isPaid ? (
-                          <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 font-bold text-xs gap-1 hover:bg-emerald-50 px-2 py-0.5">
+                          <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 font-bold text-xs gap-1 hover:bg-emerald-50 px-2 py-0.5 whitespace-nowrap">
                             <CheckCircle2 className="w-3 h-3 text-emerald-600" /> ชำระครบแล้ว
                           </Badge>
                         ) : isPartial ? (
-                          <Badge className="bg-amber-50 text-amber-800 border-amber-200 font-bold text-xs gap-1 hover:bg-amber-50 px-2 py-0.5">
+                          <Badge className="bg-amber-50 text-amber-800 border-amber-200 font-bold text-xs gap-1 hover:bg-amber-50 px-2 py-0.5 whitespace-nowrap">
                             <Clock className="w-3 h-3 text-amber-600" /> ชำระบางส่วน
                           </Badge>
                         ) : (
-                          <Badge className="bg-rose-50 text-rose-700 border-rose-200 font-bold text-xs gap-1 hover:bg-rose-50 px-2 py-0.5">
+                          <Badge className="bg-rose-50 text-rose-700 border-rose-200 font-bold text-xs gap-1 hover:bg-rose-50 px-2 py-0.5 whitespace-nowrap">
                             <AlertCircle className="w-3 h-3 text-rose-600" /> ยังไม่ชำระ
                           </Badge>
                         )}
                       </TableCell>
 
                       {/* 8. Action Buttons */}
-                      <TableCell className="py-1.5 sm:py-2 pr-3 text-center">
-                        <div className="flex flex-wrap items-center justify-center gap-btn">
+                      <TableCell className="pr-3 text-center w-px whitespace-nowrap">
+                        <div className="flex flex-nowrap items-center justify-center gap-btn">
                           {/* Pay Button */}
                           {!isPaid ? (
                             <Button
@@ -553,9 +553,10 @@ function DebtsContent() {
                               onClick={() => handleOpenPay(debt)}
                               className="h-7.5 px-2.5 text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-2xs gap-1"
                               title="รับชำระหนี้บิลนี้"
+                                aria-label="รับชำระ"
                             >
                               <CreditCard className="w-3.5 h-3.5" />
-                              <span>รับชำระ</span>
+                              <span data-act-label>รับชำระ</span>
                             </Button>
                           ) : (
                             <span className="text-xs text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
@@ -570,9 +571,10 @@ function DebtsContent() {
                             onClick={() => handleOpenHistory(debt)}
                             className="h-7.5 px-2 text-xs sm:text-sm text-slate-700 border-slate-300 hover:bg-slate-100 rounded-lg font-medium"
                             title="ดูประวัติการชำระและพิมพ์สลิป"
+                                aria-label="ประวัติ"
                           >
-                            <History className="w-3.5 h-3.5 mr-1" />
-                            <span>ประวัติ</span>
+                            <History className="w-3.5 h-3.5" />
+                            <span data-act-label>ประวัติ</span>
                           </Button>
                         </div>
                       </TableCell>

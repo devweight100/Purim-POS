@@ -738,15 +738,15 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
                 <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-36 text-slate-700 font-bold text-sm">วันที่</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-28 text-slate-700 font-bold text-sm">จำนวนออเดอร์</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">ยอดขายรวม (Gross)</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-32 text-slate-700 font-bold text-sm">ส่วนลด</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-40 text-slate-700 font-bold text-sm">ยอดขายสุทธิ (Net)</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">ต้นทุน (COGS)</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-40 text-slate-700 font-bold text-sm">กำไรขั้นต้น</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-28 text-slate-700 font-bold text-sm">% กำไร (Margin)</TableHead>
+                    <TableHead className="text-center w-10 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
+                    <TableHead className="text-center text-slate-700 font-bold text-sm">วันที่</TableHead>
+                    <TableHead className="text-center text-slate-700 font-bold text-sm">จำนวนออเดอร์</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">ยอดขายรวม (Gross)</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">ส่วนลด</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">ยอดขายสุทธิ (Net)</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">ต้นทุน (COGS)</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">กำไรขั้นต้น</TableHead>
+                    <TableHead className="text-center text-slate-700 font-bold text-sm">% กำไร (Margin)</TableHead>
                   </TableRow>
                 </TableHeader>
 
@@ -762,31 +762,31 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                       const itemIndex = (currentPage - 1) * pageSize + idx + 1;
                       return (
                         <tr key={row.date} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
                             {itemIndex}
                           </td>
-                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-900 text-xs">
+                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-900 text-xs">
                             {formatDate(row.date)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-700 text-sm">
+                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-700 text-sm">
                             {row.orderCount} บิล
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono text-slate-600 text-sm">
+                          <td className="text-right font-mono whitespace-nowrap text-slate-600 text-sm">
                             {formatCurrency(row.grossSales)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono text-rose-600 text-sm">
+                          <td className="text-right font-mono whitespace-nowrap text-rose-600 text-sm">
                             {row.discounts > 0 ? `-${formatCurrency(row.discounts)}` : '-'}
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-slate-900 text-[15px]">
+                          <td className="text-right font-mono whitespace-nowrap font-bold text-slate-900 text-sm">
                             {formatCurrency(row.netSales)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono text-amber-700 text-sm">
+                          <td className="text-right font-mono whitespace-nowrap text-amber-700 text-sm">
                             {formatCurrency(row.cogs)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono font-black text-emerald-700 text-[15px] sm:text-base">
+                          <td className="text-right font-mono whitespace-nowrap font-black text-emerald-700 text-sm">
                             {formatCurrency(row.grossProfit)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-center">
+                          <td className="text-center">
                             <span className={`font-mono font-bold px-2 py-0.5 rounded text-xs ${
                               row.profitMarginPercent >= 30
                                 ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
@@ -882,15 +882,15 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
                 <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left w-36 text-slate-700 font-bold text-sm">บาร์โค้ด / SKU</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left text-slate-700 font-bold text-sm">ชื่อสินค้า</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-28 text-slate-700 font-bold text-sm">หมวดหมู่</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-32 text-slate-700 font-bold text-sm">จำนวนที่ขายได้</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">ยอดขายรวม</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">ต้นทุนรวม</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-40 text-slate-700 font-bold text-sm">กำไรสุทธิ</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-28 text-slate-700 font-bold text-sm">% กำไร</TableHead>
+                    <TableHead className="text-center w-10 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
+                    <TableHead className="text-left text-slate-700 font-bold text-sm">บาร์โค้ด / SKU</TableHead>
+                    <TableHead className="text-left min-w-44 xl:min-w-56 text-slate-700 font-bold text-sm">ชื่อสินค้า</TableHead>
+                    <TableHead className="text-center text-slate-700 font-bold text-sm">หมวดหมู่</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">จำนวนที่ขายได้</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">ยอดขายรวม</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">ต้นทุนรวม</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">กำไรสุทธิ</TableHead>
+                    <TableHead className="text-center text-slate-700 font-bold text-sm">% กำไร</TableHead>
                   </TableRow>
                 </TableHeader>
 
@@ -906,31 +906,31 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                       const itemIndex = (currentPage - 1) * pageSize + idx + 1;
                       return (
                         <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
                             {itemIndex}
                           </td>
-                          <td className="py-3.5 px-3.5 font-mono text-indigo-700 font-bold text-[15px]">
+                          <td className="font-mono whitespace-nowrap text-indigo-700 font-bold text-sm">
                             {p.sku}
                           </td>
-                          <td className="py-3.5 px-3.5 font-bold text-slate-900 text-[15px]">
-                            {p.name}
+                          <td className="font-bold text-slate-900 text-[13px] min-w-44 xl:min-w-56">
+                            <span className="line-clamp-2 break-words" title={p.name}>{p.name}</span>
                           </td>
-                          <td className="py-3.5 px-3.5 text-center">
-                            <Badge variant="outline" className="text-xs whitespace-normal h-auto max-w-full">{formatCategory(p.category)}</Badge>
+                          <td className="text-center">
+                            <Badge variant="outline" className="text-xs h-auto max-w-36 truncate block" title={formatCategory(p.category)}>{formatCategory(p.category)}</Badge>
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono font-black text-indigo-700 text-[15px]">
+                          <td className="text-right font-mono whitespace-nowrap font-black text-indigo-700 text-sm">
                             {p.quantitySold} <span className="text-xs font-bold text-slate-500 font-sans">{p.unitName}</span>
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-slate-800 text-[15px]">
+                          <td className="text-right font-mono whitespace-nowrap font-bold text-slate-800 text-sm">
                             {formatCurrency(p.totalRevenue)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono text-amber-700 text-sm">
+                          <td className="text-right font-mono whitespace-nowrap text-amber-700 text-sm">
                             {formatCurrency(p.totalCost)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono font-black text-emerald-700 text-[15px] sm:text-base">
+                          <td className="text-right font-mono whitespace-nowrap font-black text-emerald-700 text-sm">
                             {formatCurrency(p.totalProfit)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-xs">
+                          <td className="text-center font-mono whitespace-nowrap font-bold text-xs">
                             <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded">
                               {p.profitMarginPercent}%
                             </span>
@@ -1049,15 +1049,15 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
                 <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left w-36 text-slate-700 font-bold text-sm">บาร์โค้ด / SKU</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left text-slate-700 font-bold text-sm">ชื่อสินค้า</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left w-48 text-slate-700 font-bold text-sm">ผู้จำหน่าย</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-32 text-slate-700 font-bold text-sm">คงคลัง</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-32 text-slate-700 font-bold text-sm">ราคาทุน</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">มูลค่าทุนรวม</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">มูลค่าขายรวม</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-36 text-slate-700 font-bold text-sm">สถานะสต็อก</TableHead>
+                    <TableHead className="text-center w-10 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
+                    <TableHead className="text-left text-slate-700 font-bold text-sm">บาร์โค้ด / SKU</TableHead>
+                    <TableHead className="text-left min-w-44 xl:min-w-56 text-slate-700 font-bold text-sm">ชื่อสินค้า</TableHead>
+                    <TableHead className="text-left text-slate-700 font-bold text-sm">ผู้จำหน่าย</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">คงคลัง</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">ราคาทุน</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">มูลค่าทุนรวม</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">มูลค่าขายรวม</TableHead>
+                    <TableHead className="text-center text-slate-700 font-bold text-sm">สถานะสต็อก</TableHead>
                   </TableRow>
                 </TableHeader>
 
@@ -1073,31 +1073,31 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                       const itemIndex = (currentPage - 1) * pageSize + idx + 1;
                       return (
                         <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
                             {itemIndex}
                           </td>
-                          <td className="py-3.5 px-3.5 font-mono text-indigo-700 font-bold text-[15px]">
+                          <td className="font-mono whitespace-nowrap text-indigo-700 font-bold text-sm">
                             {item.sku}
                           </td>
-                          <td className="py-3.5 px-3.5 font-bold text-slate-900 text-[15px]">
-                            {item.name}
+                          <td className="font-bold text-slate-900 text-[13px] min-w-44 xl:min-w-56">
+                            <span className="line-clamp-2 break-words" title={item.name}>{item.name}</span>
                           </td>
-                          <td className="py-3.5 px-3.5 text-slate-800 font-medium text-sm truncate max-w-[190px]">
-                            {item.supplierName}
+                          <td className="text-slate-800 font-medium text-[13px] min-w-40">
+                            <span className="line-clamp-2 break-words" title={item.supplierName}>{item.supplierName}</span>
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-[15px] text-slate-900">
+                          <td className="text-right font-mono whitespace-nowrap font-bold text-sm text-slate-900">
                             {item.stock} <span className="text-xs font-normal text-slate-500">{item.unitName}</span>
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono text-sm text-slate-700">
+                          <td className="text-right font-mono whitespace-nowrap text-sm text-slate-700">
                             {formatCurrency(item.costPrice)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono font-black text-slate-900 text-[15px]">
+                          <td className="text-right font-mono whitespace-nowrap font-black text-slate-900 text-sm">
                             {formatCurrency(item.totalCostValue)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-emerald-700 text-sm">
+                          <td className="text-right font-mono whitespace-nowrap font-bold text-emerald-700 text-sm">
                             {formatCurrency(item.totalRetailValue)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-center">
+                          <td className="text-center">
                             {item.isDeadstock ? (
                               <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-xs font-bold">
                                 ⚠️ ขายช้า ({item.daysSinceLastSale === 999 ? 'ไม่เคยขาย' : `${item.daysSinceLastSale} วัน`})
@@ -1214,23 +1214,23 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
             <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
               <TableHeader className="bg-slate-50">
                 <TableRow>
-                  <TableHead className="py-3 px-3.5 text-center w-16 font-bold text-sm">ลำดับ</TableHead>
-                  <TableHead className="py-3 px-3.5 text-left font-bold text-sm">ช่องทางการชำระเงิน</TableHead>
-                  <TableHead className="py-3 px-3.5 text-center w-36 font-bold text-sm">จำนวนรายการ</TableHead>
-                  <TableHead className="py-3 px-3.5 text-right w-48 font-bold text-sm">ยอดเงินรวม</TableHead>
-                  <TableHead className="py-3 px-3.5 text-center w-36 font-bold text-sm">สัดส่วนยอดขาย</TableHead>
+                  <TableHead className="text-center w-10 font-bold text-sm">ลำดับ</TableHead>
+                  <TableHead className="text-left font-bold text-sm">ช่องทางการชำระเงิน</TableHead>
+                  <TableHead className="text-center font-bold text-sm">จำนวนรายการ</TableHead>
+                  <TableHead className="text-right font-bold text-sm">ยอดเงินรวม</TableHead>
+                  <TableHead className="text-center font-bold text-sm">สัดส่วนยอดขาย</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-slate-100">
                 {paymentsShiftsReport.channels.map((c, i) => (
                   <TableRow key={c.method} className="hover:bg-slate-50">
-                    <td className="py-3 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">{i + 1}</td>
-                    <td className="py-3 px-3.5 font-bold text-slate-900 text-[15px]">{c.label}</td>
-                    <td className="py-3 px-3.5 text-center font-mono text-slate-700 text-sm">{c.orderCount} ครั้ง</td>
-                    <td className="py-3 px-3.5 text-right font-mono font-black text-slate-900 text-[15px]">
+                    <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">{i + 1}</td>
+                    <td className="font-bold text-slate-900 text-sm">{c.label}</td>
+                    <td className="text-center font-mono whitespace-nowrap text-slate-700 text-sm">{c.orderCount} ครั้ง</td>
+                    <td className="text-right font-mono whitespace-nowrap font-black text-slate-900 text-sm">
                       {formatCurrency(c.totalAmount)}
                     </td>
-                    <td className="py-3 px-3.5 text-center">
+                    <td className="text-center">
                       <Badge variant="outline" className="font-mono font-bold text-xs bg-slate-50">
                         {c.percentage}%
                       </Badge>
@@ -1315,16 +1315,16 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
                 <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left w-28 text-slate-700 font-bold text-sm">รหัสสมาชิก</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left text-slate-700 font-bold text-sm">ชื่อ-นามสกุลลูกค้า</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left w-36 text-slate-700 font-bold text-sm">เบอร์โทรศัพท์</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-28 text-slate-700 font-bold text-sm">จำนวนบิล</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">ยอดซื้อเฉลี่ย/บิล</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-40 text-slate-700 font-bold text-sm">ยอดซื้อสะสมรวม</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-32 text-slate-700 font-bold text-sm">แต้มสะสม</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">หนี้ค้างชำระ</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-32 text-slate-700 font-bold text-sm">ซื้อล่าสุด</TableHead>
+                    <TableHead className="text-center w-10 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
+                    <TableHead className="text-left text-slate-700 font-bold text-sm">รหัสสมาชิก</TableHead>
+                    <TableHead className="text-left min-w-40 xl:min-w-48 text-slate-700 font-bold text-sm">ชื่อ-นามสกุลลูกค้า</TableHead>
+                    <TableHead className="text-left text-slate-700 font-bold text-sm">เบอร์โทรศัพท์</TableHead>
+                    <TableHead className="text-center text-slate-700 font-bold text-sm">จำนวนบิล</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">ยอดซื้อเฉลี่ย/บิล</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">ยอดซื้อสะสมรวม</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">แต้มสะสม</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">หนี้ค้างชำระ</TableHead>
+                    <TableHead className="text-center text-slate-700 font-bold text-sm">ซื้อล่าสุด</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-slate-100">
@@ -1339,15 +1339,15 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                       const itemIndex = (currentPage - 1) * pageSize + idx + 1;
                       return (
                         <tr key={c.id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">
+                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
                             {itemIndex}
                           </td>
-                          <td className="py-3.5 px-3.5 font-mono text-indigo-700 font-bold text-[14px]">
+                          <td className="font-mono whitespace-nowrap text-indigo-700 font-bold text-[14px]">
                             {c.code}
                           </td>
-                          <td className="py-3.5 px-3.5 font-bold text-slate-900 text-[15px]">
-                            <div className="flex items-center gap-1.5">
-                              <span>{c.name}</span>
+                          <td className="font-bold text-slate-900 text-[13px] min-w-40 xl:min-w-48">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="line-clamp-2 break-words" title={c.name}>{c.name}</span>
                               {idx === 0 && currentPage === 1 && !serverSearch && (
                                 <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px] px-1 py-0 font-bold">
                                   👑 VIP #1
@@ -1355,29 +1355,29 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                               )}
                             </div>
                           </td>
-                          <td className="py-3.5 px-3.5 font-mono text-slate-700 text-sm">
+                          <td className="font-mono whitespace-nowrap text-slate-700 text-sm">
                             {c.phone}
                           </td>
-                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-700 text-sm">
+                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-700 text-sm">
                             {c.orderCount} ครั้ง
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono text-slate-700 text-sm">
+                          <td className="text-right font-mono whitespace-nowrap text-slate-700 text-sm">
                             {formatCurrency(c.averageTicket)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono font-black text-indigo-700 text-[15px] sm:text-base">
+                          <td className="text-right font-mono whitespace-nowrap font-black text-indigo-700 text-sm">
                             {formatCurrency(c.totalSpent)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-amber-700 text-sm">
+                          <td className="text-right font-mono whitespace-nowrap font-bold text-amber-700 text-sm">
                             {c.points.toLocaleString()} แต้ม
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-sm">
+                          <td className="text-right font-mono whitespace-nowrap font-bold text-sm">
                             {c.outstandingDebt > 0 ? (
                               <span className="text-rose-600 font-black">{formatCurrency(c.outstandingDebt)}</span>
                             ) : (
                               <span className="text-slate-400">-</span>
                             )}
                           </td>
-                          <td className="py-3.5 px-3.5 text-center font-mono text-xs text-slate-500">
+                          <td className="text-center font-mono whitespace-nowrap text-xs text-slate-500">
                             {c.lastOrderDate ? formatDate(c.lastOrderDate) : '-'}
                           </td>
                         </tr>
@@ -1410,25 +1410,25 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
             <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
               <TableHeader className="bg-slate-50">
                 <TableRow>
-                  <TableHead className="py-3 px-3.5 text-center w-16 font-bold text-sm">ลำดับ</TableHead>
-                  <TableHead className="py-3 px-3.5 text-left font-bold text-sm">ช่วงอายุบิล</TableHead>
-                  <TableHead className="py-3 px-3.5 text-center w-36 font-bold text-sm">จำนวนบิล</TableHead>
-                  <TableHead className="py-3 px-3.5 text-right w-48 font-bold text-sm">ยอดหนี้ค้างชำระ</TableHead>
-                  <TableHead className="py-3 px-3.5 text-center w-40 font-bold text-sm">ระดับความเสี่ยง</TableHead>
+                  <TableHead className="text-center w-10 font-bold text-sm">ลำดับ</TableHead>
+                  <TableHead className="text-left font-bold text-sm">ช่วงอายุบิล</TableHead>
+                  <TableHead className="text-center font-bold text-sm">จำนวนบิล</TableHead>
+                  <TableHead className="text-right font-bold text-sm">ยอดหนี้ค้างชำระ</TableHead>
+                  <TableHead className="text-center font-bold text-sm">ระดับความเสี่ยง</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-slate-100">
                 {customerDebtsReport.agingBuckets.map((bucket, i) => (
                   <TableRow key={bucket.rangeDays} className="hover:bg-slate-50">
-                    <td className="py-3 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">{i + 1}</td>
-                    <td className="py-3 px-3.5 font-bold text-slate-900 text-[15px]">{bucket.bucketName}</td>
-                    <td className="py-3 px-3.5 text-center font-mono font-bold text-slate-700 text-sm">{bucket.billCount} บิล</td>
-                    <td className="py-3 px-3.5 text-right font-mono font-black text-[15px]">
+                    <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">{i + 1}</td>
+                    <td className="font-bold text-slate-900 text-sm">{bucket.bucketName}</td>
+                    <td className="text-center font-mono whitespace-nowrap font-bold text-slate-700 text-sm">{bucket.billCount} บิล</td>
+                    <td className="text-right font-mono whitespace-nowrap font-black text-sm">
                       <span className={bucket.totalAmount > 0 ? (i >= 2 ? 'text-rose-600' : 'text-slate-900') : 'text-slate-400'}>
                         {formatCurrency(bucket.totalAmount)}
                       </span>
                     </td>
-                    <td className="py-3 px-3.5 text-center">
+                    <td className="text-center">
                       <Badge className={
                         i === 0 ? 'bg-emerald-100 text-emerald-800' :
                         i === 1 ? 'bg-sky-100 text-sky-800' :
@@ -1507,14 +1507,14 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
                 <TableHeader className="bg-slate-50 border-b border-slate-200">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="py-3.5 px-3.5 text-center w-16 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-left text-slate-700 font-bold text-sm">บริษัทผู้จำหน่าย</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-center w-28 text-slate-700 font-bold text-sm">PO ที่รับของ</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-40 text-slate-700 font-bold text-sm">ยอดซื้อ (รับแล้วในช่วงนี้)</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">สั่งแล้วยังไม่รับ</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-36 text-slate-700 font-bold text-sm">ค้างจ่าย (AP) ปัจจุบัน</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-32 text-slate-700 font-bold text-sm">จำนวนเคลม</TableHead>
-                    <TableHead className="py-3.5 px-3.5 text-right w-40 text-slate-700 font-bold text-sm">มูลค่าเคลมรวม</TableHead>
+                    <TableHead className="text-center w-10 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
+                    <TableHead className="text-left min-w-44 xl:min-w-56 text-slate-700 font-bold text-sm">บริษัทผู้จำหน่าย</TableHead>
+                    <TableHead className="text-center text-slate-700 font-bold text-sm">PO ที่รับของ</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">ยอดซื้อ (รับแล้วในช่วงนี้)</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">สั่งแล้วยังไม่รับ</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">ค้างจ่าย (AP) ปัจจุบัน</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">จำนวนเคลม</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">มูลค่าเคลมรวม</TableHead>
                   </TableRow>
                 </TableHeader>
 
@@ -1530,29 +1530,29 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                       const itemIndex = (currentPage - 1) * pageSize + idx + 1;
                       return (
                         <tr key={supp.supplierId} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-500 text-sm">{itemIndex}</td>
-                          <td className="py-3.5 px-3.5 font-bold text-slate-900 text-[15px]">
+                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">{itemIndex}</td>
+                          <td className="font-bold text-slate-900 text-[13px] min-w-44 xl:min-w-56">
                             <div className="flex items-center gap-1.5">
                               <Truck className="w-4 h-4 text-indigo-600 shrink-0" />
-                              <span>{supp.supplierName}</span>
+                              <span className="line-clamp-2 break-words" title={supp.supplierName}>{supp.supplierName}</span>
                             </div>
                           </td>
-                          <td className="py-3.5 px-3.5 text-center font-mono font-bold text-slate-700 text-sm">
+                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-700 text-sm">
                             {supp.poCount} ใบ
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono font-black text-slate-900 text-[15px]">
+                          <td className="text-right font-mono whitespace-nowrap font-black text-slate-900 text-sm">
                             {formatCurrency(supp.totalPurchaseAmount)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono text-slate-600 text-sm">
+                          <td className="text-right font-mono whitespace-nowrap text-slate-600 text-sm">
                             {formatCurrency(supp.orderedNotReceived)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-amber-700 text-sm">
+                          <td className="text-right font-mono whitespace-nowrap font-bold text-amber-700 text-sm">
                             {formatCurrency(supp.remainingPayable)}
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono font-bold text-rose-600 text-sm">
+                          <td className="text-right font-mono whitespace-nowrap font-bold text-rose-600 text-sm">
                             {supp.claimPieces} ชิ้น
                           </td>
-                          <td className="py-3.5 px-3.5 text-right font-mono font-black text-rose-700 text-[15px]">
+                          <td className="text-right font-mono whitespace-nowrap font-black text-rose-700 text-sm">
                             {formatCurrency(supp.claimCostTotal)}
                           </td>
                         </tr>

@@ -205,15 +205,15 @@ export default function SuppliersPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <Table>
+          <Table className="tbl">
             <TableHeader className="bg-slate-50">
               <TableRow>
-                <TableHead className="py-3.5 px-6 font-semibold">ชื่อบริษัท / ผู้จำหน่าย</TableHead>
-                <TableHead className="py-3.5 px-4 font-semibold">ชื่อผู้ติดต่อ</TableHead>
-                <TableHead className="py-3.5 px-4 font-semibold">เบอร์โทรศัพท์</TableHead>
-                <TableHead className="py-3.5 px-4 font-semibold">อีเมล</TableHead>
-                <TableHead className="py-3.5 px-4 font-semibold text-center">เครดิตเทอม (วัน)</TableHead>
-                <TableHead className="py-3.5 px-6 text-right font-semibold">จัดการ</TableHead>
+                <TableHead className="font-semibold min-w-44 xl:min-w-56">ชื่อบริษัท / ผู้จำหน่าย</TableHead>
+                <TableHead className="font-semibold">ชื่อผู้ติดต่อ</TableHead>
+                <TableHead className="font-semibold">เบอร์โทร</TableHead>
+                <TableHead className="font-semibold">อีเมล</TableHead>
+                <TableHead className="font-semibold text-center">เครดิตเทอม</TableHead>
+                <TableHead className="text-right font-semibold">จัดการ</TableHead>
               </TableRow>
             </TableHeader>
             <tbody className="divide-y divide-slate-100" {...supplierNav.bodyProps}>
@@ -232,16 +232,16 @@ export default function SuppliersPage() {
               ) : (
                 filtered.map((supp, si) => (
                   <TableRow key={supp.id} className={`hover:bg-slate-50/70 ${ROW_NAV_CLASS}`} {...supplierNav.rowProps(si)}>
-                    <td className="py-4 px-6 font-medium text-slate-900">{supp.name}</td>
-                    <td className="py-4 px-4 text-slate-600">{supp.contactName || "-"}</td>
-                    <td className="py-4 px-4 text-slate-600">{supp.phone || "-"}</td>
-                    <td className="py-4 px-4 text-slate-600">{supp.email || "-"}</td>
-                    <td className="py-4 px-4 text-center text-slate-600">
+                    <td className="font-medium text-slate-900 min-w-44 xl:min-w-56"><span className="line-clamp-2 break-words" title={supp.name}>{supp.name}</span></td>
+                    <td className="text-slate-600 min-w-28 xl:min-w-36"><span className="line-clamp-2 break-words" title={supp.contactName || ""}>{supp.contactName || "-"}</span></td>
+                    <td className="text-slate-600 whitespace-nowrap font-mono text-[13px]">{supp.phone || "-"}</td>
+                    <td className="text-slate-600 max-w-40 xl:max-w-56"><span className="block truncate" title={supp.email || ""}>{supp.email || "-"}</span></td>
+                    <td className="text-center text-slate-600 whitespace-nowrap">
                       {supp.creditTerms ? `${supp.creditTerms} วัน` : "-"}
                     </td>
-                    <td className="py-4 px-6 text-right">
+                    <td className="text-right w-px whitespace-nowrap">
                       <div className="flex items-center justify-end gap-btn">
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(supp)}>
+                        <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(supp)} aria-label={`แก้ไข ${supp.name}`} title="แก้ไข">
                           <Edit className="w-4 h-4 text-slate-600" />
                         </Button>
                         <RowDeleteMenu label="ลบผู้จำหน่าย" onDelete={() => handleDelete(supp.id, supp.name)} />

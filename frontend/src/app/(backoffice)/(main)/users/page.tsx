@@ -284,16 +284,16 @@ export default function UsersManagementPage() {
           <span className="text-xs text-slate-500">พบทั้งหมด {filteredUsers.length} รายการ</span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600">
+        <div className="tbl-wrap overflow-x-auto">
+          <table className="tbl w-full text-left text-sm text-slate-600">
             <thead className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase border-b border-slate-100">
               <tr>
-                <th className="py-3.5 px-6">ชื่อ-นามสกุล / ชื่อผู้ใช้</th>
-                <th className="py-3.5 px-4 text-center">บทบาท (Role)</th>
-                <th className="py-3.5 px-4">สิทธิ์การใช้งาน (Permissions)</th>
-                <th className="py-3.5 px-4 text-center">สถานะ</th>
-                <th className="py-3.5 px-4">เข้าสู่ระบบล่าสุด</th>
-                <th className="py-3.5 px-6 text-right">การกระทำ</th>
+                <th className="">ชื่อ-นามสกุล / ชื่อผู้ใช้</th>
+                <th className="text-center">บทบาท (Role)</th>
+                <th className="">สิทธิ์การใช้งาน (Permissions)</th>
+                <th className="text-center">สถานะ</th>
+                <th className="">เข้าสู่ระบบล่าสุด</th>
+                <th className="text-right">การกระทำ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100" {...userNav.bodyProps}>
@@ -315,13 +315,13 @@ export default function UsersManagementPage() {
                   const permCount = Array.isArray(u.permissions) ? u.permissions.length : 0;
                   return (
                     <tr key={u.id} className={`hover:bg-slate-50/70 transition-colors ${ROW_NAV_CLASS}`} {...userNav.rowProps(ui)}>
-                      <td className="py-4 px-6">
+                      <td className="">
                         <div className="font-medium text-slate-800">{u.fullName}</div>
                         <div className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
                           <span>@{u.username}</span>
                         </div>
                       </td>
-                      <td className="py-4 px-4 text-center">
+                      <td className="text-center">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                           u.role === 'ADMIN'
                             ? 'bg-purple-100 text-purple-700 border border-purple-200'
@@ -334,7 +334,7 @@ export default function UsersManagementPage() {
                           {u.role}
                         </span>
                       </td>
-                      <td className="py-4 px-4">
+                      <td className="">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           {u.role === 'ADMIN' ? (
                             <span className="text-xs font-medium text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md">
@@ -349,7 +349,7 @@ export default function UsersManagementPage() {
                           )}
                         </div>
                       </td>
-                      <td className="py-4 px-4 text-center">
+                      <td className="text-center">
                         <button
                           onClick={() => requestToggleActive(u)}
                           className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
@@ -363,10 +363,10 @@ export default function UsersManagementPage() {
                           {u.isActive ? 'ใช้งาน' : 'ระงับ'}
                         </button>
                       </td>
-                      <td className="py-4 px-4 text-xs text-slate-500">
+                      <td className="text-xs text-slate-500">
                         {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString('th-TH') : '-'}
                       </td>
-                      <td className="py-4 px-6 text-right">
+                      <td className="text-right">
                         <button
                           onClick={() => openEditModal(u)}
                           className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"

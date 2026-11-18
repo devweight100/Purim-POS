@@ -469,12 +469,12 @@ export default function CustomersPage() {
           <Table className="w-full table-fixed">
             <TableHeader className="bg-slate-50/90 border-b border-slate-200">
               <TableRow>
-                <TableHead className="w-[28%] text-slate-600 font-bold text-xs uppercase">รหัส / ชื่อสมาชิก & บริษัท</TableHead>
-                <TableHead className="w-[16%] text-slate-600 font-bold text-xs uppercase">ข้อมูลติดต่อ & เลขผู้เสียภาษี</TableHead>
-                <TableHead className="w-[12%] text-center text-slate-600 font-bold text-xs uppercase">ระดับราคา (Price Tier)</TableHead>
-                <TableHead className="w-[18%] text-right text-slate-600 font-bold text-xs uppercase">วงเงินเครดิต & ยอดหนี้คงค้าง</TableHead>
-                <TableHead className="w-[14%] text-center text-slate-600 font-bold text-xs uppercase">คะแนนสะสม & อัตราแลก</TableHead>
-                <TableHead className="w-[12%] text-center text-slate-600 font-bold text-xs uppercase">จัดการ</TableHead>
+                <TableHead className="min-w-44 xl:min-w-64 text-slate-600 font-bold text-xs">รหัส / ชื่อสมาชิก & บริษัท</TableHead>
+                <TableHead className="text-slate-600 font-bold text-xs">ติดต่อ & เลขผู้เสียภาษี</TableHead>
+                <TableHead className="text-center text-slate-600 font-bold text-xs">ระดับราคา</TableHead>
+                <TableHead className="text-right text-slate-600 font-bold text-xs">วงเงินเครดิต / ยอดค้าง</TableHead>
+                <TableHead className="text-center text-slate-600 font-bold text-xs">แต้มสะสม</TableHead>
+                <TableHead className="text-right text-slate-600 font-bold text-xs">จัดการ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody {...customerNav.bodyProps}>
@@ -499,7 +499,7 @@ export default function CustomersPage() {
                   return (
                     <TableRow key={c.id} className={`hover:bg-slate-50/80 border-slate-100 transition-colors ${ROW_NAV_CLASS}`} {...customerNav.rowProps(ci)}>
                       {/* Name & Type */}
-                      <TableCell className="py-3.5">
+                      <TableCell className="min-w-44 xl:min-w-64">
                         <div className="flex items-start gap-2.5">
                           <div
                             className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
@@ -511,8 +511,8 @@ export default function CustomersPage() {
                             {isCompany ? <Building2 className="w-5 h-5" /> : <User className="w-5 h-5" />}
                           </div>
                           <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-slate-900 text-sm truncate hover:text-sky-600">
+                            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                              <span className="font-bold text-slate-900 text-[13px] line-clamp-2 break-words hover:text-sky-600" title={c.name}>
                                 {c.name}
                               </span>
                               {isCompany ? (
@@ -536,7 +536,7 @@ export default function CustomersPage() {
                       </TableCell>
 
                       {/* Contact & Tax Info */}
-                      <TableCell className="py-3.5 text-xs">
+                      <TableCell className="text-xs whitespace-nowrap">
                         <div className="space-y-0.5">
                           <div className="flex items-center gap-1.5 text-slate-800 font-mono font-semibold">
                             <Phone className="w-3.5 h-3.5 text-slate-400" />
@@ -558,12 +558,12 @@ export default function CustomersPage() {
                       </TableCell>
 
                       {/* Price Level */}
-                      <TableCell className="py-3.5 text-center">
+                      <TableCell className="text-center whitespace-nowrap">
                         {getPriceLevelBadge(c.priceLevel || 1)}
                       </TableCell>
 
                       {/* Credit & Debt */}
-                      <TableCell className="py-3.5 text-right text-xs">
+                      <TableCell className="text-right text-xs whitespace-nowrap">
                         {hasCredit ? (
                           <div className="space-y-0.5">
                             <div className="text-slate-700">
@@ -591,27 +591,27 @@ export default function CustomersPage() {
                       </TableCell>
 
                       {/* Points & Loyalty */}
-                      <TableCell className="py-3.5 text-center">
-                        <div className="inline-flex flex-col items-center">
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-50 text-amber-800 border border-amber-200">
-                            <Coins className="w-3.5 h-3.5 text-amber-600" />
-                            <span>{(c.points || 0).toLocaleString()} แต้ม</span>
-                          </div>
-                          <div className="text-[10px] text-slate-400 mt-1">
-                            สะสม {c.pointEarnRateBaht || 500}฿={c.pointEarnUnits || 10} | แลก {c.pointRedeemRatePoints || 100}={c.pointRedeemDiscountBaht || 1}฿
-                          </div>
+                      <TableCell className="text-center">
+                        {/* round 3: the member's earn / redeem rate is the badge tooltip (it is the same for most members) */}
+                        <div
+                          className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap"
+                          title={`สะสม ${c.pointEarnRateBaht || 500}฿ = ${c.pointEarnUnits || 10} แต้ม | แลก ${c.pointRedeemRatePoints || 100} แต้ม = ${c.pointRedeemDiscountBaht || 1}฿`}
+                        >
+                          <Coins className="w-3.5 h-3.5 text-amber-600" />
+                          <span>{(c.points || 0).toLocaleString()} แต้ม</span>
                         </div>
                       </TableCell>
 
                       {/* Actions */}
-                      <TableCell className="py-3.5 text-center">
-                        <div className="flex flex-wrap items-center justify-center gap-btn">
+                      <TableCell className="w-px whitespace-nowrap">
+                        <div className="flex flex-nowrap items-center justify-end gap-btn">
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={() => handleOpenDetail(c)}
                             className="h-8 w-8 p-0 text-slate-500 hover:text-sky-600 hover:bg-sky-50 rounded-lg"
                             title="ดูข้อมูลละเอียด & ใบกำกับภาษี"
+                            aria-label={`ดูข้อมูล ${c.name}`}
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
@@ -621,6 +621,7 @@ export default function CustomersPage() {
                             onClick={() => handleOpenEdit(c)}
                             className="h-8 w-8 p-0 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
                             title="แก้ไขข้อมูลสมาชิก"
+                            aria-label={`แก้ไข ${c.name}`}
                           >
                             <Edit className="w-4 h-4" />
                           </Button>

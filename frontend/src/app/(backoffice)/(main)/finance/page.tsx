@@ -289,7 +289,7 @@ export default function FinancePage() {
               ))}
             </div>
             <div className="max-h-64 overflow-y-auto">
-              <table className="w-full text-xs">
+              <table className="tbl w-full text-xs">
                 <thead className="text-slate-500"><tr><th className="text-left p-1">ครบกำหนด</th><th className="text-left p-1">ผู้จำหน่าย / บิล</th><th className="text-right p-1">ยอด</th></tr></thead>
                 <tbody>
                   {overview.payables.items.length === 0 && <tr><td colSpan={3} className="p-3 text-center text-slate-400">ไม่มียอดค้างจ่าย</td></tr>}
@@ -301,7 +301,7 @@ export default function FinancePage() {
                         {!p.dueDateSet && <span className="text-slate-400" title="ไม่ได้ระบุวันครบกำหนดใน PO ใช้เครดิตเทอมของผู้จำหน่าย"> *</span>}
                       </td>
                       <td className="p-1">{p.supplierName} <span className="text-slate-400 font-mono">{p.invoiceNo || p.poNumber}</span></td>
-                      <td className="p-1 text-right font-mono">{formatCurrency(p.amount)}</td>
+                      <td className="p-1 text-right font-mono whitespace-nowrap">{formatCurrency(p.amount)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -330,7 +330,7 @@ export default function FinancePage() {
               ))}
             </div>
             <div className="max-h-52 overflow-y-auto">
-              <table className="w-full text-xs">
+              <table className="tbl w-full text-xs">
                 <thead className="text-slate-500"><tr><th className="text-left p-1">ลูกค้า</th><th className="text-right p-1">บิล</th><th className="text-right p-1">เกินกำหนด</th><th className="text-right p-1">ค้างทั้งหมด</th></tr></thead>
                 <tbody>
                   {overview.receivables.topDebtors.length === 0 && <tr><td colSpan={4} className="p-3 text-center text-slate-400">ไม่มีลูกหนี้ค้างชำระ</td></tr>}
@@ -339,7 +339,7 @@ export default function FinancePage() {
                       <td className="p-1">{c.name} <span className="text-slate-400">{c.phone || ''}</span></td>
                       <td className="p-1 text-right">{c.bills}</td>
                       <td className={`p-1 text-right font-mono ${c.overdue > 0 ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>{c.overdue > 0 ? `${formatCurrency(c.overdue)} (${c.oldestDaysOverdue} วัน)` : '-'}</td>
-                      <td className="p-1 text-right font-mono">{formatCurrency(c.total)}</td>
+                      <td className="p-1 text-right font-mono whitespace-nowrap">{formatCurrency(c.total)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -427,8 +427,8 @@ export default function FinancePage() {
           )}
         </div>
         {tab === 'ledger' && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="tbl-wrap overflow-x-auto">
+            <table className="tbl w-full text-sm">
               <thead className="bg-slate-50 text-slate-600"><tr>
                 <th className="p-2 text-left">วันเวลา</th><th className="p-2 text-left">บัญชี</th><th className="p-2 text-left">ประเภท</th>
                 <th className="p-2 text-left">รายละเอียด</th><th className="p-2 text-right">เข้า</th><th className="p-2 text-right">ออก</th><th className="p-2" />
@@ -441,8 +441,8 @@ export default function FinancePage() {
                     <td className="p-2">{r.account.name}</td>
                     <td className="p-2">{r.typeLabel}{r.category ? ` · ${r.category.name}` : ''}{r.isReversed && <Badge className="ml-1 bg-slate-200 text-slate-600">ยกเลิกแล้ว</Badge>}</td>
                     <td className="p-2">{r.note}</td>
-                    <td className="p-2 text-right font-mono text-emerald-700">{r.direction === 'IN' ? formatCurrency(r.amount) : ''}</td>
-                    <td className="p-2 text-right font-mono text-rose-700">{r.direction === 'OUT' ? formatCurrency(r.amount) : ''}</td>
+                    <td className="p-2 text-right font-mono whitespace-nowrap text-emerald-700">{r.direction === 'IN' ? formatCurrency(r.amount) : ''}</td>
+                    <td className="p-2 text-right font-mono whitespace-nowrap text-rose-700">{r.direction === 'OUT' ? formatCurrency(r.amount) : ''}</td>
                     <td className="p-2 text-right">
                       {r.canCancel && (r.type === 'EXPENSE' || r.direction === 'OUT') && (
                         <Button size="sm" variant="ghost" className="text-rose-600 gap-1" onClick={() => void cancelRow(r)}><Ban className="w-3.5 h-3.5" /> ยกเลิก</Button>
@@ -455,8 +455,8 @@ export default function FinancePage() {
           </div>
         )}
         {tab === 'expenses' && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="tbl-wrap overflow-x-auto">
+            <table className="tbl w-full text-sm">
               <thead className="bg-slate-50 text-slate-600"><tr>
                 <th className="p-2 text-left">เลขที่</th><th className="p-2 text-left">วันที่จ่าย</th><th className="p-2 text-left">หมวด</th>
                 <th className="p-2 text-left">รายละเอียด</th><th className="p-2 text-left">จ่ายจาก</th><th className="p-2 text-right">จำนวนเงิน</th><th className="p-2" />
@@ -465,12 +465,12 @@ export default function FinancePage() {
                 {expenses.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-slate-400">ยังไม่มีค่าใช้จ่ายในช่วงนี้</td></tr>}
                 {expenses.map((e) => (
                   <tr key={e.id} className={`border-t border-slate-100 ${e.status === 'CANCELLED' ? 'text-slate-400 line-through' : ''}`}>
-                    <td className="p-2 font-mono">{e.expenseNumber}</td>
+                    <td className="p-2 font-mono whitespace-nowrap">{e.expenseNumber}</td>
                     <td className="p-2">{new Date(e.paidAt).toLocaleDateString('th-TH')}</td>
                     <td className="p-2">{e.category.name}</td>
                     <td className="p-2">{e.description}{e.vendor ? ` (${e.vendor})` : ''}</td>
                     <td className="p-2">{e.account.name}</td>
-                    <td className="p-2 text-right font-mono">{formatCurrency(Number(e.amount))}</td>
+                    <td className="p-2 text-right font-mono whitespace-nowrap">{formatCurrency(Number(e.amount))}</td>
                     <td className="p-2 text-right">
                       {e.status !== 'CANCELLED' && (
                         <Button size="sm" variant="ghost" className="text-rose-600" onClick={async () => {

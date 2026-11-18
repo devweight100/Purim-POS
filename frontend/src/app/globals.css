@@ -153,6 +153,44 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 /* POS cart: the line touched last (scan / add / qty / unit). Emerald = "just registered"; selection is sky,
    errors rose/red, warnings amber. Components layer, so a selected row's utility background still wins and
    the accent bar shows on top of the selection. The flash is done with element.animate (use-last-touched-row). */
+/* Plain <table class="tbl ..."> in the back office: the same density as components/ui/table (10 px cells, header
+   8 px high padding). Components layer, so a cell's own padding utility still wins. */
+@layer components {
+  .tbl th {
+    padding: 0.5rem 0.625rem;
+    vertical-align: middle;
+    line-height: 1.25;
+  }
+  .tbl td {
+    padding: 0.625rem;
+    vertical-align: middle;
+  }
+  /* The table's box is a size container (ui/table does this; plain tables wrap in <div class="tbl-wrap">), so
+     columns react to the width the table really has (sidebar open or collapsed), not to the window:
+       data-narrow="hide"  on a th + its tds: hidden when the table box is under 1000 px (1366x768 at 125 %)
+       data-mid="hide"     hidden under 1150 px (1366x768 with the sidebar open)
+       data-narrow="wrap"  a one-line cell (date, codes) may wrap under 1000 px
+       data-act-label      text of an action button (the button keeps its aria-label / title): icon only under 1000 px */
+  .tbl-wrap {
+    container: tbl / inline-size;
+  }
+}
+
+@container tbl (max-width: 1149.98px) {
+  .tbl [data-mid='hide'] {
+    display: none !important;
+  }
+}
+@container tbl (max-width: 999.98px) {
+  .tbl [data-narrow='hide'],
+  .tbl [data-act-label] {
+    display: none !important;
+  }
+  .tbl [data-narrow='wrap'] {
+    white-space: normal !important;
+  }
+}
+
 @layer components {
   .pos-last-added {
     background-color: #ecfdf5; /* emerald-50 */

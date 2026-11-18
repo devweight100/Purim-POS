@@ -73,15 +73,15 @@ export function ForecastPanel() {
         <div className="flex justify-between text-[10px] text-slate-500 mt-1"><span>{thaiDate(data.series[0].date)}</span><span>{thaiDate(data.series[data.series.length - 1].date)}</span></div>
       </div>
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white max-h-96">
-        <table className="w-full text-sm">
+        <table className="tbl w-full text-sm">
           <thead className="bg-slate-50 text-slate-600 sticky top-0"><tr><th className="p-2 text-left">วันที่</th><th className="p-2 text-left">รายการ</th><th className="p-2 text-right">เข้า</th><th className="p-2 text-right">ออก</th></tr></thead>
           <tbody>
             {data.events.length === 0 && <tr><td colSpan={4} className="p-6 text-center text-slate-400">ไม่มีรายการครบกำหนดในช่วงนี้</td></tr>}
             {data.events.map((e, i) => (
               <tr key={i} className="border-t border-slate-100">
                 <td className="p-2 whitespace-nowrap">{thaiDate(e.date)}</td><td className="p-2">{e.label}</td>
-                <td className="p-2 text-right font-mono text-emerald-700">{e.kind === 'IN' ? formatCurrency(e.amount) : ''}</td>
-                <td className="p-2 text-right font-mono text-rose-700">{e.kind === 'OUT' ? formatCurrency(e.amount) : ''}</td>
+                <td className="p-2 text-right font-mono whitespace-nowrap text-emerald-700">{e.kind === 'IN' ? formatCurrency(e.amount) : ''}</td>
+                <td className="p-2 text-right font-mono whitespace-nowrap text-rose-700">{e.kind === 'OUT' ? formatCurrency(e.amount) : ''}</td>
               </tr>
             ))}
           </tbody>

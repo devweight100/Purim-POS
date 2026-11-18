@@ -487,12 +487,13 @@ export default function PayablesPage() {
                 <p className="text-xs sm:text-sm text-slate-400">เมื่อมีใบสั่งซื้อหรือรับของเข้าคลัง หนี้จะแสดงขึ้นที่นี่อัตโนมัติ</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                {/* below 1280 px: tighter cells, "#" and the deduction columns hidden (they are in the bill details: click the row) */}
-                <table className="w-full text-sm max-xl:[&_th]:px-1.5 max-xl:[&_td]:px-1.5 max-xl:[&_tr>*:nth-child(2)]:hidden max-xl:[&_tr>*:nth-child(8)]:hidden max-xl:[&_tr>*:nth-child(9)]:hidden">
+              <div className="tbl-wrap overflow-x-auto">
+                {/* round 3: invoice + PO number + bill date in one column; by the table's width: under 1150 px ส่วนลด and
+                    ประกบลดหนี้, under 1000 px also "#" and จ่ายแล้ว are hidden (all in the bill details: click the row) */}
+                <table className="tbl w-full text-sm">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-sm">
                     <tr>
-                      <th className="py-3.5 px-3 text-center w-12">
+                      <th className="text-center w-10">
                         <Checkbox
                           checked={pageOpenBills.length > 0 && pageOpenBills.every((b) => selectedPoIds.includes(b.poId))}
                           onCheckedChange={(checked) => {
@@ -510,24 +511,22 @@ export default function PayablesPage() {
                           }}
                         />
                       </th>
-                      <th className="py-3.5 px-2 text-center w-12">#</th>
-                      <th className="py-3.5 px-3.5 text-left min-w-[120px]">เลขที่บิลผู้จำหน่าย (Invoice)</th>
-                      <th className="py-3.5 px-3 text-left w-32">เลขที่ PO</th>
-                      <th className="py-3.5 px-3 text-center w-28">วันที่บิล</th>
-                      <th className="py-3.5 px-3 text-left">บริษัทผู้จำหน่าย</th>
-                      <th className="py-3.5 px-3 text-right font-bold text-sm" title="มูลค่าสินค้าที่รับเข้าแล้ว (ตั้งเป็นหนี้)">ยอดหนี้ (รับของแล้ว)</th>
-                      <th className="py-3.5 px-2.5 text-right font-bold text-sm">ส่วนลด</th>
-                      <th className="py-3.5 px-2.5 text-right font-bold text-sm">ประกบลดหนี้</th>
-                      <th className="py-3.5 px-2.5 text-right font-bold text-sm">จ่ายแล้ว</th>
-                      <th className="py-3.5 px-3 text-right font-bold text-sm">หนี้คงเหลือสุทธิ</th>
-                      <th className="py-3.5 px-2.5 text-center font-bold text-sm">สถานะ</th>
-                      <th className="py-3.5 px-3 text-center font-bold text-sm whitespace-nowrap">การจัดการ</th>
+                      <th data-narrow="hide" className="text-center w-10">#</th>
+                      <th className="text-left">เลขที่บิล (Invoice) / PO · วันที่</th>
+                      <th className="text-left min-w-44">บริษัทผู้จำหน่าย</th>
+                      <th className="text-right" title="มูลค่าสินค้าที่รับเข้าแล้ว (ตั้งเป็นหนี้)">ยอดหนี้ (รับแล้ว)</th>
+                      <th data-mid="hide" className="text-right">ส่วนลด</th>
+                      <th data-mid="hide" className="text-right">ประกบลดหนี้</th>
+                      <th data-narrow="hide" className="text-right">จ่ายแล้ว</th>
+                      <th className="text-right">คงเหลือ</th>
+                      <th className="text-center">สถานะ</th>
+                      <th className="text-right">การจัดการ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100" {...billNav.bodyProps}>
                     {filteredBills.map((bill, idx) => (
                       <tr key={bill.poId} className={`hover:bg-slate-50/70 transition-colors ${ROW_NAV_CLASS}`} {...billNav.rowProps(idx)}>
-                        <td className="py-3.5 px-3 text-center">
+                        <td className="text-center">
                           {bill.remainingPayable > 0 ? (
                             <Checkbox
                               checked={selectedPoIds.includes(bill.poId)}
@@ -538,11 +537,11 @@ export default function PayablesPage() {
                           )}
                         </td>
 
-                        <td className="py-3.5 px-2 text-center font-mono font-bold text-slate-500 text-sm">
+                        <td data-narrow="hide" className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-xs">
                           {(billPage - 1) * BILL_PAGE_SIZE + idx + 1}
                         </td>
 
-                        <td className="py-3.5 px-3.5">
+                        <td className="whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
                             {bill.supplierInvoiceNo ? (
                               <span className="font-mono font-bold text-indigo-900 text-[13px] bg-indigo-50/80 px-2 py-0.5 rounded border border-indigo-100">
@@ -568,31 +567,26 @@ export default function PayablesPage() {
                               ลงวันที่: {new Date(bill.supplierInvoiceDate).toLocaleDateString('th-TH')}
                             </p>
                           )}
+                          <p className="mt-0.5 font-mono text-xs text-slate-600">
+                            <span className="font-bold text-slate-900">{bill.poNumber}</span> · {new Date(bill.billDate).toLocaleDateString('th-TH')}
+                          </p>
                         </td>
 
-                        <td className="py-3.5 px-3 font-mono">
-                          <span className="font-bold text-slate-900 text-[14px] block">{bill.poNumber}</span>
-                        </td>
-
-                        <td className="py-3.5 px-3 text-center font-mono text-xs text-slate-600">
-                          {new Date(bill.billDate).toLocaleDateString('th-TH')}
-                        </td>
-
-                        <td className="py-3 px-3">
-                          <p className="font-bold text-slate-900 text-[14px]">{bill.supplierName}</p>
+                        <td className="min-w-44">
+                          <p className="font-bold text-slate-900 text-[13px] line-clamp-2 break-words" title={bill.supplierName}>{bill.supplierName}</p>
                           {bill.supplierPhone && (
                             <p className="text-xs text-slate-400 font-mono mt-0.5">{bill.supplierPhone}</p>
                           )}
                         </td>
 
-                        <td className="py-3 px-3 text-right font-mono font-bold text-slate-800 text-sm sm:text-[14px]">
+                        <td className="text-right font-mono whitespace-nowrap font-bold text-slate-800 text-[13px]">
                           {formatCurrency(bill.receivedAmount ?? bill.totalAmount)}
                                 {bill.receivedAmount !== undefined && Math.abs(bill.receivedAmount - bill.totalAmount) > 0.004 && (
-                                  <span className="block text-[11px] font-medium text-slate-400">จาก PO {formatCurrency(bill.totalAmount)}</span>
+                                  <span data-narrow="hide" className="block text-[11px] font-medium text-slate-400">จาก PO {formatCurrency(bill.totalAmount)}</span>
                                 )}
                         </td>
 
-                        <td className="py-3 px-2.5 text-right font-mono text-sm sm:text-[14px]">
+                        <td data-mid="hide" className="text-right font-mono whitespace-nowrap text-[13px]">
                           {bill.alreadyDiscountAmount > 0 ? (
                             <span className="text-amber-700 font-bold">
                               {formatCurrency(bill.alreadyDiscountAmount)}
@@ -602,7 +596,7 @@ export default function PayablesPage() {
                           )}
                         </td>
 
-                        <td className="py-3 px-2.5 text-right font-mono text-sm sm:text-[14px]">
+                        <td data-mid="hide" className="text-right font-mono whitespace-nowrap text-[13px]">
                           {bill.alreadyDeductedReturns > 0 ? (
                             <span className="text-indigo-600 font-bold">
                               {formatCurrency(bill.alreadyDeductedReturns)}
@@ -612,7 +606,7 @@ export default function PayablesPage() {
                           )}
                         </td>
 
-                        <td className="py-3 px-2.5 text-right font-mono text-sm sm:text-[14px]">
+                        <td data-narrow="hide" className="text-right font-mono whitespace-nowrap text-[13px]">
                           {bill.alreadyPaidAmount > 0 ? (
                             <span className="text-emerald-700 font-bold">
                               {formatCurrency(bill.alreadyPaidAmount)}
@@ -622,7 +616,7 @@ export default function PayablesPage() {
                           )}
                         </td>
 
-                        <td className="py-3 px-3 text-right font-mono font-black text-[14px] sm:text-[15px]">
+                        <td className="text-right font-mono whitespace-nowrap font-black text-[13px]">
                           {bill.remainingPayable > 0 ? (
                             <span className="text-amber-700">
                               {formatCurrency(bill.remainingPayable)}
@@ -634,11 +628,11 @@ export default function PayablesPage() {
                           )}
                         </td>
 
-                        <td className="py-3 px-2.5 text-center">
+                        <td className="text-center">
                           {bill.paymentStatus === 'PAID' ? (
                             <Badge className="bg-emerald-600 text-white font-bold text-xs px-2.5 py-1">ชำระครบแล้ว</Badge>
                           ) : bill.paymentStatus === 'PARTIALLY_PAID' && bill.remainingPayable <= 0 ? (
-                            <Badge className="bg-teal-600 text-white font-bold text-xs px-2.5 py-1" title="จ่ายครบตามมูลค่าที่รับแล้ว ยังมีสินค้ารอรับ">จ่ายครบตามที่รับ (รอรับของ)</Badge>
+                            <Badge className="bg-teal-600 text-white font-bold text-xs px-2 py-1 whitespace-normal leading-tight" title="จ่ายครบตามมูลค่าที่รับแล้ว ยังมีสินค้ารอรับ">จ่ายครบตามที่รับ (รอรับของ)</Badge>
                           ) : bill.paymentStatus === 'PARTIALLY_PAID' ? (
                             <Badge className="bg-sky-600 text-white font-bold text-xs px-2.5 py-1">ชำระบางส่วน</Badge>
                           ) : (
@@ -648,17 +642,17 @@ export default function PayablesPage() {
                           )}
                         </td>
 
-                        <td className="py-3 px-3 text-center">
-                          <div className="flex flex-wrap items-center justify-center gap-btn">
+                        <td className="w-px whitespace-nowrap">
+                          <div className="flex flex-nowrap items-center justify-end gap-btn">
                             <Button
                               size="sm"
                               variant="outline"
                               onClick={() => handleOpenDetails(bill)}
-                              title="ดูรายละเอียดบิลและประวัติการชำระ"
-                              className="h-8 px-2.5 rounded-xl border-slate-200 hover:border-slate-300 font-bold text-xs gap-1 shrink-0"
+                              title="ดูเอกสาร: รายละเอียดบิลและประวัติการชำระ"
+                              aria-label="ดูเอกสาร"
+                              className="h-8 w-8 p-0 rounded-xl border-slate-200 hover:border-slate-300 shrink-0"
                             >
                               <Eye className="w-3.5 h-3.5 text-slate-600" />
-                              <span>ดูเอกสาร</span>
                             </Button>
 
                             {bill.remainingPayable > 0 && (
@@ -666,10 +660,11 @@ export default function PayablesPage() {
                                 size="sm"
                                 onClick={() => handleOpenSettle(bill)}
                                 title="ประกบใบลดหนี้หรือบันทึกจ่ายเงิน"
+                                aria-label="ชำระเงิน"
                                 className="h-8 px-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs gap-1 shadow-xs shrink-0"
                               >
                                 <Receipt className="w-3.5 h-3.5" />
-                                <span>ชำระเงิน</span>
+                                <span data-act-label>ชำระเงิน</span>
                               </Button>
                             )}
 
@@ -821,19 +816,19 @@ export default function PayablesPage() {
                 <p className="text-xs sm:text-sm text-slate-400">เมื่อมีการบันทึกชำระหนี้ ใบสำคัญจ่ายจะปรากฏที่นี่ และสามารถเปิดดูหรือพิมพ์ย้อนหลังได้ตลอดเวลา</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div className="tbl-wrap overflow-x-auto">
+                <table className="tbl w-full text-sm">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-xs sm:text-[13px]">
                     <tr>
-                      <th className="py-3.5 px-3.5 text-left">เลขที่สำคัญจ่าย / วันที่</th>
-                      <th className="py-3.5 px-3.5 text-left">บิลและ Invoice ที่จ่าย</th>
-                      <th className="py-3.5 px-3.5 text-left">บริษัทผู้จำหน่าย</th>
-                      <th className="py-3.5 px-3.5 text-right">ยอดหนี้รวม</th>
-                      <th className="py-3.5 px-3.5 text-right">ส่วนลดท้ายบิล</th>
-                      <th className="py-3.5 px-3.5 text-right">หักใบลดหนี้</th>
-                      <th className="py-3.5 px-3.5 text-right">ยอดจ่ายจริงสุทธิ</th>
-                      <th className="py-3.5 px-3.5 text-center">วิธีชำระ</th>
-                      <th className="py-3.5 px-3.5 text-center whitespace-nowrap">การจัดการ</th>
+                      <th className="text-left">เลขที่สำคัญจ่าย / วันที่</th>
+                      <th className="text-left">บิลและ Invoice ที่จ่าย</th>
+                      <th className="text-left">บริษัทผู้จำหน่าย</th>
+                      <th className="text-right">ยอดหนี้รวม</th>
+                      <th className="text-right">ส่วนลดท้ายบิล</th>
+                      <th className="text-right">หักใบลดหนี้</th>
+                      <th className="text-right">ยอดจ่ายจริงสุทธิ</th>
+                      <th className="text-center">วิธีชำระ</th>
+                      <th className="text-center">การจัดการ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -845,7 +840,7 @@ export default function PayablesPage() {
                           key={voucher.id}
                           className={`transition-colors ${isCancelled ? 'bg-rose-50/30 opacity-75' : 'hover:bg-slate-50/70'}`}
                         >
-                          <td className="py-3 px-3.5 font-mono">
+                          <td className="font-mono whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
                               <span className={`font-bold text-sm block ${isCancelled ? 'text-slate-500 line-through' : 'text-indigo-700'}`}>
                                 {voucher.voucherNumber}
@@ -866,7 +861,7 @@ export default function PayablesPage() {
                             )}
                           </td>
 
-                          <td className="py-3 px-3.5">
+                          <td className="">
                             <div className="space-y-1">
                               <Badge variant="outline" className="text-[11px] font-mono font-bold bg-slate-50">
                                 {voucher.bills.length} บิล
@@ -881,29 +876,29 @@ export default function PayablesPage() {
                             </div>
                           </td>
 
-                          <td className="py-3 px-3.5 font-bold text-slate-900 text-sm">
+                          <td className="font-bold text-slate-900 text-sm">
                             {voucher.supplierName}
                           </td>
 
-                          <td className="py-3 px-3.5 text-right font-mono font-bold text-slate-800">
+                          <td className="text-right font-mono whitespace-nowrap font-bold text-slate-800">
                             {formatCurrency(voucher.totalBillsAmount)}
                           </td>
 
-                          <td className="py-3 px-3.5 text-right font-mono text-amber-700 font-bold">
+                          <td className="text-right font-mono whitespace-nowrap text-amber-700 font-bold">
                             {voucher.discountAmount && voucher.discountAmount > 0 ? formatCurrency(voucher.discountAmount) : '-'}
                           </td>
 
-                          <td className="py-3 px-3.5 text-right font-mono text-indigo-700 font-bold">
+                          <td className="text-right font-mono whitespace-nowrap text-indigo-700 font-bold">
                             {voucher.deductedCreditAmount > 0 ? formatCurrency(voucher.deductedCreditAmount) : '-'}
                           </td>
 
-                          <td className="py-3 px-3.5 text-right font-mono font-black text-sm sm:text-base">
+                          <td className="text-right font-mono whitespace-nowrap font-black text-sm sm:text-base">
                             <span className={isCancelled ? 'line-through text-slate-400' : 'text-emerald-700'}>
                               {formatCurrency(voucher.netPaidAmount)}
                             </span>
                           </td>
 
-                          <td className="py-3 px-3.5 text-center">
+                          <td className="text-center">
                             <Badge variant="outline" className="text-xs font-semibold px-2.5 py-0.5">
                               {voucher.paymentMethod === 'CASH'
                                 ? '💵 เงินสด'
@@ -913,7 +908,7 @@ export default function PayablesPage() {
                             </Badge>
                           </td>
 
-                          <td className="py-3 px-3.5 text-center">
+                          <td className="text-center">
                             <div className="flex items-center justify-center gap-1.5 flex-nowrap whitespace-nowrap">
                               <Button
                                 size="sm"

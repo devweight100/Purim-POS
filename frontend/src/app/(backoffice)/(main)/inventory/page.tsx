@@ -589,27 +589,13 @@ export default function InventoryPage() {
             <Table className="w-full">
               <TableHeader className="bg-slate-50/90 border-b border-slate-200">
                 <TableRow>
-                  <TableHead className="w-[30%] text-slate-600 font-bold text-xs uppercase tracking-wide">
-                    ชื่อสินค้า / รหัส (SKU)
-                  </TableHead>
-                  <TableHead className="w-[12%] text-slate-600 font-bold text-xs uppercase tracking-wide">
-                    หมวดหมู่
-                  </TableHead>
-                  <TableHead className="w-[12%] text-right text-slate-600 font-bold text-xs uppercase tracking-wide">
-                    ต้นทุน / หน่วย
-                  </TableHead>
-                  <TableHead className="w-[15%] text-right text-slate-600 font-bold text-xs uppercase tracking-wide">
-                    สต็อกคงเหลือ (หน่วยฐาน)
-                  </TableHead>
-                  <TableHead className="w-[15%] text-slate-600 font-bold text-xs uppercase tracking-wide">
-                    สรุปตามขนาดบรรจุ
-                  </TableHead>
-                  <TableHead className="w-[8%] text-center text-slate-600 font-bold text-xs uppercase tracking-wide">
-                    สถานะ
-                  </TableHead>
-                  <TableHead className="w-[8%] text-center text-slate-600 font-bold text-xs uppercase tracking-wide">
-                    จัดการ
-                  </TableHead>
+                  <TableHead className="min-w-44 xl:min-w-64 text-slate-600 font-bold text-xs">ชื่อสินค้า / รหัส (SKU)</TableHead>
+                  <TableHead className="text-slate-600 font-bold text-xs">หมวดหมู่</TableHead>
+                  <TableHead className="text-right text-slate-600 font-bold text-xs">ต้นทุน / หน่วย</TableHead>
+                  <TableHead className="text-right text-slate-600 font-bold text-xs">คงเหลือ (หน่วยฐาน)</TableHead>
+                  <TableHead className="text-slate-600 font-bold text-xs">ตามขนาดบรรจุ</TableHead>
+                  <TableHead className="text-center text-slate-600 font-bold text-xs">สถานะ</TableHead>
+                  <TableHead className="text-right text-slate-600 font-bold text-xs">จัดการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody {...stockNav.bodyProps}>
@@ -636,37 +622,34 @@ export default function InventoryPage() {
                     return (
                       <TableRow key={p.id} className={`hover:bg-slate-50/80 border-slate-100 transition-colors ${ROW_NAV_CLASS}`} {...stockNav.rowProps(pi)}>
                         {/* Product Info */}
-                        <TableCell className="py-3.5">
+                        <TableCell className="min-w-44 xl:min-w-64">
                           <div className="space-y-0.5">
-                            <span className="font-bold text-slate-900 text-sm block hover:text-sky-600 transition-colors">
+                            <span className="font-bold text-slate-900 text-[13px] line-clamp-2 break-words hover:text-sky-600 transition-colors" title={p.name}>
                               {p.name}
                             </span>
-                            <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                              <span>SKU: {p.sku || '-'}</span>
+                            <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-slate-400 font-mono">
+                              <span className="whitespace-nowrap">SKU: {p.sku || '-'}</span>
                               {p.barcodes && p.barcodes.length > 0 && (
-                                <>
-                                  <span>•</span>
-                                  <span>บาร์โค้ด: {p.barcodes[0]?.barcode}</span>
-                                </>
+                                <span className="whitespace-nowrap">บาร์โค้ด: {p.barcodes[0]?.barcode}</span>
                               )}
                             </div>
                           </div>
                         </TableCell>
 
                         {/* Category */}
-                        <TableCell className="py-3.5">
-                          <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-xs font-semibold">
+                        <TableCell className="">
+                          <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-xs font-semibold max-w-28 xl:max-w-36 truncate block" title={getCategoryName(p.categoryId)}>
                             {getCategoryName(p.categoryId)}
                           </Badge>
                         </TableCell>
 
                         {/* Cost */}
-                        <TableCell className="py-3.5 text-right font-semibold text-slate-700 text-sm">
+                        <TableCell className="text-right font-semibold text-slate-700 text-[13px] whitespace-nowrap tabular-nums">
                           {displayUnitCost(p) !== undefined ? formatCurrency(displayUnitCost(p)!) : '-'}
                         </TableCell>
 
                         {/* Stock Base Units */}
-                        <TableCell className="py-3.5 text-right">
+                        <TableCell className="text-right whitespace-nowrap">
                           {isNegative ? (
                             <span className="inline-flex items-center gap-1 font-extrabold text-base text-rose-600 bg-rose-50 px-2.5 py-0.5 rounded-lg border border-rose-200 shadow-2xs">
                               <span className="text-xs">🔻</span>
@@ -694,23 +677,23 @@ export default function InventoryPage() {
                         </TableCell>
 
                         {/* Packaging Breakdown */}
-                        <TableCell className={`py-3.5 font-semibold text-xs ${isNegative ? 'text-rose-600 font-bold' : 'text-amber-700'}`}>
+                        <TableCell className={`font-semibold text-xs min-w-28 ${isNegative ? 'text-rose-600 font-bold' : 'text-amber-700'}`}>
                           {isNegative && <span className="mr-1">🔻</span>}
                           {formatPackagingBreakdown(p)}
                         </TableCell>
 
                         {/* Status */}
-                        <TableCell className="py-3.5 text-center">
+                        <TableCell className="text-center">
                           {isNegative ? (
                             <Badge className="bg-rose-600 text-white border-rose-700 text-xs font-bold shadow-2xs">
                               🔻 ติดลบ
                             </Badge>
                           ) : isOut ? (
-                            <Badge className="bg-rose-100 text-rose-700 border-rose-200 text-xs font-bold">
+                            <Badge className="bg-rose-100 text-rose-700 border-rose-200 text-xs font-bold whitespace-nowrap">
                               หมดสต็อก
                             </Badge>
                           ) : isLow ? (
-                            <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold">
+                            <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold whitespace-nowrap">
                               ⚠️ ใกล้หมด
                             </Badge>
                           ) : (
@@ -721,8 +704,8 @@ export default function InventoryPage() {
                         </TableCell>
 
                         {/* Actions */}
-                        <TableCell className="py-3.5 text-center">
-                          <div className="flex items-center justify-center gap-btn">
+                        <TableCell className="w-px whitespace-nowrap">
+                          <div className="flex flex-nowrap items-center justify-end gap-btn">
                             <Button
                               size="sm"
                               variant="outline"
@@ -738,6 +721,7 @@ export default function InventoryPage() {
                               onClick={() => openStockCardDialog(p)}
                               className="h-8 text-xs text-slate-500 hover:text-slate-900 hover:bg-slate-100 px-2 rounded-lg"
                               title="ดูประวัติสต็อกการ์ด"
+                              aria-label={`ประวัติสต็อกการ์ด ${p.name}`}
                             >
                               <History className="w-3.5 h-3.5" />
                             </Button>
@@ -884,15 +868,15 @@ export default function InventoryPage() {
             <Table className="w-full">
               <TableHeader className="bg-slate-50/90 border-b border-slate-200">
                 <TableRow>
-                  <TableHead className="w-[15%] text-slate-600 font-bold text-xs uppercase">วัน-เวลา</TableHead>
-                  <TableHead className="w-[25%] text-slate-600 font-bold text-xs uppercase">สินค้า</TableHead>
-                  <TableHead className="w-[15%] text-slate-600 font-bold text-xs uppercase">ประเภท</TableHead>
-                  <TableHead className="w-[10%] text-right text-slate-600 font-bold text-xs uppercase">จำนวนที่เปลี่ยน</TableHead>
-                  <TableHead className="w-[12%] text-right text-slate-600 font-bold text-xs uppercase">
-                    ก่อนหน้า ➔ คงเหลือ
+                  <TableHead className="text-slate-600 font-bold text-xs">วัน-เวลา</TableHead>
+                  <TableHead className="min-w-44 xl:min-w-56 text-slate-600 font-bold text-xs">สินค้า</TableHead>
+                  <TableHead className="text-slate-600 font-bold text-xs">ประเภท</TableHead>
+                  <TableHead className="text-right text-slate-600 font-bold text-xs">เปลี่ยน</TableHead>
+                  <TableHead className="text-right text-slate-600 font-bold text-xs">
+                    ก่อน ➔ คงเหลือ
                   </TableHead>
-                  <TableHead className="w-[10%] text-slate-600 font-bold text-xs uppercase">เอกสารอ้างอิง</TableHead>
-                  <TableHead className="w-[13%] text-slate-600 font-bold text-xs uppercase">หมายเหตุ / ผู้ทำ</TableHead>
+                  <TableHead className="text-slate-600 font-bold text-xs">เอกสารอ้างอิง</TableHead>
+                  <TableHead className="min-w-40 text-slate-600 font-bold text-xs">หมายเหตุ / ผู้ทำ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -907,28 +891,28 @@ export default function InventoryPage() {
                     const isPositive = m.quantityChange > 0;
                     return (
                       <TableRow key={m.id} className="hover:bg-slate-50 border-slate-100 text-xs">
-                        <TableCell className="font-medium text-slate-600 py-3.5">
+                        <TableCell className="font-medium text-slate-600 whitespace-nowrap">
                           {formatDate(m.createdAt)}
                         </TableCell>
-                        <TableCell className="py-3.5">
-                          <div className="font-bold text-slate-900 text-sm">{m.productName}</div>
+                        <TableCell className="">
+                          <div className="font-bold text-slate-900 text-[13px] line-clamp-2 break-words" title={m.productName}>{m.productName}</div>
                           <div className="text-[11px] text-slate-400 font-mono">{m.sku}</div>
                         </TableCell>
-                        <TableCell className="py-3.5">{getMovementBadge(m.type)}</TableCell>
-                        <TableCell className="py-3.5 text-right font-extrabold text-sm">
+                        <TableCell className="">{getMovementBadge(m.type)}</TableCell>
+                        <TableCell className="text-right font-extrabold text-sm whitespace-nowrap">
                           <span className={isPositive ? 'text-emerald-600' : 'text-rose-600'}>
                             {isPositive ? `+${m.quantityChange.toLocaleString()}` : m.quantityChange.toLocaleString()}{' '}
                             <span className="text-xs font-normal text-slate-500">{m.unitName}</span>
                           </span>
                         </TableCell>
-                        <TableCell className="py-3.5 text-right font-medium">
+                        <TableCell className="text-right font-medium whitespace-nowrap">
                           <span className="text-slate-500">{m.previousStock}</span> ➔{' '}
                           <b className="text-slate-900 font-bold">{m.currentStock}</b>
                         </TableCell>
-                        <TableCell className="py-3.5 font-mono font-semibold text-slate-700">
+                        <TableCell className="font-mono whitespace-nowrap font-semibold text-slate-700">
                           {m.referenceNo || '-'}
                         </TableCell>
-                        <TableCell className="py-3.5">
+                        <TableCell className="">
                           <div className="text-slate-700 font-medium">{m.reason || '-'}</div>
                           <div className="text-[11px] text-slate-400">โดย: {m.userName || 'ระบบ'}</div>
                         </TableCell>
@@ -1059,16 +1043,16 @@ export default function InventoryPage() {
 
                     return (
                       <TableRow key={p.id} className="hover:bg-slate-50 border-slate-100">
-                        <TableCell className="py-3">
+                        <TableCell className="">
                           <span className="font-bold text-slate-900 text-sm block">{p.name}</span>
                           <span className="text-xs text-slate-400 font-mono">SKU: {p.sku}</span>
                         </TableCell>
-                        <TableCell className="py-3">
+                        <TableCell className="">
                           <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-xs">
                             {getCategoryName(p.categoryId)}
                           </Badge>
                         </TableCell>
-                        <TableCell className="py-3 text-right font-extrabold text-base">
+                        <TableCell className="text-right font-extrabold text-base">
                           {isNegative ? (
                             <span className="inline-flex items-center gap-1 font-extrabold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
                               <span className="text-xs">🔻</span> {stock.toLocaleString()} {p.unit || 'ชิ้น'}
@@ -1079,25 +1063,25 @@ export default function InventoryPage() {
                             </span>
                           )}
                         </TableCell>
-                        <TableCell className="py-3 text-right text-slate-600 font-semibold text-xs">
+                        <TableCell className="text-right text-slate-600 font-semibold text-xs">
                           {minAlert.toLocaleString()} {p.unit || 'ชิ้น'}
                         </TableCell>
-                        <TableCell className="py-3 text-center">
+                        <TableCell className="text-center">
                           {isNegative ? (
                             <Badge className="bg-rose-600 text-white border-rose-700 text-xs font-bold shadow-2xs">
                               🔻 ติดลบ
                             </Badge>
                           ) : isOut ? (
-                            <Badge className="bg-rose-100 text-rose-700 border-rose-200 text-xs font-bold">
+                            <Badge className="bg-rose-100 text-rose-700 border-rose-200 text-xs font-bold whitespace-nowrap">
                               หมดสต็อก
                             </Badge>
                           ) : (
-                            <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold">
+                            <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold whitespace-nowrap">
                               ⚠️ ใกล้หมด
                             </Badge>
                           )}
                         </TableCell>
-                        <TableCell className="py-3 text-center">
+                        <TableCell className="text-center">
                           <Link href="/purchase-orders">
                             <Button
                               size="sm"
@@ -1380,11 +1364,11 @@ export default function InventoryPage() {
               <Table>
                 <TableHeader className="bg-slate-50">
                   <TableRow className="border-slate-200">
-                    <TableHead className="text-slate-700 font-bold text-sm py-3.5">วัน-เวลา</TableHead>
-                    <TableHead className="text-slate-700 font-bold text-sm py-3.5">ประเภท</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm py-3.5">จำนวน</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm py-3.5">คงเหลือ</TableHead>
-                    <TableHead className="text-slate-700 font-bold text-sm py-3.5">เอกสาร/เหตุผล</TableHead>
+                    <TableHead className="text-slate-700 font-bold text-sm">วัน-เวลา</TableHead>
+                    <TableHead className="text-slate-700 font-bold text-sm">ประเภท</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">จำนวน</TableHead>
+                    <TableHead className="text-right text-slate-700 font-bold text-sm">คงเหลือ</TableHead>
+                    <TableHead className="text-slate-700 font-bold text-sm">เอกสาร/เหตุผล</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1411,15 +1395,15 @@ export default function InventoryPage() {
                         const isPositive = m.quantityChange > 0;
                         return (
                           <TableRow key={m.id} className="hover:bg-slate-50 text-sm border-slate-100">
-                            <TableCell className="font-medium text-slate-700 py-3">{formatDate(m.createdAt)}</TableCell>
-                            <TableCell className="py-3">{getMovementBadge(m.type)}</TableCell>
-                            <TableCell className="text-right font-black py-3">
+                            <TableCell className="font-medium text-slate-700">{formatDate(m.createdAt)}</TableCell>
+                            <TableCell className="">{getMovementBadge(m.type)}</TableCell>
+                            <TableCell className="text-right font-black">
                               <span className={isPositive ? 'text-emerald-600' : 'text-rose-600'}>
                                 {isPositive ? `+${m.quantityChange}` : m.quantityChange} {m.unitName}
                               </span>
                             </TableCell>
-                            <TableCell className="text-right font-black text-slate-900 py-3 text-base">{m.currentStock} {stockCardProduct?.unit || 'ชิ้น'}</TableCell>
-                            <TableCell className="text-slate-700 py-3">
+                            <TableCell className="text-right font-black text-slate-900 text-base">{m.currentStock} {stockCardProduct?.unit || 'ชิ้น'}</TableCell>
+                            <TableCell className="text-slate-700">
                               {m.referenceNo && <b className="font-mono text-slate-900 mr-1.5">{m.referenceNo}:</b>}
                               {m.reason || '-'}
                             </TableCell>
