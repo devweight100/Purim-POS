@@ -176,3 +176,16 @@ Tests: vitest `product-columns.test.ts`; Playwright `21-table-layout.spec.ts` (p
 sidebar states, level names, price sort, keyboard + chevron; sidebar button / Ctrl+B / reload / rail by Tab / flyout
 Enter-↓-Escape / phone drawer; 24 table pages without sideways scroll and with 8 / 16 px spacing at 3 sizes in both
 sidebar states); `13-keyboard-layout` and `20-product-sku` follow the new price columns.
+
+## Round 4 (2026-11-18): products row, payables bills table, document numbers + dates
+
+Plan (resume from "Next" after a restart):
+- A. Products: no thumbnail / icon, no barcodes in the row (search by barcode / SKU unchanged), narrow category
+  column (chip, truncated, tooltip), quantity + unit aligned in both sidebar states.
+- B. Payables bills: columns เลขที่เอกสาร / วันที่ / บริษัท / ยอดเอกสาร with a paid progress bar; one "⋯" row menu
+  (keyboard); row click / Enter opens the bill details (everything else moved there).
+- C. Document numbers `<PP><YYMM>-<NNNN>` (2-letter prefix, CE 2-digit year, monthly 4-digit counter in a DB table),
+  docs/document-numbers.md; short Thai list dates without time (one formatter), time only in details / orders /
+  receipts.
+
+Next: A.
