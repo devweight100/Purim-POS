@@ -366,7 +366,7 @@ export default function FinancePage() {
       <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="font-bold text-slate-900">เงินเข้า - ออก</h2>
-          <div className="flex gap-1">
+          <div className="flex gap-btn">
             {([['today', 'วันนี้'], ['7d', '7 วัน'], ['month', 'เดือนนี้']] as [Range, string][]).map(([r, l]) => (
               <Button key={r} size="sm" variant={range === r ? 'default' : 'outline'} onClick={() => changeRange(r)}>{l}</Button>
             ))}
