@@ -1,4 +1,5 @@
 import { businessTransaction } from '../prisma/business-transaction';
+import { PO_ITEMS, withDocNames } from '../purchase-orders/purchase-orders.service';
 import { grossPerUnit } from '../../../shared/src/po-calc';
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -271,7 +272,7 @@ export class PayablesService {
           where: { id: { in: pageIds } },
           include: {
             supplier: true,
-            items: { include: { product: true } },
+            items: PO_ITEMS,
             voucherItems: {
               where: { voucher: { status: VoucherStatus.ACTIVE } },
               include: { voucher: { include: { debitNotes: { select: { returnNoteId: true, amountDeducted: true } } } } },
@@ -306,7 +307,8 @@ export class PayablesService {
         alreadyDiscountAmount: f.alreadyDiscountAmount,
         remainingPayable: f.remainingPayable,
         itemsCount: rest.items.length,
-        items: rest.items,
+        // line names for the PO's stored name mode (bill details show the same names as the PO / its PDF)
+        items: withDocNames(po).items,
         deductedReturns: [],
         payments: voucherItems.map((vi) => paymentEntry(po.id, f.totalAmount, vi.voucher, vi.amountPaid)),
       }];

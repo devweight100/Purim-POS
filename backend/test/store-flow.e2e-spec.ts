@@ -952,7 +952,7 @@ d('store flow (e2e)', () => {
         expect(row.images.map((i: any) => pick(i, ['id', 'name', 'isCover', 'sortOrder']))).toEqual(d.images.map((i: any) => pick(i, ['id', 'name', 'isCover', 'sortOrder'])));
         const slim = (e: any) => ({ ...e, supplier: e.supplier ? pick(e.supplier, ['id', 'name']) : null });
         expect(row.supplierEntries.map(slim)).toEqual(d.supplierEntries.map(slim));
-        expect(row.suppliers).toEqual(d.suppliers.map((x: any) => ({ ...pick(x, ['id', 'supplierId', 'supplierSku', 'unitCost', 'isPreferred']), supplier: pick(x.supplier, ['id', 'name']) })));
+        expect(row.suppliers).toEqual(d.suppliers.map((x: any) => ({ ...pick(x, ['id', 'supplierId', 'supplierSku', 'supplierProductName', 'unitCost', 'isPreferred']), supplier: pick(x.supplier, ['id', 'name']) })));
         expect(row.bundleItems).toEqual(d.bundleItems.map((b: any) => ({ ...pick(b, ['id', 'childProductId', 'quantity']), childProduct: pick(b.childProduct, ['id', 'name', 'sku', 'unit', 'basePrice', 'priceLevel1']) })));
       }
       const fullRow = list.find((p: any) => p.id === full.id);
@@ -2915,6 +2915,180 @@ d('store flow (e2e)', () => {
       expect((list.data ?? list).map((o: any) => o.orderNumber)).toContain('ORD-261000077');
       const newOne = (await api('get', '/orders?search=IN2609-0002&limit=5', A).expect(200)).body;
       expect((newOne.data ?? newOne).map((o: any) => o.orderNumber)).toEqual(['IN2609-0002']);
+    });
+  });
+
+  describe('product names: ชื่อผู้ผลิต, supplier product names / codes, document name mode (docs/product-names.md)', () => {
+    const db = new PrismaClient();
+    afterAll(async () => { await db.$disconnect(); });
+    const pn: Record<string, any> = {};
+
+    it('create + edit save the manufacturer name and the supplier name / code (trimmed, limits)', async () => {
+      pn.s1 = (await api('post', '/suppliers', A, { name: 'บริษัท ท่อไทย ซัพพลาย จำกัด' }).expect(201)).body;
+      pn.s2 = (await api('post', '/suppliers', A, { name: 'หจก. วัสดุก่อสร้างรุ่งเรือง' }).expect(201)).body;
+      const created = (await api('post', '/products', A, {
+        name: 'ท่อพีวีซี ชั้น 8.5 ขนาด 1 นิ้ว ตราช้าง', basePrice: 120, priceLevel1: 120, costPrice: 80, unit: 'เส้น',
+        manufacturerName: '  SCG   PVC Pipe Class 8.5  1"  ',
+        supplierEntries: [
+          { supplierId: pn.s1.id, unitCost: 80, supplierProductName: '  ท่อ PVC 8.5 1นิ้ว (ฟ้า) ', supplierSku: ' TT-PV0185 ' },
+          { supplierId: pn.s2.id, unitCost: 82, supplierSku: 'RR-5521' },
+        ],
+      }).expect(201)).body;
+      pn.pipe = created;
+      const full = (await api('get', `/products/${created.id}`, A).expect(200)).body;
+      expect(full.manufacturerName).toBe('SCG PVC Pipe Class 8.5 1"');
+      const bySupplier = Object.fromEntries(full.supplierEntries.map((e: any) => [e.supplierId, e]));
+      expect(bySupplier[pn.s1.id]).toMatchObject({ supplierProductName: 'ท่อ PVC 8.5 1นิ้ว (ฟ้า)', supplierSku: 'TT-PV0185' });
+      expect(bySupplier[pn.s2.id]).toMatchObject({ supplierProductName: '', supplierSku: 'RR-5521' });
+      // the catalogue row (POS / product page / export) carries the same names
+      const rows = (await api('get', `/products?search=${encodeURIComponent('ท่อพีวีซี ชั้น 8.5')}`, A).expect(200)).body;
+      const row = rows.find((r: any) => r.id === created.id);
+      expect(row.manufacturerName).toBe('SCG PVC Pipe Class 8.5 1"');
+      expect(row.supplierEntries.find((e: any) => e.supplierId === pn.s1.id).supplierProductName).toBe('ท่อ PVC 8.5 1นิ้ว (ฟ้า)');
+      // edit: change, then clear (null / blank)
+      await api('patch', `/products/${created.id}`, A, { manufacturerName: 'SCG PVC Pipe 8.5 1in' }).expect(200);
+      expect((await api('get', `/products/${created.id}`, A)).body.manufacturerName).toBe('SCG PVC Pipe 8.5 1in');
+      await api('patch', `/products/${created.id}`, A, { manufacturerName: null }).expect(200);
+      expect((await api('get', `/products/${created.id}`, A)).body.manufacturerName).toBeNull();
+      await api('patch', `/products/${created.id}`, A, {
+        manufacturerName: 'SCG PVC Pipe Class 8.5 1"',
+        supplierEntries: [
+          { supplierId: pn.s1.id, unitCost: 80, supplierProductName: 'ท่อ PVC 8.5 1นิ้ว (ฟ้า)', supplierSku: 'TT-PV0185' },
+          { supplierId: pn.s2.id, unitCost: 82, supplierSku: 'RR-5521', supplierProductName: '   ' },
+        ],
+      }).expect(200);
+      const again = (await api('get', `/products/${created.id}`, A)).body;
+      expect(again.supplierEntries.find((e: any) => e.supplierId === pn.s2.id).supplierProductName).toBe('');
+      // limits: 200 / 200 / 100 characters
+      await api('patch', `/products/${created.id}`, A, { manufacturerName: 'ก'.repeat(201) }).expect(400);
+      await api('patch', `/products/${created.id}`, A, { supplierEntries: [{ supplierId: pn.s1.id, supplierSku: 'X'.repeat(101) }] }).expect(400);
+      await api('post', '/products', A, { name: 'ยาวเกิน', basePrice: 1, supplierEntries: [{ supplierId: pn.s1.id, supplierProductName: 'ข'.repeat(201) }] }).expect(400);
+      expect((await api('get', `/products/${created.id}`, A)).body.manufacturerName).toBe('SCG PVC Pipe Class 8.5 1"');
+      // a product with only a manufacturer name, and a plain one, both from supplier 1
+      pn.cement = (await api('post', '/products', A, { name: 'ปูนซีเมนต์ผสม ตราเสือ 50 กก.', basePrice: 150, costPrice: 120, manufacturerName: 'TPI Mortar M200 50kg', supplierEntries: [{ supplierId: pn.s1.id, unitCost: 120 }] }).expect(201)).body;
+      pn.plain = (await api('post', '/products', A, { name: 'ข้อต่อตรง PVC 1 นิ้ว', basePrice: 15, costPrice: 9, supplierEntries: [{ supplierId: pn.s1.id, unitCost: 9, supplierSku: 'TT-CN01' }] }).expect(201)).body;
+    });
+
+    it('import: ชื่อผู้ผลิต column updates / creates; blank keeps it; export -> import round trip changes nothing', async () => {
+      const r = (await api('post', '/products/bulk-upsert', A, { products: [
+        { rowNo: 2, id: pn.plain.id, name: pn.plain.name, manufacturerName: '  Thai Pipe Coupling 1"  ' },
+        { rowNo: 3, sku: 'PN-IMPORT-001', name: 'สายไฟ THW 1x2.5 ตร.มม. ม้วน 100 ม.', unit: 'ม้วน', priceLevel1: 1590, manufacturerName: 'Yazaki THW 1x2.5 sq.mm 100m' },
+        { rowNo: 4, id: pn.cement.id, name: pn.cement.name },
+      ] }).expect(201)).body;
+      expect(r).toMatchObject({ created: 1, updated: 2 });
+      expect((await api('get', `/products/${pn.plain.id}`, A)).body.manufacturerName).toBe('Thai Pipe Coupling 1"');
+      expect((await api('get', `/products/${pn.cement.id}`, A)).body.manufacturerName).toBe('TPI Mortar M200 50kg'); // blank = unchanged
+      const wire = await db.product.findUniqueOrThrow({ where: { sku: 'PN-IMPORT-001' } });
+      expect(wire.manufacturerName).toBe('Yazaki THW 1x2.5 sq.mm 100m');
+      pn.wire = wire;
+      // round trip: what the export reads (catalogue rows) imported back = the same values
+      const rows = (await api('get', '/products', A)).body.filter((x: any) => [pn.plain.id, pn.cement.id, wire.id].includes(x.id));
+      const before = await db.product.findMany({ where: { id: { in: rows.map((x: any) => x.id) } }, select: { id: true, manufacturerName: true, updatedAt: true } });
+      await api('post', '/products/bulk-upsert', A, { products: rows.map((x: any, i: number) => ({ rowNo: i + 2, id: x.id, sku: x.sku, name: x.name, manufacturerName: x.manufacturerName })) }).expect(201);
+      const after = await db.product.findMany({ where: { id: { in: rows.map((x: any) => x.id) } }, select: { id: true, manufacturerName: true } });
+      expect(after.sort((a, b) => a.id.localeCompare(b.id))).toEqual(before.map(({ id, manufacturerName }) => ({ id, manufacturerName })).sort((a, b) => a.id.localeCompare(b.id)));
+      // a too-long name names the row, nothing saved
+      const bad = await api('post', '/products/bulk-upsert', A, { products: [{ rowNo: 7, sku: 'PN-IMPORT-002', name: 'x', manufacturerName: 'ก'.repeat(201) }] }).expect(400);
+      expect(bad.body.message).toContain('แถวที่ 7');
+      expect(await db.product.count({ where: { sku: 'PN-IMPORT-002' } })).toBe(0);
+    });
+
+    it('every search finds by manufacturer name and by supplier product name / code (any case)', async () => {
+      const ids = (body: any) => (Array.isArray(body) ? body : body.data).map((x: any) => x.id);
+      for (const q of ['scg pvc pipe', 'TT-PV0185', 'tt-pv0185', '1นิ้ว (ฟ้า)', 'RR-5521']) {
+        expect({ q, page: ids((await api('get', `/products/page?q=${encodeURIComponent(q)}`, A).expect(200)).body) }).toEqual({ q, page: [pn.pipe.id] });
+        expect({ q, list: ids((await api('get', `/products?search=${encodeURIComponent(q)}`, A).expect(200)).body) }).toEqual({ q, list: [pn.pipe.id] });
+        expect({ q, m: ids((await api('get', `/products/lookup?q=${encodeURIComponent(q)}`, A).expect(200)).body) }).toEqual({ q, m: [pn.pipe.id] });
+      }
+      // mobile lookup carries the other names for the "ผู้ผลิต: … / รหัสผู้ขาย: …" hint
+      const m = (await api('get', `/products/lookup?q=${encodeURIComponent('yazaki')}`, A).expect(200)).body.data[0];
+      expect(m).toMatchObject({ id: pn.wire.id, name: pn.wire.name, manufacturerName: 'Yazaki THW 1x2.5 sq.mm 100m' });
+      expect(ids((await api('get', '/products/page?q=TT-CN01', A)).body)).toEqual([pn.plain.id]);
+      // the new columns have trigram indexes (pg_trgm installed on the test server)
+      const idx = await db.$queryRaw<{ indexname: string }[]>`SELECT indexname FROM pg_indexes WHERE indexname IN ('products_manufacturer_name_trgm_idx', 'product_suppliers_supplier_sku_trgm_idx', 'product_suppliers_supplier_product_name_trgm_idx') ORDER BY 1`;
+      expect(idx.map((i) => i.indexname)).toEqual(['product_suppliers_supplier_product_name_trgm_idx', 'product_suppliers_supplier_sku_trgm_idx', 'products_manufacturer_name_trgm_idx']);
+    });
+
+    it('PO name mode: default from settings, stored, per-line names (supplier -> manufacturer -> shop), switchable, reprint stays', async () => {
+      expect((await api('get', '/settings', A)).body.supplierDocNameMode).toBe('SHOP');
+      await api('patch', '/settings', A, { supplierDocNameMode: 'BOGUS' }).expect(400);
+      await api('patch', '/settings', A, { supplierDocNameMode: 'SUPPLIER' }).expect(200);
+      const items = [
+        { productId: pn.pipe.id, quantity: 10, unitCost: 80 },
+        { productId: pn.cement.id, quantity: 5, unitCost: 120 },
+        { productId: pn.plain.id, quantity: 20, unitCost: 9 },
+      ];
+      const po = (await api('post', '/purchase-orders', A, { supplierId: pn.s1.id, status: 'ISSUED', items }).expect(201)).body;
+      expect(po.docNameMode).toBe('SUPPLIER');
+      const lines = (p: any) => p.items.map((i: any) => [i.productId, i.docName, i.docCode]).sort((a: any, b: any) => a[0].localeCompare(b[0]));
+      const supplierNames = [
+        [pn.pipe.id, 'ท่อ PVC 8.5 1นิ้ว (ฟ้า)', 'TT-PV0185'],
+        [pn.cement.id, 'TPI Mortar M200 50kg', null],
+        [pn.plain.id, 'Thai Pipe Coupling 1"', 'TT-CN01'],
+      ].sort((a: any, b: any) => a[0].localeCompare(b[0]));
+      expect(lines(po)).toEqual(supplierNames);
+      // the same lines from the other supplier: its code, no name of its own -> manufacturer name
+      const po2 = (await api('post', '/purchase-orders', A, { supplierId: pn.s2.id, docNameMode: 'SUPPLIER', items: [{ productId: pn.pipe.id, quantity: 1, unitCost: 82 }] }).expect(201)).body;
+      expect(lines(po2)).toEqual([[pn.pipe.id, 'SCG PVC Pipe Class 8.5 1"', 'RR-5521']]);
+      // the stored mode wins over a later settings change (reprints are consistent)
+      await api('patch', '/settings', A, { supplierDocNameMode: 'SHOP' }).expect(200);
+      expect(lines((await api('get', `/purchase-orders/${po.id}`, A).expect(200)).body)).toEqual(supplierNames);
+      // switch this PO to the shop names, any status; then back
+      await api('patch', `/purchase-orders/${po.id}/doc-name-mode`, A, { mode: 'NOPE' }).expect(400);
+      const shop = (await api('patch', `/purchase-orders/${po.id}/doc-name-mode`, A, { mode: 'SHOP' }).expect(200)).body;
+      expect(shop.docNameMode).toBe('SHOP');
+      expect(lines(shop)).toEqual([[pn.pipe.id, pn.pipe.name, null], [pn.cement.id, pn.cement.name, null], [pn.plain.id, pn.plain.name, null]].sort((a: any, b: any) => a[0].localeCompare(b[0])));
+      expect((await api('get', `/purchase-orders?search=${po.poNumber}`, A)).body.data[0].items.every((i: any) => [pn.pipe.name, pn.cement.name, pn.plain.name].includes(i.docName))).toBe(true);
+      await api('patch', `/purchase-orders/${po.id}/doc-name-mode`, A, { mode: 'SUPPLIER' }).expect(200);
+      // receiving answers with the same names; the PO PDF opened from the document search too
+      const full = (await api('get', `/purchase-orders/${po.id}`, A)).body;
+      const rec = (await api('post', `/purchase-orders/${po.id}/receive`, A, { clientReceiptId: randomUUID(), items: full.items.map((i: any) => ({ purchaseOrderItemId: i.id, receivedQty: Number(i.quantity), unitCost: Number(i.unitCost) })) }).expect(201)).body;
+      expect(lines(rec)).toEqual(supplierNames);
+      const found = (await api('get', `/documents/search?q=${po.poNumber}`, A)).body.find((d: any) => d.docNumber === po.poNumber);
+      expect(lines(found.rawData)).toEqual(supplierNames);
+      // a new PO without a mode now takes the SHOP default; customer documents are untouched (receipt = shop name)
+      const po3 = (await api('post', '/purchase-orders', A, { supplierId: pn.s1.id, items: [{ productId: pn.pipe.id, quantity: 1, unitCost: 80 }] }).expect(201)).body;
+      expect(po3.docNameMode).toBe('SHOP');
+      expect(po3.items[0].docName).toBe(pn.pipe.name);
+      pn.po = po;
+    });
+
+    it('supplier return note: name mode stored, lines named like the PO, switchable', async () => {
+      const note = (await api('post', '/supplier-returns', A, {
+        supplierId: pn.s1.id, docNameMode: 'SUPPLIER',
+        items: [{ productId: pn.pipe.id, productName: pn.pipe.name, quantity: 2, unitCost: 80, itemType: 'OVERSTOCK' }, { productId: pn.cement.id, productName: pn.cement.name, quantity: 1, unitCost: 120, itemType: 'OVERSTOCK' }],
+      }).expect(201)).body;
+      expect(note.docNameMode).toBe('SUPPLIER');
+      const names = (n: any) => n.items.map((i: any) => [i.docName, i.docCode]);
+      expect(names(note)).toEqual([['ท่อ PVC 8.5 1นิ้ว (ฟ้า)', 'TT-PV0185'], ['TPI Mortar M200 50kg', null]]);
+      expect(names((await api('get', `/supplier-returns/${note.returnNumber}`, A)).body)).toEqual(names(note));
+      const shop = (await api('patch', `/supplier-returns/${note.returnNumber}/doc-name-mode`, A, { mode: 'SHOP' }).expect(200)).body;
+      expect(names(shop)).toEqual([[pn.pipe.name, null], [pn.cement.name, null]]);
+      const listed = (await api('get', `/supplier-returns?supplierId=${pn.s1.id}`, A)).body.data.find((n: any) => n.returnNumber === note.returnNumber);
+      expect(names(listed)).toEqual([[pn.pipe.name, null], [pn.cement.name, null]]);
+    });
+
+    it('invoice-line matching helper: supplier code exact, then name similarity; limited to the supplier / PO', async () => {
+      const match = async (q: string) => (await api('get', `/purchase-orders/match-line?${q}`, A).expect(200)).body;
+      const byCode = await match(`supplierId=${pn.s1.id}&text=${encodeURIComponent(' tt-pv0185 ')}`);
+      expect(byCode[0]).toMatchObject({ productId: pn.pipe.id, matchedBy: 'supplierCode', score: 1 });
+      // the name as printed on the supplier's invoice, slightly different
+      const byName = await match(`supplierId=${pn.s1.id}&text=${encodeURIComponent('ท่อ PVC 8.5 1 นิ้ว ฟ้า')}`);
+      expect(byName[0]).toMatchObject({ productId: pn.pipe.id, matchedBy: 'supplierName' });
+      expect(byName[0].score).toBeGreaterThan(0.3);
+      const byMaker = await match(`supplierId=${pn.s1.id}&text=${encodeURIComponent('TPI MORTAR M200')}`);
+      expect(byMaker[0]).toMatchObject({ productId: pn.cement.id, matchedBy: 'manufacturerName' });
+      const byBarcode = await match(`supplierId=${pn.s1.id}&text=${pn.plain.sku}`);
+      expect(byBarcode[0]).toMatchObject({ productId: pn.plain.id, matchedBy: 'barcode' });
+      // another supplier's code is not a match for this supplier; the wire is not this supplier's product
+      expect((await match(`supplierId=${pn.s1.id}&text=RR-5521`)).find((m: any) => m.matchedBy === 'supplierCode')).toBeUndefined();
+      expect((await match(`supplierId=${pn.s1.id}&text=${encodeURIComponent('Yazaki THW 1x2.5')}`)).map((m: any) => m.productId)).not.toContain(pn.wire.id);
+      // limited to one PO's lines, with the line id
+      const onPo = await match(`supplierId=${pn.s1.id}&poId=${pn.po.id}&text=TT-CN01`);
+      expect(onPo[0]).toMatchObject({ productId: pn.plain.id, matchedBy: 'supplierCode' });
+      expect(onPo[0].purchaseOrderItemId).toBe(pn.po.items.find((i: any) => i.productId === pn.plain.id).id);
+      await api('get', `/purchase-orders/match-line?text=x`, A).expect(400);
+      await api('get', `/purchase-orders/match-line?supplierId=${pn.s1.id}&text=x`, C).expect(403);
     });
   });
 });
