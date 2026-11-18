@@ -2246,7 +2246,8 @@ d('store flow (e2e)', () => {
       expect(me.member).toBeNull(); // never linked by phone alone
       const reqs = (await api('get', '/online-shop/link-requests', C).expect(200)).body;
       const r = reqs.find((x: any) => x.lineUserId === 'dev-member1');
-      expect(r.matches).toEqual([{ id: shop.member.id, name: 'ช่างสมศักดิ์ ออนไลน์', phone: '089-555-0001' }]);
+      // the member's level (and its shop name) is shown to the staff approving
+      expect(r.matches).toEqual([{ id: shop.member.id, name: 'ช่างสมศักดิ์ ออนไลน์', phone: '089-555-0001', priceLevel: 3, levelName: 'ส่งพิเศษช่าง' }]);
       // a seller without discount rights may see the request but not approve it (approval grants member prices)
       await api('post', '/auth/register', A, { username: 'seller1', password: 'Sell@test99', fullName: 'พนักงานขายล้วน', role: 'CASHIER', permissions: ['POS_SELL'] }).expect(201);
       const S = (await api('post', '/auth/login', undefined, { username: 'seller1', password: 'Sell@test99' }).expect(201)).body.access_token;
@@ -2269,6 +2270,52 @@ d('store flow (e2e)', () => {
       shop.memberOrder = o;
       // a rejected request can be made again; a linked account cannot ask again
       await pub('post', '/link', s.token, { phone: '0895550001' }).expect(400);
+    });
+
+    it('member price follows the member level at once, same session; answers never cached; level shown (owner 2026-11-18)', async () => {
+      const tok = shop.memberToken;
+      const cementQ = '/products?q=ปูนซีเมนต์ออนไลน์';
+      // shop answers depend on the session: never stored by a browser / proxy / Cloudflare
+      for (const path of [cementQ, '/me', '/categories', '/config']) {
+        const res = await pub('get', path, tok).expect(200);
+        expect(res.headers['cache-control']).toContain('no-store');
+        expect(res.headers.vary).toContain('Authorization');
+      }
+      const q = await pub('post', '/quote', tok, { items: [{ productId: shop.p1.id, unitId: null, quantity: 1 }] }).expect(201);
+      expect(q.headers['cache-control']).toContain('no-store');
+      expect(q.body).toMatchObject({ level: 3, subtotal: 85 });
+      // photos stay cacheable for everyone
+      const cement = (await pub('get', cementQ, tok).expect(200)).body.items[0];
+      const img = await (http as any).get(cement.imageUrl).expect(200);
+      expect(img.headers['cache-control']).toContain('public');
+      expect(String(img.headers.vary || '')).not.toContain('Authorization');
+      // levelPrice (members only): which units carry the member's own price; guests get no such field
+      expect(cement.units.map((u: any) => [u.price, u.levelPrice])).toEqual([[85, true], [480, true], [2040, true]]);
+      const sand = (await pub('get', '/products?q=ทรายออนไลน์', tok).expect(200)).body.items[0];
+      expect(sand.units).toEqual([{ id: null, name: 'ถุง', price: 50, inStock: false, levelPrice: false }]); // no ราคา 3 -> retail
+      expect((await pub('get', cementQ, shop.guest).expect(200)).body.items[0].units.every((u: any) => !('levelPrice' in u))).toBe(true);
+      // staff change the level on the customers page: the SAME session sees it on the next request
+      await api('patch', `/customers/${shop.member.id}`, A, { name: 'ช่างสมศักดิ์ ออนไลน์', priceLevel: 2 }).expect(200);
+      expect((await pub('get', '/me', tok).expect(200)).body.member).toMatchObject({ level: 2, levelName: 'ราคาส่ง' });
+      const lv2 = (await pub('get', cementQ, tok).expect(200)).body;
+      expect(lv2.level).toBe(2);
+      expect(lv2.items[0].units.map((u: any) => u.price)).toEqual([90, 540, 2000]);
+      expect((await pub('post', '/quote', tok, { items: [{ productId: shop.p1.id, unitId: shop.case, quantity: 1 }] }).expect(201)).body).toMatchObject({ level: 2, subtotal: 2000 });
+      // a string level from an old client is read the same way
+      await api('patch', `/customers/${shop.member.id}`, A, { name: 'ช่างสมศักดิ์ ออนไลน์', priceLevel: '2' }).expect(200);
+      expect((await pub('get', cementQ, tok).expect(200)).body.level).toBe(2);
+      await api('patch', `/customers/${shop.member.id}`, A, { name: 'ช่างสมศักดิ์ ออนไลน์', priceLevel: 3 }).expect(200);
+      expect((await pub('get', cementQ, tok).expect(200)).body.items[0].units[0].price).toBe(85);
+      // customers page note: products without a price at each member level (any staff, counts only)
+      const cov = (await api('get', '/online-shop/level-coverage', C).expect(200)).body;
+      expect(cov.levelNames).toMatchObject({ 1: 'ราคาปลีก', 2: 'ราคาส่ง', 3: 'ส่งพิเศษช่าง' });
+      expect(cov.total).toBeGreaterThan(0);
+      await api('patch', `/products/${shop.p2.id}`, A, { priceLevel2: 45 }).expect(200);
+      const cov2 = (await api('get', '/online-shop/level-coverage', C).expect(200)).body;
+      expect(cov2.missing[2]).toBe(cov.missing[2] - 1);
+      expect(cov2.missing[3]).toBe(cov.missing[3]);
+      await api('patch', `/products/${shop.p2.id}`, A, { priceLevel2: null }).expect(200);
+      await (http as any).get('/api/online-shop/level-coverage').expect(401);
     });
 
     it('staff: guest delivery needs a fee before accepting; edits re-price on the server; LINE messages are pushed', async () => {
@@ -2379,6 +2426,20 @@ d('store flow (e2e)', () => {
       await (http as any).get(path.replace('a=100.00', 'a=1.00')).expect(404);
       await (http as any).get(path.slice(0, -3) + 'xyz').expect(404);
       expect((await api('get', `/online-shop/orders/${o.id}`, C).expect(200)).body.lineNotice).toContain('ส่ง LINE แล้ว');
+      // link approved -> LINE message with the member's price level name (owner 2026-11-18)
+      await pub('post', '/link', s.token, { phone: '0895550001' }, { 'cf-ray': 'abc' }).expect(201);
+      const req = (await api('get', '/online-shop/link-requests', A).expect(200)).body.find((x: any) => x.lineUserId === 'U1234567890abcdef');
+      const beforeLink = lineCalls.length;
+      await api('post', `/online-shop/link-requests/${req.id}/decide`, A, { approve: true, customerId: shop.member.id }).expect(201);
+      await new Promise((r) => setTimeout(r, 500));
+      const linkPush = lineCalls.slice(beforeLink).filter((c) => c.path === '/v2/bot/message/push').map((c) => JSON.parse(c.body));
+      expect(linkPush).toHaveLength(1);
+      expect(linkPush[0].to).toBe('U1234567890abcdef');
+      expect(linkPush[0].messages[0].text).toContain('ช่างสมศักดิ์ ออนไลน์');
+      expect(linkPush[0].messages[0].text).toContain('ส่งพิเศษช่าง');
+      expect(linkPush[0].messages[0].text).toContain('https://shop.example.com/shop');
+      expect((await pub('get', '/me', s.token, undefined, { 'cf-ray': 'abc' }).expect(200)).body.member).toMatchObject({ level: 3 });
+      await api('delete', '/online-shop/line/U1234567890abcdef', A).expect(200);
       // put the shop back in test mode for the rest of the suite
       await api('put', '/online-shop/config', A, { liffId: '', loginChannelId: '' }).expect(200);
     });
