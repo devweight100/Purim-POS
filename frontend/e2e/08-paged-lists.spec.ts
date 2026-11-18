@@ -10,7 +10,7 @@ test('products, customers and orders pages ask the server for one page at a time
   const token = await apiLogin(ADMIN);
   const tag = `PG${Date.now()}`;
   for (let i = 0; i < 55; i++) {
-    await api('POST', '/products', token, { name: `แบ่งหน้า ${tag} ${String(i).padStart(2, '0')}`, sku: `${tag}-${i}`, basePrice: 10 + i, priceLevel1: 10 + i, unit: 'ชิ้น' });
+    await api('POST', '/products', token, { name: `แบ่งหน้า ${tag} ${String(i).padStart(2, '0')}`, basePrice: 10 + i, priceLevel1: 10 + i, unit: 'ชิ้น' });
   }
   await api('POST', '/customers', token, { name: `ลูกค้าแบ่งหน้า ${tag}`, phone: `09${String(Date.now()).slice(-8)}` });
   const allProducts = await api<unknown[]>('GET', '/products', token);

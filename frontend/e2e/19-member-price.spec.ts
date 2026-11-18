@@ -52,10 +52,10 @@ async function searchFromHome(page: Page) {
 test.beforeAll(async () => {
   adminToken = await apiLogin(ADMIN);
   const cement = await api<{ id: string }>('POST', '/products', adminToken, {
-    name: CEMENT, sku: `MP-C-${TAG}`, unit: 'ถุง', basePrice: 200, priceLevel1: 200, priceLevel2: 180, costPrice: 120,
+    name: CEMENT, unit: 'ถุง', basePrice: 200, priceLevel1: 200, priceLevel2: 180, costPrice: 120,
     packagingUnits: [{ name: 'แพค', qtyPerPrev: 10, priceLevel1: 1900, priceLevel2: 1700 }],
   });
-  const sand = await api<{ id: string }>('POST', '/products', adminToken, { name: SAND, sku: `MP-S-${TAG}`, unit: 'ถุง', basePrice: 50, priceLevel1: 50, costPrice: 30 });
+  const sand = await api<{ id: string }>('POST', '/products', adminToken, { name: SAND, unit: 'ถุง', basePrice: 50, priceLevel1: 50, costPrice: 30 });
   for (const id of [cement.id, sand.id]) await api('POST', '/inventory/adjust', adminToken, { productId: id, type: 'ADD', amount: 100, reason: 'ปรับยอดเริ่มต้น' });
   await api('PUT', '/online-shop/config', adminToken, { enabled: true });
   await api('POST', '/customers', adminToken, { name: M1.name, phone: M1.phone, priceLevel: 2 });

@@ -12,7 +12,7 @@ import { api, apiLogin, uiLogin } from './helpers';
 test('claims page, claim stock, dashboard and supplier returns use the server claims queries', async ({ page }) => {
   const token = await apiLogin(ADMIN);
   const tag = `CLQ${Date.now()}`;
-  const product = await api<{ id: string }>('POST', '/products', token, { name: `เคลม ${tag}`, sku: `${tag}-P`, basePrice: 80, priceLevel1: 80, costPrice: 40, unit: 'ชิ้น' });
+  const product = await api<{ id: string }>('POST', '/products', token, { name: `เคลม ${tag}`, basePrice: 80, priceLevel1: 80, costPrice: 40, unit: 'ชิ้น' });
   const made: string[] = [];
   for (let i = 0; i < 17; i++) {
     const c = await api<{ claimNumber: string }>('POST', '/claims', token, {
@@ -69,7 +69,7 @@ test('claim search finds a bill older than the newest 500 bills', async ({ page 
   const req = createRequire(path.join(BACKEND_DIR, 'package.json'));
   const { PrismaClient } = req('@prisma/client');
   const db = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
-  const product = await api<{ id: string }>('POST', '/products', token, { name: `ของเก่า ${tag}`, sku: `${tag}-P`, basePrice: 90, priceLevel1: 90, costPrice: 40, unit: 'ชิ้น' });
+  const product = await api<{ id: string }>('POST', '/products', token, { name: `ของเก่า ${tag}`, basePrice: 90, priceLevel1: 90, costPrice: 40, unit: 'ชิ้น' });
   let orderNumber = '';
   try {
     const admin = await db.user.findFirst({ where: { username: ADMIN.username } });

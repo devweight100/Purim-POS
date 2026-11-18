@@ -18,7 +18,7 @@ test('payables: server pages, selection across pages, settle several bills with 
   const token = await apiLogin(ADMIN);
   const tag = `AP${Date.now()}`;
   const sup = await api<{ id: string; name: string }>('POST', '/suppliers', token, { name: `ผู้ขาย ${tag}`, creditTerms: 30 });
-  const prod = await api<{ id: string }>('POST', '/products', token, { name: `สินค้า ${tag}`, sku: `${tag}-P`, basePrice: 50, priceLevel1: 50, unit: 'ชิ้น' });
+  const prod = await api<{ id: string }>('POST', '/products', token, { name: `สินค้า ${tag}`, basePrice: 50, priceLevel1: 50, unit: 'ชิ้น' });
   for (let i = 0; i < 52; i++) {
     const po = await api<{ id: string; items: { id: string }[] }>('POST', '/purchase-orders', token, {
       supplierId: sup.id, status: 'ISSUED', items: [{ productId: prod.id, quantity: 1, unitCost: 10 + i }],

@@ -37,10 +37,10 @@ const readShowPrices = () => { try { return localStorage.getItem(PRICES_KEY) ===
 
 /**
  * Column widths: the table is `table-fixed` so it always fits its container (no horizontal scroll at
- * 1093 px = 1366x768 at Windows 125 %); the name column takes the rest and wraps. Price levels 2-5 are
- * hidden by default ("แสดงราคา 2–5" shows them stacked in one column).
+ * 1093 px = 1366x768 at Windows 125 %). Every column has a width (owner 2026-11-18: the name column used to take
+ * all the rest and pushed cost / prices to the far right): name + barcodes ~1/3 and wraps, numbers share the rest.
+ * Price levels 2-5 are hidden by default ("แสดงราคา 2–5" shows them stacked in one column).
  */
-
 /** Product table (sortable headers, row selection, expandable pack units) with pagination. */
 export function ProductTable({ data, f, sel, onEdit }: {
   data: ProductsData;
@@ -83,13 +83,13 @@ export function ProductTable({ data, f, sel, onEdit }: {
                 </div>
               </TableHead>
               <TableHead className="w-9 px-1"><span className="sr-only">ขนาดบรรจุ</span></TableHead>
-              <TableHead className="px-3"><SortButton col="name" label="ชื่อสินค้า / รหัส / บาร์โค้ด" f={f} /></TableHead>
-              <TableHead className="hidden xl:table-cell w-40 text-slate-500 px-3">หมวดหมู่</TableHead>
-              <TableHead className="w-20 text-right px-3"><SortButton col="stock" label="จำนวน" f={f} align="right" /></TableHead>
-              <TableHead className="w-16 text-slate-500 text-center px-2">หน่วย</TableHead>
-              <TableHead className="w-24 text-right px-3"><SortButton col="cost" label="ต้นทุน" f={f} align="right" /></TableHead>
-              <TableHead className="w-24 text-right px-3"><SortButton col={priceLevelKey(1)} label="ราคา 1" f={f} align="right" /></TableHead>
-              {showPrices && <TableHead className="w-28 text-right text-slate-500 px-3">ราคา 2–5</TableHead>}
+              <TableHead className="w-[32%] xl:w-[30%] px-3"><SortButton col="name" label="ชื่อสินค้า / บาร์โค้ด" f={f} /></TableHead>
+              <TableHead className="hidden xl:table-cell w-[13%] text-slate-500 px-3">หมวดหมู่</TableHead>
+              <TableHead className="w-[10%] text-right px-3"><SortButton col="stock" label="จำนวน" f={f} align="right" /></TableHead>
+              <TableHead className="w-[8%] text-slate-500 text-center px-2">หน่วย</TableHead>
+              <TableHead className="w-[12%] text-right px-3"><SortButton col="cost" label="ต้นทุน" f={f} align="right" /></TableHead>
+              <TableHead className="w-[12%] text-right px-3"><SortButton col={priceLevelKey(1)} label="ราคา 1" f={f} align="right" /></TableHead>
+              {showPrices && <TableHead className="w-[12%] text-right text-slate-500 px-3">ราคา 2–5</TableHead>}
               <TableHead className="w-14 text-slate-500 text-center px-1">แก้ไข</TableHead>
             </TableRow>
           </TableHeader>

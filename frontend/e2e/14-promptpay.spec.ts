@@ -83,7 +83,7 @@ async function noLayoutProblems(page: Page, within: string) {
 test.beforeAll(async () => {
   await apiLogin(CASHIER);
   adminToken = await apiLogin(ADMIN);
-  const p = await api<{ id: string }>('POST', '/products', adminToken, { name: NAME, sku: `PP-${TAG}`, basePrice: PRICE, priceLevel1: PRICE, unit: 'กล่อง' });
+  const p = await api<{ id: string }>('POST', '/products', adminToken, { name: NAME, basePrice: PRICE, priceLevel1: PRICE, unit: 'กล่อง' });
   state.productId = p.id;
   await api('POST', '/inventory/adjust', adminToken, { productId: p.id, type: 'ADD', amount: 20, reason: 'ปรับยอดเริ่มต้น' });
 });

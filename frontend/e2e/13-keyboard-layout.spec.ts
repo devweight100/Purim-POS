@@ -40,7 +40,7 @@ test.beforeAll(async () => {
   adminToken = await apiLogin(ADMIN);
   const cat = await api<{ id: string }>('POST', '/categories', adminToken, { name: `หมวดหมู่ชื่อยาวสำหรับทดสอบความกว้างของปุ่มหมวดหมู่ ${TAG}` });
   const p = await api<{ id: string }>('POST', '/products', adminToken, {
-    name: LONG, sku: `KB-${TAG}`, unit: 'ชิ้น', categoryId: cat.id, costPrice: 40,
+    name: LONG, unit: 'ชิ้น', categoryId: cat.id, costPrice: 40,
     basePrice: 100, priceLevel1: 100, priceLevel2: 98, priceLevel3: 96, priceLevel4: 94, priceLevel5: 92,
   });
   productId = p.id;

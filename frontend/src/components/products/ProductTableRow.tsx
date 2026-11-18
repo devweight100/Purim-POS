@@ -12,6 +12,9 @@ import { displayUnitCost } from "@/lib/product-cost";
 import { computeMultipliers, getProductBarcodes, lowStockThreshold } from "./product-helpers";
 import { priceLevelKey, type CategoryOption, type PackagingUnitForm, type ProductImageItem, type ProductRecord } from "./types";
 
+/** Barcodes shown in the name cell; the rest are "+N" with all of them in the tooltip. */
+const MAX_BARCODES = 3;
+
 /** One product row, plus one sub-row per pack unit when expanded. */
 export function ProductTableRow({
   p, categories, pkgUnits, prodImages, isExpanded, isSelected, onToggleExpand, onToggleSelect, onEdit, showPrices, rowNav,
@@ -92,14 +95,16 @@ export function ProductTableRow({
                   </span>
                 )}
               </div>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-normal text-slate-500">
-                <span className="font-mono font-semibold text-slate-600">{p.sku}</span>
-                {displayBarcodes.slice(0, 2).map((barcode, bi) => (
-                  <span key={bi} className="font-mono text-slate-500 bg-slate-100 px-1 rounded border border-slate-200 truncate max-w-full">{barcode}</span>
+              {/* name + barcodes only (owner 2026-11-18: the product code is not shown here; search still finds it) */}
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs font-normal text-slate-500" data-testid="product-barcodes">
+                {displayBarcodes.slice(0, MAX_BARCODES).map((barcode, bi) => (
+                  <span key={bi} title={barcode} className="font-mono text-slate-500 bg-slate-100 px-1 rounded border border-slate-200 truncate max-w-full">{barcode}</span>
                 ))}
-                {displayBarcodes.length > 2 && <span className="text-slate-400">+{displayBarcodes.length - 2}</span>}
-                {pkgUnits.length > 0 && <span className="text-sky-500">{pkgUnits.length} ขนาดบรรจุ</span>}
-                <span className="xl:hidden truncate text-sky-700">{category?.name || ""}</span>
+                {displayBarcodes.length > MAX_BARCODES && (
+                  <span className="text-slate-400 cursor-help" title={displayBarcodes.join("\n")}>+{displayBarcodes.length - MAX_BARCODES}</span>
+                )}
+                {pkgUnits.length > 0 && <span className="text-sky-500 whitespace-nowrap">{pkgUnits.length} ขนาดบรรจุ</span>}
+                <span className="xl:hidden truncate text-sky-700" title={category?.name}>{category?.name || ""}</span>
               </div>
             </div>
           </div>

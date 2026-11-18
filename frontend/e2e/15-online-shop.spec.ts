@@ -59,12 +59,12 @@ test.beforeAll(async ({ browser }) => {
   const cat = await api<{ id: string }>('POST', '/categories', adminToken, { name: CAT });
   const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
   const cement = await api<{ id: string }>('POST', '/products', adminToken, {
-    name: CEMENT, sku: `ONL-C-${TAG}`, categoryId: cat.id, unit: 'ถุง', basePrice: 150, priceLevel1: 150, priceLevel3: 140, costPrice: 100,
+    name: CEMENT, categoryId: cat.id, unit: 'ถุง', basePrice: 150, priceLevel1: 150, priceLevel3: 140, costPrice: 100,
     packagingUnits: [{ name: 'แพค', qtyPerPrev: 10, priceLevel1: 1450 }],
     images: [{ dataUrl: `data:image/png;base64,${png}`, thumbDataUrl: `data:image/png;base64,${png}`, name: 'c.png', isCover: true }],
   });
   await api('POST', '/inventory/adjust', adminToken, { productId: cement.id, type: 'ADD', amount: 40, reason: 'ปรับยอดเริ่มต้น' });
-  await api('POST', '/products', adminToken, { name: SAND, sku: `ONL-S-${TAG}`, categoryId: cat.id, unit: 'ถุง', basePrice: 40, priceLevel1: 40 });
+  await api('POST', '/products', adminToken, { name: SAND, categoryId: cat.id, unit: 'ถุง', basePrice: 40, priceLevel1: 40 });
   await api('PUT', '/online-shop/config', adminToken, { enabled: true, notice: 'สั่งก่อนบ่ายสามโมง ส่งภายในวัน' });
   phone = await phonePage(browser);
 });

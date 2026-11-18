@@ -60,7 +60,7 @@ async function reasonDialogLayout(page: Page) {
 
 test.beforeAll(async () => {
   adminToken = await apiLogin(ADMIN);
-  const r = await api<{ id: string }>('POST', '/products', adminToken, { name: `ปูนเหตุผล ${TAG}`, sku: `RS-${TAG}`, unit: 'ถุง', basePrice: 100, priceLevel1: 100, costPrice: 1 });
+  const r = await api<{ id: string }>('POST', '/products', adminToken, { name: `ปูนเหตุผล ${TAG}`, unit: 'ถุง', basePrice: 100, priceLevel1: 100, costPrice: 1 });
   productId = r.id;
   await api('POST', '/inventory/adjust', adminToken, { productId, type: 'ADD', amount: 100, reason: 'ปรับยอดเริ่มต้น' });
   await api('PUT', '/online-shop/config', adminToken, { enabled: true });
