@@ -32,45 +32,14 @@ interface NavGroup {
   title: string;
   icon: LucideIcon;
   items: SubMenuItem[];
+  /** Draw a divider (extra space) above this group when a group is shown before it. */
+  separatorBefore?: boolean;
 }
 
-// Ordered by how often a shop uses them: daily selling work first, owner tools and system pages last.
+// Owner's order: overview / reports first, then the daily shop work (stock, selling, purchasing); a divider,
+// then money and system pages. Items inside each group keep their order. The POS button stays above all groups.
+// Keep BACK_OFFICE_HOMES (lib/permissions.ts, POS "เมนูหลัก") in the same order.
 const navGroups: NavGroup[] = [
-  {
-    id: 'sales',
-    title: 'งานขาย & ลูกค้า',
-    icon: ShoppingCart,
-    items: [
-      { href: '/online-orders', label: 'ออเดอร์ออนไลน์', icon: ShoppingBag },
-      { href: '/orders', label: 'ประวัติการขาย (บิล)', icon: ClipboardList },
-      { href: '/customers', label: 'ลูกค้าสมาชิก', icon: Users },
-      { href: '/debts', label: 'ลูกหนี้ & ค้างชำระ', icon: Receipt },
-      { href: '/claims', label: 'เคลมสินค้า (ลูกค้า)', icon: ShieldAlert },
-      { href: '/shifts', label: 'ประวัติการปิดกะ', icon: History },
-    ],
-  },
-  {
-    id: 'inventory',
-    title: 'สินค้า & คลังสินค้า',
-    icon: Package,
-    items: [
-      { href: '/products', label: 'รายการสินค้า & ราคา', icon: Package },
-      { href: '/inventory', label: 'คลังสินค้า & สต็อก', icon: Warehouse },
-      { href: '/categories', label: 'หมวดหมู่สินค้า', icon: FolderTree },
-      { href: '/claim-inventory', label: 'สต๊อกของเคลม', icon: PackageX },
-    ],
-  },
-  {
-    id: 'purchasing',
-    title: 'จัดซื้อ & ผู้จำหน่าย',
-    icon: Truck,
-    items: [
-      { href: '/purchase-orders', label: 'ใบสั่งซื้อสินค้า (PO)', icon: FileText },
-      { href: '/payables', label: 'เจ้าหนี้การค้า & จ่ายเงิน', icon: HandCoins },
-      { href: '/supplier-returns', label: 'ส่งเคลม & ใบลดหนี้บริษัท', icon: ArrowLeftRight },
-      { href: '/suppliers', label: 'บริษัทผู้จำหน่าย', icon: Truck },
-    ],
-  },
   {
     id: 'overview',
     title: 'ภาพรวม & รายงาน',
@@ -94,9 +63,45 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    id: 'inventory',
+    title: 'สินค้า & คลังสินค้า',
+    icon: Package,
+    items: [
+      { href: '/products', label: 'รายการสินค้า & ราคา', icon: Package },
+      { href: '/inventory', label: 'คลังสินค้า & สต็อก', icon: Warehouse },
+      { href: '/categories', label: 'หมวดหมู่สินค้า', icon: FolderTree },
+      { href: '/claim-inventory', label: 'สต๊อกของเคลม', icon: PackageX },
+    ],
+  },
+  {
+    id: 'sales',
+    title: 'งานขาย & ลูกค้า',
+    icon: ShoppingCart,
+    items: [
+      { href: '/online-orders', label: 'ออเดอร์ออนไลน์', icon: ShoppingBag },
+      { href: '/orders', label: 'ประวัติการขาย (บิล)', icon: ClipboardList },
+      { href: '/customers', label: 'ลูกค้าสมาชิก', icon: Users },
+      { href: '/debts', label: 'ลูกหนี้ & ค้างชำระ', icon: Receipt },
+      { href: '/claims', label: 'เคลมสินค้า (ลูกค้า)', icon: ShieldAlert },
+      { href: '/shifts', label: 'ประวัติการปิดกะ', icon: History },
+    ],
+  },
+  {
+    id: 'purchasing',
+    title: 'จัดซื้อ & ผู้จำหน่าย',
+    icon: Truck,
+    items: [
+      { href: '/purchase-orders', label: 'ใบสั่งซื้อสินค้า (PO)', icon: FileText },
+      { href: '/payables', label: 'เจ้าหนี้การค้า & จ่ายเงิน', icon: HandCoins },
+      { href: '/supplier-returns', label: 'ส่งเคลม & ใบลดหนี้บริษัท', icon: ArrowLeftRight },
+      { href: '/suppliers', label: 'บริษัทผู้จำหน่าย', icon: Truck },
+    ],
+  },
+  {
     id: 'finance',
     title: 'การเงิน',
     icon: Wallet,
+    separatorBefore: true,
     items: [
       { href: '/finance', label: 'เงินสด / บัญชี / ค่าใช้จ่าย', icon: Wallet },
       { href: '/accounts', label: 'บัญชีธนาคาร & QR Code', icon: Building2 },
@@ -129,10 +134,10 @@ export function Sidebar() {
 
   // Group accordion state (open all by default)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    sales: true,
-    inventory: true,
-    purchasing: true,
     overview: true,
+    inventory: true,
+    sales: true,
+    purchasing: true,
     finance: true,
     system: true,
   });
@@ -307,153 +312,158 @@ export function Sidebar() {
         </div>
 
         {/* Grouped Accordion Menu */}
-        {visibleNavGroups.map((group) => {
+        {visibleNavGroups.map((group, index) => {
           const isOpen = openGroups[group.id] ?? true;
           const isGroupActive = group.items.some((i) => pathname === i.href);
           const GroupIcon = group.icon;
 
           return (
-            <div key={group.id} className="space-y-1">
-              {/* Group Header (หัวข้อใหญ่ ขนาดใหญ่และหนากว่าหัวข้อย่อย) */}
-              <button
-                type="button"
-                onClick={() => toggleGroup(group.id)}
-                aria-expanded={isOpen}
-                aria-controls={`nav-group-${group.id}${isMobile ? '-m' : ''}`}
-                className={cn(
-                  'w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-sm font-bold transition-colors group',
-                  isGroupActive
-                    ? 'text-indigo-950 bg-indigo-50/70'
-                    : 'text-slate-800 hover:text-slate-950 hover:bg-slate-100/70'
-                )}
-              >
-                <div className="flex items-center gap-2.5">
-                  <GroupIcon className={cn('w-4.5 h-4.5 shrink-0', isGroupActive ? 'text-indigo-600' : 'text-slate-500')} />
-                  <span className="tracking-tight text-sm font-bold">{group.title}</span>
-                </div>
-                <ChevronDown
+            <React.Fragment key={group.id}>
+              {group.separatorBefore && index > 0 && (
+                <div data-testid="sidebar-divider" aria-hidden="true" className="mx-2.5 my-1.5 border-t border-slate-200" />
+              )}
+              <div className="space-y-1">
+                {/* Group Header (หัวข้อใหญ่ ขนาดใหญ่และหนากว่าหัวข้อย่อย) */}
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.id)}
+                  aria-expanded={isOpen}
+                  aria-controls={`nav-group-${group.id}${isMobile ? '-m' : ''}`}
                   className={cn(
-                    'w-4 h-4 text-slate-400 transition-transform duration-200 group-hover:text-slate-600',
-                    isOpen ? 'rotate-0' : '-rotate-90'
+                    'w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-sm font-bold transition-colors group',
+                    isGroupActive
+                      ? 'text-indigo-950 bg-indigo-50/70'
+                      : 'text-slate-800 hover:text-slate-950 hover:bg-slate-100/70'
                   )}
-                />
-              </button>
+                >
+                  <div className="flex items-center gap-2.5">
+                    <GroupIcon className={cn('w-4.5 h-4.5 shrink-0', isGroupActive ? 'text-indigo-600' : 'text-slate-500')} />
+                    <span className="tracking-tight text-sm font-bold">{group.title}</span>
+                  </div>
+                  <ChevronDown
+                    className={cn(
+                      'w-4 h-4 text-slate-400 transition-transform duration-200 group-hover:text-slate-600',
+                      isOpen ? 'rotate-0' : '-rotate-90'
+                    )}
+                  />
+                </button>
 
-              {/* Submenu Items (หัวข้อย่อย) */}
-              {isOpen && (
-                <div id={`nav-group-${group.id}${isMobile ? '-m' : ''}`} className="ml-3 pl-2.5 border-l-2 border-slate-200/80 space-y-0.5 py-0.5">
-                  {group.items.map((item) => {
-                    const hasChildren = Boolean(item.children && item.children.length > 0);
-                    const isChildActive = hasChildren && Boolean(item.children?.some((c) => pathname === c.href));
-                    const isSelfActive = pathname === item.href;
-                    const isSubOpen = openSubMenus[item.href] ?? (isChildActive || isSelfActive);
-                    const ItemIcon = item.icon;
+                {/* Submenu Items (หัวข้อย่อย) */}
+                {isOpen && (
+                  <div id={`nav-group-${group.id}${isMobile ? '-m' : ''}`} className="ml-3 pl-2.5 border-l-2 border-slate-200/80 space-y-0.5 py-0.5">
+                    {group.items.map((item) => {
+                      const hasChildren = Boolean(item.children && item.children.length > 0);
+                      const isChildActive = hasChildren && Boolean(item.children?.some((c) => pathname === c.href));
+                      const isSelfActive = pathname === item.href;
+                      const isSubOpen = openSubMenus[item.href] ?? (isChildActive || isSelfActive);
+                      const ItemIcon = item.icon;
 
-                    if (hasChildren) {
-                      return (
-                        <div key={item.href} className="space-y-0.5">
-                          <div
-                            onClick={() => {
-                              saveCurrentScroll();
-                              setOpenSubMenus((prev) => ({ ...prev, [item.href]: !isSubOpen }));
-                            }}
-                            className={cn(
-                              'flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[13px] transition-all duration-150 group cursor-pointer',
-                              isSelfActive || isChildActive
-                                ? 'bg-indigo-50/80 text-indigo-950 font-bold'
-                                : 'text-slate-700 hover:text-slate-950 hover:bg-slate-100 font-bold'
-                            )}
-                          >
-                            <Link
-                              href={item.href}
-                              scroll={false}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                saveCurrentScroll();
-                              }}
-                              className="flex items-center flex-1 min-w-0"
-                            >
-                              <ItemIcon className={cn('w-4 h-4 shrink-0 mr-2.5', (isSelfActive || isChildActive) ? 'text-indigo-600' : 'text-slate-500')} />
-                              <span className="truncate">{item.label}</span>
-                            </Link>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
+                      if (hasChildren) {
+                        return (
+                          <div key={item.href} className="space-y-0.5">
+                            <div
+                              onClick={() => {
                                 saveCurrentScroll();
                                 setOpenSubMenus((prev) => ({ ...prev, [item.href]: !isSubOpen }));
                               }}
-                              className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors ml-1"
-                              title="ย่อ/ขยายเมนูย่อยรายงาน"
-                              aria-label="ย่อ/ขยายเมนูย่อยรายงาน"
-                              aria-expanded={isSubOpen}
+                              className={cn(
+                                'flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[13px] transition-all duration-150 group cursor-pointer',
+                                isSelfActive || isChildActive
+                                  ? 'bg-indigo-50/80 text-indigo-950 font-bold'
+                                  : 'text-slate-700 hover:text-slate-950 hover:bg-slate-100 font-bold'
+                              )}
                             >
-                              <ChevronDown
-                                className={cn(
-                                   'w-3.5 h-3.5 transition-transform duration-200',
-                                  isSubOpen ? 'rotate-0' : '-rotate-90'
-                                )}
-                              />
-                            </button>
-                          </div>
-
-                          {/* Sub-items inside รายงาน */}
-                          {isSubOpen && (
-                            <div className="ml-3 pl-2 border-l-2 border-indigo-200/90 space-y-0.5 py-0.5">
-                              {item.children?.map((sub) => {
-                                const isSubActive = pathname === sub.href;
-                                const SubIcon = sub.icon;
-                                return (
-                                  <Link
-                                    key={sub.href}
-                                    href={sub.href}
-                                    scroll={false}
-                                    onClick={saveCurrentScroll}
-                                    className={cn(
-                                      'flex items-center px-2 py-1.5 rounded-lg text-xs transition-all duration-150 whitespace-nowrap',
-                                      isSubActive
-                                        ? 'bg-indigo-600 text-white font-bold shadow-2xs'
-                                        : 'text-slate-600 hover:text-slate-950 hover:bg-slate-100 font-medium'
-                                    )}
-                                  >
-                                    <SubIcon className={cn('w-3.5 h-3.5 shrink-0 mr-2', isSubActive ? 'text-white' : 'text-slate-400')} />
-                                    <span className="truncate">{sub.label}</span>
-                                  </Link>
-                                );
-                              })}
+                              <Link
+                                href={item.href}
+                                scroll={false}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  saveCurrentScroll();
+                                }}
+                                className="flex items-center flex-1 min-w-0"
+                              >
+                                <ItemIcon className={cn('w-4 h-4 shrink-0 mr-2.5', (isSelfActive || isChildActive) ? 'text-indigo-600' : 'text-slate-500')} />
+                                <span className="truncate">{item.label}</span>
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  saveCurrentScroll();
+                                  setOpenSubMenus((prev) => ({ ...prev, [item.href]: !isSubOpen }));
+                                }}
+                                className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors ml-1"
+                                title="ย่อ/ขยายเมนูย่อยรายงาน"
+                                aria-label="ย่อ/ขยายเมนูย่อยรายงาน"
+                                aria-expanded={isSubOpen}
+                              >
+                                <ChevronDown
+                                  className={cn(
+                                     'w-3.5 h-3.5 transition-transform duration-200',
+                                    isSubOpen ? 'rotate-0' : '-rotate-90'
+                                  )}
+                                />
+                              </button>
                             </div>
-                          )}
-                        </div>
-                      );
-                    }
 
-                    return (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        scroll={false}
-                        onClick={saveCurrentScroll}
-                        className={cn(
-                          'flex items-center px-2.5 py-1.5 rounded-lg text-[13px] transition-all duration-150 whitespace-nowrap',
-                          isSelfActive
-                            ? 'bg-indigo-600 text-white font-bold shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium'
-                        )}
-                      >
-                        <ItemIcon className={cn('w-4 h-4 shrink-0 mr-2.5', isSelfActive ? 'text-white' : 'text-slate-400')} />
-                        <span className="truncate">{item.label}</span>
-                        {item.href === '/online-orders' && onlineBadge > 0 && (
-                          <span data-testid="online-orders-badge" aria-label={`${onlineBadge} รายการใหม่`} className="ml-auto pl-2 shrink-0">
-                            <span className="inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[11px] font-black text-white">{onlineBadge}</span>
-                          </span>
-                        )}
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                            {/* Sub-items inside รายงาน */}
+                            {isSubOpen && (
+                              <div className="ml-3 pl-2 border-l-2 border-indigo-200/90 space-y-0.5 py-0.5">
+                                {item.children?.map((sub) => {
+                                  const isSubActive = pathname === sub.href;
+                                  const SubIcon = sub.icon;
+                                  return (
+                                    <Link
+                                      key={sub.href}
+                                      href={sub.href}
+                                      scroll={false}
+                                      onClick={saveCurrentScroll}
+                                      className={cn(
+                                        'flex items-center px-2 py-1.5 rounded-lg text-xs transition-all duration-150 whitespace-nowrap',
+                                        isSubActive
+                                          ? 'bg-indigo-600 text-white font-bold shadow-2xs'
+                                          : 'text-slate-600 hover:text-slate-950 hover:bg-slate-100 font-medium'
+                                      )}
+                                    >
+                                      <SubIcon className={cn('w-3.5 h-3.5 shrink-0 mr-2', isSubActive ? 'text-white' : 'text-slate-400')} />
+                                      <span className="truncate">{sub.label}</span>
+                                    </Link>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          scroll={false}
+                          onClick={saveCurrentScroll}
+                          className={cn(
+                            'flex items-center px-2.5 py-1.5 rounded-lg text-[13px] transition-all duration-150 whitespace-nowrap',
+                            isSelfActive
+                              ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium'
+                          )}
+                        >
+                          <ItemIcon className={cn('w-4 h-4 shrink-0 mr-2.5', isSelfActive ? 'text-white' : 'text-slate-400')} />
+                          <span className="truncate">{item.label}</span>
+                          {item.href === '/online-orders' && onlineBadge > 0 && (
+                            <span data-testid="online-orders-badge" aria-label={`${onlineBadge} รายการใหม่`} className="ml-auto pl-2 shrink-0">
+                              <span className="inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[11px] font-black text-white">{onlineBadge}</span>
+                            </span>
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </React.Fragment>
           );
         })}
       </div>

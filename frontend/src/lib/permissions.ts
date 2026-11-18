@@ -92,8 +92,11 @@ export function canAccessRoute(
   return true;
 }
 
-/** Back-office pages the POS "เมนูหลัก" button may open, most useful first. */
-const BACK_OFFICE_HOMES = ['/dashboard', '/orders', '/products', '/customers', '/claims', '/shifts'];
+/**
+ * Back-office pages the POS "เมนูหลัก" button may open, in the sidebar's group order (ภาพรวม & รายงาน,
+ * สินค้า & คลังสินค้า, งานขาย & ลูกค้า): admins land on the dashboard, a cashier without reports on the bills.
+ */
+export const BACK_OFFICE_HOMES = ['/dashboard', '/products', '/orders', '/customers', '/claims', '/shifts'];
 
 /**
  * Where the POS "back to the main menu" button goes for this user: the first back-office page they may open
