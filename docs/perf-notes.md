@@ -1,6 +1,6 @@
 # Perf round — progress notes (delete a task's section when it is fully done)
 
-## Task 9: product SKU = permanent system ID + narrower name column (owner request) — IN PROGRESS
+## Task 9: product SKU = permanent system ID + narrower name column (owner request) — DONE (PROJECT_STATUS 2026-11-18)
 
 Branch ccr-8f8b0741-si1a0o (base c4aeb0c).
 
@@ -24,7 +24,7 @@ Branch ccr-8f8b0741-si1a0o (base c4aeb0c).
 2. [x] Backend e2e (update rejected, import no rename, create generates) + fix tests that relied on client SKUs.
 3. [x] Frontend form: read-only "รหัสสินค้า (ระบบ)" + copy; no SKU in payload; import preview note.
 4. [x] Table: name column narrower, name + barcodes only, widths; Playwright spec + screenshots.
-5. [ ] Full verification, PROJECT_STATUS, drop DBs.
+5. [x] Full verification, PROJECT_STATUS, drop DBs.
 
 ## Task 8: LINE shop member still sees ราคา 1 after link approval (owner bug, v1.5.7) — DONE (PROJECT_STATUS 2026-11-18, docs/bugfix-member-price.md)
 
