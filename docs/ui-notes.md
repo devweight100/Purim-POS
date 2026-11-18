@@ -45,8 +45,8 @@ cash-approval limit mixed in the shop-info card, receipt texts, printer / drawer
 | 11 | Reset dialog said "the system cannot back up automatically before clearing" (wrong) | Says the server backs up first and deletes nothing if the backup fails (what the backend does); still needs "RESET" | Correct text |
 | 12 | Every save button labelled differently, one save at the bottom of the receipt texts card saving everything | One "บันทึกการตั้งค่า" per group (same PATCH /settings with the whole form, as before); receipt options keep their own save | Consistency |
 | 13 | Row delete as a red trash icon right next to edit (customers, suppliers, categories, bank accounts) | "⋮" menu with "ลบ..." (`RowDeleteMenu`), confirmation kept; bank account delete now asks first (deleted on one click before) | Avoid accidental deletes |
-| 14 | Sidebar order: master control / monitor / dashboard / reports first, sales next, finance mixed with settings | งานขาย & ลูกค้า -> สินค้า & คลัง -> จัดซื้อ & ผู้จำหน่าย -> ภาพรวม & รายงาน -> การเงิน -> ตั้งค่า & ระบบ (master control + monitor moved here, emoji removed) | Frequency of use; items the role cannot open stay hidden (canAccessRoute, unchanged) |
-| 15 | POS "แดชบอร์ด" button for every user (cashier landed on "ไม่มีสิทธิ์") | "เมนูหลัก" -> first back-office page the user may open (dashboard, orders, products...), hidden when none (classic, neo, list layouts) | Role-appropriate |
+| 14 | Sidebar order: master control / monitor / dashboard / reports first, sales next, finance mixed with settings | งานขาย & ลูกค้า -> สินค้า & คลัง -> จัดซื้อ & ผู้จำหน่าย -> ภาพรวม & รายงาน -> การเงิน -> ตั้งค่า & ระบบ (master control + monitor moved here, emoji removed); reordered again 2026-11-18, see "Sidebar order (2026-11-18)" | Frequency of use; items the role cannot open stay hidden (canAccessRoute, unchanged) |
+| 15 | POS "แดชบอร์ด" button for every user (cashier landed on "ไม่มีสิทธิ์") | "เมนูหลัก" -> first back-office page the user may open (dashboard, products, orders... in the sidebar's group order since 2026-11-18), hidden when none (classic, neo, list layouts) | Role-appropriate |
 | 16 | POS classic toolbar: logout right after the back button (and wrapping to a second line) | Logout last (after เปิด/ปิดกะ), icon-only below 2xl | Away from everyday buttons, one toolbar line |
 | 17 | Products header "จัดการหมวดหมู่" link (duplicate of the sidebar item, made the header wrap) | Removed; categories also linked from ตั้งค่า > สินค้าและสต็อก | Duplicate |
 | 18 | Settings: unused web-serial connect handler (dead code) | Removed | Dead code |
@@ -80,3 +80,22 @@ Tests: backend e2e "backups: ADMIN and MANAGER" and "delete all products: backup
 ### Next
 
 - Nothing; verification done (see PROJECT_STATUS 2026-11-15, owner answers entry).
+
+### Sidebar order (2026-11-18, owner)
+
+| Before | After |
+|--------|-------|
+| งานขาย & ลูกค้า, สินค้า & คลังสินค้า, จัดซื้อ & ผู้จำหน่าย, ภาพรวม & รายงาน, การเงิน, ตั้งค่า & ระบบ | ภาพรวม & รายงาน, สินค้า & คลังสินค้า, งานขาย & ลูกค้า, จัดซื้อ & ผู้จำหน่าย, a divider (line + extra space), การเงิน, ตั้งค่า & ระบบ |
+
+- "หน้าขายหน้าร้าน (POS)" stays above all groups (a launcher, not a group), then the document search (F3).
+- Items and their order inside each group, permissions (`canAccessRoute`, groups with no allowed item hidden), the
+  keyboard (`aria-expanded` group buttons), the mobile drawer and the online orders badge are unchanged. The divider
+  (`separatorBefore` on การเงิน, `data-testid="sidebar-divider"`, `aria-hidden`) is drawn only when a group is shown
+  above it, so a cashier who sees only งานขาย & ลูกค้า gets no divider.
+- POS "เมนูหลัก" (`BACK_OFFICE_HOMES` in `lib/permissions.ts`) follows the same order: `/dashboard`, `/products`,
+  `/orders`, `/customers`, `/claims`, `/shifts`. Admin / report users -> dashboard; the seed cashier (POS_SELL,
+  POS_DISCOUNT, MANAGE_CLAIMS) -> ประวัติการขาย (`/orders`) as before; stock staff without reports -> สินค้า.
+- The desktop app menu (`desktop/main.js` "ระบบขาย & หลังบ้าน") is a short list of page shortcuts, not the sidebar
+  groups, so it was left as is. README has no sidebar table.
+- Tests: vitest `back-office-home.test.ts`; Playwright `13-keyboard-layout` (group order with the divider, POS button on
+  top, groups open, sales items in order, cashier sees only งานขาย & ลูกค้า and เมนูหลัก opens `/orders`).

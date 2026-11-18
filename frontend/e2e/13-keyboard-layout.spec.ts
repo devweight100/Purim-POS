@@ -257,6 +257,54 @@ test('back-office sidebar: groups open / close with the keyboard and their links
   await expect(page).toHaveURL(/\/categories/);
 });
 
+/** Group titles and dividers of the desktop sidebar, top to bottom ("|" = divider). */
+async function sidebarOrder(page: Page): Promise<string[]> {
+  const nav = page.locator('[data-slot="sidebar"]').last();
+  await expect(nav.locator('button[aria-controls^="nav-group-"]').first()).toBeVisible();
+  return nav.locator('button[aria-controls^="nav-group-"], [data-testid="sidebar-divider"]').evaluateAll((els) =>
+    els.map((el) => (el.matches('[data-testid="sidebar-divider"]') ? '|' : (el.textContent || '').trim())));
+}
+
+test('back-office sidebar: owner\'s group order with a divider before การเงิน, POS button on top, เมนูหลัก follows the order', async ({ page, browser }) => {
+  await uiLogin(page, ADMIN.username, ADMIN.password);
+  await expect(page).toHaveURL(/\/pos/);
+  await expect(page.getByTitle(/^กลับไปเมนูหลัก/).first()).toHaveAttribute('href', '/dashboard');
+  await page.goto('/dashboard');
+  expect(await sidebarOrder(page)).toEqual([
+    'ภาพรวม & รายงาน', 'สินค้า & คลังสินค้า', 'งานขาย & ลูกค้า', 'จัดซื้อ & ผู้จำหน่าย', '|', 'การเงิน', 'ตั้งค่า & ระบบ',
+  ]);
+  const nav = page.locator('[data-slot="sidebar"]').last();
+  // POS launcher above every group; every group open by default; items keep their order
+  const posBox = await nav.getByRole('link', { name: /หน้าขายหน้าร้าน \(POS\)/ }).boundingBox();
+  const firstGroup = await nav.getByRole('button', { name: 'ภาพรวม & รายงาน' }).boundingBox();
+  expect(posBox!.y).toBeLessThan(firstGroup!.y);
+  for (const b of await nav.locator('button[aria-controls^="nav-group-"]').all()) await expect(b).toHaveAttribute('aria-expanded', 'true');
+  const sales = await nav.locator('#nav-group-sales > a').allTextContents();
+  expect(sales.map((t) => t.replace(/\d+$/, '').trim())).toEqual([
+    'ออเดอร์ออนไลน์', 'ประวัติการขาย (บิล)', 'ลูกค้าสมาชิก', 'ลูกหนี้ & ค้างชำระ', 'เคลมสินค้า (ลูกค้า)', 'ประวัติการปิดกะ',
+  ]);
+  // divider = visible extra space between จัดซื้อ and การเงิน
+  const purchasing = await nav.locator('#nav-group-purchasing').boundingBox();
+  const finance = await nav.getByRole('button', { name: 'การเงิน' }).boundingBox();
+  const inventoryEnd = await nav.locator('#nav-group-inventory').boundingBox();
+  const sales2 = await nav.getByRole('button', { name: 'งานขาย & ลูกค้า' }).boundingBox();
+  expect(finance!.y - (purchasing!.y + purchasing!.height)).toBeGreaterThan(sales2!.y - (inventoryEnd!.y + inventoryEnd!.height) + 8);
+
+  // cashier (POS_SELL, POS_DISCOUNT, MANAGE_CLAIMS; no reports): only the groups they may use, no divider,
+  // เมนูหลัก opens the first page they may open (the bills)
+  const ctx = await browser.newContext();
+  const cp = await ctx.newPage();
+  await uiLogin(cp, CASHIER.username, CASHIER.password);
+  await expect(cp).toHaveURL(/\/pos/);
+  await openShiftByKeyboard(cp);
+  const home = cp.getByTitle(/^กลับไปเมนูหลัก/).first();
+  await expect(home).toHaveAttribute('href', '/orders');
+  await home.click();
+  await expect(cp).toHaveURL(/\/orders$/);
+  expect(await sidebarOrder(cp)).toEqual(['งานขาย & ลูกค้า']);
+  await ctx.close();
+});
+
 test.afterAll(async () => {
   if (productId) await api('DELETE', `/products/${productId}`, adminToken).catch(() => undefined);
 });
