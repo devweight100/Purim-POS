@@ -91,9 +91,15 @@ export class ProductSupplierEntryDto {
   @IsOptional()
   lastCost?: number;
 
+  /** รหัสสินค้าของผู้ขาย (max 100 characters, trimmed) */
   @IsString()
   @IsOptional()
   supplierSku?: string;
+
+  /** ชื่อสินค้าของผู้ขาย (max 200 characters, trimmed) */
+  @IsString()
+  @IsOptional()
+  supplierProductName?: string | null;
 
   @IsString()
   @IsOptional()
@@ -108,6 +114,11 @@ export class CreateProductDto {
   @IsString()
   @IsNotEmpty()
   name!: string;
+
+  /** ชื่อผู้ผลิต (optional, max 200 characters, trimmed; blank / null = none) */
+  @IsString()
+  @IsOptional()
+  manufacturerName?: string | null;
 
   @IsString()
   @IsOptional()

@@ -18,6 +18,7 @@ export const productImageUrl = (id: string, size?: 'thumb') =>
 export const catalogSelect = {
   id: true,
   name: true,
+  manufacturerName: true,
   description: true,
   sku: true,
   categoryId: true,
@@ -45,6 +46,7 @@ export const catalogSelect = {
       id: true,
       supplierId: true,
       supplierSku: true,
+      supplierProductName: true,
       unitCost: true,
       isPreferred: true,
       supplier: { select: { id: true, name: true } },
@@ -94,6 +96,7 @@ export function toCatalogRow(product: CatalogProduct, stockOf: Map<string, numbe
       supplierId: ps.supplierId,
       supplierName: ps.supplier?.name || '',
       supplierSku: ps.supplierSku || '',
+      supplierProductName: ps.supplierProductName || '',
       unitCost: unitCostNum,
       lastCost: unitCostNum,
       isPreferred: Boolean(ps.isPreferred),

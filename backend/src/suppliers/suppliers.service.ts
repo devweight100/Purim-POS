@@ -1,3 +1,4 @@
+import { nameField } from '../products/products.service';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -101,20 +102,23 @@ export class SuppliersService {
       id: link.product.id,
       name: link.product.name,
       sku: link.product.sku,
+      manufacturerName: link.product.manufacturerName,
       basePrice: link.product.basePrice,
       supplierSku: link.supplierSku,
+      supplierProductName: link.supplierProductName,
       unitCost: link.unitCost,
       isPreferred: link.isPreferred,
       stock: addQty(...link.product.stockBatches.map((b) => b.quantityRemaining))
     }));
   }
 
-  async linkProduct(supplierId: string, data: { productId: string, supplierSku?: string, unitCost?: number, isPreferred?: boolean }) {
+  async linkProduct(supplierId: string, data: { productId: string, supplierSku?: string, supplierProductName?: string, unitCost?: number, isPreferred?: boolean }) {
     return this.prisma.productSupplier.create({
       data: {
         supplierId,
         productId: data.productId,
-        supplierSku: data.supplierSku,
+        supplierSku: nameField(data.supplierSku, 'supplierSku'),
+        supplierProductName: nameField(data.supplierProductName, 'supplierProductName'),
         unitCost: data.unitCost,
         isPreferred: data.isPreferred,
       }
@@ -132,7 +136,13 @@ export class SuppliersService {
     });
   }
 
-  async updateProductLink(supplierId: string, productId: string, data: { supplierSku?: string, unitCost?: number, isPreferred?: boolean }) {
+  async updateProductLink(supplierId: string, productId: string, body: { supplierSku?: string, supplierProductName?: string, unitCost?: number, isPreferred?: boolean }) {
+    const data = {
+      ...(body.supplierSku !== undefined ? { supplierSku: nameField(body.supplierSku, 'supplierSku') } : {}),
+      ...(body.supplierProductName !== undefined ? { supplierProductName: nameField(body.supplierProductName, 'supplierProductName') } : {}),
+      ...(body.unitCost !== undefined ? { unitCost: body.unitCost } : {}),
+      ...(body.isPreferred !== undefined ? { isPreferred: Boolean(body.isPreferred) } : {}),
+    };
     return this.prisma.productSupplier.update({
       where: {
         productId_supplierId: {

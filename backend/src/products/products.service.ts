@@ -7,6 +7,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { rethrowPrismaError } from './prisma-errors';
 import { generateProductSku } from './product-sku';
+import { cleanNameField, type NameField } from '../../../shared/src/product-names';
 import { LOOKUP_FILTERS, type LookupFilter, packChain, priceLevels, rankCandidates, searchTokens, stockLevel } from './product-lookup';
 import { addQty, assertQtyAllowed, decimalQtyAllowed, hasMax2Decimals, qn, roundQty } from '../common/qty';
 import {
@@ -32,6 +33,13 @@ const PRICE_LABELS: Record<string, string> = {
 
 /** 400 for any attempt to change a product's SKU (PATCH). */
 export const SKU_LOCKED_MESSAGE = 'รหัสสินค้า (ระบบ) เปลี่ยนไม่ได้ ระบบสร้างให้ครั้งเดียวตอนเพิ่มสินค้า';
+
+/** Trimmed name field (blank = null, undefined = unchanged) or a Thai 400 when too long. */
+export function nameField(value: unknown, field: NameField, prefix = ''): string | null | undefined {
+  const r = cleanNameField(value, field);
+  if (r.error) throw new BadRequestException(prefix + r.error);
+  return r.value;
+}
 
 const isBlank = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
 
@@ -65,6 +73,7 @@ export class ProductsService {
       if (!name) throw new BadRequestException('กรุณาระบุชื่อสินค้า');
       data.name = name;
     }
+    if (data.manufacturerName !== undefined) data.manufacturerName = nameField(data.manufacturerName, 'manufacturerName');
     // SKU = permanent system ID: never taken from the client on create (generated in the transaction);
     // on update it may only be sent unchanged (checked against the stored one in update()).
     if (!partial) delete data.sku;
@@ -186,6 +195,7 @@ export class ProductsService {
         supplierId: ps.supplierId,
         supplierName: ps.supplier?.name || '',
         supplierSku: ps.supplierSku || '',
+        supplierProductName: ps.supplierProductName || '',
         unitCost: unitCostNum,
         lastCost: unitCostNum,
         isPreferred: Boolean(ps.isPreferred),
@@ -348,7 +358,7 @@ export class ProductsService {
 
     const deduped = new Map<
       string,
-      { supplierId: string; supplierSku: string | null; unitCost: number | null; isPreferred: boolean }
+      { supplierId: string; supplierSku: string | null; supplierProductName: string | null; unitCost: number | null; isPreferred: boolean }
     >();
 
     rawList.forEach((entry, index) => {
@@ -365,16 +375,15 @@ export class ProductsService {
           : null;
 
       const unitCost = rawCost !== null && Number.isFinite(rawCost) ? parsePrice(rawCost, 'ต้นทุนจากผู้จำหน่าย') : null;
+      // รหัส / ชื่อสินค้าของผู้ขาย (older clients sent the code as `notes`)
       const supplierSku =
-        entry?.supplierSku !== undefined && entry?.supplierSku !== null && String(entry.supplierSku).trim()
-          ? String(entry.supplierSku).trim()
-          : entry?.notes !== undefined && entry?.notes !== null && String(entry.notes).trim()
-          ? String(entry.notes).trim()
-          : null;
+        nameField(entry?.supplierSku, 'supplierSku') ?? nameField(entry?.notes, 'supplierSku') ?? null;
+      const supplierProductName = nameField(entry?.supplierProductName, 'supplierProductName') ?? null;
 
       deduped.set(sid, {
         supplierId: sid,
         supplierSku,
+        supplierProductName,
         unitCost,
         isPreferred: entry?.isPreferred !== undefined ? Boolean(entry.isPreferred) : index === 0,
       });
@@ -406,6 +415,7 @@ export class ProductsService {
         productId,
         supplierId: item.supplierId,
         supplierSku: item.supplierSku,
+        supplierProductName: item.supplierProductName,
         unitCost: item.unitCost,
         isPreferred: item.isPreferred || idx === 0,
       }));
@@ -492,6 +502,11 @@ export class ProductsService {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
         { sku: { contains: search, mode: 'insensitive' } },
+        { manufacturerName: { contains: search, mode: 'insensitive' } },
+        { suppliers: { some: { OR: [
+          { supplierProductName: { contains: search, mode: 'insensitive' } },
+          { supplierSku: { contains: search, mode: 'insensitive' } },
+        ] } } },
       ];
     }
     if (categoryId) {
@@ -553,9 +568,11 @@ export class ProductsService {
     const q = (opts.q || '').trim();
     if (q) {
       const p = '%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%';
-      conds.push(Prisma.sql`(x.name ILIKE ${p} OR x.sku ILIKE ${p}
+      conds.push(Prisma.sql`(x.name ILIKE ${p} OR x.sku ILIKE ${p} OR x.manufacturer_name ILIKE ${p}
         OR EXISTS (SELECT 1 FROM product_barcodes b WHERE b.product_id = x.id AND b.barcode ILIKE ${p})
-        OR EXISTS (SELECT 1 FROM product_packaging_units u WHERE u.product_id = x.id AND u.barcode ILIKE ${p}))`);
+        OR EXISTS (SELECT 1 FROM product_packaging_units u WHERE u.product_id = x.id AND u.barcode ILIKE ${p})
+        OR EXISTS (SELECT 1 FROM product_suppliers ps WHERE ps.product_id = x.id
+                     AND (ps.supplier_product_name ILIKE ${p} OR ps.supplier_sku ILIKE ${p})))`);
     }
     if (opts.categoryId) conds.push(Prisma.sql`x.category_id = ${opts.categoryId}`);
     if (opts.supplierId) conds.push(Prisma.sql`EXISTS (SELECT 1 FROM product_suppliers ps WHERE ps.product_id = x.id AND ps.supplier_id = ${opts.supplierId})`);
@@ -581,7 +598,7 @@ export class ProductsService {
       bs AS (SELECT bi.bundle_product_id AS pid,
                MIN(floor(COALESCE(s.q, 0) / COALESCE(NULLIF(bi.quantity, 0), 1) + 0.000000001)) AS q
              FROM product_bundle_items bi LEFT JOIN s ON s.product_id = bi.child_product_id GROUP BY bi.bundle_product_id),
-      x AS (SELECT p.id, p.name, p.sku, p.category_id, p.base_price, p.cost_price, p.price_level_1, p.price_level_2, p.price_level_3,
+      x AS (SELECT p.id, p.name, p.sku, p.manufacturer_name, p.category_id, p.base_price, p.cost_price, p.price_level_1, p.price_level_2, p.price_level_3,
               p.price_level_4, p.price_level_5, p.ctid AS pos, p.is_bundle, p.is_service, NULLIF(s.avg_cost, 0) AS avg_cost,
               CASE WHEN p.is_bundle AND bs.pid IS NOT NULL THEN bs.q ELSE COALESCE(s.q, 0) END AS stock
             FROM products p LEFT JOIN s ON s.product_id = p.id LEFT JOIN bs ON bs.pid = p.id)`;
@@ -671,7 +688,8 @@ export class ProductsService {
                'sortOrder', w.sort_order, 'createdAt', ${ts('w.created_at')}, 'updatedAt', ${ts('w.updated_at')}) ORDER BY w.sort_order) AS j
              FROM product_wholesale_prices w ${only('w.product_id')} GROUP BY w.product_id),
       su AS (SELECT ps.product_id, json_agg(json_build_object(
-               'id', ps.id, 'supplierId', ps.supplier_id, 'supplierSku', ps.supplier_sku, 'unitCost', ${dec('ps.unit_cost')},
+               'id', ps.id, 'supplierId', ps.supplier_id, 'supplierSku', ps.supplier_sku,
+               'supplierProductName', ps.supplier_product_name, 'unitCost', ${dec('ps.unit_cost')},
                'isPreferred', ps.is_preferred, 'supplier', json_build_object('id', s.id, 'name', s.name))
                ORDER BY ps.is_preferred DESC, ps.created_at ASC) AS j
              FROM product_suppliers ps JOIN suppliers s ON s.id = ps.supplier_id ${only('ps.product_id')} GROUP BY ps.product_id),
@@ -680,7 +698,7 @@ export class ProductsService {
                'childProduct', json_build_object('id', c.id, 'name', c.name, 'sku', c.sku, 'unit', c.unit,
                  'basePrice', ${dec('c.base_price')}, 'priceLevel1', ${dec('c.price_level_1')}))) AS j
              FROM product_bundle_items bi JOIN products c ON c.id = bi.child_product_id ${only('bi.bundle_product_id')} GROUP BY bi.bundle_product_id)
-      SELECT p.id, p.name, p.description, p.sku, p.category_id AS "categoryId",
+      SELECT p.id, p.name, p.manufacturer_name AS "manufacturerName", p.description, p.sku, p.category_id AS "categoryId",
         p.base_price AS "basePrice", p.cost_price AS "costPrice",
         p.price_level_1 AS "priceLevel1", p.price_level_2 AS "priceLevel2", p.price_level_3 AS "priceLevel3",
         p.price_level_4 AS "priceLevel4", p.price_level_5 AS "priceLevel5",
@@ -802,6 +820,10 @@ export class ProductsService {
     // Same match as before: every word in name / SKU (case-insensitive) or a barcode / pack barcode (exact case).
     const tokenConds = tokens.map((t) => Prisma.sql`(
         strpos(lower(p.name), lower(${t})) > 0 OR strpos(lower(p.sku), lower(${t})) > 0
+        OR strpos(lower(COALESCE(p.manufacturer_name, '')), lower(${t})) > 0
+        OR EXISTS (SELECT 1 FROM product_suppliers ps WHERE ps.product_id = p.id
+                     AND (strpos(lower(COALESCE(ps.supplier_product_name, '')), lower(${t})) > 0
+                          OR strpos(lower(COALESCE(ps.supplier_sku, '')), lower(${t})) > 0))
         OR EXISTS (SELECT 1 FROM product_barcodes b WHERE b.product_id = p.id AND strpos(b.barcode, ${t}) > 0)
         OR EXISTS (SELECT 1 FROM product_packaging_units u WHERE u.product_id = p.id AND strpos(u.barcode, ${t}) > 0))`);
     const whereSql = Prisma.join([Prisma.sql`p.is_active`, ...tokenConds], ' AND ');
@@ -838,7 +860,8 @@ export class ProductsService {
     const details = await this.prisma.product.findMany({
       where: { id: { in: pageRows.map((r) => r.id) } },
       select: {
-        id: true, name: true, sku: true, unit: true, isBundle: true, basePrice: true, costPrice: true,
+        id: true, name: true, sku: true, manufacturerName: true, unit: true, isBundle: true, basePrice: true, costPrice: true,
+        suppliers: { select: { supplierId: true, supplierProductName: true, supplierSku: true }, orderBy: [{ isPreferred: 'desc' }, { createdAt: 'asc' }] },
         priceLevel1: true, priceLevel2: true, priceLevel3: true, priceLevel4: true, priceLevel5: true,
         category: { select: { name: true } },
         packagingUnits: { orderBy: { sortOrder: 'asc' } },
@@ -853,6 +876,9 @@ export class ProductsService {
         id: d.id,
         name: d.name,
         sku: d.sku,
+        // other names, for the "ผู้ผลิต: … / รหัสผู้ขาย: …" hint of a match that came from them
+        manufacturerName: d.manufacturerName,
+        suppliers: d.suppliers.map((s) => ({ supplierProductName: s.supplierProductName, supplierSku: s.supplierSku })),
         unit: d.unit || 'ชิ้น',
         category: d.category?.name || null,
         isBundle: d.isBundle,
@@ -1046,6 +1072,13 @@ export class ProductsService {
     if (unit) fields.unit = unit;
     const description = str(item.description);
     if (description) fields.description = description;
+    // ชื่อผู้ผลิต: like the other optional columns, blank = left as it is
+    try {
+      const manufacturerName = nameField(item.manufacturerName, 'manufacturerName');
+      if (manufacturerName) fields.manufacturerName = manufacturerName;
+    } catch (e: any) {
+      throw rowErr(e?.message);
+    }
 
     let stock: number | undefined;
     if (!isBlank(item.stock)) {

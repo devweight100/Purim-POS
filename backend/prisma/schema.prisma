@@ -211,6 +211,8 @@ model Category {
 model Product {
   id          String   @id @default(uuid())
   name        String
+  /// ชื่อผู้ผลิต: the manufacturer's name of the product (optional, secondary to `name` = ชื่อร้าน); supplier documents may print it
+  manufacturerName String? @map("manufacturer_name") @db.VarChar(200)
   description String?  
   sku         String   @unique
   categoryId  String?  @map("category_id")
@@ -249,6 +251,7 @@ model Product {
   @@index([name])
   @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "products_name_trgm_idx")
   @@index([sku(ops: raw("gin_trgm_ops"))], type: Gin, map: "products_sku_trgm_idx")
+  @@index([manufacturerName(ops: raw("gin_trgm_ops"))], type: Gin, map: "products_manufacturer_name_trgm_idx")
   @@map("products")
 }
 
@@ -395,7 +398,10 @@ model ProductSupplier {
   id          String   @id @default(uuid())
   productId   String   @map("product_id")
   supplierId  String   @map("supplier_id")
-  supplierSku String?  @map("supplier_sku")
+  /// รหัสสินค้าของผู้ขาย: the code printed on this supplier's invoices
+  supplierSku String?  @map("supplier_sku") @db.VarChar(100)
+  /// ชื่อสินค้าของผู้ขาย: the name printed on this supplier's invoices
+  supplierProductName String? @map("supplier_product_name") @db.VarChar(200)
   unitCost    Decimal? @map("unit_cost") @db.Decimal(10, 2)
   isPreferred Boolean  @default(false) @map("is_preferred")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -404,6 +410,9 @@ model ProductSupplier {
   supplier    Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
 
   @@unique([productId, supplierId])
+  @@index([supplierId])
+  @@index([supplierSku(ops: raw("gin_trgm_ops"))], type: Gin, map: "product_suppliers_supplier_sku_trgm_idx")
+  @@index([supplierProductName(ops: raw("gin_trgm_ops"))], type: Gin, map: "product_suppliers_supplier_product_name_trgm_idx")
   @@map("product_suppliers")
 }
 
@@ -451,6 +460,8 @@ model PurchaseOrder {
   paidAmount        Decimal       @default(0) @map("paid_amount") @db.Decimal(12, 2)
   remainingPayable  Decimal       @default(0) @map("remaining_payable") @db.Decimal(12, 2)
   notes             String?
+  /// product names printed on this PO: SHOP = ชื่อร้าน, SUPPLIER = supplier's name / code, else ชื่อผู้ผลิต, else ชื่อร้าน
+  docNameMode       String        @default("SHOP") @map("doc_name_mode") @db.VarChar(10)
   createdAt         DateTime      @default(now()) @map("created_at")
   updatedAt         DateTime      @updatedAt @map("updated_at")
 
@@ -609,6 +620,8 @@ model SupplierReturnNote {
   remainingCreditAmount Decimal               @map("remaining_credit_amount") @db.Decimal(12, 2)
   status                ReturnNoteStatus      @default(PENDING)
   note                  String?
+  /// product names printed on this note (same rule as purchase_orders.doc_name_mode)
+  docNameMode           String                @default("SHOP") @map("doc_name_mode") @db.VarChar(10)
   createdAt             DateTime              @default(now()) @map("created_at")
   updatedAt             DateTime              @updatedAt @map("updated_at")
 
@@ -967,6 +980,7 @@ model StoreSettings {
   lowStockThreshold Decimal @default(5) @map("low_stock_threshold") @db.Decimal(12, 2) // one "low stock" level for every page/report
   allowDecimalQty   Boolean @default(false) @map("allow_decimal_qty") // quantities may have up to 2 decimals (sell by metre / kg)
   cashMovementApprovalLimit Decimal @default(1000) @map("cash_movement_approval_limit") @db.Decimal(12, 2) // drawer cash in/out above this needs a manager PIN (0 = always)
+  supplierDocNameMode String @default("SHOP") @map("supplier_doc_name_mode") @db.VarChar(10) // default product names on new supplier documents (SHOP | SUPPLIER)
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 

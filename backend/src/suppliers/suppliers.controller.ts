@@ -48,7 +48,7 @@ export class SuppliersController {
 
   @RequirePermissions('MANAGE_PURCHASES')
   @Post(':id/products')
-  linkProduct(@Param('id') id: string, @Body() body: { productId: string, supplierSku?: string, unitCost?: number, isPreferred?: boolean }) {
+  linkProduct(@Param('id') id: string, @Body() body: { productId: string, supplierSku?: string, supplierProductName?: string, unitCost?: number, isPreferred?: boolean }) {
     return this.suppliersService.linkProduct(id, body);
   }
 
@@ -60,7 +60,7 @@ export class SuppliersController {
 
   @RequirePermissions('MANAGE_PURCHASES')
   @Patch(':id/products/:productId')
-  updateProductLink(@Param('id') id: string, @Param('productId') productId: string, @Body() body: { supplierSku?: string, unitCost?: number, isPreferred?: boolean }) {
+  updateProductLink(@Param('id') id: string, @Param('productId') productId: string, @Body() body: { supplierSku?: string, supplierProductName?: string, unitCost?: number, isPreferred?: boolean }) {
     return this.suppliersService.updateProductLink(id, productId, body);
   }
 }
