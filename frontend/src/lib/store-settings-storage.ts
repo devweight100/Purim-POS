@@ -1,6 +1,7 @@
 import { api } from './api';
 import type { ApiStoreSettings } from './types';
 import { normalizeReceiptOptions, type ReceiptOptions } from '@shared/receipt-options';
+import { normDocNameMode, type DocNameMode } from '@shared/product-names';
 
 export interface StoreSettings {
   storeName: string;
@@ -25,6 +26,8 @@ export interface StoreSettings {
   allowDecimalQty?: boolean;
   /** what slips / A4 documents show, every key filled (read it through lib/receipt-options getReceiptOptions) */
   receiptOptions?: ReceiptOptions;
+  /** default product names on new supplier documents (PO / receiving / supplier returns): SHOP = ชื่อร้าน */
+  supplierDocNameMode?: DocNameMode;
 }
 
 /**
@@ -50,6 +53,7 @@ export const DEFAULT_STORE_SETTINGS: StoreSettings = {
   lowStockThreshold: 5,
   allowDecimalQty: false,
   receiptOptions: normalizeReceiptOptions(null),
+  supplierDocNameMode: 'SHOP',
 };
 
 export function loadStoreSettings(): StoreSettings {
@@ -75,6 +79,7 @@ function normalizeStoreSettings(settings: Partial<StoreSettings> | ApiStoreSetti
     vatEnabled: settings?.vatEnabled === true,
     allowDecimalQty: settings?.allowDecimalQty === true,
     receiptOptions: normalizeReceiptOptions(settings?.receiptOptions),
+    supplierDocNameMode: normDocNameMode(settings?.supplierDocNameMode),
     lowStockThreshold: Number.isFinite(Number(settings?.lowStockThreshold)) ? Number(settings?.lowStockThreshold) : 5,
   };
 }
@@ -110,6 +115,11 @@ export async function saveStoreSettingsToBackend(settings: Partial<StoreSettings
     console.error('Failed to save store settings to backend:', err);
     throw err;
   }
+}
+
+/** Default "ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต" of a new supplier document (ตั้งค่า > สินค้าและสต็อก). */
+export function defaultSupplierDocNameMode(): DocNameMode {
+  return normDocNameMode(loadStoreSettings().supplierDocNameMode);
 }
 
 /** The store-wide low-stock level (products at or below it are "ใกล้หมด"). */

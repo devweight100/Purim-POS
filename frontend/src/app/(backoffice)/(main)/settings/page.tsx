@@ -1,5 +1,6 @@
 "use client";
 
+import { DocNameModeToggle } from '@/components/common/DocNameModeToggle';
 import { OnlineShopSettings } from '@/components/settings/OnlineShopSettings';
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -869,6 +870,19 @@ export default function SettingsPage() {
                     ? <p role="alert" className="text-[11px] font-bold text-rose-600">{storeFieldErrors.lowStockThreshold}</p>
                     : <p className="text-[11px] text-slate-500">สินค้าที่คงเหลือเท่านี้หรือน้อยกว่าจะถือว่าใกล้หมด ใช้ทุกหน้าและรายงาน</p>}
                 </div>
+            </div>
+            {/* product names on supplier documents (docs/product-names.md) */}
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-2" data-testid="supplier-doc-name-setting">
+              <DocNameModeToggle
+                label="ชื่อสินค้าบนเอกสารถึงผู้ขาย (ค่าเริ่มต้น)"
+                value={settings.supplierDocNameMode === 'SUPPLIER' ? 'SUPPLIER' : 'SHOP'}
+                onChange={(mode) => setSettings({ ...settings, supplierDocNameMode: mode })}
+              />
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                ใช้กับใบสั่งซื้อ (หน้าจอ + PDF) หน้ารับสินค้า และใบส่งคืนสินค้า / ใบลดหนี้ผู้ขายที่สร้างใหม่ เปลี่ยนรายใบได้ และเก็บไว้กับเอกสาร (พิมพ์ซ้ำได้ชื่อเดิม)
+                <br />
+                ใช้ชื่อผู้ผลิต = ชื่อ/รหัสสินค้าของผู้ขายรายนั้น → ถ้าไม่มีใช้ชื่อผู้ผลิต → ถ้าไม่มีใช้ชื่อร้าน · ใบเสร็จ ร้านออนไลน์ และรายงานใช้ชื่อร้านเสมอ
+              </p>
             </div>
             <SaveBar onSave={() => void handleSaveStore()} />
           </SectionCard>

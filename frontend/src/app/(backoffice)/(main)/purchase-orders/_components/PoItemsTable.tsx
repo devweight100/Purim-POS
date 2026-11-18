@@ -1,4 +1,6 @@
 import { normVatType, type PoVatType } from '@shared/po-calc';
+import { docLineName, type DocNameMode } from '@shared/product-names';
+import { PoLineName } from './PoLineName';
 import { formatCurrency } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,12 +20,15 @@ interface Props {
   updateProductDiscount: (product: PoProductLike, key: 'discountType' | 'discountValue', value: DiscountKind | number) => void;
   updateItemVat: (productId: string, patch: { vatType?: PoVatType; vatRate?: number }) => void;
   removeCartItem: (productId: string) => void;
+  /** product names of this PO (live preview of what the PDF prints) and its supplier */
+  docNameMode: DocNameMode;
+  supplierId: string | null;
 }
 
 /** The order table (ตารางสั่งของ) of the PO being created / edited. */
 export function PoItemsTable({
   cartItems, supplierProducts, getItemTotal, allowDecimalQty, openImagePreview,
-  updateProductUnitCost, updateProductQuantity, updateProductDiscount, updateItemVat, removeCartItem,
+  updateProductUnitCost, updateProductQuantity, updateProductDiscount, updateItemVat, removeCartItem, docNameMode, supplierId,
 }: Props) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -54,6 +59,7 @@ export function PoItemsTable({
             const discountType = item.discountType;
             const discountValue = item.discountValue;
             const rowTotal = getItemTotal(item);
+            const printed = docLineName(docNameMode, product, supplierId, product.name);
 
             return (
               <div
@@ -78,8 +84,8 @@ export function PoItemsTable({
                       <ImageIcon className="w-4 h-4" />
                     </button>
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
-                        <span>{product.name}</span>
+                      <div className="text-sm font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                        <PoLineName item={{ docName: printed.name, docCode: printed.code, name: product.name }} />
                         <Badge className="bg-sky-100 text-sky-800 border-sky-300 text-xs font-bold shrink-0">
                           {item.unitName || item.baseUnit || 'ชิ้น'} {(item.multiplier ?? 0) > 1 ? `(×${item.multiplier})` : ''}
                         </Badge>

@@ -1,5 +1,8 @@
 'use client';
 
+import { normDocNameMode, type DocNameMode } from '@shared/product-names';
+import { DocNameModeToggle } from '@/components/common/DocNameModeToggle';
+import { defaultSupplierDocNameMode } from '@/lib/store-settings-storage';
 import { matchesOtherNames } from '@shared/product-names';
 import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import { useEffect, useState, useRef, useMemo } from 'react';
@@ -68,6 +71,8 @@ export function PoCreateView({
   const [billDiscountType, setBillDiscountType] = useState<DiscountKind>(init.billDiscountType);
   const [billDiscountValue, setBillDiscountValue] = useState<number>(init.billDiscountValue);
   const [vatType, setVatType] = useState<BillVatMode>(init.vatType);
+  // "ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต": the PO's own, else the store default (ตั้งค่า > สินค้าและสต็อก)
+  const [docNameMode, setDocNameMode] = useState<DocNameMode>(() => (editingPo ? normDocNameMode(editingPo.docNameMode) : defaultSupplierDocNameMode()));
   const [isSupplierCatalogOpen, setIsSupplierCatalogOpen] = useState(false);
 
   // Keyboard navigation
@@ -214,6 +219,7 @@ export function PoCreateView({
           body: JSON.stringify({
             supplierId: updatedPO.supplierId,
             notes: updatedPO.notes,
+            docNameMode,
             billDiscountType,
             billDiscountValue,
             items: apiItems,
@@ -270,6 +276,7 @@ export function PoCreateView({
         method: "POST",
         body: JSON.stringify({
           supplierId: selectedSupplier.id,
+          docNameMode,
           billDiscountType,
           billDiscountValue,
           items: apiItems,
@@ -626,8 +633,17 @@ export function PoCreateView({
                 </div>
               </div>
 
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <DocNameModeToggle label="ชื่อสินค้าบนใบสั่งซื้อ" value={docNameMode} onChange={setDocNameMode} />
+                <span className="text-[11px] text-slate-500">
+                  {docNameMode === 'SUPPLIER' ? 'ชื่อ/รหัสของผู้ขายรายนี้ → ชื่อผู้ผลิต → ชื่อร้าน' : 'พิมพ์ชื่อสินค้าของร้าน'}
+                </span>
+              </div>
+
               {/* Table */}
               <PoItemsTable
+                docNameMode={docNameMode}
+                supplierId={selectedSupplier?.id || null}
                 cartItems={cartItems}
                 supplierProducts={supplierProducts}
                 getItemTotal={getItemTotal}

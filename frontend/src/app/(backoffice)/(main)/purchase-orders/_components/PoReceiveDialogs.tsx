@@ -2,6 +2,9 @@ import {
   Table, TableBody, TableCell, TableHead,
   TableHeader, TableRow
 } from '@/components/ui/table';
+import { normDocNameMode, type DocNameMode } from '@shared/product-names';
+import { DocNameModeToggle } from '@/components/common/DocNameModeToggle';
+import { PoLineName } from './PoLineName';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,13 +29,16 @@ interface ReceiveProps {
   allowDecimalQty: boolean;
   openImagePreview: (product: PreviewTarget, e?: React.MouseEvent) => void;
   handleTriggerReceivePO: () => void;
+  /** "ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต" changed here (saved on the PO, same as its detail / PDF) */
+  onDocNameModeChange: (po: PurchaseOrder, mode: DocNameMode) => void;
+  docNameModeBusy?: boolean;
 }
 
 /** Receive goods (GRN) against a purchase order. */
 export function PoReceiveDialog({
   isReceiveOpen, setIsReceiveOpen, currentPo, receiveItems, setReceiveItems,
   receiveSupplierInvoiceNo, setReceiveSupplierInvoiceNo, receiveSupplierInvoiceDate, setReceiveSupplierInvoiceDate,
-  allowDecimalQty, openImagePreview, handleTriggerReceivePO,
+  allowDecimalQty, openImagePreview, handleTriggerReceivePO, onDocNameModeChange, docNameModeBusy,
 }: ReceiveProps) {
   return (
     <Dialog open={isReceiveOpen} onOpenChange={setIsReceiveOpen}>
@@ -43,7 +49,15 @@ export function PoReceiveDialog({
               <PackageOpen className="w-7 h-7 text-amber-500" />
               ตรวจนับและรับสินค้าเข้าคลัง (PO: {currentPo?.poNumber})
             </DialogTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {currentPo && (
+                <DocNameModeToggle
+                  label="ชื่อสินค้า"
+                  value={normDocNameMode(currentPo.docNameMode)}
+                  onChange={(mode) => onDocNameModeChange(currentPo, mode)}
+                  disabled={docNameModeBusy}
+                />
+              )}
               <Button
                 type="button"
                 size="sm"
@@ -137,7 +151,7 @@ export function PoReceiveDialog({
                             <ImageIcon className="w-4 h-4" />
                           </button>
                           <div className="min-w-0">
-                            <div className="truncate text-sm">{item.name}</div>
+                            <PoLineName item={item} className="block text-sm" />
                             <div className="text-xs text-slate-400 font-mono font-normal">{item.sku}</div>
                           </div>
                         </div>
@@ -278,7 +292,7 @@ export function PoUnderReceiveDialog({
                       const diff = subQty(item.orderedQty, totalRec);
                       return (
                         <tr key={idx} className="hover:bg-slate-50">
-                          <td className="p-2.5 font-medium text-slate-900">{item.name}</td>
+                          <td className="p-2.5 font-medium text-slate-900">{item.docName || item.name}</td>
                           <td className="p-2.5 text-center font-bold text-slate-700">{formatQty(item.orderedQty)} {item.unitName}</td>
                           <td className="p-2.5 text-center font-bold text-emerald-700">{formatQty(totalRec)} {item.unitName}</td>
                           <td className="p-2.5 text-right font-bold text-rose-600">-{formatQty(diff)} {item.unitName}</td>

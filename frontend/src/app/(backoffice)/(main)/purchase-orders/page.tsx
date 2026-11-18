@@ -1,5 +1,6 @@
 'use client';
 
+import { normDocNameMode, type DocNameMode } from '@shared/product-names';
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { normVatType, type PoVatType } from '@shared/po-calc';
 import { apiFetch } from '@/lib/api';
@@ -377,6 +378,32 @@ export default function PurchaseOrdersPage() {
     setTargetStatusChangePo(null);
   };
 
+  // "ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต" of one PO: saved on the server, then every open view of it follows
+  const [docNameModeBusy, setDocNameModeBusy] = useState(false);
+  const handleDocNameModeChange = async (po: { id: string; docNameMode?: string }, mode: DocNameMode) => {
+    if (normDocNameMode(po.docNameMode) === mode || docNameModeBusy) return;
+    setDocNameModeBusy(true);
+    try {
+      const updated = (await apiFetch(`/purchase-orders/${po.id}/doc-name-mode`, { method: 'PATCH', body: JSON.stringify({ mode }) })) as PurchaseOrder;
+      applyUpdatedPo(updated);
+    } catch (err) {
+      toast.error('เปลี่ยนชื่อสินค้าบนเอกสารไม่สำเร็จ: ' + ((err as Error | undefined)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
+    } finally {
+      setDocNameModeBusy(false);
+    }
+  };
+  const applyUpdatedPo = (updated: PurchaseOrder) => {
+    const merge = <T extends { id?: string; supplier?: unknown }>(prev: T | null): T | null =>
+      prev && prev.id === updated.id ? ({ ...prev, docNameMode: updated.docNameMode, items: updated.items } as T) : prev;
+    setCurrentPo((prev) => merge(prev));
+    setPdfPoData((prev) => merge(prev as unknown as PurchaseOrder) as unknown as PurchaseOrderData | null);
+    setReceiveItems((prev) => prev.map((ri) => {
+      const line = updated.items.find((l) => l.id === ri.id);
+      return line ? { ...ri, docName: line.docName ?? null, docCode: line.docCode ?? null } : ri;
+    }));
+    setPurchaseOrders((prev) => prev.map((p) => (p.id === updated.id ? { ...p, docNameMode: updated.docNameMode, items: updated.items } : p)));
+  };
+
   const handleViewDetail = async (id: string, mode: 'detail' | 'pdf' = 'detail') => {
     // 1. Database first so paid / remaining / received quantities are current
     let poData: PurchaseOrder | null | undefined = null;
@@ -451,6 +478,8 @@ export default function PurchaseOrdersPage() {
         currentStock,
         unitCost: item.unitCost,
         imageUrl: item.imageUrl || prod?.imageUrl || null,
+        docName: item.docName ?? null,
+        docCode: item.docCode ?? null,
       };
     });
 
@@ -541,6 +570,8 @@ export default function PurchaseOrdersPage() {
           setCurrentPo(po);
           setPdfPoData(po);
           setIsPdfModalOpen(true);
+          // then the PO as the server keeps it (line names for its name mode, numbers)
+          if (!po.id.startsWith('po_')) void handleViewDetail(po.id, 'pdf');
         }}
       >
         {imagePreview}
@@ -599,6 +630,8 @@ export default function PurchaseOrdersPage() {
         allowDecimalQty={allowDecimalQty}
         openImagePreview={openImagePreview}
         handleTriggerReceivePO={handleTriggerReceivePO}
+        onDocNameModeChange={(po, mode) => void handleDocNameModeChange(po, mode)}
+        docNameModeBusy={docNameModeBusy}
       />
 
       <CreateSupplierReturnModal
@@ -626,6 +659,8 @@ export default function PurchaseOrdersPage() {
         openCancelDialog={openCancelDialog}
         openPdfModal={openPdfModal}
         setReturnPo={setReturnPo}
+        onDocNameModeChange={(po, mode) => void handleDocNameModeChange(po, mode)}
+        docNameModeBusy={docNameModeBusy}
       />
 
       {/* Issue PO Confirmation Dialog */}
@@ -676,6 +711,7 @@ export default function PurchaseOrdersPage() {
         open={isPdfModalOpen}
         onOpenChange={setIsPdfModalOpen}
         po={pdfPoData}
+        onPoChange={(po) => applyUpdatedPo(po as unknown as PurchaseOrder)}
       />
 
       {/* image preview opened from the GRN / detail dialogs (was only rendered on the create screen) */}

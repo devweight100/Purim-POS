@@ -24,7 +24,7 @@ export interface PurchaseOrderLine {
   productId?: string;
   name?: string;
   sku?: string;
-  product?: { name?: string; sku?: string } | null;
+  product?: { name?: string; sku?: string; manufacturerName?: string | null } | null;
   quantity: number;
   qty?: number;
   receivedQty?: number;
@@ -44,6 +44,10 @@ export interface PurchaseOrderLine {
   vatAmount?: number;
   total?: number | null;
   imageUrl?: string | null;
+  /** name / supplier code printed for the PO's name mode (server-resolved, docs/product-names.md) */
+  docName?: string | null;
+  docCode?: string | null;
+  docNameSource?: 'supplier' | 'manufacturer' | 'shop';
 }
 
 export interface PurchaseOrder {
@@ -77,6 +81,8 @@ export interface PurchaseOrder {
   invoiceDate?: string;
   notes?: string;
   cancelReason?: string;
+  /** SHOP | SUPPLIER: product names this PO prints ("ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต") */
+  docNameMode?: string;
   items: PurchaseOrderLine[];
 }
 
@@ -116,6 +122,9 @@ export interface PoReceiveItem {
   currentStock: number;
   unitCost: number;
   imageUrl: string | null;
+  /** name / supplier code for the PO's name mode (shown big; the shop name small when different) */
+  docName?: string | null;
+  docCode?: string | null;
 }
 
 /** Anything whose purchase cost can be guessed (server product, PO line). */

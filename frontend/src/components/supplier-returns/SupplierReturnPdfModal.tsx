@@ -1,5 +1,8 @@
 'use client';
 
+import { apiFetch } from '@/lib/api';
+import { normDocNameMode, type DocNameMode } from '@shared/product-names';
+import { DocNameModeToggle } from '@/components/common/DocNameModeToggle';
 import { useRef, useState } from 'react';
 import { 
   Building2, CheckCircle2, Download, Printer, 
@@ -27,18 +30,38 @@ interface SupplierReturnPdfModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   returnNote: SupplierReturnNote | null;
+  /** the note after "ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต" was changed here (saved on the server) */
+  onNoteChange?: (note: SupplierReturnNote) => void;
 }
 
 export function SupplierReturnPdfModal({
   open,
   onOpenChange,
-  returnNote,
+  returnNote: noteProp,
+  onNoteChange,
 }: SupplierReturnPdfModalProps) {
   const docRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [changed, setChanged] = useState<SupplierReturnNote | null>(null);
+  const [modeBusy, setModeBusy] = useState(false);
   const storeSettings = loadStoreSettings();
+  const returnNote = noteProp && changed && changed.id === noteProp.id ? { ...noteProp, docNameMode: changed.docNameMode, items: changed.items } : noteProp;
 
   if (!returnNote) return null;
+  const docNameMode: DocNameMode = normDocNameMode(returnNote.docNameMode);
+  const changeDocNameMode = async (mode: DocNameMode) => {
+    if (mode === docNameMode || modeBusy) return;
+    setModeBusy(true);
+    try {
+      const updated = (await apiFetch(`/supplier-returns/${encodeURIComponent(returnNote.id)}/doc-name-mode`, { method: 'PATCH', body: JSON.stringify({ mode }) })) as SupplierReturnNote;
+      setChanged(updated);
+      onNoteChange?.(updated);
+    } catch (err) {
+      toast.error('เปลี่ยนชื่อสินค้าบนเอกสารไม่สำเร็จ: ' + ((err as Error | undefined)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
+    } finally {
+      setModeBusy(false);
+    }
+  };
 
   // tolerate server-shaped items (product.{name,sku}, unitPrice) so names and line totals always print
   const noteItems = (returnNote.items || []).map((raw) => {
@@ -49,6 +72,8 @@ export function SupplierReturnPdfModal({
     return {
       ...i,
       productName: i.productName || i.product?.name || 'สินค้า',
+      // printed name for the note's name mode (server-resolved), else the line's shop name
+      printedName: i.docName || i.productName || i.product?.name || 'สินค้า',
       sku: i.sku || i.product?.sku || '-',
       quantity,
       unitCost,
@@ -105,9 +130,12 @@ export function SupplierReturnPdfModal({
               <FileText className="w-5 h-5 text-indigo-600" />
               <span>ใบส่งคืนสินค้า / ใบลดหนี้ผู้จำหน่าย (Debit Note)</span>
             </DialogTitle>
-            <Badge variant="outline" className="font-mono text-xs px-2.5 py-0.5 bg-white font-bold text-indigo-700 border-indigo-200">
-              {returnNote.id}
-            </Badge>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <DocNameModeToggle value={docNameMode} onChange={(m) => void changeDocNameMode(m)} disabled={modeBusy} label="ชื่อสินค้า" />
+              <Badge variant="outline" className="font-mono text-xs px-2.5 py-0.5 bg-white font-bold text-indigo-700 border-indigo-200">
+                {returnNote.id}
+              </Badge>
+            </div>
           </div>
         </DialogHeader>
 
@@ -201,8 +229,8 @@ export function SupplierReturnPdfModal({
                     <tr key={`def-${idx}`} className="hover:bg-slate-50/50">
                       <td className="py-2 px-2 text-center font-mono text-slate-500 border-r border-slate-300">{idx + 1}</td>
                       <td className="py-2 px-3 border-r border-slate-300">
-                        <p className="font-bold text-slate-900 leading-tight">{item.productName}</p>
-                        <p className="text-[10px] text-slate-500 font-mono">SKU: {item.sku}</p>
+                        <p className="font-bold text-slate-900 leading-tight" data-testid="sr-pdf-line-name">{item.printedName}</p>
+                        <p className="text-[10px] text-slate-500 font-mono">SKU: {item.sku}{item.docCode ? ` · รหัสผู้ขาย: ${item.docCode}` : ''}</p>
                         {item.claimId && (
                           <p className="text-[9.5px] text-indigo-600 font-mono font-medium">ใบเคลม: #{item.claimId}</p>
                         )}
@@ -226,8 +254,8 @@ export function SupplierReturnPdfModal({
                     <tr key={`ovs-${idx}`} className="hover:bg-slate-50/50">
                       <td className="py-2 px-2 text-center font-mono text-slate-500 border-r border-slate-300">{defectiveItems.length + idx + 1}</td>
                       <td className="py-2 px-3 border-r border-slate-300">
-                        <p className="font-bold text-slate-900 leading-tight">{item.productName}</p>
-                        <p className="text-[10px] text-slate-500 font-mono">SKU: {item.sku}</p>
+                        <p className="font-bold text-slate-900 leading-tight" data-testid="sr-pdf-line-name">{item.printedName}</p>
+                        <p className="text-[10px] text-slate-500 font-mono">SKU: {item.sku}{item.docCode ? ` · รหัสผู้ขาย: ${item.docCode}` : ''}</p>
                       </td>
                       <td className="py-2 px-2.5 text-sky-800 font-medium leading-tight border-r border-slate-300">
                         <span className="inline-block bg-sky-50 text-sky-700 border border-sky-200 text-[10px] px-1.5 py-0.5 rounded font-bold mr-1">คืนสต็อก</span>

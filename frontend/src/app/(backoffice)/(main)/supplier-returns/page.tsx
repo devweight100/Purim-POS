@@ -745,6 +745,7 @@ export default function SupplierReturnsPage() {
         open={isPdfModalOpen}
         onOpenChange={setIsPdfModalOpen}
         returnNote={selectedNoteForPdf}
+        onNoteChange={() => void refreshData()}
       />
 
       {/* Change / Revert Return Note Status Modal */}

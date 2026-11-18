@@ -12,6 +12,9 @@ import { A4StoreHeader } from '@/components/common/A4StoreHeader';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
 import { printDocumentIframe, exportElementToPdf } from '@/lib/pdf-print-service';
 import { formatQty } from '@/lib/qty';
+import { apiFetch } from '@/lib/api';
+import { normDocNameMode, type DocNameMode } from '@shared/product-names';
+import { DocNameModeToggle } from '@/components/common/DocNameModeToggle';
 
 export interface PurchaseOrderData {
   id: string;
@@ -28,6 +31,8 @@ export interface PurchaseOrderData {
     creditTerms?: number;
   };
   supplierName?: string;
+  /** product names printed (SHOP / SUPPLIER), stored on the PO */
+  docNameMode?: string;
   totalAmount: number;
   discountType?: 'baht' | 'percent';
   discountValue?: number;
@@ -65,11 +70,15 @@ interface PoLikeItem {
   vatType?: string | null;
   vatRate?: Num;
   product?: { name?: string; sku?: string; unit?: string } | null;
+  /** name / supplier code for the PO's name mode (server: docs/product-names.md) */
+  docName?: string | null;
+  docCode?: string | null;
 }
 
 /** A purchase order in any shape this document accepts. */
 interface PoLike {
   id?: string;
+  docNameMode?: string;
   notes?: string | null;
   poNumber?: string;
   poCode?: string;
@@ -107,6 +116,8 @@ interface PurchaseOrderPdfModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   po: PurchaseOrderData | null;
+  /** the PO after "ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต" was changed here (saved on the server) */
+  onPoChange?: (po: PurchaseOrderData) => void;
 }
 
 const PO_STATUS_LABELS: Record<string, string> = {
@@ -125,8 +136,12 @@ export function poStatusLabel(status: string | null | undefined): string {
   return PO_STATUS_LABELS[key] || String(status || '-');
 }
 
-export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: PurchaseOrderPdfModalProps) {
+export default function PurchaseOrderPdfModal({ open, onOpenChange, po: poProp, onPoChange }: PurchaseOrderPdfModalProps) {
   const [isExporting, setIsExporting] = useState(false);
+  // the PO as the server returned it after a name-mode change made in this dialog
+  const [changed, setChanged] = useState<PurchaseOrderData | null>(null);
+  const [modeBusy, setModeBusy] = useState(false);
+  const po = poProp && changed && changed.id === poProp.id ? { ...poProp, ...changed, supplier: poProp.supplier || changed.supplier } : poProp;
   // Hooks must run before any early return (React error #310 otherwise).
   const [storeSettings] = useState(() => loadStoreSettings());
   const printRef = useRef<HTMLDivElement>(null);
@@ -186,6 +201,23 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
   const vatRates = Array.from(new Set(calc.lines.filter((l) => l.vatType !== 'NONE').map((l) => l.vatRate))).join('/');
 
 
+  const docNameMode: DocNameMode = normDocNameMode(poData.docNameMode);
+  // supplier codes get their own small column when any line has one (supplier-name mode)
+  const showSupplierCode = items.some((it) => !!it.docCode);
+  const changeDocNameMode = async (mode: DocNameMode) => {
+    if (!poData.id || mode === docNameMode || modeBusy) return;
+    setModeBusy(true);
+    try {
+      const updated = (await apiFetch(`/purchase-orders/${poData.id}/doc-name-mode`, { method: 'PATCH', body: JSON.stringify({ mode }) })) as PurchaseOrderData;
+      setChanged(updated);
+      onPoChange?.(updated);
+    } catch (err) {
+      toast.error('เปลี่ยนชื่อสินค้าบนเอกสารไม่สำเร็จ: ' + ((err as Error | undefined)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'));
+    } finally {
+      setModeBusy(false);
+    }
+  };
+
   const handlePrint = () => {
     if (!printRef.current) return;
     printDocumentIframe(printRef.current, `ใบสั่งซื้อ - ${poNumber}`, 'a4');
@@ -215,7 +247,10 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
             <FileText className="w-5 h-5 text-sky-600" />
             <h3 className="font-bold text-slate-900 text-lg">เอกสารใบสั่งซื้อ (PO: {poNumber})</h3>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {poData.id && (
+              <DocNameModeToggle value={docNameMode} onChange={(m) => void changeDocNameMode(m)} disabled={modeBusy} label="ชื่อสินค้า" />
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -318,6 +353,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                     <tr className="bg-slate-800 text-white font-bold uppercase">
                       <th className="p-2.5 text-center w-12 border-r border-slate-700">ลำดับ</th>
                       <th className="p-2.5 w-24 border-r border-slate-700">รหัสสินค้า</th>
+                      {showSupplierCode && <th className="p-2.5 w-20 border-r border-slate-700 text-[10px]">รหัสผู้ขาย</th>}
                       <th className="p-2.5 border-r border-slate-700">รายการสินค้า (DESCRIPTION)</th>
                       <th className="p-2.5 text-right w-16 border-r border-slate-700">จำนวน</th>
                       <th className="p-2.5 text-right w-20 border-r border-slate-700">หน่วยละ</th>
@@ -329,13 +365,14 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                   <tbody className="divide-y divide-slate-200 font-medium">
                     {items.length === 0 ? (
                       <tr>
-                        <td colSpan={showVat ? 8 : 7} className="p-8 text-center text-slate-400 font-semibold">
+                        <td colSpan={(showVat ? 8 : 7) + (showSupplierCode ? 1 : 0)} className="p-8 text-center text-slate-400 font-semibold">
                           ไม่พบรายการสินค้าในใบสั่งซื้อนี้
                         </td>
                       </tr>
                     ) : (
                       items.map((item, idx: number) => {
-                        const name = item.name || item.product?.name || item.productName || 'สินค้า';
+                        // the PO's name mode (server-resolved per line); older shapes: the shop name
+                        const name = item.docName || item.name || item.product?.name || item.productName || 'สินค้า';
                         const sku = item.sku || item.product?.sku || '-';
                         const qty = Number(item.quantity) || Number(item.qty) || 0;
                         const cost = Number(item.unitCost) || Number(item.cost) || Number(item.price) || 0;
@@ -348,8 +385,9 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po }: Purcha
                           <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
                             <td className="p-2.5 text-center text-slate-500 font-semibold border-r border-slate-200">{idx + 1}</td>
                             <td className="p-2.5 font-mono text-slate-700 font-semibold border-r border-slate-200">{sku}</td>
+                            {showSupplierCode && <td className="p-2.5 font-mono text-[10px] text-slate-700 border-r border-slate-200" data-testid="po-pdf-supplier-code">{item.docCode || '-'}</td>}
                             <td className="p-2.5 border-r border-slate-200 font-bold text-slate-900">
-                              <span>{name}</span>
+                              <span data-testid="po-pdf-line-name">{name}</span>
                               {unitBadge && <span className="ml-1.5 text-[10px] text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.2 rounded font-normal">[{unitBadge}]</span>}
                               {calc.lines[idx]?.vatType === 'INCLUDED' && <span className="ml-1.5 text-[10px] text-emerald-700 font-normal">(ราคารวม VAT {calc.lines[idx].vatRate}%)</span>}
                               {calc.lines[idx]?.vatType === 'EXCLUDED' && <span className="ml-1.5 text-[10px] text-amber-700 font-normal">(+VAT {calc.lines[idx].vatRate}%)</span>}

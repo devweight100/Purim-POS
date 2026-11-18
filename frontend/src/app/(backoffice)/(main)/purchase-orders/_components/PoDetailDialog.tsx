@@ -1,4 +1,7 @@
 import { useRouter } from 'next/navigation';
+import { normDocNameMode, type DocNameMode } from '@shared/product-names';
+import { DocNameModeToggle } from '@/components/common/DocNameModeToggle';
+import { PoLineName } from './PoLineName';
 import { normVatType } from '@shared/po-calc';
 import { formatCurrency, formatDate, formatListDateTime } from '@/lib/utils';
 import {
@@ -31,12 +34,15 @@ interface Props {
   openCancelDialog: PoAction;
   openPdfModal: PoAction;
   setReturnPo: (po: PurchaseOrder | null) => void;
+  /** "ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต" changed (saved on the PO) */
+  onDocNameModeChange: (po: PurchaseOrder, mode: DocNameMode) => void;
+  docNameModeBusy?: boolean;
 }
 
 /** Details of one purchase order with its actions. */
 export function PoDetailDialog({
   isDetailOpen, setIsDetailOpen, currentPo, openImagePreview, openIssueConfirmDialog, openReceiveDialog,
-  openEditDialog, openStatusChangeDialog, openCancelDialog, openPdfModal, setReturnPo,
+  openEditDialog, openStatusChangeDialog, openCancelDialog, openPdfModal, setReturnPo, onDocNameModeChange, docNameModeBusy,
 }: Props) {
   const router = useRouter();
   return (
@@ -58,6 +64,14 @@ export function PoDetailDialog({
               <div>
                 <span className="text-slate-500 block mb-1">วันที่สร้าง</span>
                 <span className="font-bold text-slate-900 text-base">{formatListDateTime(currentPo.createdAt)}</span>
+              </div>
+              <div className="col-span-2 border-t border-slate-200 pt-3">
+                <DocNameModeToggle
+                  label="ชื่อสินค้าบนเอกสาร (หน้าจอ / PDF / รับสินค้า)"
+                  value={normDocNameMode(currentPo.docNameMode)}
+                  onChange={(mode) => onDocNameModeChange(currentPo, mode)}
+                  disabled={docNameModeBusy}
+                />
               </div>
             </div>
             
@@ -87,7 +101,7 @@ export function PoDetailDialog({
                         >
                           <ImageIcon className="w-3.5 h-3.5" />
                         </button>
-                        <span>{item.name || item.product?.name}</span>
+                        <PoLineName item={item} />
                       </TableCell>
                       <TableCell className="text-right text-slate-700 font-semibold">{formatQty(item.quantity)}</TableCell>
                       <TableCell className="text-right text-emerald-600 font-bold">{formatQty(Number(item.receivedQty ?? item.receivedQuantity) || 0)}</TableCell>

@@ -457,6 +457,9 @@ export interface ClaimRecord {
 export type SupplierReturnItemType = 'DEFECTIVE' | 'OVERSTOCK';
 
 export interface SupplierReturnItem {
+  /** name / supplier code printed for the note's name mode (server-resolved, docs/product-names.md) */
+  docName?: string | null;
+  docCode?: string | null;
   claimId?: string;             // รหัสใบเคลมเดิม CLM-xxx (ถ้ามาจากเคลม)
   poId?: string;                // รหัสใบ PO (ถ้าอ้างอิง PO)
   poNumber?: string;
@@ -503,6 +506,8 @@ export interface SupplierReturnNote {
   deductions?: SupplierReturnDeduction[];
   notes?: string;
   createdBy: string;
+  /** SHOP | SUPPLIER: product names printed on this note ("ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต") */
+  docNameMode?: string;
 }
 
 export interface ClaimEligibleItem {
@@ -1237,6 +1242,7 @@ export interface SettleMultipleResponse {
 
 /** GET /supplier-returns row (server note + metadata kept by the frontend) */
 export interface ApiSupplierReturnNote {
+  docNameMode?: string;
   id: string;
   returnNumber?: string;
   noteNumber?: string;
@@ -1416,6 +1422,8 @@ export interface ApiStoreSettings {
   loyaltyConfig?: LoyaltyConfigJson | null;
   /** what slips / A4 documents show (shared/src/receipt-options.ts); null = defaults */
   receiptOptions?: { slip?: Record<string, boolean>; a4?: Record<string, boolean> } | null;
+  /** SHOP | SUPPLIER: default product names on new supplier documents */
+  supplierDocNameMode?: string;
 }
 
 /** store_settings.loyalty_config (see customer-service LoyaltySystemConfig) */

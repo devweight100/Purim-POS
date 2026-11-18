@@ -173,6 +173,7 @@ export function mapReturnNote(item: ApiSupplierReturnNote): SupplierReturnNote {
     notes: item.notes ?? item.note ?? item.reason ?? '',
     deductions: Array.isArray(item.deductions) ? item.deductions : [],
     createdBy: item.createdBy || 'เจ้าหน้าที่ฝ่ายส่งคืน/เคลม',
+    docNameMode: item.docNameMode || 'SHOP',
   };
 }
 
@@ -451,6 +452,8 @@ export interface CreateSupplierReturnParams {
   notes?: string;
   createdBy?: string;
   autoDeductFromPo?: boolean;
+  /** "ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต" of the note (absent = the store default on create / unchanged on edit) */
+  docNameMode?: string;
 }
 
 export interface CreateReturnNoteParams {
@@ -466,6 +469,8 @@ export interface CreateReturnNoteParams {
   notes?: string;
   createdBy?: string;
   autoDeductFromPo?: boolean;
+  /** "ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต" of the note (absent = the store default on create / unchanged on edit) */
+  docNameMode?: string;
 }
 
 /** Items and totals of a return note, computed from the form. */
@@ -561,6 +566,7 @@ export async function createSupplierReturnNote(params: CreateReturnNoteParams): 
       reason: params.notes || 'ส่งเคลม/คืนสินค้าบริษัท',
       createdBy,
       deductStock: true,
+      ...(params.docNameMode ? { docNameMode: params.docNameMode } : {}),
     });
   } catch (err) {
     throw new Error(failMessage(err, 'บันทึกเอกสารส่งคืนลงฐานข้อมูลไม่สำเร็จ'));
@@ -604,6 +610,7 @@ export async function updateSupplierReturnNote(noteId: string, params: CreateRet
     ...content,
     remainingCreditAmount: content.totalCreditAmount,
     notes: params.notes,
+    ...(params.docNameMode ? { docNameMode: params.docNameMode } : {}),
   };
   try {
     await apiFetch(`/supplier-returns/${encodeURIComponent(noteId)}`, {

@@ -1,5 +1,8 @@
 'use client';
 
+import { normDocNameMode, type DocNameMode } from '@shared/product-names';
+import { DocNameModeToggle } from '@/components/common/DocNameModeToggle';
+import { defaultSupplierDocNameMode } from '@/lib/store-settings-storage';
 import { matchesOtherNames } from '@shared/product-names';
 import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import { useState, useEffect, useMemo } from 'react';
@@ -110,6 +113,8 @@ export function CreateSupplierReturnModal({
 
   // Document metadata
   const [notes, setNotes] = useState('');
+  // "ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต" of the note (default: ตั้งค่า > สินค้าและสต็อก)
+  const [docNameMode, setDocNameMode] = useState<DocNameMode>(() => defaultSupplierDocNameMode());
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Load suppliers on open
@@ -125,6 +130,7 @@ export function CreateSupplierReturnModal({
         setSelectedPoId(editingNote.linkedPoId || '');
         setReturnItems(editingNote.items.map((i) => ({ ...i })));
         setNotes(editingNote.notes || '');
+        setDocNameMode(normDocNameMode(editingNote.docNameMode));
         setCustomDeductAmountStr(String(editingNote.totalCreditAmount));
         setIsCustomEdited(true);
       } else {
@@ -133,6 +139,7 @@ export function CreateSupplierReturnModal({
         setSelectedPoId(initialPoId || '');
         setReturnItems([]);
         setNotes('');
+        setDocNameMode(defaultSupplierDocNameMode());
         setCustomDeductAmountStr('');
         setIsCustomEdited(false);
       }
@@ -440,6 +447,7 @@ export function CreateSupplierReturnModal({
           items: returnItems,
           customCreditAmount: finalEffectiveCredit,
           notes: notes.trim() || undefined,
+          docNameMode,
         });
         toast.success(`✅ อัปเดตเอกสารส่งคืน ${resultNote.id} เรียบร้อยแล้ว`);
       } else {
@@ -455,6 +463,7 @@ export function CreateSupplierReturnModal({
           customCreditAmount: finalEffectiveCredit,
           notes: notes.trim() || undefined,
           autoDeductFromPo: false,
+          docNameMode,
         });
         toast.success(`✅ สร้างใบส่งคืน / ใบลดหนี้ ${resultNote.id} เรียบร้อยแล้ว`);
       }
@@ -1255,6 +1264,7 @@ export function CreateSupplierReturnModal({
                 onChange={(e) => setNotes(e.target.value)}
                 className="h-10 text-xs rounded-xl"
               />
+              <DocNameModeToggle label="ชื่อสินค้าบนใบส่งคืน" value={docNameMode} onChange={setDocNameMode} className="pt-1" />
 
               {selectedPO && (
                 <p className="pt-2 text-[11px] text-slate-500">

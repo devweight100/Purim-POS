@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PO_ITEMS, withDocNames } from '../purchase-orders/purchase-orders.service';
 
 /** dd/MM/yyyy HH:mm, Buddhist year, Bangkok time (same format as the printed documents) */
 export function formatThaiDateTime(value: Date | string): string {
@@ -152,7 +153,7 @@ export class DocumentsService {
         include: {
           supplier: true,
           items: {
-            include: { product: true },
+            ...PO_ITEMS,
           },
         },
         take: 10,
@@ -292,7 +293,8 @@ export class DocumentsService {
         amount: Number(po.totalAmount),
         customerName: po.supplier?.name || 'ไม่ระบุผู้จำหน่าย',
         description: `ผู้จำหน่าย: ${po.supplier?.name || '-'} • สินค้า ${po.items?.length || 0} รายการ • สถานะ: ${po.status}`,
-        rawData: po,
+        // line names for the PO's stored name mode (the PDF opened from the search reads them)
+        rawData: withDocNames(po),
       });
     }
 
