@@ -1,5 +1,31 @@
 # Perf round — progress notes (delete a task's section when it is fully done)
 
+## Task 9: product SKU = permanent system ID + narrower name column (owner request) — IN PROGRESS
+
+Branch ccr-8f8b0741-si1a0o (base c4aeb0c).
+
+### Findings
+- SKU format today: the product form generated an internal EAN-13 in the browser ("200" + 9 random + check digit;
+  owner's screenshot 2006893237927 is valid) and staff could type / re-roll it; server required it on POST and accepted
+  any change on PATCH. Import: matched by id -> SKU -> barcode, renamed the SKU of a matched product, generated
+  `AUTO-<base36>-0001` for new rows without one. Packs have no SKU (only their own barcodes). No bulk edit (bulk = delete).
+  Only other writers of products.sku: online-shop delivery-fee service product (fixed SYS-DELIVERY-FEE), seed.
+
+### Decisions
+- Create (API + form): SKU always generated on the server (same EAN-13 "200" format, unique vs SKUs, barcodes, pack
+  barcodes); a client `sku` is ignored.
+- PATCH: `sku` absent or unchanged -> fine; different -> 400 "รหัสสินค้า (ระบบ) เปลี่ยนไม่ได้".
+- Import: SKU stays the matching key; a row matched (id / SKU / barcode) with another SKU never renames (counted as
+  `skuKept`). New product: file SKU kept when given (re-importing the same file must update, not duplicate; the e2e
+  import file and legacy shop files rely on codes), else generated in the EAN-13 format (replaces AUTO-...).
+
+### Plan
+1. [x] Backend: product-sku.ts generator + spec, create / update / import rules.
+2. [ ] Backend e2e (update rejected, import no rename, create generates) + fix tests that relied on client SKUs.
+3. [ ] Frontend form: read-only "รหัสสินค้า (ระบบ)" + copy; no SKU in payload; import preview note.
+4. [ ] Table: name column narrower, name + barcodes only, widths; Playwright spec + screenshots.
+5. [ ] Full verification, PROJECT_STATUS, drop DBs.
+
 ## Task 8: LINE shop member still sees ราคา 1 after link approval (owner bug, v1.5.7) — DONE (PROJECT_STATUS 2026-11-18, docs/bugfix-member-price.md)
 
 Branch ccr-8f8b0741-si1a0o (base ffb0eee).

@@ -6,6 +6,7 @@ import { InventoryService } from '../inventory/inventory.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { rethrowPrismaError } from './prisma-errors';
+import { generateProductSku } from './product-sku';
 import { LOOKUP_FILTERS, type LookupFilter, packChain, priceLevels, rankCandidates, searchTokens, stockLevel } from './product-lookup';
 import { addQty, assertQtyAllowed, decimalQtyAllowed, hasMax2Decimals, qn, roundQty } from '../common/qty';
 import {
@@ -28,6 +29,9 @@ const PRICE_LABELS: Record<string, string> = {
   priceLevel4: 'ราคาระดับ 4',
   priceLevel5: 'ราคาระดับ 5',
 };
+
+/** 400 for any attempt to change a product's SKU (PATCH). */
+export const SKU_LOCKED_MESSAGE = 'รหัสสินค้า (ระบบ) เปลี่ยนไม่ได้ ระบบสร้างให้ครั้งเดียวตอนเพิ่มสินค้า';
 
 const isBlank = (v: unknown) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
 
@@ -61,12 +65,10 @@ export class ProductsService {
       if (!name) throw new BadRequestException('กรุณาระบุชื่อสินค้า');
       data.name = name;
     }
-    if (!partial || data.sku !== undefined) {
-      const sku = typeof data.sku === 'string' ? data.sku.trim() : '';
-      if (!sku) throw new BadRequestException('กรุณาระบุรหัสสินค้า (SKU)');
-      if (sku.length > 64) throw new BadRequestException('รหัสสินค้า (SKU) ยาวเกิน 64 ตัวอักษร');
-      data.sku = sku;
-    }
+    // SKU = permanent system ID: never taken from the client on create (generated in the transaction);
+    // on update it may only be sent unchanged (checked against the stored one in update()).
+    if (!partial) delete data.sku;
+    else if (typeof data.sku === 'string') data.sku = data.sku.trim();
     for (const key of Object.keys(PRICE_LABELS)) {
       if (data[key] === undefined) continue;
       if (data[key] === null && key.startsWith('priceLevel')) continue;
@@ -431,6 +433,8 @@ export class ProductsService {
     this.normalizeProductInput(data, false);
 
     const product = await businessTransaction(this.prisma, async (tx) => {
+      const requestCodes = [...(this.barcodeCodes(barcodes) || []), ...(Array.isArray(packagingUnits) ? packagingUnits.map((u: any) => String(u?.barcode || '').trim()).filter(Boolean) : [])];
+      data.sku = await generateProductSku(tx, new Set(requestCodes));
       await this.assertIdentifiersFree(tx, null, data.sku, this.barcodeCodes(barcodes));
       await this.assertCategory(tx, data.categoryId);
       await this.assertBundleChildren(tx, null, bundleItems);
@@ -903,9 +907,13 @@ export class ProductsService {
     this.normalizeProductInput(data, true);
 
     const product = await businessTransaction(this.prisma, async (tx) => {
-      const current = await tx.product.findUnique({ where: { id }, select: { id: true } });
+      const current = await tx.product.findUnique({ where: { id }, select: { id: true, sku: true } });
       if (!current) throw new NotFoundException('ไม่พบสินค้านี้');
-      await this.assertIdentifiersFree(tx, id, data.sku, this.barcodeCodes(barcodes));
+      if (data.sku !== undefined) {
+        if (data.sku !== current.sku) throw new BadRequestException(SKU_LOCKED_MESSAGE);
+        delete data.sku; // unchanged: nothing to write
+      }
+      await this.assertIdentifiersFree(tx, id, undefined, this.barcodeCodes(barcodes));
       await this.assertCategory(tx, data.categoryId);
       await this.assertBundleChildren(tx, id, bundleItems);
 
@@ -1090,19 +1098,6 @@ export class ProductsService {
     };
   }
 
-  /** A SKU for an imported row without one; unique against product SKUs and barcodes. */
-  private async generateSku(tx: any, seq: { n: number; base: string }) {
-    for (;;) {
-      seq.n += 1;
-      const candidate = `${seq.base}-${String(seq.n).padStart(4, '0')}`;
-      const [p, bc] = await Promise.all([
-        tx.product.findUnique({ where: { sku: candidate }, select: { id: true } }),
-        tx.productBarcode.findUnique({ where: { barcode: candidate }, select: { id: true } }),
-      ]);
-      if (!p && !bc) return candidate;
-    }
-  }
-
   /**
    * CSV / Excel import. All rows are validated first, then written in ONE transaction: any bad row
    * rejects the whole file (400/409 naming the row) and nothing is saved. Stock targets go through
@@ -1120,7 +1115,13 @@ export class ProductsService {
     let created = 0;
     let updated = 0;
     let skipped = 0;
-    const seq = { n: 0, base: `AUTO-${Date.now().toString(36).toUpperCase()}` };
+    // rows that matched an existing product but carried another SKU: the SKU is never renamed (kept as is)
+    let skuKept = 0;
+    // codes named anywhere in the file: a generated SKU must not take one of them
+    const fileCodes = new Set<string>();
+    for (const r of rows) {
+      for (const c of [r.sku, r.barcode, ...r.extraBarcodes, ...(r.packagingUnits || []).map((u) => u.barcode)]) if (c) fileCodes.add(c);
+    }
 
     await this.prisma
       .$transaction(
@@ -1174,12 +1175,15 @@ export class ProductsService {
 
               if (existing) {
                 productId = existing.id;
-                if (row.sku && row.sku !== existing.sku) data.sku = row.sku;
-                await this.assertIdentifiersFree(tx, productId, data.sku, row.barcode && barcodeOwner !== productId ? [row.barcode] : undefined);
+                // SKU is the matching key and the permanent system ID: a different SKU in the file never renames
+                if (row.sku && row.sku !== existing.sku) skuKept++;
+                await this.assertIdentifiersFree(tx, productId, undefined, row.barcode && barcodeOwner !== productId ? [row.barcode] : undefined);
                 if (Object.keys(data).length > 0) await tx.product.update({ where: { id: productId }, data });
                 updated++;
               } else {
-                const sku = row.sku || (await this.generateSku(tx, seq));
+                // new product: the file's SKU is kept (re-importing the same file then updates instead of
+                // duplicating); no SKU in the file -> the system generates one (same format as the product form)
+                const sku = row.sku || (await generateProductSku(tx, fileCodes));
                 await this.assertIdentifiersFree(tx, null, sku, row.barcode ? [row.barcode] : undefined);
                 const newProd = await tx.product.create({
                   data: {
@@ -1249,6 +1253,6 @@ export class ProductsService {
       )
       .catch((err) => rethrowPrismaError(err, { conflict: 'รหัสสินค้าหรือบาร์โค้ดในไฟล์ซ้ำกับสินค้าที่มีอยู่แล้ว', badRef: 'ข้อมูลอ้างอิงในไฟล์ไม่ถูกต้อง' }));
 
-    return { success: true, created, updated, skipped, total: created + updated };
+    return { success: true, created, updated, skipped, skuKept, total: created + updated };
   }
 }

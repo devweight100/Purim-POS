@@ -113,9 +113,13 @@ export class CreateProductDto {
   @IsOptional()
   description?: string;
 
+  /**
+   * Product code = permanent system ID. Ignored on create (the server generates it); on PATCH it may
+   * only be sent unchanged (another value = 400). Kept in the DTO so a change is rejected, not silently stripped.
+   */
   @IsString()
-  @IsNotEmpty()
-  sku!: string;
+  @IsOptional()
+  sku?: string;
 
   @IsString()
   @IsOptional()
