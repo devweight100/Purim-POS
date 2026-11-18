@@ -234,4 +234,4 @@ Playwright `20-product-sku` (no photo / barcodes, category column, aligned unit,
 `22-round4` (payables progress + ⋯ by keyboard + row click, dates on debts / PO / orders, IN / PO / PV numbers),
 number regexes in `02`, `05`, `15`, `16`, `07` (no thumbnail in the table).
 
-Done: A, B, C. Next: verification + after screenshots.
+Done: A, B, C, verification (see PROJECT_STATUS 2026-11-18 round 4), after screenshots. Next: nothing.
