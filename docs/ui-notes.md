@@ -188,4 +188,4 @@ Plan (resume from "Next" after a restart):
   docs/document-numbers.md; short Thai list dates without time (one formatter), time only in details / orders /
   receipts.
 
-Next: A.
+Done: A (products row). Next: B (payables).

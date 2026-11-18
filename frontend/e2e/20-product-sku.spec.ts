@@ -8,6 +8,7 @@ import { horizontalOverflow, SIZES } from './layout';
 /**
  * Owner request 2026-11-18 (สินค้า > รายการสินค้า & ราคา):
  * - the name column is narrower and shows only the name and the barcodes (no product code); "N ขนาดบรรจุ" stays;
+ *   round 4: no photo / icon and no barcodes either; category a narrow column; quantity + unit on one line;
  *   no sideways scroll at 1366x768, 1920x1080, 1093x614; searching by the product code still finds the product;
  * - the product code (SKU) is the permanent system ID: generated on create, read only in the edit form
  *   ("รหัสสินค้า (ระบบ)" + copy), never changed by a save.
@@ -51,43 +52,64 @@ test('create generates the code (EAN-13 "200…"); a typed code is ignored', asy
   expect(made.long!.sku).not.toBe('TYPED-BY-USER');
 });
 
-test('table: name + barcodes only (no code), pack count, no sideways scroll at 3 sizes; search by code finds it', async ({ page }) => {
+test('table: name only (no photo, no barcodes, no code), pack link, narrow category, quantity + unit aligned, no sideways scroll at 3 sizes in both sidebar states', async ({ page }) => {
   await openProducts(page, TAG);
   const rows = page.locator('[data-row-nav]');
   const long = rows.filter({ hasText: LONG });
   await expect(long).toBeVisible();
   await expect(rows).toHaveCount(2);
   const table = page.locator('table').first();
-  await expect(page.getByRole('columnheader', { name: /ชื่อสินค้า \/ บาร์โค้ด/ })).toBeVisible();
-  for (const size of SIZES) {
-    await page.setViewportSize(size);
-    await page.waitForTimeout(250);
-    expect({ size, overflow: await horizontalOverflow(page) }).toEqual({ size, overflow: [] });
-    // no product code anywhere in the table
-    const text = (await table.innerText()).replace(/\s+/g, ' ');
-    expect(text).not.toContain(made.long!.sku);
-    expect(text).not.toContain(made.short!.sku);
-    // barcodes still shown (3 + "+N" with all of them in the tooltip), pack count kept
-    const codes = long.getByTestId('product-barcodes');
-    for (const b of BARCODES.slice(0, 3)) await expect(codes.getByText(b, { exact: true })).toBeVisible();
-    // (the pack barcode is listed with them, as before)
-    await expect(codes.getByText('+3', { exact: true })).toHaveAttribute('title', [...BARCODES, `88578${TAG}0`].join('\n'));
-    await expect(codes).toContainText('1 ขนาดบรรจุ');
-    // the long name wraps / clamps inside its cell and has the full name as tooltip
-    await expect(long.getByTitle(LONG, { exact: true })).toBeVisible();
-    const nameCell = long.locator('td').nth(2);
-    const cellBox = (await nameCell.boundingBox())!;
-    const nameBox = (await long.getByTitle(LONG, { exact: true }).boundingBox())!;
-    expect(nameBox.x + nameBox.width).toBeLessThanOrEqual(cellBox.x + cellBox.width + 1);
-    // the name column is not most of the table (round 3: price levels 1-5 are their own columns; at 1920 the name
-    // keeps what is left after category, cost and 5 prices, a bit under half)
-    const tableBox = (await table.boundingBox())!;
-    expect(cellBox.width).toBeLessThan(tableBox.width * 0.5);
-    const edit = long.getByRole('button', { name: `แก้ไข ${LONG}` });
-    const editBox = (await edit.boundingBox())!;
-    expect(editBox.x + editBox.width).toBeLessThanOrEqual(size.width);
-    if (SHOTS && size.width === 1366) await page.screenshot({ path: path.join(SHOTS, 'products-table.png') });
+  await expect(page.getByRole('columnheader', { name: /^ชื่อสินค้า/ })).toBeVisible();
+  for (const collapsed of [false, true]) {
+    if (collapsed) {
+      await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+      await page.keyboard.press('Control+b');
+      await expect(page.getByRole('button', { name: /ขยายแถบเมนู/ }).first()).toBeVisible();
+    }
+    for (const size of SIZES) {
+      await page.setViewportSize(size);
+      await page.waitForTimeout(250);
+      const where = { size, collapsed };
+      expect({ ...where, overflow: await horizontalOverflow(page) }).toEqual({ ...where, overflow: [] });
+      // round 4 (owner): no photo / icon, no barcodes, no product code anywhere in the table
+      const text = (await table.innerText()).replace(/\s+/g, ' ');
+      for (const code of [made.long!.sku, made.short!.sku, ...BARCODES, `88578${TAG}0`, `88579${TAG}1`]) expect({ ...where, code, shown: text.includes(code) }).toEqual({ ...where, code, shown: false });
+      await expect(table.locator('img')).toHaveCount(0);
+      await expect(long.getByTestId('product-barcodes')).toHaveCount(0);
+      await expect(long.getByTestId('product-pack-link')).toHaveText('1 ขนาดบรรจุ');
+      // category: a narrow column (truncated chip with tooltip) when the table is 1366 px or wider, a chip otherwise
+      const cat = long.getByTestId(size.width >= 1366 ? 'product-category' : 'product-category-chip');
+      await expect(cat).toHaveAttribute('title', `ประปา ${TAG}`);
+      if (size.width >= 1366) {
+        const head = page.getByRole('columnheader', { name: 'หมวดหมู่' });
+        expect((await head.boundingBox())!.width).toBeLessThanOrEqual(130);
+      }
+      // quantity and unit on one line, units of both rows start at the same x (a straight column)
+      const qty = long.getByTestId('product-stock');
+      const badge = (await qty.locator('div.grid > span').first().boundingBox())!;
+      const unit = (await qty.getByTestId('product-unit').boundingBox())!;
+      expect(Math.abs((unit.y + unit.height / 2) - (badge.y + badge.height / 2))).toBeLessThan(4);
+      expect(unit.x).toBeGreaterThanOrEqual(badge.x + badge.width - 1);
+      const otherUnit = (await rows.filter({ hasText: SHORT }).getByTestId('product-unit').boundingBox())!;
+      expect(Math.abs(otherUnit.x - unit.x)).toBeLessThan(1);
+      await expect(qty.getByTestId('product-unit')).toHaveText('เส้น');
+      // the long name wraps / clamps inside its cell and has the full name as tooltip
+      await expect(long.getByTitle(LONG, { exact: true })).toBeVisible();
+      const nameCell = long.locator('td').nth(2);
+      const cellBox = (await nameCell.boundingBox())!;
+      const nameBox = (await long.getByTitle(LONG, { exact: true }).boundingBox())!;
+      expect(nameBox.x + nameBox.width).toBeLessThanOrEqual(cellBox.x + cellBox.width + 1);
+      const tableBox = (await table.boundingBox())!;
+      expect(cellBox.width).toBeLessThan(tableBox.width * 0.5);
+      const edit = long.getByRole('button', { name: `แก้ไข ${LONG}` });
+      const editBox = (await edit.boundingBox())!;
+      expect(editBox.x + editBox.width).toBeLessThanOrEqual(size.width);
+      if (SHOTS && size.width === 1366) await page.screenshot({ path: path.join(SHOTS, `products-table${collapsed ? '-collapsed' : ''}.png`) });
+    }
   }
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.keyboard.press('Control+b');
+  await expect(page.getByRole('button', { name: /ย่อแถบเมนู/ }).first()).toBeVisible();
   await page.setViewportSize(SIZES[0]);
 
   // price levels are their own columns (round 3): 1-5 at 1366x768 / 1920x1080, at least 1-3 at 1093x614
@@ -103,7 +125,13 @@ test('table: name + barcodes only (no code), pack count, no sideways scroll at 3
 
   // chevron expands the pack row; the checkbox selects without opening the form
   await long.getByRole('button', { name: `แสดงขนาดบรรจุ ${LONG}` }).click();
-  await expect(page.locator('tr', { hasText: `88578${TAG}0` })).toBeVisible();
+  const packRow = page.locator('tr', { hasText: '× 10 เส้น' });
+  await expect(packRow).toBeVisible();
+  await expect(packRow.getByTestId('product-unit')).toHaveText('มัด');
+  // the "1 ขนาดบรรจุ" link folds it again (and does not open the edit form)
+  await long.getByTestId('product-pack-link').click();
+  await expect(packRow).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await long.getByRole('checkbox').click({ force: true }); // custom checkbox: the visible box sits over the sr-only input
   await expect(page.getByText('เลือกสินค้าแล้ว 1 รายการ')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -122,6 +150,15 @@ test('table: name + barcodes only (no code), pack count, no sideways scroll at 3
   await expect(rows.first()).toContainText(SHORT);
   await search.fill(made.long!.sku.slice(0, 11));
   await expect(rows.filter({ hasText: LONG })).toHaveCount(1);
+  // ... and by barcode (any of them, and a pack barcode), though barcodes are not shown either
+  for (const code of [BARCODES[4], `88579${TAG}1`]) {
+    await search.fill(code);
+    await expect(rows).toHaveCount(1);
+  }
+  await expect(rows.first()).toContainText(SHORT);
+  await search.fill(BARCODES[0]);
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText(LONG);
 });
 
 test('edit form: "รหัสสินค้า (ระบบ)" read only with copy, skipped by Tab, unchanged after save', async ({ page }) => {

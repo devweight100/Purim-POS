@@ -162,7 +162,6 @@ export function ProductTableRow({
                 <div className="w-1 h-4 rounded-full bg-sky-300 shrink-0" />
                 <span className="text-[13px] font-semibold text-sky-800">{unit.name}</span>
                 <span className="text-[11px] text-sky-600 bg-sky-100 px-1.5 py-0.5 rounded-full">× {mult.toLocaleString()} {p.unit || "ชิ้น"}</span>
-                {unit.barcode && <span className="font-mono text-[11px] text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded">{unit.barcode}</span>}
               </div>
             </TableCell>
             {layout.showCategory && <TableCell className="py-1.5"><span className="text-xs text-slate-300">—</span></TableCell>}
