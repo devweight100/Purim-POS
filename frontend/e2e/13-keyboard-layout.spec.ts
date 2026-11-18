@@ -95,12 +95,14 @@ test('BUG-07/08: products table fits, rows open the edit form by click or arrows
   await page.keyboard.press('Escape');
   await expect(form).toBeHidden();
 
-  // price levels 2-5: hidden by default, shown on request, still no sideways scroll
-  await expect(row.getByTestId('product-prices-2-5')).toHaveCount(0);
-  await page.getByText('แสดงราคา 2–5').click();
-  await expect(row.getByTestId('product-prices-2-5')).toContainText('92');
+  // price levels as their own columns: 1-3 at 1093x614 (sidebar open); "แสดงราคา 4–5" adds 4-5, still no sideways scroll
+  await expect(row.getByTestId('product-price-3')).toContainText('96');
+  await expect(row.getByTestId('product-price-5')).toHaveCount(0);
+  await page.getByText('แสดงราคา 4–5').click();
+  await expect(row.getByTestId('product-price-5')).toContainText('92');
   expect(await horizontalOverflow(page)).toEqual([]);
-  await page.getByText('แสดงราคา 2–5').click();
+  await page.getByText('แสดงราคา 4–5').click();
+  await expect(row.getByTestId('product-price-5')).toHaveCount(0);
 });
 
 test('BUG-08: the same row pattern on another table (orders: ↓ + Enter opens the bill)', async ({ page }) => {

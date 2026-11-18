@@ -89,15 +89,15 @@ test('table: name + barcodes only (no code), pack count, no sideways scroll at 3
   }
   await page.setViewportSize(SIZES[0]);
 
-  // price 2-5 toggle still fits
-  await page.getByText('แสดงราคา 2–5').click();
-  await expect(long.getByTestId('product-prices-2-5')).toContainText('1,400');
+  // price levels are their own columns (round 3): 1-5 at 1366x768 / 1920x1080, at least 1-3 at 1093x614
   for (const size of SIZES) {
     await page.setViewportSize(size);
     await page.waitForTimeout(200);
-    expect({ size, overflow: await horizontalOverflow(page) }).toEqual({ size, overflow: [] });
+    const shown = size.width === 1093 ? [1, 2, 3] : [1, 2, 3, 4, 5];
+    for (const n of shown) await expect(long.getByTestId(`product-price-${n}`)).toBeVisible();
+    await expect(long.getByTestId('product-price-3')).toContainText('1,500');
+    if (size.width !== 1093) await expect(long.getByTestId('product-price-5')).toContainText('1,400');
   }
-  await page.getByText('แสดงราคา 2–5').click();
   await page.setViewportSize(SIZES[0]);
 
   // chevron expands the pack row; the checkbox selects without opening the form

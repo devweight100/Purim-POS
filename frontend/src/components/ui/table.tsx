@@ -4,6 +4,10 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * Back-office tables share one density (owner 2026-11-18, round 3): 10 px cell padding, 40 px header row, 13 px
+ * headers. Per-column helpers (numbers, document numbers, dates, names, action groups) are in ./table-cells.
+ */
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
@@ -12,7 +16,7 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
     >
       <table
         data-slot="table"
-        className={cn("w-full caption-bottom text-sm max-xl:[&_th]:px-2 max-xl:[&_td]:px-2", className)}
+        className={cn("w-full caption-bottom text-sm", className)}
         {...props}
       />
     </div>
@@ -70,7 +74,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-12 px-3 py-3 text-left align-middle font-bold text-muted-foreground [&:has([role=checkbox])]:pr-0 2xl:px-4",
+        "h-10 px-2.5 py-2 text-left align-middle text-[13px] leading-tight font-bold text-muted-foreground [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}
@@ -83,7 +87,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "py-3.5 px-3 align-middle break-words text-foreground [&:has([role=checkbox])]:pr-0 2xl:px-4",
+        "py-2.5 px-2.5 align-middle break-words text-foreground [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}
