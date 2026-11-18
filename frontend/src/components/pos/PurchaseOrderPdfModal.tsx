@@ -353,7 +353,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po: poProp, 
                     <tr className="bg-slate-800 text-white font-bold uppercase">
                       <th className="p-2.5 text-center w-12 border-r border-slate-700">ลำดับ</th>
                       <th className="p-2.5 w-24 border-r border-slate-700">รหัสสินค้า</th>
-                      {showSupplierCode && <th className="p-2.5 w-20 border-r border-slate-700 text-[10px]">รหัสผู้ขาย</th>}
+                      {showSupplierCode && <th className="p-2.5 w-24 border-r border-slate-700 text-[10px]">รหัสผู้ขาย</th>}
                       <th className="p-2.5 border-r border-slate-700">รายการสินค้า (DESCRIPTION)</th>
                       <th className="p-2.5 text-right w-16 border-r border-slate-700">จำนวน</th>
                       <th className="p-2.5 text-right w-20 border-r border-slate-700">หน่วยละ</th>
