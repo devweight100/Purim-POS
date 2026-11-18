@@ -405,7 +405,7 @@ export function ProductClaimModal({
                 type="text"
                 value={searchKeyword}
                 onChange={(e) => setSearchKeyword(e.target.value)}
-                placeholder="พิมพ์ค้นหา เช่น ORD-2026..., เบอร์ 081..., ชื่อลูกค้า หรือสแกนบาร์โค้ด..."
+                placeholder="พิมพ์ค้นหา เช่น IN2611-0001 (หรือเลขเดิม ORD-...), เบอร์ 081..., ชื่อลูกค้า หรือสแกนบาร์โค้ด..."
                 className="pl-9 h-11 bg-white border-slate-300 rounded-xl text-xs sm:text-sm font-semibold shadow-inner focus:border-indigo-500"
                 autoFocus
               />
@@ -447,7 +447,7 @@ export function ProductClaimModal({
                             พิมพ์คำค้นหาเพื่อตรวจสอบประวัติการซื้อ
                           </span>
                           <p className="text-[11px] text-slate-400 max-w-md leading-relaxed">
-                            กรุณากรอก <b>เลขออเดอร์ (ORD-...), เบอร์โทรศัพท์ลูกค้า, ชื่อลูกค้า, หรือสแกนบาร์โค้ดสินค้า</b> เพื่อค้นหาประวัติบิลและคำนวณโควต้าที่สามารถเคลมได้
+                            กรุณากรอก <b>เลขที่บิล (IN... หรือเลขเดิม ORD-...), เบอร์โทรศัพท์ลูกค้า, ชื่อลูกค้า, หรือสแกนบาร์โค้ดสินค้า</b> เพื่อค้นหาประวัติบิลและคำนวณโควต้าที่สามารถเคลมได้
                           </p>
                         </div>
                       </td>

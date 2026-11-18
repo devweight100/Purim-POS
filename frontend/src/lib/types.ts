@@ -407,7 +407,7 @@ export type ClaimStatus =
   | 'SCRAPPED';          // ตัดจำหน่าย / ทิ้ง
 
 export interface ClaimRecord {
-  id: string; // CLM-YYYYMMDD-XXXX
+  id: string; // CL<YYMM>-<NNNN> (older CLM-YYMMnnnnn)
   claimDate: string; // ISO date string
   orderId: string;
   orderNumber: string;

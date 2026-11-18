@@ -29,6 +29,7 @@ import {
 } from '../../../shared/src/online-shop';
 import { buildPromptPayPayload, isValidPromptPayAmount, maskPromptPayId, normalizePromptPayId, PromptPayIdType } from '../../../shared/src/promptpay';
 import { round2 } from '../../../shared/src/money';
+import { nextDocNumber } from '../common/doc-number';
 
 export const DELIVERY_SKU = 'SYS-DELIVERY-FEE';
 // pg_advisory_xact_lock(742091, 7): online order numbers / edits (literal: a bound parameter makes the call ambiguous)
@@ -411,10 +412,8 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async nextOrderNo(tx: Prisma.TransactionClient) {
-    const d = new Date();
-    const prefix = `WEB-${String(d.getFullYear()).slice(-2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-`;
-    const last = await tx.onlineOrder.findFirst({ where: { orderNo: { startsWith: prefix } }, orderBy: { orderNo: 'desc' }, select: { orderNo: true } });
-    return prefix + String((Number(last?.orderNo.slice(prefix.length)) || 0) + 1).padStart(3, '0');
+    // WB<YYMM>-<NNNN> (docs/document-numbers.md); old orders keep WEB-YYMMDD-NNN
+    return nextDocNumber(tx, 'ONLINE_ORDER');
   }
 
   /** What the customer may see of an order (no staff ids, no cost). */

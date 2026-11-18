@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
  * far right, document numbers / dates / money never broken over lines, names never squeezed to one word per line,
  * action buttons side by side). Use with <TableHead> / <TableCell> (or plain th / td):
  *
- *   <TableHead className={tc.doc}>เลขที่บิล</TableHead>     <TableCell className={tc.doc}>ORD-261118-00006</TableCell>
+ *   <TableHead className={tc.doc}>เลขที่บิล</TableHead>     <TableCell className={tc.doc}>IN2611-0006</TableCell>
  *   <TableHead className={tc.num}>ยอดรวม</TableHead>        <TableCell className={tc.num}>฿4,803</TableCell>
  *   <TableCell className={tc.name}><ClampText>{name}</ClampText></TableCell>
  *   <TableCell className={tc.actions}><RowActions>...</RowActions></TableCell>

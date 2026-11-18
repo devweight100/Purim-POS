@@ -4,6 +4,7 @@ import { businessTransaction } from '../prisma/business-transaction';
 import * as ledger from '../finance/ledger';
 import { addQty, decimalQtyAllowed, mulQty, parseQty, qn, roundQty, subQty } from '../common/qty';
 import { round2 } from '../../../shared/src/money';
+import { nextDocNumber } from '../common/doc-number';
 
 const CLIENT_ID = /^[a-zA-Z0-9-]{16,80}$/;
 const REFUND_METHODS = ['CASH', 'TRANSFER', 'DEBT_REDUCTION'];
@@ -62,10 +63,8 @@ export class ReturnsService {
       const allowDecimal = await decimalQtyAllowed(tx);
       const billFactor = Number(order.subtotal) > 0 ? Number(order.totalAmount) / Number(order.subtotal) : 1; // bill-level discount share
 
-      const now = new Date();
-      const prefix = `RET-${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const last = await tx.orderReturn.findFirst({ where: { returnNumber: { startsWith: prefix } }, orderBy: { returnNumber: 'desc' } });
-      const returnNumber = prefix + String((Number(last?.returnNumber.slice(prefix.length)) || 0) + 1).padStart(5, '0');
+      // CN<YYMM>-<NNNN> (docs/document-numbers.md)
+      const returnNumber = await nextDocNumber(tx, 'SALE_RETURN');
       const actorName = actor?.fullName || actor?.username || 'พนักงาน';
 
       let refund = 0;

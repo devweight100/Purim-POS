@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CashMovementType, ShiftStatus, PaymentMethod } from '@prisma/client';
 import * as ledger from '../finance/ledger';
 import { roundSatang as round2 } from '../../../shared/src/money';
+import { nextDocNumber } from '../common/doc-number';
 
 const CASH_CATEGORIES = ['GENERAL', 'REFUND', 'DEBT_PAYMENT'];
 /**
@@ -195,15 +196,9 @@ export class ShiftsService {
       return current;
     }
 
-    // 2. Generate shift number (Format: SHF-YYMMxxxxx e.g. SHF-260900001)
-    const now = new Date();
-    const yy = now.getFullYear().toString().slice(-2);
-    const mm = (now.getMonth() + 1).toString().padStart(2, '0');
-    const prefix = `SHF-${yy}${mm}`;
-    const countToday = await tx.shift.count({
-      where: { shiftNumber: { startsWith: prefix } },
-    });
-    const shiftNumber = `${prefix}${String(countToday + 1).padStart(5, '0')}`;
+    // 2. Shift number
+    // SH<YYMM>-<NNNN> (docs/document-numbers.md)
+    const shiftNumber = await nextDocNumber(tx, 'SHIFT');
 
     const shift = await tx.shift.create({
       data: {

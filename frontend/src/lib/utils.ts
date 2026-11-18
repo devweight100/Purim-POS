@@ -47,14 +47,6 @@ export function formatDate(dateStr: string | Date | null | undefined): string {
   }
 }
 
-export function generateOrderNumber(): string {
-  const date = new Date();
-  const yy = date.getFullYear().toString().slice(-2);
-  const mm = (date.getMonth() + 1).toString().padStart(2, '0');
-  const r = Math.floor(10000 + Math.random() * 90000).toString();
-  return `ORD-${yy}${mm}${r}`;
-}
-
 const THAI_DIGITS = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"];
 const THAI_UNITS = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน"];
 

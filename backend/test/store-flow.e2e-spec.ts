@@ -22,6 +22,7 @@ import * as legacyScreens from './legacy/claims-screens-legacy';
 import { valueStock } from '../src/reports/reports.service';
 import { ServerControlService } from '../src/server-control/server-control.service';
 import { ProductsService } from '../src/products/products.service';
+import { docPeriod, nextDocNumber } from '../src/common/doc-number';
 
 const dbName = (() => { try { return new URL(process.env.DATABASE_URL || '').pathname.slice(1); } catch { return ''; } })();
 const enabled = /test/i.test(dbName);
@@ -1770,9 +1771,9 @@ d('store flow (e2e)', () => {
         api('post', '/claims', A, { productId: p.id, quantity: 1, claimType: 'WARRANTY', resolutionType: 'SUPPLIER_RMA', problemDescription: 'scr seq' }).expect(201)));
       const nos = made.map((r) => r.body.claimNumber as string).sort();
       expect(new Set(nos).size).toBe(6);
-      const seqs = nos.map((no) => Number(no.slice(-5)));
+      const seqs = nos.map((no) => Number(no.slice(-4)));
       expect(seqs.slice(1).map((s, k) => s - seqs[k])).toEqual([1, 1, 1, 1, 1]);
-      expect(nos[0].slice(0, 8)).toMatch(/^CLM-\d{4}$/);
+      expect(nos[0]).toMatch(/^CL\d{4}-\d{4}$/); // round 4: CL<YYMM>-<NNNN>
       // the new claims are in the facts at once (trigger), with the status the server gave them
       const list = (await api('get', '/claims/list?search=scr%20seq&limit=50', A).expect(200)).body;
       expect(list.meta.total).toBe(6);
@@ -2223,7 +2224,7 @@ d('store flow (e2e)', () => {
       await pub('post', '/orders', shop.guest, { ...base, fulfillment: 'DELIVERY', address: '', items: [{ productId: shop.p1.id, unitId: null, quantity: 1 }] }).expect(400);
       const o = (await pub('post', '/orders', shop.guest, { ...base, items: [{ productId: shop.p1.id, unitId: null, quantity: 2, unitPrice: 1 }, { productId: shop.p1.id, unitId: shop.pack, quantity: 1, price: 1 }] }).expect(201)).body;
       expect(o).toMatchObject({ status: 'NEW', fulfillment: 'PICKUP', subtotal: 770, deliveryFee: 0, feePending: false, totalAmount: 770 });
-      expect(o.orderNo).toMatch(/^WEB-\d{6}-\d{3}$/);
+      expect(o.orderNo).toMatch(/^WB\d{4}-\d{4}$/); // round 4: WB<YYMM>-<NNNN>
       expect(o.items.map((i: any) => [i.name, i.unitName, i.quantity, i.unitPrice])).toEqual([['ปูนซีเมนต์ออนไลน์', 'ถุง', 2, 100], ['ปูนซีเมนต์ออนไลน์', 'แพค', 1, 570]]);
       shop.pickup = o;
       const d = (await pub('post', '/orders', shop.guest, { ...base, fulfillment: 'DELIVERY', address: '99 หมู่ 1 ต.ทดสอบ', items: [{ productId: shop.p1.id, unitId: shop.case, quantity: 1 }] }).expect(201)).body;
@@ -2808,6 +2809,112 @@ d('store flow (e2e)', () => {
       expect(part.data.map((p: any) => p.id)).toContain(a.id);
       const lk = (await api('get', `/products/lookup?q=${a.sku}`, A).expect(200)).body;
       expect(lk.data[0].id).toBe(a.id);
+    });
+  });
+  describe('document numbers <PP><YYMM>-<NNNN> (round 4, docs/document-numbers.md)', () => {
+    const db = new PrismaClient();
+    const period = docPeriod(new Date());
+    const shape = (prefix: string) => new RegExp(`^${prefix}${period}-\\d{4,}$`);
+    let shiftId = '';
+    let product: any;
+    const sell = (extra: Record<string, unknown> = {}) => api('post', '/orders/checkout', A, {
+      clientOrderId: randomUUID(), shiftId, items: [{ productId: product.id, quantity: 1, unitPrice: Number(product.priceLevel1 ?? product.basePrice) }],
+      payments: [{ method: 'CASH', amount: Number(product.priceLevel1 ?? product.basePrice) }], ...extra,
+    });
+    beforeAll(async () => {
+      const cur = (await api('get', '/shifts/current', A)).body;
+      shiftId = cur?.id || cur?.shift?.id || (await api('post', '/shifts/open', A, { startingCash: 0, terminalId: 'e2e-docno' }).expect(201)).body.shift.id;
+      const list = (await api('get', '/products?limit=100', A)).body;
+      product = (Array.isArray(list) ? list : list.data).find((p: any) => !p.isBundle && Number(p.priceLevel1 ?? p.basePrice) > 0);
+      await api('post', '/inventory/adjust', A, { productId: product.id, type: 'ADD', amount: 500, reason: 'e2e เลขเอกสาร' }).expect(201);
+    });
+    afterAll(async () => { await db.$disconnect(); });
+
+    it('every document type created by the suite in this month uses its 2-letter prefix + CE YYMM + 4 digits', async () => {
+      // documents numbered by the server (fixtures written straight into the database use names like "TRK-R13")
+      const newest = async (rows: Promise<any[]>, key: string) => (await rows).map((r) => r[key]).filter((n: string | null) => n && !/^[A-Z]+-/.test(n));
+      const checks: [string, Promise<any[]>, string][] = [
+        ['IN', db.order.findMany({ where: { orderNumber: { startsWith: 'IN' } }, take: 5 }), 'orderNumber'],
+        ['CN', db.orderReturn.findMany({ take: 50, orderBy: { createdAt: 'desc' } }), 'returnNumber'],
+        ['RC', db.debtPayment.findMany({ take: 50, orderBy: { createdAt: 'desc' } }), 'receiptNo'],
+        ['PV', db.paymentVoucher.findMany({ take: 50, orderBy: { createdAt: 'desc' } }), 'voucherNumber'],
+        ['SH', db.shift.findMany({ take: 50, orderBy: { createdAt: 'desc' } }), 'shiftNumber'],
+        ['CL', db.customerClaim.findMany({ where: { claimNumber: { startsWith: 'CL2' } }, take: 5 }), 'claimNumber'],
+        ['WB', db.onlineOrder.findMany({ take: 50, orderBy: { createdAt: 'desc' } }), 'orderNo'],
+      ];
+      for (const [prefix, rows, key] of checks) {
+        const nos = await newest(rows, key);
+        expect({ prefix, any: nos.length > 0 }).toEqual({ prefix, any: true });
+        // (some suite sales are dated in earlier months: any YYMM, but this month's form)
+        for (const n of nos) expect(n).toMatch(new RegExp(`^${prefix}\\d{4}-\\d{4,}$`));
+      }
+      // purchase order (generated; a typed number is kept), supplier return, expense
+      const sup = (await api('post', '/suppliers', A, { name: 'ผู้จำหน่าย เลขเอกสาร' }).expect(201)).body;
+      const po = (await api('post', '/purchase-orders', A, { supplierId: sup.id, items: [{ productId: product.id, quantity: 2, unitCost: 10 }] }).expect(201)).body;
+      expect(po.poNumber).toMatch(shape('PO'));
+      const typed = (await api('post', '/purchase-orders', A, { supplierId: sup.id, poNumber: 'PO-มือ-001', items: [{ productId: product.id, quantity: 1, unitCost: 10 }] }).expect(201)).body;
+      expect(typed.poNumber).toBe('PO-มือ-001');
+      const sr = (await api('post', '/supplier-returns', A, { supplierId: sup.id, items: [{ productId: product.id, quantity: 1, unitCost: 10, reason: 'ชำรุด' }], deductStock: false }));
+      expect([200, 201]).toContain(sr.status);
+      expect(sr.body.returnNumber || sr.body.data?.returnNumber).toMatch(shape('SR'));
+      const cat = (await api('get', '/finance/expense-categories', A).expect(200)).body[0];
+      const safe = (await api('get', '/finance/accounts', A).expect(200)).body.find((a: any) => a.type === 'CASH_SAFE');
+      const ex = await api('post', '/finance/expenses', A, { clientId: randomUUID(), categoryId: cat.id, accountId: safe.id, amount: 1, description: 'e2e เลขเอกสาร' });
+      expect([200, 201]).toContain(ex.status);
+      expect(ex.body.expenseNumber || ex.body.expense?.expenseNumber).toMatch(shape('EX'));
+    });
+
+    it('parallel creates get unique, consecutive numbers (counter row lock)', async () => {
+      const made = await Promise.all(Array.from({ length: 12 }, () => sell().expect(201)));
+      const nos = made.map((r) => r.body.orderNumber as string).sort();
+      expect(new Set(nos).size).toBe(12);
+      for (const n of nos) expect(n).toMatch(shape('IN'));
+      const seqs = nos.map((n) => Number(n.split('-')[1]));
+      expect(seqs.slice(1).map((v, k) => v - seqs[k])).toEqual(Array(11).fill(1));
+      // the counter equals the last number given
+      const row = await db.documentCounter.findUnique({ where: { docType_period: { docType: 'SALE', period } } });
+      expect(row?.lastValue).toBe(Math.max(...seqs));
+    });
+
+    it('monthly reset: each month starts at 0001 (helper and a sale dated in an earlier month)', async () => {
+      const a = await db.$transaction((tx) => nextDocNumber(tx, 'EXPENSE', { at: '2031-01-31T16:59:00Z' })); // 23:59 31 Jan Bangkok
+      const b = await db.$transaction((tx) => nextDocNumber(tx, 'EXPENSE', { at: '2031-01-15T03:00:00Z' }));
+      const c = await db.$transaction((tx) => nextDocNumber(tx, 'EXPENSE', { at: '2031-01-31T17:00:00Z' })); // 00:00 1 Feb Bangkok
+      expect([a, b, c]).toEqual(['EX3101-0001', 'EX3101-0002', 'EX3102-0001']);
+      // a rolled back create gives its number back
+      await db.$transaction(async (tx) => { await nextDocNumber(tx, 'EXPENSE', { at: '2031-03-01T05:00:00Z' }); throw new Error('rollback'); }).catch(() => undefined);
+      expect(await db.$transaction((tx) => nextDocNumber(tx, 'EXPENSE', { at: '2031-03-01T05:00:00Z' }))).toBe('EX3103-0001');
+    });
+
+    it('offline sync: the server gives the number (sale month), ignores a number sent by the terminal, a retry returns the same bill', async () => {
+      const clientOrderId = randomUUID();
+      const soldAt = '2026-09-30T16:30:00Z'; // 23:30 30 Sep Bangkok, synced later
+      // what the outbox sends (order-sync-service payload(): the local "OFFLINE-..." reference is left out)
+      const body = { clientOrderId, createdAt: soldAt };
+      const first = (await sell(body).expect(201)).body;
+      expect(first.orderNumber).toBe('IN2609-0001');
+      const again = (await sell(body).expect(201)).body; // terminal resends after a lost answer
+      expect(again).toMatchObject({ id: first.id, orderNumber: 'IN2609-0001' });
+      // a terminal cannot choose (or duplicate) a number
+      const forged = (await sell({ clientOrderId: randomUUID(), createdAt: soldAt, orderNumber: 'IN2609-0001' }).expect(201)).body;
+      expect(forged.orderNumber).toBe('IN2609-0002');
+      expect(await db.order.count({ where: { orderNumber: 'IN2609-0001' } })).toBe(1);
+      // the offline slip's reference (part of clientOrderId) still finds the synced bill
+      const found = (await api('get', `/documents/search?q=${clientOrderId.slice(0, 8)}`, A).expect(200)).body;
+      expect(found.map((d: any) => d.docNumber)).toContain('IN2609-0001');
+    });
+
+    it('old-format numbers stay searchable and sortable next to new ones', async () => {
+      const u = await db.user.findFirstOrThrow({ where: { username: 'admin' } });
+      await db.order.create({ data: { orderNumber: 'ORD-261000077', userId: u.id, subtotal: 50, totalAmount: 50, status: 'COMPLETED', createdAt: new Date('2026-10-20T05:00:00Z') } });
+      for (const q of ['ORD-261000077', '261000077', 'ORD-2610']) {
+        const docs = (await api('get', `/documents/search?q=${encodeURIComponent(q)}`, A).expect(200)).body;
+        expect({ q, hit: docs.some((d: any) => d.docNumber === 'ORD-261000077') }).toEqual({ q, hit: true });
+      }
+      const list = (await api('get', '/orders?search=ORD-261000077&limit=5', A).expect(200)).body;
+      expect((list.data ?? list).map((o: any) => o.orderNumber)).toContain('ORD-261000077');
+      const newOne = (await api('get', '/orders?search=IN2609-0002&limit=5', A).expect(200)).body;
+      expect((newOne.data ?? newOne).map((o: any) => o.orderNumber)).toEqual(['IN2609-0002']);
     });
   });
 });

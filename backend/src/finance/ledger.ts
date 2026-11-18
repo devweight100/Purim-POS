@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { MoneyAccountType, MoneyDirection, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { round2 } from '../../../shared/src/money';
+import { nextDocNumber } from '../common/doc-number';
 
 /**
  * Money ledger helpers. Every function takes the caller's transaction client so the money
@@ -257,9 +258,8 @@ export async function recordExpense(
   const description = String(input.description || '').trim();
   if (!description) throw new BadRequestException('กรุณาระบุรายละเอียดค่าใช้จ่าย');
   const now = new Date();
-  const prefix = `EXP-${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const last = await tx.expense.findFirst({ where: { expenseNumber: { startsWith: prefix } }, orderBy: { expenseNumber: 'desc' } });
-  const expenseNumber = prefix + String((Number(last?.expenseNumber.slice(prefix.length)) || 0) + 1).padStart(5, '0');
+  // EX<YYMM>-<NNNN> (docs/document-numbers.md)
+  const expenseNumber = await nextDocNumber(tx, 'EXPENSE');
   const amount = round2(Number(input.amount));
   const expense = await tx.expense.create({
     data: {

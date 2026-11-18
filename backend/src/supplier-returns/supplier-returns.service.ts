@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ClaimStatus, ReturnNoteStatus } from '@prisma/client';
 import { addQty, decimalQtyAllowed, fromHund, hasMax2Decimals, isWholeQty, DECIMAL_QTY_DISABLED, qn, roundQty, subQty, toHund } from '../common/qty';
 import { round2 } from '../../../shared/src/money';
+import { nextDocNumber } from '../common/doc-number';
 
 const isMoney = (n: number) => Number.isFinite(n) && n >= 0 && Math.abs(n * 100 - Math.round(n * 100)) < 0.00001;
 
@@ -422,17 +423,11 @@ export class SupplierReturnsService {
       const remainingCreditAmount = totalAmount;
       const deductStock = dto.deductStock !== false;
 
-      const now = new Date();
-      const yy = now.getFullYear().toString().slice(-2);
-      const mm = (now.getMonth() + 1).toString().padStart(2, '0');
-      const prefix = `SRN-${yy}${mm}`;
-      let seq = (await tx.supplierReturnNote.count({ where: { returnNumber: { startsWith: prefix } } })) + 1;
+      // SR<YYMM>-<NNNN> (docs/document-numbers.md); a typed number is kept unless it is already used
+      const taken = async (n: string) => !!(await tx.supplierReturnNote.findFirst({ where: { OR: [{ id: n }, { returnNumber: n }] }, select: { id: true } }));
       const requested = dto.returnNumber || dto.noteNumber;
-      let returnNumber = typeof requested === 'string' && requested.trim() ? requested.trim().slice(0, 60) : `${prefix}${String(seq).padStart(5, '0')}`;
-      while (await tx.supplierReturnNote.findFirst({ where: { OR: [{ id: returnNumber }, { returnNumber }] } })) {
-        seq++;
-        returnNumber = `${prefix}${String(seq).padStart(5, '0')}`;
-      }
+      const typed = typeof requested === 'string' && requested.trim() ? requested.trim().slice(0, 60) : '';
+      const returnNumber = typed && !(await taken(typed)) ? typed : await nextDocNumber(tx, 'SUPPLIER_RETURN', { taken });
 
       const newNote = await tx.supplierReturnNote.create({
         data: {

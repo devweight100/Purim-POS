@@ -20,7 +20,7 @@ export interface BankAccountBreakdownItem {
 export interface ShiftSummaryData {
   /** UUID or shift number; prefer shiftCode/code for display */
   shiftId: string;
-  /** readable shift number, e.g. SHF-261100003 */
+  /** readable shift number, e.g. SH2611-0003 (older SHF-261100003) */
   shiftCode?: string;
   code?: string;
   shiftNumber?: string;

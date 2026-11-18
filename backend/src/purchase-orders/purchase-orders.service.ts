@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { POStatus, PaymentStatus } from '@prisma/client';
 import { addQty, decimalQtyAllowed, parseQty, qn, toHund } from '../common/qty';
+import { nextDocNumber } from '../common/doc-number';
 
 /** Sanity limits (PO unit cost column is Decimal(10,2), totals Decimal(12,2), quantities Decimal(12,2)). */
 const MAX_PO_UNIT_COST = 10_000_000;
@@ -133,13 +134,10 @@ export class PurchaseOrdersService {
       const dup = await tx.purchaseOrder.findUnique({ where: { poNumber: data.poNumber }, select: { id: true } });
       if (dup) throw new ConflictException(`เลขที่ใบสั่งซื้อ "${data.poNumber}" ถูกใช้แล้ว`);
     }
-    const now = new Date();
-    const yy = now.getFullYear().toString().slice(-2);
-    const mm = (now.getMonth() + 1).toString().padStart(2, '0');
-    const prefix = `PO-${yy}${mm}`;
-    const lastPo = await tx.purchaseOrder.findFirst({ where: { poNumber: { startsWith: prefix } }, orderBy: { poNumber: 'desc' } });
-    const poCount = lastPo ? Number(lastPo.poNumber.slice(prefix.length)) : 0;
-    const poNumber = data.poNumber || `${prefix}${String(poCount + 1).padStart(5, '0')}`;
+    // PO<YYMM>-<NNNN> unless a number was typed (docs/document-numbers.md)
+    const poNumber = data.poNumber || await nextDocNumber(tx, 'PURCHASE_ORDER', {
+      taken: async (n) => !!(await tx.purchaseOrder.findUnique({ where: { poNumber: n }, select: { id: true } })),
+    });
 
     const bill = this.priceBill(data.items, data.billDiscountType, data.billDiscountValue);
     const totalAmount = bill.totals.totalAmount;

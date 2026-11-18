@@ -145,7 +145,7 @@ model User {
 
 model Shift {
   id              String      @id @default(uuid())
-  shiftNumber     String      @unique @map("shift_number") // SHF-YYYYMMDD-0001
+  shiftNumber     String      @unique @map("shift_number") // SH<YYMM>-<NNNN>; older SHF-YYMMnnnnn
   userId          String      @map("user_id")
   terminalId      String?     @map("terminal_id")
   openedAt        DateTime    @default(now()) @map("opened_at")
@@ -540,7 +540,7 @@ model PurchaseOrderItem {
 
 model PaymentVoucher {
   id               String               @id @default(uuid())
-  voucherNumber    String               @unique @map("voucher_number") // PV-YYYYMMDD-0001
+  voucherNumber    String               @unique @map("voucher_number") // PV<YYMM>-<NNNN> (docs/document-numbers.md); older PV-YYMMnnnnn
   supplierId       String               @map("supplier_id")
   paymentDate      DateTime             @default(now()) @map("payment_date")
   totalBillsAmount Decimal              @map("total_bills_amount") @db.Decimal(12, 2)
@@ -766,7 +766,7 @@ model DebtPayment {
 model Order {
   id             String        @id @default(uuid())
   clientOrderId  String?       @unique @map("client_order_id") // UUID Idempotency Key for offline sync
-  orderNumber    String        @unique @map("order_number")    // ORD-YYYYMMDD-0001
+  orderNumber    String        @unique @map("order_number")    // IN<YYMM>-<NNNN>; older ORD-YYMMnnnnn
   userId         String        @map("user_id")
   customerId     String?       @map("customer_id")
   shiftId        String?       @map("shift_id")
@@ -845,7 +845,7 @@ model Payment {
 
 model CustomerClaim {
   id                 String      @id @default(uuid())
-  claimNumber        String      @unique @map("claim_number") // CLM-YYYYMMDD-0001
+  claimNumber        String      @unique @map("claim_number") // CL<YYMM>-<NNNN>; older CLM-YYMMnnnnn
   orderId            String?     @map("order_id")
   customerId         String?     @map("customer_id")
   productId          String      @map("product_id")
@@ -1064,7 +1064,7 @@ model ExpenseCategory {
 
 model Expense {
   id            String    @id @default(uuid())
-  expenseNumber String    @unique @map("expense_number") // EXP-YYMMxxxxx
+  expenseNumber String    @unique @map("expense_number") // EX<YYMM>-<NNNN>; older EXP-YYMMnnnnn
   categoryId    String    @map("category_id")
   accountId     String    @map("account_id")
   amount        Decimal   @db.Decimal(12, 2)
@@ -1135,7 +1135,7 @@ model BankReconciliation {
 /// Partial return of a completed bill (some items / quantities), with refund and optional restock.
 model OrderReturn {
   id            String   @id @default(uuid())
-  returnNumber  String   @unique @map("return_number") // RET-YYMMxxxxx
+  returnNumber  String   @unique @map("return_number") // CN<YYMM>-<NNNN>; older RET-YYMMnnnnn
   orderId       String   @map("order_id")
   shiftId       String?  @map("shift_id")
   userId        String?  @map("user_id")
@@ -1280,7 +1280,7 @@ model LineLinkRequest {
 
 model OnlineOrder {
   id             String            @id @default(uuid())
-  orderNo        String            @unique @map("order_no") // WEB-YYMMDD-001
+  orderNo        String            @unique @map("order_no") // WB<YYMM>-<NNNN>; older WEB-YYMMDD-NNN
   status         OnlineOrderStatus @default(NEW)
   lineUserId     String            @map("line_user_id")
   customerId     String?           @map("customer_id")
@@ -1349,4 +1349,17 @@ model OnlineOrderItem {
   @@index([onlineOrderId])
   @@index([productId])
   @@map("online_order_items")
+}
+
+/// Running numbers of documents (docs/document-numbers.md): one row per document type and month (period "YYMM",
+/// Christian-era year, Bangkok calendar). Incremented with INSERT ... ON CONFLICT DO UPDATE inside the transaction that
+/// creates the document, so the row lock makes parallel creates wait and each gets the next number.
+model DocumentCounter {
+  docType   String   @map("doc_type")
+  period    String
+  lastValue Int      @default(0) @map("last_value")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@id([docType, period])
+  @@map("document_counters")
 }

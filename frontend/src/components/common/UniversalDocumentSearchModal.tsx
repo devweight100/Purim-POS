@@ -352,7 +352,7 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="สแกนบาร์โค้ดเอกสาร หรือพิมพ์เลขที่เอกสาร (เช่น ORD-..., CLM-..., SHF-..., PO-..., DN-..., PV-...)"
+                placeholder="สแกนบาร์โค้ดเอกสาร หรือพิมพ์เลขที่เอกสาร (เช่น IN2611-0001, PO2611-0001, CL..., SH..., SR..., PV... หรือเลขเดิม ORD-...)"
                 className="pl-11 pr-10 h-12 bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 text-sm font-mono rounded-2xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 shadow-xs"
               />
               {searchTerm && (

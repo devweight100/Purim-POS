@@ -71,7 +71,7 @@ export interface ReceiptData {
 }
 
 export const SAMPLE_RECEIPT_DATA: ReceiptData = {
-  orderNumber: 'ORD-20260901-0001',
+  orderNumber: 'IN2609-0001',
   createdAt: new Date().toISOString(),
   customerName: 'คุณสมชาย ใจดี',
   userName: 'พนักงานขาย (POS-01)',

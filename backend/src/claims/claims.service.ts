@@ -7,6 +7,7 @@ import { ShiftsService } from '../shifts/shifts.service';
 import { userHasPermission } from '../auth/permissions';
 import { addQty, assertQtyAllowed, decimalQtyAllowed, fromHund, hasMax2Decimals, mulQty, qn, roundQty, subQty, toHund } from '../common/qty';
 import { round2 } from '../../../shared/src/money';
+import { nextDocNumber } from '../common/doc-number';
 
 export interface ClaimActor {
   id: string;
@@ -491,17 +492,10 @@ export class ClaimsService {
       else if (rawType.includes('REPLACE') || rawType.includes('EXCHANGE')) claimType = ClaimType.EXCHANGE;
 
       const now = new Date();
-      const yy = now.getFullYear().toString().slice(-2);
-      const mm = (now.getMonth() + 1).toString().padStart(2, '0');
-      const prefix = `CLM-${yy}${mm}`;
-      let seq = (await tx.customerClaim.count({
-        where: { claimNumber: { startsWith: prefix } },
-      })) + 1;
-      let claimNumber = `${prefix}${String(seq).padStart(5, '0')}`;
-      while (await tx.customerClaim.findUnique({ where: { claimNumber } })) {
-        seq++;
-        claimNumber = `${prefix}${String(seq).padStart(5, '0')}`;
-      }
+      // CL<YYMM>-<NNNN> (docs/document-numbers.md)
+      const claimNumber = await nextDocNumber(tx, 'CLAIM', {
+        taken: async (n) => !!(await tx.customerClaim.findUnique({ where: { claimNumber: n }, select: { id: true } })),
+      });
 
       // Initial status follows the resolution (the client cannot open a claim as e.g. SCRAPPED).
       const initialResolution =

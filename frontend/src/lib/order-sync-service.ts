@@ -69,9 +69,18 @@ export async function refreshOutboxStatus() {
   useConnectionStatus.setState({ pending: pending.length, failed: pending.filter(o => o.syncStatus === 'failed').length });
   return rows;
 }
+/**
+ * Bill numbers come from the server only (docs/document-numbers.md): the outbox never sends one. While a sale waits
+ * offline its slip shows a provisional reference "OFFLINE-<first 8 of clientOrderId>"; the synced bill gets the next
+ * IN<YYMM>-<NNNN> of its sale month, and the reference still finds it in the document search (clientOrderId).
+ */
+export function offlineReference(clientOrderId: string) {
+  return 'OFFLINE-' + clientOrderId.replace(/-/g, '').slice(0, 8).toUpperCase();
+}
 function payload(order: OfflineOrder) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- local-only fields are left out of the request
   const { syncStatus, retryCount, lastError, serverOrder, ownerId: owner, orderNumber, ...data } = order;
-  return { ...data, orderNumber: orderNumber && !/^(ORD-OFFLINE|OFFLINE)/.test(orderNumber) ? orderNumber : undefined };
+  return data;
 }
 async function confirm(order: OfflineOrder, response: CheckoutResult | null): Promise<CheckoutResult> {
   if (!response?.id || !response?.orderNumber) throw new ApiError('เซิร์ฟเวอร์ยังไม่ยืนยันเลขบิล', 502);
@@ -98,7 +107,7 @@ export async function submitOrder(data: CheckoutRequest): Promise<CheckoutResult
     // Freeze the original request after an uncertain network result.
     const order: OfflineOrder = previous || {
       ...data, ownerId: userId, payloadVersion: 2,
-      orderNumber: 'ORD-OFFLINE-' + data.clientOrderId,
+      orderNumber: offlineReference(data.clientOrderId),
       createdAt: data.createdAt || new Date().toISOString(), syncStatus: 'pending', retryCount: 0,
     };
     await saveOfflineOrder(order);

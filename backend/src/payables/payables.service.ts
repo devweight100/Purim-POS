@@ -25,6 +25,7 @@ export function payableNow(po: { totalAmount: any; paidAmount: any; remainingPay
 
 import { IsString, IsNotEmpty, IsArray, IsOptional, IsNumber, IsIn, ValidateNested, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
+import { nextDocNumber } from '../common/doc-number';
 
 /** Real money methods a supplier can be paid with (credit sale / credit note / card are not money out). */
 export const SUPPLIER_PAYMENT_METHODS: PaymentMethod[] = [PaymentMethod.CASH, PaymentMethod.TRANSFER, PaymentMethod.QR_PROMPTPAY];
@@ -418,15 +419,8 @@ export class PayablesService {
       if (Math.round((totalDebitDeducted + disc - totalBillsAmount) * 100) > 0) throw new BadRequestException('ยอดใบลดหนี้และส่วนลดรวมเกินยอดบิล');
       const netPaidAmount = Math.max(0, Math.round((totalBillsAmount - totalDebitDeducted - disc) * 100) / 100);
 
-      // Generate voucher number (Format: PV-YYMMxxxxx e.g. PV-260900001)
-      const now = new Date();
-      const yy = now.getFullYear().toString().slice(-2);
-      const mm = (now.getMonth() + 1).toString().padStart(2, '0');
-      const prefix = `PV-${yy}${mm}`;
-      const countToday = await tx.paymentVoucher.count({
-        where: { voucherNumber: { startsWith: prefix } },
-      });
-      const voucherNumber = `${prefix}${String(countToday + 1).padStart(5, '0')}`;
+      // Voucher number PV<YYMM>-<NNNN> (docs/document-numbers.md)
+      const voucherNumber = await nextDocNumber(tx, 'PAYMENT_VOUCHER');
 
       // 1. Create PaymentVoucher
       const voucher = await tx.paymentVoucher.create({

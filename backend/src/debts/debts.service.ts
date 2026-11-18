@@ -3,6 +3,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { DebtStatus, PaymentMethod } from '@prisma/client';
 import * as ledger from '../finance/ledger';
+import { nextDocNumber } from '../common/doc-number';
 
 /**
  * Money account of the bank that receives a QR / transfer debt payment.
@@ -223,15 +224,8 @@ export class DebtsService {
         throw new BadRequestException('ยอดชำระต้องมากกว่า 0 บาท');
       }
 
-      // Generate receipt number (Format: REC-YYMMxxxxx e.g. REC-260900001)
-      const now = new Date();
-      const yy = now.getFullYear().toString().slice(-2);
-      const mm = (now.getMonth() + 1).toString().padStart(2, '0');
-      const prefix = `REC-${yy}${mm}`;
-      const count = await tx.debtPayment.count({
-        where: { receiptNo: { startsWith: prefix } },
-      });
-      const receiptNo = `${prefix}${String(count + 1).padStart(5, '0')}`;
+      // Receipt number RC<YYMM>-<NNNN> (docs/document-numbers.md)
+      const receiptNo = await nextDocNumber(tx, 'DEBT_RECEIPT');
 
       // 1. Create debt payment entry
       const payment = await tx.debtPayment.create({

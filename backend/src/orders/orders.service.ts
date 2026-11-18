@@ -11,6 +11,7 @@ import { validateCheckoutInput, lineAmounts, checkPointsDiscount, claimableBaseQ
 import { linkOnlineOrder, unlinkOnlineOrder } from '../online-shop/online-order-payment';
 import { billTotals, earnedPoints, normVatRate, vatIncluded } from '../../../shared/src/pricing';
 import { addQty, decimalQtyAllowed, hasMax2Decimals, mulQty, parseQty, qn, subQty } from '../common/qty';
+import { nextDocNumber } from '../common/doc-number';
 
 /** Seller shown with a bill: never the password / PIN hashes. */
 const ORDER_USER_SELECT = { select: { id: true, username: true, fullName: true, role: true } } as const;
@@ -25,10 +26,8 @@ export class OrdersService {
 
   async checkout(data: any, userId: string) {
     validateCheckoutInput(data);
-    if (data.orderNumber) {
-      const taken = await this.prisma.order.findUnique({ where: { orderNumber: data.orderNumber }, select: { clientOrderId: true } });
-      if (taken && taken.clientOrderId !== data.clientOrderId) throw new ConflictException('เลขที่บิลนี้ถูกใช้แล้ว');
-    }
+    // the bill number is always given by the server (docs/document-numbers.md); a number sent by a terminal is ignored
+    delete data.orderNumber;
     try {
       return await this.checkoutTx(data, userId);
     } catch (e: any) {
@@ -71,17 +70,12 @@ export class OrdersService {
       if (data.createdAt && (!Number.isFinite(Date.parse(data.createdAt)) || Date.parse(data.createdAt) > Date.now() + 300000)) {
         throw new BadRequestException('วันเวลาขายไม่ถูกต้อง');
       }
-      // 2. Generate or use Order Number (Format: ORD-YYMMxxxxx e.g. ORD-260900001)
-      let orderNumber = data.orderNumber;
-      if (!orderNumber) {
-        const now = new Date();
-        const yy = now.getFullYear().toString().slice(-2);
-        const mm = (now.getMonth() + 1).toString().padStart(2, '0');
-        const prefix = `ORD-${yy}${mm}`;
-        const last = await tx.order.findFirst({ where: { orderNumber: { startsWith: prefix } }, orderBy: { orderNumber: 'desc' } });
-        const next = (Number(last?.orderNumber.slice(prefix.length)) || 0) + 1;
-        orderNumber = prefix + String(next).padStart(5, '0');
-      }
+      // 2. Bill number IN<YYMM>-<NNNN> (docs/document-numbers.md), always given by the server - also for bills a
+      // terminal sold offline (synced later): the month is the sale's own date; a number sent by the client is ignored.
+      const orderNumber = await nextDocNumber(tx, 'SALE', {
+        at: data.createdAt || Date.now(),
+        taken: async (n) => !!(await tx.order.findUnique({ where: { orderNumber: n }, select: { id: true } })),
+      });
 
       let totalCogs = 0;
       const orderItems: any[] = [];

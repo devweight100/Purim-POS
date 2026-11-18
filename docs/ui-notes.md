@@ -188,4 +188,4 @@ Plan (resume from "Next" after a restart):
   docs/document-numbers.md; short Thai list dates without time (one formatter), time only in details / orders /
   receipts.
 
-Done: A (products row), B (payables bills: 4 columns + progress, ⋯ menu; vouchers tab ⋯ + row click). Next: C numbers (backend), then dates.
+Done: A (products row), B (payables bills: 4 columns + progress, ⋯ menu; vouchers tab ⋯ + row click), C numbers (backend counter table + e2e, docs/document-numbers.md). Next: C dates (frontend sweep), Playwright, screenshots, full verification.
