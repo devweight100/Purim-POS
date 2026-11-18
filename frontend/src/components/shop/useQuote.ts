@@ -2,14 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import { shopFetch, type ShopQuote } from '@/lib/shop/shop-api';
-import { lineKey, useShopCart } from '@/lib/shop/shop-store';
+import { applyQuotePrices, lineKey, useShopCart, useShopSession } from '@/lib/shop/shop-store';
 
 /** Server prices of the cart (re-checked whenever the cart or the delivery choice changes). */
 export function useQuote(fulfillment: 'PICKUP' | 'DELIVERY') {
   const lines = useShopCart((s) => s.lines);
+  const level = useShopSession((s) => s.me?.member?.level ?? 1);
+  const refreshMe = useShopSession((s) => s.refreshMe);
   const [quote, setQuote] = useState<ShopQuote | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const sig = JSON.stringify(lines.map((l) => [l.productId, l.unitId, l.quantity])) + fulfillment;
+  const sig = JSON.stringify(lines.map((l) => [l.productId, l.unitId, l.quantity])) + fulfillment + level;
 
   useEffect(() => {
     let alive = true;
@@ -24,11 +26,9 @@ export function useQuote(fulfillment: 'PICKUP' | 'DELIVERY') {
           setQuote(q);
           setError(null);
           // keep the prices shown in the cart in line with the server
-          const s = useShopCart.getState();
-          const priceOf = new Map(q.lines.filter((l) => l.ok).map((l) => [lineKey(l), l.unitPrice]));
-          if (s.lines.some((l) => priceOf.has(lineKey(l)) && priceOf.get(lineKey(l)) !== l.price)) {
-            useShopCart.setState({ lines: s.lines.map((l) => (priceOf.has(lineKey(l)) ? { ...l, price: priceOf.get(lineKey(l))! } : l)) });
-          }
+          applyQuotePrices(q);
+          // priced at another level than the page knows (linked / changed meanwhile): learn who we are now
+          if (q.level !== undefined && q.level !== level) void refreshMe();
         },
         (e) => alive && setError(e.message),
       );
@@ -37,7 +37,7 @@ export function useQuote(fulfillment: 'PICKUP' | 'DELIVERY') {
       alive = false;
       clearTimeout(t);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- sig covers lines + fulfillment
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sig covers lines + fulfillment + level
   }, [sig]);
 
   const problemOf = (key: string) => quote?.lines.find((l) => lineKey(l) === key && !l.ok)?.problem || null;

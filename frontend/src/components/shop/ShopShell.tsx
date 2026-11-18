@@ -16,7 +16,7 @@ export const btn = {
 
 
 export function ShopShell({ children }: { children: React.ReactNode }) {
-  const { status, error, config, me, init } = useShopSession();
+  const { status, error, config, me, init, refreshMe } = useShopSession();
   const path = usePathname();
   const router = useRouter();
   const hydrated = useHydrated();
@@ -27,6 +27,34 @@ export function ShopShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     void init();
   }, [init]);
+
+  // Who the visitor is (member / price level) is checked again on every page change and whenever LINE brings the
+  // page back to the front: staff may approve the link or change the member's level while the page is open.
+  useEffect(() => {
+    void refreshMe();
+  }, [path, refreshMe]);
+  useEffect(() => {
+    const again = () => {
+      if (document.visibilityState === 'visible') void refreshMe();
+    };
+    document.addEventListener('visibilitychange', again);
+    window.addEventListener('focus', again);
+    window.addEventListener('pageshow', again);
+    return () => {
+      document.removeEventListener('visibilitychange', again);
+      window.removeEventListener('focus', again);
+      window.removeEventListener('pageshow', again);
+    };
+  }, [refreshMe]);
+  // waiting for the shop to approve a link request: ask every 10 s while the page is in front
+  const waiting = status === 'ready' && !me?.member && me?.linkRequest?.status === 'PENDING';
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshMe();
+    }, 10_000);
+    return () => clearInterval(t);
+  }, [waiting, refreshMe]);
 
   const isHome = path === '/shop' || path === '/shop/';
   const showCartBar = hydrated && status === 'ready' && count > 0 && !/^\/shop\/(cart|checkout|orders)/.test(path);
@@ -54,6 +82,11 @@ export function ShopShell({ children }: { children: React.ReactNode }) {
         <div className="bg-amber-200 px-3 py-1 text-center text-base font-semibold text-amber-950" role="note">
           โหมดทดสอบ (ยังไม่ได้ตั้งค่า LINE) — ลูกค้าจริงจะไม่เห็นแถบนี้
         </div>
+      )}
+      {status === 'ready' && me?.member && (
+        <p data-testid="shop-member-level" className="border-b-2 border-emerald-200 bg-emerald-50 px-3 py-1.5 text-center text-lg font-semibold text-emerald-950" role="status">
+          ราคาสำหรับสมาชิก: <b>{me.member.levelName}</b>
+        </p>
       )}
       <main className={`mx-auto w-full max-w-xl px-3 pb-6 pt-3 ${showCartBar ? 'pb-28' : ''}`}>
         {status === 'loading' && <p className="py-16 text-center text-xl font-semibold text-slate-700">กำลังเปิดร้าน…</p>}

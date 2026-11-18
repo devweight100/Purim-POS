@@ -69,6 +69,12 @@ export interface ShopUnitOption {
   /** base units in one of this unit */
   factor: number;
   price: number;
+  /**
+   * true when `price` is the price of the requested level; false when the level has no price for this unit (or one
+   * above retail) and the retail price is used instead. Always true at level 1. Display only: the price rules do not
+   * depend on it (the shop says "ราคาปลีก · สินค้านี้ยังไม่มี<ชื่อระดับ>" to a member, docs/bugfix-member-price.md).
+   */
+  atLevel: boolean;
 }
 
 const levelOf = (p: ShopProductPrices | ShopPackPrices, l: PriceLevel): number =>
@@ -87,7 +93,8 @@ export function shopUnits(product: ShopProductPrices, packs: ShopPackPrices[], l
   const out: ShopUnitOption[] = [];
   const baseLevel = levelOf(product, level);
   const basePrice = round2(Math.min(baseLevel || retailBase, retailBase));
-  if (basePrice > 0) out.push({ id: null, name: product.unit || 'ชิ้น', factor: 1, price: basePrice });
+  const fromLevel = (levelPrice: number, retail: number) => level === 1 || (levelPrice > 0 && levelPrice <= retail);
+  if (basePrice > 0) out.push({ id: null, name: product.unit || 'ชิ้น', factor: 1, price: basePrice, atLevel: fromLevel(baseLevel, retailBase) });
   let factor = 1;
   for (const pack of packs) {
     const step = Math.floor(Number(pack.qtyPerPrev));
@@ -95,9 +102,10 @@ export function shopUnits(product: ShopProductPrices, packs: ShopPackPrices[], l
     factor *= step;
     if (factor === 1) continue; // same size as the base unit
     const retailPack = levelOf(pack, 1) || retailBase * factor;
-    const candidate = levelOf(pack, level) || (baseLevel ? baseLevel * factor : 0) || retailPack;
+    const levelPack = levelOf(pack, level) || (baseLevel ? baseLevel * factor : 0);
+    const candidate = levelPack || retailPack;
     const price = round2(Math.min(candidate, retailPack));
-    if (price > 0) out.push({ id: pack.id, name: pack.name || 'หน่วย', factor, price });
+    if (price > 0) out.push({ id: pack.id, name: pack.name || 'หน่วย', factor, price, atLevel: fromLevel(levelPack, retailPack) });
   }
   return out;
 }

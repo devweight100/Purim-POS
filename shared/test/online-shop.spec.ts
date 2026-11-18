@@ -19,9 +19,9 @@ const packs = [
 describe('shopUnits', () => {
   it('retail (level 1): base, pack price, case = retail x factor when unset', () => {
     expect(shopUnits(product, packs, 1)).toEqual([
-      { id: null, name: 'ชิ้น', factor: 1, price: 100 },
-      { id: 'pk', name: 'แพค', factor: 6, price: 570 },
-      { id: 'cs', name: 'ลัง', factor: 24, price: 2400 },
+      { id: null, name: 'ชิ้น', factor: 1, price: 100, atLevel: true },
+      { id: 'pk', name: 'แพค', factor: 6, price: 570, atLevel: true },
+      { id: 'cs', name: 'ลัง', factor: 24, price: 2400, atLevel: true },
     ]);
   });
   it('level 2: pack falls back to base level x factor, capped by the pack retail price', () => {
@@ -33,7 +33,17 @@ describe('shopUnits', () => {
   });
   it('a level without prices = retail; a level above retail is capped', () => {
     expect(shopUnits(product, packs, 4).map((u) => u.price)).toEqual([100, 570, 2400]);
-    expect(shopUnits({ basePrice: 50, priceLevel1: 50, priceLevel2: 60 }, [], 2)).toEqual([{ id: null, name: 'ชิ้น', factor: 1, price: 50 }]);
+    expect(shopUnits({ basePrice: 50, priceLevel1: 50, priceLevel2: 60 }, [], 2)).toEqual([{ id: null, name: 'ชิ้น', factor: 1, price: 50, atLevel: false }]);
+  });
+  it('atLevel tells a member price from the retail fallback (prices unchanged)', () => {
+    expect(shopUnits(product, packs, 2).map((u) => u.atLevel)).toEqual([true, true, true]);
+    expect(shopUnits(product, packs, 3).map((u) => u.atLevel)).toEqual([true, true, true]);
+    expect(shopUnits(product, packs, 4).map((u) => u.atLevel)).toEqual([false, false, false]);
+    // only the pack has a level-2 price: base unit retail, pack at level 2
+    const packOnly = shopUnits({ basePrice: 10, priceLevel1: 10 }, [{ id: 'p', name: 'แพค', qtyPerPrev: 12, priceLevel1: 115, priceLevel2: 100 }], 2);
+    expect(packOnly.map((u) => [u.price, u.atLevel])).toEqual([[10, false], [100, true]]);
+    // a level price equal to retail counts as the level price
+    expect(shopUnits({ basePrice: 10, priceLevel1: 10, priceLevel2: 10 }, [], 2)[0].atLevel).toBe(true);
   });
   it('basePrice when level 1 is empty; no price -> no unit; broken chain stops', () => {
     expect(shopUnits({ basePrice: '12.50', priceLevel1: null }, [], 1)[0].price).toBe(12.5);

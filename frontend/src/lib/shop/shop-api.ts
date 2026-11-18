@@ -30,6 +30,8 @@ export interface ShopUnit {
   name: string;
   price: number;
   inStock: boolean;
+  /** members only: false = no price at the member's level for this unit, the retail price is shown */
+  levelPrice?: boolean;
 }
 
 export interface ShopProduct {
@@ -87,6 +89,8 @@ export interface ShopQuote {
   feePending: boolean;
   total: number;
   fulfillment: 'PICKUP' | 'DELIVERY';
+  /** price level the server priced the cart at */
+  level?: PriceLevel;
 }
 
 const TOKEN_KEY = 'purim-shop-session';

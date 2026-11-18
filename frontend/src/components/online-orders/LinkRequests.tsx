@@ -17,9 +17,12 @@ interface Req {
   note: string | null;
   createdAt: string;
   decidedAt: string | null;
-  matches: { id: string; name: string; phone: string }[];
-  customer: { id: string; name: string; phone: string | null } | null;
+  matches: { id: string; name: string; phone: string; priceLevel?: number; levelName?: string }[];
+  customer: { id: string; name: string; phone: string | null; priceLevel?: number; levelName?: string } | null;
 }
+
+/** "ระดับราคา 2 (ราคาส่ง)": the member's level (customers page) and the name the customer sees in the shop */
+const levelText = (m: { priceLevel?: number; levelName?: string }) => (m.priceLevel ? `ระดับราคา ${m.priceLevel}${m.levelName ? ` (${m.levelName})` : ''}` : '');
 
 const when = (iso: string) => new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
@@ -69,6 +72,7 @@ export function LinkRequests({ onChanged }: { onChanged: () => void }) {
         ))}
       </div>
       <p className="text-sm text-slate-600">ลูกค้ากรอกเบอร์โทรในหน้าร้านออนไลน์ — ตรวจให้แน่ใจว่าเป็นเจ้าของเบอร์จริง (โทรกลับหรือถามที่ร้าน) ก่อนผูก เพราะลูกค้าจะได้ราคาสมาชิกและค่าส่งของสมาชิกคนนั้น</p>
+      <p className="text-sm text-slate-600">ลูกค้าจะเห็นราคาตาม “ระดับราคา” ของสมาชิก (แก้ได้ในหน้า “ลูกค้าสมาชิก” แท็บเครดิต &amp; ระดับราคา; หน้าร้านของลูกค้าอัปเดตเองเมื่อเปลี่ยนหน้า) — สินค้าที่ยังไม่ได้ตั้งราคาระดับนั้นจะขายเป็นราคาปลีก</p>
       {rows?.length === 0 && <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-slate-500">ไม่มีคำขอ</p>}
       <ul className="space-y-3">
         {rows?.map((r) => {
@@ -83,7 +87,7 @@ export function LinkRequests({ onChanged }: { onChanged: () => void }) {
               </div>
               {r.status !== 'PENDING' ? (
                 <p className="text-sm">
-                  {r.status === 'APPROVED' ? `ผูกกับ ${r.customer?.name || '-'}` : `ไม่อนุมัติ${r.note ? `: ${r.note}` : ''}`}
+                  {r.status === 'APPROVED' ? `ผูกกับ ${r.customer?.name || '-'}${r.customer ? ` · ${levelText(r.customer)}` : ''}` : `ไม่อนุมัติ${r.note ? `: ${r.note}` : ''}`}
                   {r.decidedAt ? ` · ${when(r.decidedAt)}` : ''}
                 </p>
               ) : (
@@ -93,7 +97,7 @@ export function LinkRequests({ onChanged }: { onChanged: () => void }) {
                       <span className="text-sm text-slate-600">สมาชิกที่เบอร์ตรงกัน:</span>
                       {r.matches.map((m) => (
                         <Button key={m.id} size="sm" disabled={busy === r.id} className="bg-emerald-700 hover:bg-emerald-800 text-white" onClick={() => void decide(r, { approve: true, customerId: m.id }, `ผูก LINE กับ ${m.name} แล้ว`)}>
-                          ผูกกับ {m.name} ({m.phone})
+                          ผูกกับ {m.name} ({m.phone}){m.priceLevel ? ` · ${levelText(m)}` : ''}
                         </Button>
                       ))}
                     </div>

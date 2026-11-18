@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Put, Query, Request, Res, UseGuards } from '@nestjs/common';
+import { Body, CallHandler, Controller, Delete, ExecutionContext, Get, Injectable, NestInterceptor, NotFoundException, Param, Patch, Post, Put, Query, Request, Res, UseGuards, UseInterceptors } from '@nestjs/common';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -25,9 +25,24 @@ function ctxOf(req: any): PublicCtx {
 }
 
 /**
+ * Shop answers depend on who asks (member price level, cart, orders): never stored by the browser, the LINE in-app
+ * browser, Cloudflare or any proxy (a cached retail answer must never reach a member). Photos / QR set their own.
+ */
+@Injectable()
+export class ShopNoStoreInterceptor implements NestInterceptor {
+  intercept(context: ExecutionContext, next: CallHandler) {
+    const res = context.switchToHttp().getResponse();
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+    res.setHeader('Vary', 'Authorization');
+    return next.handle();
+  }
+}
+
+/**
  * The shop page's API: the ONLY routes reachable through the Cloudflare Tunnel (public-exposure.ts).
  * No staff JWT here; customers carry a shop session token (LIFF ID token verified by LINE).
  */
+@UseInterceptors(ShopNoStoreInterceptor)
 @Controller('public/shop')
 export class OnlineShopPublicController {
   constructor(private readonly shop: OnlineShopService) {}
@@ -64,6 +79,7 @@ export class OnlineShopPublicController {
     const img = await this.shop.image(ctxOf(req), id);
     if (!img) throw new NotFoundException('ไม่พบรูป');
     res.setHeader('Content-Type', img.contentType);
+    res.removeHeader('Vary'); // the same photo for everyone
     res.setHeader('Cache-Control', 'public, max-age=86400');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
@@ -76,6 +92,7 @@ export class OnlineShopPublicController {
     const png = await this.shop.qrImage(id, String(a || ''), String(s || ''));
     if (!png) throw new NotFoundException('ไม่พบ QR');
     res.setHeader('Content-Type', 'image/png');
+    res.removeHeader('Vary');
     res.setHeader('Cache-Control', 'private, max-age=600');
     res.status(200).end(png);
   }
@@ -192,6 +209,12 @@ export class OnlineShopAdminController {
   @Post('orders/:id/pos')
   pos(@Param('id') id: string, @Body() body: any, @Request() req: any) {
     return this.shop.posPayload(id, req.user, { terminalId: body?.terminalId, force: body?.force === true });
+  }
+
+  /** level names + products without a price at each member level (customers page note); counts only */
+  @Get('level-coverage')
+  levelCoverage() {
+    return this.shop.levelCoverage();
   }
 
   @RequirePermissions('POS_SELL')

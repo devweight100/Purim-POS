@@ -268,7 +268,8 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
         name: r.name as string,
         categoryId: (r.category_id as string | null) || 'none',
         imageUrl: img ? `/api/public/shop/images/${img}` : null,
-        units: units.map((u) => ({ id: u.id, name: u.name, price: u.price, inStock: qty >= u.factor })),
+        // levelPrice (members only): false = this unit has no price at the member's level, the retail price is shown
+        units: units.map((u) => ({ id: u.id, name: u.name, price: u.price, inStock: qty >= u.factor, ...(level > 1 ? { levelPrice: u.atLevel } : {}) })),
         inStock: units.some((u) => qty >= u.factor),
       };
     });
@@ -922,22 +923,50 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
     // members whose phone matches (digits only), as suggestions for staff
     const phones = [...new Set(rows.map((r) => r.phone))];
     const matches = phones.length
-      ? await this.prisma.$queryRaw<{ id: string; name: string; phone: string; digits: string }[]>`
-          SELECT id, name, phone, regexp_replace(phone, '\\D', '', 'g') AS digits FROM customers
+      ? await this.prisma.$queryRaw<{ id: string; name: string; phone: string; digits: string; level: string | null }[]>`
+          SELECT id, name, phone, regexp_replace(phone, '\\D', '', 'g') AS digits, profile->>'priceLevel' AS level FROM customers
           WHERE regexp_replace(phone, '\\D', '', 'g') = ANY(${phones}::text[])`
       : [];
     const ids = [...new Set(rows.map((r) => r.customerId).filter(Boolean) as string[])];
-    const chosen = ids.length ? await this.prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, phone: true } }) : [];
-    return rows.map((r) => ({
-      ...r,
-      matches: matches.filter((m) => m.digits === r.phone).map((m) => ({ id: m.id, name: m.name, phone: m.phone })),
-      customer: chosen.find((c) => c.id === r.customerId) || null,
-    }));
+    const chosen = ids.length ? await this.prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, phone: true, profile: true } }) : [];
+    // the member's price level (customers.profile.priceLevel) and its shop name: staff see what the customer will get
+    const names = levelNames((await this.line.config()).levelNames);
+    const lv = (raw: unknown) => {
+      const level = normalizeLevel(raw);
+      return { priceLevel: level, levelName: names[level] };
+    };
+    return rows.map((r) => {
+      const c = chosen.find((x) => x.id === r.customerId);
+      return {
+        ...r,
+        matches: matches.filter((m) => m.digits === r.phone).map((m) => ({ id: m.id, name: m.name, phone: m.phone, ...lv(m.level) })),
+        customer: c ? { id: c.id, name: c.name, phone: c.phone, ...lv((c.profile as any)?.priceLevel) } : null,
+      };
+    });
+  }
+
+  /**
+   * Customers page / link approval: shop level names and how many active products have no base-unit price at each
+   * member level (those products are sold to members at ราคาปลีก, shared shopUnits). Counts only, no prices.
+   */
+  async levelCoverage() {
+    const [row] = await this.prisma.$queryRaw<{ total: number; l2: number; l3: number; l4: number; l5: number }[]>`
+      SELECT count(*)::int AS total,
+             count(*) FILTER (WHERE COALESCE(price_level_2, 0) <= 0)::int AS l2,
+             count(*) FILTER (WHERE COALESCE(price_level_3, 0) <= 0)::int AS l3,
+             count(*) FILTER (WHERE COALESCE(price_level_4, 0) <= 0)::int AS l4,
+             count(*) FILTER (WHERE COALESCE(price_level_5, 0) <= 0)::int AS l5
+      FROM products WHERE is_active AND NOT is_service`;
+    return {
+      levelNames: levelNames((await this.line.config()).levelNames),
+      total: Number(row?.total || 0),
+      missing: { 2: Number(row?.l2 || 0), 3: Number(row?.l3 || 0), 4: Number(row?.l4 || 0), 5: Number(row?.l5 || 0) },
+    };
   }
 
   async decideLink(id: string, body: any, user: any) {
     if (!userHasPermission(user, 'POS_DISCOUNT')) throw new ForbiddenException('ต้องเป็นผู้จัดการ หรือมีสิทธิ์ให้ส่วนลด จึงจะอนุมัติการผูกสมาชิกได้ (ลูกค้าจะได้ราคาสมาชิก)');
-    return this.prisma.$transaction(async (tx) => {
+    const decided = await this.prisma.$transaction(async (tx) => {
       const r = await tx.lineLinkRequest.findUnique({ where: { id } });
       if (!r) throw new NotFoundException('ไม่พบคำขอ');
       if (r.status !== 'PENDING') throw new BadRequestException('คำขอนี้ตัดสินไปแล้ว');
@@ -961,6 +990,25 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
       await tx.shopVisitor.upsert({ where: { lineUserId: r.lineUserId }, create: { lineUserId: r.lineUserId, displayName: r.displayName, customerId: cu.id, linkedAt: now }, update: { customerId: cu.id, linkedAt: now } });
       return tx.lineLinkRequest.update({ where: { id }, data: { status: 'APPROVED', customerId: cu.id, decidedAt: now, decidedById: user?.id || null, note: text(body?.note, 200) || null } });
     });
+    if (decided.status === 'APPROVED' && decided.customerId) void this.notifyLinked(decided.lineUserId, decided.customerId);
+    return decided;
+  }
+
+  /** LINE message when a link is approved (if a token is set): the member's price level name + the shop link. */
+  private async notifyLinked(lineUserId: string, customerId: string) {
+    try {
+      const [c, cu, store] = await Promise.all([
+        this.line.config(),
+        this.prisma.customer.findUnique({ where: { id: customerId }, select: { name: true, profile: true } }),
+        this.prisma.storeSettings.findFirst({ select: { storeName: true } }),
+      ]);
+      if (!cu) return;
+      const levelName = levelNames(c.levelNames)[normalizeLevel((cu.profile as any)?.priceLevel)];
+      const base = c.publicBaseUrl && /^https:\/\//.test(c.publicBaseUrl) ? c.publicBaseUrl.replace(/\/+$/, '') : null;
+      await this.line.push(lineUserId, [{ type: 'text', text: `${store?.storeName || 'ร้าน'} ผูกบัญชี LINE ของคุณกับสมาชิก ${cu.name} แล้ว\nราคาที่เห็นในร้านออนไลน์ตอนนี้เป็น ${levelName}${base ? `\nเปิดร้าน: ${base}/shop` : ''}` }]);
+    } catch (e: any) {
+      this.log.warn(`LINE link notice failed: ${e?.message || e}`);
+    }
   }
 
   /** LINE accounts linked to a member (customer page) and unlinking. */

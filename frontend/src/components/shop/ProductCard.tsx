@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { ONLINE_LIMITS } from '@shared/online-shop';
 import { baht, type ShopProduct } from '@/lib/shop/shop-api';
-import { useShopCart } from '@/lib/shop/shop-store';
+import { useShopCart, useShopSession } from '@/lib/shop/shop-store';
 import { btn } from './ShopShell';
 
 export function QtyStepper({ value, onChange, label }: { value: number; onChange: (n: number) => void; label: string }) {
@@ -48,6 +48,7 @@ export function ProductCard({ product }: { product: ShopProduct }) {
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
   const add = useShopCart((s) => s.add);
+  const member = useShopSession((s) => s.me?.member);
   const unit = product.units[unitIdx] || product.units[0];
   if (!unit) return null;
   const inStock = unit.inStock;
@@ -61,6 +62,11 @@ export function ProductCard({ product }: { product: ShopProduct }) {
           <p className="mt-1 text-2xl font-extrabold text-emerald-800">
             {baht(unit.price)} <span className="text-lg font-semibold text-slate-700">/ {unit.name}</span>
           </p>
+          {member && member.level > 1 && unit.levelPrice === false && (
+            <p data-testid="shop-retail-note" className="text-lg font-semibold text-amber-900">
+              ราคาปลีก · สินค้านี้ยังไม่มี{member.levelName}
+            </p>
+          )}
           <p className={`mt-1 inline-block rounded-lg px-2 text-lg font-bold ${inStock ? 'bg-emerald-100 text-emerald-900' : 'bg-red-100 text-red-800'}`}>{inStock ? 'มีของ' : 'หมด'}</p>
         </div>
       </div>

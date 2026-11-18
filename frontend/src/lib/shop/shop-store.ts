@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { loadToken, saveToken, shopFetch, ShopError, type ShopConfig, type ShopMe, type ShopProduct, type ShopUnit } from './shop-api';
+import { loadToken, saveToken, shopFetch, ShopError, type ShopConfig, type ShopMe, type ShopProduct, type ShopQuote, type ShopUnit } from './shop-api';
 import { ONLINE_LIMITS } from '@shared/online-shop';
 
 export interface CartLine {
@@ -52,6 +52,29 @@ export const useShopCart = create<CartState>()(
   ),
 );
 
+/** Puts the server's prices (from POST /quote) on the cart lines; the server prices at the visitor's current level. */
+export function applyQuotePrices(q: ShopQuote) {
+  const s = useShopCart.getState();
+  const priceOf = new Map(q.lines.filter((l) => l.ok).map((l) => [lineKey(l), l.unitPrice]));
+  if (s.lines.some((l) => priceOf.has(lineKey(l)) && priceOf.get(lineKey(l)) !== l.price)) {
+    useShopCart.setState({ lines: s.lines.map((l) => (priceOf.has(lineKey(l)) ? { ...l, price: priceOf.get(lineKey(l))! } : l)) });
+  }
+}
+
+/**
+ * Re-prices the cart kept on this phone (localStorage) at the visitor's current level: after the shop opens and
+ * whenever the level changes (link approved, level changed by staff, unlinked). The cart bar total uses these prices.
+ */
+export async function repriceCart() {
+  const lines = useShopCart.getState().lines;
+  if (!lines.length || !loadToken()) return;
+  try {
+    applyQuotePrices(await shopFetch<ShopQuote>('/quote', { method: 'POST', body: { fulfillment: 'PICKUP', items: lines.map((l) => ({ productId: l.productId, unitId: l.unitId, quantity: l.quantity })) } }));
+  } catch {
+    /* the cart page re-checks */
+  }
+}
+
 type Liff = {
   init: (o: { liffId: string }) => Promise<void>;
   isLoggedIn: () => boolean;
@@ -85,6 +108,10 @@ interface SessionState {
 }
 
 let started = false;
+let meInflight: Promise<void> | null = null;
+
+/** Member price level of a `me` answer (1 = guest / retail). */
+export const levelOfMe = (me: ShopMe | null | undefined) => me?.member?.level ?? 1;
 
 /** Shop config + who the visitor is (LINE via LIFF, or the test profile on the shop's own network). */
 export const useShopSession = create<SessionState>()((set, get) => ({
@@ -93,12 +120,27 @@ export const useShopSession = create<SessionState>()((set, get) => ({
   config: null,
   me: null,
   setMe: (me) => set({ me }),
-  refreshMe: async () => {
-    try {
-      set({ me: await shopFetch<ShopMe>('/me') });
-    } catch {
-      /* keep */
-    }
+  /**
+   * Who the visitor is now (member, level, link request). Called on every page change, when the page comes back to
+   * the front (LINE reopened), while a link request waits, and when the server priced at another level than shown.
+   * Concurrent calls share one request. A level change re-prices the cart.
+   */
+  refreshMe: () => {
+    if (get().status !== 'ready' || !loadToken()) return Promise.resolve();
+    if (meInflight) return meInflight;
+    meInflight = (async () => {
+      try {
+        const me = await shopFetch<ShopMe>('/me');
+        const before = levelOfMe(get().me);
+        set({ me });
+        if (levelOfMe(me) !== before) await repriceCart();
+      } catch {
+        /* keep */
+      } finally {
+        meInflight = null;
+      }
+    })();
+    return meInflight;
   },
   init: async () => {
     if (started) return;
@@ -122,6 +164,7 @@ export const useShopSession = create<SessionState>()((set, get) => ({
         const s = await shopFetch<{ token: string; expiresAt: string } & ShopMe>('/session', { method: 'POST', body: { idToken } });
         saveToken(s.token, s.expiresAt);
         set({ me: { profile: s.profile, member: s.member, contact: s.contact, linkRequest: s.linkRequest }, status: 'ready' });
+        void repriceCart(); // the cart may hold prices of another level (linked / changed since it was filled)
         return;
       }
       if (config.devLogin) {
@@ -129,7 +172,10 @@ export const useShopSession = create<SessionState>()((set, get) => ({
         if (loadToken()) {
           try {
             set({ me: await shopFetch<ShopMe>('/me'), status: 'ready' });
-            if (get().me?.profile.test) return;
+            if (get().me?.profile.test) {
+              void repriceCart();
+              return;
+            }
           } catch {
             saveToken(null);
           }
@@ -137,6 +183,7 @@ export const useShopSession = create<SessionState>()((set, get) => ({
         const s = await shopFetch<{ token: string; expiresAt: string } & ShopMe>('/session', { method: 'POST', body: { dev: { id: 'tester', name: 'ลูกค้าทดสอบ' } } });
         saveToken(s.token, s.expiresAt);
         set({ me: { profile: s.profile, member: s.member, contact: s.contact, linkRequest: s.linkRequest }, status: 'ready' });
+        void repriceCart();
         return;
       }
       set({ status: 'closed' });

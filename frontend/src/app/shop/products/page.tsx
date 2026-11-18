@@ -13,6 +13,8 @@ interface Page {
   total: number;
   hasMore: boolean;
   page: number;
+  /** price level the server priced the page at */
+  level?: number;
 }
 
 function ProductList() {
@@ -22,6 +24,7 @@ function ProductList() {
   const category = params.get('category') || '';
   const categoryName = params.get('name') || '';
   const level = useShopSession((s) => s.me?.member?.level ?? 1);
+  const refreshMe = useShopSession((s) => s.refreshMe);
   const [items, setItems] = useState<ShopProduct[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
@@ -41,6 +44,8 @@ function ProductList() {
         if (category) qs.set('categoryId', category);
         const r = await shopFetch<Page>(`/products?${qs}`);
         if (my !== seq.current) return;
+        // priced at another level than the page knows (link approved / level changed): refresh who we are
+        if (r.level !== undefined && r.level !== level) void refreshMe();
         setItems((prev) => (p === 1 ? r.items : [...prev, ...r.items]));
         setPage(p);
         setHasMore(r.hasMore);
@@ -51,13 +56,13 @@ function ProductList() {
         if (my === seq.current) setLoading(false);
       }
     },
-    [q, category],
+    [q, category, level, refreshMe],
   );
 
   useEffect(() => {
     const t = setTimeout(() => void load(1), 0); // (not inside the effect body: load sets state)
     return () => clearTimeout(t);
-  }, [load, level]);
+  }, [load]);
 
   const title = q ? `ค้นหา "${q}"` : categoryName || 'สินค้าทั้งหมด';
   return (

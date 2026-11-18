@@ -1,5 +1,6 @@
 'use client';
 
+import { CustomerLevelNote } from '@/components/online-orders/CustomerLevelNote';
 import { CustomerOnlineFields } from '@/components/online-orders/CustomerOnlineFields';
 import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { RowDeleteMenu } from '@/components/common/RowDeleteMenu';
@@ -922,6 +923,7 @@ export default function CustomersPage() {
                   <p className="text-[11px] text-slate-500">
                     💡 เมื่อเลือกลูกค้ารายนี้ในหน้าขายหน้าร้าน (POS) ระบบจะดึงราคาขายตามระดับนี้ให้อัตโนมัติ
                   </p>
+                  <CustomerLevelNote level={formData.priceLevel} />
                 </div>
 
                 <CustomerOnlineFields
