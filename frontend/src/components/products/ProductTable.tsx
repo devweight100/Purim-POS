@@ -56,7 +56,7 @@ export function ProductTable({ data, f, sel, onEdit }: {
   sel: ProductSelection;
   onEdit: (p: ProductRecord) => void;
 }) {
-  const { categories, loading, loadError, allPackaging, allImages, loadData } = data;
+  const { categories, loading, loadError, allPackaging, loadData } = data;
   const { filteredCount, paginatedList, currentPage, setCurrentPage, totalPages } = f;
   const user = useAuthStore((s) => s.user);
   const showCost = hasPermission(user, "VIEW_COST");
@@ -108,9 +108,12 @@ export function ProductTable({ data, f, sel, onEdit }: {
                 </div>
               </TableHead>
               <TableHead style={{ width: COL.expand }} className="px-0"><span className="sr-only">ขนาดบรรจุ</span></TableHead>
-              <TableHead className="px-2"><SortButton col="name" label="ชื่อสินค้า / บาร์โค้ด" f={f} /></TableHead>
-              {layout.showCategory && <TableHead style={{ width: COL.category }} className="px-2 text-slate-500">หมวดหมู่</TableHead>}
-              <TableHead style={{ width: COL.stock }} className="px-2 text-right"><SortButton col="stock" label="จำนวน" f={f} align="right" /></TableHead>
+              <TableHead className="px-2"><SortButton col="name" label="ชื่อสินค้า" f={f} /></TableHead>
+              {layout.showCategory && <TableHead style={{ width: layout.categoryWidth }} className="px-2 text-slate-500">หมวดหมู่</TableHead>}
+              <TableHead style={{ width: COL.stock }} className="px-2">
+                {/* over the number slot of StockQty (unit slot 2.75rem + gap) */}
+                <div className="pr-[3.125rem]"><SortButton col="stock" label="จำนวน" f={f} align="right" /></div>
+              </TableHead>
               {showCost && <TableHead style={{ width: COL.cost }} className="px-2 text-right"><SortButton col="cost" label="ต้นทุน" f={f} align="right" /></TableHead>}
               {layout.levels.map((n) => (
                 <TableHead key={n} style={{ width: layout.priceWidth }} className="px-2 text-right" data-testid={`price-head-${n}`}>
@@ -133,7 +136,6 @@ export function ProductTable({ data, f, sel, onEdit }: {
                 p={p}
                 categories={categories}
                 pkgUnits={allPackaging[p.id] || []}
-                prodImages={allImages[p.id] || []}
                 isExpanded={sel.expandedRows.has(p.id)}
                 isSelected={sel.selectedProductIds.has(p.id)}
                 onToggleExpand={() => sel.toggleExpand(p.id)}

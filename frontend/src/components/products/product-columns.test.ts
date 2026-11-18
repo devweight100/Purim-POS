@@ -5,7 +5,7 @@ import { levelSubtitle } from '@/lib/use-level-names';
 // table widths measured in the browser (page padding + card border): sidebar open / collapsed
 const W = { w1093open: 795, w1093rail: 971, w1366open: 1068, w1366rail: 1244, w1920open: 1542, w1920rail: 1718 };
 
-describe('productColumns (round 3: price levels as columns)', () => {
+describe('productColumns (round 3: price levels as columns; round 4: narrow category column)', () => {
   it('shows ราคา 1-5 at 1920 and 1366, at least 1-3 at 1093 with the sidebar open, 1-5 with it collapsed', () => {
     for (const w of [W.w1920open, W.w1920rail, W.w1366open, W.w1366rail, W.w1093rail]) {
       expect(productColumns(w, { showCost: true, force45: false }).levels).toEqual([1, 2, 3, 4, 5]);
@@ -27,9 +27,11 @@ describe('productColumns (round 3: price levels as columns)', () => {
     expect(productColumns(W.w1366open, { showCost: true, force45: true })).toMatchObject({ tight: false, canForce: false });
   });
 
-  it('category gets its own column only on wide tables; no cost column leaves room for more prices', () => {
-    expect(productColumns(W.w1920open, { showCost: true, force45: false }).showCategory).toBe(true);
-    expect(productColumns(W.w1366rail, { showCost: true, force45: false }).showCategory).toBe(false);
+  it('category is a narrow column from 1366x768 (both sidebar states), a chip on narrower tables; no cost column leaves room for more prices', () => {
+    for (const w of [W.w1920open, W.w1366open, W.w1366rail]) expect(productColumns(w, { showCost: true, force45: false }).showCategory).toBe(true);
+    expect(productColumns(W.w1366open, { showCost: true, force45: false }).categoryWidth).toBeLessThanOrEqual(104);
+    expect(productColumns(W.w1093rail, { showCost: true, force45: false }).showCategory).toBe(false);
+    expect(productColumns(W.w1093open, { showCost: true, force45: false }).showCategory).toBe(false);
     expect(productColumns(860, { showCost: false, force45: false }).levels.length)
       .toBeGreaterThanOrEqual(productColumns(860, { showCost: true, force45: false }).levels.length);
   });

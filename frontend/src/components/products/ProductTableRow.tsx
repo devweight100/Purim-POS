@@ -9,21 +9,35 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatCurrency } from "@/lib/utils";
 import { displayUnitCost } from "@/lib/product-cost";
-import { computeMultipliers, getProductBarcodes, lowStockThreshold } from "./product-helpers";
+import { computeMultipliers, lowStockThreshold } from "./product-helpers";
 import type { ProductColumns } from "./product-columns";
-import { priceLevelKey, type CategoryOption, type PackagingUnitForm, type ProductImageItem, type ProductRecord } from "./types";
+import { priceLevelKey, type CategoryOption, type PackagingUnitForm, type ProductRecord } from "./types";
 
-/** Barcodes shown in the name cell; the rest are "+N" with all of them in the tooltip. */
-const MAX_BARCODES = 3;
+/**
+ * Quantity + unit in one line: the number right-aligned in its slot, the unit left-aligned in a fixed slot after it,
+ * so numbers and units each form a straight column whatever the table width (sidebar open or collapsed).
+ */
+function StockQty({ value, unit, badgeClass, prefix, unitClass = "text-slate-500" }: { value: string; unit: string; badgeClass: string; prefix?: string | null; unitClass?: string }) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_2.75rem] items-center gap-1.5 whitespace-nowrap">
+      <span className="flex justify-end">
+        <Badge variant="outline" className={`${badgeClass} px-1.5 tabular-nums`}>
+          {prefix && <span className="mr-0.5 text-[10px]">{prefix}</span>}
+          {value}
+        </Badge>
+      </span>
+      <span className={`truncate text-left text-[11px] ${unitClass}`} title={unit} data-testid="product-unit">{unit}</span>
+    </div>
+  );
+}
 
 /** One product row, plus one sub-row per pack unit when expanded. */
 export function ProductTableRow({
-  p, categories, pkgUnits, prodImages, isExpanded, isSelected, onToggleExpand, onToggleSelect, onEdit, layout, showCost, rowNav,
+  p, categories, pkgUnits, isExpanded, isSelected, onToggleExpand, onToggleSelect, onEdit, layout, showCost, rowNav,
 }: {
   p: ProductRecord;
   categories: CategoryOption[];
   pkgUnits: PackagingUnitForm[];
-  prodImages: ProductImageItem[];
   isExpanded: boolean;
   isSelected: boolean;
   onToggleExpand: () => void;
@@ -50,10 +64,6 @@ export function ProductTableRow({
     ? "bg-amber-100 text-amber-800 border-amber-300 font-bold"
     : "bg-emerald-50 text-emerald-700 border-emerald-200";
   const pkgMults = computeMultipliers(pkgUnits);
-  const coverItem = prodImages.find(img => img.isCover) || prodImages[0];
-  // small copy from the server (GET /api/product-images/:id?size=thumb), or a just-uploaded photo's data
-  const coverImg = coverItem?.thumbDataUrl || coverItem?.dataUrl || coverItem?.thumbUrl || coverItem?.url || p.imageUrl || null;
-  const displayBarcodes = getProductBarcodes(p);
   const category = categories.find(c => c.id === p.categoryId);
   const numCls = layout.tight ? "text-xs" : "text-[13px]";
 
@@ -77,55 +87,50 @@ export function ProductTableRow({
           ) : null}
         </TableCell>
         <TableCell className="font-semibold text-slate-900 whitespace-normal px-2 py-2">
-          <div className="flex items-center gap-2 min-w-0">
-            {!layout.tight && (coverImg ? (
-              // eslint-disable-next-line @next/next/no-img-element -- base64 data URL from the database, next/image cannot optimise it
-              <img src={coverImg} alt={p.name} className="w-8 h-8 rounded-md object-cover border border-slate-200 shrink-0" />
-            ) : (
-              <div className="w-8 h-8 rounded-md bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 shrink-0 text-sm">
-                {category?.icon || "📦"}
-              </div>
-            ))}
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[13px] leading-snug">
-                <span className="line-clamp-2 break-words" title={p.name}>{p.name}</span>
-                {p.isBundle && (
-                  <span className="text-[10px] text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded font-bold shrink-0">
-                    🎁 ชุด ({p.bundleItems?.length || 0} ชิ้น)
-                  </span>
-                )}
-                {prodImages.length > 0 && (
-                  <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1 py-0.2 rounded font-medium">
-                    📷 {prodImages.length}
-                  </span>
-                )}
-              </div>
-              {/* name + barcodes only (owner 2026-11-18: the product code is not shown here; search still finds it) */}
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] font-normal text-slate-500" data-testid="product-barcodes">
-                {displayBarcodes.slice(0, MAX_BARCODES).map((barcode, bi) => (
-                  <span key={bi} title={barcode} className="font-mono text-slate-500 bg-slate-100 px-1 rounded border border-slate-200 truncate max-w-full">{barcode}</span>
-                ))}
-                {displayBarcodes.length > MAX_BARCODES && (
-                  <span className="text-slate-400 cursor-help" title={displayBarcodes.join("\n")}>+{displayBarcodes.length - MAX_BARCODES}</span>
-                )}
-                {pkgUnits.length > 0 && <span className="text-sky-600 whitespace-nowrap">{pkgUnits.length} ขนาดบรรจุ</span>}
-                {!layout.showCategory && category?.name && (
-                  <span data-testid="product-category-chip" className="max-w-full truncate rounded-full border border-sky-200 bg-sky-50 px-1.5 text-sky-700" title={category.name}>{category.name}</span>
-                )}
-              </div>
+          {/* round 4 (owner): the name only - no photo / icon, no barcodes (search by barcode / SKU still works) */}
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[13px] leading-snug">
+              <span className="line-clamp-2 break-words" title={p.name} data-testid="product-name">{p.name}</span>
+              {p.isBundle && (
+                <span className="text-[10px] text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded font-bold shrink-0">
+                  🎁 ชุด ({p.bundleItems?.length || 0} ชิ้น)
+                </span>
+              )}
             </div>
+            {(pkgUnits.length > 0 || (!layout.showCategory && category?.name)) && (
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-normal text-slate-500">
+                {pkgUnits.length > 0 && (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
+                    className="whitespace-nowrap text-sky-600 hover:underline"
+                    data-testid="product-pack-link"
+                  >
+                    {pkgUnits.length} ขนาดบรรจุ
+                  </button>
+                )}
+                {!layout.showCategory && category?.name && (
+                  <span data-testid="product-category-chip" className="max-w-[10rem] truncate rounded-full border border-sky-200 bg-sky-50 px-1.5 text-sky-700" title={category.name}>{category.name}</span>
+                )}
+              </div>
+            )}
           </div>
         </TableCell>
         {layout.showCategory && (
-          <TableCell className="px-2"><Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 font-normal max-w-full truncate block" title={category?.name}>{category?.name || "-"}</Badge></TableCell>
+          <TableCell className="px-2">
+            {category?.name ? (
+              <span data-testid="product-category" className="block max-w-full truncate rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] text-sky-700" title={category.name}>{category.name}</span>
+            ) : <span className="text-xs text-slate-300">-</span>}
+          </TableCell>
         )}
-        <TableCell className="text-right whitespace-nowrap px-2" data-testid="product-stock">
-          <Badge variant="outline" className={`${stockClass} px-1.5 tabular-nums`}>
-            {isNegativeStock && <span className="mr-0.5 text-[10px]">🔻</span>}
-            {isLowStock && <span className="mr-0.5 text-[10px]">⚠️</span>}
-            {isNegativeStock ? stock : stock === 0 ? "หมด" : stock.toLocaleString()}
-          </Badge>
-          <div className="mt-0.5 truncate text-[11px] text-slate-500" title={p.unit}>{p.unit || "-"}</div>
+        <TableCell className="px-2" data-testid="product-stock">
+          <StockQty
+            value={isNegativeStock ? String(stock) : stock === 0 ? "หมด" : stock.toLocaleString()}
+            unit={p.unit || "-"}
+            badgeClass={stockClass}
+            prefix={isNegativeStock ? "🔻" : isLowStock ? "⚠️" : null}
+          />
         </TableCell>
         {showCost && (
           <TableCell className={`text-right text-slate-600 whitespace-nowrap tabular-nums px-2 ${numCls}`} data-testid="product-cost">{unitCostOf !== undefined ? formatCurrency(unitCostOf) : "-"}</TableCell>
@@ -161,9 +166,13 @@ export function ProductTableRow({
               </div>
             </TableCell>
             {layout.showCategory && <TableCell className="py-1.5"><span className="text-xs text-slate-300">—</span></TableCell>}
-            <TableCell className="text-right py-1.5 px-2 whitespace-nowrap">
-              <Badge variant="outline" className={`px-1.5 tabular-nums ${unitStock === 0 ? "bg-rose-50 text-rose-500 border-rose-200" : "bg-sky-50 text-sky-700 border-sky-200"}`}>{unitStock}</Badge>
-              <div className="mt-0.5 truncate text-[11px] font-medium text-sky-700">{unit.name}</div>
+            <TableCell className="py-1.5 px-2">
+              <StockQty
+                value={String(unitStock)}
+                unit={unit.name}
+                badgeClass={unitStock === 0 ? "bg-rose-50 text-rose-500 border-rose-200" : "bg-sky-50 text-sky-700 border-sky-200"}
+                unitClass="font-medium text-sky-700"
+              />
             </TableCell>
             {showCost && <TableCell className={`text-right text-slate-400 py-1.5 px-2 whitespace-nowrap tabular-nums ${numCls}`}>{unitCost != null ? formatCurrency(unitCost) : "-"}</TableCell>}
             {layout.levels.map((n) => {
