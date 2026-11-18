@@ -73,7 +73,7 @@ test('a cash sale prints its slip; history, orders page and document search repr
   await pay.getByRole('button', { name: '฿100', exact: true }).click();
   jobs.pos = await capturePrint(page, () => pay.getByRole('button', { name: 'ยืนยันรับเงินสด' }).click());
   await expect(pay).toContainText('ชำระเงินสำเร็จ!');
-  orderNumber = /ORD-\d+/.exec(jobs.pos.html)?.[0] || '';
+  orderNumber = /IN\d{4}-\d{4}/.exec(jobs.pos.html)?.[0] || '';
   expect(orderNumber).not.toBe('');
   await page.getByRole('button', { name: 'ปิดหน้าต่าง (เริ่มออเดอร์ใหม่)' }).click({ timeout: 3000 }).catch(() => undefined);
   await closeDialogs();

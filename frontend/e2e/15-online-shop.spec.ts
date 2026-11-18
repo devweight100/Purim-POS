@@ -131,7 +131,7 @@ test('customer (phone, test profile): browse a category, search, choose the pack
 
   await expect(page.getByText('ส่งออเดอร์แล้ว ✓')).toBeVisible();
   state.orderNo = (await page.getByTestId('shop-order-no').textContent())!.trim();
-  expect(state.orderNo).toMatch(/^WEB-\d{6}-\d{3}$/);
+  expect(state.orderNo).toMatch(/^WB\d{4}-\d{4}$/); // round 4 document number
   state.orderId = page.url().split('/shop/orders/')[1].split('?')[0];
   await expect(page.getByTestId('shop-order-total')).toHaveText('฿3,200 + ค่าส่ง');
   await mobileOk(page);

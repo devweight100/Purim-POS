@@ -47,15 +47,14 @@ test('photos by URL in the POS and the products page; delta sync; saving keeps p
   // later refreshes ask only for changes (cursor), not the whole catalogue
   await expect.poll(() => syncCalls.filter((q) => q.includes('since=')).length, { timeout: 40_000 }).toBeGreaterThan(0);
 
-  // products page: thumbnail in the table, full photo in the edit form; saving keeps the photo row
+  // products page: no photo in the table (round 4, owner), full photo in the edit form; saving keeps the photo row
   await page.goto('/products');
   const search = page.getByPlaceholder('ค้นหาชื่อ, รหัส, บาร์โค้ด...');
   await search.fill(sku);
   // the table shows name + barcodes (no product code); the search still finds the code
   const tableRow = page.locator('tr', { hasText: 'สินค้ามีรูป E2E' }).first();
-  const thumb = tableRow.locator('img').first();
-  await expect(thumb).toHaveAttribute('src', `/api/product-images/${imageId}?size=thumb`);
-  await expect.poll(() => thumb.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth)).toBe(1);
+  await expect(tableRow).toBeVisible();
+  await expect(tableRow.locator('img')).toHaveCount(0);
   await tableRow.locator('button:has(svg.lucide-pencil)').click();
   const dialog = page.getByRole('dialog');
   const formImg = dialog.locator(`img[src="/api/product-images/${imageId}"]`);

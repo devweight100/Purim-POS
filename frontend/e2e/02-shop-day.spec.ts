@@ -81,7 +81,7 @@ test('sell by scanning a hyphenated SKU and pay cash; the receipt shows the tota
   const receipt = page.getByRole('dialog').filter({ hasText: 'ตัวอย่างใบเสร็จรับเงิน' });
   await expect(receipt).toBeVisible();
   const text = (await receipt.innerText()).replace(/\s+/g, ' ');
-  expect(text).toMatch(/เลขที่ ORD-\d+/);
+  expect(text).toMatch(/เลขที่ IN\d{4}-\d{4}/); // round 4 document number
   expect(text).toContain(`${WATER.name} 2 ชิ้น x 12.00 24.00`);
   expect(text).toContain(`${RICE.name} 1 ชิ้น x 189.00 189.00`);
   expect(text).toContain('รวม 2 รายการ 213.00');

@@ -92,7 +92,7 @@ test('claim search finds a bill older than the newest 500 bills', async ({ page 
   await page.goto('/claims');
   await page.getByRole('button', { name: 'รับเคลมสินค้าใหม่' }).first().click();
   const searched = page.waitForRequest((r) => r.url().includes('/api/orders?') && r.url().includes('scope=claim'));
-  await page.getByPlaceholder(/พิมพ์ค้นหา เช่น ORD-2026/).fill(orderNumber);
+  await page.getByPlaceholder(/พิมพ์ค้นหา เช่น IN2611-0001/).fill(orderNumber);
   await searched;
   await expect(page.locator('tr', { hasText: orderNumber }).filter({ hasText: `ของเก่า ${tag}` })).toHaveCount(1);
   await page.keyboard.press('Escape');

@@ -285,7 +285,7 @@ test('POS: the other cashier sees "ยังไม่ได้จัดของ
   const cash = A.page.getByRole('dialog').filter({ hasText: 'รับชำระด้วยเงินสด' });
   await A.page.keyboard.type('1000');
   const receipt = await capturePrint(A.page, () => cash.getByRole('button', { name: /ยืนยันรับเงินสด/ }).click());
-  const orderNumber = /ORD-\d+/.exec(receipt.html)?.[0] || '';
+  const orderNumber = /IN\d{4}-\d{4}/.exec(receipt.html)?.[0] || '';
   expect(orderNumber).not.toBe('');
   expect(receipt.html).not.toContain('ใบจัดของ'); // auto picking slip is off by default
   await A.page.getByRole('button', { name: 'ปิดหน้าต่าง (เริ่มออเดอร์ใหม่)' }).click({ timeout: 3000 }).catch(() => undefined);
