@@ -64,6 +64,7 @@ describe('export', () => {
         id: 'p-1',
         sku: 'DRK-001',
         name: 'น้ำดื่ม',
+        manufacturerName: 'Chang Drinking Water 600 ml',
         category: { name: 'เครื่องดื่ม' },
         unit: 'ขวด',
         barcode: '111',
@@ -85,6 +86,7 @@ describe('export', () => {
       id: 'p-1',
       sku: 'DRK-001',
       name: 'น้ำดื่ม',
+      manufacturerName: 'Chang Drinking Water 600 ml',
       categoryName: 'เครื่องดื่ม',
       barcode: '111',
       barcodes: ['112'], // the pack barcode is not a base barcode
@@ -98,6 +100,12 @@ describe('export', () => {
       ['แพ็ค', 6, '222', 39],
       ['ลัง', 2, null, 75],
     ]);
+  });
+
+  it('ชื่อผู้ผลิต: blank cell = "" (left as it is), the column sits next to the name', () => {
+    const { rows, headers: h } = readBack(buildExportWorkbook(XLSX, [{ sku: 'A', name: 'A', priceLevel1: 10 }], { withCost: false }));
+    expect(h.indexOf(COL.manufacturer)).toBe(h.indexOf(COL.name) + 1);
+    expect(parseUnitsRows(rows, h)[0].manufacturerName).toBe('');
   });
 
   it('without cost permission the cost column is empty', () => {

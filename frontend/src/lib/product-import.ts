@@ -2,7 +2,7 @@ import { round2 } from '@shared/money';
 /**
  * Product import / export file, "one row per unit" format.
  *
- *   รหัสสินค้า | ชื่อสินค้า | หมวดหมู่ | หน่วย | 1 หน่วยนี้ = กี่หน่วยก่อนหน้า | บาร์โค้ด | ราคาทุน | ราคาขาย 1..5 | จำนวนคงเหลือ | รายละเอียด
+ *   รหัสสินค้า | ชื่อสินค้า | ชื่อผู้ผลิต | หมวดหมู่ | หน่วย | 1 หน่วยนี้ = กี่หน่วยก่อนหน้า | บาร์โค้ด | ราคาทุน | ราคาขาย 1..5 | จำนวนคงเหลือ | รายละเอียด
  *
  * Rows with the same รหัสสินค้า are one product. Its FIRST row is the smallest unit (ชิ้น / ขวด):
  * the "1 หน่วยนี้ = ..." cell stays empty and its cost / prices / barcodes are the product's own.
@@ -19,6 +19,7 @@ type XLSXLib = typeof XLSXType;
 export const COL = {
   sku: 'รหัสสินค้า (SKU)',
   name: 'ชื่อสินค้า',
+  manufacturer: 'ชื่อผู้ผลิต',
   category: 'หมวดหมู่',
   unit: 'หน่วย',
   perPrev: '1 หน่วยนี้ = กี่หน่วยก่อนหน้า',
@@ -35,10 +36,10 @@ export const COL = {
 } as const;
 
 const COLUMN_ORDER = [
-  COL.sku, COL.name, COL.category, COL.unit, COL.perPrev, COL.barcode, COL.cost,
+  COL.sku, COL.name, COL.manufacturer, COL.category, COL.unit, COL.perPrev, COL.barcode, COL.cost,
   COL.p1, COL.p2, COL.p3, COL.p4, COL.p5, COL.stock, COL.description, COL.id,
 ];
-const COLUMN_WIDTHS = [16, 34, 16, 10, 16, 30, 14, 14, 11, 11, 11, 11, 16, 30, 38];
+const COLUMN_WIDTHS = [16, 34, 30, 16, 10, 16, 30, 14, 14, 11, 11, 11, 11, 16, 30, 38];
 
 export const UNITS_SHEET = 'สินค้า';
 
@@ -99,6 +100,8 @@ export interface ImportProduct {
   /** how the stock was counted, e.g. "5 ลัง + 3 แพ็ค + 10 ขวด = 88 ขวด" */
   stockNote?: string;
   description: string;
+  /** ชื่อผู้ผลิต ('' = column blank: left as it is) */
+  manufacturerName: string;
   packagingUnits: ImportPackUnit[];
 }
 
@@ -193,6 +196,7 @@ export function parseUnitsRows(rows: Record<string, unknown>[], headers: string[
       priceLevel4: price(r, rowNo, 'p4', 'ราคาขาย 4'),
       priceLevel5: price(r, rowNo, 'p5', 'ราคาขาย 5'),
       description: lines.map((l) => cellText(get(l.row, 'description'))).find(Boolean) || '',
+      manufacturerName: lines.map((l) => cellText(get(l.row, 'manufacturer'))).find(Boolean) || '',
       packagingUnits: [],
     };
     const baseCodes = splitBarcodes(get(r, 'barcode'));
@@ -281,7 +285,8 @@ const HOW_TO = [
   ['   ถ้าเว้นว่างทุกแถวของสินค้านั้น = ไม่เปลี่ยนสต็อกเดิม (ใส่ 0 = ตั้งสต็อกเป็น 0)'],
   ['8. สินค้าที่มีอยู่แล้ว (รหัสสินค้าตรงกัน): ระบบอัปเดตเฉพาะช่องที่กรอก ช่องว่าง = คงค่าเดิม'],
   ['   ถ้ามีแถวหน่วยบรรจุ (แพ็ค/ลัง) ระบบจะใช้หน่วยบรรจุตามไฟล์แทนของเดิมทั้งหมด ถ้าไม่มีแถวหน่วยบรรจุ หน่วยบรรจุเดิมจะไม่ถูกแตะ'],
-  ['9. ชื่อสินค้า หมวดหมู่ รายละเอียด ใส่แค่แถวแรกของสินค้าก็พอ หมวดหมู่ที่ยังไม่มีระบบสร้างให้'],
+  ['9. ชื่อสินค้า ชื่อผู้ผลิต หมวดหมู่ รายละเอียด ใส่แค่แถวแรกของสินค้าก็พอ หมวดหมู่ที่ยังไม่มีระบบสร้างให้'],
+  ['   ชื่อสินค้า = ชื่อร้าน (ใช้ทุกที่) · ชื่อผู้ผลิต ไม่บังคับ (ค้นหาได้ และเลือกพิมพ์บนใบสั่งซื้อถึงผู้ขายได้) เว้นว่าง = คงค่าเดิม'],
   ['10. ช่อง "รหัสระบบ (ห้ามแก้ไข)" มีในไฟล์ที่ส่งออกจากระบบ ใช้จับคู่สินค้าเดิม สินค้าใหม่ให้เว้นว่าง'],
   ['11. ระบบแสดงตัวอย่างก่อนบันทึกเสมอ ถ้ามีแถวผิด จะบอกเลขแถวให้แก้ไข'],
 ];
@@ -293,7 +298,7 @@ export function buildTemplateWorkbook(XLSX: XLSXLib) {
     return [h, o[key] ?? ''];
   }));
   const examples = [
-    r({ sku: 'DRK-001', name: 'น้ำดื่มตราช้าง 600 มล.', category: 'เครื่องดื่ม', unit: 'ขวด', barcode: '8850001111111', cost: 4.5, p1: 7, p2: 6.8, p3: 6.5, stock: 10, description: 'ขายเป็นขวด / แพ็ค 6 / ลัง 12' }),
+    r({ sku: 'DRK-001', name: 'น้ำดื่มตราช้าง 600 มล.', manufacturer: 'Chang Drinking Water 600ml', category: 'เครื่องดื่ม', unit: 'ขวด', barcode: '8850001111111', cost: 4.5, p1: 7, p2: 6.8, p3: 6.5, stock: 10, description: 'ขายเป็นขวด / แพ็ค 6 / ลัง 12' }),
     r({ sku: 'DRK-001', unit: 'แพ็ค', perPrev: 6, barcode: '8850001111128', p1: 39, p2: 38, stock: 3 }),
     r({ sku: 'DRK-001', unit: 'ลัง', perPrev: 2, barcode: '8850001111135', p1: 75, p2: 72, stock: 5 }),
     r({ sku: 'NDL-001', name: 'บะหมี่กึ่งสำเร็จรูป รสต้มยำ', category: 'อาหารแห้ง', unit: 'ซอง', barcode: '8850002222222, 8850002222239', cost: 5.2, p1: 7, stock: 24 }),
@@ -327,6 +332,7 @@ export interface ExportableProduct {
   id?: string;
   sku?: string;
   name?: string;
+  manufacturerName?: string | null;
   category?: string | { name?: string } | null;
   unit?: string | null;
   description?: string | null;
@@ -361,6 +367,7 @@ export function buildExportWorkbook(XLSX: XLSXLib, products: ExportableProduct[]
     rows.push({
       [COL.sku]: p.sku || '',
       [COL.name]: p.name || '',
+      [COL.manufacturer]: p.manufacturerName || '',
       [COL.category]: (typeof p.category === 'object' ? p.category?.name : undefined) || (typeof p.category === 'string' ? p.category : '') || '',
       [COL.unit]: p.unit || 'ชิ้น',
       [COL.perPrev]: '',

@@ -47,7 +47,7 @@ export function ProductFormDialog({ state, products, onNeedCatalog, categories, 
       const blank = prev.supplierEntries.findIndex(e => !e.supplierId);
       const supplierEntries = blank >= 0
         ? prev.supplierEntries.map((e, i) => i === blank ? { ...e, supplierId: created.id } : e)
-        : [...prev.supplierEntries, { supplierId: created.id, lastCost: "", notes: "" }];
+        : [...prev.supplierEntries, { supplierId: created.id, lastCost: "", supplierProductName: "", supplierSku: "" }];
       return { ...prev, supplierEntries };
     });
   };

@@ -5,6 +5,7 @@ import { AlertTriangle, Copy, Gift, Package, Tags } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NAME_LIMITS } from "@shared/product-names";
 import type { CategoryOption, ProductForm, UpdateForm } from "../types";
 
 /** Copy the product code; falls back to a hidden textarea where the Clipboard API is blocked (http on the LAN). */
@@ -91,6 +92,12 @@ export function ProductDetailsSection({ form, updateForm, categories, currentSto
         <div className="space-y-1.5 sm:col-span-2">
           <label className="text-sm font-medium text-slate-700">ชื่อสินค้า *</label>
           <Input aria-label="ชื่อสินค้า *" value={form.name} onChange={e => updateForm("name", e.target.value)} className="h-10 border-slate-300" />
+          <p className="text-[11px] text-slate-500">ชื่อร้าน: ใช้ทุกที่ (หน้าขาย ใบเสร็จ ร้านออนไลน์ รายงาน)</p>
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <label htmlFor="product-form-manufacturer" className="text-sm font-medium text-slate-700">ชื่อผู้ผลิต <span className="font-normal text-slate-400">(ไม่บังคับ)</span></label>
+          <Input id="product-form-manufacturer" maxLength={NAME_LIMITS.manufacturerName} value={form.manufacturerName} onChange={e => updateForm("manufacturerName", e.target.value)} placeholder="เช่น ชื่อบนกล่อง / ชื่อจากโรงงาน" className="h-10 border-slate-300" />
+          <p className="text-[11px] text-slate-500">ค้นหาด้วยชื่อนี้ได้ทุกหน้า · เลือกพิมพ์ชื่อนี้บนใบสั่งซื้อ / ใบคืนสินค้าถึงผู้ขายได้</p>
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">หน่วยย่อยสุด</label>

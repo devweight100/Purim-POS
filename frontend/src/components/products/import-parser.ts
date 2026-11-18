@@ -37,6 +37,7 @@ export function readImportRows(buffer: ArrayBuffer, fileName: string): RawImport
       "รหัสระบบ (System ID - ห้ามแก้ไข)": g.id,
       "รหัสสินค้า (SKU)": g.sku,
       "ชื่อสินค้า (Product Name)": g.name,
+      "ชื่อผู้ผลิต": g.manufacturerName,
       "บาร์โค้ด (Barcode)": g.barcode,
       "หมวดหมู่ (Category)": g.categoryName,
       "หน่วยนับ (Unit)": g.unit,
@@ -93,6 +94,8 @@ export function buildImportPreview(rawJson: RawImportRow[], products: ProductRec
       const id = (row["รหัสระบบ (System ID - ห้ามแก้ไข)"] || row["System ID"] || row["ID"] || row["id"] || undefined) as string | undefined;
       const sku = text(row["รหัสสินค้า (SKU)"] || row["รหัสสินค้า"] || row["SKU"] || row["sku"] || row["code"]);
       const name = text(row["ชื่อสินค้า (Product Name)"] || row["ชื่อสินค้า"] || row["Name"] || row["name"] || row["product_name"]);
+      // ชื่อผู้ผลิต: optional; blank = left as it is
+      const manufacturerName = text(row["ชื่อผู้ผลิต"] || row["ชื่อผู้ผลิต (Manufacturer Name)"] || row["Manufacturer Name"] || row["manufacturerName"]).replace(/\s+/g, " ");
       const barcode = text(row["บาร์โค้ด (Barcode)"] || row["บาร์โค้ด"] || row["Barcode"] || row["barcode"]);
       const categoryName = text(row["หมวดหมู่ (Category)"] || row["หมวดหมู่"] || row["Category"] || row["category"]);
       const unit = text(row["หน่วยนับ (Unit)"] || row["หน่วยนับ"] || row["Unit"] || row["unit"]);
@@ -148,6 +151,9 @@ export function buildImportPreview(rawJson: RawImportRow[], products: ProductRec
         if (name && name !== existing.name) {
           diffs.push(`ชื่อ: "${existing.name}" ➔ "${name}"`);
         }
+        if (manufacturerName && manufacturerName !== (existing.manufacturerName || "")) {
+          diffs.push(`ชื่อผู้ผลิต: "${existing.manufacturerName || "-"}" ➔ "${manufacturerName}"`);
+        }
         // the product code never changes (permanent system ID): a different SKU in the file is ignored
         const skuNote = sku && sku !== existing.sku ? `SKU ในไฟล์ "${sku}" ไม่ถูกใช้ (คงรหัสเดิม ${existing.sku})` : null;
         if (costPrice !== undefined && costPrice !== existingCost) {
@@ -199,6 +205,7 @@ export function buildImportPreview(rawJson: RawImportRow[], products: ProductRec
         id: existing?.id || id,
         sku,
         name,
+        ...(manufacturerName ? { manufacturerName } : {}),
         barcode,
         // blank cells: keep what the product has (new products get the defaults)
         categoryName: categoryName || (existing ? undefined : "ทั่วไป"),

@@ -12,6 +12,8 @@ type Num = number | string | null;
 export interface ProductRecord {
   id: string;
   name: string;
+  /** ชื่อผู้ผลิต */
+  manufacturerName?: string | null;
   sku: string;
   unit?: string;
   categoryId?: string;
@@ -52,7 +54,7 @@ export interface ProductRecord {
   isBundle?: boolean;
   bundleItems?: Array<{ childProductId?: string; productId?: string; quantity?: number | string }>;
   supplierId?: string | null;
-  supplierEntries?: Array<{ supplierId?: string; lastCost?: number | string | null; unitCost?: number | string | null; notes?: string | null }>;
+  supplierEntries?: Array<{ supplierId?: string; supplierName?: string; lastCost?: number | string | null; unitCost?: number | string | null; notes?: string | null; supplierSku?: string | null; supplierProductName?: string | null }>;
   imageUrl?: string | null;
   defaultSellingUnitId?: string | null;
 }
@@ -93,7 +95,10 @@ export interface ProductBarcodeForm {
 export interface ProductSupplierEntry {
   supplierId: string;
   lastCost: string; // ต้นทุนซื้อล่าสุดจากผู้จำหน่ายนี้
-  notes: string;
+  /** ชื่อสินค้าของผู้ขาย (name on this supplier's invoices) */
+  supplierProductName: string;
+  /** รหัสสินค้าของผู้ขาย (code on this supplier's invoices) */
+  supplierSku: string;
 }
 
 export interface PackagingUnitForm {
@@ -119,6 +124,8 @@ export interface BundleItemForm {
 
 export interface ProductForm {
   name: string;
+  /** ชื่อผู้ผลิต */
+  manufacturerName: string;
   sku: string;
   unit: string;
   size: string;
@@ -177,6 +184,8 @@ export interface ImportPreviewRow {
   stock: ImportCell;
   minStockAlert: number;
   description: string;
+  /** ชื่อผู้ผลิต from the file (absent = blank cell, left as it is) */
+  manufacturerName?: string;
   isExisting: boolean;
   changeType: ImportChangeType;
   diffs: string[];

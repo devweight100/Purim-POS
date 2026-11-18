@@ -53,6 +53,8 @@ export function useProductForm(data: ProductsData, setExpandedRows: Dispatch<Set
     const updatedProductObj: ProductRecord = {
       id: targetId,
       name: form.name.trim(),
+      // blank = none (null clears a stored one)
+      manufacturerName: form.manufacturerName.replace(/\s+/g, " ").trim() || null,
       sku: form.sku, // display only: the server generates it on create and never changes it
       unit: form.unit.trim(),
       size: form.size.trim(),
@@ -99,7 +101,9 @@ export function useProductForm(data: ProductsData, setExpandedRows: Dispatch<Set
           .map((e, i) => ({
             supplierId: e.supplierId,
             ...(e.lastCost !== '' && Number.isFinite(Number(e.lastCost)) ? { unitCost: Number(e.lastCost) } : {}),
-            ...(e.notes.trim() ? { supplierSku: e.notes.trim() } : {}),
+            // name / code on this supplier's invoices (blank = none)
+            supplierProductName: e.supplierProductName.replace(/\s+/g, " ").trim(),
+            supplierSku: e.supplierSku.replace(/\s+/g, " ").trim(),
             isPreferred: i === 0,
           })),
       };

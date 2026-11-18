@@ -57,6 +57,8 @@ export interface ProductBundleItem {
 export interface Product {
   id: string;
   name: string;
+  /** ชื่อผู้ผลิต (optional; the shop name `name` stays primary) */
+  manufacturerName?: string | null;
   sku: string;
   categoryId: string;
   category?: string;
@@ -77,14 +79,14 @@ export interface Product {
   priceLevel5?: number | null;
   supplierId?: string | null;
   barcodes?: Array<{ barcode?: string; supplierId?: string; label?: string }>;
-  supplierEntries?: Array<{ supplierId?: string; lastCost?: number | string; notes?: string }>;
+  supplierEntries?: Array<{ supplierId?: string; supplierName?: string; lastCost?: number | string; notes?: string; supplierSku?: string | null; supplierProductName?: string | null }>;
   /** same as basePrice / costPrice (product-store sets both names) */
   price?: number;
   cost?: number;
   /** cost per unit of the stock on hand (GET /products/page rows: FIFO pool, else the reference cost); cost-visible users only */
   stockUnitCost?: number;
   /** supplier links as the server sent them */
-  suppliers?: Array<{ id?: string; supplierId?: string; supplierSku?: string | null; unitCost?: number | string | null; isPreferred?: boolean; supplier?: { id?: string; name?: string } | null }>;
+  suppliers?: Array<{ id?: string; supplierId?: string; supplierSku?: string | null; supplierProductName?: string | null; unitCost?: number | string | null; isPreferred?: boolean; supplier?: { id?: string; name?: string } | null }>;
   /** older product shapes: supplier object or name */
   supplier?: string | { id?: string; name?: string } | null;
   supplierName?: string;
@@ -750,6 +752,8 @@ export interface ApiProductSupplierLink {
   supplierId?: string;
   supplierName?: string;
   supplierSku?: string | null;
+  /** ชื่อสินค้าของผู้ขาย */
+  supplierProductName?: string | null;
   unitCost?: DecimalJson | null;
   lastCost?: DecimalJson;
   isPreferred?: boolean;
@@ -763,6 +767,8 @@ export interface ApiProduct {
   /** GET /products/page rows: cost per unit of the stock on hand (FIFO pool, else costPrice); VIEW_COST only */
   unitCost?: DecimalJson | null;
   name?: string;
+  /** ชื่อผู้ผลิต (optional) */
+  manufacturerName?: string | null;
   sku: string;
   categoryId?: string | null;
   category?: string;
@@ -802,6 +808,7 @@ export interface ApiProduct {
 export interface ProductWriteRequest {
   id?: string;
   name?: string;
+  manufacturerName?: string | null;
   sku?: string;
   categoryId?: string | null;
   unit?: string | null;
@@ -824,7 +831,7 @@ export interface ProductWriteRequest {
   images?: Array<{ id?: string; dataUrl?: string; thumbDataUrl?: string; name?: string; isCover?: boolean }>;
   wholesalePrices?: Array<{ minQuantity?: number | string | null; unitPrice?: number | string | null }>;
   bundleItems?: Array<{ childProductId?: string; quantity?: number | string }>;
-  supplierEntries?: Array<{ supplierId?: string; supplierSku?: string; unitCost?: number | string | null; lastCost?: number | string; isPreferred?: boolean; notes?: string }>;
+  supplierEntries?: Array<{ supplierId?: string; supplierSku?: string; supplierProductName?: string; unitCost?: number | string | null; lastCost?: number | string; isPreferred?: boolean; notes?: string }>;
 }
 
 export interface BulkUpsertResponse {

@@ -197,6 +197,7 @@ export function toStoreProduct(p: ApiProduct | CachedProduct): Product {
           supplierId: ps.supplierId,
           supplierName: ps.supplier?.name || ps.supplierName || '',
           supplierSku: ps.supplierSku || '',
+          supplierProductName: ps.supplierProductName || '',
           unitCost: costNum,
           lastCost: ps.lastCost !== undefined ? Number(ps.lastCost) : costNum,
           isPreferred: Boolean(ps.isPreferred),
@@ -254,6 +255,7 @@ export function toStoreProduct(p: ApiProduct | CachedProduct): Product {
   return {
     id: pId,
     name: p.name || 'สินค้า',
+    manufacturerName: p.manufacturerName || null,
     sku: p.sku || 'SKU',
     categoryId: p.categoryId || '',
     category: p.category,

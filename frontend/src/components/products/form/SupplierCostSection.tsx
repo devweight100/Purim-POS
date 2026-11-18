@@ -5,6 +5,7 @@ import { Building2, Info, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/utils";
+import { NAME_LIMITS } from "@shared/product-names";
 import type { ProductForm, ProductSupplierEntry, SetForm, SupplierOption, UpdateForm } from "../types";
 
 /** Suppliers with their last cost, the average of those costs, and the reference cost field (form.basePrice). */
@@ -16,7 +17,7 @@ export function SupplierCostSection({ form, setForm, updateForm, suppliers, onCr
   /** opens the "new supplier" dialog; omitted when the user may not create suppliers */
   onCreateSupplier?: () => void;
 }) {
-  const addSupplierEntry = () => setForm(prev => ({ ...prev, supplierEntries: [...prev.supplierEntries, { supplierId: "", lastCost: "", notes: "" }] }));
+  const addSupplierEntry = () => setForm(prev => ({ ...prev, supplierEntries: [...prev.supplierEntries, { supplierId: "", lastCost: "", supplierProductName: "", supplierSku: "" }] }));
   const updateSupplierEntry = (i: number, key: keyof ProductSupplierEntry, val: string) =>
     setForm(prev => ({ ...prev, supplierEntries: prev.supplierEntries.map((s, j) => j === i ? { ...s, [key]: val } : s) }));
   const removeSupplierEntry = (i: number) => setForm(prev => ({ ...prev, supplierEntries: prev.supplierEntries.filter((_, j) => j !== i) }));
@@ -65,28 +66,41 @@ export function SupplierCostSection({ form, setForm, updateForm, suppliers, onCr
         </div>
       ) : (
         <div className="space-y-2">
-          {form.supplierEntries.map((entry, i) => (
-            <div key={i} className="grid grid-cols-[1fr_120px_1fr_auto] gap-2 items-end">
-              <div className="space-y-1">
-                {i === 0 && <label className="text-xs font-medium text-slate-500">ผู้จำหน่าย</label>}
-                <select aria-label={`ผู้จำหน่าย ${i + 1}`} value={entry.supplierId} onChange={e => updateSupplierEntry(i, "supplierId", e.target.value)} className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary">
-                  <option value="">เลือกผู้จำหน่าย</option>
-                  {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+          {form.supplierEntries.map((entry, i) => {
+            const supplierName = suppliers.find((s) => s.id === entry.supplierId)?.name;
+            const who = supplierName ? `ผู้จำหน่าย ${i + 1} (${supplierName})` : `ผู้จำหน่าย ${i + 1}`;
+            return (
+              // one supplier = two lines: supplier / cost / remove, then the name + code printed on its invoices
+              <div key={i} data-testid="supplier-entry" className={`space-y-2 ${i > 0 ? "border-t border-slate-100 pt-3" : ""}`}>
+                <div className="grid grid-cols-[minmax(0,1fr)_120px_auto] gap-2 items-end">
+                  <div className="space-y-1 min-w-0">
+                    <label className="text-xs font-medium text-slate-500">ผู้จำหน่าย</label>
+                    <select aria-label={`ผู้จำหน่าย ${i + 1}`} value={entry.supplierId} onChange={e => updateSupplierEntry(i, "supplierId", e.target.value)} className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary">
+                      <option value="">เลือกผู้จำหน่าย</option>
+                      {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-500">ต้นทุน/ชิ้น</label>
+                    <Input aria-label={`ต้นทุน/ชิ้น ผู้จำหน่าย ${i + 1}`} type="number" min="0" step="0.01" value={entry.lastCost} onChange={e => updateSupplierEntry(i, "lastCost", e.target.value)} className="h-9 border-slate-300 text-sm text-right" />
+                  </div>
+                  <Button type="button" variant="ghost" size="icon" aria-label={`ลบ${who}`} className="h-9 w-9 shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50" onClick={() => removeSupplierEntry(i)}>
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+                <div className="grid grid-cols-[minmax(0,1fr)_160px_36px] gap-2 items-end">
+                  <div className="space-y-1 min-w-0">
+                    <label className="text-xs font-medium text-slate-500">ชื่อสินค้าของผู้ขาย <span className="font-normal text-slate-400">(ตามบิลผู้ขาย ไม่บังคับ)</span></label>
+                    <Input aria-label={`ชื่อสินค้าของผู้ขาย ${i + 1}`} maxLength={NAME_LIMITS.supplierProductName} value={entry.supplierProductName} onChange={e => updateSupplierEntry(i, "supplierProductName", e.target.value)} className="h-9 border-slate-300 text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium text-slate-500">รหัสสินค้าของผู้ขาย</label>
+                    <Input aria-label={`รหัสสินค้าของผู้ขาย ${i + 1}`} maxLength={NAME_LIMITS.supplierSku} value={entry.supplierSku} onChange={e => updateSupplierEntry(i, "supplierSku", e.target.value)} className="h-9 border-slate-300 text-sm font-mono" />
+                  </div>
+                </div>
               </div>
-              <div className="space-y-1">
-                {i === 0 && <label className="text-xs font-medium text-slate-500">ต้นทุน/ชิ้น</label>}
-                <Input aria-label={`ต้นทุน/ชิ้น ผู้จำหน่าย ${i + 1}`} type="number" min="0" step="0.01" value={entry.lastCost} onChange={e => updateSupplierEntry(i, "lastCost", e.target.value)} className="h-9 border-slate-300 text-sm text-right" />
-              </div>
-              <div className="space-y-1">
-                {i === 0 && <label className="text-xs font-medium text-slate-500">หมายเหตุ</label>}
-                <Input value={entry.notes} onChange={e => updateSupplierEntry(i, "notes", e.target.value)} className="h-9 border-slate-300 text-sm" />
-              </div>
-              <Button type="button" variant="ghost" size="icon" className={`h-9 w-9 shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50 ${i === 0 ? "mt-5" : ""}`} onClick={() => removeSupplierEntry(i)}>
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          ))}
+            );
+          })}
 
           {/* Auto-calculated average cost */}
           {avgCostFromSuppliers && (
