@@ -21,8 +21,8 @@ Branch ccr-8f8b0741-si1a0o (base c4aeb0c).
 
 ### Plan
 1. [x] Backend: product-sku.ts generator + spec, create / update / import rules.
-2. [ ] Backend e2e (update rejected, import no rename, create generates) + fix tests that relied on client SKUs.
-3. [ ] Frontend form: read-only "รหัสสินค้า (ระบบ)" + copy; no SKU in payload; import preview note.
+2. [x] Backend e2e (update rejected, import no rename, create generates) + fix tests that relied on client SKUs.
+3. [x] Frontend form: read-only "รหัสสินค้า (ระบบ)" + copy; no SKU in payload; import preview note.
 4. [ ] Table: name column narrower, name + barcodes only, widths; Playwright spec + screenshots.
 5. [ ] Full verification, PROJECT_STATUS, drop DBs.
 

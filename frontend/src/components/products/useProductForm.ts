@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { getLowStockThreshold } from "@/lib/store-settings-storage";
 import { useProductStore } from "@/lib/store/product-store";
-import { errorMessage, errorStatus, generateEAN13, makeInitialForm, productToApiPayload, productToForm } from "./product-helpers";
+import { errorMessage, errorStatus, makeInitialForm, productToApiPayload, productToForm } from "./product-helpers";
 import type { ProductsData } from "./useProducts";
 import type { ProductForm, ProductRecord, SetForm, UpdateForm } from "./types";
 
@@ -53,7 +53,7 @@ export function useProductForm(data: ProductsData, setExpandedRows: Dispatch<Set
     const updatedProductObj: ProductRecord = {
       id: targetId,
       name: form.name.trim(),
-      sku: form.sku.trim() || generateEAN13(),
+      sku: form.sku, // display only: the server generates it on create and never changes it
       unit: form.unit.trim(),
       size: form.size.trim(),
       color: form.color.trim(),

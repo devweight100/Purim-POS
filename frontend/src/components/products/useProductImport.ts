@@ -75,10 +75,12 @@ export function useProductImport(loadAll: () => Promise<ProductRecord[]>, reload
       const chunkSize = 300;
       let totalCreated = 0;
       let totalUpdated = 0;
+      let totalSkuKept = 0;
 
       for (let i = 0; i < itemsToUpsert.length; i += chunkSize) {
         const chunk = itemsToUpsert.slice(i, i + chunkSize);
-        const res: { created?: number; updated?: number } | null = await api.products.bulkUpsert(chunk);
+        const res: { created?: number; updated?: number; skuKept?: number } | null = await api.products.bulkUpsert(chunk);
+        totalSkuKept += (res?.skuKept || 0);
         totalCreated += (res?.created || 0);
         totalUpdated += (res?.updated || 0);
         const currentProgress = Math.min(100, Math.round(((i + chunk.length) / itemsToUpsert.length) * 100));
@@ -89,6 +91,9 @@ export function useProductImport(loadAll: () => Promise<ProductRecord[]>, reload
       toast.success(
         `✅ นำเข้าสำเร็จ: แก้ไข ${totalUpdated} รายการ, เพิ่มใหม่ ${totalCreated} รายการ (ข้ามที่ไม่เปลี่ยน ${unchangedCount} รายการ)`
       );
+      if (totalSkuKept > 0) {
+        toast.info(`${totalSkuKept} รายการในไฟล์มีรหัสสินค้า (SKU) ไม่ตรงกับในระบบ: ใช้รหัสเดิม (รหัสสินค้าเปลี่ยนไม่ได้)`);
+      }
       setIsImportPreviewOpen(false);
       setImportPreviewData([]);
       reload();

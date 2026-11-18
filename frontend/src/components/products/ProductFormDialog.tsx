@@ -77,7 +77,7 @@ export function ProductFormDialog({ state, products, onNeedCatalog, categories, 
               {/* 0. รูปภาพสินค้า */}
               <ProductImagesSection images={form.images} setForm={setForm} />
               {/* 1. รายละเอียดสินค้า */}
-              <ProductDetailsSection form={form} updateForm={updateForm} categories={categories} currentStock={editingProduct ? (editingProduct.stock ?? 0) : 0} onCreateCategory={canCreateCategory ? () => setQuick("category") : undefined} />
+              <ProductDetailsSection form={form} updateForm={updateForm} categories={categories} currentStock={editingProduct ? (editingProduct.stock ?? 0) : 0} onCreateCategory={canCreateCategory ? () => setQuick("category") : undefined} editing={dialogMode === "edit"} />
               {/* รายการสินค้าในชุด (Bundle Items) */}
               {form.isBundle && <BundleItemsSection form={form} setForm={setForm} products={products} editingProductId={editingProduct?.id} />}
               {/* 2. บาร์โค้ดทั้งหมด */}

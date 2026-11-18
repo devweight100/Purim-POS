@@ -148,9 +148,8 @@ export function buildImportPreview(rawJson: RawImportRow[], products: ProductRec
         if (name && name !== existing.name) {
           diffs.push(`ชื่อ: "${existing.name}" ➔ "${name}"`);
         }
-        if (sku && sku !== existing.sku) {
-          diffs.push(`SKU: ${existing.sku} ➔ ${sku}`);
-        }
+        // the product code never changes (permanent system ID): a different SKU in the file is ignored
+        const skuNote = sku && sku !== existing.sku ? `SKU ในไฟล์ "${sku}" ไม่ถูกใช้ (คงรหัสเดิม ${existing.sku})` : null;
         if (costPrice !== undefined && costPrice !== existingCost) {
           diffs.push(`ทุน: ${existingCost} ➔ ${costPrice}`);
         }
@@ -183,6 +182,7 @@ export function buildImportPreview(rawJson: RawImportRow[], products: ProductRec
         }
 
         changeType = diffs.length > 0 ? "CHANGED" : "UNCHANGED";
+        if (skuNote) diffs.push(skuNote);
       } else {
         changeType = "NEW";
         diffs.push("สินค้าใหม่");
