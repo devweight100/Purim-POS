@@ -115,7 +115,7 @@ for (const collapsed of [false, true]) {
     await expect(page.getByRole('dialog').filter({ hasText: 'แก้ไขสินค้า' })).toBeVisible();
     await page.keyboard.press('Escape');
     await row.getByRole('button', { name: `แสดงขนาดบรรจุ ${LONG} รุ่น 1` }).click();
-    await expect(page.locator('tr', { hasText: `88578${TAG}0` })).toBeVisible();
+    await expect(page.locator('tr', { hasText: '× 10 เส้น' }).first()).toBeVisible(); // pack row (round 4: no barcode shown)
   });
 }
 

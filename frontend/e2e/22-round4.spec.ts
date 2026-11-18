@@ -53,7 +53,8 @@ test('payables: 4 columns with a paid progress bar, new PO numbers, list dates w
   await openPayables(page);
   const table = page.getByTestId('payable-bills-table');
   const heads = (await table.locator('thead th').allInnerTexts()).map((t) => t.trim()).filter(Boolean);
-  expect(heads).toEqual(['เลขที่เอกสาร', 'วันที่', 'บริษัท', 'ยอดเอกสาร']);
+  // (+ the screen-reader name of the ⋯ column)
+  expect(heads).toEqual(['เลขที่เอกสาร', 'วันที่', 'บริษัท', 'ยอดเอกสาร', 'การจัดการ']);
   const row = (i: number) => table.locator('tbody tr', { hasText: made.bills[i].poNumber });
   for (const b of made.bills) expect(b.poNumber).toMatch(NEW_NUMBER('PO'));
 
@@ -190,7 +191,6 @@ test('dates: debts and PO lists without time, orders list with time; bills numbe
   // purchase orders: short date, no time
   await page.goto('/purchase-orders');
   const pRow = page.locator('tr', { hasText: made.bills[0].poNumber }).first();
-  await page.getByPlaceholder(/ค้นหา/).first().fill(made.bills[0].poNumber);
   await expect(pRow).toBeVisible();
   const pText = await pRow.innerText();
   expect(pText).toContain(today);
