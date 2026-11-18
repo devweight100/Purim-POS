@@ -179,13 +179,59 @@ sidebar states); `13-keyboard-layout` and `20-product-sku` follow the new price 
 
 ## Round 4 (2026-11-18): products row, payables bills table, document numbers + dates
 
-Plan (resume from "Next" after a restart):
-- A. Products: no thumbnail / icon, no barcodes in the row (search by barcode / SKU unchanged), narrow category
-  column (chip, truncated, tooltip), quantity + unit aligned in both sidebar states.
-- B. Payables bills: columns เลขที่เอกสาร / วันที่ / บริษัท / ยอดเอกสาร with a paid progress bar; one "⋯" row menu
-  (keyboard); row click / Enter opens the bill details (everything else moved there).
-- C. Document numbers `<PP><YYMM>-<NNNN>` (2-letter prefix, CE 2-digit year, monthly 4-digit counter in a DB table),
-  docs/document-numbers.md; short Thai list dates without time (one formatter), time only in details / orders /
-  receipts.
+Owner's notes on the round 3 screenshots + a new number / date standard. Screenshots (before / after, seeded data with
+long Thai names, prices 1-5, partly paid bills) are in the session scratchpad `ui-round4/` (not committed).
 
-Done: A (products row), B (payables bills: 4 columns + progress, ⋯ menu; vouchers tab ⋯ + row click), C numbers (backend counter table + e2e, docs/document-numbers.md). Next: C dates (frontend sweep), Playwright, screenshots, full verification.
+### A. Products table (สินค้า > รายการสินค้า & ราคา)
+
+| Before | After |
+|--------|-------|
+| photo / category icon in front of the name, "📷 N" badge | name only (bundle tag "🎁 ชุด" kept: it is a product type, not decoration) |
+| 3 barcodes + "+N" under the name (pack rows: the pack barcode) | no barcodes anywhere in the table; search by barcode / SKU / pack barcode unchanged (server search) |
+| "N ขนาดบรรจุ" text | "N ขนาดบรรจุ" link (folds / unfolds the pack rows like the chevron; not a Tab stop, the chevron is) |
+| category: 140 px column only from 1300 px tables, else a chip under the barcodes | a narrow column (104 px, 128 px on wide tables) with a truncated chip + tooltip from 1000 px tables (1366x768 both sidebar states, 1920x1080); a small chip under the name below that (1093x614) |
+| quantity badge with the unit under it (unit under-right, header misaligned with the collapsed sidebar) | one line: number right-aligned in its slot, unit left-aligned in a fixed 2.75rem slot -> numbers and units are straight columns in both sidebar states at all 3 sizes; header over the number slot; pack rows the same |
+
+`product-columns.ts`: NAME_MIN 280 -> 240 (no barcodes), stock 84 -> 112, CATEGORY_TABLE 1000. Price levels as before
+(1-5 at 1366 / 1920 and 1093 collapsed, 1-3 at 1093 open).
+
+### B. Payables (เจ้าหนี้การค้า & จ่ายเงิน)
+
+| Before | After |
+|--------|-------|
+| 11 columns (#, invoice + PO + date, supplier + phone, amount + "จาก PO", discount, credit notes, paid, remaining, status, actions); sideways scroll at 1366 with partly paid bills | เลขที่เอกสาร (PO number, supplier bill number small under it) / วันที่ ("18 พ.ย. 69") / บริษัท / ยอดเอกสาร + progress bar; selection checkbox kept (several-bills payment) |
+| status badge + paid / remaining columns | bar = (paid + credit notes + discount) / (that + remaining): amber track when unpaid, sky partly paid, green paid, teal "จ่ายครบตามที่รับ (รอรับของ)"; "จ่ายแล้ว ฿x / ค้าง ฿y" under it, full breakdown (amount, PO amount, paid, credit notes, discount, remaining) as tooltip; `role=progressbar` with aria value |
+| eye / ชำระเงิน / rollback / cancel buttons + pencil next to the invoice number | one "⋯" button (`components/common/RowActionsMenu.tsx`): ดูรายละเอียดบิล, ชำระเงิน / ประกบใบลดหนี้ (when something is payable), ระบุ / แก้ไขเลขที่บิลผู้จำหน่าย, พิมพ์ใบสั่งซื้อ (PDF) (new: loads the PO and opens the existing PO document), ดู / พิมพ์ใบสำคัญจ่ายล่าสุด (when paid before), then after a line in red: ย้อนสถานะการชำระเงิน... / ยกเลิกบิล... (same conditions and confirmations as the old buttons) |
+| invoice date, discount, credit notes, paid, PO amount, phone in the table | bill details: new "facts" box (PO number, bill date, supplier bill number + its date, "รอรับของ" note) above the existing amount cards (amount + PO amount, discount, credit notes, paid, remaining), items and payments |
+| vouchers tab: "ใบสำคัญจ่าย (A4)" + "ยกเลิก" buttons, row did nothing | ⋯ menu (ดู / พิมพ์, ยกเลิกใบสำคัญจ่าย...) and row click / Enter opens the voucher; columns unchanged |
+
+Keyboard: Tab to ⋯, Enter / Space / ↓ open the menu on its first item, ↑/↓, Enter, Escape returns the focus to ⋯. The ⋯
+button and the menu never trigger the row (useRowNav ignores buttons and menu items). Suppliers tab: cards, no table.
+
+**Other tables where ⋯ would fit (not changed, for the owner):** ประวัติการขาย (orders: ประวัติชำระ / A4 / 80mm),
+ลูกหนี้ (debts: 2 buttons), ใบสั่งซื้อ (PO: 3-4 icons), ส่งเคลมบริษัท (supplier returns: 3 buttons), เคลมสินค้า,
+สต๊อกของเคลม, การเงิน (ledger / expenses cancel), ประวัติปิดกะ (print), and the "⋮" delete menus of customers /
+suppliers / categories / bank accounts (same idea, could use the same component and "⋯" icon). Approvals and online
+orders keep visible buttons (their actions are the main work of the page).
+
+### C. Document numbers and dates
+
+- Numbers: `docs/document-numbers.md` (prefix map, counter table, offline decision, old numbers).
+- Dates: `shared/src/thai-date.ts` (`listDate` "18 พ.ย. 69", `listDateTime` "18 พ.ย. 69 14:05"), exported as
+  `formatListDate` / `formatListDateTime` from `lib/utils` (`formatDate` now = `formatListDate`), mobile `fmtDate` /
+  `fmtDateTime` use them. Printed documents keep `formatDocDate` (dd/MM/2569).
+
+| Where | Date shown |
+|-------|-----------|
+| Back-office tables / lists (payables + vouchers, debts, PO, supplier returns, claims, claim stock, inventory movements, reports, finance ledger / expenses / due dates, approvals, users last login, dialogs listing bills / POs / debts / credit notes, POS claim / debt pickers) | "18 พ.ย. 69", no time |
+| Exceptions with time (owner): orders history, online orders list (+ LINE link requests, the shop's own order list), POS bill history, dashboard "recent bills" (an orders list), held bills ("พักบิลเมื่อ"), document search results (bills), backups list (several a day), shift history (open / close times are the shift), open-shift picker | "18 พ.ย. 69 14:05" (shifts: own time range) |
+| Detail views (order, PO, online order, debt payment history) | date + time |
+| Receipts / slips (80 mm receipt, A4 receipt / tax invoice, debt receipt, claim receipt, shift summary, picking slip) | dd/MM/2569 HH:mm (unchanged) |
+| A4 documents (PO, payment voucher, supplier return) | dd/MM/2569 only; PO "วันที่สั่งซื้อ" lost its time. Kept with time: voucher "ยกเลิกเมื่อ" (audit) and the "พิมพ์เมื่อ" footer |
+
+Tests: vitest `thai-date.test.ts`, `doc-number.test.ts`, `product-columns.test.ts`; backend e2e "document numbers";
+Playwright `20-product-sku` (no photo / barcodes, category column, aligned unit, barcode search, both sidebar states),
+`22-round4` (payables progress + ⋯ by keyboard + row click, dates on debts / PO / orders, IN / PO / PV numbers),
+number regexes in `02`, `05`, `15`, `16`, `07` (no thumbnail in the table).
+
+Done: A, B, C. Next: verification + after screenshots.
