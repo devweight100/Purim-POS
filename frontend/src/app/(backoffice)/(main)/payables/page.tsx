@@ -541,7 +541,7 @@ export default function PayablesPage() {
                           {(billPage - 1) * BILL_PAGE_SIZE + idx + 1}
                         </td>
 
-                        <td className="whitespace-nowrap">
+                        <td data-narrow="wrap" className="whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
                             {bill.supplierInvoiceNo ? (
                               <span className="font-mono font-bold text-indigo-900 text-[13px] bg-indigo-50/80 px-2 py-0.5 rounded border border-indigo-100">

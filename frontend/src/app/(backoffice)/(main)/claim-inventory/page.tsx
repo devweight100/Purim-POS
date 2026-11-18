@@ -608,9 +608,10 @@ export default function ClaimInventoryPage() {
                                 onClick={() => handleOpenProductDetail(item)}
                                 className="h-8 px-2.5 border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-lg shadow-2xs gap-1"
                                 title="ดูประวัติใบเคลมทั้งหมดของสินค้านี้"
+                                aria-label={`ใบเคลม (${item.claimCount})`}
                               >
                                 <Eye className="w-3.5 h-3.5 text-indigo-600" />
-                                <span>ใบเคลม ({item.claimCount})</span>
+                                <span data-act-label>ใบเคลม ({item.claimCount})</span>
                               </Button>
 
                               <Link href="/supplier-returns">
@@ -618,9 +619,10 @@ export default function ClaimInventoryPage() {
                                   size="sm"
                                   className="h-8 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-2xs gap-1"
                                   title="ไปสร้างใบส่งคืนบริษัทผู้จำหน่าย"
+                                  aria-label="ส่งคืน"
                                 >
                                   <ArrowLeftRight className="w-3.5 h-3.5" />
-                                  <span>ส่งคืน</span>
+                                  <span data-act-label>ส่งคืน</span>
                                 </Button>
                               </Link>
                             </div>

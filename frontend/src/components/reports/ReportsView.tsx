@@ -1054,9 +1054,9 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                     <TableHead className="text-left min-w-44 xl:min-w-56 text-slate-700 font-bold text-sm">ชื่อสินค้า</TableHead>
                     <TableHead className="text-left text-slate-700 font-bold text-sm">ผู้จำหน่าย</TableHead>
                     <TableHead className="text-right text-slate-700 font-bold text-sm">คงคลัง</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">ราคาทุน</TableHead>
+                    <TableHead data-narrow="hide" className="text-right text-slate-700 font-bold text-sm">ราคาทุน</TableHead>
                     <TableHead className="text-right text-slate-700 font-bold text-sm">มูลค่าทุนรวม</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">มูลค่าขายรวม</TableHead>
+                    <TableHead data-narrow="hide" className="text-right text-slate-700 font-bold text-sm">มูลค่าขายรวม</TableHead>
                     <TableHead className="text-center text-slate-700 font-bold text-sm">สถานะสต็อก</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1088,13 +1088,13 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td className="text-right font-mono whitespace-nowrap font-bold text-sm text-slate-900">
                             {item.stock} <span className="text-xs font-normal text-slate-500">{item.unitName}</span>
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap text-sm text-slate-700">
+                          <td data-narrow="hide" className="text-right font-mono whitespace-nowrap text-sm text-slate-700">
                             {formatCurrency(item.costPrice)}
                           </td>
                           <td className="text-right font-mono whitespace-nowrap font-black text-slate-900 text-sm">
                             {formatCurrency(item.totalCostValue)}
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap font-bold text-emerald-700 text-sm">
+                          <td data-narrow="hide" className="text-right font-mono whitespace-nowrap font-bold text-emerald-700 text-sm">
                             {formatCurrency(item.totalRetailValue)}
                           </td>
                           <td className="text-center">
@@ -1320,7 +1320,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                     <TableHead className="text-left min-w-40 xl:min-w-48 text-slate-700 font-bold text-sm">ชื่อ-นามสกุลลูกค้า</TableHead>
                     <TableHead className="text-left text-slate-700 font-bold text-sm">เบอร์โทรศัพท์</TableHead>
                     <TableHead className="text-center text-slate-700 font-bold text-sm">จำนวนบิล</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">ยอดซื้อเฉลี่ย/บิล</TableHead>
+                    <TableHead data-narrow="hide" className="text-right text-slate-700 font-bold text-sm">ยอดซื้อเฉลี่ย/บิล</TableHead>
                     <TableHead className="text-right text-slate-700 font-bold text-sm">ยอดซื้อสะสมรวม</TableHead>
                     <TableHead className="text-right text-slate-700 font-bold text-sm">แต้มสะสม</TableHead>
                     <TableHead className="text-right text-slate-700 font-bold text-sm">หนี้ค้างชำระ</TableHead>
@@ -1361,7 +1361,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td className="text-center font-mono whitespace-nowrap font-bold text-slate-700 text-sm">
                             {c.orderCount} ครั้ง
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap text-slate-700 text-sm">
+                          <td data-narrow="hide" className="text-right font-mono whitespace-nowrap text-slate-700 text-sm">
                             {formatCurrency(c.averageTicket)}
                           </td>
                           <td className="text-right font-mono whitespace-nowrap font-black text-indigo-700 text-sm">
@@ -1377,7 +1377,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                               <span className="text-slate-400">-</span>
                             )}
                           </td>
-                          <td className="text-center font-mono whitespace-nowrap text-xs text-slate-500">
+                          <td data-narrow="wrap" className="text-center font-mono whitespace-nowrap text-xs text-slate-500">
                             {c.lastOrderDate ? formatDate(c.lastOrderDate) : '-'}
                           </td>
                         </tr>
