@@ -23,7 +23,7 @@ Branch ccr-8f8b0741-si1a0o (base c4aeb0c).
 1. [x] Backend: product-sku.ts generator + spec, create / update / import rules.
 2. [x] Backend e2e (update rejected, import no rename, create generates) + fix tests that relied on client SKUs.
 3. [x] Frontend form: read-only "รหัสสินค้า (ระบบ)" + copy; no SKU in payload; import preview note.
-4. [ ] Table: name column narrower, name + barcodes only, widths; Playwright spec + screenshots.
+4. [x] Table: name column narrower, name + barcodes only, widths; Playwright spec + screenshots.
 5. [ ] Full verification, PROJECT_STATUS, drop DBs.
 
 ## Task 8: LINE shop member still sees ราคา 1 after link approval (owner bug, v1.5.7) — DONE (PROJECT_STATUS 2026-11-18, docs/bugfix-member-price.md)

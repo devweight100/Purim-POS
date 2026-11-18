@@ -67,10 +67,11 @@ test('table: name + barcodes only (no code), pack count, no sideways scroll at 3
     const text = (await table.innerText()).replace(/\s+/g, ' ');
     expect(text).not.toContain(made.long!.sku);
     expect(text).not.toContain(made.short!.sku);
-    // barcodes still shown (3 + "+2" with all of them in the tooltip), pack count kept
+    // barcodes still shown (3 + "+N" with all of them in the tooltip), pack count kept
     const codes = long.getByTestId('product-barcodes');
     for (const b of BARCODES.slice(0, 3)) await expect(codes.getByText(b, { exact: true })).toBeVisible();
-    await expect(codes.getByText('+2', { exact: true })).toHaveAttribute('title', BARCODES.join('\n'));
+    // (the pack barcode is listed with them, as before)
+    await expect(codes.getByText('+3', { exact: true })).toHaveAttribute('title', [...BARCODES, `88578${TAG}0`].join('\n'));
     await expect(codes).toContainText('1 ขนาดบรรจุ');
     // the long name wraps / clamps inside its cell and has the full name as tooltip
     await expect(long.getByTitle(LONG, { exact: true })).toBeVisible();
@@ -102,7 +103,7 @@ test('table: name + barcodes only (no code), pack count, no sideways scroll at 3
   // chevron expands the pack row; the checkbox selects without opening the form
   await long.getByRole('button', { name: `แสดงขนาดบรรจุ ${LONG}` }).click();
   await expect(page.locator('tr', { hasText: `88578${TAG}0` })).toBeVisible();
-  await long.getByRole('checkbox').click();
+  await long.getByRole('checkbox').click({ force: true }); // custom checkbox: the visible box sits over the sr-only input
   await expect(page.getByText('เลือกสินค้าแล้ว 1 รายการ')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 
@@ -127,9 +128,11 @@ test('edit form: "รหัสสินค้า (ระบบ)" read only with 
   const search = page.getByLabel(/^ค้นหาสินค้า/);
   const row = page.locator('[data-row-nav]').filter({ hasText: SHORT });
   await expect(row).toBeVisible();
+  await expect(page.locator('[data-row-nav]')).toHaveCount(2);
+  const shortFirst = (await page.locator('[data-row-nav]').first().innerText()).includes(SHORT);
   // keyboard: ↓ then Enter opens the edit form (row pattern unchanged)
   await search.press('ArrowDown');
-  await page.keyboard.press('ArrowDown');
+  if (!shortFirst) await page.keyboard.press('ArrowDown');
   await expect(row).toBeFocused();
   await page.keyboard.press('Enter');
   const form = page.getByRole('dialog').filter({ hasText: 'แก้ไขสินค้า' });
