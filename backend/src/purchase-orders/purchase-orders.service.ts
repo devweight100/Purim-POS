@@ -7,6 +7,45 @@ import { InventoryService } from '../inventory/inventory.service';
 import { POStatus, PaymentStatus } from '@prisma/client';
 import { addQty, decimalQtyAllowed, parseQty, qn, toHund } from '../common/qty';
 import { nextDocNumber } from '../common/doc-number';
+import { matchSupplierLine, type SupplierLineQuery } from './supplier-line-match';
+import { docLineName, isDocNameMode, normDocNameMode, type DocNameMode } from '../../../shared/src/product-names';
+
+/** PO lines with what the product-name rule needs (docs/product-names.md): the product and its supplier names / codes. */
+export const PO_ITEMS = {
+  include: {
+    product: { include: { suppliers: { select: { supplierId: true, supplierProductName: true, supplierSku: true } } } },
+  },
+};
+
+/**
+ * Each line gets the name the documents print for the PO's stored mode: `docName` (shop name, or the supplier's
+ * name / code -> manufacturer name -> shop name), `docCode` (that supplier's product code, SUPPLIER mode only) and
+ * `docNameSource`. The screen, the A4 PDF and every reprint read these, so they always match the stored mode.
+ */
+export function withDocNames<T extends { supplierId: string; docNameMode: string; items?: any[] }>(po: T): T {
+  if (!po || !Array.isArray(po.items)) return po;
+  return {
+    ...po,
+    items: po.items.map((item) => {
+      if (!item?.product) return item;
+      const n = docLineName(po.docNameMode, item.product, po.supplierId);
+      return { ...item, docName: n.name, docCode: n.code, docNameSource: n.source };
+    }),
+  };
+}
+
+/** Mode sent by a client: undefined = not sent; anything else must be SHOP / SUPPLIER. */
+export function parseDocNameMode(value: unknown): DocNameMode | undefined {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (!isDocNameMode(value)) throw new BadRequestException('ชื่อสินค้าบนเอกสารต้องเป็น "ใช้ชื่อร้าน" หรือ "ใช้ชื่อผู้ผลิต"');
+  return value;
+}
+
+/** The store's default name mode for new supplier documents (ตั้งค่า > สินค้าและสต็อก). */
+export async function defaultDocNameMode(db: any): Promise<DocNameMode> {
+  const s = await db.storeSettings.findFirst({ select: { supplierDocNameMode: true } });
+  return normDocNameMode(s?.supplierDocNameMode);
+}
 
 /** Sanity limits (PO unit cost column is Decimal(10,2), totals Decimal(12,2), quantities Decimal(12,2)). */
 const MAX_PO_UNIT_COST = 10_000_000;
@@ -59,7 +98,7 @@ export class PurchaseOrdersService {
         take: limit,
         include: {
           supplier: true,
-          items: { include: { product: true } },
+          items: PO_ITEMS,
         },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       }),
@@ -80,7 +119,7 @@ export class PurchaseOrdersService {
     }
 
     return {
-      data: orders,
+      data: orders.map(withDocNames),
       meta: {
         total,
         page,
@@ -111,13 +150,31 @@ export class PurchaseOrdersService {
       where: { id },
       include: {
         supplier: true,
-        items: { include: { product: true } },
+        items: PO_ITEMS,
         stockBatches: true,
         voucherItems: { include: { voucher: true } },
       },
     });
     if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อนี้');
-    return po;
+    return withDocNames(po);
+  }
+
+  /** Candidate products for one supplier-invoice line (supplier-line-match.ts). */
+  matchLine(q: SupplierLineQuery) {
+    return matchSupplierLine(this.prisma, q);
+  }
+
+  /**
+   * PATCH /purchase-orders/:id/doc-name-mode: which product names this PO prints ("ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต").
+   * Any status (it changes only how the document reads); stored on the PO so reprints stay the same.
+   */
+  async setDocNameMode(id: string, mode: unknown) {
+    const docNameMode = parseDocNameMode(mode);
+    if (!docNameMode) throw new BadRequestException('กรุณาเลือกชื่อสินค้าบนเอกสาร');
+    const found = await this.prisma.purchaseOrder.findUnique({ where: { id }, select: { id: true } });
+    if (!found) throw new NotFoundException('ไม่พบใบสั่งซื้อนี้');
+    await this.prisma.purchaseOrder.update({ where: { id }, data: { docNameMode } });
+    return this.findOne(id);
   }
 
   async create(data: any) {
@@ -141,6 +198,7 @@ export class PurchaseOrdersService {
 
     const bill = this.priceBill(data.items, data.billDiscountType, data.billDiscountValue);
     const totalAmount = bill.totals.totalAmount;
+    const docNameMode = parseDocNameMode(data.docNameMode) ?? (await defaultDocNameMode(tx));
 
     return tx.purchaseOrder.create({
       data: {
@@ -155,10 +213,11 @@ export class PurchaseOrdersService {
         paidAmount: 0,
         remainingPayable: totalAmount,
         notes: data.notes || null,
+        docNameMode,
         items: { create: bill.items },
       },
-      include: { items: { include: { product: true } }, supplier: true },
-    });
+      include: { items: PO_ITEMS, supplier: true },
+    }).then(withDocNames);
     }).catch((err) => rethrowPrismaError(err, { conflict: 'เลขที่ใบสั่งซื้อซ้ำ กรุณาลองใหม่', badRef: 'ผู้จำหน่ายหรือสินค้าที่อ้างอิงไม่ถูกต้อง' }));
   }
 
@@ -182,7 +241,7 @@ export class PurchaseOrdersService {
     if (!po) throw new NotFoundException('ไม่พบใบสั่งซื้อนี้');
 
     if (!data || typeof data !== 'object') throw new BadRequestException('ข้อมูลไม่ถูกต้อง');
-    if (Object.keys(data).some(key => !['items', 'supplierId', 'supplierInvoiceNo', 'billDate', 'dueDate', 'notes', 'billDiscountType', 'billDiscountValue'].includes(key))) throw new BadRequestException('ไม่สามารถแก้สถานะหรือยอดชำระผ่านการแก้ไขใบสั่งซื้อ');
+    if (Object.keys(data).some(key => !['items', 'supplierId', 'supplierInvoiceNo', 'billDate', 'dueDate', 'notes', 'billDiscountType', 'billDiscountValue', 'docNameMode'].includes(key))) throw new BadRequestException('ไม่สามารถแก้สถานะหรือยอดชำระผ่านการแก้ไขใบสั่งซื้อ');
     if (!EDITABLE_PO_STATUSES.includes(po.status)) throw new BadRequestException('ไม่สามารถแก้ไขใบสั่งซื้อที่ยกเลิกหรือเสร็จสิ้นแล้ว');
     if (data.supplierId !== undefined) {
       await this.assertSupplier(tx, data.supplierId);
@@ -194,6 +253,11 @@ export class PurchaseOrdersService {
       data.billDate = d;
     }
     if (data.dueDate !== undefined) data.dueDate = parseOptionalDate(data.dueDate, 'วันครบกำหนดชำระ');
+    if (data.docNameMode !== undefined) {
+      const mode = parseDocNameMode(data.docNameMode);
+      if (mode) data.docNameMode = mode;
+      else delete data.docNameMode;
+    }
     if (data.notes !== undefined && data.notes !== null && typeof data.notes !== 'string') throw new BadRequestException('หมายเหตุไม่ถูกต้อง');
     if (data.supplierInvoiceNo !== undefined && data.supplierInvoiceNo !== null && typeof data.supplierInvoiceNo !== 'string') throw new BadRequestException('เลขที่ใบแจ้งหนี้ไม่ถูกต้อง');
     const repricing = data.items || data.billDiscountType !== undefined || data.billDiscountValue !== undefined;
@@ -218,14 +282,14 @@ export class PurchaseOrdersService {
           remainingPayable,
           items: { create: bill.items },
         },
-        include: { items: { include: { product: true } }, supplier: true },
+        include: { items: PO_ITEMS, supplier: true },
       });
     }
 
     return tx.purchaseOrder.update({
       where: { id },
       data,
-      include: { items: { include: { product: true } }, supplier: true },
+      include: { items: PO_ITEMS, supplier: true },
     });
     }).catch((err) => rethrowPrismaError(err, { notFound: 'ไม่พบใบสั่งซื้อนี้', badRef: 'ผู้จำหน่ายหรือสินค้าที่อ้างอิงไม่ถูกต้อง' }));
   }
@@ -261,7 +325,7 @@ export class PurchaseOrdersService {
         status: POStatus.CANCELLED,
         notes,
       },
-      include: { items: { include: { product: true } }, supplier: true },
+      include: { items: PO_ITEMS, supplier: true },
     });
     });
   }
@@ -339,7 +403,7 @@ export class PurchaseOrdersService {
         if (previous.entityId !== id || details?.fingerprint !== fingerprint) throw new BadRequestException('รหัสรับสินค้านี้ถูกใช้กับรายการอื่นแล้ว กรุณาตรวจสอบผลการรับเดิม');
         return details.result;
       }
-      const po = await tx.purchaseOrder.findUnique({ where: { id }, include: { items: { include: { product: true } } } });
+      const po = await tx.purchaseOrder.findUnique({ where: { id }, include: { items: PO_ITEMS } });
       if (!po || !([POStatus.ISSUED, POStatus.PARTIALLY_RECEIVED, POStatus.ORDERED] as POStatus[]).includes(po.status)) throw new BadRequestException('สถานะ PO ไม่ถูกต้องสำหรับการรับสินค้า');
       if (data.adjustAndComplete && Number(po.paidAmount) > 0) throw new BadRequestException('ไม่สามารถปรับลดใบสั่งซื้อที่มีการชำระเงินแล้ว');
       const allowDecimal = await decimalQtyAllowed(tx);
@@ -405,7 +469,7 @@ export class PurchaseOrdersService {
         status: data.adjustAndComplete || items.every(item => toHund(item.receivedQty) >= toHund(item.quantity)) ? POStatus.COMPLETED : POStatus.PARTIALLY_RECEIVED,
         ...(adjusted || {}),
         ...(data.supplierInvoiceNo ? { supplierInvoiceNo: data.supplierInvoiceNo.trim() } : {}),
-      }, include: { items: { include: { product: true } }, supplier: true } });
+      }, include: { items: PO_ITEMS, supplier: true } });
       await tx.auditLog.create({ data: { id: receiptId, action: 'RECEIVE', entity: 'PurchaseOrder', entityId: id, details: { fingerprint, result: JSON.parse(JSON.stringify(result)) } } });
       return result;
     });

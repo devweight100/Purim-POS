@@ -24,26 +24,33 @@ export class SupplierReturnsController {
       supplierId,
       status,
       available === '1' || available === 'true',
-    );
+    ).then((r) => this.returnsService.withDocNames(r));
   }
 
   @Get(':id')
   getOne(@Param('id') id: string) {
-    return this.returnsService.getReturnNoteDetails(id);
+    return this.returnsService.getReturnNoteDetails(id).then((r) => this.returnsService.withDocNames(r));
   }
 
   // credit notes change what we owe suppliers: purchasing / payables staff only (not claims alone)
   @RequirePermissions('MANAGE_PURCHASES', 'MANAGE_PAYABLES')
   @Post()
   create(@Body() body: any) {
-    return this.returnsService.createReturnNote(body);
+    return this.returnsService.createReturnNote(body).then((r) => this.returnsService.withDocNames(r));
   }
 
   // credit notes change what we owe suppliers: purchasing / payables staff only (not claims alone)
   @RequirePermissions('MANAGE_PURCHASES', 'MANAGE_PAYABLES')
   @Patch(':id')
   update(@Param('id') id: string, @Body() body: any) {
-    return this.returnsService.updateReturnNote(id, body);
+    return this.returnsService.updateReturnNote(id, body).then((r) => this.returnsService.withDocNames(r));
+  }
+
+  /** "ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต" of this note (any status; reprints keep it). Body { mode: 'SHOP' | 'SUPPLIER' }. */
+  @RequirePermissions('MANAGE_PURCHASES', 'MANAGE_PAYABLES')
+  @Patch(':id/doc-name-mode')
+  setDocNameMode(@Param('id') id: string, @Body() body: { mode?: string }) {
+    return this.returnsService.setDocNameMode(id, body?.mode).then((r) => this.returnsService.withDocNames(r));
   }
 
   // Credit notes are applied to supplier bills only through payment vouchers (/payables/settle-multiple),
@@ -53,6 +60,6 @@ export class SupplierReturnsController {
   @RequirePermissions('MANAGE_PURCHASES', 'MANAGE_PAYABLES')
   @Post(':id/cancel')
   cancel(@Param('id') id: string, @Body('reason') reason?: string) {
-    return this.returnsService.cancelReturnNote(id, reason);
+    return this.returnsService.cancelReturnNote(id, reason).then((r) => this.returnsService.withDocNames(r));
   }
 }

@@ -1,6 +1,7 @@
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
+  IsIn,
   IsNotEmpty,
   IsNumber,
   IsObject,
@@ -85,6 +86,11 @@ export class UpdateSettingsDto {
   @Max(9999999999, { message: 'วงเงินเงินสดเข้า/ออกมากเกินไป' })
   cashMovementApprovalLimit?: number;
 
+  /** Default product names on new supplier documents (PO, receiving, supplier returns): SHOP | SUPPLIER */
+  @ValidateIf((o) => o.supplierDocNameMode !== undefined)
+  @IsIn(['SHOP', 'SUPPLIER'], { message: 'ชื่อสินค้าบนเอกสารถึงผู้ขายต้องเป็น "ใช้ชื่อร้าน" หรือ "ใช้ชื่อผู้ผลิต"' })
+  supplierDocNameMode?: 'SHOP' | 'SUPPLIER';
+
   /** What slips / A4 documents show ({ slip: { showAddress: false, ... }, a4: {...} }); null = defaults. */
   @ValidateIf((o) => o.receiptOptions !== undefined)
   @ValidateBy({
@@ -106,5 +112,5 @@ export const SETTINGS_FIELDS = [
   'storeName', 'branchName', 'storePhone', 'storeAddress', 'storeEmail', 'logoUrl', 'qrImageUrl', 'qrLabel',
   'taxId', 'receiptHeader', 'receiptFooter', 'vatRate', 'vatEnabled', 'pointsPerBaht', 'pointValue',
   'lowStockThreshold', 'allowDecimalQty', 'cashMovementApprovalLimit', 'loyaltyConfig',
-  'receiptOptions',
+  'receiptOptions', 'supplierDocNameMode',
 ] as const;

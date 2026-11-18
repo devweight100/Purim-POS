@@ -1,4 +1,6 @@
 import { businessTransaction } from '../prisma/business-transaction';
+import { defaultDocNameMode, parseDocNameMode } from '../purchase-orders/purchase-orders.service';
+import { docLineName } from '../../../shared/src/product-names';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClaimStatus, ReturnNoteStatus } from '@prisma/client';
@@ -378,6 +380,41 @@ export class SupplierReturnsService {
     };
   }
 
+  /**
+   * Each line gets the name the documents print for the note's stored mode (docs/product-names.md): `docName`
+   * (the line's shop name, or the supplier's product name / code -> manufacturer name -> shop name) and `docCode`.
+   * Takes one formatted note or a page { data: notes }.
+   */
+  async withDocNames<T>(result: T): Promise<T> {
+    const r: any = result;
+    const notes: any[] = Array.isArray(r?.data) ? r.data : r && Array.isArray(r.items) ? [r] : [];
+    const ids = [...new Set(notes.flatMap((n) => (n.items || []).map((i: any) => i?.productId).filter(Boolean)))] as string[];
+    const products = ids.length
+      ? await this.prisma.product.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, name: true, manufacturerName: true, suppliers: { select: { supplierId: true, supplierProductName: true, supplierSku: true } } },
+        })
+      : [];
+    const byId = new Map(products.map((p) => [p.id, p]));
+    for (const n of notes) {
+      n.items = (n.items || []).map((item: any) => {
+        const d = docLineName(n.docNameMode, byId.get(item?.productId) || null, n.supplierId, item?.productName);
+        return { ...item, docName: d.name, docCode: d.code, docNameSource: d.source };
+      });
+    }
+    return result;
+  }
+
+  /** PATCH /supplier-returns/:id/doc-name-mode: "ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต" of this note (any status). */
+  async setDocNameMode(id: string, mode: unknown) {
+    const docNameMode = parseDocNameMode(mode);
+    if (!docNameMode) throw new BadRequestException('กรุณาเลือกชื่อสินค้าบนเอกสาร');
+    const note = await this.prisma.supplierReturnNote.findFirst({ where: { OR: [{ id }, { returnNumber: id }] }, select: { id: true } });
+    if (!note) throw new NotFoundException('ไม่พบใบลดหนี้นี้');
+    await this.prisma.supplierReturnNote.update({ where: { id: note.id }, data: { docNameMode } });
+    return this.getReturnNoteDetails(note.id);
+  }
+
   async getReturnNoteDetails(id: string) {
     const note = await this.prisma.supplierReturnNote.findFirst({
       where: {
@@ -439,6 +476,8 @@ export class SupplierReturnsService {
           remainingCreditAmount,
           status: ReturnNoteStatus.PENDING,
           note: dto.notes ?? dto.note ?? dto.reason ?? null,
+          // product names printed on this note (default: ตั้งค่า > สินค้าและสต็อก)
+          docNameMode: parseDocNameMode(dto.docNameMode) ?? (await defaultDocNameMode(tx)),
         },
         include: { supplier: true, voucherDebits: { include: { voucher: true } } },
       });
@@ -644,6 +683,8 @@ export class SupplierReturnsService {
         }
       }
 
+      const docNameMode = parseDocNameMode(dto.docNameMode);
+      if (docNameMode) updateData.docNameMode = docNameMode;
       if (dto.notes !== undefined || dto.note !== undefined) {
         updateData.note = dto.notes ?? dto.note;
         meta.notes = dto.notes ?? dto.note;
