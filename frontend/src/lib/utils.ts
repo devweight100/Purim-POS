@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { listDate, listDateTime } from "@shared/thai-date"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -110,6 +111,14 @@ export function thaiBahtText(num: number | string | null | undefined): string {
 }
 
 const DOC_TIME_ZONE = "Asia/Bangkok";
+
+/**
+ * Tables and lists (round 4, owner): short Thai date without time, e.g. "18 พ.ย. 69" (Bangkok, 2-digit BE year).
+ * The one formatter for list dates (shared/src/thai-date.ts, also used by the backend).
+ */
+export const formatListDate = listDate;
+/** "18 พ.ย. 69 14:05": only where the time is kept (orders / online orders lists, detail views, receipts). */
+export const formatListDateTime = listDateTime;
 
 /**
  * The one date format for printed documents: dd/MM/yyyy (Buddhist year, 4 digits) and,

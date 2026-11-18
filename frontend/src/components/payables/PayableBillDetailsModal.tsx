@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDate } from '@/lib/utils';
 import { SupplierPayableBill, PayablePaymentEntry, rollbackPayableBillPayment } from '@/lib/payable-service';
 import { toast } from 'sonner';
 import type { ApiPurchaseOrderItem } from '@/lib/types';
@@ -113,6 +113,20 @@ export function PayableBillDetailsModal({
 
         {/* Scrollable Body */}
         <div className="space-y-4 py-3 flex-1 overflow-y-auto pr-1 text-xs">
+          {/* Document facts (round 4: moved here from the bills table) */}
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-4" data-testid="bill-facts">
+            <div><dt className="text-[10.5px] font-bold text-slate-400">เลขที่เอกสาร (PO)</dt><dd className="font-mono font-bold text-slate-900">{bill.poNumber}</dd></div>
+            <div><dt className="text-[10.5px] font-bold text-slate-400">วันที่บิล</dt><dd className="font-semibold text-slate-800">{formatListDate(bill.billDate)}</dd></div>
+            <div>
+              <dt className="text-[10.5px] font-bold text-slate-400">เลขที่บิลผู้จำหน่าย</dt>
+              <dd className="font-mono font-semibold text-slate-800 break-all">{bill.supplierInvoiceNo || <span className="font-sans italic text-slate-400">ยังไม่ระบุ</span>}</dd>
+            </div>
+            <div><dt className="text-[10.5px] font-bold text-slate-400">ลงวันที่ (บิลผู้จำหน่าย)</dt><dd className="font-semibold text-slate-800">{bill.supplierInvoiceDate ? formatListDate(bill.supplierInvoiceDate) : '-'}</dd></div>
+            {bill.paymentStatus === 'PARTIALLY_PAID' && bill.remainingPayable <= 0 && (
+              <div className="col-span-2 sm:col-span-4 text-[11px] font-bold text-teal-700">จ่ายครบตามมูลค่าที่รับแล้ว ยังมีสินค้ารอรับ (รอรับของ)</div>
+            )}
+          </dl>
+
           {/* KPI Financial Overview Cards */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
@@ -263,7 +277,7 @@ export function PayableBillDetailsModal({
                               : '💳 เช็ค/อื่นๆ'}
                           </Badge>
                           <span className="text-[11px] text-slate-400">
-                            {new Date(p.paymentDate).toLocaleDateString('th-TH')}
+                            {formatListDate(p.paymentDate)}
                           </span>
                         </div>
 

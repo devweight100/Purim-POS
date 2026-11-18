@@ -22,7 +22,10 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDate } from '@/lib/utils';
+import { RowActionsMenu } from '@/components/common/RowActionsMenu';
+import PurchaseOrderPdfModal, { type PurchaseOrderData } from '@/components/pos/PurchaseOrderPdfModal';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 import {
@@ -56,6 +59,45 @@ const VOUCHER_PAGE_SIZE = 50;
 const EMPTY_SUMMARY: PayablesSummary = {
   billCount: 0, unpaidCount: 0, totalOutstanding: 0, totalPaid: 0, availableCredit: 0, availableCreditCount: 0, suppliers: [],
 };
+
+/**
+ * Paid part of a bill (round 4): a bar filled by settled / bill amount (paid + credit notes + discount), red-amber when
+ * nothing is paid, sky when partly paid, green when settled; "จ่ายแล้ว ฿x / ค้าง ฿y" under it (full breakdown as tooltip).
+ */
+function PaidProgress({ bill }: { bill: SupplierPayableBill }) {
+  const settled = Math.max(0, (bill.alreadyPaidAmount || 0) + (bill.alreadyDeductedReturns || 0) + (bill.alreadyDiscountAmount || 0));
+  const remaining = Math.max(0, bill.remainingPayable || 0);
+  const base = settled + remaining;
+  const pct = base > 0 ? Math.round((settled / base) * 100) : 0;
+  const done = remaining <= 0.004 && settled > 0;
+  const waitingGoods = done && bill.paymentStatus === 'PARTIALLY_PAID';
+  const state = done ? 'paid' : settled > 0 ? 'partial' : 'unpaid';
+  const bar = state === 'paid' ? (waitingGoods ? 'bg-teal-500' : 'bg-emerald-500') : state === 'partial' ? 'bg-sky-500' : 'bg-amber-400';
+  const text = state === 'paid' ? (waitingGoods ? 'จ่ายครบตามที่รับ (รอรับของ)' : 'ชำระครบแล้ว') : `จ่ายแล้ว ${formatCurrency(settled)} / ค้าง ${formatCurrency(remaining)}`;
+  const tip = [
+    `ยอดเอกสาร (รับของแล้ว) ${formatCurrency(bill.receivedAmount ?? bill.totalAmount)}`,
+    Math.abs((bill.receivedAmount ?? bill.totalAmount) - bill.totalAmount) > 0.004 ? `ยอดใบสั่งซื้อ ${formatCurrency(bill.totalAmount)}` : '',
+    `จ่ายเงินแล้ว ${formatCurrency(bill.alreadyPaidAmount || 0)}`,
+    bill.alreadyDeductedReturns > 0 ? `ประกบใบลดหนี้ ${formatCurrency(bill.alreadyDeductedReturns)}` : '',
+    bill.alreadyDiscountAmount > 0 ? `ส่วนลด ${formatCurrency(bill.alreadyDiscountAmount)}` : '',
+    `คงค้าง ${formatCurrency(remaining)}`,
+  ].filter(Boolean).join('\n');
+  return (
+    <div className="mt-1 ml-auto w-full max-w-56" title={tip} data-testid="bill-progress" data-state={state}>
+      <div
+        role="progressbar"
+        aria-label={`ชำระแล้ว ${pct}%`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+        className={`h-1.5 w-full overflow-hidden rounded-full ${state === 'unpaid' ? 'bg-amber-100' : 'bg-slate-200'}`}
+      >
+        <div className={`h-full rounded-full ${bar}`} style={{ width: `${state === 'paid' ? 100 : pct}%` }} />
+      </div>
+      <p className={`mt-0.5 truncate text-[11px] font-medium ${state === 'paid' ? 'text-emerald-700' : state === 'partial' ? 'text-sky-700' : 'text-amber-700'}`}>{text}</p>
+    </div>
+  );
+}
 
 export default function PayablesPage() {
   // Bills are computed and paged on the server (GET /payables/bills): one page here, cards over every bill.
@@ -98,6 +140,17 @@ export default function PayablesPage() {
   // Details Modal
   const [selectedBillForDetails, setSelectedBillForDetails] = useState<SupplierPayableBill | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+
+  // PO document (PDF) from the row menu
+  const [pdfPo, setPdfPo] = useState<PurchaseOrderData | null>(null);
+  const openPoPdf = async (bill: SupplierPayableBill) => {
+    try {
+      const po = await api.purchaseOrders.getOne(bill.poId);
+      setPdfPo(po as unknown as PurchaseOrderData);
+    } catch (e) {
+      toast.error(errorMessage(e, 'โหลดใบสั่งซื้อไม่สำเร็จ'));
+    }
+  };
 
   // Quick edit invoice no dialog
   const [editingInvoicePoId, setEditingInvoicePoId] = useState<string | null>(null);
@@ -294,6 +347,7 @@ export default function PayablesPage() {
   const selectedTotal = Object.values(selectedBills).reduce((s, b) => s + b.remainingPayable, 0);
 
   const billNav = useRowNav(filteredBills.length, (i) => handleOpenDetails(filteredBills[i]));
+  const voucherNav = useRowNav(paymentVouchers.length, (i) => handleOpenVoucherDirect(paymentVouchers[i]));
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7 font-sans">
       {loadError && <LoadErrorState message={loadError} onRetry={() => void refreshData()} retrying={loading} />}
@@ -487,14 +541,16 @@ export default function PayablesPage() {
                 <p className="text-xs sm:text-sm text-slate-400">เมื่อมีใบสั่งซื้อหรือรับของเข้าคลัง หนี้จะแสดงขึ้นที่นี่อัตโนมัติ</p>
               </div>
             ) : (
-              <div className="tbl-wrap overflow-x-auto">
-                {/* round 3: invoice + PO number + bill date in one column; by the table's width: under 1150 px ส่วนลด and
-                    ประกบลดหนี้, under 1000 px also "#" and จ่ายแล้ว are hidden (all in the bill details: click the row) */}
-                <table className="tbl w-full text-sm">
+              <div className="tbl-wrap">
+                {/* round 4 (owner): only เลขที่เอกสาร / วันที่ / บริษัท / ยอดเอกสาร with a paid progress bar; every other
+                    detail (invoice date, discount, credit notes, paid, PO amount, items, payments) is in the bill
+                    details (row click / Enter); the row's actions are in one "⋯" menu */}
+                <table className="tbl w-full text-sm" data-testid="payable-bills-table">
                   <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-sm">
                     <tr>
                       <th className="text-center w-10">
                         <Checkbox
+                          aria-label="เลือกบิลค้างชำระทั้งหน้า"
                           checked={pageOpenBills.length > 0 && pageOpenBills.every((b) => selectedPoIds.includes(b.poId))}
                           onCheckedChange={(checked) => {
                             // selects / clears the open bills of this page (other pages' selection is kept)
@@ -511,24 +567,20 @@ export default function PayablesPage() {
                           }}
                         />
                       </th>
-                      <th data-narrow="hide" className="text-center w-10">#</th>
-                      <th className="text-left">เลขที่บิล (Invoice) / PO · วันที่</th>
-                      <th className="text-left min-w-44">บริษัทผู้จำหน่าย</th>
-                      <th className="text-right" title="มูลค่าสินค้าที่รับเข้าแล้ว (ตั้งเป็นหนี้)">ยอดหนี้ (รับแล้ว)</th>
-                      <th data-mid="hide" className="text-right">ส่วนลด</th>
-                      <th data-mid="hide" className="text-right">ประกบลดหนี้</th>
-                      <th data-narrow="hide" className="text-right">จ่ายแล้ว</th>
-                      <th className="text-right">คงเหลือ</th>
-                      <th className="text-center">สถานะ</th>
-                      <th className="text-right">การจัดการ</th>
+                      <th className="text-left">เลขที่เอกสาร</th>
+                      <th className="text-left w-28">วันที่</th>
+                      <th className="text-left">บริษัท</th>
+                      <th className="text-right w-64">ยอดเอกสาร</th>
+                      <th className="w-12"><span className="sr-only">การจัดการ</span></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100" {...billNav.bodyProps}>
                     {filteredBills.map((bill, idx) => (
-                      <tr key={bill.poId} className={`hover:bg-slate-50/70 transition-colors ${ROW_NAV_CLASS}`} {...billNav.rowProps(idx)}>
+                      <tr key={bill.poId} aria-label={`บิล ${bill.poNumber} ${bill.supplierName} (Enter = รายละเอียด)`} className={`hover:bg-slate-50/70 transition-colors ${ROW_NAV_CLASS}`} {...billNav.rowProps(idx)}>
                         <td className="text-center">
                           {bill.remainingPayable > 0 ? (
                             <Checkbox
+                              aria-label={`เลือกบิล ${bill.poNumber}`}
                               checked={selectedPoIds.includes(bill.poId)}
                               onCheckedChange={() => handleToggleSelectPo(bill)}
                             />
@@ -536,162 +588,34 @@ export default function PayablesPage() {
                             <span className="text-slate-300">-</span>
                           )}
                         </td>
-
-                        <td data-narrow="hide" className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-xs">
-                          {(billPage - 1) * BILL_PAGE_SIZE + idx + 1}
-                        </td>
-
-                        <td data-narrow="wrap" className="whitespace-nowrap">
-                          <div className="flex items-center gap-1.5">
-                            {bill.supplierInvoiceNo ? (
-                              <span className="font-mono font-bold text-indigo-900 text-[13px] bg-indigo-50/80 px-2 py-0.5 rounded border border-indigo-100">
-                                {bill.supplierInvoiceNo}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400 italic text-xs">ยังไม่ระบุเลขที่บิล</span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingInvoicePoId(bill.poId);
-                                setEditingInvoiceValue(bill.supplierInvoiceNo || '');
-                              }}
-                              title="ระบุหรือแก้ไขเลขที่บิล Invoice"
-                              className="text-slate-400 hover:text-indigo-600 p-1 hover:bg-slate-100 rounded"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                          {bill.supplierInvoiceDate && (
-                            <p className="text-[10px] text-slate-500 font-mono mt-0.5">
-                              ลงวันที่: {new Date(bill.supplierInvoiceDate).toLocaleDateString('th-TH')}
-                            </p>
-                          )}
-                          <p className="mt-0.5 font-mono text-xs text-slate-600">
-                            <span className="font-bold text-slate-900">{bill.poNumber}</span> · {new Date(bill.billDate).toLocaleDateString('th-TH')}
-                          </p>
-                        </td>
-
-                        <td className="min-w-44">
-                          <p className="font-bold text-slate-900 text-[13px] line-clamp-2 break-words" title={bill.supplierName}>{bill.supplierName}</p>
-                          {bill.supplierPhone && (
-                            <p className="text-xs text-slate-400 font-mono mt-0.5">{bill.supplierPhone}</p>
+                        <td className="whitespace-nowrap">
+                          <p className="font-mono font-bold text-slate-900 text-[13px]" data-testid="bill-doc-no">{bill.poNumber}</p>
+                          {bill.supplierInvoiceNo && (
+                            <p className="mt-0.5 max-w-[14rem] truncate font-mono text-[11px] text-slate-500" title={`เลขที่บิลผู้จำหน่าย ${bill.supplierInvoiceNo}`}>บิล {bill.supplierInvoiceNo}</p>
                           )}
                         </td>
-
-                        <td className="text-right font-mono whitespace-nowrap font-bold text-slate-800 text-[13px]">
-                          {formatCurrency(bill.receivedAmount ?? bill.totalAmount)}
-                                {bill.receivedAmount !== undefined && Math.abs(bill.receivedAmount - bill.totalAmount) > 0.004 && (
-                                  <span data-narrow="hide" className="block text-[11px] font-medium text-slate-400">จาก PO {formatCurrency(bill.totalAmount)}</span>
-                                )}
+                        <td className="whitespace-nowrap text-[13px] text-slate-700" data-testid="bill-date">{formatListDate(bill.billDate)}</td>
+                        <td>
+                          <p className="font-bold text-slate-900 text-[13px] line-clamp-2 break-words min-w-40" title={bill.supplierName}>{bill.supplierName}</p>
                         </td>
-
-                        <td data-mid="hide" className="text-right font-mono whitespace-nowrap text-[13px]">
-                          {bill.alreadyDiscountAmount > 0 ? (
-                            <span className="text-amber-700 font-bold">
-                              {formatCurrency(bill.alreadyDiscountAmount)}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
+                        <td className="text-right">
+                          <span className="font-mono whitespace-nowrap font-bold text-slate-800 text-[13px]">{formatCurrency(bill.receivedAmount ?? bill.totalAmount)}</span>
+                          <PaidProgress bill={bill} />
                         </td>
-
-                        <td data-mid="hide" className="text-right font-mono whitespace-nowrap text-[13px]">
-                          {bill.alreadyDeductedReturns > 0 ? (
-                            <span className="text-indigo-600 font-bold">
-                              {formatCurrency(bill.alreadyDeductedReturns)}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
-                        </td>
-
-                        <td data-narrow="hide" className="text-right font-mono whitespace-nowrap text-[13px]">
-                          {bill.alreadyPaidAmount > 0 ? (
-                            <span className="text-emerald-700 font-bold">
-                              {formatCurrency(bill.alreadyPaidAmount)}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
-                        </td>
-
-                        <td className="text-right font-mono whitespace-nowrap font-black text-[13px]">
-                          {bill.remainingPayable > 0 ? (
-                            <span className="text-amber-700">
-                              {formatCurrency(bill.remainingPayable)}
-                            </span>
-                          ) : (
-                            <span className="text-emerald-600 font-bold text-sm">
-                              ครบแล้ว
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="text-center">
-                          {bill.paymentStatus === 'PAID' ? (
-                            <Badge className="bg-emerald-600 text-white font-bold text-xs px-2.5 py-1">ชำระครบแล้ว</Badge>
-                          ) : bill.paymentStatus === 'PARTIALLY_PAID' && bill.remainingPayable <= 0 ? (
-                            <Badge className="bg-teal-600 text-white font-bold text-xs px-2 py-1 whitespace-normal leading-tight" title="จ่ายครบตามมูลค่าที่รับแล้ว ยังมีสินค้ารอรับ">จ่ายครบตามที่รับ (รอรับของ)</Badge>
-                          ) : bill.paymentStatus === 'PARTIALLY_PAID' ? (
-                            <Badge className="bg-sky-600 text-white font-bold text-xs px-2.5 py-1">ชำระบางส่วน</Badge>
-                          ) : (
-                            <Badge variant="outline" className="border-amber-400 text-amber-800 bg-amber-50 font-bold text-xs px-2.5 py-1">
-                              รอชำระ
-                            </Badge>
-                          )}
-                        </td>
-
-                        <td className="w-px whitespace-nowrap">
-                          <div className="flex flex-nowrap items-center justify-end gap-btn">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleOpenDetails(bill)}
-                              title="ดูเอกสาร: รายละเอียดบิลและประวัติการชำระ"
-                              aria-label="ดูเอกสาร"
-                              className="h-8 w-8 p-0 rounded-xl border-slate-200 hover:border-slate-300 shrink-0"
-                            >
-                              <Eye className="w-3.5 h-3.5 text-slate-600" />
-                            </Button>
-
-                            {bill.remainingPayable > 0 && (
-                              <Button
-                                size="sm"
-                                onClick={() => handleOpenSettle(bill)}
-                                title="ประกบใบลดหนี้หรือบันทึกจ่ายเงิน"
-                                aria-label="ชำระเงิน"
-                                className="h-8 px-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs gap-1 shadow-xs shrink-0"
-                              >
-                                <Receipt className="w-3.5 h-3.5" />
-                                <span data-act-label>ชำระเงิน</span>
-                              </Button>
-                            )}
-
-                            {(bill.alreadyPaidAmount > 0 || bill.alreadyDeductedReturns > 0 || bill.alreadyDiscountAmount > 0 || bill.paymentStatus === 'PAID') && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleRollbackBill(bill)}
-                                title="ย้อนสถานะการชำระเงินกลับเป็นรอชำระ"
-                                className="h-8 w-8 p-0 rounded-xl border-amber-200 text-amber-700 hover:bg-amber-50 font-bold text-xs shrink-0"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5" />
-                              </Button>
-                            )}
-
-                            {bill.paymentStatus === 'UNPAID' && bill.status !== 'CANCELLED' && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleCancelBillAction(bill)}
-                                title="ยกเลิกบิลเจ้าหนี้นี้"
-                                className="h-8 w-8 p-0 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 font-bold text-xs shrink-0"
-                              >
-                                <XCircle className="w-3.5 h-3.5" />
-                              </Button>
-                            )}
-                          </div>
+                        <td className="text-right">
+                          <RowActionsMenu
+                            label={`การจัดการบิล ${bill.poNumber}`}
+                            testId="bill-actions"
+                            actions={[
+                              { label: 'ดูรายละเอียดบิล', icon: Eye, onSelect: () => handleOpenDetails(bill), testId: 'bill-action-details' },
+                              { label: 'ชำระเงิน / ประกบใบลดหนี้', icon: Receipt, onSelect: () => handleOpenSettle(bill), hidden: !(bill.remainingPayable > 0), testId: 'bill-action-pay' },
+                              { label: 'ระบุ / แก้ไขเลขที่บิลผู้จำหน่าย', icon: Edit3, onSelect: () => { setEditingInvoicePoId(bill.poId); setEditingInvoiceValue(bill.supplierInvoiceNo || ''); } },
+                              { label: 'พิมพ์ใบสั่งซื้อ (PDF)', icon: Printer, onSelect: () => void openPoPdf(bill), testId: 'bill-action-print' },
+                              { label: 'ดู / พิมพ์ใบสำคัญจ่ายล่าสุด', icon: FileText, onSelect: () => handleOpenVoucher(bill, bill.payments[bill.payments.length - 1]), hidden: !(bill.payments?.length > 0) },
+                              { label: 'ย้อนสถานะการชำระเงิน...', icon: RotateCcw, danger: true, onSelect: () => void handleRollbackBill(bill), hidden: !(bill.alreadyPaidAmount > 0 || bill.alreadyDeductedReturns > 0 || bill.alreadyDiscountAmount > 0 || bill.paymentStatus === 'PAID'), testId: 'bill-action-rollback' },
+                              { label: 'ยกเลิกบิล...', icon: XCircle, danger: true, onSelect: () => void handleCancelBillAction(bill), hidden: !(bill.paymentStatus === 'UNPAID' && bill.status !== 'CANCELLED') },
+                            ]}
+                          />
                         </td>
                       </tr>
                     ))}
@@ -828,17 +752,19 @@ export default function PayablesPage() {
                       <th className="text-right">หักใบลดหนี้</th>
                       <th className="text-right">ยอดจ่ายจริงสุทธิ</th>
                       <th className="text-center">วิธีชำระ</th>
-                      <th className="text-center">การจัดการ</th>
+                      <th className="w-12"><span className="sr-only">การจัดการ</span></th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {paymentVouchers.map((voucher) => {
+                  <tbody className="divide-y divide-slate-100" {...voucherNav.bodyProps}>
+                    {paymentVouchers.map((voucher, vIdx) => {
                       const isCancelled = voucher.status === 'CANCELLED';
 
                       return (
                         <tr
                           key={voucher.id}
-                          className={`transition-colors ${isCancelled ? 'bg-rose-50/30 opacity-75' : 'hover:bg-slate-50/70'}`}
+                          aria-label={`ใบสำคัญจ่าย ${voucher.voucherNumber} (Enter = เปิดดู / พิมพ์)`}
+                          className={`transition-colors ${ROW_NAV_CLASS} ${isCancelled ? 'bg-rose-50/30 opacity-75' : 'hover:bg-slate-50/70'}`}
+                          {...voucherNav.rowProps(vIdx)}
                         >
                           <td className="font-mono whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
@@ -852,7 +778,7 @@ export default function PayablesPage() {
                               )}
                             </div>
                             <span className="text-xs text-slate-500 block mt-0.5">
-                              {new Date(voucher.paymentDate).toLocaleDateString('th-TH')}
+                              {formatListDate(voucher.paymentDate)}
                             </span>
                             {isCancelled && voucher.cancelReason && (
                               <p className="text-[10px] text-rose-600 italic mt-0.5">
@@ -908,36 +834,15 @@ export default function PayablesPage() {
                             </Badge>
                           </td>
 
-                          <td className="text-center">
-                            <div className="flex items-center justify-center gap-1.5 flex-nowrap whitespace-nowrap">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleOpenVoucherDirect(voucher)}
-                                className="h-8 px-2.5 rounded-xl border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs gap-1 shrink-0"
-                                title="ดูและพิมพ์ใบสำคัญจ่าย A4"
-                              >
-                                <Printer className="w-3.5 h-3.5" />
-                                <span>ใบสำคัญจ่าย (A4)</span>
-                              </Button>
-
-                              {!isCancelled ? (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleCancelVoucher(voucher)}
-                                  className="h-8 px-2 rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50 hover:border-rose-300 font-bold text-xs gap-1 shrink-0"
-                                  title="ยกเลิกใบสำคัญจ่ายและคืนยอดหนี้ของบิลทั้งหมด"
-                                >
-                                  <XCircle className="w-3.5 h-3.5 text-rose-600" />
-                                  <span>ยกเลิก</span>
-                                </Button>
-                              ) : (
-                                <span className="text-[11px] text-rose-600 font-bold px-1">
-                                  ยกเลิกแล้ว
-                                </span>
-                              )}
-                            </div>
+                          <td className="text-right">
+                            <RowActionsMenu
+                              label={`การจัดการใบสำคัญจ่าย ${voucher.voucherNumber}`}
+                              testId="voucher-actions"
+                              actions={[
+                                { label: 'ดู / พิมพ์ใบสำคัญจ่าย (A4)', icon: Printer, onSelect: () => handleOpenVoucherDirect(voucher) },
+                                { label: 'ยกเลิกใบสำคัญจ่าย...', icon: XCircle, danger: true, hidden: isCancelled, onSelect: () => void handleCancelVoucher(voucher) },
+                              ]}
+                            />
                           </td>
                         </tr>
                       );
@@ -962,6 +867,8 @@ export default function PayablesPage() {
         onViewVoucher={(bill, payment) => handleOpenVoucher(bill, payment)}
         onReload={refreshData}
       />
+
+      <PurchaseOrderPdfModal open={!!pdfPo} onOpenChange={(o) => { if (!o) setPdfPo(null); }} po={pdfPo} />
 
       {/* Single Bill Settle Modal */}
       <SettlePayableModal
