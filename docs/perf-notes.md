@@ -1,5 +1,27 @@
 # Perf round — progress notes (delete a task's section when it is fully done)
 
+## Task 8: LINE shop member still sees ราคา 1 after link approval (owner bug, v1.5.7) — IN PROGRESS
+
+Branch ccr-8f8b0741-si1a0o (base ffb0eee).
+
+### Findings so far
+- Server is right: repro with curl on a fresh DB (perf_repro): after approve with an existing level-2 member,
+  /products and /me answer level 2 immediately; customers PATCH priceLevel 1 / 3 / "2" -> read back at once.
+  Level 3 with no ราคา 3 on the product -> retail (fallback by design). Session token has no level (sub/n/p only).
+- Shop frontend: `me` loaded once per page load (`started` guard) -> greeting / link page stay "not linked"
+  until a full reload; cart line prices persisted in localStorage, cart bar total stale until the cart page re-quotes;
+  useQuote does not re-run on a level change. No HTTP cache headers on /api/public/shop (Cloudflare / LINE webview).
+
+### Plan
+1. [ ] Playwright repro spec 19-member-price (fails on base).
+2. [ ] Shop: refresh /me on navigation + focus / visibility, poll while link PENDING, catalogue/quote level
+       mismatch -> refreshMe, reprice cart on level change, member level strip, "ราคาปกติ" label when the unit has
+       no member price (new `atLevel` flag, rules unchanged).
+3. [ ] Server: Cache-Control no-store + Vary Authorization on shop JSON; LINE push on link approval; staff
+       level-coverage endpoint; link request matches show the member level.
+4. [ ] Back office: customers page / link requests notes; guide.
+5. [ ] e2e backend tests, full verification, PROJECT_STATUS, drop DBs.
+
 ## Task 7: POS cart "last added line" highlight (owner request) — DONE (summary in PROJECT_STATUS.md 2026-11-17)
 
 Branch ccr-8f8b0741-si1a0o (base 888990f).
