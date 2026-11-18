@@ -140,7 +140,7 @@ export function OrdersTable({
 
                     {/* 4. Customer Name */}
                     <TableCell className="">
-                      <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5 min-w-40">
+                      <div className="font-bold text-slate-900 text-sm flex items-center gap-1.5 min-w-32 xl:min-w-40">
                         <User className="w-3.5 h-3.5 shrink-0 text-slate-400" />
                         <span className="line-clamp-2 break-words">{order.customerName || (typeof order.customer === "object" ? order.customer?.name : order.customer) || "ลูกค้าทั่วไป"}</span>
                       </div>
