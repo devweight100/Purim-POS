@@ -1,6 +1,6 @@
 # Perf round — progress notes (delete a task's section when it is fully done)
 
-## Task 8: LINE shop member still sees ราคา 1 after link approval (owner bug, v1.5.7) — IN PROGRESS
+## Task 8: LINE shop member still sees ราคา 1 after link approval (owner bug, v1.5.7) — DONE (PROJECT_STATUS 2026-11-18, docs/bugfix-member-price.md)
 
 Branch ccr-8f8b0741-si1a0o (base ffb0eee).
 
@@ -13,14 +13,14 @@ Branch ccr-8f8b0741-si1a0o (base ffb0eee).
   useQuote does not re-run on a level change. No HTTP cache headers on /api/public/shop (Cloudflare / LINE webview).
 
 ### Plan
-1. [ ] Playwright repro spec 19-member-price (fails on base).
-2. [ ] Shop: refresh /me on navigation + focus / visibility, poll while link PENDING, catalogue/quote level
+1. [x] Playwright repro spec 19-member-price (fails on base).
+2. [x] Shop: refresh /me on navigation + focus / visibility, poll while link PENDING, catalogue/quote level
        mismatch -> refreshMe, reprice cart on level change, member level strip, "ราคาปกติ" label when the unit has
        no member price (new `atLevel` flag, rules unchanged).
-3. [ ] Server: Cache-Control no-store + Vary Authorization on shop JSON; LINE push on link approval; staff
+3. [x] Server: Cache-Control no-store + Vary Authorization on shop JSON; LINE push on link approval; staff
        level-coverage endpoint; link request matches show the member level.
-4. [ ] Back office: customers page / link requests notes; guide.
-5. [ ] e2e backend tests, full verification, PROJECT_STATUS, drop DBs.
+4. [x] Back office: customers page / link requests notes; guide.
+5. [x] e2e backend tests, full verification, PROJECT_STATUS, drop DBs.
 
 ## Task 7: POS cart "last added line" highlight (owner request) — DONE (summary in PROJECT_STATUS.md 2026-11-17)
 
