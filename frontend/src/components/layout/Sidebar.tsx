@@ -9,7 +9,7 @@ import { Gamepad2,
   Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, 
   FolderTree, Building2, Receipt, ShieldAlert, ArrowLeftRight, HandCoins,
   ChevronDown, History, PackageX, TrendingUp, Sparkles, Coins, Boxes, UserCog,
-  ScanLine, ShoppingBag,
+  ScanLine, ShoppingBag, PanelLeftClose,
   Wallet, ShieldCheck, Smartphone,
   type LucideIcon,
 } from 'lucide-react';
@@ -19,6 +19,8 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { canAccessRoute } from '@/lib/permissions';
 import { useDocumentSearchStore } from '@/lib/store/document-search-store';
 import { useOnlineCounts } from '@/lib/online-orders';
+import { useSidebarStore } from '@/lib/store/sidebar-store';
+import { SidebarRail } from './SidebarRail';
 
 interface SubMenuItem {
   href: string;
@@ -127,6 +129,23 @@ export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const onlineCounts = useOnlineCounts((s) => s.counts);
   const onlineBadge = (onlineCounts?.new || 0) + (onlineCounts?.linkRequests || 0);
+  const collapsed = useSidebarStore((s) => s.collapsed);
+  const toggleCollapsed = useSidebarStore((s) => s.toggle);
+
+  // device setting (localStorage) after hydration; Ctrl+B collapses / expands the desktop sidebar
+  useEffect(() => {
+    useSidebarStore.getState().load();
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'b') return;
+      if (!window.matchMedia('(min-width: 1024px)').matches) return; // phones / tablets use the drawer
+      const t = e.target as HTMLElement | null;
+      if (t?.isContentEditable) return;
+      e.preventDefault();
+      useSidebarStore.getState().toggle();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // Persistent scroll position refs
   const desktopScrollRef = useRef<HTMLDivElement>(null);
@@ -242,10 +261,24 @@ export function Sidebar() {
         <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0 shadow-sm">
           <span className="font-black text-white text-base leading-none">P</span>
         </div>
-        <div className="ml-3 overflow-hidden">
+        <div className="ml-3 min-w-0 flex-1 overflow-hidden">
           <span className="font-bold text-sm text-slate-900 block leading-tight">ร้านปุริม POS</span>
           <span className="text-[10px] text-slate-400 font-medium">ระบบบริหารการขาย & สต็อก</span>
         </div>
+        {!isMobile && (
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            title="ย่อแถบเมนู (Ctrl+B)"
+            aria-label="ย่อแถบเมนู (Ctrl+B)"
+            aria-expanded={true}
+            aria-controls="backoffice-sidebar"
+            data-testid="sidebar-toggle"
+            className="ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 outline-none hover:bg-slate-100 hover:text-slate-800 focus-visible:ring-2 focus-visible:ring-indigo-400"
+          >
+            <PanelLeftClose className="h-4.5 w-4.5" />
+          </button>
+        )}
       </div>
 
       {/* Navigation Groups (Scrollable container with preserved scroll position) */}
@@ -531,8 +564,29 @@ export function Sidebar() {
       </div>
 
       {/* Desktop sidebar */}
-      <div data-slot="sidebar" className="hidden lg:flex fixed top-0 left-0 h-full w-[240px] bg-sidebar flex-col z-50 border-r border-sidebar-border">
-        {renderNavContent(desktopScrollRef, false)}
+      <div
+        id="backoffice-sidebar"
+        data-slot="sidebar"
+        data-collapsed={collapsed ? 'true' : 'false'}
+        className={cn(
+          'hidden lg:flex fixed top-0 left-0 h-full bg-sidebar flex-col z-50 border-r border-sidebar-border',
+          collapsed ? 'w-16' : 'w-[240px]',
+        )}
+      >
+        {collapsed && (
+          <SidebarRail
+            groups={visibleNavGroups}
+            pathname={pathname}
+            onlineBadge={onlineBadge}
+            userName={user?.name || 'Admin'}
+            userRole={user?.role || 'เจ้าของร้าน'}
+            loggedIn={!!user}
+            onExpand={toggleCollapsed}
+            onLogout={handleLogout}
+          />
+        )}
+        {/* kept mounted while collapsed (hidden), so the menu's scroll position and open groups survive a toggle */}
+        <div className={collapsed ? 'hidden' : 'contents'}>{renderNavContent(desktopScrollRef, false)}</div>
       </div>
     </>
   );
