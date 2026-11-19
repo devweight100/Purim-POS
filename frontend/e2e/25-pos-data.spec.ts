@@ -20,13 +20,16 @@ let productId = '';
 /** catalogue / customer-list downloads (full or delta) */
 const isPosData = (r: Request) => /\/api\/(products\/sync|customers\/sync)(\?|$)|\/api\/products(\?|$)/.test(r.url());
 
+/** the POS grid shows the catalogue ("แสดง 32 จากทั้งหมด N รายการ"; the test product may be beyond the first page) */
+const catalogShown = (page: Page) => page.getByText(/จากทั้งหมด [1-9][\d,]* รายการ/).first();
+
 async function newBrowserPage(browser: Browser): Promise<{ ctx: BrowserContext; page: Page }> {
   const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, locale: 'th-TH', timezoneId: 'Asia/Bangkok' });
   const page = await ctx.newPage();
   await uiLogin(page, ADMIN.username, ADMIN.password);
   await expect(page).toHaveURL(/\/pos/);
   await openShiftIfAsked(page);
-  await expect(page.getByText(ITEM.name).first()).toBeVisible({ timeout: 30_000 });
+  await expect(catalogShown(page)).toBeVisible({ timeout: 30_000 });
   return { ctx, page };
 }
 
@@ -82,7 +85,7 @@ test('back-office-only browser: leaving the POS stops catalogue / customer downl
   test.setTimeout(150_000);
   const { ctx, page } = await newBrowserPage(browser);
   // the POS itself still loads both lists
-  await expect(page.getByText(ITEM.name).first()).toBeVisible({ timeout: 30_000 });
+  await expect(catalogShown(page)).toBeVisible({ timeout: 30_000 });
   await goInApp(page, '/products');
   await expect(page.locator('table tbody tr').first()).toBeVisible();
   await page.waitForTimeout(2500); // the release runs 1.5 s after the screen changed
@@ -110,7 +113,7 @@ test('back office -> POS -> back office on a back-office device: POS loads and s
   // to the POS: the catalogue is loaded again (full), scanning works
   await goInApp(page, '/pos');
   await openShiftIfAsked(page);
-  await expect(page.getByText(ITEM.name).first()).toBeVisible({ timeout: 30_000 });
+  await expect(catalogShown(page)).toBeVisible({ timeout: 30_000 });
   expect(seen.some((u) => /\/products\/sync$/.test(u))).toBe(true);
   await scan(page, ITEM.barcode);
   await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem('purim-pos-cart') || '{"state":{"items":[]}}').state.items.length)).toBe(1);
@@ -128,7 +131,7 @@ test('back office -> POS -> back office on a back-office device: POS loads and s
 test('selling device: POS sells by scanning; back-office screens keep the data warm; offline selling still works', async ({ browser }) => {
   test.setTimeout(180_000);
   const { ctx, page } = await newBrowserPage(browser);
-  await expect(page.getByText(ITEM.name).first()).toBeVisible({ timeout: 30_000 });
+  await expect(catalogShown(page)).toBeVisible({ timeout: 30_000 });
   const before = await ordersOfItem();
   await scan(page, ITEM.barcode);
   await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem('purim-pos-cart') || '{"state":{"items":[]}}').state.items.length)).toBe(1);
@@ -145,7 +148,7 @@ test('selling device: POS sells by scanning; back-office screens keep the data w
 
   // back to the POS: the products are there at once (kept in memory), then sell with the server unreachable
   await goInApp(page, '/pos');
-  await expect(page.getByText(ITEM.name).first()).toBeVisible({ timeout: 3000 });
+  await expect(catalogShown(page)).toBeVisible({ timeout: 3000 });
   await ctx.setOffline(true);
   await scan(page, ITEM.barcode);
   await expect.poll(async () => page.evaluate(() => JSON.parse(localStorage.getItem('purim-pos-cart') || '{"state":{"items":[]}}').state.items.length)).toBe(1);
