@@ -296,7 +296,9 @@ test('BUG-06: the supplier and its cost chosen when creating the product are sav
   await page.goto('/products');
   await page.getByPlaceholder('ค้นหาชื่อ, รหัส, บาร์โค้ด...').fill(NAME);
   const openEdit = async () => {
-    await page.locator('tr').filter({ hasText: NAME }).getByRole('button').last().click();
+    // the row's ⋯ menu (was a pencil button) -> แก้ไข
+    await page.locator('tr').filter({ hasText: NAME }).getByRole('button', { name: `จัดการสินค้า ${NAME}` }).click();
+    await page.getByRole('menuitem', { name: 'แก้ไข' }).click();
     return page.getByRole('dialog').filter({ hasText: 'แก้ไขสินค้า' });
   };
   let form = await openEdit();
