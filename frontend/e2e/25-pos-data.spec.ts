@@ -43,7 +43,7 @@ async function goInApp(page: Page, path: string) {
 async function openShiftIfAsked(page: Page) {
   const dlg = page.getByRole('dialog').filter({ hasText: 'ระบุเงินในลิ้นชัก' });
   if (await dlg.waitFor({ timeout: 4000 }).then(() => true, () => false)) {
-    const reuse = dlg.getByRole('button', { name: 'ใช้กะนี้ต่อที่เครื่องนี้' });
+    const reuse = dlg.getByRole('button', { name: 'ใช้กะนี้ต่อที่เครื่องนี้' }).first();
     if (await reuse.isVisible()) await reuse.click();
     else {
       await dlg.getByLabel('ยอดเงินรวมในลิ้นชัก').fill('500');
