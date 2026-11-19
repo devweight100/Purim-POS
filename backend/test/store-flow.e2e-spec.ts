@@ -3238,4 +3238,142 @@ d('store flow (e2e)', () => {
       await api('post', '/products/set-active', A, { ids: r1.blocked.map((b: any) => b.id), isActive: true }).expect(201);
     });
   });
+  describe('debt payment into a chosen cashier shift / no shift; dashboard credit summary (round start, docs/round-start-dashboard.md)', () => {
+    const rs: Record<string, any> = {};
+    let db: PrismaClient;
+    beforeAll(() => { db = new PrismaClient(); });
+    afterAll(async () => { await db?.$disconnect(); });
+    const balance = async (id: string) => Number((await api('get', '/finance/accounts', A)).body.find((a: any) => a.id === id).balance);
+    const summary = async (shiftId: string) => (await api('get', `/shifts/${shiftId}/summary`, A).expect(200)).body;
+    const pay = (token: string, orderId: string, body: Record<string, unknown>) =>
+      api('post', `/debts/${orderId}/pay`, token, { clientPaymentId: randomUUID(), ...body });
+
+    it('setup: cashier shift, two customers with credit bills', async () => {
+      rs.p = (await api('post', '/products', A, { name: 'สินค้าเงินเชื่อ e2e', basePrice: 400, priceLevel1: 400, unit: 'ชิ้น' }).expect(201)).body;
+      rs.shift = (await api('post', '/shifts/open', C, { startingCash: 500, terminalId: 'rs-term-1' }).expect(201)).body.shift;
+      rs.cust1 = (await api('post', '/customers', A, { name: 'ลูกค้าเงินเชื่อกะ e2e', phone: '0810000001' }).expect(201)).body;
+      rs.cust2 = (await api('post', '/customers', A, { name: 'ลูกค้าเงินเชื่อไม่เข้ากะ e2e', phone: '0810000002' }).expect(201)).body;
+      const credit = async (customerId: string, qty: number) => (await api('post', '/orders/checkout', C, {
+        clientOrderId: randomUUID(), shiftId: rs.shift.id, customerId,
+        items: [{ productId: rs.p.id, quantity: qty, unitPrice: 400 }], payments: [{ method: 'CREDIT_DEBT', amount: 400 * qty }],
+      }).expect(201)).body;
+      rs.o1 = await credit(rs.cust1.id, 3);
+      rs.o2 = await credit(rs.cust2.id, 2);
+      rs.safe = (await api('get', '/finance/accounts', A)).body.find((a: any) => a.type === 'CASH_SAFE');
+      rs.bank = (await api('get', '/finance/accounts', A)).body.find((a: any) => a.type === 'BANK' && a.bankAccountId);
+    });
+
+    it('lists the OPEN shifts with cashier, terminal and opening time (debts permission)', async () => {
+      const list = (await api('get', '/debts/open-shifts', A).expect(200)).body;
+      const row = list.find((x: any) => x.id === rs.shift.id);
+      expect(row).toMatchObject({ shiftNumber: rs.shift.shiftNumber, terminalId: 'rs-term-1', cashierName: expect.any(String) });
+      expect(new Date(row.openedAt).getTime()).toBe(new Date(rs.shift.openedAt).getTime());
+      expect(list.every((x: any) => typeof x.terminalName === 'string')).toBe(true);
+      await api('get', '/debts/open-shifts', C).expect(403); // cashier1 has no MANAGE_DEBTS
+    });
+
+    it('back office: cash + QR into a chosen open shift count in that shift exactly like a POS receipt, close matches', async () => {
+      const s0 = await summary(rs.shift.id);
+      const cash = (await pay(A, rs.o1.id, { amount: 150, paymentMethod: 'CASH', shiftId: rs.shift.id }).expect(201)).body;
+      expect(cash.payment.shiftId).toBe(rs.shift.id);
+      expect(cash.payment.shift.shiftNumber).toBe(rs.shift.shiftNumber);
+      const qr = (await pay(A, rs.o1.id, { amount: 60, paymentMethod: 'QR_PROMPTPAY', shiftId: rs.shift.id, bankAccountId: rs.bank.bankAccountId }).expect(201)).body;
+      expect(qr.payment.shiftId).toBe(rs.shift.id);
+      // the same as the cashier taking it at the POS
+      const posCash = (await pay(C, rs.o1.id, { amount: 40, paymentMethod: 'CASH', shiftId: rs.shift.id }).expect(201)).body;
+      expect(posCash.payment.shiftId).toBe(rs.shift.id);
+      const s1 = await summary(rs.shift.id);
+      expect(s1.debtCollectionCash).toBeCloseTo(s0.debtCollectionCash + 190, 2);
+      expect(s1.debtCollectionQrTransfer).toBeCloseTo(s0.debtCollectionQrTransfer + 60, 2);
+      expect(s1.debtCollectionCount).toBe(s0.debtCollectionCount + 3);
+      expect(s1.expectedCash).toBeCloseTo(s0.expectedCash + 190, 2);
+      // cash ledger went into this terminal's drawer
+      const drawer = (await api('get', '/finance/accounts', A)).body.find((a: any) => a.terminalId === 'rs-term-1');
+      expect(Number(drawer.balance)).toBeCloseTo(500 + 190, 2);
+      rs.expected = s1.expectedCash;
+    });
+
+    it('back office: no shift -> ledger entry (cash to the safe, transfer to the bank), no shift changes', async () => {
+      const adminShift = (await api('post', '/shifts/open', A, { startingCash: 0, terminalId: 'rs-term-admin' }).expect(201)).body.shift;
+      const before = { c: await summary(rs.shift.id), a: await summary(adminShift.id), safe: await balance(rs.safe.id), bank: await balance(rs.bank.id) };
+      const cash = (await pay(A, rs.o2.id, { amount: 70, paymentMethod: 'CASH', noShift: true }).expect(201)).body;
+      const tr = (await pay(A, rs.o2.id, { amount: 30, paymentMethod: 'TRANSFER', noShift: true, bankAccountId: rs.bank.bankAccountId }).expect(201)).body;
+      expect(cash.payment.shiftId).toBeNull();
+      expect(tr.payment.shiftId).toBeNull();
+      expect(cash.payment.receiptNo).toMatch(/^RC\d{4}-\d{4,}$/);
+      expect(await balance(rs.safe.id)).toBeCloseTo(before.safe + 70, 2);
+      expect(await balance(rs.bank.id)).toBeCloseTo(before.bank + 30, 2);
+      const rows = await db.moneyTransaction.findMany({ where: { refType: 'DEBT_PAYMENT', refId: { in: [cash.payment.id, tr.payment.id] } }, include: { account: true } });
+      expect(rows.map((r) => [r.type, r.account.type, Number(r.amount)]).sort()).toEqual([['DEBT_RECEIPT', 'BANK', 30], ['DEBT_RECEIPT', 'CASH_SAFE', 70]]);
+      expect(await db.cashMovement.count({ where: { id: { in: ['debt-' + cash.payment.id, 'debt-' + tr.payment.id] } } })).toBe(0);
+      for (const [id, prev] of [[rs.shift.id, before.c], [adminShift.id, before.a]] as const) {
+        const now = await summary(id);
+        expect([now.expectedCash, now.debtCollectionCash, now.debtCollectionQrTransfer, now.debtCollectionCount])
+          .toEqual([prev.expectedCash, prev.debtCollectionCash, prev.debtCollectionQrTransfer, prev.debtCollectionCount]);
+      }
+      // cancelling the no-shift cash receipt takes it back out of the safe (not twice)
+      await api('post', `/debts/payments/${cash.payment.id}/cancel`, A, { reason: 'e2e ไม่เข้ากะ' }).expect(201);
+      expect(await balance(rs.safe.id)).toBeCloseTo(before.safe, 2);
+      await api('post', `/shifts/${adminShift.id}/close`, A, { actualCash: 0 }).expect(201);
+    });
+
+    it('rights: a cashier cannot pay into another shift or into no shift; POS keeps its own shift', async () => {
+      await pay(C, rs.o2.id, { amount: 10, paymentMethod: 'CASH', noShift: true }).expect(403);
+      const other = (await api('post', '/shifts/open', A, { startingCash: 0, terminalId: 'rs-term-admin2' }).expect(201)).body.shift;
+      await pay(C, rs.o2.id, { amount: 10, paymentMethod: 'CASH', shiftId: other.id }).expect(403);
+      await pay(A, rs.o2.id, { amount: 10, paymentMethod: 'CASH', shiftId: rs.shift.id, noShift: true }).expect(400);
+      await api('post', `/shifts/${other.id}/close`, A, { actualCash: 0 }).expect(201);
+      // an older POS sending no shift for a QR receipt: the cashier's own open shift (old summary rule)
+      const legacy = (await pay(C, rs.o2.id, { amount: 5, paymentMethod: 'QR_PROMPTPAY', bankAccountId: rs.bank.bankAccountId }).expect(201)).body;
+      expect(legacy.payment.shiftId).toBe(rs.shift.id);
+      rs.expectedQr = (await summary(rs.shift.id)).debtCollectionQrTransfer;
+    });
+
+    it('the chosen shift closed in the meantime -> refused (409 SHIFT_NOT_OPEN), nothing recorded', async () => {
+      const s = await summary(rs.shift.id);
+      expect(s.expectedCash).toBeCloseTo(rs.expected, 2);
+      const closed = (await api('post', `/shifts/${rs.shift.id}/close`, C, { actualCash: s.expectedCash }).expect(201)).body;
+      expect(Number(closed.expectedCash)).toBeCloseTo(rs.expected, 2);
+      expect(Number(closed.cashDifference)).toBeCloseTo(0, 2);
+      const debtBefore = await db.customerDebt.findUnique({ where: { orderId: rs.o2.id } });
+      const r = await pay(A, rs.o2.id, { amount: 20, paymentMethod: 'CASH', shiftId: rs.shift.id }).expect(409);
+      expect(r.body.code).toBe('SHIFT_NOT_OPEN');
+      expect(r.body.message).toContain(rs.shift.shiftNumber);
+      expect(Number((await db.customerDebt.findUnique({ where: { orderId: rs.o2.id } }))!.remainingAmount)).toBe(Number(debtBefore!.remainingAmount));
+      expect((await api('get', '/debts/open-shifts', A)).body.some((x: any) => x.id === rs.shift.id)).toBe(false);
+      // closed shift history keeps the QR receipts
+      expect((await summary(rs.shift.id)).debtCollectionQrTransfer).toBeCloseTo(rs.expectedQr, 2);
+    });
+
+    it('dashboard credit summary == the debts page totals (same rule), owing list adds up', async () => {
+      await db.customerDebt.update({ where: { orderId: rs.o1.id }, data: { dueDate: new Date(Date.now() - 5 * 86400000) } });
+      const sum = (await api('get', '/debts/credit-summary', A).expect(200)).body;
+      const page = (await api('get', '/debts?stats=1&limit=1', A).expect(200)).body;
+      const unpaid = (await api('get', '/debts?statusGroup=unpaid&limit=500', A).expect(200)).body;
+      const overdue = (await api('get', '/debts?statusGroup=overdue&limit=500', A).expect(200)).body;
+      expect(sum.billCount).toBe(page.stats.unpaidCount);
+      expect(sum.overdueBillCount).toBe(page.stats.overdueCount);
+      expect(sum.totalOutstanding).toBeCloseTo(unpaid.summary.totalRemaining, 2);
+      // (page.stats.totalOutstanding also sums the remaining of a debt stored as PAID with money left, which the
+      // tricky dataset above creates on purpose; the card / tab counts and the unpaid tab exclude it, like the card)
+      expect(sum.overdueAmount).toBeCloseTo(overdue.summary.totalRemaining, 2);
+      expect(sum.customerCount).toBe(new Set(unpaid.data.map((d: any) => d.customerId)).size);
+      expect(sum.overdueCustomerCount).toBe(new Set(overdue.data.map((d: any) => d.customerId)).size);
+      expect(sum.overdueBillCount).toBeGreaterThan(0);
+      // VIEW_REPORTS-only users (dashboard) may read it as well
+      const list = (await api('get', '/debts/owing-customers?limit=200', A).expect(200)).body;
+      expect(list.meta.total).toBe(sum.customerCount);
+      expect(list.data.reduce((t: number, r: any) => t + r.owed, 0)).toBeCloseTo(sum.totalOutstanding, 2);
+      const mine = list.data.find((r: any) => r.customerId === rs.cust1.id);
+      const d1 = (await api('get', `/debts?customerId=${rs.cust1.id}&statusGroup=unpaid`, A)).body;
+      expect(mine).toMatchObject({ name: 'ลูกค้าเงินเชื่อกะ e2e', phone: '0810000001', bills: d1.data.length, overdueBills: 1 });
+      expect(mine.owed).toBeCloseTo(d1.summary.totalRemaining, 2);
+      expect(mine.overdueAmount).toBeCloseTo(d1.summary.totalRemaining, 2);
+      const sorted = list.data.map((r: any) => r.owed);
+      expect(sorted).toEqual([...sorted].sort((a, b) => b - a));
+      const od = (await api('get', '/debts/owing-customers?overdue=1&limit=200', A)).body;
+      expect(od.meta.total).toBe(sum.overdueCustomerCount);
+      expect((await api('get', '/debts/owing-customers?search=0810000001', A)).body.data.map((r: any) => r.customerId)).toEqual([rs.cust1.id]);
+    });
+  });
 });
