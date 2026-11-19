@@ -1,5 +1,22 @@
 # Perf round — progress notes (delete a task's section when it is fully done)
 
+## Task 8 (round 2): back office without the POS catalogue / customer list / offline cache (owner request) — IN PROGRESS
+
+(Numbered "Task 8" as requested; the earlier "Task 8" above is the LINE member-price bug.)
+Branch ccr-8f8b0741-si1a0o (base fed01c6). Owner: an old low-RAM laptop over Tailscale does only back-office data
+entry and feels sluggish; every back-office screen also loads + delta-syncs the whole POS catalogue and customer list.
+
+### Plan
+1. [ ] Measure before (perf_t10 = prepare-database + seed-load.sh + seed-extras.sh; scratchpad/perf/t10-mem.mjs:
+       Playwright/Chromium, CDP HeapProfiler.collectGarbage + Performance.getMetrics JSHeapUsedSize, Memory.getDOMCounters,
+       every /api request over 60 s idle; raw scratchpad/perf/t10-before.txt).
+2. [ ] "Should this device keep the POS data" decision (pure, vitest) + per-device setting; ClientDbSync loads catalogue /
+       customers / offline cache only on the POS, on selling devices and for screens that need them; release on leave.
+3. [ ] Consumers of the product / customer stores on back-office screens: server lookups where a few rows suffice.
+4. [ ] Other back-office hogs (polling, re-renders, images).
+5. [ ] Playwright (no full loads on a back-office browser, POS sells / offline on a selling device, back office <-> POS),
+       after numbers, full verification, PROJECT_STATUS.
+
 ## Task 9: product SKU = permanent system ID + narrower name column (owner request) — DONE (PROJECT_STATUS 2026-11-18)
 
 Branch ccr-8f8b0741-si1a0o (base c4aeb0c).
