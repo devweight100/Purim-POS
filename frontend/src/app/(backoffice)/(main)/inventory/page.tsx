@@ -4,7 +4,7 @@ import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { getLowStockThreshold } from '@/lib/store-settings-storage';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { apiFetch } from '@/lib/api';
+import { api, apiFetch } from '@/lib/api';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import Link from 'next/link';
 import { isSellable, toStoreProduct, useProductStore } from '@/lib/store/product-store';
@@ -315,6 +315,36 @@ export default function InventoryPage() {
     setIsStockCardOpen(true);
   };
 
+  // Deep link from the products page "⋯" menu: /inventory?product=<id>&open=card|adjust opens that dialog once
+  const deepLinkDone = useRef(false);
+  useEffect(() => {
+    if (deepLinkDone.current) return;
+    deepLinkDone.current = true;
+    const qs = new URLSearchParams(window.location.search);
+    const id = qs.get('product');
+    const open = qs.get('open');
+    if (!id || (open !== 'card' && open !== 'adjust')) return;
+    window.history.replaceState(null, '', window.location.pathname);
+    const run = async () => {
+      let prod: InvProduct | undefined = useProductStore.getState().products.find((p) => p.id === id);
+      if (!prod) {
+        try {
+          prod = toStoreProduct(await api.products.getOne(id));
+        } catch {
+          prod = undefined;
+        }
+      }
+      if (!prod) {
+        toast.error('ไม่พบสินค้านี้');
+        return;
+      }
+      if (open === 'card') openStockCardDialog(prod);
+      else openAdjustDialog(prod);
+    };
+    void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on arrival
+  }, []);
+
   // Submit Stock Adjustment
   const handleSaveAdjustment = async () => {
     if (!targetProduct) {
@@ -406,6 +436,12 @@ export default function InventoryPage() {
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300">
             <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" /> ตรวจนับสต็อกจริง (=)
+          </span>
+        );
+      case 'PRODUCT_DELETE':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-300">
+            <TrendingDown className="w-3.5 h-3.5 text-rose-600" /> ลบสินค้า (สต็อกออกจากคลัง)
           </span>
         );
       default:

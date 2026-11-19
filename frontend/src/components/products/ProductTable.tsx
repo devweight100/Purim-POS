@@ -16,6 +16,7 @@ import { COL, productColumns } from "./product-columns";
 import { useAuthStore } from "@/lib/store/auth-store";
 import { hasPermission } from "@/lib/permissions";
 import { levelSubtitle, useLevelNames } from "@/lib/use-level-names";
+import type { ProductActions } from "./useProductActions";
 
 function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey | null; sortDir: SortDir }) {
   if (sortKey !== col) return <ChevronsUpDown className="w-3 h-3 ml-1 text-slate-400 inline shrink-0" />;
@@ -50,11 +51,13 @@ const readForce45 = () => { try { return localStorage.getItem(FORCE45_KEY) === "
  * The table is `table-fixed`, so it always fits its container (no horizontal scroll).
  */
 /** Product table (sortable headers, row selection, expandable pack units) with pagination. */
-export function ProductTable({ data, f, sel, onEdit }: {
+export function ProductTable({ data, f, sel, onEdit, actions }: {
   data: ProductsData;
   f: ProductFiltersState;
   sel: ProductSelection;
   onEdit: (p: ProductRecord) => void;
+  /** "⋯" menu of each row */
+  actions: ProductActions;
 }) {
   const { categories, loading, loadError, allPackaging, loadData } = data;
   const { filteredCount, paginatedList, currentPage, setCurrentPage, totalPages } = f;
@@ -86,7 +89,7 @@ export function ProductTable({ data, f, sel, onEdit }: {
   return (
     <div className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-2 text-xs text-slate-500">
-        <span>คลิกแถว หรือเลือกด้วยปุ่ม ↑/↓ แล้วกด Enter เพื่อแก้ไขสินค้า</span>
+        <span>คลิกแถว หรือเลือกด้วยปุ่ม ↑/↓ แล้วกด Enter เพื่อแก้ไขสินค้า · ปุ่ม ⋯ ท้ายแถว: ปิดการใช้งาน ลบ สต็อกการ์ด ปรับสต็อก สร้างสินค้าคล้ายกัน</span>
         {layout.canForce && (
           <div className="inline-flex items-center gap-2 font-semibold text-slate-600">
             <Checkbox id="products-show-prices-45" checked={force45} onCheckedChange={changeForce45} />
@@ -120,7 +123,7 @@ export function ProductTable({ data, f, sel, onEdit }: {
                   <SortButton col={priceLevelKey(n)} label={`ราคา ${n}`} sub={levelSubtitle(levelNames[n as 1 | 2 | 3 | 4 | 5], n)} f={f} align="right" />
                 </TableHead>
               ))}
-              <TableHead style={{ width: COL.edit }} className="px-0 text-center"><span className="sr-only">แก้ไข</span></TableHead>
+              <TableHead style={{ width: COL.edit }} className="px-0 text-center"><span className="sr-only">จัดการ</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody {...nav.bodyProps}>
@@ -142,6 +145,7 @@ export function ProductTable({ data, f, sel, onEdit }: {
                 onToggleExpand={() => sel.toggleExpand(p.id)}
                 onToggleSelect={() => sel.toggleSelectProduct(p.id)}
                 onEdit={() => onEdit(p)}
+                actions={actions}
                 layout={layout}
                 showCost={showCost}
                 rowNav={nav.rowProps(i)}

@@ -3,10 +3,11 @@
 import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import { Fragment, type HTMLAttributes } from "react";
 import { ROW_NAV_CLASS } from "@/lib/use-row-nav";
-import { ChevronRight, Pencil } from "lucide-react";
+import { ChevronRight, ClipboardList, Copy, Pencil, Power, PowerOff, SlidersHorizontal, Trash2 } from "lucide-react";
+import { RowActionsMenu } from "@/components/common/RowActionsMenu";
+import type { ProductActions } from "./useProductActions";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatCurrency } from "@/lib/utils";
 import { displayUnitCost } from "@/lib/product-cost";
@@ -34,7 +35,7 @@ function StockQty({ value, unit, badgeClass, prefix, unitClass = "text-slate-500
 
 /** One product row, plus one sub-row per pack unit when expanded. */
 export function ProductTableRow({
-  p, searchText, categories, pkgUnits, isExpanded, isSelected, onToggleExpand, onToggleSelect, onEdit, layout, showCost, rowNav,
+  p, searchText, categories, pkgUnits, isExpanded, isSelected, onToggleExpand, onToggleSelect, onEdit, actions, layout, showCost, rowNav,
 }: {
   p: ProductRecord;
   /** the search the page shows: a match from another name gets a small hint under the name */
@@ -46,6 +47,8 @@ export function ProductTableRow({
   onToggleExpand: () => void;
   onToggleSelect: () => void;
   onEdit: () => void;
+  /** the "⋯" menu actions (useProductActions) */
+  actions: ProductActions;
   /** columns for the table's width (product-columns.ts) */
   layout: ProductColumns;
   /** VIEW_COST: the cost column is shown */
@@ -69,10 +72,17 @@ export function ProductTableRow({
   const pkgMults = computeMultipliers(pkgUnits);
   const category = categories.find(c => c.id === p.categoryId);
   const numCls = layout.tight ? "text-xs" : "text-[13px]";
+  const inactive = p.isActive === false;
 
   return (
     <Fragment>
-      <TableRow {...rowNav} aria-label={`${p.name} (Enter = แก้ไข)`} className={`border-slate-100 hover:bg-slate-50 ${ROW_NAV_CLASS} ${isExpanded ? "bg-sky-50/20" : ""}`}>
+      <TableRow
+        {...rowNav}
+        aria-label={`${p.name}${inactive ? " (ปิดใช้งาน)" : ""} (Enter = แก้ไข)`}
+        data-inactive={inactive ? "true" : undefined}
+        data-testid="product-row"
+        className={`border-slate-100 hover:bg-slate-50 ${ROW_NAV_CLASS} ${isExpanded ? "bg-sky-50/20" : ""} ${inactive ? "bg-slate-50/80 text-slate-500 [&>td:not(:last-child)]:opacity-60" : ""}`}
+      >
         <TableCell className="text-center align-middle px-1.5">
           <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
             <Checkbox
@@ -94,6 +104,9 @@ export function ProductTableRow({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[13px] leading-snug">
               <span className="line-clamp-2 break-words" title={p.name} data-testid="product-name">{p.name}</span>
+              {inactive && (
+                <span data-testid="product-inactive-chip" className="shrink-0 rounded-full border border-slate-300 bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-700">ปิดใช้งาน</span>
+              )}
               {p.isBundle && (
                 <span className="text-[10px] text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded font-bold shrink-0">
                   🎁 ชุด ({p.bundleItems?.length || 0} ชิ้น)
@@ -147,10 +160,23 @@ export function ProductTableRow({
             </TableCell>
           );
         })}
-        <TableCell className="text-center px-0">
-          <Button variant="ghost" size="icon" tabIndex={-1} aria-label={`แก้ไข ${p.name}`} className="h-8 w-8 text-slate-400 hover:text-sky-600 hover:bg-sky-50" onClick={onEdit}>
-            <Pencil className="w-4 h-4" />
-          </Button>
+        <TableCell className="text-center px-0" onClick={(e) => e.stopPropagation()}>
+          <div className="flex justify-center">
+            <RowActionsMenu
+              label={`จัดการสินค้า ${p.name}`}
+              testId="product-actions"
+              actions={[
+                { label: "แก้ไข", icon: Pencil, onSelect: onEdit, testId: "product-action-edit" },
+                { label: "สต็อกการ์ด / ประวัติความเคลื่อนไหว", icon: ClipboardList, onSelect: () => actions.stockCard(p), hidden: p.isBundle, testId: "product-action-card" },
+                { label: "ปรับสต็อก", icon: SlidersHorizontal, onSelect: () => actions.adjustStock(p), hidden: p.isBundle, testId: "product-action-adjust" },
+                { label: "สร้างสินค้าคล้ายกัน", icon: Copy, onSelect: () => actions.duplicate(p), testId: "product-action-duplicate" },
+                inactive
+                  ? { label: "เปิดใช้งาน", icon: Power, onSelect: () => void actions.toggleActive(p), testId: "product-action-enable" }
+                  : { label: "ปิดการใช้งาน", icon: PowerOff, onSelect: () => void actions.toggleActive(p), testId: "product-action-disable" },
+                { label: "ลบสินค้า", icon: Trash2, onSelect: () => void actions.remove(p), danger: true, testId: "product-action-delete" },
+              ]}
+            />
+          </div>
         </TableCell>
       </TableRow>
       {isExpanded && pkgUnits.map((unit, ui) => {

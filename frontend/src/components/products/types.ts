@@ -158,6 +158,8 @@ export type SetForm = (updater: (prev: ProductForm) => ProductForm) => void;
 export type SortKey = 'name' | 'stock' | 'basePrice' | 'cost' | PriceLevelKey;
 export type SortDir = 'asc' | 'desc';
 export type StockFilter = 'all' | 'low' | 'out';
+/** ใช้งาน / ปิดใช้งาน / ทั้งหมด (GET /products/page?status=) */
+export type StatusFilter = 'active' | 'inactive' | 'all';
 
 // ─── Import preview ───────────────────────────────────────────────────
 export type ImportChangeType = 'NEW' | 'CHANGED' | 'UNCHANGED';

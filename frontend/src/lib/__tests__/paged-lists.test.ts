@@ -11,11 +11,12 @@ beforeEach(() => h.apiFetch.mockReset());
 describe('products table query', () => {
   it('sends only the filters that are set', async () => {
     const { productPageUrl } = await import('@/components/products/useProducts');
-    const base = { page: 1, limit: 50, search: '', categoryId: 'all', supplierId: 'all', stock: 'all' as const, sort: null, dir: 'asc' as const };
+    const base = { page: 1, limit: 50, search: '', categoryId: 'all', supplierId: 'all', stock: 'all' as const, status: 'all' as const, sort: null, dir: 'asc' as const };
     expect(productPageUrl(base)).toBe('/products/page?page=1&limit=50');
-    const url = productPageUrl({ ...base, page: 3, search: 'ปากกา 50%', categoryId: 'c1', supplierId: 's1', stock: 'low', sort: 'priceLevel2', dir: 'desc' });
+    const url = productPageUrl({ ...base, page: 3, search: 'ปากกา 50%', categoryId: 'c1', supplierId: 's1', stock: 'low', status: 'inactive', sort: 'priceLevel2', dir: 'desc' });
     const q = new URLSearchParams(url.split('?')[1]);
-    expect(Object.fromEntries(q)).toEqual({ page: '3', limit: '50', q: 'ปากกา 50%', categoryId: 'c1', supplierId: 's1', stock: 'low', sort: 'priceLevel2', dir: 'desc' });
+    expect(Object.fromEntries(q)).toEqual({ page: '3', limit: '50', q: 'ปากกา 50%', categoryId: 'c1', supplierId: 's1', stock: 'low', status: 'inactive', sort: 'priceLevel2', dir: 'desc' });
+    expect(productPageUrl({ ...base, status: 'active' })).toBe('/products/page?page=1&limit=50&status=active');
   });
 });
 

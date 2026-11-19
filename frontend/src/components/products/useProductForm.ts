@@ -30,6 +30,26 @@ export function useProductForm(data: ProductsData, setExpandedRows: Dispatch<Set
     setDialogMode("edit");
   };
 
+  /**
+   * "สร้างสินค้าคล้ายกัน": the add form prefilled from `p` - name + " (สำเนา)", prices, cost, unit, category, packs,
+   * wholesale steps, suppliers and bundle items. Not copied: the SKU (the server makes a new one), barcodes and pack
+   * barcodes (they belong to one product only), photos and stock.
+   */
+  const handleOpenDuplicate = (p: ProductRecord) => {
+    const f = productToForm(p);
+    setFormState({
+      ...f,
+      name: `${f.name} (สำเนา)`,
+      sku: "",
+      stock: "0",
+      barcodes: [{ barcode: "", supplierId: "", label: "" }],
+      packagingUnits: f.packagingUnits.map((u) => ({ ...u, barcode: "" })),
+      images: [],
+    });
+    setEditingProduct(null);
+    setDialogMode("add");
+  };
+
   const close = () => setDialogMode(null);
 
   const handleSave = async () => {
@@ -136,7 +156,7 @@ export function useProductForm(data: ProductsData, setExpandedRows: Dispatch<Set
     setDialogMode(null);
   };
 
-  return { dialogMode, editingProduct, form, setForm, updateForm, handleOpenAdd, handleOpenEdit, handleSave, close };
+  return { dialogMode, editingProduct, form, setForm, updateForm, handleOpenAdd, handleOpenEdit, handleOpenDuplicate, handleSave, close };
 }
 
 export type ProductFormState = ReturnType<typeof useProductForm>;

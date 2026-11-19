@@ -4,7 +4,7 @@ import { Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { focusRowNav } from "@/lib/use-row-nav";
 import type { ProductFiltersState } from "./useProductFilters";
-import type { CategoryOption, StockFilter, SupplierOption } from "./types";
+import type { CategoryOption, StatusFilter, StockFilter, SupplierOption } from "./types";
 
 const STOCK_OPTIONS: ReadonlyArray<{ key: StockFilter; label: string }> = [
   { key: "all", label: "ทั้งหมด" },
@@ -12,14 +12,22 @@ const STOCK_OPTIONS: ReadonlyArray<{ key: StockFilter; label: string }> = [
   { key: "out", label: "🔴 หมดสต็อก" },
 ];
 
+const STATUS_OPTIONS: ReadonlyArray<{ key: StatusFilter; label: string }> = [
+  { key: "active", label: "ใช้งาน" },
+  { key: "inactive", label: "ปิดใช้งาน" },
+  { key: "all", label: "ทั้งหมด" },
+];
+
 const selectClass = "h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary";
 
 /** Filter toolbar + "showing N of M" summary line. */
-export function ProductFilters({ f, categories, suppliers, totalCount }: {
+export function ProductFilters({ f, categories, suppliers, totalCount, inactiveCount = 0 }: {
   f: ProductFiltersState;
   categories: CategoryOption[];
   suppliers: SupplierOption[];
   totalCount: number;
+  /** products that are ปิดใช้งาน (shown on the status button) */
+  inactiveCount?: number;
 }) {
   return (
     <>
@@ -39,6 +47,14 @@ export function ProductFilters({ f, categories, suppliers, totalCount }: {
           <option value="all">🏢 ทุกผู้จำหน่าย</option>
           {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
+        <div role="group" aria-label="สถานะสินค้า" data-testid="product-status-filter" className="flex flex-wrap gap-btn rounded-lg border border-slate-200 bg-white p-1">
+          {STATUS_OPTIONS.map(opt => (
+            <button type="button" key={opt.key} aria-pressed={f.statusFilter === opt.key} onClick={() => f.setStatusFilter(opt.key)} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${f.statusFilter === opt.key ? "bg-slate-200 text-slate-900" : "text-slate-500 hover:bg-slate-100"}`}>
+              {opt.label}
+              {opt.key === "inactive" && inactiveCount > 0 && <span className="ml-1 rounded-full bg-slate-100 px-1.5 text-[10px] font-bold text-slate-600">{inactiveCount.toLocaleString()}</span>}
+            </button>
+          ))}
+        </div>
         <div className="flex flex-wrap gap-btn rounded-lg border border-slate-200 bg-white p-1">
           {STOCK_OPTIONS.map(opt => (
             <button type="button" key={opt.key} aria-pressed={f.stockFilter === opt.key} onClick={() => f.setStockFilter(opt.key)} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${f.stockFilter === opt.key ? "bg-slate-200 text-slate-900" : "text-slate-500 hover:bg-slate-100"}`}>{opt.label}</button>
@@ -49,6 +65,7 @@ export function ProductFilters({ f, categories, suppliers, totalCount }: {
       <div className="mb-3 flex gap-2 flex-wrap text-sm text-slate-500">
         <span>แสดง <b className="text-slate-800">{f.filteredCount.toLocaleString()}</b> รายการ จากทั้งหมด {totalCount.toLocaleString()}</span>
         {f.categoryFilter !== "all" && <span>· <b className="text-sky-600">{categories.find(c => c.id === f.categoryFilter)?.name}</b></span>}
+        {f.statusFilter !== "all" && <span>· <b className={f.statusFilter === "inactive" ? "text-slate-700" : "text-emerald-700"}>{f.statusFilter === "inactive" ? "ปิดใช้งาน" : "ใช้งาน"}</b></span>}
         {f.stockFilter !== "all" && <span>· <b className="text-amber-600">{f.stockFilter === "out" ? "หมดสต็อก" : "ใกล้หมด"}</b></span>}
       </div>
     </>

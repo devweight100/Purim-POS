@@ -34,9 +34,20 @@ export function useProductSelection(paginatedList: ProductRecord[]) {
   };
 
   const clearSelection = () => setSelectedProductIds(new Set());
+  /** drop products that no longer exist (deleted) from the selection and the expanded rows */
+  const forget = (ids: string[]) => {
+    const drop = (prev: Set<string>) => {
+      if (!ids.some((id) => prev.has(id))) return prev;
+      const next = new Set(prev);
+      ids.forEach((id) => next.delete(id));
+      return next;
+    };
+    setSelectedProductIds(drop);
+    setExpandedRows(drop);
+  };
 
   return {
-    selectedProductIds, toggleSelectProduct, toggleSelectCurrentPage, isCurrentPageSelected, clearSelection,
+    selectedProductIds, toggleSelectProduct, toggleSelectCurrentPage, isCurrentPageSelected, clearSelection, forget,
     expandedRows, setExpandedRows, toggleExpand,
   };
 }

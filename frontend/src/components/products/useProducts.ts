@@ -11,7 +11,7 @@ import type { ProductPageQuery } from "./useProductFilters";
 
 interface ProductPageResponse {
   data: ApiProduct[];
-  meta: { total: number; page: number; limit: number; totalPages: number; allCount: number };
+  meta: { total: number; page: number; limit: number; totalPages: number; allCount: number; inactiveCount?: number };
 }
 
 /** Query string of GET /products/page for the table's filters. */
@@ -21,6 +21,7 @@ export function productPageUrl(q: ProductPageQuery): string {
   if (q.categoryId && q.categoryId !== "all") params.set("categoryId", q.categoryId);
   if (q.supplierId && q.supplierId !== "all") params.set("supplierId", q.supplierId);
   if (q.stock && q.stock !== "all") params.set("stock", q.stock);
+  if (q.status && q.status !== "all") params.set("status", q.status);
   if (q.sort) {
     params.set("sort", q.sort);
     params.set("dir", q.dir);
@@ -37,6 +38,7 @@ export function useProducts(query: ProductPageQuery) {
   const [products, setProducts] = useState<ProductRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [allCount, setAllCount] = useState(0);
+  const [inactiveCount, setInactiveCount] = useState(0);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,6 +64,7 @@ export function useProducts(query: ProductPageQuery) {
       setProducts(rows);
       setTotal(Number(res?.meta?.total) || 0);
       setAllCount(Number(res?.meta?.allCount) || 0);
+      setInactiveCount(Number(res?.meta?.inactiveCount) || 0);
       setAllPackaging(pkgMap);
       setAllImages(imgMap);
       setLoadError(null);
@@ -133,7 +136,7 @@ export function useProducts(query: ProductPageQuery) {
   }, []);
 
   return {
-    products, total, allCount,
+    products, total, allCount, inactiveCount,
     categories, suppliers, reloadCategories, reloadSuppliers,
     loading, loadError,
     allPackaging, setAllPackaging,

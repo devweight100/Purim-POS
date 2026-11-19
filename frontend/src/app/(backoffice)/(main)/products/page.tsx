@@ -10,10 +10,11 @@ import { productFilterView, useProductFilters } from "@/components/products/useP
 import { useProductForm } from "@/components/products/useProductForm";
 import { useProductImport } from "@/components/products/useProductImport";
 import { useProducts } from "@/components/products/useProducts";
+import { useProductActions } from "@/components/products/useProductActions";
 import { useProductSelection } from "@/components/products/useProductSelection";
 
 // ─── Page ──────────────────────────────────────────────────────────────
-// Product list (server-side filters, sort, pagination; bulk delete), add/edit dialog,
+// Product list (server-side filters incl. status ใช้งาน / ปิดใช้งาน, sort, pagination; bulk delete / disable; "⋯" row menu), add/edit dialog,
 // Excel / CSV import with diff preview, export and import template.
 export default function ProductsPage() {
   const filterControls = useProductFilters();
@@ -22,18 +23,22 @@ export default function ProductsPage() {
   const selection = useProductSelection(filters.paginatedList);
   const productForm = useProductForm(data, selection.setExpandedRows);
   const productImport = useProductImport(data.ensureCatalog, data.loadData);
+  const actions = useProductActions(data, {
+    onDuplicate: productForm.handleOpenDuplicate,
+    onDeleted: (id) => selection.forget([id]),
+  });
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
       <ProductsHeader loadAll={data.ensureCatalog} onImportFile={productImport.handleFileSelectForImport} onAdd={productForm.handleOpenAdd} />
 
       {/* Filter Toolbar */}
-      <ProductFilters f={filters} categories={data.categories} suppliers={data.suppliers} totalCount={data.allCount} />
+      <ProductFilters f={filters} categories={data.categories} suppliers={data.suppliers} totalCount={data.allCount} inactiveCount={data.inactiveCount} />
 
       <BulkActionBar data={data} sel={selection} />
 
       {/* Table */}
-      <ProductTable data={data} f={filters} sel={selection} onEdit={productForm.handleOpenEdit} />
+      <ProductTable data={data} f={filters} sel={selection} onEdit={productForm.handleOpenEdit} actions={actions} />
 
       {/* Dialog */}
       <ProductFormDialog state={productForm} products={data.catalog} onNeedCatalog={data.ensureCatalog} categories={data.categories} suppliers={data.suppliers} reloadCategories={data.reloadCategories} reloadSuppliers={data.reloadSuppliers} />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { ProductRecord, SortDir, SortKey, StockFilter } from "./types";
+import type { ProductRecord, SortDir, SortKey, StatusFilter, StockFilter } from "./types";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 
 export const ITEMS_PER_PAGE = 50;
@@ -14,6 +14,7 @@ export interface ProductPageQuery {
   categoryId: string;
   supplierId: string;
   stock: StockFilter;
+  status: StatusFilter;
   sort: SortKey | null;
   dir: SortDir;
 }
@@ -27,6 +28,8 @@ export function useProductFilters() {
   const [categoryFilter, setCategoryFilterRaw] = useState("all");
   const [supplierFilter, setSupplierFilterRaw] = useState("all");
   const [stockFilter, setStockFilterRaw] = useState<StockFilter>("all");
+  // default: products in use (disabled ones under "ปิดใช้งาน" / "ทั้งหมด")
+  const [statusFilter, setStatusFilterRaw] = useState<StatusFilter>("active");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [currentPage, setCurrentPage] = useState(1);
@@ -37,6 +40,7 @@ export function useProductFilters() {
   const setSupplierFilter = withPageReset(supplierFilter, setSupplierFilterRaw);
   const setStockFilter = withPageReset(stockFilter, setStockFilterRaw);
   const setCategoryFilter = withPageReset(categoryFilter, setCategoryFilterRaw);
+  const setStatusFilter = withPageReset(statusFilter, setStatusFilterRaw);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -46,7 +50,7 @@ export function useProductFilters() {
 
   const query: ProductPageQuery = {
     page: currentPage, limit: ITEMS_PER_PAGE, search: debouncedSearch,
-    categoryId: categoryFilter, supplierId: supplierFilter, stock: stockFilter, sort: sortKey, dir: sortDir,
+    categoryId: categoryFilter, supplierId: supplierFilter, stock: stockFilter, status: statusFilter, sort: sortKey, dir: sortDir,
   };
 
   return {
@@ -54,6 +58,7 @@ export function useProductFilters() {
     categoryFilter, setCategoryFilter,
     supplierFilter, setSupplierFilter,
     stockFilter, setStockFilter,
+    statusFilter, setStatusFilter,
     sortKey, sortDir, handleSort,
     currentPage, setCurrentPage,
     query,
