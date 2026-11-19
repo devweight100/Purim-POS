@@ -281,10 +281,28 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, timeRange, customStartDate, customEndDate, listKey]);
 
+  // Background refresh (ClientDbSync tick every 15 s): reload only when the shop's data changed since the last
+  // load (realtime events) or, as a fallback for a missed event stream, once a minute. It used to recompute the
+  // whole report every 15 s on an idle screen.
   useEffect(() => {
-    const handleSynced = () => loadDataRef.current();
+    let dirty = false;
+    let lastLoad = Date.now();
+    // 'shift': reading the current shift (every tick) announces one; cash movements alone wait for the 1-minute refresh
+    const quiet = new Set(['approval', 'user', 'settings', 'onlineOrder', 'shift', 'bankAccount']);
+    const handleRealtime = (e: Event) => {
+      const entity = (e as CustomEvent<{ entity?: string }>).detail?.entity;
+      if (entity && !quiet.has(entity)) dirty = true;
+    };
+    const handleSynced = () => {
+      if (!dirty && Date.now() - lastLoad < 60_000) return;
+      dirty = false;
+      lastLoad = Date.now();
+      loadDataRef.current();
+    };
+    window.addEventListener('purim:realtime', handleRealtime);
     window.addEventListener('purim:data-synced', handleSynced);
     return () => {
+      window.removeEventListener('purim:realtime', handleRealtime);
       window.removeEventListener('purim:data-synced', handleSynced);
     };
   }, []);
