@@ -71,7 +71,7 @@ export async function askDisableInstead(c: Pick<DeleteCheck, "name" | "blockers"
 /** After a change: the table page from the server and the product store (POS / pickers) catch up. */
 async function refreshAll(data: ProductsData) {
   await data.refreshProducts();
-  void useProductStore.getState().fetchProducts();
+  void useProductStore.getState().refreshIfLoaded();
 }
 
 /**

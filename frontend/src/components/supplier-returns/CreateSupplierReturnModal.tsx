@@ -38,6 +38,8 @@ import {
 } from '@/lib/supplier-return-service';
 import { SupplierReturnNote } from '@/lib/types';
 import { addQty, formatQty, isValidQty, parseQty, qtyInputMode, qtyStep, roundQty, useAllowDecimalQty } from '@/lib/qty';
+import { useProductStore } from '@/lib/store/product-store';
+import { usePosDataDemand } from '@/lib/pos-data-policy';
 
 /** Product groups shown per request of the create-return dialog (more on "แสดงเพิ่ม"). */
 const GROUP_PAGE = 50;
@@ -117,6 +119,8 @@ export function CreateSupplierReturnModal({
   const [docNameMode, setDocNameMode] = useState<DocNameMode>(() => defaultSupplierDocNameMode());
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  usePosDataDemand({ products: true }, open);
+
   // Load suppliers on open
   // load suppliers / reset the form when the modal opens (adjusted while rendering)
   const [seenOpen, setSeenOpen] = useState<{ open: typeof open; initialSupplierId: typeof initialSupplierId; initialPoId: typeof initialPoId; editingNote: typeof editingNote } | null>(null);
@@ -174,7 +178,9 @@ export function CreateSupplierReturnModal({
   useEffect(() => {
     if (!open || !selectedSupplierId) return;
     let cancelled = false;
-    fetchSupplierPurchaseOrders(selectedSupplierId)
+    // the supplier's products come from the whole catalogue (kept while this dialog is open: usePosDataDemand)
+    const catalog = useProductStore.getState().products.length ? Promise.resolve() : useProductStore.getState().fetchProducts();
+    Promise.all([fetchSupplierPurchaseOrders(selectedSupplierId), catalog])
       .then(() => {
         if (cancelled) return;
         setSupplierPosError(null);

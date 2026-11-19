@@ -526,7 +526,7 @@ function buildReturnContent(params: CreateReturnNoteParams) {
 async function refreshAfterReturnWrite(): Promise<void> {
   await Promise.allSettled([fetchSupplierReturnNotes()]);
   if (typeof window !== 'undefined') {
-    void useProductStore.getState().fetchProducts();
+    void useProductStore.getState().refreshIfLoaded();
     window.dispatchEvent(new Event('pos-data-synced'));
   }
 }

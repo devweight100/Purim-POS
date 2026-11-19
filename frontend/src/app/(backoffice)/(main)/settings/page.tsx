@@ -34,6 +34,7 @@ import {
 } from "@/lib/backup-service";
 import { api } from "@/lib/api";
 import { useProductStore } from "@/lib/store/product-store";
+import { SellingDeviceSetting } from "@/components/settings/SellingDeviceSetting";
 import { useShiftStore } from "@/lib/store/shift-store";
 import { useCartStore } from "@/lib/store/cart-store";
 import { 
@@ -420,7 +421,7 @@ export default function SettingsPage() {
       await clearLocalShopData();
 
       // Reset stores
-      await useProductStore.getState().fetchProducts();
+      await useProductStore.getState().refreshIfLoaded();
       useShiftStore.setState({ currentShift: null, cashTransactions: [] });
       useCartStore.setState({ items: [], heldBills: [] });
       useCartStore.getState().clearCart();
@@ -1151,6 +1152,7 @@ export default function SettingsPage() {
               </div>
             </CardContent>
           </Card>
+          <SellingDeviceSetting />
         </div>
       )}
 

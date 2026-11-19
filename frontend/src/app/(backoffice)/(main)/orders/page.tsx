@@ -11,7 +11,8 @@ import { useShiftStore } from "@/lib/store/shift-store";
 import { ReturnItemsDialog } from "@/components/orders/ReturnItemsDialog";
 import { useCartStore } from "@/lib/store/cart-store";
 import { useProductStore } from "@/lib/store/product-store";
-import { getCustomerById, fetchCustomers } from "@/lib/customer-service";
+import { ensureCustomer, refreshCustomersIfLoaded } from "@/lib/customer-service";
+import { acquirePosData } from "@/lib/pos-data-policy";
 
 import { fetchClaimedOrderIds } from "@/lib/claim-service";
 import { fetchDebtsForOrders, getDebtRecordByOrderId } from "@/lib/debt-service";
@@ -93,7 +94,6 @@ export default function OrdersPage() {
   const [selectedInstallmentForSlip, setSelectedInstallmentForSlip] = useState<DebtPaymentInstallment | null>(null);
 
   const cart = useCartStore();
-  const { products } = useProductStore();
   const shiftStore = useShiftStore();
 
   // Server-side paging, search, status tab and summary counts (GET /orders?page&limit&search&statusGroup&counts=1)
@@ -200,18 +200,20 @@ export default function OrdersPage() {
 
   // ─── Order -> printed documents (shared mapper, same as POS history / document search) ───
   // Reprints from this page are copies: A4 "สำเนา (COPY)", thermal "พิมพ์ซ้ำ".
-  const formatOrderToA4 = (order: OrderRow): ReceiptA4Data =>
+  // the bill's customer with address / tax id: from the POS customer list when this device keeps it, else one
+  // GET /customers/:id (a back-office device does not hold the whole list)
+  const formatOrderToA4 = async (order: OrderRow): Promise<ReceiptA4Data> =>
     orderToA4Data(order, {
       isReprint: true,
-      customer: order.customerId ? getCustomerById(order.customerId) || undefined : undefined,
+      customer: (await ensureCustomer(order.customerId)) || undefined,
     });
 
   const formatOrderToSlip = (order: OrderRow): ReceiptData => orderToReceiptData(order, { isReprint: true });
 
   // ─── Normal A4 Print Handler ───
-  const handleOpenA4Receipt = (order: OrderRow, e?: React.MouseEvent) => {
+  const handleOpenA4Receipt = async (order: OrderRow, e?: React.MouseEvent) => {
     e?.stopPropagation();
-    setA4ReceiptData(formatOrderToA4(order));
+    setA4ReceiptData(await formatOrderToA4(order));
     setIsA4ReceiptOpen(true);
   };
 
@@ -227,9 +229,9 @@ export default function OrdersPage() {
   };
 
   // ─── Print Installment Specific A4 Receipt ───
-  const handlePrintInstallmentReceiptA4 = (inst: DebtPaymentInstallment) => {
+  const handlePrintInstallmentReceiptA4 = async (inst: DebtPaymentInstallment) => {
     if (!creditHistoryOrder || !creditDebtRecord) return;
-    const baseA4 = formatOrderToA4(creditHistoryOrder);
+    const baseA4 = await formatOrderToA4(creditHistoryOrder);
 
     const installmentData: ReceiptA4Data = {
       ...baseA4,
@@ -268,9 +270,9 @@ export default function OrdersPage() {
   };
 
   // ─── Print Full Paid A4 Receipt (No remaining 0 notes, identical to standard receipt) ───
-  const handlePrintFullPaidCreditReceipt = () => {
+  const handlePrintFullPaidCreditReceipt = async () => {
     if (!creditHistoryOrder) return;
-    setA4ReceiptData(formatOrderToA4(creditHistoryOrder));
+    setA4ReceiptData(await formatOrderToA4(creditHistoryOrder));
     setIsA4ReceiptOpen(true);
   };
 
@@ -281,7 +283,16 @@ export default function OrdersPage() {
   };
 
   // Populate items into cart
-  const populateOrderToCart = (order: OrderRow) => {
+  // (the bill goes to the POS, which needs the catalogue anyway: loaded here first when this device does not keep it)
+  const populateOrderToCart = async (order: OrderRow) => {
+    const releaseCatalog = acquirePosData({ products: true });
+    try {
+      if (!useProductStore.getState().products.length) await useProductStore.getState().fetchProducts();
+    } finally {
+      // the POS screen opened next keeps it; on a back-office screen it is released again
+      setTimeout(releaseCatalog, 3000);
+    }
+    const products = useProductStore.getState().products;
     cart.clearCart();
     if (!order.items || order.items.length === 0) return;
 
@@ -313,9 +324,9 @@ export default function OrdersPage() {
     setIsEditItemsOpen(true);
   };
 
-  const handleConfirmEditItems = () => {
+  const handleConfirmEditItems = async () => {
     if (editItemsTarget) {
-      populateOrderToCart(editItemsTarget);
+      await populateOrderToCart(editItemsTarget);
       cart.setEditingOrderId(editItemsTarget.orderNumber || editItemsTarget.id);
       setIsEditItemsOpen(false);
       setIsDetailOpen(false);
@@ -331,9 +342,9 @@ export default function OrdersPage() {
     setIsRepeatOrderOpen(true);
   };
 
-  const handleConfirmRepeatOrder = () => {
+  const handleConfirmRepeatOrder = async () => {
     if (repeatOrderTarget) {
-      populateOrderToCart(repeatOrderTarget);
+      await populateOrderToCart(repeatOrderTarget);
       setIsRepeatOrderOpen(false);
       setIsDetailOpen(false);
       toast.success(`🔄 ดึงรายการบิล #${repeatOrderTarget.orderNumber} ลงในตะกร้าแล้ว`);
@@ -431,10 +442,10 @@ export default function OrdersPage() {
 
       void shiftStore.fetchCurrentShift();
       // the server returned the stock in the void transaction
-      void useProductStore.getState().fetchProducts();
+      void useProductStore.getState().refreshIfLoaded();
 
       // the server already reversed points / credit debt; refresh the customer list from it
-      void fetchCustomers().catch(() => undefined);
+      void refreshCustomersIfLoaded().catch(() => undefined);
 
       toast.success(`✅ ยกเลิกบิล #${voidTargetOrder.orderNumber} คืนสต็อก และปรับแต้ม/หนี้สมาชิกเรียบร้อยแล้ว`);
       setIsVoidOpen(false);

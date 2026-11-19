@@ -25,6 +25,10 @@ interface ProductStore {
   syncCursorKey: string | null;
   /** store low-stock threshold the rows were mapped with (a change re-maps everything: full load) */
   syncThreshold: number | null;
+  /** refresh only when the catalogue is in memory (after a save on a screen that does not keep it: nothing to do) */
+  refreshIfLoaded: () => Promise<void>;
+  /** forget the catalogue (back-office screen of a device that does not sell): frees the memory, next load is full */
+  release: () => void;
 }
 
 function onPosScreen(): boolean {
@@ -56,13 +60,28 @@ export const useProductStore = create<ProductStore>((set, get) => ({
     });
     return inflight;
   },
+
+  refreshIfLoaded: () => (get().products.length || inflight ? get().fetchProducts() : Promise.resolve()),
+
+  release: () => {
+    epoch++;
+    queued = null;
+    if (!get().products.length && get().syncCursor === null && !get().error) return;
+    set({ products: [], isLoading: false, error: null, fromOfflineCache: false, syncCursor: null, syncCursorKey: null, syncThreshold: null });
+  },
 }));
+
+/** bumped by release(): a load that was running when the catalogue was released does not put it back */
+let epoch = 0;
 
 let inflight: Promise<void> | null = null;
 let queued: Promise<void> | null = null;
 
 async function loadProducts(opts?: { offlineCache?: boolean }): Promise<void> {
-  const set = (partial: Partial<ProductStore>) => useProductStore.setState(partial);
+  const started = epoch;
+  const set = (partial: Partial<ProductStore>) => {
+    if (started === epoch) useProductStore.setState(partial);
+  };
   const get = useProductStore.getState;
   {
     const offlineCache = opts?.offlineCache ?? onPosScreen();

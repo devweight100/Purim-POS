@@ -8,6 +8,7 @@ import { apiFetch } from '@/lib/api';
 import { formatCurrency, formatListDateTime } from '@/lib/utils';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useProductStore } from '@/lib/store/product-store';
+import { acquirePosData, usePosDataDemand } from '@/lib/pos-data-policy';
 import { onlineLineTotal, onlineOrderTotals, ONLINE_STATUS_LABELS, parseDeliveryFee, type OnlineOrderStatus } from '@shared/online-shop';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -277,6 +278,10 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
     try {
       const p = await fetchPosPayload(d.id);
       if (!p) return;
+      // the cart lines come from the POS catalogue: loaded first when this device does not keep it
+      const releaseCatalog = acquirePosData({ products: true });
+      setTimeout(releaseCatalog, 3000);
+      if (!useProductStore.getState().products.length) await useProductStore.getState().fetchProducts();
       const cartItems = onlineOrderCartItems(p, useProductStore.getState().products as never);
       const c = (p as unknown as { customer: { id: string; name: string } | null }).customer;
       useCartStore.getState().loadOnlineOrder({ id: p.id, orderNo: p.orderNo, customerId: c?.id || null, customerName: c?.name || null, note: p.note, items: cartItems });
@@ -548,6 +553,7 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
 /** Add a product line (POS catalogue in memory; price = the unit's retail price, editable after). */
 function ProductPicker({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick: (it: DetailItem) => void }) {
   const products = useProductStore((s) => s.products);
+  usePosDataDemand({ products: true }, open);
   const [q, setQ] = useState('');
   useEffect(() => {
     if (open && products.length === 0) void useProductStore.getState().fetchProducts();

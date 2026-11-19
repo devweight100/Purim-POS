@@ -4,6 +4,7 @@ import { newOperationId } from '@/lib/order-sync-service';
 import { useState, useEffect, useRef } from 'react';
 import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { useProductStore } from '@/lib/store/product-store';
+import { noteSoldHere } from '@/lib/pos-data-policy';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { formatCurrency } from '@/lib/utils';
@@ -557,6 +558,9 @@ export function PaymentModal({
       // Stock is deducted by the server when it records the bill (also for outbox replays);
       // refresh the product list so the POS shows the server's stock.
       if (isSynced) void useProductStore.getState().fetchProducts({ offlineCache: true });
+      // a bill was completed here (on the server or into the offline outbox): this device sells -> it keeps the
+      // POS catalogue / offline copy warm on back-office screens too (pos-data-policy.ts)
+      noteSoldHere();
 
       const custSaleRes = {
         earnedPoints: isSynced ? Number(checkedOut.pointsEarned || 0) : 0,

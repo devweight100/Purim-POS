@@ -1,5 +1,6 @@
 ﻿'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { useConnectionStatus, reportConnection } from '@/lib/connection-status';
 import { syncPendingOrders } from '@/lib/order-sync-service';
 import { getPendingOfflineOrders, OfflineOrder } from '@/lib/offline-db';
@@ -10,7 +11,26 @@ import { syncPurchaseReceipts, useReceiptSyncStatus, refreshReceiptSyncStatus } 
 import { fetchCategoriesFromBackend } from '@/lib/category-storage';
 import { fetchBankAccountsFromBackend } from '@/lib/bank-account-storage';
 import { loadStoreSettingsFromBackend } from '@/lib/store-settings-storage';
-import { fetchCustomers } from '@/lib/customer-service';
+import { fetchCustomers, refreshCustomersIfLoaded, releaseCustomers } from '@/lib/customer-service';
+import {
+  isSellingDevice,
+  notePendingOfflineBills,
+  posDataDemand,
+  posDataPlan,
+  usePosDataPolicyVersion,
+} from '@/lib/pos-data-policy';
+
+/** What this screen keeps in memory now (see pos-data-policy.ts). */
+function currentPlan() {
+  const path = typeof window !== 'undefined' ? window.location.pathname : '';
+  const d = posDataDemand();
+  return posDataPlan({ path, sellingDevice: isSellingDevice(), productDemand: d.products, customerDemand: d.customers });
+}
+
+/** Rows of the offline outbox only change the status bar when they really changed (no re-render every 3 s). */
+function sameRows(a: OfflineOrder[], b: OfflineOrder[]): boolean {
+  return a.length === b.length && a.every((o, i) => o.clientOrderId === b[i].clientOrderId && o.syncStatus === b[i].syncStatus && o.lastError === b[i].lastError && o.ownerId === b[i].ownerId);
+}
 import { api, apiFetch, getAuthToken, ApiError } from '@/lib/api';
 import { getTerminalId } from '@/lib/terminal-id';
 import { startRealtime, RealtimeEvent } from '@/lib/realtime';
@@ -21,7 +41,10 @@ export function ClientDbSync() {
   const receipts = useReceiptSyncStatus((s) => s.rows);
   const userId = useAuthStore((s) => s.user?.id);
   const [expanded, setExpanded] = useState(false);
-  const [rows, setRows] = useState<OfflineOrder[]>([]);
+  const [rows, setRowsState] = useState<OfflineOrder[]>([]);
+  const pathname = usePathname();
+  const policyVersion = usePosDataPolicyVersion();
+  const loadedFor = useRef<{ products: boolean; customers: boolean }>({ products: false, customers: false });
 
   useEffect(() => {
     clearLegacyLocalData();
@@ -34,6 +57,10 @@ export function ClientDbSync() {
     let delay = 3000;
     let outboxRunning = false;
     let masterSyncRunning = false;
+    const setRows = (next: OfflineOrder[]) => {
+      notePendingOfflineBills(next.filter((o) => o.syncStatus !== 'confirmed').length);
+      setRowsState((cur) => (sameRows(cur, next) ? cur : next));
+    };
 
     const runOutboxSync = async () => {
       if (outboxRunning || disposed) return;
@@ -123,7 +150,11 @@ export function ClientDbSync() {
           if (!disposed) setRows(await getPendingOfflineOrders());
         } catch {}
 
-        // 4. Refresh authenticated user profile (role, permissions, active status) & master data
+        // 4. Refresh authenticated user profile (role, permissions, active status) & master data.
+        //    The product catalogue (+ offline copy) and the customer list only where they are kept: the POS, a
+        //    selling device, a screen that needs the whole list (pos-data-policy.ts). A back-office-only device
+        //    does not hold 10k products / 5k customers in memory.
+        const plan = currentPlan();
         await Promise.allSettled([
           api.auth
             .getProfile()
@@ -146,11 +177,19 @@ export function ClientDbSync() {
                 useAuthStore.getState().logout();
               }
             }),
-          useProductStore.getState().fetchProducts(),
+          plan.products ? useProductStore.getState().fetchProducts() : undefined,
           useShiftStore.getState().fetchCurrentShift(),
-          fetchCategoriesFromBackend(),
+          // the product store reads the categories with the catalogue; without it, once here
+          plan.products
+            ? undefined
+            : fetchCategoriesFromBackend().then((cats) => {
+                // category names / filters of the back-office screens (small list; no re-render when unchanged)
+                if (!disposed && JSON.stringify(cats) !== JSON.stringify(useProductStore.getState().categories)) {
+                  useProductStore.setState({ categories: cats });
+                }
+              }),
           fetchBankAccountsFromBackend(),
-          fetchCustomers(),
+          plan.customers ? fetchCustomers() : undefined,
         ]);
 
         if (!disposed && typeof window !== 'undefined') {
@@ -211,6 +250,27 @@ export function ClientDbSync() {
     };
   }, [userId]);
 
+  // The screen changed or a screen started / stopped needing the lists: load what is now needed at once, release
+  // what is no longer needed (leaving the POS on a device that does not sell frees the catalogue and the customer
+  // list and stops their polling). The release waits a moment so a screen that opens right after can claim them.
+  useEffect(() => {
+    if (!userId) return;
+    const path = typeof window !== 'undefined' ? window.location.pathname : '';
+    if (path === '/m' || path.startsWith('/m/')) return;
+    const plan = currentPlan();
+    const before = loadedFor.current;
+    loadedFor.current = plan;
+    if (plan.products && !before.products && !useProductStore.getState().products.length) void useProductStore.getState().fetchProducts();
+    if (plan.customers && !before.customers) void fetchCustomers().catch(() => undefined);
+    if (plan.products && plan.customers) return;
+    const t = setTimeout(() => {
+      const now = currentPlan();
+      if (!now.products) useProductStore.getState().release();
+      if (!now.customers) releaseCustomers();
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [pathname, policyVersion, userId]);
+
   // Changes made on any screen / terminal reach this one at once (server-sent events), not only by the 15 s poll:
   // stock adjusted in the back office shows on the POS card right away (BUG-02 v1.5.3).
   useEffect(() => {
@@ -238,10 +298,11 @@ export function ClientDbSync() {
     const stop = startRealtime(token, (e: RealtimeEvent) => {
       // other screens listen too (online-order badge)
       window.dispatchEvent(new CustomEvent('purim:realtime', { detail: e }));
+      // only the lists this screen keeps (a back-office-only device has none: nothing to refresh)
       if (e.entity === 'product' || e.entity === 'stock' || e.entity === 'category' || e.entity === 'supplier') {
-        soon('products', () => useProductStore.getState().fetchProducts());
+        soon('products', () => (currentPlan().products ? useProductStore.getState().fetchProducts() : useProductStore.getState().refreshIfLoaded()));
       } else if (e.entity === 'customer' || e.entity === 'debt') {
-        soon('customers', () => fetchCustomers());
+        soon('customers', () => (currentPlan().customers ? fetchCustomers() : refreshCustomersIfLoaded()));
       }
     });
     return () => {

@@ -833,7 +833,7 @@ export async function processClaim(params: ProcessClaimParams): Promise<ClaimRec
   }
 
   if (attemptKey) { try { localStorage.removeItem(attemptKey); } catch {} }
-  void useProductStore.getState().fetchProducts();
+  void useProductStore.getState().refreshIfLoaded();
   window.dispatchEvent(new Event('pos-data-synced'));
   return claimRecord;
 }

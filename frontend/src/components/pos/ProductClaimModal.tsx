@@ -16,6 +16,7 @@ import { useCartStore } from '@/lib/store/cart-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { sellableProducts, useProductStore } from '@/lib/store/product-store';
 import { loadCustomers } from '@/lib/customer-service';
+import { usePosDataDemand } from '@/lib/pos-data-policy';
 import { BankAccount, loadBankAccounts } from '@/lib/bank-account-storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -99,6 +100,8 @@ export function ProductClaimModal({
   const cart = useCartStore();
   const { user } = useAuthStore();
   const { products, fetchProducts } = useProductStore();
+  // replacement picker / bundle lines need the whole catalogue (claims page of a back-office device: while open)
+  usePosDataDemand({ products: true }, open);
 
   // Search only when keyword is entered
   const handleSearch = async (isLatest: () => boolean = () => true) => {

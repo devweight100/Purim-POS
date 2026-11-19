@@ -29,7 +29,7 @@ export function BulkActionBar({ data, sel }: { data: ProductsData; sel: ProductS
 
   const refresh = async () => {
     await data.refreshProducts();
-    void useProductStore.getState().fetchProducts();
+    void useProductStore.getState().refreshIfLoaded();
   };
 
   const setActive = async (ids: string[], isActive: boolean) => {

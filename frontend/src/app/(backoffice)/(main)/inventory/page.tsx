@@ -8,6 +8,7 @@ import { api, apiFetch } from '@/lib/api';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import Link from 'next/link';
 import { isSellable, toStoreProduct, useProductStore } from '@/lib/store/product-store';
+import { usePosDataDemand } from '@/lib/pos-data-policy';
 import type { ApiProduct, Product } from '@/lib/types';
 import { displayUnitCost } from '@/lib/product-cost';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -104,6 +105,8 @@ export default function InventoryPage() {
 
   // whole catalogue (product store): only for the adjust dialog's product list, loaded when it opens
   const { products, categories: storeCategories, fetchProducts } = useProductStore();
+  // kept loaded (and current) while the adjust dialog is open; a back-office device releases it afterwards
+  usePosDataDemand({ products: true }, isAdjustModalOpen);
   // the stock table, the reorder list and the cards come from the server (GET /products/page, paged + filtered)
   const [pageRows, setPageRows] = useState<InvProduct[]>([]);
   const [filteredCount, setFilteredCount] = useState(0);

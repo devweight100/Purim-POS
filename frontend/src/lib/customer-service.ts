@@ -171,11 +171,14 @@ function setIndexed(list: IndexedCustomer[]) {
  */
 export function fetchCustomers(): Promise<Customer[]> {
   if (customersInflight) return customersInflight;
+  const started = customersEpoch;
   customersInflight = (async () => {
     const token = getAuthToken();
     const since = customersCursor && customersCursor.token === token ? customersCursor.cursor : '';
     const res = await apiFetch<CustomerSyncResponse | null>(`/customers/sync${since ? `?since=${encodeURIComponent(since)}` : ''}`);
     if (!res || !Array.isArray(res.customers) || typeof res.cursor !== 'string') throw new Error('ข้อมูลลูกค้าจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+    // released while the request ran (back-office screen of a device that does not sell): keep nothing
+    if (started !== customersEpoch) return lastServerCustomers;
     const next = applyCustomerSync(since ? indexedCustomers : [], since ? res : { ...res, full: true });
     if (next) setIndexed(next);
     customersCursor = { token, cursor: res.cursor };
@@ -184,6 +187,44 @@ export function fetchCustomers(): Promise<Customer[]> {
     customersInflight = null;
   });
   return customersInflight;
+}
+
+let customersEpoch = 0;
+
+/** Refresh the list only when it is in memory (POS / selling device / a screen that needs it). */
+export function refreshCustomersIfLoaded(): Promise<unknown> {
+  return indexedCustomers.length || customersInflight ? fetchCustomers() : Promise.resolve();
+}
+
+/** Forget the customer list (frees the memory; the next fetchCustomers() downloads it in full again). */
+export function releaseCustomers() {
+  customersEpoch++;
+  customersInflight = null;
+  customersCursor = null;
+  if (!indexedCustomers.length) return;
+  setIndexed([]);
+}
+
+const looked = new Map<string, Customer>();
+/**
+ * One customer with every field (A4 reprint: address / tax id): from the list when it is in memory, else
+ * GET /customers/:id (the last 50 looked up are kept). null when unknown / unreachable.
+ */
+export async function ensureCustomer(id: string | null | undefined): Promise<Customer | null> {
+  if (!id) return null;
+  const inList = getCustomerById(id);
+  if (inList) return inList;
+  try {
+    const row = await api.customers.getOne(id);
+    if (!row) return null;
+    const c = normalizeCustomerRow(row);
+    looked.delete(id);
+    looked.set(id, c);
+    if (looked.size > 50) looked.delete(looked.keys().next().value as string);
+    return c;
+  } catch {
+    return looked.get(id) || null;
+  }
 }
 
 export interface CustomerPageStats {

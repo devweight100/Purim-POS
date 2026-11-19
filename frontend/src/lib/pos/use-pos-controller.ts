@@ -1,11 +1,13 @@
 'use client';
 
+import { useEffect } from 'react';
 import { toast } from 'sonner';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { sellableProducts, useProductStore } from '@/lib/store/product-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useCustomerById } from '@/lib/customer-service';
+import { notePosOpened } from '@/lib/pos-data-policy';
 import type { Product, ProductUnit } from '@/lib/types';
 import type { PosVariant } from './pos-variant';
 import { isExactProductCode } from './pos-scan';
@@ -38,6 +40,8 @@ export function usePosController(variant: PosVariant) {
   const selection = useCartSelection(cart.items, variant);
 
   useProductAutoRefresh(fetchProducts);
+  // POS session: the desktop app counts as a selling device from now on (pos-data-policy.ts)
+  useEffect(() => notePosOpened(), []);
   useOpenShiftPrompt(mounted, dialogs.setShowOpenShift);
   useTerminalHeartbeat(user);
   useTerminalLiveState({

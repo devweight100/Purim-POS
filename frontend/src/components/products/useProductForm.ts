@@ -146,7 +146,7 @@ export function useProductForm(data: ProductsData, setExpandedRows: Dispatch<Set
 
     // show the saved row as the server lists it (its page / position may change with the sort)
     await data.refreshProducts();
-    void useProductStore.getState().fetchProducts();
+    void useProductStore.getState().refreshIfLoaded();
 
     data.setAllPackaging(prev => ({ ...prev, [savedId]: form.packagingUnits }));
     if (form.packagingUnits.length > 0) setExpandedRows(prev => new Set([...prev, savedId]));

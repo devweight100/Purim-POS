@@ -66,7 +66,7 @@ export async function adjustSingleProductStock(params: {
 
   if (!res || !res.success) throw new ApiError('เซิร์ฟเวอร์ไม่ยืนยันการปรับสต็อก', 502, res);
   // Refresh real product catalog from DB
-  await useProductStore.getState().fetchProducts();
+  await useProductStore.getState().refreshIfLoaded();
   return {
     success: true,
     newStock: Number(res.newStock),

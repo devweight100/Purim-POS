@@ -11,6 +11,7 @@ import { Plus, PackageOpen } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { sellableProducts, useProductStore } from '@/lib/store/product-store';
+import { usePosDataDemand } from '@/lib/pos-data-policy';
 import { addQty, parseQty, subQty, useAllowDecimalQty } from '@/lib/qty';
 
 import PurchaseOrderPdfModal, { PurchaseOrderData } from '@/components/pos/PurchaseOrderPdfModal';
@@ -41,6 +42,8 @@ async function loadAllProducts(): Promise<PoProductLike[]> {
 }
 
 export default function PurchaseOrdersPage() {
+  // item picker, receive dialog stock, photo preview: the whole catalogue while this screen is open
+  usePosDataDemand({ products: true });
   const allowDecimalQty = useAllowDecimalQty();
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -532,7 +535,7 @@ export default function PurchaseOrdersPage() {
       setIsUnderReceiveModalOpen(false);
       setIsReceiveOpen(false);
       await fetchPOs();
-      void useProductStore.getState().fetchProducts();
+      void useProductStore.getState().refreshIfLoaded();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'บันทึกรับสินค้าไม่สำเร็จ กรุณาตรวจสอบรายการ');
     } finally { receiveBusy.current = false; }
