@@ -167,6 +167,7 @@ model Shift {
   user            User        @relation(fields: [userId], references: [id])
   orders          Order[]
   cashMovements   CashMovement[]
+  debtPayments    DebtPayment[]
 
   @@index([userId])
   @@index([openedAt])
@@ -763,12 +764,17 @@ model DebtPayment {
   cancelledAt   DateTime?     @map("cancelled_at")
   cancelReason  String?       @map("cancel_reason")
   cancelledBy   String?       @map("cancelled_by")
+  // cashier shift the money went into (POS: the current shift; back office: an open shift chosen by the user);
+  // null = not in any shift (back office "ไม่เข้ากะแคชเชียร์": cash to the safe, transfer / QR to the bank)
+  shiftId       String?       @map("shift_id")
   createdAt     DateTime      @default(now()) @map("created_at")
 
   debt          CustomerDebt  @relation(fields: [debtId], references: [id], onDelete: Cascade)
+  shift         Shift?        @relation(fields: [shiftId], references: [id], onDelete: SetNull)
 
   @@index([debtId])
   @@index([paymentDate])
+  @@index([shiftId])
   @@map("debt_payments")
 }
 

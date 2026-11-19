@@ -1,5 +1,6 @@
 import { BadRequestException, Controller, Get, Post, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { DebtsService } from './debts.service';
+import { ServerControlService } from '../server-control/server-control.service';
 import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
@@ -9,7 +10,10 @@ import { PaymentMethod } from '@prisma/client';
 @RequirePermissions('MANAGE_DEBTS', 'POS_SELL', 'VIEW_REPORTS')
 @Controller('debts')
 export class DebtsController {
-  constructor(private readonly debtsService: DebtsService) {}
+  constructor(
+    private readonly debtsService: DebtsService,
+    private readonly serverControl: ServerControlService,
+  ) {}
 
   @Get()
   getAll(
@@ -48,6 +52,36 @@ export class DebtsController {
     );
   }
 
+  /** Dashboard credit card: customers / bills still owing and overdue (same rule as the debts page cards). */
+  @Get('credit-summary')
+  creditSummary() {
+    return this.debtsService.creditSummary();
+  }
+
+  /** Customers who still owe, largest balance first (dashboard credit list). */
+  @Get('owing-customers')
+  owingCustomers(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('overdue') overdue?: string,
+  ) {
+    if (search !== undefined && typeof search !== 'string') throw new BadRequestException('เงื่อนไขค้นหาไม่ถูกต้อง');
+    return this.debtsService.owingCustomers(
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 50,
+      search,
+      overdue === '1' || overdue === 'true',
+    );
+  }
+
+  /** OPEN cashier shifts a back-office debt payment can go into (debts page receive dialog). */
+  @RequirePermissions('MANAGE_DEBTS')
+  @Get('open-shifts')
+  openShifts() {
+    return this.debtsService.openShiftsForPayment((id) => this.serverControl.terminalName(id));
+  }
+
   @Get(':id')
   getOne(@Param('id') id: string) {
     return this.debtsService.getDebtDetails(id);
@@ -65,9 +99,13 @@ export class DebtsController {
     @Body('clientPaymentId') clientPaymentId?: string,
     @Body('shiftId') shiftId?: string,
     @Body('bankAccountId') bankAccountId?: string,
+    @Body('noShift') noShift?: boolean,
   ) {
     const cashier = cashierName || req.user?.fullName || 'เจ้าหน้าที่';
-    return this.debtsService.payDebt(id, Number(amount), paymentMethod, referenceNo, cashier, note, clientPaymentId, shiftId, req.user?.id || req.user?.sub, bankAccountId);
+    return this.debtsService.payDebt(id, Number(amount), paymentMethod, referenceNo, cashier, note, clientPaymentId, shiftId, req.user?.id || req.user?.sub, bankAccountId, {
+      noShift: noShift === true,
+      actor: req.user,
+    });
   }
 
   @Roles('ADMIN', 'MANAGER')

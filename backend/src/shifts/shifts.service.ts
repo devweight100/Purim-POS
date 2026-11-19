@@ -251,25 +251,20 @@ export class ShiftsService {
     };
   }
 
-  /** QR / transfer debt receipts taken by the shift's cashier while the shift was open (not reversed). */
+  /**
+   * QR / transfer debt receipts that went into this shift (debt_payments.shift_id: the POS's current shift or the
+   * shift chosen in the back office), not cancelled. Cash receipts are counted through their drawer movement.
+   */
   private async nonCashDebtCollections(db: any, shift: any, f: { debtCollectionCash: number; debtCollectionCount: number }) {
-    const rows: { id: string; amount: any }[] = await db.moneyTransaction.findMany({
-      where: {
-        type: 'DEBT_RECEIPT', userId: shift.userId,
-        occurredAt: { gte: shift.openedAt, ...(shift.closedAt ? { lte: shift.closedAt } : {}) },
-        account: { type: { not: 'CASH_DRAWER' } },
-      },
-      select: { id: true, amount: true },
+    const rows: { amount: any }[] = await db.debtPayment.findMany({
+      where: { shiftId: shift.id, paymentMethod: { not: PaymentMethod.CASH }, cancelledAt: null },
+      select: { amount: true },
     });
     let qr = 0;
-    let count = 0;
-    if (rows.length) {
-      const reversed = new Set((await db.moneyTransaction.findMany({ where: { reversalOfId: { in: rows.map((r) => r.id) } }, select: { reversalOfId: true } })).map((r: any) => r.reversalOfId));
-      for (const r of rows) if (!reversed.has(r.id)) { qr += Number(r.amount) || 0; count += 1; }
-    }
+    for (const r of rows) qr += Number(r.amount) || 0;
     return {
       debtCollectionQrTransfer: round2(qr),
-      debtCollectionCount: f.debtCollectionCount + count,
+      debtCollectionCount: f.debtCollectionCount + rows.length,
       debtCollectionTotal: round2(f.debtCollectionCash + qr),
     };
   }

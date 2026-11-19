@@ -592,6 +592,11 @@ export class ServerControlService {
   }
 
   /** This terminal's last heartbeat (time in ms + client IP), or null when not seen since the server started. */
+  /** Name a terminal reported with its heartbeat (null = not seen since the server started). */
+  terminalName(terminalId: string): string | null {
+    return this.activePings.get(terminalId)?.terminalName ?? null;
+  }
+
   lastPing(terminalId: string): { at: number; ip: string } | null {
     const p = this.activePings.get(terminalId);
     return p ? { at: p.lastPingAt, ip: p.ipAddress } : null;
