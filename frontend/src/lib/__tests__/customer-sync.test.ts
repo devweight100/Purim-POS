@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const apiFetch = vi.fn();
+const getOne = vi.fn();
 let token = 'tok-1';
 vi.mock('@/lib/api', () => ({
-  api: { customers: {}, settings: {} },
+  api: { customers: { getOne: (id: string) => getOne(id) }, settings: {} },
   apiFetch: (...args: unknown[]) => apiFetch(...args),
   getAuthToken: () => token,
 }));
@@ -67,5 +68,33 @@ describe('fetchCustomers (delta sync)', () => {
     apiFetch.mockResolvedValueOnce({ nope: true });
     await expect(svc.fetchCustomers()).rejects.toThrow();
     expect(svc.loadCustomers().map((c) => c.id)).toEqual(['a']);
+  });
+
+  it('releaseCustomers frees the list; a running request does not refill it; next load is full; ensureCustomer looks one up', async () => {
+    const svc = await import('@/lib/customer-service');
+    apiFetch.mockResolvedValueOnce({ cursor: 'v1.a', full: true, customers: [row('a', 'A')], deleted: [] });
+    await svc.fetchCustomers();
+    let resolve!: (v: unknown) => void;
+    apiFetch.mockReturnValueOnce(new Promise((r) => { resolve = r; }));
+    const running = svc.fetchCustomers();
+    svc.releaseCustomers();
+    expect(svc.loadCustomers()).toEqual([]);
+    resolve({ cursor: 'v1.b', full: false, customers: [row('b', 'B')], deleted: [] });
+    await running;
+    expect(svc.loadCustomers()).toEqual([]);
+    const calls = apiFetch.mock.calls.length;
+    await svc.refreshCustomersIfLoaded();
+    expect(apiFetch.mock.calls.length).toBe(calls);
+    // not in memory: one GET /customers/:id
+    getOne.mockResolvedValueOnce({ id: 'a', name: 'A', phone: '081', taxId: '123', address: 'บ้าน' });
+    expect(await svc.ensureCustomer('a')).toMatchObject({ id: 'a', taxId: '123', address: 'บ้าน' });
+    expect(getOne).toHaveBeenCalledWith('a');
+    apiFetch.mockResolvedValueOnce({ cursor: 'v1.c', full: true, customers: [row('a', 'A')], deleted: [] });
+    await svc.fetchCustomers();
+    expect(apiFetch).toHaveBeenLastCalledWith('/customers/sync');
+    // in memory: no request
+    getOne.mockClear();
+    expect((await svc.ensureCustomer('a'))?.name).toBe('A');
+    expect(getOne).not.toHaveBeenCalled();
   });
 });

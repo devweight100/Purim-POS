@@ -127,6 +127,34 @@ describe('product store sync', () => {
     expect(h.sync).toHaveBeenLastCalledWith(undefined);
   });
 
+  it('release() frees the catalogue, a load running at that moment does not put it back, next load is full', async () => {
+    const { useProductStore } = await import('@/lib/store/product-store');
+    h.sync.mockResolvedValueOnce({ cursor: 'c1', full: true, products: [row('a'), row('b')], deleted: [] });
+    await useProductStore.getState().fetchProducts();
+    expect(useProductStore.getState().products).toHaveLength(2);
+    let resolve!: (v: unknown) => void;
+    h.sync.mockReturnValueOnce(new Promise((r) => { resolve = r; }));
+    const running = useProductStore.getState().fetchProducts();
+    useProductStore.getState().release();
+    expect(useProductStore.getState().products).toEqual([]);
+    expect(useProductStore.getState().syncCursor).toBeNull();
+    resolve({ cursor: 'c2', full: false, products: [row('c')], deleted: [] });
+    await running;
+    expect(useProductStore.getState().products).toEqual([]);
+    // released: refreshIfLoaded does nothing; a real load starts from scratch
+    const calls = h.sync.mock.calls.length;
+    await useProductStore.getState().refreshIfLoaded();
+    expect(h.sync.mock.calls.length).toBe(calls);
+    h.sync.mockResolvedValueOnce({ cursor: 'c3', full: true, products: [row('a')], deleted: [] });
+    await useProductStore.getState().fetchProducts();
+    expect(h.sync).toHaveBeenLastCalledWith(undefined);
+    expect(useProductStore.getState().products.map((p) => p.id)).toEqual(['a']);
+    // loaded: refreshIfLoaded asks for the changes
+    h.sync.mockResolvedValueOnce({ cursor: 'c4', full: false, products: [], deleted: [] });
+    await useProductStore.getState().refreshIfLoaded();
+    expect(h.sync).toHaveBeenLastCalledWith('c3');
+  });
+
   it('server unreachable on the POS: offline cache, then a full load when back online', async () => {
     const { useProductStore } = await import('@/lib/store/product-store');
     h.sync.mockResolvedValueOnce({ cursor: 'c1', full: true, products: [row('a')], deleted: [] });
