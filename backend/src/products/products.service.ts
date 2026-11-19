@@ -7,6 +7,7 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { rethrowPrismaError } from './prisma-errors';
 import { generateProductSku } from './product-sku';
+import { deleteCheck, inUseMessage, stockWarning, type DeleteBlocker, type DeleteCheckRow } from './product-delete';
 import { cleanNameField, type NameField } from '../../../shared/src/product-names';
 import { LOOKUP_FILTERS, type LookupFilter, packChain, priceLevels, rankCandidates, searchTokens, stockLevel } from './product-lookup';
 import { addQty, assertQtyAllowed, decimalQtyAllowed, hasMax2Decimals, qn, roundQty } from '../common/qty';
@@ -540,13 +541,17 @@ export class ProductsService {
    */
   async page(opts: {
     page: number; limit: number; q?: string; categoryId?: string; supplierId?: string; stock?: string; sort?: string; dir?: string;
+    /** active (ใช้งาน) | inactive (ปิดใช้งาน) | all (default) */
+    status?: string;
     /** inventory page cards over every product; cost only counts for users who may see it */
     stats?: boolean; canViewCost?: boolean;
-  }): Promise<{ data: CatalogRow[]; meta: { total: number; page: number; limit: number; totalPages: number; allCount: number; lowStockThreshold: number }; stats?: Record<string, number> }> {
+  }): Promise<{ data: CatalogRow[]; meta: { total: number; page: number; limit: number; totalPages: number; allCount: number; inactiveCount: number; lowStockThreshold: number }; stats?: Record<string, number> }> {
     const page = Math.max(1, Math.min(1_000_000, Math.floor(opts.page || 1)));
     const limit = Math.max(1, Math.min(500, Math.floor(opts.limit || 50)));
     const stock = opts.stock || 'all';
     if (!['all', 'low', 'out', 'normal', 'negative', 'reorder'].includes(stock)) throw new BadRequestException('ตัวกรองสต็อกไม่ถูกต้อง');
+    const status = opts.status || 'all';
+    if (!['all', 'active', 'inactive'].includes(status)) throw new BadRequestException('ตัวกรองสถานะไม่ถูกต้อง');
     const dir = opts.dir === 'desc' ? 'DESC' : 'ASC';
     const collation = await this.nameCollation();
     const sortSql: Record<string, string> = {
@@ -575,6 +580,8 @@ export class ProductsService {
                      AND (ps.supplier_product_name ILIKE ${p} OR ps.supplier_sku ILIKE ${p})))`);
     }
     if (opts.categoryId) conds.push(Prisma.sql`x.category_id = ${opts.categoryId}`);
+    if (status === 'active') conds.push(Prisma.sql`x.is_active`);
+    if (status === 'inactive') conds.push(Prisma.sql`NOT x.is_active`);
     if (opts.supplierId) conds.push(Prisma.sql`EXISTS (SELECT 1 FROM product_suppliers ps WHERE ps.product_id = x.id AND ps.supplier_id = ${opts.supplierId})`);
     const settings = await this.prisma.storeSettings.findFirst({ select: { lowStockThreshold: true } });
     const thresholdRaw = Number(settings?.lowStockThreshold);
@@ -599,7 +606,7 @@ export class ProductsService {
                MIN(floor(COALESCE(s.q, 0) / COALESCE(NULLIF(bi.quantity, 0), 1) + 0.000000001)) AS q
              FROM product_bundle_items bi LEFT JOIN s ON s.product_id = bi.child_product_id GROUP BY bi.bundle_product_id),
       x AS (SELECT p.id, p.name, p.sku, p.manufacturer_name, p.category_id, p.base_price, p.cost_price, p.price_level_1, p.price_level_2, p.price_level_3,
-              p.price_level_4, p.price_level_5, p.ctid AS pos, p.is_bundle, p.is_service, NULLIF(s.avg_cost, 0) AS avg_cost,
+              p.price_level_4, p.price_level_5, p.ctid AS pos, p.is_bundle, p.is_service, p.is_active, NULLIF(s.avg_cost, 0) AS avg_cost,
               CASE WHEN p.is_bundle AND bs.pid IS NOT NULL THEN bs.q ELSE COALESCE(s.q, 0) END AS stock
             FROM products p LEFT JOIN s ON s.product_id = p.id LEFT JOIN bs ON bs.pid = p.id)`;
     const rows = await this.prisma.$queryRaw<{ id: string; total: number; unit_cost: string | null }[]>`${withX}
@@ -620,7 +627,8 @@ export class ProductsService {
         FROM x`;
       stats = Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Number(v) || 0]));
     }
-    const [{ all }] = await this.prisma.$queryRaw<{ all: number }[]>`SELECT count(*)::int AS "all" FROM products`;
+    const [{ all, inactive }] = await this.prisma.$queryRaw<{ all: number; inactive: number }[]>`
+      SELECT count(*)::int AS "all", count(*) FILTER (WHERE NOT is_active)::int AS inactive FROM products`;
     let total = rows.length ? Number(rows[0].total) : 0;
     if (!rows.length && offset > 0 && conds.length === 0) total = all;
     else if (!rows.length && offset > 0) {
@@ -641,7 +649,7 @@ export class ProductsService {
         const c = unitCostOf.get(r.id);
         return { ...r, unitCost: c === null || c === undefined ? null : Number(c) };
       });
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit), allCount: all, lowStockThreshold: threshold }, ...(stats ? { stats } : {}) };
+    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit), allCount: all, inactiveCount: inactive, lowStockThreshold: threshold }, ...(stats ? { stats } : {}) };
   }
 
   /** Remaining stock per product id (sum of its batches); `ids` limits it to those products. */
@@ -986,27 +994,127 @@ export class ProductsService {
     return this.mapProductWithStock(product);
   }
 
-  /** Products with sales, stock, purchase or claim history cannot be deleted (409): deactivate them instead. */
-  async remove(id: string) {
-    const product = await this.prisma.product.findUnique({ where: { id }, select: { id: true, name: true } });
-    if (!product) throw new NotFoundException('ไม่พบสินค้านี้');
-    const inUse = `สินค้า "${product.name}" มีประวัติการขาย สต็อก หรือการสั่งซื้อแล้ว จึงลบไม่ได้ กรุณาปิดการใช้งานสินค้า (ตั้งเป็น "ไม่ใช้งาน") แทน`;
-    const [batches, orderItems, poItems, claims, claimInv, bundles] = await Promise.all([
-      this.prisma.stockBatch.count({ where: { productId: id } }),
-      this.prisma.orderItem.count({ where: { productId: id } }),
-      this.prisma.purchaseOrderItem.count({ where: { productId: id } }),
-      this.prisma.customerClaim.count({ where: { productId: id } }),
-      this.prisma.claimInventory.count({ where: { productId: id } }),
-      this.prisma.productBundleItem.count({ where: { childProductId: id } }),
-    ]);
-    if (batches + orderItems + poItems + claims + claimInv > 0) throw new ConflictException(inUse);
-    if (bundles > 0) throw new ConflictException(`สินค้า "${product.name}" เป็นส่วนประกอบของชุดสินค้าอื่น กรุณานำออกจากชุดสินค้าก่อน หรือปิดการใช้งานแทน`);
-    try {
-      return await this.prisma.product.delete({ where: { id } });
-    } catch (err: any) {
-      if (err?.code === 'P2003') throw new ConflictException(inUse);
+  /** Delete check of products (GET /products/:id/delete-check, POST /products/delete-check). */
+  async deleteCheck(ids: string[]): Promise<DeleteCheckRow[]> {
+    return deleteCheck(this.prisma, ids);
+  }
+
+  /**
+   * Delete a product for good (docs/product-delete.md). Allowed only while no business document names it
+   * (409 PRODUCT_IN_USE with the documents listed: disable it instead). Stock still on hand must be confirmed
+   * (`confirmStock`, else 409 STOCK_CONFIRM_REQUIRED). In one transaction: its stock batches (opening stock /
+   * adjustments) and the product (barcodes, packs, photos, supplier rows, wholesale prices and its bundle rows go
+   * with it by cascade); one PRODUCT_DELETE audit entry (and a STOCK_PRODUCT_DELETE movement when stock left the
+   * shop). The product_changes trigger records the delete, so POS terminals drop it on their next delta sync.
+   * Stock movement history (audit_logs) is kept: it is the audit trail and the P&L reads stock write-offs from it.
+   */
+  async remove(id: string, opts: { confirmStock?: boolean; actor?: { id?: string; fullName?: string; username?: string } } = {}) {
+    if (typeof id !== 'string' || !id || id.length > 100) throw new NotFoundException('ไม่พบสินค้านี้');
+    return businessTransaction(this.prisma, async (tx) => {
+      // the row lock makes a sale / PO line written at the same moment wait for (and then fail on) the delete
+      const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM products WHERE id = ${id} FOR UPDATE`;
+      if (!locked.length) throw new NotFoundException('ไม่พบสินค้านี้');
+      const [check] = await deleteCheck(tx, [id]);
+      if (!check.canDelete) {
+        throw new ConflictException({
+          statusCode: 409, code: 'PRODUCT_IN_USE', message: inUseMessage(check.name, check.blockers),
+          productId: check.id, name: check.name, isActive: check.isActive, blockers: check.blockers,
+        });
+      }
+      if (check.stock !== 0 && !opts.confirmStock) {
+        throw new ConflictException({
+          statusCode: 409, code: 'STOCK_CONFIRM_REQUIRED', message: `${stockWarning(check.stock, check.unit)} กรุณายืนยันการลบอีกครั้ง`,
+          productId: check.id, name: check.name, stock: check.stock,
+        });
+      }
+      const counts = await tx.$queryRaw<Record<string, number>[]>`
+        SELECT (SELECT COUNT(*)::int FROM stock_batches WHERE product_id = ${id}) AS "stockBatches",
+               (SELECT COUNT(*)::int FROM product_barcodes WHERE product_id = ${id}) AS barcodes,
+               (SELECT COUNT(*)::int FROM product_packaging_units WHERE product_id = ${id}) AS packs,
+               (SELECT COUNT(*)::int FROM product_images WHERE product_id = ${id}) AS images,
+               (SELECT COUNT(*)::int FROM product_suppliers WHERE product_id = ${id}) AS suppliers,
+               (SELECT COUNT(*)::int FROM product_wholesale_prices WHERE product_id = ${id}) AS "wholesalePrices",
+               (SELECT COUNT(*)::int FROM product_bundle_items WHERE bundle_product_id = ${id}) AS "bundleItems"`;
+      await tx.stockBatch.deleteMany({ where: { productId: id } });
+      await tx.product.delete({ where: { id } });
+      const userName = opts.actor?.fullName || opts.actor?.username || 'ระบบ';
+      const userId = opts.actor?.id || null;
+      const details = {
+        productId: id, sku: check.sku, productName: check.name, unitName: check.unit || 'ชิ้น',
+        stock: check.stock, stockValue: check.stockValue, removed: counts[0], userName,
+      };
+      await tx.auditLog.create({ data: { userId, action: 'PRODUCT_DELETE', entity: 'Product', entityId: id, details } });
+      if (check.stock !== 0) {
+        // stock card / movements: the stock left the shop with the product (not a P&L write-off)
+        await tx.auditLog.create({
+          data: {
+            userId, action: 'STOCK_PRODUCT_DELETE', entity: 'Product', entityId: id,
+            details: {
+              productId: id, sku: check.sku, productName: check.name, unitName: check.unit || 'ชิ้น', type: 'PRODUCT_DELETE',
+              quantityChange: -check.stock, previousStock: check.stock, currentStock: 0, costValue: -check.stockValue,
+              reason: 'ลบสินค้า', referenceType: 'PRODUCT_DELETE', userName,
+            },
+          },
+        });
+      }
+      return { deleted: true, id, name: check.name, sku: check.sku, stock: check.stock, stockValue: check.stockValue };
+    }).catch((err) => {
+      // a document written between the check and the delete (foreign key) = in use
+      if (err?.code === 'P2003') throw new ConflictException({ statusCode: 409, code: 'PRODUCT_IN_USE', message: 'สินค้านี้ถูกใช้ในเอกสารแล้ว จึงลบไม่ได้ ให้ปิดการใช้งานแทน', productId: id, blockers: [] });
       rethrowPrismaError(err, { notFound: 'ไม่พบสินค้านี้' });
+    });
+  }
+
+  /**
+   * "ลบที่เลือก": deletes each product that may be deleted (each in its own transaction), and reports the others:
+   * `blocked` (named in documents: offer to disable them), `needsStockConfirm` (stock on hand, `confirmStock` not
+   * given), `notFound`.
+   */
+  async bulkRemove(ids: string[], opts: { confirmStock?: boolean; actor?: { id?: string; fullName?: string; username?: string } } = {}) {
+    const unique = [...new Set(ids)];
+    const deleted: { id: string; name: string; stock: number; stockValue: number }[] = [];
+    const blocked: { id: string; name: string; isActive: boolean; blockers: DeleteBlocker[]; message: string }[] = [];
+    const needsStockConfirm: { id: string; name: string; stock: number; unit: string }[] = [];
+    const notFound: string[] = [];
+    for (const id of unique) {
+      try {
+        const r = await this.remove(id, opts);
+        deleted.push({ id, name: r.name, stock: r.stock, stockValue: r.stockValue });
+      } catch (err: any) {
+        const body = typeof err?.getResponse === 'function' ? err.getResponse() : null;
+        if (err instanceof NotFoundException) notFound.push(id);
+        else if (body?.code === 'PRODUCT_IN_USE') blocked.push({ id, name: body.name || '', isActive: body.isActive !== false, blockers: body.blockers || [], message: body.message });
+        else if (body?.code === 'STOCK_CONFIRM_REQUIRED') {
+          const [c] = await deleteCheck(this.prisma, [id]);
+          needsStockConfirm.push({ id, name: c?.name || body.name || '', stock: c?.stock ?? body.stock, unit: c?.unit || '' });
+        } else throw err;
+      }
     }
+    return { deleted, blocked, needsStockConfirm, notFound };
+  }
+
+  /**
+   * ปิดการใช้งาน / เปิดใช้งาน (POST /products/set-active). Inactive products leave the POS catalogue (the delta sync
+   * sends the row with isActive false; terminals drop it from sale), the online shop, the mobile lookup and the
+   * pickers; checkout refuses them. They stay in documents and reports. One audit entry per product changed.
+   */
+  async setActive(ids: string[], isActive: boolean, actor?: { id?: string; fullName?: string; username?: string }) {
+    const unique = [...new Set(ids)];
+    return businessTransaction(this.prisma, async (tx) => {
+      const rows = await tx.product.findMany({ where: { id: { in: unique } }, select: { id: true, name: true, sku: true, isActive: true } });
+      const change = rows.filter((r) => r.isActive !== isActive);
+      if (change.length) {
+        await tx.product.updateMany({ where: { id: { in: change.map((r) => r.id) } }, data: { isActive } });
+        await tx.auditLog.createMany({
+          data: change.map((r) => ({
+            userId: actor?.id || null, action: isActive ? 'PRODUCT_ENABLE' : 'PRODUCT_DISABLE', entity: 'Product', entityId: r.id,
+            details: { productId: r.id, sku: r.sku, productName: r.name, isActive, userName: actor?.fullName || actor?.username || 'ระบบ' },
+          })),
+        });
+      }
+      const found = new Set(rows.map((r) => r.id));
+      return { updated: change.length, unchanged: rows.length - change.length, notFound: unique.filter((id) => !found.has(id)), isActive };
+    });
   }
 
   async removeAll() {

@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Req } from '@nestjs/common';
+import { BadRequestException, NotFoundException, Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Req } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -7,6 +7,14 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
 import { canViewCost, costFilterFor } from './cost-visibility';
 import { ServerControlService } from '../server-control/server-control.service';
+
+/** Product ids of a bulk request: 1-500 non-empty strings (400 otherwise). */
+function idList(raw: unknown): string[] {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 500 || raw.some((x) => typeof x !== 'string' || !x || x.length > 100)) {
+    throw new BadRequestException('รายการสินค้าไม่ถูกต้อง (1-500 รายการ)');
+  }
+  return raw as string[];
+}
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('products')
@@ -45,12 +53,12 @@ export class ProductsController {
 
   /**
    * Products / inventory tables: ?page&limit(<=500)&q&categoryId&supplierId&stock=all|low|out|normal|negative|reorder
-   * &sort&dir=asc|desc&stats=1 (inventory cards over every product).
+   * &sort&dir=asc|desc&stats=1 (inventory cards over every product)&status=active|inactive|all (default all).
    * Rows are GET /products catalogue rows (cost fields only for VIEW_COST), meta has total / allCount.
    */
   @Get('page')
   async pageList(@Query() query: Record<string, unknown>, @Req() req?: any) {
-    for (const k of ['page', 'limit', 'q', 'categoryId', 'supplierId', 'stock', 'sort', 'dir', 'stats']) {
+    for (const k of ['page', 'limit', 'q', 'categoryId', 'supplierId', 'stock', 'sort', 'dir', 'stats', 'status']) {
       if (query[k] !== undefined && typeof query[k] !== 'string') throw new BadRequestException('เงื่อนไขค้นหาไม่ถูกต้อง');
     }
     const str = (k: string) => (query[k] as string | undefined) || undefined;
@@ -58,6 +66,7 @@ export class ProductsController {
       page: parseInt(String(query.page ?? ''), 10) || 1,
       limit: parseInt(String(query.limit ?? ''), 10) || 50,
       q: str('q'), categoryId: str('categoryId'), supplierId: str('supplierId'), stock: str('stock'), sort: str('sort'), dir: str('dir'),
+      status: str('status'),
       stats: query.stats === '1' || query.stats === 'true', canViewCost: canViewCost(req?.user),
     });
     return { ...result, data: costFilterFor(req?.user)(result.data) };
@@ -135,11 +144,56 @@ export class ProductsController {
     return { ...result, backupFile };
   }
 
+  /**
+   * Delete check (docs/product-delete.md): per product the business documents that keep it from being deleted
+   * (`blockers`, `canDelete`) and the stock it still holds (`stock`; `stockValue` only for VIEW_COST).
+   */
+  @Get(':id/delete-check')
+  @RequirePermissions('MANAGE_INVENTORY')
+  async deleteCheckOne(@Param('id') id: string, @Req() req?: any) {
+    const [row] = await this.productsService.deleteCheck([id]);
+    if (!row) throw new NotFoundException('ไม่พบสินค้านี้');
+    return this.withoutCost(row, req?.user);
+  }
+
+  @Post('delete-check')
+  @RequirePermissions('MANAGE_INVENTORY')
+  async deleteCheckMany(@Body() body: { ids?: unknown }, @Req() req?: any) {
+    const rows = await this.productsService.deleteCheck(idList(body?.ids));
+    return rows.map((r) => this.withoutCost(r, req?.user));
+  }
+
+  /**
+   * Delete for good: only products no document names (else 409 PRODUCT_IN_USE with `blockers`: disable instead);
+   * stock still on hand needs ?confirmStock=1 (else 409 STOCK_CONFIRM_REQUIRED).
+   */
   @Delete(':id')
   @Roles('ADMIN', 'MANAGER')
   @RequirePermissions('MANAGE_INVENTORY')
-  remove(@Param('id') id: string) {
-    return this.productsService.remove(id);
+  async remove(@Param('id') id: string, @Query('confirmStock') confirmStock?: string, @Req() req?: any) {
+    const r = await this.productsService.remove(id, { confirmStock: confirmStock === '1' || confirmStock === 'true', actor: req?.user });
+    return canViewCost(req?.user) ? r : { ...r, stockValue: undefined };
+  }
+
+  /** "ลบที่เลือก": deletes what may be deleted; reports `blocked` / `needsStockConfirm` / `notFound` per product. */
+  @Post('bulk-delete')
+  @Roles('ADMIN', 'MANAGER')
+  @RequirePermissions('MANAGE_INVENTORY')
+  async bulkRemove(@Body() body: { ids?: unknown; confirmStock?: unknown }, @Req() req?: any) {
+    const r = await this.productsService.bulkRemove(idList(body?.ids), { confirmStock: body?.confirmStock === true, actor: req?.user });
+    return canViewCost(req?.user) ? r : { ...r, deleted: r.deleted.map((d) => ({ ...d, stockValue: undefined })) };
+  }
+
+  /** ปิดการใช้งาน / เปิดใช้งาน: { ids, isActive }. */
+  @Post('set-active')
+  @RequirePermissions('MANAGE_INVENTORY')
+  setActive(@Body() body: { ids?: unknown; isActive?: unknown }, @Req() req?: any) {
+    if (typeof body?.isActive !== 'boolean') throw new BadRequestException('สถานะการใช้งานไม่ถูกต้อง');
+    return this.productsService.setActive(idList(body?.ids), body.isActive, req?.user);
+  }
+
+  private withoutCost<T extends { stockValue?: number }>(row: T, user: any): T {
+    return canViewCost(user) ? row : { ...row, stockValue: undefined };
   }
 
   @Get(':id/suppliers')
