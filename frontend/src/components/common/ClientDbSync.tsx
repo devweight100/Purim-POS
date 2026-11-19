@@ -19,6 +19,10 @@ import {
   posDataPlan,
   usePosDataPolicyVersion,
 } from '@/lib/pos-data-policy';
+import { api, apiFetch, getAuthToken, ApiError } from '@/lib/api';
+import { getTerminalId } from '@/lib/terminal-id';
+import { startRealtime, RealtimeEvent } from '@/lib/realtime';
+import { clearLegacyLocalData } from '@/lib/local-data-reset';
 
 /** What this screen keeps in memory now (see pos-data-policy.ts). */
 function currentPlan() {
@@ -31,10 +35,6 @@ function currentPlan() {
 function sameRows(a: OfflineOrder[], b: OfflineOrder[]): boolean {
   return a.length === b.length && a.every((o, i) => o.clientOrderId === b[i].clientOrderId && o.syncStatus === b[i].syncStatus && o.lastError === b[i].lastError && o.ownerId === b[i].ownerId);
 }
-import { api, apiFetch, getAuthToken, ApiError } from '@/lib/api';
-import { getTerminalId } from '@/lib/terminal-id';
-import { startRealtime, RealtimeEvent } from '@/lib/realtime';
-import { clearLegacyLocalData } from '@/lib/local-data-reset';
 
 export function ClientDbSync() {
   const status = useConnectionStatus();
