@@ -1,6 +1,6 @@
 # Perf round — progress notes (delete a task's section when it is fully done)
 
-## Task 8 (round 2): back office without the POS catalogue / customer list / offline cache (owner request) — IN PROGRESS
+## Task 8 (round 2): back office without the POS catalogue / customer list / offline cache (owner request) — verification running
 
 (Numbered "Task 8" as requested; the earlier "Task 8" above is the LINE member-price bug.)
 Branch ccr-8f8b0741-si1a0o (base fed01c6). Owner: an old low-RAM laptop over Tailscale does only back-office data
@@ -30,15 +30,60 @@ entry and feels sluggish; every back-office screen also loads + delta-syncs the 
 - Orders page no longer subscribes to the whole product store (re-rendered on every catalogue delta).
 
 ### Plan
-1. [ ] Measure before (perf_t10 = prepare-database + seed-load.sh + seed-extras.sh; scratchpad/perf/t10-mem.mjs:
-       Playwright/Chromium, CDP HeapProfiler.collectGarbage + Performance.getMetrics JSHeapUsedSize, Memory.getDOMCounters,
-       every /api request over 60 s idle; raw scratchpad/perf/t10-before.txt).
-2. [ ] "Should this device keep the POS data" decision (pure, vitest) + per-device setting; ClientDbSync loads catalogue /
-       customers / offline cache only on the POS, on selling devices and for screens that need them; release on leave.
-3. [ ] Consumers of the product / customer stores on back-office screens: server lookups where a few rows suffice.
-4. [ ] Other back-office hogs (polling, re-renders, images).
-5. [ ] Playwright (no full loads on a back-office browser, POS sells / offline on a selling device, back office <-> POS),
-       after numbers, full verification, PROJECT_STATUS.
+1. [x] Measure before (perf_t10 = prepare-database + seed-load.sh + seed-extras.sh: 10k products incl. 1,000 photos /
+       packs / bundles, 5k customers, 100k bills; scratchpad/perf/t10-mem.mjs: Playwright/Chromium, CDP
+       HeapProfiler.collectGarbage x2 + Performance.getMetrics JSHeapUsedSize, Memory.getDOMCounters, every /api
+       request over 60 s idle, bytes via Network.loadingFinished; raw t10-before*.txt / t10-after*.txt).
+2. [x] pos-data-policy (vitest) + per-device setting; ClientDbSync loads / releases; product store + customer list
+       release with an epoch guard (vitest).
+3. [x] Back-office consumers switched to on-demand / server lookups (see Decisions).
+4. [x] Other hogs: reports page recomputed every report every 15 s (now: after a realtime data change, else once a
+       minute); outbox status re-rendered ClientDbSync every 3 s (now only when the rows change); /categories fetched
+       twice per tick (once now); orders page subscribed to the whole product store.
+5. [x] Playwright 25-pos-data (3 tests), after numbers, full verification, PROJECT_STATUS.
+
+### Before / after (perf_t10, one Chromium per row: log in (lands on /pos), open the screen, idle 60 s, then GC)
+JS heap = JSHeapUsedSize after 2 forced GCs. "open kB" = bytes over the wire from opening the screen to +3 s (brotli).
+Open time = page.goto -> screen shows its data (single runs; +-0.3 s noise, the POS loads in the background of
+the login). Back-office device = automatic setting, never sold here (the owner's laptop).
+
+| screen | before heap / req/min / open / open kB | after, back-office device | after, selling device |
+|---|---|---|---|
+| /products | 27.6 MB / 37 / 0.70 s / 430 kB | **15.1 MB / 25 / 1.0 s / 64 kB** | 27.8 MB / 33 |
+| /dashboard | 24.4 MB / 37 / 0.62 s / 427 kB | **12.0 MB / 25 / 0.52 s / 62 kB** | |
+| /orders | 24.6 MB / 37 / 0.76-2.0 s / 426 kB | **11.9 MB / 25 / 1.17 s / 58 kB** | |
+| /customers | 27.6 MB / 37 / 0.42 s / 424 kB | **15.1 MB / 25 / 0.66 s / 57 kB** | |
+| /reports | 25.6 MB / 41 (4 full report recomputes) / 0.39 s | **12.5 MB / 25 (0-1 report reloads) / 0.50 s** | |
+| POS -> products (in-app) | 29.4 MB / 37 | **17.0 MB / 25** (released 1.5 s after leaving) | 29.5 MB / 33 |
+| /pos | 23.8 MB / 57 / 1.6-1.8 s (3 runs) / 970 kB | 23.6 MB / 53 / 1.4-1.6 s (3 runs) / 971 kB | 23.7 MB / 53 |
+| back office -> POS (in-app) | 0.08-0.09 s | 1.5 s (catalogue loaded again) | **0.08-0.10 s** (kept warm) |
+
+Idle requests on a back-office device: settings, ping, auth/me, shifts/current, categories, bank-accounts every 15 s
+(+ online-shop counts every 60 s) = 25/min; gone: products/sync, customers/sync, the second /categories, reports.
+The POS itself: same requests minus the duplicate /categories (57 -> 53/min), same full + delta loads.
+
+### Verification
+frontend tsc, eslint 0 errors (src + e2e), vitest 279 (new pos-data-policy 11, product release 1, customer
+release / ensureCustomer 1), next build, Playwright full suite (see PROJECT_STATUS), new 25-pos-data 3/3.
+Backend and desktop untouched.
+
+### Behaviour changes
+- Back-office-only browser: catalogue / customer list not in memory outside the POS; leaving the POS frees them.
+  Going back to the POS on such a device loads the catalogue again (1.5 s on 10k products) instead of 0.1 s.
+- A4 reprint on the orders page reads the customer with GET /customers/:id when the list is not in memory.
+- Reports page: background refresh after a data change (realtime) or once a minute, was every 15 s.
+- New per-device card in Settings > เครื่องพิมพ์และลิ้นชัก (screenshots scratchpad/t10-shots/{before,after}-
+  settings-devices-{1366,1920}.png; no horizontal scroll).
+
+### Not done / follow-ups
+- Login always lands on /pos (homePathFor), so a back-office laptop downloads the catalogue once per login before
+  the owner moves on; a device set to "ไม่ใช้ขาย" could land on /dashboard (behaviour change, owner's call).
+- Back-office tick still asks settings / profile / current shift / categories / bank accounts every 15 s (25/min,
+  ~6 kB/min); categories + bank accounts could follow realtime events on non-selling devices.
+- The POS asks /products/sync twice per 15 s (useProductAutoRefresh + ClientDbSync tick; empty deltas, 100 B each);
+  left as is (selling behaviour untouched).
+- PO photo preview strip uses full-size photos for its small thumbnails (?size=thumb exists); products page keeps the
+  catalogue after "export / import / bundle edit" until the screen is left (explicit actions).
 
 ## Task 9: product SKU = permanent system ID + narrower name column (owner request) — DONE (PROJECT_STATUS 2026-11-18)
 
