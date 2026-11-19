@@ -6,6 +6,29 @@
 Branch ccr-8f8b0741-si1a0o (base fed01c6). Owner: an old low-RAM laptop over Tailscale does only back-office data
 entry and feels sluggish; every back-office screen also loads + delta-syncs the whole POS catalogue and customer list.
 
+### Decisions
+- One pure decision, `frontend/src/lib/pos-data-policy.ts` `posDataPlan({path, sellingDevice, productDemand,
+  customerDemand})`: /pos -> keep both; selling device -> keep both on every screen; /m -> nothing; otherwise only the
+  part a mounted screen asked for (`usePosDataDemand` / `acquirePosData`). ClientDbSync's 15 s tick and its realtime
+  refresh follow it; when the plan drops a part (screen change, dialog closed) the product store `release()`s
+  (products [], cursor reset, an in-flight load cannot refill it: epoch) and `releaseCustomers()` (same), 1.5 s later.
+  IndexedDB offline copy is written only by product-store loads, so it follows the same rule (no writes on a
+  back-office-only device; the copy on disk is kept, it costs no RAM).
+- Selling device (`decideSellingDevice`, vitest): explicit per-device setting wins (Settings > เครื่องพิมพ์และลิ้นชัก >
+  "เครื่องนี้ใช้ขายหน้าร้าน (เก็บข้อมูลไว้ใช้ตอนออฟไลน์)": อัตโนมัติ / ใช้ขาย / ไม่ใช้ขาย, localStorage
+  `purim_selling_device`). Automatic: desktop app that opened the POS screen (POS session; the app starts on /pos) ->
+  ON; a browser that completed a bill here (`purim_sold_here`, set by PaymentModal for server and offline bills) or has
+  bills in the offline outbox -> ON; any other browser -> OFF. "Opened the POS" alone is NOT used for browsers: login
+  always lands on /pos (homePathFor), so the owner's back-office laptop would count as selling after its first login.
+- Back-office consumers: orders page A4 reprint = `ensureCustomer(id)` (GET /customers/:id when the list is not in
+  memory; the bill list only carries id/name/phone); orders "edit items / repeat" and online-order "open in POS"
+  load the catalogue on click (they go to the POS anyway); after-save refreshes (product form / actions / bulk bar,
+  stock adjust, void, claims, supplier returns, PO, reset) use `refreshIfLoaded` / `refreshCustomersIfLoaded`
+  (no full download on a device that does not hold the list). Demand: PO page (item picker, receive stock, photos),
+  inventory adjust dialog, claim modal, supplier-return create dialog, online-order product picker. Categories for
+  back-office filters come from the 15 s tick's /categories (the store's catalogue load fetched them before).
+- Orders page no longer subscribes to the whole product store (re-rendered on every catalogue delta).
+
 ### Plan
 1. [ ] Measure before (perf_t10 = prepare-database + seed-load.sh + seed-extras.sh; scratchpad/perf/t10-mem.mjs:
        Playwright/Chromium, CDP HeapProfiler.collectGarbage + Performance.getMetrics JSHeapUsedSize, Memory.getDOMCounters,
