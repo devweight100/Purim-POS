@@ -25,20 +25,30 @@ async function newBrowserPage(browser: Browser): Promise<{ ctx: BrowserContext; 
   const page = await ctx.newPage();
   await uiLogin(page, ADMIN.username, ADMIN.password);
   await expect(page).toHaveURL(/\/pos/);
+  await openShiftIfAsked(page);
+  await expect(page.getByText(ITEM.name).first()).toBeVisible({ timeout: 30_000 });
   return { ctx, page };
 }
 
 /** In-app navigation (sidebar links use the same router; no full page load). */
 async function goInApp(page: Page, path: string) {
-  await page.evaluate((p) => (window as unknown as { next: { router: { push: (p: string) => void } } }).next.router.push(p), path);
-  await expect(page).toHaveURL(new RegExp(path.replace('/', '\\/') + '(\\?|$)'));
+  await page.waitForFunction(() => Boolean((window as unknown as { next?: { router?: unknown } }).next?.router));
+  await expect(async () => {
+    if (new URL(page.url()).pathname !== path.split('?')[0])
+      await page.evaluate((p) => (window as unknown as { next: { router: { push: (p: string) => void } } }).next.router.push(p), path);
+    await expect(page).toHaveURL((u) => u.pathname === path.split('?')[0], { timeout: 3000 });
+  }).toPass({ timeout: 20_000 });
 }
 
 async function openShiftIfAsked(page: Page) {
   const dlg = page.getByRole('dialog').filter({ hasText: 'ระบุเงินในลิ้นชัก' });
   if (await dlg.waitFor({ timeout: 4000 }).then(() => true, () => false)) {
-    await dlg.getByLabel('ยอดเงินรวมในลิ้นชัก').fill('500');
-    await dlg.getByRole('button', { name: 'ตกลง' }).click();
+    const reuse = dlg.getByRole('button', { name: 'ใช้กะนี้ต่อที่เครื่องนี้' });
+    if (await reuse.isVisible()) await reuse.click();
+    else {
+      await dlg.getByLabel('ยอดเงินรวมในลิ้นชัก').fill('500');
+      await dlg.getByRole('button', { name: 'ตกลง' }).click();
+    }
     await expect(dlg).toBeHidden();
   }
 }
@@ -99,6 +109,7 @@ test('back office -> POS -> back office on a back-office device: POS loads and s
   page.on('request', (r) => { if (isPosData(r)) seen.push(r.url()); });
   // to the POS: the catalogue is loaded again (full), scanning works
   await goInApp(page, '/pos');
+  await openShiftIfAsked(page);
   await expect(page.getByText(ITEM.name).first()).toBeVisible({ timeout: 30_000 });
   expect(seen.some((u) => /\/products\/sync$/.test(u))).toBe(true);
   await scan(page, ITEM.barcode);
@@ -117,7 +128,6 @@ test('back office -> POS -> back office on a back-office device: POS loads and s
 test('selling device: POS sells by scanning; back-office screens keep the data warm; offline selling still works', async ({ browser }) => {
   test.setTimeout(180_000);
   const { ctx, page } = await newBrowserPage(browser);
-  await openShiftIfAsked(page);
   await expect(page.getByText(ITEM.name).first()).toBeVisible({ timeout: 30_000 });
   const before = await ordersOfItem();
   await scan(page, ITEM.barcode);
