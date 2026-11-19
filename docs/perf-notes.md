@@ -1,6 +1,6 @@
 # Perf round — progress notes (delete a task's section when it is fully done)
 
-## Task 8 (round 2): back office without the POS catalogue / customer list / offline cache (owner request) — verification running
+## Task 8 (round 2): back office without the POS catalogue / customer list / offline cache (owner request) — DONE (PROJECT_STATUS 2026-11-19)
 
 (Numbered "Task 8" as requested; the earlier "Task 8" above is the LINE member-price bug.)
 Branch ccr-8f8b0741-si1a0o (base fed01c6). Owner: an old low-RAM laptop over Tailscale does only back-office data
@@ -64,7 +64,7 @@ The POS itself: same requests minus the duplicate /categories (57 -> 53/min), sa
 
 ### Verification
 frontend tsc, eslint 0 errors (src + e2e), vitest 279 (new pos-data-policy 11, product release 1, customer
-release / ensureCustomer 1), next build, Playwright full suite (see PROJECT_STATUS), new 25-pos-data 3/3.
+release / ensureCustomer 1), next build, Playwright 85/85 on a fresh DB (new 25-pos-data 3/3; existing perf specs 07/08 included).
 Backend and desktop untouched.
 
 ### Behaviour changes
