@@ -55,7 +55,7 @@ test('photos by URL in the POS and the products page; delta sync; saving keeps p
   const tableRow = page.locator('tr', { hasText: 'สินค้ามีรูป E2E' }).first();
   await expect(tableRow).toBeVisible();
   await expect(tableRow.locator('img')).toHaveCount(0);
-  await tableRow.locator('button:has(svg.lucide-pencil)').click();
+  await tableRow.locator('td').nth(2).click(); // row click opens the edit form (the pencil became the ⋯ menu)
   const dialog = page.getByRole('dialog');
   const formImg = dialog.locator(`img[src="/api/product-images/${imageId}"]`);
   await expect(formImg).toBeVisible();

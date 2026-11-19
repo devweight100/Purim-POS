@@ -74,8 +74,8 @@ test('BUG-07/08: products table fits, rows open the edit form by click or arrows
   await search.fill(String(TAG));
   const row = page.locator('[data-row-nav]').filter({ hasText: LONG });
   await expect(row).toBeVisible();
-  // the edit button is on screen without scrolling sideways
-  const edit = row.getByRole('button', { name: `แก้ไข ${LONG}` });
+  // the row's ⋯ actions button is on screen without scrolling sideways
+  const edit = row.getByRole('button', { name: `จัดการสินค้า ${LONG}` });
   const box = (await edit.boundingBox())!;
   expect(box.x + box.width).toBeLessThanOrEqual(SIZES[2].width);
   expect(await horizontalOverflow(page)).toEqual([]);

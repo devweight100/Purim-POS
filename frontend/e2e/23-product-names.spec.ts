@@ -76,7 +76,8 @@ test('product form: ชื่อผู้ผลิต under the name, ชื่�
   const row = page.locator('tr', { hasText: name });
   await expect(row).toHaveCount(1);
   await expect(row.getByTestId('search-match-hint')).toHaveText(`รหัสผู้ขาย: EL-${TAG}`);
-  await row.getByRole('button', { name: `แก้ไข ${name}` }).click();
+  await row.getByRole('button', { name: `จัดการสินค้า ${name}` }).click();
+  await page.getByRole('menuitem', { name: 'แก้ไข' }).click();
   const edit = page.getByRole('dialog').filter({ hasText: 'แก้ไขสินค้า' });
   await expect(edit.getByLabel('ชื่อผู้ผลิต (ไม่บังคับ)')).toHaveValue(`SCG Elbow 90 1in ${TAG}`);
   await expect(edit.getByLabel('ชื่อสินค้าของผู้ขาย 1')).toHaveValue(`ข้องอ PVC 1นิ้ว ${TAG}`);

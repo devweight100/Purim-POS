@@ -101,7 +101,7 @@ test('table: name only (no photo, no barcodes, no code), pack link, narrow categ
       expect(nameBox.x + nameBox.width).toBeLessThanOrEqual(cellBox.x + cellBox.width + 1);
       const tableBox = (await table.boundingBox())!;
       expect(cellBox.width).toBeLessThan(tableBox.width * 0.5);
-      const edit = long.getByRole('button', { name: `แก้ไข ${LONG}` });
+      const edit = long.getByRole('button', { name: `จัดการสินค้า ${LONG}` });
       const editBox = (await edit.boundingBox())!;
       expect(editBox.x + editBox.width).toBeLessThanOrEqual(size.width);
       if (SHOTS && size.width === 1366) await page.screenshot({ path: path.join(SHOTS, `products-table${collapsed ? '-collapsed' : ''}.png`) });
