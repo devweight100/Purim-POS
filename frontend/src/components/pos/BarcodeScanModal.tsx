@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { useState, useRef, useEffect } from 'react';
 import { ScanLine } from 'lucide-react';
 import { useCartStore } from '@/lib/store/cart-store';
-import { useProductStore } from '@/lib/store/product-store';
+import { sellableProducts, useProductStore } from '@/lib/store/product-store';
 import { getProductPackagingUnits } from '@/lib/cart-pricing';
 import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
 import { toast } from 'sonner';
@@ -19,7 +19,8 @@ export function BarcodeScanModal({ open, onOpenChange }: BarcodeScanModalProps) 
   const [barcode, setBarcode] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const cart = useCartStore();
-  const { products } = useProductStore();
+  // disabled products (ปิดการใช้งาน) are not sold
+  const products = sellableProducts(useProductStore((s) => s.products));
 
   // closing clears the typed code
   const openChanged = useHasChanged(open);

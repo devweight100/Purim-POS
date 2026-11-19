@@ -57,6 +57,8 @@ export interface ProductRecord {
   supplierEntries?: Array<{ supplierId?: string; supplierName?: string; lastCost?: number | string | null; unitCost?: number | string | null; notes?: string | null; supplierSku?: string | null; supplierProductName?: string | null }>;
   imageUrl?: string | null;
   defaultSellingUnitId?: string | null;
+  /** false = ปิดการใช้งาน */
+  isActive?: boolean;
 }
 
 export interface CategoryOption {

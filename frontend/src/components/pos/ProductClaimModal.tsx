@@ -14,7 +14,7 @@ import { ClaimEligibleItem, ClaimResolutionType, ClaimRecord, Product, ProductUn
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useAuthStore } from '@/lib/store/auth-store';
-import { useProductStore } from '@/lib/store/product-store';
+import { sellableProducts, useProductStore } from '@/lib/store/product-store';
 import { loadCustomers } from '@/lib/customer-service';
 import { BankAccount, loadBankAccounts } from '@/lib/bank-account-storage';
 import { Button } from '@/components/ui/button';
@@ -197,7 +197,8 @@ export function ProductClaimModal({
     const q = replacementSearch.toLowerCase().trim();
     const matches: Array<{ product: Product; unit: ProductUnit }> = [];
 
-    products.forEach((p) => {
+    // a disabled product (ปิดการใช้งาน) is not handed out as a replacement
+    sellableProducts(products).forEach((p) => {
       (p.units || []).forEach((u) => {
         const nameMatch = (p.name || '').toLowerCase().includes(q);
         const skuMatch = (p.sku || '').toLowerCase().includes(q);

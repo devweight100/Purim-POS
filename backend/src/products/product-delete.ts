@@ -1,4 +1,7 @@
 import { Prisma } from '@prisma/client';
+import { stockWarning } from '../../../shared/src/product-delete';
+
+export { stockWarning };
 
 /**
  * Deleting a product (owner 2026-11-19, docs/product-delete.md).
@@ -46,15 +49,6 @@ export function blockerTexts(counts: Partial<Record<BlockerCode, number>>): Dele
 export function inUseMessage(name: string, blockers: DeleteBlocker[]): string {
   return `ลบสินค้า "${name}" ไม่ได้ เพราะมี${blockers.map((b) => b.text).join(', ')} ที่อ้างถึงสินค้านี้ ` +
     'เอกสารเหล่านี้ต้องเก็บไว้ จึงลบสินค้าไม่ได้ ให้ "ปิดการใช้งาน" แทน: สินค้าจะหายจากหน้าขาย ร้านออนไลน์ และการค้นหาเลือกสินค้า แต่ยังอยู่ในประวัติและรายงาน';
-}
-
-/** Stock on hand text for the delete confirmation, e.g. "ยังมีสต็อก 24 ชิ้น มูลค่าทุน ฿288 จะถูกลบออกจากคลัง". */
-export function stockWarning(qty: number, unit: string, value?: number | null): string {
-  const q = qty.toLocaleString('en-US', { maximumFractionDigits: 2 });
-  const v = value !== undefined && value !== null
-    ? ` มูลค่าทุน ฿${value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
-    : '';
-  return `ยังมีสต็อก ${q} ${unit || 'ชิ้น'}${v} จะถูกลบออกจากคลัง`;
 }
 
 export interface DeleteCheckRow {

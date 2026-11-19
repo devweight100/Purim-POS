@@ -3,7 +3,7 @@
 import { toast } from 'sonner';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useShiftStore } from '@/lib/store/shift-store';
-import { useProductStore } from '@/lib/store/product-store';
+import { sellableProducts, useProductStore } from '@/lib/store/product-store';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useCustomerById } from '@/lib/customer-service';
 import type { Product, ProductUnit } from '@/lib/types';
@@ -25,7 +25,9 @@ export function usePosController(variant: PosVariant) {
   const cart = useCartStore();
   const isShiftOpen = useShiftStore((s) => s.isShiftOpen());
   const user = useAuthStore((s) => s.user);
-  const { products, categories, fetchProducts } = useProductStore();
+  const { products: allProducts, categories, fetchProducts } = useProductStore();
+  // disabled products (ปิดการใช้งาน) are not sold: left out of the grid, the search and the scanner
+  const products = sellableProducts(allProducts);
 
   const mounted = useIsClient();
   const dialogs = usePosDialogs();

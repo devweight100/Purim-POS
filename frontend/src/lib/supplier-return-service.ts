@@ -2,7 +2,7 @@ import {
   ClaimRecord, SupplierReturnNote, SupplierReturnItem, SupplierReturnItemType, Product,
   ApiSupplier, ApiPurchaseOrder, ApiSupplierReturnNote, ApiListResponse, apiListRows,
 } from './types';
-import { useProductStore } from './store/product-store';
+import { sellableProducts, useProductStore } from './store/product-store';
 import { apiFetch, api } from './api';
 import { grossPerUnit } from '@shared/po-calc';
 import { errorText } from './api-error';
@@ -317,7 +317,8 @@ export function resolveProductSupplierAndCost(productId: string, sku?: string): 
 
 // ─── Query Products that Belong to a Specific Supplier ───
 export function getProductsBySupplier(supplierId: string): Product[] {
-  const storeProducts: Product[] = useProductStore.getState().products || [];
+  // item picker of a supplier return: disabled products (ปิดการใช้งาน) are left out
+  const storeProducts: Product[] = sellableProducts(useProductStore.getState().products || []);
 
   const pos = loadPurchaseOrders();
   const supplierPos = pos.filter(

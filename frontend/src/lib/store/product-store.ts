@@ -159,6 +159,25 @@ async function loadProducts(opts?: { offlineCache?: boolean }): Promise<void> {
   }
 }
 
+/** A product that may be sold / picked (not ปิดการใช้งาน). Rows without the flag (old offline cache) count as active. */
+export function isSellable(p: { isActive?: boolean | null }): boolean {
+  return p.isActive !== false;
+}
+
+const sellableCache = new WeakMap<readonly Product[], Product[]>();
+/**
+ * The products that may be sold / picked: the POS, the item pickers (PO, adjust stock, claims, supplier returns,
+ * bundle items) leave disabled products out. The store keeps every product, so documents and history still find
+ * a disabled product by id. Same input array = same output array (memo for React).
+ */
+export function sellableProducts<T extends Product>(products: readonly T[]): T[] {
+  const hit = sellableCache.get(products);
+  if (hit) return hit as T[];
+  const out = products.every(isSellable) ? (products as T[]) : products.filter(isSellable);
+  sellableCache.set(products, out);
+  return out;
+}
+
 /** Cover photo of a product: its small copy (catalogue rows carry URLs), else old cached rows' base64 data. */
 function coverImage(p: ApiProduct | CachedProduct): string | null {
   const images = Array.isArray(p.images) ? p.images : [];
@@ -285,6 +304,7 @@ export function toStoreProduct(p: ApiProduct | CachedProduct): Product {
     supplierId: p.supplierId || preferredSupplier?.supplierId || null,
     isBundle: Boolean(p.isBundle),
     bundleItems: Array.isArray(p.bundleItems) ? p.bundleItems : [],
+    isActive: p.isActive !== false,
     minStockAlert:
       p.minStockAlert !== undefined && p.minStockAlert !== null
         ? Number(p.minStockAlert)

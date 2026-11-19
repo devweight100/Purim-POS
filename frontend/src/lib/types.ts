@@ -95,6 +95,8 @@ export interface Product {
   wholesalePrices?: ProductWholesalePrice[];
   isBundle?: boolean;
   bundleItems?: ProductBundleItem[];
+  /** false = ปิดการใช้งาน: not sold, not offered in pickers / the online shop; stays in documents and reports */
+  isActive?: boolean;
 }
 
 export interface Category {

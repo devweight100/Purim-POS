@@ -6,7 +6,7 @@ import { useOnlineCounts } from '@/lib/online-orders';
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useCartStore, validateDiscount } from '@/lib/store/cart-store';
-import { useProductStore } from '@/lib/store/product-store';
+import { sellableProducts, useProductStore } from '@/lib/store/product-store';
 import { Product, CartItem, ProductUnit } from '@/lib/types';
 import { getProductAvailableUnits, getDefaultSelectedUnit } from '@/lib/product-unit-helpers';
 import { 
@@ -80,7 +80,8 @@ export function PosListLayout({
   const onlinePayable = useOnlineCounts((s) => s.counts?.payable || 0);
   const cart = useCartStore();
   const backOfficeHome = backOfficeHomeFor(useAuthStore((st) => st.user));
-  const { products } = useProductStore();
+  // disabled products (ปิดการใช้งาน) are not sold
+  const products = sellableProducts(useProductStore((s) => s.products));
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);

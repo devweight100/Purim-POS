@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useDocumentSearchStore } from '@/lib/store/document-search-store';
+import { isSellable, useProductStore } from '@/lib/store/product-store';
 import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
 import { findProductByScannedCode, useGlobalBarcodeScanner } from '@/lib/use-scanner';
 import type { Product } from '@/lib/types';
@@ -60,7 +61,10 @@ export function usePosScanner({ variant, enabled, products, blocked, onProductAd
       }
     } else {
       const docCode = findDocumentCode(raw, convertedCode);
-      if (docCode) {
+      const disabled = docCode ? null : findProductByScannedCode(useProductStore.getState().products.filter((p) => !isSellable(p)), raw);
+      if (disabled) {
+        toast.error(`สินค้า "${disabled.product.name}" ถูกปิดการใช้งาน จึงขายไม่ได้ (เปิดใช้งานได้ที่หน้า รายการสินค้า & ราคา)`);
+      } else if (docCode) {
         toast.info(`🔍 ตรวจพบบาร์โค้ดเอกสาร: ${docCode.toUpperCase()} เปิดหน้าค้นหาทันที...`);
         useDocumentSearchStore.getState().openSearch(docCode.toUpperCase());
       } else {

@@ -7,7 +7,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import Link from 'next/link';
-import { toStoreProduct, useProductStore } from '@/lib/store/product-store';
+import { isSellable, toStoreProduct, useProductStore } from '@/lib/store/product-store';
 import type { ApiProduct, Product } from '@/lib/types';
 import { displayUnitCost } from '@/lib/product-cost';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -299,9 +299,9 @@ export default function InventoryPage() {
   const openAdjustDialog = (prod: InvProduct | null = null) => {
     // the product list of the dialog needs every product (store catalogue, delta-synced after the first load)
     void fetchProducts().then(() => {
-      if (!prod) setTargetProduct((cur) => cur || useProductStore.getState().products[0] || null);
+      if (!prod) setTargetProduct((cur) => cur || useProductStore.getState().products.find(isSellable) || null);
     });
-    setTargetProduct(prod || products[0] || null);
+    setTargetProduct(prod || products.find(isSellable) || null);
     setAdjustType('ADD');
     setAdjustAmount('');
     setAdjustReason(''); // no preset reason: the user picks one (BUG-10)
@@ -1129,9 +1129,10 @@ export default function InventoryPage() {
                 }}
                 className="w-full h-11 rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 shadow-2xs"
               >
-                {products.map((p: InvProduct) => (
+                {/* disabled products are left out of the list (one opened from its own row stays selectable) */}
+                {products.filter((p: InvProduct) => isSellable(p) || p.id === targetProduct?.id).map((p: InvProduct) => (
                   <option key={p.id} value={p.id}>
-                    [{p.sku || '-'}] {p.name} (คงเหลือ: {p.stock ?? 0} {p.unit || 'ชิ้น'})
+                    [{p.sku || '-'}] {p.name} (คงเหลือ: {p.stock ?? 0} {p.unit || 'ชิ้น'}){isSellable(p) ? '' : ' · ปิดใช้งาน'}
                   </option>
                 ))}
               </select>

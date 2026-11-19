@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Plus, PackageOpen } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { useProductStore } from '@/lib/store/product-store';
+import { sellableProducts, useProductStore } from '@/lib/store/product-store';
 import { addQty, parseQty, subQty, useAllowDecimalQty } from '@/lib/qty';
 
 import PurchaseOrderPdfModal, { PurchaseOrderData } from '@/components/pos/PurchaseOrderPdfModal';
@@ -25,7 +25,7 @@ import { PoReceiveDialog, PoUnderReceiveDialog } from './_components/PoReceiveDi
 import { PoDetailDialog } from './_components/PoDetailDialog';
 import { PoIssueDialog, PoStatusChangeDialog, PoCancelDialog } from './_components/PoActionDialogs';
 
-/** The server's product list (loaded once into the product store). */
+/** The server's product list (loaded once into the product store) for the item picker: disabled products left out. */
 async function loadAllProducts(): Promise<PoProductLike[]> {
   let prods = useProductStore.getState().products;
   if (!prods || prods.length === 0) {
@@ -37,7 +37,7 @@ async function loadAllProducts(): Promise<PoProductLike[]> {
     if (err) toast.error('โหลดสินค้าจากเซิร์ฟเวอร์ไม่ได้: ' + err);
     return [];
   }
-  return prods || [];
+  return sellableProducts(prods || []);
 }
 
 export default function PurchaseOrdersPage() {

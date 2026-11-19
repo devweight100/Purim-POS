@@ -129,7 +129,8 @@ export function BundleItemsSection({ form, setForm, products, editingProductId }
                   >
                     <option value="">-- เลือกสินค้า --</option>
                     {products
-                      .filter((p) => p.id !== editingProductId && !p.isBundle)
+                      // disabled products are not offered (one already in the bundle stays listed)
+                      .filter((p) => p.id !== editingProductId && !p.isBundle && (p.isActive !== false || p.id === bi.childProductId))
                       .map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name} ({p.sku}) - สต็อก: {p.stock ?? 0} {p.unit || "ชิ้น"}
