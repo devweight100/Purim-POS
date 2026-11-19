@@ -3091,4 +3091,151 @@ d('store flow (e2e)', () => {
       await api('get', `/purchase-orders/match-line?supplierId=${pn.s1.id}&text=x`, C).expect(403);
     });
   });
+
+  describe('product delete / disable (owner 2026-11-19, docs/product-delete.md)', () => {
+    const pd: Record<string, any> = {};
+    const check = async (id: string, token = A) => (await api('get', `/products/${id}/delete-check`, token).expect(200)).body;
+    const sync = async (since: string) => (await api('get', `/products/sync?since=${encodeURIComponent(since)}`, A).expect(200)).body;
+    const make = async (name: string, extra: Record<string, unknown> = {}) =>
+      (await api('post', '/products', A, { name, basePrice: 20, costPrice: 12, priceLevel1: 20, ...extra }).expect(201)).body;
+
+    it('never-sold product with an opening stock adjustment and a supplier: hard delete removes its own data', async () => {
+      const sup = (await api('post', '/suppliers', A, { name: 'ผู้ขายลบสินค้า e2e' }).expect(201)).body;
+      const p = await make('สินค้าไม่เคยขาย e2e ลบได้', {
+        supplierEntries: [{ supplierId: sup.id, unitCost: 12, supplierSku: 'DEL-01' }],
+        barcodes: ['8850000990011'],
+        packagingUnits: [{ name: 'แพ็ค', qtyPerPrev: 6, barcode: '8850000990028', priceLevel1: 110 }],
+        wholesalePrices: [{ minQuantity: 10, unitPrice: 18 }],
+      });
+      await api('post', '/inventory/adjust', A, { productId: p.id, type: 'SET', amount: 24, reason: 'ยอดยกมา' }).expect(201);
+      const before = (await sync('')).cursor;
+
+      const c = await check(p.id);
+      expect(c).toMatchObject({ canDelete: true, blockers: [], stock: 24, stockValue: 288, unit: 'ชิ้น', isActive: true });
+      // stock on hand must be confirmed; nothing is deleted without it
+      const r409 = await api('delete', `/products/${p.id}`, A).expect(409);
+      expect(r409.body).toMatchObject({ code: 'STOCK_CONFIRM_REQUIRED', stock: 24 });
+      expect(r409.body.message).toContain('ยังมีสต็อก 24 ชิ้น');
+      await api('delete', `/products/${p.id}?confirmStock=1`, C).expect(403); // cashier
+      const ok = (await api('delete', `/products/${p.id}?confirmStock=1`, A).expect(200)).body;
+      expect(ok).toMatchObject({ deleted: true, id: p.id, stock: 24, stockValue: 288 });
+
+      const db = new PrismaClient();
+      try {
+        expect(await db.product.count({ where: { id: p.id } })).toBe(0);
+        expect(await db.stockBatch.count({ where: { productId: p.id } })).toBe(0);
+        expect(await db.productSupplier.count({ where: { productId: p.id } })).toBe(0);
+        expect(await db.productBarcode.count({ where: { productId: p.id } })).toBe(0);
+        expect(await db.productPackagingUnit.count({ where: { productId: p.id } })).toBe(0);
+        expect(await db.productWholesalePrice.count({ where: { productId: p.id } })).toBe(0);
+        expect(await db.supplier.count({ where: { id: sup.id } })).toBe(1); // the supplier stays
+        const logs = await db.auditLog.findMany({ where: { entityId: p.id }, orderBy: { createdAt: 'asc' } });
+        const del = logs.find((l) => l.action === 'PRODUCT_DELETE');
+        expect(del?.details).toMatchObject({ productName: p.name, stock: 24, stockValue: 288, removed: { stockBatches: 1, suppliers: 1, barcodes: 1, packs: 1, wholesalePrices: 1 } });
+        // the stock card keeps its history and shows the stock leaving with the product
+        expect(logs.map((l) => l.action)).toEqual(expect.arrayContaining(['STOCK_ADJUST_ADD', 'STOCK_PRODUCT_DELETE']));
+      } finally {
+        await db.$disconnect();
+      }
+      // POS terminals drop it on their next delta sync; barcode lookup no longer finds it
+      const delta = await sync(before);
+      expect(delta.deleted).toContain(p.id);
+      await api('get', `/products/${p.id}/delete-check`, A).expect(404);
+      await api('delete', `/products/${p.id}?confirmStock=1`, A).expect(404);
+    });
+
+    it('a sold product is refused with the documents named, and stays', async () => {
+      const c = await check(state.p.id);
+      expect(c.canDelete).toBe(false);
+      expect(c.blockers.map((b: any) => b.code)).toContain('SALE');
+      const sale = c.blockers.find((b: any) => b.code === 'SALE');
+      expect(sale.text).toBe(`บิลขาย ${sale.count} ใบ`);
+      const r = await api('delete', `/products/${state.p.id}?confirmStock=1`, A).expect(409);
+      expect(r.body.code).toBe('PRODUCT_IN_USE');
+      expect(r.body.message).toContain(`มีบิลขาย ${sale.count} ใบ`);
+      expect(r.body.message).toContain('ปิดการใช้งาน');
+      expect(r.body.blockers.length).toBeGreaterThan(0);
+      await api('get', `/products/${state.p.id}`, A).expect(200);
+      // a PO line alone blocks too; a product that is part of a bundle as well
+      const onPo = await make('สินค้าอยู่ในใบสั่งซื้อ e2e');
+      const sup = (await api('post', '/suppliers', A, { name: 'ผู้ขาย PO ลบ e2e' }).expect(201)).body;
+      await api('post', '/purchase-orders', A, { supplierId: sup.id, items: [{ productId: onPo.id, quantity: 2, unitCost: 10 }] }).expect(201);
+      expect((await check(onPo.id)).blockers.map((b: any) => b.text)).toEqual(['ใบสั่งซื้อ 1 ใบ']);
+      const child = await make('สินค้าส่วนประกอบชุด e2e');
+      await make('ชุดสินค้า e2e ลบ', { isBundle: true, bundleItems: [{ childProductId: child.id, quantity: 2 }] });
+      expect((await check(child.id)).blockers.map((b: any) => b.code)).toEqual(['BUNDLE']);
+      pd.onPo = onPo;
+      await api('get', `/products/${onPo.id}/delete-check`, C).expect(403); // MANAGE_INVENTORY
+    });
+
+    it('disable hides a product from the POS catalogue, checkout, the mobile lookup and the active list; enable brings it back', async () => {
+      const p = await make('สินค้าปิดใช้งาน e2e');
+      await api('post', '/inventory/adjust', A, { productId: p.id, type: 'SET', amount: 5, reason: 'e2e' }).expect(201);
+      const cursor = (await sync('')).cursor;
+      await api('post', '/products/set-active', C, { ids: [p.id], isActive: false }).expect(403);
+      await api('post', '/products/set-active', A, { ids: [p.id], isActive: 'no' }).expect(400);
+      const off = (await api('post', '/products/set-active', A, { ids: [p.id, 'missing-id'], isActive: false }).expect(201)).body;
+      expect(off).toMatchObject({ updated: 1, notFound: ['missing-id'], isActive: false });
+      // delta sync carries the row with isActive false: terminals take it off sale
+      const d1 = await sync(cursor);
+      expect(d1.products.find((x: any) => x.id === p.id)?.isActive).toBe(false);
+      const active = (await api('get', `/products/page?status=active&q=${encodeURIComponent(p.name)}`, A).expect(200)).body;
+      expect(active.data.map((x: any) => x.id)).not.toContain(p.id);
+      const inactive = (await api('get', `/products/page?status=inactive&q=${encodeURIComponent(p.name)}`, A).expect(200)).body;
+      expect(inactive.data.map((x: any) => x.id)).toEqual([p.id]);
+      expect(inactive.meta.inactiveCount).toBeGreaterThanOrEqual(1);
+      const all = (await api('get', `/products/page?q=${encodeURIComponent(p.name)}`, A).expect(200)).body;
+      expect(all.data.map((x: any) => x.id)).toEqual([p.id]); // default: every product (inventory page)
+      await api('get', '/products/page?status=x', A).expect(400);
+      expect((await api('get', `/products/lookup?q=${encodeURIComponent(p.name)}`, A).expect(200)).body.data).toEqual([]);
+      const shift = (await api('post', '/shifts/open', C, { startingCash: 0, terminalId: 'e2e-del' }).expect(201)).body.shift;
+      const sell = () => api('post', '/orders/checkout', C, { clientOrderId: randomUUID(), shiftId: shift.id, items: [{ productId: p.id, quantity: 1, unitPrice: 20 }], payments: [{ method: 'CASH', amount: 20 }] });
+      expect((await sell().expect(400)).body.message).toContain('ปิดใช้งาน');
+      const db = new PrismaClient();
+      try {
+        expect((await db.auditLog.findFirst({ where: { entityId: p.id, action: 'PRODUCT_DISABLE' } }))).toBeTruthy();
+      } finally {
+        await db.$disconnect();
+      }
+
+      const c2 = (await sync('')).cursor;
+      const on = (await api('post', '/products/set-active', A, { ids: [p.id], isActive: true }).expect(201)).body;
+      expect(on.updated).toBe(1);
+      expect((await sync(c2)).products.find((x: any) => x.id === p.id)?.isActive).toBe(true);
+      expect((await api('get', `/products/lookup?q=${encodeURIComponent(p.name)}`, A).expect(200)).body.data.map((x: any) => x.id)).toEqual([p.id]);
+      await sell().expect(201);
+      // the product now has a sale: it can only be disabled
+      expect((await check(p.id)).canDelete).toBe(false);
+      const sum = (await api('get', `/shifts/${shift.id}/summary`, C)).body;
+      await api('post', `/shifts/${shift.id}/close`, C, { actualCash: sum.expectedCash }).expect(201);
+    });
+
+    it('bulk delete: deletes the allowed ones, reports the rest per product, then disables them', async () => {
+      const free = await make('ลบหลายรายการ ไม่มีสต็อก e2e');
+      const stocked = await make('ลบหลายรายการ มีสต็อก e2e');
+      await api('post', '/inventory/adjust', A, { productId: stocked.id, type: 'SET', amount: 3, reason: 'e2e' }).expect(201);
+      const ids = [free.id, stocked.id, state.p.id, pd.onPo.id, 'missing-id'];
+      const checks = (await api('post', '/products/delete-check', A, { ids }).expect(201)).body;
+      expect(checks.map((c: any) => [c.id, c.canDelete])).toEqual([[free.id, true], [stocked.id, true], [state.p.id, false], [pd.onPo.id, false]]);
+      await api('post', '/products/bulk-delete', A, { ids: [] }).expect(400);
+      await api('post', '/products/bulk-delete', C, { ids }).expect(403);
+
+      const r1 = (await api('post', '/products/bulk-delete', A, { ids }).expect(201)).body;
+      expect(r1.deleted.map((d: any) => d.id)).toEqual([free.id]);
+      expect(r1.needsStockConfirm).toEqual([{ id: stocked.id, name: stocked.name, stock: 3, unit: 'ชิ้น' }]);
+      expect(r1.blocked.map((b: any) => b.id)).toEqual([state.p.id, pd.onPo.id]);
+      expect(r1.blocked[1].message).toContain('ใบสั่งซื้อ 1 ใบ');
+      expect(r1.notFound).toEqual(['missing-id']);
+
+      const r2 = (await api('post', '/products/bulk-delete', A, { ids: [stocked.id, pd.onPo.id], confirmStock: true }).expect(201)).body;
+      expect(r2.deleted.map((d: any) => d.id)).toEqual([stocked.id]);
+      expect(r2.blocked.map((b: any) => b.id)).toEqual([pd.onPo.id]);
+
+      const off = (await api('post', '/products/set-active', A, { ids: r1.blocked.map((b: any) => b.id), isActive: false }).expect(201)).body;
+      expect(off.updated).toBe(2);
+      // sold product: still in its bill and in the reports
+      expect((await api('get', `/orders/${state.order.id}`, A).expect(200)).body.items[0].productId).toBe(state.p.id);
+      await api('post', '/products/set-active', A, { ids: r1.blocked.map((b: any) => b.id), isActive: true }).expect(201);
+    });
+  });
 });
