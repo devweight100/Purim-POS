@@ -4,7 +4,10 @@ import { useState, useEffect, useRef } from 'react';
 import { DebtRecord, DebtPaymentInstallment, PaymentMethodType } from '@/lib/types';
 import { recordDebtPayment } from '@/lib/debt-service';
 import { fetchBankAccountsFromBackend, loadBankAccounts, type BankAccount } from '@/lib/bank-account-storage';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, formatListDateTime } from '@/lib/utils';
+import { apiFetch } from '@/lib/api';
+import { ApiError, errorText } from '@/lib/api-error';
+import { useShiftStore } from '@/lib/store/shift-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -15,7 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { 
   CreditCard, Banknote, QrCode, Building2, CheckCircle2, User, 
-  FileText, ArrowRight, ShieldCheck, AlertCircle 
+  FileText, ArrowRight, ShieldCheck, AlertCircle, Clock
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PromptPayQr } from '@/components/common/PromptPayQr';
@@ -27,6 +30,30 @@ interface PayDebtModalProps {
   debtRecord: DebtRecord | null;
   cashierName?: string;
   onPaymentSuccess: (debtRecord: DebtRecord, installment: DebtPaymentInstallment) => void;
+  /**
+   * Back office (debts page): choose which OPEN cashier shift the money goes into, or none
+   * ("ไม่เข้ากะแคชเชียร์": cash to the safe, transfer / QR to the bank). Without it (POS) the current shift is used.
+   */
+  chooseShift?: boolean;
+}
+
+/** GET /debts/open-shifts row */
+export interface OpenShiftOption {
+  id: string;
+  shiftNumber: string;
+  userId: string;
+  cashierName: string;
+  terminalId: string | null;
+  terminalName: string;
+  openedAt: string;
+}
+
+/** value of the shift picker for "not in a cashier shift" */
+export const NO_SHIFT = 'NONE';
+
+/** "SH2611-0001 · สมหญิง · จุดขาย 1 · เปิด 20 พ.ย. 69 08:00 น." */
+export function openShiftLabel(s: OpenShiftOption) {
+  return `${s.shiftNumber} · ${s.cashierName} · ${s.terminalName} · เปิด ${formatListDateTime(s.openedAt)} น.`;
 }
 
 export function PayDebtModal({
@@ -35,6 +62,7 @@ export function PayDebtModal({
   debtRecord,
   cashierName = 'พนักงานขาย',
   onPaymentSuccess,
+  chooseShift = false,
 }: PayDebtModalProps) {
   const [payMode, setPayMode] = useState<'FULL' | 'PARTIAL'>('FULL');
   const [amountInput, setAmountInput] = useState<string>('');
@@ -57,6 +85,32 @@ export function PayDebtModal({
     return () => { alive = false; };
   }, [open]);
 
+  // Back office: open shifts to receive into (reloaded on every open and after a "shift closed" refusal)
+  const [openShifts, setOpenShifts] = useState<OpenShiftOption[] | null>(null);
+  const [shiftsError, setShiftsError] = useState<string | null>(null);
+  const [shiftChoice, setShiftChoice] = useState<string>('');
+  const [shiftsVersion, setShiftsVersion] = useState(0);
+  useEffect(() => {
+    if (!open || !chooseShift) return;
+    let alive = true;
+    apiFetch<OpenShiftOption[]>('/debts/open-shifts')
+      .then((rows) => {
+        if (!alive) return;
+        const list = Array.isArray(rows) ? rows : [];
+        setOpenShifts(list);
+        setShiftsError(null);
+        // keep a still-open choice; otherwise this user's own open shift, else "not in a shift"
+        setShiftChoice((prev) => {
+          if (prev === NO_SHIFT || list.some((x) => x.id === prev)) return prev;
+          if (prev) return ''; // the chosen shift closed: pick again
+          const mine = useShiftStore.getState().currentShift?.id;
+          return mine && list.some((x) => x.id === mine) ? mine : NO_SHIFT;
+        });
+      })
+      .catch((err) => { if (alive) setShiftsError(errorText(err) || 'โหลดรายการกะที่เปิดอยู่ไม่สำเร็จ'); });
+    return () => { alive = false; };
+  }, [open, chooseShift, shiftsVersion]);
+
   // Initialize form state whenever modal opens with a debt record (adjusted while rendering)
   // (null until the first render, so a modal mounted already open is filled in too)
   const [seen, setSeen] = useState<{ debtRecord: typeof debtRecord; open: boolean } | null>(null);
@@ -70,6 +124,7 @@ export function PayDebtModal({
       setNote('');
       // '' = the store's default bank account (the server rejects unknown accounts)
       setSelectedBank('');
+      setShiftChoice('');
     } else {
       setPayMode('FULL');
       setAmountInput('');
@@ -124,6 +179,11 @@ export function PayDebtModal({
       return;
     }
 
+    if (chooseShift && !shiftChoice) {
+      toast.error('กรุณาเลือกกะแคชเชียร์ที่รับเงิน หรือเลือก "ไม่เข้ากะแคชเชียร์"');
+      return;
+    }
+
     submitting.current = true;
     setIsSubmitting(true);
 
@@ -140,6 +200,7 @@ export function PayDebtModal({
           referenceNo: referenceNo.trim() || undefined,
           note: note.trim() || undefined,
           cashierName,
+          ...(chooseShift ? { shift: shiftChoice === NO_SHIFT ? { noShift: true as const } : { shiftId: shiftChoice } } : {}),
         }
       );
 
@@ -151,6 +212,11 @@ export function PayDebtModal({
         toast.error(res.error || 'เกิดข้อผิดพลาดในการบันทึกรับชำระ');
       }
     } catch (err) {
+      if (err instanceof ApiError && err.data?.code === 'SHIFT_NOT_OPEN') {
+        // the chosen shift was closed meanwhile: reload the open shifts and let the user pick again
+        setShiftChoice('');
+        setShiftsVersion((v) => v + 1);
+      }
       toast.error((err as Error).message || 'บันทึกรับชำระไม่สำเร็จ');
     } finally {
       submitting.current = false;
@@ -337,6 +403,45 @@ export function PayDebtModal({
                 // eslint-disable-next-line @next/next/no-img-element -- data: URL uploaded by the owner
                 <img src={selectedBankAccount.qrImageUrl!} alt="QR PromptPay" className="w-56 h-56 object-contain" />
               )}
+            </div>
+          )}
+
+          {/* Back office: which cashier shift the money goes into */}
+          {chooseShift && (
+            <div className="space-y-1.5 rounded-2xl border border-amber-200 bg-amber-50/60 p-3">
+              <label htmlFor="pay-debt-shift" className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                <Clock className="h-4 w-4 text-amber-600" />
+                รับเงินเข้ากะแคชเชียร์:
+              </label>
+              <select
+                id="pay-debt-shift"
+                data-testid="pay-debt-shift"
+                value={shiftChoice}
+                onChange={(e) => setShiftChoice(e.target.value)}
+                className="w-full h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
+              >
+                <option value="" disabled>
+                  {openShifts === null ? 'กำลังโหลดกะที่เปิดอยู่...' : '— เลือกกะที่รับเงิน —'}
+                </option>
+                {(openShifts || []).map((sh) => (
+                  <option key={sh.id} value={sh.id}>{openShiftLabel(sh)}</option>
+                ))}
+                <option value={NO_SHIFT}>ไม่เข้ากะแคชเชียร์ (บันทึกเข้าบัญชีร้านโดยตรง)</option>
+              </select>
+              <p className="text-[11px] font-medium text-slate-600" data-testid="pay-debt-shift-hint">
+                {shiftsError
+                  ? shiftsError
+                  : !shiftChoice
+                    ? 'เลือกกะที่เปิดอยู่ หรือ "ไม่เข้ากะแคชเชียร์"'
+                    : shiftChoice === NO_SHIFT
+                      ? paymentMethod === 'CASH'
+                        ? 'เงินสดเข้าเซฟของร้าน ไม่นับในลิ้นชักของกะใด'
+                        : 'เงินเข้าบัญชีธนาคารที่เลือก ไม่นับในกะใด'
+                      : paymentMethod === 'CASH'
+                        ? 'เงินสดเข้าลิ้นชักของกะนี้ นับในยอดเงินที่ต้องมีตอนปิดกะ'
+                        : 'เงินเข้าบัญชีธนาคารที่เลือก และนับในยอดรับชำระหนี้ของกะนี้'}
+                {openShifts !== null && openShifts.length === 0 && !shiftsError ? ' (ตอนนี้ไม่มีกะที่เปิดอยู่)' : ''}
+              </p>
             </div>
           )}
 

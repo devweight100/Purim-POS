@@ -180,6 +180,7 @@ export function DebtReceiptPdfModal({ open, onOpenChange, debtRecord, installmen
                 <SlipRow label="ชำระโดย" value={paymentMethodLabel(installment.paymentMethod)} />
                 {installment.accountLabel && <SlipRow label="บัญชีรับเงิน" value={installment.accountLabel} />}
                 {installment.referenceNo && <SlipRow label="เลขอ้างอิง" value={installment.referenceNo} />}
+                {installment.shiftNumber && <SlipRow label="เข้ากะ" value={installment.shiftNumber} />}
                 <SlipRow
                   className="text-[14px] font-bold pt-0.5"
                   label={installment.remainingAfter > 0 ? 'ยอดค้างชำระคงเหลือ' : 'ชำระครบแล้ว คงเหลือ'}

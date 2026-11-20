@@ -367,6 +367,8 @@ export interface DebtPaymentInstallment {
   referenceNo?: string;
   note?: string;
   cashierName: string;
+  /** shift the money went into (SH…), shown on the receipt; undefined = not in a shift */
+  shiftNumber?: string;
   previousPaid: number;
   remainingAfter: number;
 }
@@ -1013,6 +1015,9 @@ export interface ApiDebtPayment {
   cashierName: string;
   note?: string;
   cancelledAt?: string | null;
+  /** cashier shift the money went into (null = not in a shift) */
+  shiftId?: string | null;
+  shift?: { id: string; shiftNumber: string } | null;
 }
 
 /** GET /debts row */

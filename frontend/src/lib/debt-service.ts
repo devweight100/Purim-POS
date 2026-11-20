@@ -37,6 +37,7 @@ function mapDebt(row: ApiDebt): DebtRecord {
         paymentMethod: payment.paymentMethod,
         referenceNo: payment.referenceNo,
         cashierName: payment.cashierName,
+        shiftNumber: payment.shift?.shiftNumber || undefined,
         note: payment.note,
         previousPaid,
         remainingAfter: Math.max(0, totalAmount - previousPaid - amountPaid),
@@ -127,7 +128,14 @@ export async function recordDebtPayment(
   orderId: string,
   amount: number,
   paymentMethod: PaymentMethodType,
-  options?: { accountLabel?: string; bankAccountId?: string; referenceNo?: string; note?: string; cashierName?: string },
+  options?: {
+    accountLabel?: string; bankAccountId?: string; referenceNo?: string; note?: string; cashierName?: string;
+    /**
+     * Back office: the cashier shift chosen in the dialog (`{ shiftId }`) or none (`{ noShift: true }`).
+     * Omitted (POS): the current shift of this device, for cash and QR / transfer alike.
+     */
+    shift?: { shiftId: string } | { noShift: true };
+  },
 ): Promise<{
   success: boolean;
   debtRecord?: DebtRecord;
@@ -136,15 +144,19 @@ export async function recordDebtPayment(
 }> {
   const ownerId = JSON.parse(localStorage.getItem('auth-storage') || '{}').state?.user?.id;
   if (!ownerId) throw new Error('กรุณาเข้าสู่ระบบก่อนรับชำระ');
-  const shiftId =
-    paymentMethod === 'CASH' ? useShiftStore.getState().currentShift?.id : undefined;
-  if (paymentMethod === 'CASH' && !shiftId) throw new Error('กรุณาเปิดกะก่อนรับเงินสด');
+  const chosen = options?.shift;
+  const noShift = Boolean(chosen && 'noShift' in chosen);
+  const shiftId = chosen
+    ? ('shiftId' in chosen ? chosen.shiftId : undefined)
+    : useShiftStore.getState().currentShift?.id;
+  if (paymentMethod === 'CASH' && !shiftId && !noShift) throw new Error('กรุณาเปิดกะก่อนรับเงินสด');
   const body = {
     amount,
     paymentMethod,
     referenceNo: options?.referenceNo,
     note: options?.note,
     shiftId,
+    ...(noShift ? { noShift: true } : {}),
   };
   const fingerprint = JSON.stringify(body);
   const bankAccountId = paymentMethod === 'CASH' ? undefined : options?.bankAccountId;

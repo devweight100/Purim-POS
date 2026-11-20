@@ -680,6 +680,7 @@ function DebtsContent() {
       {/* 1. Pay Debt Modal (Full / Partial) */}
       <PayDebtModal
         open={payModalOpen}
+        chooseShift
         onOpenChange={setPayModalOpen}
         debtRecord={selectedDebtForPay}
         cashierName={user?.name || 'พนักงานขาย'}

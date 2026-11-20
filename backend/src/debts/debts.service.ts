@@ -143,7 +143,7 @@ export class DebtsService {
         include: {
           customer: { select: { id: true, name: true, phone: true, address: true, profile: true } },
           order: { select: { id: true, orderNumber: true, totalAmount: true, createdAt: true } },
-          payments: { orderBy: { paymentDate: 'desc' } },
+          payments: { orderBy: { paymentDate: 'desc' }, include: { shift: { select: { id: true, shiftNumber: true } } } },
         },
       }),
       this.prisma.customerDebt.count({ where }),
@@ -209,7 +209,7 @@ export class DebtsService {
             payments: true,
           },
         },
-        payments: { orderBy: { paymentDate: 'desc' } },
+        payments: { orderBy: { paymentDate: 'desc' }, include: { shift: { select: { id: true, shiftNumber: true } } } },
       },
     });
 
@@ -503,7 +503,7 @@ export class DebtsService {
       const updated = await tx.customerDebt.update({
         where: { id: debt.id },
         data: { paidAmount: newPaid, remainingAmount: remaining, status },
-        include: { customer: true, order: true, payments: { orderBy: { paymentDate: 'desc' } } },
+        include: { customer: true, order: true, payments: { orderBy: { paymentDate: 'desc' }, include: { shift: { select: { id: true, shiftNumber: true } } } } },
       });
       await tx.auditLog.create({ data: { action: 'CANCEL_DEBT_PAYMENT', entity: 'DebtPayment', entityId: payment.id, userId: actor?.id ?? null, details: { amount, reason: why, receiptNo: payment.receiptNo } } });
       return { success: true, message: 'ยกเลิกใบรับชำระแล้ว ยอดหนี้กลับมาค้างชำระ', debt: updated };

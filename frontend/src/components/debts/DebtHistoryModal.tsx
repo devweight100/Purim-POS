@@ -163,6 +163,7 @@ export function DebtHistoryModal({
                       <span>ยอดจ่าย: <strong className="text-emerald-700 font-bold">{formatCurrency(inst.amountPaid)}</strong></span>
                       <span>คงเหลือหลังจ่าย: <strong className="text-slate-800">{formatCurrency(inst.remainingAfter)}</strong></span>
                       {inst.cashierName && <span>ผู้รับเงิน: {inst.cashierName}</span>}
+                      {inst.shiftNumber && <span>เข้ากะ: {inst.shiftNumber}</span>}
                     </div>
 
                     {inst.note && (
