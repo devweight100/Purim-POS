@@ -8,7 +8,7 @@ import { Gamepad2,
   ShoppingCart, ClipboardList, Users, LayoutDashboard, Package, 
   Warehouse, Settings, LogOut, Menu, X, Truck, FileText, BarChart3, 
   FolderTree, Building2, Receipt, ShieldAlert, ArrowLeftRight, HandCoins,
-  ChevronDown, History, PackageX, TrendingUp, Sparkles, Coins, Boxes, UserCog,
+  ChevronDown, ChevronsDown, History, PackageX, TrendingUp, Sparkles, Coins, Boxes, UserCog,
   ScanLine, ShoppingBag, PanelLeftClose,
   Wallet, ShieldCheck, Smartphone,
   type LucideIcon,
@@ -19,7 +19,7 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { canAccessRoute } from '@/lib/permissions';
 import { useDocumentSearchStore } from '@/lib/store/document-search-store';
 import { useOnlineCounts } from '@/lib/online-orders';
-import { useSidebarStore } from '@/lib/store/sidebar-store';
+import { useSidebarStore, type SidebarOpenGroups } from '@/lib/store/sidebar-store';
 import { SidebarRail } from './SidebarRail';
 
 interface SubMenuItem {
@@ -151,21 +151,6 @@ export function Sidebar() {
   const desktopScrollRef = useRef<HTMLDivElement>(null);
   const mobileScrollRef = useRef<HTMLDivElement>(null);
 
-  // Group accordion state (open all by default)
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-    overview: true,
-    inventory: true,
-    sales: true,
-    purchasing: true,
-    finance: true,
-    system: true,
-  });
-
-  // Submenu accordion state (for nested submenus like /reports)
-  const [openSubMenus, setOpenSubMenus] = useState<Record<string, boolean>>({
-    '/reports': true,
-  });
-
   // Filter nav groups and submenus according to user permissions
   const visibleNavGroups = React.useMemo(() => {
     return navGroups
@@ -189,44 +174,50 @@ export function Sidebar() {
       .filter((group) => group.items.length > 0);
   }, [user]);
 
-  // On a route (or menu) change: open the current pathname's group and submenus, and close the
-  // mobile menu. Adjusted during render (React's "state from changed props" pattern), not in an effect.
-  const [syncedRoute, setSyncedRoute] = useState<{ pathname: string; groups: NavGroup[] } | null>(null);
-  if (syncedRoute?.pathname !== pathname || syncedRoute.groups !== visibleNavGroups) {
-    setSyncedRoute({ pathname, groups: visibleNavGroups });
-    visibleNavGroups.forEach((group) => {
-      const isMatch = group.items.some(
-        (item) => item.href === pathname || item.children?.some((c) => c.href === pathname)
-      );
-      if (isMatch) {
-        setOpenGroups((prev) => ({ ...prev, [group.id]: true }));
-      }
-    });
+  // Accordion (owner 2026-11-20): only the group of the current page is open by default; what the user opens or
+  // closes is remembered on this device (localStorage). A remembered "closed" never hides the current page.
+  const activeGroupId = activeGroupOf(visibleNavGroups, pathname);
+  const openState = useSidebarStore((st) => st.openGroups);
+  const setOpenState = useSidebarStore((st) => st.setOpenGroups);
+  const changeOpenState = (fn: (prev: OpenState) => OpenState) => setOpenState(fn(useSidebarStore.getState().openGroups));
+  const isGroupOpen = (id: string) => openState[id] ?? id === activeGroupId;
+  const isSubMenuOpen = (href: string, active: boolean) => openState[`sub:${href}`] ?? active;
 
-    if (pathname.startsWith('/reports')) {
-      setOpenSubMenus((prev) => ({ ...prev, '/reports': true }));
-    }
-    if (syncedRoute?.pathname !== pathname) setMobileOpen(false);
+  // On a route change: the current page's group (and the reports submenu) opens even if the user closed it
+  // earlier (the user may close it again while on the page), and the mobile menu closes.
+  useEffect(() => {
+    const st = useSidebarStore.getState();
+    const prev = st.openGroups;
+    const forced = { ...prev };
+    if (activeGroupId && forced[activeGroupId] === false) delete forced[activeGroupId];
+    if (pathname.startsWith('/reports') && forced['sub:/reports'] === false) delete forced['sub:/reports'];
+    if (Object.keys(forced).length !== Object.keys(prev).length) st.setOpenGroups(forced);
+  }, [pathname, activeGroupId]);
+  const [syncedPath, setSyncedPath] = useState(pathname);
+  if (syncedPath !== pathname) {
+    setSyncedPath(pathname);
+    setMobileOpen(false);
   }
 
   // Save and restore sidebar scroll position across navigation
   const saveCurrentScroll = () => {
     if (desktopScrollRef.current) {
-      sessionStorage.setItem('purim_sidebar_scroll_top', String(desktopScrollRef.current.scrollTop));
+      try {
+        sessionStorage.setItem('purim_sidebar_scroll_top', String(desktopScrollRef.current.scrollTop));
+      } catch { /* storage blocked */ }
     }
   };
 
   useEffect(() => {
     const restoreScroll = () => {
-      const saved = sessionStorage.getItem('purim_sidebar_scroll_top');
-      if (saved !== null) {
-        const top = parseInt(saved, 10);
-        if (!isNaN(top)) {
-          if (desktopScrollRef.current && Math.abs(desktopScrollRef.current.scrollTop - top) > 2) {
-            desktopScrollRef.current.scrollTop = top;
-          }
-        }
-      }
+      const el = desktopScrollRef.current;
+      if (!el) return;
+      let saved: string | null = null;
+      try { saved = sessionStorage.getItem('purim_sidebar_scroll_top'); } catch { /* storage blocked */ }
+      const top = saved === null ? NaN : parseInt(saved, 10);
+      if (!isNaN(top) && Math.abs(el.scrollTop - top) > 2) el.scrollTop = top;
+      // the current page's item is always in view (a small window scrolls the menu)
+      revealActive(el);
     };
 
     restoreScroll();
@@ -239,14 +230,17 @@ export function Sidebar() {
       clearTimeout(t1);
       clearTimeout(t2);
     };
-  }, [pathname]);
+  }, [pathname, collapsed]);
 
   const toggleGroup = (groupId: string) => {
     saveCurrentScroll();
-    setOpenGroups((prev) => ({
-      ...prev,
-      [groupId]: !prev[groupId],
-    }));
+    const open = isGroupOpen(groupId);
+    changeOpenState((prev) => ({ ...prev, [groupId]: !open }));
+  };
+
+  const toggleSubMenu = (href: string, open: boolean) => {
+    saveCurrentScroll();
+    changeOpenState((prev) => ({ ...prev, [`sub:${href}`]: !open }));
   };
 
   const handleLogout = () => {
@@ -257,7 +251,7 @@ export function Sidebar() {
   const renderNavContent = (scrollRef: React.RefObject<HTMLDivElement | null>, isMobile = false) => (
     <>
       {/* Brand Header */}
-      <div className="p-4 flex items-center h-16 shrink-0 border-b border-sidebar-border bg-sidebar">
+      <div className="px-3 flex items-center h-14 shrink-0 border-b border-sidebar-border bg-sidebar">
         <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0 shadow-sm">
           <span className="font-black text-white text-base leading-none">P</span>
         </div>
@@ -281,16 +275,10 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Navigation Groups (Scrollable container with preserved scroll position) */}
-      <div 
-        ref={scrollRef}
-        onScroll={(e) => {
-          if (!isMobile) {
-            sessionStorage.setItem('purim_sidebar_scroll_top', String(e.currentTarget.scrollTop));
-          }
-        }}
-        className="flex-1 py-3 overflow-y-auto overflow-x-hidden flex flex-col gap-3 px-2"
-      >
+      {/* Navigation Groups (scrolls only when the window is too short; a hint shows there is more) */}
+      <ScrollHintArea scrollRef={scrollRef} onScrollTop={isMobile ? undefined : (top) => {
+        try { sessionStorage.setItem('purim_sidebar_scroll_top', String(top)); } catch { /* storage blocked */ }
+      }}>
         {/* Quick POS Action Button (กลับไปหน้าขาย POS) */}
         <div className="px-1">
           <Link
@@ -298,39 +286,33 @@ export function Sidebar() {
             scroll={false}
             onClick={saveCurrentScroll}
             className={cn(
-              'flex items-center justify-between px-3.5 py-2.5 rounded-xl font-bold transition-all shadow-xs group',
+              'flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl font-bold transition-all shadow-xs group',
               pathname === '/pos'
                 ? 'bg-sky-500 text-white shadow-sky-200 ring-2 ring-sky-300'
                 : 'bg-sky-50 text-sky-950 border border-sky-200/90 hover:bg-sky-100/90'
             )}
           >
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2 min-w-0">
               <div className={cn(
-                'w-8 h-8 rounded-lg flex items-center justify-center transition-colors shrink-0',
+                'w-7 h-7 rounded-lg flex items-center justify-center transition-colors shrink-0',
                 pathname === '/pos' ? 'bg-white/20 text-white' : 'bg-sky-500 text-white shadow-2xs'
               )}>
                 <ShoppingCart className="w-4 h-4" />
               </div>
-              <div>
-                <span className="text-sm font-black tracking-wide block">หน้าขายหน้าร้าน (POS)</span>
-                <span className="text-[10px] text-sky-700 block font-normal">สลับไปหน้าจอแคชเชียร์</span>
+              <div className="min-w-0">
+                <span className="text-[13px] font-black block whitespace-nowrap leading-tight">หน้าขายหน้าร้าน (POS)</span>
+                <span className={cn('text-[10px] block font-normal leading-tight', pathname === '/pos' ? 'text-white/90' : 'text-sky-700')}>สลับไปหน้าจอแคชเชียร์</span>
               </div>
             </div>
-            <span className={cn(
-              'text-[10px] px-2 py-0.5 rounded font-black uppercase shrink-0',
-              pathname === '/pos' ? 'bg-white/20 text-white' : 'bg-sky-200/80 text-sky-800'
-            )}>
-              ขายสด
-            </span>
           </Link>
         </div>
 
         {/* Universal Document Search Button */}
-        <div className="pt-0.5 pb-2">
+        <div className="px-1 pb-1">
           <button
             type="button"
             onClick={() => useDocumentSearchStore.getState().openSearch()}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold bg-indigo-50/80 hover:bg-indigo-100 text-indigo-950 border border-indigo-200/80 transition-all shadow-xs cursor-pointer group"
+            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-xs font-bold bg-indigo-50/80 hover:bg-indigo-100 text-indigo-950 border border-indigo-200/80 transition-all shadow-xs cursor-pointer group"
           >
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
@@ -346,16 +328,16 @@ export function Sidebar() {
 
         {/* Grouped Accordion Menu */}
         {visibleNavGroups.map((group, index) => {
-          const isOpen = openGroups[group.id] ?? true;
-          const isGroupActive = group.items.some((i) => pathname === i.href);
+          const isOpen = isGroupOpen(group.id);
+          const isGroupActive = group.id === activeGroupId;
           const GroupIcon = group.icon;
 
           return (
             <React.Fragment key={group.id}>
               {group.separatorBefore && index > 0 && (
-                <div data-testid="sidebar-divider" aria-hidden="true" className="mx-2.5 my-1.5 border-t border-slate-200" />
+                <div data-testid="sidebar-divider" aria-hidden="true" className="mx-2.5 my-1 border-t border-slate-200" />
               )}
-              <div className="space-y-1">
+              <div className="space-y-0.5" data-testid={`sidebar-group-${group.id}`}>
                 {/* Group Header (หัวข้อใหญ่ ขนาดใหญ่และหนากว่าหัวข้อย่อย) */}
                 <button
                   type="button"
@@ -363,7 +345,7 @@ export function Sidebar() {
                   aria-expanded={isOpen}
                   aria-controls={`nav-group-${group.id}${isMobile ? '-m' : ''}`}
                   className={cn(
-                    'w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-sm font-bold transition-colors group',
+                    'w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-sm font-bold transition-colors group outline-none focus-visible:ring-2 focus-visible:ring-indigo-400',
                     isGroupActive
                       ? 'text-indigo-950 bg-indigo-50/70'
                       : 'text-slate-800 hover:text-slate-950 hover:bg-slate-100/70'
@@ -383,24 +365,21 @@ export function Sidebar() {
 
                 {/* Submenu Items (หัวข้อย่อย) */}
                 {isOpen && (
-                  <div id={`nav-group-${group.id}${isMobile ? '-m' : ''}`} className="ml-3 pl-2.5 border-l-2 border-slate-200/80 space-y-0.5 py-0.5">
+                  <div id={`nav-group-${group.id}${isMobile ? '-m' : ''}`} className="ml-3 pl-2.5 border-l-2 border-slate-200/80 space-y-px pb-1">
                     {group.items.map((item) => {
                       const hasChildren = Boolean(item.children && item.children.length > 0);
                       const isChildActive = hasChildren && Boolean(item.children?.some((c) => pathname === c.href));
                       const isSelfActive = pathname === item.href;
-                      const isSubOpen = openSubMenus[item.href] ?? (isChildActive || isSelfActive);
+                      const isSubOpen = isSubMenuOpen(item.href, isChildActive || isSelfActive);
                       const ItemIcon = item.icon;
 
                       if (hasChildren) {
                         return (
                           <div key={item.href} className="space-y-0.5">
                             <div
-                              onClick={() => {
-                                saveCurrentScroll();
-                                setOpenSubMenus((prev) => ({ ...prev, [item.href]: !isSubOpen }));
-                              }}
+                              onClick={() => toggleSubMenu(item.href, isSubOpen)}
                               className={cn(
-                                'flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[13px] transition-all duration-150 group cursor-pointer',
+                                'flex items-center justify-between px-2.5 py-1 rounded-lg text-[13px] transition-all duration-150 group cursor-pointer',
                                 isSelfActive || isChildActive
                                   ? 'bg-indigo-50/80 text-indigo-950 font-bold'
                                   : 'text-slate-700 hover:text-slate-950 hover:bg-slate-100 font-bold'
@@ -409,6 +388,7 @@ export function Sidebar() {
                               <Link
                                 href={item.href}
                                 scroll={false}
+                                aria-current={isSelfActive ? 'page' : undefined}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   saveCurrentScroll();
@@ -423,8 +403,7 @@ export function Sidebar() {
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  saveCurrentScroll();
-                                  setOpenSubMenus((prev) => ({ ...prev, [item.href]: !isSubOpen }));
+                                  toggleSubMenu(item.href, isSubOpen);
                                 }}
                                 className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors ml-1"
                                 title="ย่อ/ขยายเมนูย่อยรายงาน"
@@ -442,7 +421,7 @@ export function Sidebar() {
 
                             {/* Sub-items inside รายงาน */}
                             {isSubOpen && (
-                              <div className="ml-3 pl-2 border-l-2 border-indigo-200/90 space-y-0.5 py-0.5">
+                              <div className="ml-3 pl-2 border-l-2 border-indigo-200/90 space-y-px py-px">
                                 {item.children?.map((sub) => {
                                   const isSubActive = pathname === sub.href;
                                   const SubIcon = sub.icon;
@@ -451,9 +430,10 @@ export function Sidebar() {
                                       key={sub.href}
                                       href={sub.href}
                                       scroll={false}
+                                      aria-current={isSubActive ? 'page' : undefined}
                                       onClick={saveCurrentScroll}
                                       className={cn(
-                                        'flex items-center px-2 py-1.5 rounded-lg text-xs transition-all duration-150 whitespace-nowrap',
+                                        'flex items-center px-2 py-1 rounded-lg text-xs transition-all duration-150 whitespace-nowrap',
                                         isSubActive
                                           ? 'bg-indigo-600 text-white font-bold shadow-2xs'
                                           : 'text-slate-600 hover:text-slate-950 hover:bg-slate-100 font-medium'
@@ -475,9 +455,10 @@ export function Sidebar() {
                           key={item.href}
                           href={item.href}
                           scroll={false}
+                          aria-current={isSelfActive ? 'page' : undefined}
                           onClick={saveCurrentScroll}
                           className={cn(
-                            'flex items-center px-2.5 py-1.5 rounded-lg text-[13px] transition-all duration-150 whitespace-nowrap',
+                            'flex items-center px-2.5 py-1 rounded-lg text-[13px] transition-all duration-150 whitespace-nowrap',
                             isSelfActive
                               ? 'bg-indigo-600 text-white font-bold shadow-xs'
                               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium'
@@ -499,24 +480,25 @@ export function Sidebar() {
             </React.Fragment>
           );
         })}
-      </div>
+      </ScrollHintArea>
 
-      {/* User Footer Profile */}
-      <div className="p-3 border-t border-sidebar-border shrink-0 bg-sidebar">
-        <div className="flex items-center px-2 mb-2">
+      {/* User Footer Profile (pinned at the bottom) */}
+      <div data-testid="sidebar-footer" className="px-3 py-2 border-t border-sidebar-border shrink-0 bg-sidebar">
+        <div className="flex items-center gap-2 px-1">
           <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center shrink-0">
             <span className="text-indigo-700 text-xs font-bold">{user?.name?.charAt(0)?.toUpperCase() || 'P'}</span>
           </div>
-          <div className="ml-2.5 overflow-hidden">
+          <div className="min-w-0 flex-1 overflow-hidden">
             <p className="text-xs font-bold text-slate-900 truncate">{user?.name || 'Admin'}</p>
             <p className="text-[10px] text-slate-400 truncate">{user?.role || 'เจ้าของร้าน'}</p>
           </div>
         </div>
-        <VersionBadge className="px-2 mb-1.5" />
+        <VersionBadge className="px-1 mt-1" />
         {user ? (
           <button
+            type="button"
             onClick={handleLogout}
-            className="w-full flex items-center px-2.5 py-1.5 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors text-xs font-medium cursor-pointer"
+            className="mt-1 w-full flex items-center px-2 py-1 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-colors text-xs font-medium cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
           >
             <LogOut className="w-3.5 h-3.5 shrink-0 mr-2" />
             <span>ออกจากระบบ</span>
@@ -563,16 +545,19 @@ export function Sidebar() {
         {renderNavContent(mobileScrollRef, true)}
       </div>
 
-      {/* Desktop sidebar */}
-      <div
+      {/* Desktop sidebar: a column as tall as the page (background + border all the way down, also in a full-page
+          capture) holding a panel that sticks to the window: full window height, stays put while the page scrolls,
+          user box pinned at its bottom. */}
+      <aside
         id="backoffice-sidebar"
         data-slot="sidebar"
         data-collapsed={collapsed ? 'true' : 'false'}
         className={cn(
-          'hidden lg:flex fixed top-0 left-0 h-full bg-sidebar flex-col z-50 border-r border-sidebar-border',
+          'hidden lg:block relative z-40 shrink-0 self-stretch bg-sidebar border-r border-sidebar-border',
           collapsed ? 'w-16' : 'w-[240px]',
         )}
       >
+        <div data-testid="sidebar-panel" className="sticky top-0 flex h-dvh flex-col">
         {collapsed && (
           <SidebarRail
             groups={visibleNavGroups}
@@ -587,7 +572,91 @@ export function Sidebar() {
         )}
         {/* kept mounted while collapsed (hidden), so the menu's scroll position and open groups survive a toggle */}
         <div className={collapsed ? 'hidden' : 'contents'}>{renderNavContent(desktopScrollRef, false)}</div>
-      </div>
+        </div>
+      </aside>
     </>
+  );
+}
+
+type OpenState = SidebarOpenGroups;
+
+/** The group holding the current page (its own page, a report under it, or a sub page such as /products/x). */
+function activeGroupOf(groups: NavGroup[], pathname: string): string | null {
+  const hit = (href: string) => pathname === href || pathname.startsWith(href + '/');
+  return groups.find((g) => g.items.some((i) => hit(i.href) || i.children?.some((c) => hit(c.href))))?.id ?? null;
+}
+
+/** Scroll the menu so the current page's item is visible (only when it is not). */
+function revealActive(container: HTMLElement) {
+  const el = container.querySelector<HTMLElement>('[aria-current="page"]');
+  if (!el) return;
+  const c = container.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  if (r.top < c.top + 4) container.scrollTop -= c.top + 24 - r.top;
+  else if (r.bottom > c.bottom - 4) container.scrollTop += r.bottom - c.bottom + 32;
+}
+
+/**
+ * The menu's scroll area. It scrolls only when the window is too short for the open groups (e.g. 1093x614 with a
+ * long group open); then a fade + "เลื่อนดูเมนูเพิ่ม" at the bottom (and a fade at the top once scrolled) shows
+ * that there is more.
+ */
+function ScrollHintArea({
+  scrollRef, onScrollTop, children,
+}: {
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  onScrollTop?: (top: number) => void;
+  children: React.ReactNode;
+}) {
+  const [more, setMore] = useState({ up: false, down: false });
+  const measure = React.useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const up = el.scrollTop > 2;
+    const down = el.scrollTop + el.clientHeight < el.scrollHeight - 2;
+    setMore((m) => (m.up === up && m.down === down ? m : { up, down }));
+  }, [scrollRef]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    if (el.firstElementChild) ro?.observe(el.firstElementChild);
+    window.addEventListener('resize', measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [measure, scrollRef]);
+  return (
+    <div className="relative flex-1 min-h-0">
+      <div
+        ref={scrollRef}
+        data-testid="sidebar-nav"
+        onScroll={(e) => {
+          measure();
+          onScrollTop?.(e.currentTarget.scrollTop);
+        }}
+        className="h-full overflow-y-auto overflow-x-hidden px-2 py-2 [scrollbar-width:thin]"
+      >
+        <div className="flex flex-col gap-1">{children}</div>
+      </div>
+      {more.up && (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 h-5 bg-gradient-to-b from-white to-transparent" />
+      )}
+      {more.down && (
+        <div
+          aria-hidden="true"
+          data-testid="sidebar-scroll-hint"
+          className="pointer-events-none absolute inset-x-0 bottom-0 flex h-9 items-end justify-center bg-gradient-to-t from-white via-white/90 to-transparent pb-1"
+        >
+          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600 shadow-2xs">
+            <ChevronsDown className="h-3 w-3" />
+            เลื่อนดูเมนูเพิ่ม
+          </span>
+        </div>
+      )}
+    </div>
   );
 }
