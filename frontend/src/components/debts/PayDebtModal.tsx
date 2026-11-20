@@ -90,6 +90,9 @@ export function PayDebtModal({
   const [shiftsError, setShiftsError] = useState<string | null>(null);
   const [shiftChoice, setShiftChoice] = useState<string>('');
   const [shiftsVersion, setShiftsVersion] = useState(0);
+  // the chosen shift was refused (closed meanwhile): no default, the user picks again
+  const repick = useRef(false);
+  useEffect(() => { if (open) repick.current = false; }, [open, debtRecord]);
   useEffect(() => {
     if (!open || !chooseShift) return;
     let alive = true;
@@ -102,7 +105,7 @@ export function PayDebtModal({
         // keep a still-open choice; otherwise this user's own open shift, else "not in a shift"
         setShiftChoice((prev) => {
           if (prev === NO_SHIFT || list.some((x) => x.id === prev)) return prev;
-          if (prev) return ''; // the chosen shift closed: pick again
+          if (prev || repick.current) return ''; // the chosen shift closed: pick again
           const mine = useShiftStore.getState().currentShift?.id;
           return mine && list.some((x) => x.id === mine) ? mine : NO_SHIFT;
         });
@@ -214,6 +217,7 @@ export function PayDebtModal({
     } catch (err) {
       if (err instanceof ApiError && err.data?.code === 'SHIFT_NOT_OPEN') {
         // the chosen shift was closed meanwhile: reload the open shifts and let the user pick again
+        repick.current = true;
         setShiftChoice('');
         setShiftsVersion((v) => v + 1);
       }
@@ -417,7 +421,7 @@ export function PayDebtModal({
                 id="pay-debt-shift"
                 data-testid="pay-debt-shift"
                 value={shiftChoice}
-                onChange={(e) => setShiftChoice(e.target.value)}
+                onChange={(e) => { repick.current = false; setShiftChoice(e.target.value); }}
                 className="w-full h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
               >
                 <option value="" disabled>

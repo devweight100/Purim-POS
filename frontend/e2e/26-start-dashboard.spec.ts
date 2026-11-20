@@ -82,6 +82,7 @@ test('login -> start screen -> back office / POS by keyboard; shop, user, versio
   await expect(page).toHaveURL(/\/pos$/);
 
   await page.goto('/start');
+  await expect(pos).toBeFocused();
   await page.keyboard.press('2');
   await expect(page).toHaveURL(/\/dashboard$/);
 
@@ -168,7 +169,7 @@ test('back-office debt payment: into a chosen open shift, into no shift, and a s
   await page.goto(`/debts?customerId=${s.customer.id}&customerName=${encodeURIComponent(CUSTOMER.name)}`);
   const openPay = async () => {
     await page.getByRole('button', { name: 'รับชำระ' }).first().click();
-    const dlg = page.getByRole('dialog').filter({ hasText: 'รับชำระหนี้' });
+    const dlg = page.getByRole('dialog').filter({ has: page.getByTestId('pay-debt-shift') });
     await expect(dlg).toBeVisible();
     await expect(dlg.getByTestId('pay-debt-shift').locator('option', { hasText: s.cashierShift.shiftNumber! })).toHaveCount(1);
     return dlg;
@@ -177,6 +178,15 @@ test('back-office debt payment: into a chosen open shift, into no shift, and a s
     await dlg.getByRole('button', { name: /แบ่งชำระ/ }).click();
     await dlg.locator('input[type=number]').fill(amount);
     await dlg.getByRole('button', { name: /ยืนยันรับชำระ/ }).click();
+  };
+  /** after saving, the receipt opens (it names the shift, if any); close it */
+  const closeReceipt = async (shiftNumber: string | null) => {
+    const receipt = page.getByRole('dialog').filter({ hasText: 'ใบเสร็จรับเงินชำระหนี้' });
+    await expect(receipt).toBeVisible();
+    if (shiftNumber) await expect(receipt).toContainText(shiftNumber);
+    else await expect(receipt).not.toContainText('เข้ากะ');
+    await page.keyboard.press('Escape');
+    await expect(receipt).toBeHidden();
   };
   const before = await api<{ debtCollectionCash: number; expectedCash: number }>('GET', `/shifts/${s.cashierShift.id}/summary`, A);
 
@@ -187,6 +197,7 @@ test('back-office debt payment: into a chosen open shift, into no shift, and a s
   await expectLayoutOk(page, 'pay dialog');
   await payPart(dlg, '100');
   await expect(dlg).toBeHidden();
+  await closeReceipt(s.cashierShift.shiftNumber!);
   const after = await api<{ debtCollectionCash: number; expectedCash: number }>('GET', `/shifts/${s.cashierShift.id}/summary`, A);
   expect(after.debtCollectionCash).toBeCloseTo(before.debtCollectionCash + 100, 2);
   expect(after.expectedCash).toBeCloseTo(before.expectedCash + 100, 2);
@@ -197,6 +208,7 @@ test('back-office debt payment: into a chosen open shift, into no shift, and a s
   await expect(dlg.getByTestId('pay-debt-shift-hint')).toContainText('เซฟ');
   await payPart(dlg, '50');
   await expect(dlg).toBeHidden();
+  await closeReceipt(null);
   const still = await api<{ expectedCash: number }>('GET', `/shifts/${s.cashierShift.id}/summary`, A);
   expect(still.expectedCash).toBeCloseTo(after.expectedCash, 2);
   const debts = await api<{ data: { payments: { amount: string; shiftId: string | null }[] }[] }>('GET', `/debts?customerId=${s.customer.id}`, A);

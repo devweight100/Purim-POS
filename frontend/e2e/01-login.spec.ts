@@ -23,6 +23,9 @@ test.describe('login', () => {
     await page.getByPlaceholder('พิมพ์รหัสผ่านใหม่อีกครั้ง').fill(CASHIER.password);
     await page.getByPlaceholder('PIN สำหรับเข้าระบบเร็ว').fill(CASHIER.pin);
     await page.getByRole('button', { name: 'บันทึกรหัสผ่านใหม่' }).click();
+    // then the start screen (หน้าขาย / หลังบ้าน: cashier1 also handles claims) -> POS
+    await expect(page).toHaveURL(/\/start/);
+    await page.getByTestId('start-pos').click();
     await expect(page).toHaveURL(/\/pos/);
 
     // the old password no longer works, the new one does

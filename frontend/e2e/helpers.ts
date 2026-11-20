@@ -71,12 +71,12 @@ export async function uiLogin(page: Page, username: string, password: string, op
   await page.locator('#username').fill(username);
   await page.locator('#password').fill(password);
   await page.locator('button[type=submit]').click();
-  if (opts.start === 'stay') return;
-  const left = await page
-    .waitForURL((u) => u.pathname !== '/login', { timeout: 10_000 })
-    .then(() => true)
-    .catch(() => false);
-  if (!left) return; // wrong password: stays on /login
+  // leaves /login, or the login is refused (error toast; the page stays)
+  const left = await Promise.race([
+    page.waitForURL((u) => u.pathname !== '/login', { timeout: 15_000 }).then(() => true),
+    page.locator('[data-sonner-toast][data-type="error"]').first().waitFor({ timeout: 15_000 }).then(() => false),
+  ]).catch(() => false);
+  if (!left || opts.start === 'stay') return; // wrong password: stays on /login
   // the start screen may still be redirecting a POS-only user: wait until the URL settles
   await page.waitForURL((u) => u.pathname !== '/', { timeout: 10_000 }).catch(() => undefined);
   if (new URL(page.url()).pathname === '/start') {
