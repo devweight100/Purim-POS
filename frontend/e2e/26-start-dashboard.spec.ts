@@ -121,9 +121,13 @@ test('a POS-only cashier gets the chooser with หลังบ้าน disabled
   await cp.keyboard.press('ArrowRight'); // the disabled button never takes the focus
   await expect(pos).toBeFocused();
   await expect(cp).toHaveURL(/\/start$/);
-  // the owner grants a back-office right: the button becomes active (profile refresh on reload)
+  // the owner grants a back-office right. A change of rights signs the user's sessions out (security rule of
+  // round 3); after logging in again the button is active
   await api('PATCH', `/auth/users/${user.id}`, A, { permissions: ['POS_SELL', 'POS_DISCOUNT', 'VIEW_REPORTS'] });
   await cp.reload();
+  await expect(cp).toHaveURL(/\/login/);
+  await uiLogin(cp, `posonly${TAG}`, password, { start: 'stay' });
+  await expect(cp).toHaveURL(/\/start$/);
   await expect(back).toBeEnabled();
   await expect(back).not.toContainText('ไม่มีสิทธิ์');
   await cp.keyboard.press('2');

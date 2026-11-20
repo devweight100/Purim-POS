@@ -19,8 +19,8 @@ const PING_TIMEOUT_MS = 1500;
  * selling is never held up here: a selling device that cannot reach the server goes straight to the POS.
  * Keys: 1 = หน้าขาย, 2 = หลังบ้าน, ← / → move between the buttons, Enter opens the focused one.
  * Always shown (owner 2026-11-20), also to a cashier who may only sell: an option the user may not open is a
- * disabled button with the reason ("ไม่มีสิทธิ์เข้าหลังบ้าน"); the profile is refreshed by ClientDbSync, so the
- * button turns active once the right is granted (next refresh / reload).
+ * disabled button with the reason ("ไม่มีสิทธิ์เข้าหลังบ้าน"). Granting a right signs the user's sessions out (server
+ * rule); after logging in again the button is active (the choices follow the stored profile).
  */
 export default function StartPage() {
   const router = useRouter();

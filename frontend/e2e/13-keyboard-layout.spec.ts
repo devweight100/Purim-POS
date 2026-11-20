@@ -74,6 +74,8 @@ test('BUG-07/08: products table fits, rows open the edit form by click or arrows
   await search.fill(String(TAG));
   const row = page.locator('[data-row-nav]').filter({ hasText: LONG });
   await expect(row).toBeVisible();
+  // the search has been applied (the row is first), so ↓ below focuses this row and not one of the unfiltered list
+  await expect(page.locator('[data-row-nav]').first()).toContainText(LONG);
   // the row's ⋯ actions button is on screen without scrolling sideways
   const edit = row.getByRole('button', { name: `จัดการสินค้า ${LONG}` });
   const box = (await edit.boundingBox())!;
@@ -242,12 +244,15 @@ test('back-office sidebar: groups open / close with the keyboard and their links
   await uiLogin(page, ADMIN.username, ADMIN.password);
   await expect(page).toHaveURL(/\/pos/);
   await page.goto('/dashboard');
+  // accordion (owner 2026-11-20): only the current page's group is open; Enter opens / closes a group
   const group = page.getByRole('button', { name: 'สินค้า & คลังสินค้า' });
-  await expect(group).toHaveAttribute('aria-expanded', 'true');
-  await group.focus();
-  await page.keyboard.press('Enter');
   await expect(group).toHaveAttribute('aria-expanded', 'false');
   await expect(page.getByRole('link', { name: 'หมวดหมู่สินค้า' })).toHaveCount(0);
+  await group.focus();
+  await page.keyboard.press('Enter');
+  await expect(group).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Enter');
+  await expect(group).toHaveAttribute('aria-expanded', 'false');
   await page.keyboard.press('Enter');
   await expect(group).toHaveAttribute('aria-expanded', 'true');
   for (let i = 0; i < 6; i++) {
@@ -276,21 +281,22 @@ test('back-office sidebar: owner\'s group order with a divider before การ�
     'ภาพรวม & รายงาน', 'สินค้า & คลังสินค้า', 'งานขาย & ลูกค้า', 'จัดซื้อ & ผู้จำหน่าย', '|', 'การเงิน', 'ตั้งค่า & ระบบ',
   ]);
   const nav = page.locator('[data-slot="sidebar"]').last();
-  // POS launcher above every group; every group open by default; items keep their order
+  // POS launcher above every group; only the current page's group open (accordion); items keep their order
   const posBox = await nav.getByRole('link', { name: /หน้าขายหน้าร้าน \(POS\)/ }).boundingBox();
   const firstGroup = await nav.getByRole('button', { name: 'ภาพรวม & รายงาน' }).boundingBox();
   expect(posBox!.y).toBeLessThan(firstGroup!.y);
-  for (const b of await nav.locator('button[aria-controls^="nav-group-"]').all()) await expect(b).toHaveAttribute('aria-expanded', 'true');
+  const expanded = await nav.locator('button[aria-controls^="nav-group-"]').evaluateAll((els) => els.map((e) => e.getAttribute('aria-expanded')));
+  expect(expanded).toEqual(['true', 'false', 'false', 'false', 'false', 'false']);
+  await nav.getByRole('button', { name: 'งานขาย & ลูกค้า' }).click();
   const sales = await nav.locator('#nav-group-sales > a').allTextContents();
   expect(sales.map((t) => t.replace(/\d+$/, '').trim())).toEqual([
     'ออเดอร์ออนไลน์', 'ประวัติการขาย (บิล)', 'ลูกค้าสมาชิก', 'ลูกหนี้ & ค้างชำระ', 'เคลมสินค้า (ลูกค้า)', 'ประวัติการปิดกะ',
   ]);
-  // divider = visible extra space between จัดซื้อ and การเงิน
-  const purchasing = await nav.locator('#nav-group-purchasing').boundingBox();
-  const finance = await nav.getByRole('button', { name: 'การเงิน' }).boundingBox();
-  const inventoryEnd = await nav.locator('#nav-group-inventory').boundingBox();
-  const sales2 = await nav.getByRole('button', { name: 'งานขาย & ลูกค้า' }).boundingBox();
-  expect(finance!.y - (purchasing!.y + purchasing!.height)).toBeGreaterThan(sales2!.y - (inventoryEnd!.y + inventoryEnd!.height) + 8);
+  await nav.getByRole('button', { name: 'งานขาย & ลูกค้า' }).click();
+  // divider = visible extra space between จัดซื้อ and การเงิน (group headers, all closed)
+  const head = (name: string) => nav.getByRole('button', { name }).boundingBox();
+  const [inv, sal, pur, fin] = [await head('สินค้า & คลังสินค้า'), await head('งานขาย & ลูกค้า'), await head('จัดซื้อ & ผู้จำหน่าย'), await head('การเงิน')];
+  expect(fin!.y - (pur!.y + pur!.height)).toBeGreaterThan(sal!.y - (inv!.y + inv!.height) + 8);
 
   // cashier (POS_SELL, POS_DISCOUNT, MANAGE_CLAIMS; no reports): only the groups they may use, no divider,
   // เมนูหลัก opens the first page they may open (the bills)
