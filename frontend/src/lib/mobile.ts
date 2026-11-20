@@ -91,8 +91,11 @@ export function currentDeviceTraits(): DeviceTraits {
   return { width: window.innerWidth, coarsePointer: mq('(pointer: coarse)'), canHover: mq('(hover: hover)') };
 }
 
-/** Where to go after logging in: phones of users who may see the summary go to /m, everything else to the POS. */
+/**
+ * Where to go after logging in: phones of users who may see the summary go to /m, everything else to the start
+ * screen (/start: หน้าขาย (POS) / หลังบ้าน; it sends a POS-only user straight on to the POS).
+ */
 export function homePathFor(user: PermissionUser | null | undefined, device: DeviceTraits = currentDeviceTraits()): string {
   if (user && isPhoneDevice(device) && canAccessRoute(user, MOBILE_PATH)) return MOBILE_PATH;
-  return '/pos';
+  return '/start';
 }

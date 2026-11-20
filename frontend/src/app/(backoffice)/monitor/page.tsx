@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { ApiError } from '@/lib/api-error';
 import { useAuthStore } from '@/lib/store/auth-store';
+import { backOfficeHomeFor } from '@/lib/permissions';
 import { UpdatePanel } from '@/components/monitor/UpdatePanel';
 import {
   W,
@@ -354,11 +355,14 @@ export default function MonitorPage() {
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => router.push('/pos')}
+            // back to the back office: the dashboard, or the first back-office page this user may open
+            onClick={() => router.push(backOfficeHomeFor(useAuthStore.getState().user) ?? '/start')}
+            data-testid="monitor-back"
+            title="กลับหลังบ้าน"
             className="px-3 py-2 font-mono text-xs font-black bg-[#3b2f52] hover:bg-[#4a3b66] text-[#fde68a] cursor-pointer"
             style={{ boxShadow: '3px 3px 0 #0f0a16', border: '2px solid #0f0a16' }}
           >
-            ◀ กลับ
+            ◀ กลับหลังบ้าน
           </button>
           <div>
             <h1 className="font-mono text-lg sm:text-xl font-black tracking-widest text-[#fde68a]" style={{ textShadow: '2px 2px 0 #0f0a16' }}>

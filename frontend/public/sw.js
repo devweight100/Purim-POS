@@ -13,6 +13,12 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   // Business APIs and mutations must always reach the server/outbox, never HTTP cache.
   if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  // Start screen (/start, and / which redirects there): when the server cannot be reached, open the cached POS
+  // shell instead, so offline selling never waits behind the chooser (docs/round-start-dashboard.md).
+  if (request.mode === 'navigate' && (url.pathname === '/start' || url.pathname === '/')) {
+    event.respondWith(fetch(request).catch(() => Response.redirect(new URL('/pos', self.location.origin).href, 302)));
+    return;
+  }
   const shell = request.mode === 'navigate' && url.pathname === '/pos';
   const asset = url.pathname.startsWith('/_next/static/') || /^\/icon/.test(url.pathname);
   if (!shell && !asset) return;

@@ -58,9 +58,9 @@ describe('landing page after login', () => {
     expect(homePathFor({ role: 'ADMIN' }, phone)).toBe('/m');
     expect(homePathFor({ role: 'MANAGER', permissions: [] }, phone)).toBe('/m');
     expect(homePathFor({ role: 'CASHIER', permissions: ['POS_SELL', 'VIEW_REPORTS'] }, phone)).toBe('/m');
-    expect(homePathFor({ role: 'CASHIER', permissions: ['POS_SELL'] }, phone)).toBe('/pos');
-    expect(homePathFor({ role: 'ADMIN' }, desktop)).toBe('/pos');
-    expect(homePathFor(null, phone)).toBe('/pos');
+    expect(homePathFor({ role: 'CASHIER', permissions: ['POS_SELL'] }, phone)).toBe('/start');
+    expect(homePathFor({ role: 'ADMIN' }, desktop)).toBe('/start');
+    expect(homePathFor(null, phone)).toBe('/start');
   });
   it('/m needs VIEW_REPORTS or ADMIN / MANAGER; other routes unchanged', () => {
     expect(canAccessRoute({ role: 'CASHIER', permissions: ['POS_SELL'] }, '/m')).toBe(false);
