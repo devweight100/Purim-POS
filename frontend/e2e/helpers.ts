@@ -61,12 +61,32 @@ export async function apiLogin(acc: Account): Promise<string> {
 const login = (username: string, password: string) =>
   api<{ access_token: string }>('POST', '/auth/login', undefined, { username, password });
 
-/** Log in through the login page. */
-export async function uiLogin(page: Page, username: string, password: string) {
+/**
+ * Log in through the login page. Users with both the POS and the back office land on the start screen
+ * (/start, docs/round-start-dashboard.md); by default this picks "หน้าขาย (POS)" there like the older specs
+ * expect. `{ start: 'stay' }` leaves the start screen open.
+ */
+export async function uiLogin(page: Page, username: string, password: string, opts: { start?: 'pos' | 'stay' } = {}) {
   await page.goto('/login');
   await page.locator('#username').fill(username);
   await page.locator('#password').fill(password);
   await page.locator('button[type=submit]').click();
+  if (opts.start === 'stay') return;
+  const left = await page
+    .waitForURL((u) => u.pathname !== '/login', { timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!left) return; // wrong password: stays on /login
+  // the start screen may still be redirecting a POS-only user: wait until the URL settles
+  await page.waitForURL((u) => u.pathname !== '/', { timeout: 10_000 }).catch(() => undefined);
+  if (new URL(page.url()).pathname === '/start') {
+    const pos = page.getByTestId('start-pos');
+    const shown = await Promise.race([
+      pos.waitFor({ timeout: 15_000 }).then(() => true),
+      page.waitForURL((u) => u.pathname !== '/start', { timeout: 15_000 }).then(() => false),
+    ]).catch(() => false);
+    if (shown && new URL(page.url()).pathname === '/start') await pos.click();
+  }
 }
 
 /** The hidden barcode-scanner input of the POS screen. */

@@ -2,7 +2,7 @@
  * Start screen (/start) after logging in and when the program opens with a session:
  * two big buttons "หน้าขาย (POS)" and "หลังบ้าน" (docs/round-start-dashboard.md).
  */
-import { backOfficeHomeFor, canAccessRoute, type PermissionUser } from './permissions';
+import { backOfficeHomeFor, canAccessRoute, ROUTE_PERMISSIONS, type PermissionUser } from './permissions';
 
 export const START_PATH = '/start';
 
@@ -13,22 +13,36 @@ export interface StartChoices {
   backOffice: string | null;
 }
 
+/** Not back-office pages: the POS itself, the store monitor, the phone summary. */
+const NOT_BACK_OFFICE = new Set(['/pos', '/monitor', '/m']);
+
+/**
+ * First back-office page: the POS "เมนูหลัก" home (dashboard, products, bills ...); a user who may open none of
+ * those (e.g. a manager for settings / users only) gets the first other page they may open, settings first.
+ */
+export function firstBackOfficePage(user: PermissionUser | null | undefined): string | null {
+  const home = backOfficeHomeFor(user);
+  if (home) return home;
+  const rest = ['/settings', '/users', ...Object.keys(ROUTE_PERMISSIONS)].filter((r) => !NOT_BACK_OFFICE.has(r));
+  return rest.find((r) => canAccessRoute(user, r)) ?? null;
+}
+
 /**
  * What the start screen offers this user.
  * Back office = some back-office page beyond the bills / customers / shifts lists that POS_SELL alone opens
  * (those are part of the cashier's own work and stay reachable from the POS "เมนูหลัก" button). A cashier with
  * only POS_SELL (+ POS_DISCOUNT) therefore has the POS only; a cashier who also handles claims, stock, reports,
- * debts ... gets both buttons, and "หลังบ้าน" opens backOfficeHomeFor(user) (the first page they may use).
+ * debts ... gets both buttons, and "หลังบ้าน" opens firstBackOfficePage(user) (the first page they may use).
  */
 export function startChoices(user: PermissionUser | null | undefined): StartChoices {
   const pos = canAccessRoute(user, '/pos');
-  const home = backOfficeHomeFor(user);
+  const home = firstBackOfficePage(user);
   if (!home || !user) return { pos, backOffice: home };
   if (user.role === 'ADMIN') return { pos, backOffice: home };
   const perms = Array.isArray(user.permissions) ? user.permissions : [];
   if (perms.includes('ALL')) return { pos, backOffice: home };
   const withoutPos = { ...user, permissions: perms.filter((p) => p !== 'POS_SELL') };
-  return { pos, backOffice: backOfficeHomeFor(withoutPos) ? home : null };
+  return { pos, backOffice: firstBackOfficePage(withoutPos) ? home : null };
 }
 
 export type StartChoice = 'pos' | 'backoffice';

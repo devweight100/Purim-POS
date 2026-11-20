@@ -32,7 +32,6 @@ import {
   CreditCard,
   Banknote,
   QrCode,
-  Receipt,
   ArrowUpRight,
   ArrowDownRight,
   AlertTriangle,

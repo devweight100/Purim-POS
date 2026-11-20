@@ -19,6 +19,9 @@ describe('startChoices', () => {
   });
   it('no POS: back office only', () => {
     expect(startChoices({ role: 'CASHIER', permissions: ['MANAGE_DEBTS'] })).toEqual({ pos: false, backOffice: '/customers' });
+    // none of the "เมนูหลัก" homes: the first page they may open, settings first
+    expect(startChoices({ role: 'MANAGER', permissions: ['MANAGE_SETTINGS', 'MANAGE_USERS'] })).toEqual({ pos: false, backOffice: '/settings' });
+    expect(startChoices({ role: 'CASHIER', permissions: ['MANAGE_FINANCE'] })).toEqual({ pos: false, backOffice: '/finance' });
   });
 });
 

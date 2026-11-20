@@ -109,7 +109,8 @@ test('ระบบ danger zone: admin only, typed confirmation before anything i
   const mgr = await browser.newContext({ locale: 'th-TH', viewport: { width: 1366, height: 768 } });
   const mp = await mgr.newPage();
   await uiLogin(mp, `mgr${tag}`, managerPassword);
-  await expect(mp).toHaveURL(/\/pos/);
+  // no POS: the start screen opens their first back-office page (settings)
+  await expect(mp).toHaveURL(/\/settings/);
   await mp.goto('/settings?tab=system');
   await expect(mp.getByTestId('settings-tab-stock')).toBeVisible();
   await expect(mp.getByTestId('settings-tab-system')).toHaveAttribute('aria-selected', 'true');
