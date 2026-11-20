@@ -27,10 +27,16 @@ describe('startChoices', () => {
 
 describe('startDecision', () => {
   const both = { pos: true, backOffice: '/dashboard' };
-  it('one option -> straight there', () => {
-    expect(startDecision({ pos: true, backOffice: null }, ctx)).toEqual({ kind: 'go', to: '/pos', reason: 'only-pos' });
-    expect(startDecision({ pos: false, backOffice: '/customers' }, ctx)).toEqual({ kind: 'go', to: '/customers', reason: 'only-backoffice' });
-    expect(startDecision({ pos: false, backOffice: null }, ctx)).toMatchObject({ kind: 'go', to: '/pos' });
+  it('always the chooser (owner 2026-11-20): one option only -> that button is pre-selected, the other disabled', () => {
+    expect(startDecision({ pos: true, backOffice: null }, ctx)).toEqual({ kind: 'choose', recommended: 'pos' });
+    expect(startDecision({ pos: true, backOffice: null }, { ...ctx, sellingSetting: false })).toEqual({ kind: 'choose', recommended: 'pos' });
+    expect(startDecision({ pos: false, backOffice: '/customers' }, ctx)).toEqual({ kind: 'choose', recommended: 'backoffice' });
+    expect(startDecision({ pos: false, backOffice: null }, ctx)).toEqual({ kind: 'choose', recommended: 'pos' });
+  });
+  it('a POS-only cashier offline on a selling device still goes straight to the POS', () => {
+    expect(startDecision({ pos: true, backOffice: null }, { ...ctx, offline: true, sellingDevice: true })).toEqual({ kind: 'go', to: '/pos', reason: 'offline' });
+    // no POS right: nothing to open offline, the chooser shows
+    expect(startDecision({ pos: false, backOffice: '/settings' }, { ...ctx, offline: true, sellingDevice: true })).toMatchObject({ kind: 'choose' });
   });
   it('chooser with the device setting pre-selected; the setting never skips it', () => {
     expect(startDecision(both, ctx)).toEqual({ kind: 'choose', recommended: 'pos' });
@@ -44,7 +50,9 @@ describe('startDecision', () => {
   it('?go= (desktop F2)', () => {
     expect(startDecision(both, { ...ctx, go: 'backoffice' })).toEqual({ kind: 'go', to: '/dashboard', reason: 'asked' });
     expect(startDecision(both, { ...ctx, go: 'pos' })).toEqual({ kind: 'go', to: '/pos', reason: 'asked' });
-    expect(startDecision({ pos: true, backOffice: null }, { ...ctx, go: 'backoffice' })).toMatchObject({ to: '/pos' });
+    // ?go= an option the user may not open: the chooser (with that button disabled)
+    expect(startDecision({ pos: true, backOffice: null }, { ...ctx, go: 'backoffice' })).toEqual({ kind: 'choose', recommended: 'pos' });
+    expect(startDecision({ pos: false, backOffice: '/settings' }, { ...ctx, go: 'pos' })).toEqual({ kind: 'choose', recommended: 'backoffice' });
   });
   it('role labels', () => {
     expect(roleLabel('ADMIN')).toBe('ผู้ดูแลระบบ');

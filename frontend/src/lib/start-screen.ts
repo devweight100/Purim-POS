@@ -33,6 +33,7 @@ export function firstBackOfficePage(user: PermissionUser | null | undefined): st
  * (those are part of the cashier's own work and stay reachable from the POS "เมนูหลัก" button). A cashier with
  * only POS_SELL (+ POS_DISCOUNT) therefore has the POS only; a cashier who also handles claims, stock, reports,
  * debts ... gets both buttons, and "หลังบ้าน" opens firstBackOfficePage(user) (the first page they may use).
+ * Without a back office the start screen still shows "หลังบ้าน", disabled ("ไม่มีสิทธิ์เข้าหลังบ้าน").
  */
 export function startChoices(user: PermissionUser | null | undefined): StartChoices {
   const pos = canAccessRoute(user, '/pos');
@@ -59,26 +60,30 @@ export interface StartContext {
 }
 
 export type StartDecision =
-  | { kind: 'go'; to: string; reason: 'only-pos' | 'only-backoffice' | 'offline' | 'asked' | 'nothing' }
+  | { kind: 'go'; to: string; reason: 'offline' | 'asked' }
   | { kind: 'choose'; recommended: StartChoice };
 
 /**
- * Go straight to a page, or show the two buttons.
- * - one option only -> that page (POS-only cashier -> POS; no POS -> back office);
+ * Go straight to a page, or show the two buttons (owner 2026-11-20: the chooser is ALWAYS shown, also to a
+ * cashier who may only sell; rights to the back office may be granted later, and a button the user may not
+ * use is shown disabled with the reason, so it simply becomes active once the right is granted).
  * - a selling device that cannot reach the server -> POS (offline selling is never behind the chooser);
- * - ?go= names an allowed option -> that page;
- * - otherwise the chooser; the button that matches the device setting is pre-selected (focused): a device set to
- *   "ไม่ใช้ขาย" -> หลังบ้าน, anything else -> หน้าขาย. The setting never skips the chooser by itself.
+ * - ?go= names an allowed option -> that page (desktop F2);
+ * - otherwise the chooser. Pre-selected (focused): the only allowed option; with both allowed the one that
+ *   matches the device setting ("ไม่ใช้ขาย" -> หลังบ้าน, anything else -> หน้าขาย).
  */
 export function startDecision(choices: StartChoices, ctx: StartContext): StartDecision {
-  if (!choices.pos && !choices.backOffice) return { kind: 'go', to: '/pos', reason: 'nothing' };
-  if (choices.pos && !choices.backOffice) return { kind: 'go', to: '/pos', reason: 'only-pos' };
-  if (!choices.pos && choices.backOffice) return { kind: 'go', to: choices.backOffice, reason: 'only-backoffice' };
-  if (ctx.offline && ctx.sellingDevice) return { kind: 'go', to: '/pos', reason: 'offline' };
-  if (ctx.go === 'pos') return { kind: 'go', to: '/pos', reason: 'asked' };
-  if (ctx.go === 'backoffice') return { kind: 'go', to: choices.backOffice!, reason: 'asked' };
+  if (ctx.offline && ctx.sellingDevice && choices.pos) return { kind: 'go', to: '/pos', reason: 'offline' };
+  if (ctx.go === 'pos' && choices.pos) return { kind: 'go', to: '/pos', reason: 'asked' };
+  if (ctx.go === 'backoffice' && choices.backOffice) return { kind: 'go', to: choices.backOffice, reason: 'asked' };
+  if (!choices.pos && choices.backOffice) return { kind: 'choose', recommended: 'backoffice' };
+  if (choices.pos && !choices.backOffice) return { kind: 'choose', recommended: 'pos' };
   return { kind: 'choose', recommended: ctx.sellingSetting === false ? 'backoffice' : 'pos' };
 }
+
+/** Shown on a disabled start button. */
+export const NO_BACK_OFFICE_TEXT = 'ไม่มีสิทธิ์เข้าหลังบ้าน';
+export const NO_POS_TEXT = 'ไม่มีสิทธิ์ใช้หน้าขาย';
 
 /** "ผู้ดูแลระบบ" / "ผู้จัดการ" / "แคชเชียร์" */
 export function roleLabel(role?: string | null): string {

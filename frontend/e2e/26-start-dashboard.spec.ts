@@ -95,17 +95,44 @@ test('login -> start screen -> back office / POS by keyboard; shop, user, versio
   await expect(page).toHaveURL(/\/login$/);
 });
 
-test('a POS-only cashier goes straight to the POS; a device set to "ไม่ใช้ขาย" pre-selects หลังบ้าน', async ({ browser, page }) => {
+test('a POS-only cashier gets the chooser with หลังบ้าน disabled, enabled once a back-office right is granted; "ไม่ใช้ขาย" pre-selects หลังบ้าน', async ({ browser, page }) => {
   const password = `Pos#Only${TAG}`;
-  await api('POST', '/auth/register', A, {
+  const user = await api<{ id: string }>('POST', '/auth/register', A, {
     username: `posonly${TAG}`, password, fullName: `แคชเชียร์ขายอย่างเดียว ${TAG}`, role: 'CASHIER',
     pinCode: String(6001 + Math.floor(Math.random() * 3000)), permissions: ['POS_SELL', 'POS_DISCOUNT'],
   });
   const ctx = await browser.newContext({ locale: 'th-TH', viewport: { width: 1366, height: 768 } });
   const cp = await ctx.newPage();
   await uiLogin(cp, `posonly${TAG}`, password, { start: 'stay' });
-  await expect(cp).toHaveURL(/\/pos$/);
-  await expect(cp.getByTestId('start-backoffice')).toHaveCount(0);
+  // owner 2026-11-20: always the chooser, also for a cashier who may only sell
+  await expect(cp).toHaveURL(/\/start$/);
+  const pos = cp.getByTestId('start-pos');
+  const back = cp.getByTestId('start-backoffice');
+  await expect(pos).toBeFocused();
+  await expect(back).toBeDisabled();
+  await expect(back).toContainText('ไม่มีสิทธิ์เข้าหลังบ้าน');
+  for (const size of SIZES) {
+    await cp.setViewportSize(size);
+    await cp.waitForTimeout(200);
+    expect(await horizontalOverflow(cp), `start pos-only ${size.width}x${size.height}`).toEqual([]);
+  }
+  await cp.setViewportSize(SIZES[0]);
+  await cp.keyboard.press('2'); // not allowed: nothing happens
+  await cp.keyboard.press('ArrowRight'); // the disabled button never takes the focus
+  await expect(pos).toBeFocused();
+  await expect(cp).toHaveURL(/\/start$/);
+  // the owner grants a back-office right: the button becomes active (profile refresh on reload)
+  await api('PATCH', `/auth/users/${user.id}`, A, { permissions: ['POS_SELL', 'POS_DISCOUNT', 'VIEW_REPORTS'] });
+  await cp.reload();
+  await expect(back).toBeEnabled();
+  await expect(back).not.toContainText('ไม่มีสิทธิ์');
+  await cp.keyboard.press('2');
+  await expect(cp).toHaveURL(/\/dashboard$/);
+  // offline on a selling device: still straight to the POS
+  await cp.evaluate(() => localStorage.setItem('purim_selling_device', '1'));
+  await cp.route('**/api/version', (r) => r.abort());
+  await cp.goto('/start');
+  await expect(cp).toHaveURL(/\/pos$/, { timeout: 10_000 });
   await ctx.close();
 
   await uiLogin(page, ADMIN.username, ADMIN.password, { start: 'stay' });
