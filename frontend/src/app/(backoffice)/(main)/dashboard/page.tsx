@@ -349,7 +349,7 @@ export default function DashboardPage() {
               </Badge>
             </div>
             <div className="text-xl sm:text-2xl font-black font-mono text-emerald-700 mt-1">
-              +{formatCurrency(kpi.grossSales)}
+              {formatCurrency(kpi.grossSales)}
             </div>
             <p className="text-[11px] text-emerald-700/90 mt-1 font-medium">
               มูลค่าสินค้าที่ขายออกไปทั้งหมดก่อนหักรายการยกเลิก
@@ -365,11 +365,11 @@ export default function DashboardPage() {
               </Badge>
             </div>
             <div className="text-xl sm:text-2xl font-black font-mono text-rose-600 mt-1">
-              -{formatCurrency(kpi.totalRefunds)}
+              {formatCurrency(kpi.totalRefunds)}
             </div>
             <div className="text-[11px] text-rose-700/90 mt-1 flex flex-wrap gap-x-2 font-medium">
-              <span>ยกเลิกบิล: -{formatCurrency(kpi.voidedAmount)}</span>
-              {kpi.returnsAmount > 0 && <span>• คืนสินค้า ({kpi.returnCount}): -{formatCurrency(kpi.returnsAmount)}</span>}
+              <span>ยกเลิกบิล: {formatCurrency(kpi.voidedAmount)}</span>
+              {kpi.returnsAmount > 0 && <span>• คืนสินค้า ({kpi.returnCount}): {formatCurrency(kpi.returnsAmount)}</span>}
               {kpi.claimRefundAmount > 0 && <span>• เคลมคืนเงิน (แสดงแยก ไม่หักจากยอดขาย): {formatCurrency(kpi.claimRefundAmount)}</span>}
             </div>
           </div>
@@ -383,7 +383,7 @@ export default function DashboardPage() {
               </Badge>
             </div>
             <div className="text-xl sm:text-2xl font-black font-mono text-indigo-700 mt-1">
-              ={formatCurrency(kpi.netRevenue)}
+              {formatCurrency(kpi.netRevenue)}
             </div>
             <p className="text-[11px] text-indigo-800/90 mt-1 font-medium">
               ยอดเงินคงเหลือสุทธิหลังหักการคืนเงินทั้งหมดแล้ว
@@ -392,47 +392,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ─── PRIMARY KPI STATS CARDS (4 Cards) ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
-        {/* 1. Net Revenue (Indigo Theme) */}
-        <div className="bg-white px-3.5 py-2.5 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg border border-indigo-100 shrink-0">
-              <DollarSign className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="text-xs text-slate-500 block font-bold">รายได้สุทธิ (Net Sales)</span>
-              <span className="text-base sm:text-lg font-black text-indigo-700 font-mono tracking-tight">
-                {formatCurrency(kpi.netRevenue)}
-              </span>
-            </div>
-          </div>
-          <div className="text-right text-[10px] text-slate-400 font-mono">
-            <div>ขาย {formatCurrency(kpi.grossSales)}</div>
-            <div className="text-rose-500">คืน -{formatCurrency(kpi.totalRefunds)}</div>
-          </div>
-        </div>
-
-        {/* 2. Total Refunds & Voids (Rose Theme) */}
-        <div className="bg-white px-3.5 py-2.5 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg border border-rose-100 shrink-0">
-              <RotateCcw className="w-4 h-4" />
-            </div>
-            <div>
-              <span className="text-xs text-slate-500 block font-bold">คืนเงิน & ยกเลิกบิล</span>
-              <span className="text-base sm:text-lg font-black text-rose-600 font-mono tracking-tight">
-                {formatCurrency(kpi.totalRefunds)}
-              </span>
-            </div>
-          </div>
-          <div className="text-right text-[10px] text-slate-400">
-            <div>{kpi.voidedOrdersCount} บิลยกเลิก</div>
-            <div>{kpi.returnCount} รายการคืนสินค้า</div>
-          </div>
-        </div>
-
-        {/* 3. Total Completed Orders (Sky Theme) */}
+      {/* ─── PRIMARY KPI CARDS ─── (net revenue / refunds are steps 3 / 2 of the banner above, not repeated here) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3" data-testid="kpi-cards">
+        {/* 1. Completed orders (Sky Theme) */}
         <div className="bg-white px-3.5 py-2.5 rounded-xl border border-sky-200/80 shadow-2xs flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 bg-sky-50 text-sky-600 rounded-lg border border-sky-100 shrink-0">
@@ -451,7 +413,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* 4. Credit customers (ลูกหนี้): customers / bills still owing + overdue, opens the list */}
+        {/* 2. Credit customers (ลูกหนี้): customers / bills still owing + overdue, opens the list */}
         <button
           type="button"
           data-testid="credit-card"
