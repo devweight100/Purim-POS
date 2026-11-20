@@ -300,7 +300,7 @@
       <div id="status-msg"></div>
 
       <div class="btn-group">
-        <button class="btn-primary" id="connect-btn" onclick="saveAndConnect()">🚀 บันทึกและเข้าสู่หน้าขาย (Connect POS)</button>
+        <button class="btn-primary" id="connect-btn" onclick="saveAndConnect()">🚀 บันทึกและเชื่อมต่อ (Connect)</button>
         <button class="btn-secondary" id="test-btn" onclick="testConnection()">🔍 ทดสอบการเชื่อมต่อ (Test Connection)</button>
       </div>
 
@@ -504,14 +504,14 @@
         input.value = url;
       }
 
-      showStatus('⏳ กำลังบันทึกและเข้าสู่หน้าขาย...', 'info');
+      showStatus('⏳ กำลังบันทึกและเชื่อมต่อ...', 'info');
       connectBtn.disabled = true;
 
       try {
         await window.electronAPI.saveServerUrl(url);
         await window.electronAPI.loadPosScreen(url);
       } catch (err) {
-        showStatus('❌ ไม่สามารถเปิดหน้าขายได้: ' + err.message, 'error');
+        showStatus('❌ ไม่สามารถเปิดโปรแกรมได้: ' + err.message, 'error');
         connectBtn.disabled = false;
       }
     }

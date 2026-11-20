@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, globalShortcut, net, Menu, dialog, nativeImage, session } = require('electron');
 const path = require('path');
+const { startUrl, posUrl, appUrl, backOfficeUrl } = require('./start-url');
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
@@ -367,9 +368,9 @@ async function autoConnectOrShowScreen() {
     if (!res.ok) { lastError = `${clean}: ${res.error || res.status}`; log(`[AutoConnect] ${lastError}`); }
     if (res.ok && !autoConnectCancelled) {
       log(`[AutoConnect] server found at: ${clean}`);
-      splashMessage(`พบเครื่องแม่ ${clean} กำลังเปิดหน้าขาย...`);
+      splashMessage(`พบเครื่องแม่ ${clean} กำลังเปิดโปรแกรม...`);
       saveConfig({ serverUrl: clean });
-      loadPosScreen(clean);
+      loadStartScreen(clean);
       return true;
     }
     return false;
@@ -414,25 +415,9 @@ function showConnectScreen(reason) {
   loadConnectScreen();
 }
 
-function loadPosScreen(customUrl) {
+/** Open a server page (watchdog: a page that does not finish loading shows the server screen). */
+function openServerUrl(targetUrl) {
   if (!mainWindow) return;
-  const config = loadConfig();
-  let base = (customUrl || config.serverUrl || 'http://localhost:3000').replace(/\/+$/, '');
-  const posUrl = `${base}/pos`;
-  log(`[Load] opening ${posUrl}`);
-  watchPageLoad(posUrl);
-  mainWindow.loadURL(posUrl).catch((err) => {
-    // an interrupted navigation (ERR_ABORTED) is not a dead server
-    if (err && (err.code === 'ERR_ABORTED' || err.errno === -3)) return;
-    showConnectScreen();
-  });
-}
-
-function loadRouteScreen(route) {
-  if (!mainWindow) return;
-  const config = loadConfig();
-  let base = (config.serverUrl || 'http://localhost:3000').replace(/\/+$/, '');
-  const targetUrl = `${base}${route.startsWith('/') ? route : '/' + route}`;
   log(`[Load] opening ${targetUrl}`);
   watchPageLoad(targetUrl);
   mainWindow.loadURL(targetUrl).catch((err) => {
@@ -442,8 +427,30 @@ function loadRouteScreen(route) {
   });
 }
 
+/**
+ * Start screen (/start: หน้าขาย (POS) / หลังบ้าน) of the server: after the automatic connection and after
+ * "เชื่อมต่อ" on the server screen. The page sends POS-only users and offline selling devices straight to the POS.
+ */
+function loadStartScreen(customUrl) {
+  if (!mainWindow) return;
+  openServerUrl(startUrl(customUrl || loadConfig().serverUrl));
+}
+
+/** F1 / menu "หน้าขาย": the POS directly. */
+function loadPosScreen(customUrl) {
+  if (!mainWindow) return;
+  openServerUrl(posUrl(customUrl || loadConfig().serverUrl));
+}
+
+function loadRouteScreen(route) {
+  if (!mainWindow) return;
+  openServerUrl(appUrl(loadConfig().serverUrl, route));
+}
+
+/** F2 / menu: the user's first back-office page (dashboard, or the first page they may open). */
 function loadDashboardScreen() {
-  loadRouteScreen('/dashboard');
+  if (!mainWindow) return;
+  openServerUrl(backOfficeUrl(loadConfig().serverUrl));
 }
 
 function loadConnectScreen() {
@@ -457,12 +464,17 @@ function setupAppMenu() {
       label: 'ระบบขาย & หลังบ้าน',
       submenu: [
         {
+          label: '🏠 หน้าเริ่มต้น (เลือก หน้าขาย / หลังบ้าน)',
+          accelerator: 'CmdOrCtrl+Shift+H',
+          click: () => loadStartScreen()
+        },
+        {
           label: '🛒 หน้าขายหน้าร้าน (POS)',
           accelerator: 'F1',
           click: () => loadPosScreen()
         },
         {
-          label: '📊 แดชบอร์ดระบบหลังบ้าน (Dashboard)',
+          label: '📊 หลังบ้าน (แดชบอร์ด หรือหน้าแรกที่มีสิทธิ์)',
           accelerator: 'F2',
           click: () => loadDashboardScreen()
         },
@@ -638,7 +650,8 @@ ipcMain.handle('test-server-url', async (event, url) => {
 });
 
 ipcMain.handle('load-pos-screen', (event, customUrl) => {
-  loadPosScreen(customUrl);
+  // server screen "เชื่อมต่อ": through the start screen like the automatic connection
+  loadStartScreen(customUrl);
   return true;
 });
 
@@ -1264,7 +1277,7 @@ app.whenReady().then(() => {
     loadPosScreen();
   });
 
-  // F2 -> Go to Back-office / Dashboard
+  // F2 -> Back office (dashboard, or the first back-office page the user may open)
   globalShortcut.register('F2', () => {
     loadDashboardScreen();
   });
