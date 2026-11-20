@@ -217,8 +217,8 @@ test('sidebar stays in the window, full height, while a long page scrolls (open 
     expect(box.y).toBe(0);
     expect(box.height).toBe(768);
     // the column (background + border) runs down the whole page: nothing empty beside the content
-    const col = await side.evaluate((el) => el.getBoundingClientRect().height);
-    expect(Math.abs(col - pageHeight)).toBeLessThanOrEqual(2);
+    // (measured together: the charts may still grow the page)
+    await expect.poll(() => side.evaluate((el) => Math.abs(el.getBoundingClientRect().height - document.documentElement.scrollHeight))).toBeLessThanOrEqual(2);
     await expect(collapsed ? side.getByTestId('rail-pos') : side.getByRole('button', { name: 'ออกจากระบบ' })).toBeInViewport();
     await page.evaluate(() => window.scrollTo(0, 0));
     if (!collapsed) {
