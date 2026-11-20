@@ -64,7 +64,7 @@ const login = (username: string, password: string) =>
 /**
  * Log in through the login page. Users with both the POS and the back office land on the start screen
  * (/start, docs/round-start-dashboard.md); by default this picks "หน้าขาย (POS)" there like the older specs
- * expect. `{ start: 'stay' }` leaves the start screen open.
+ * expect ("หลังบ้าน" for a user who may not sell). `{ start: 'stay' }` leaves the start screen open.
  */
 export async function uiLogin(page: Page, username: string, password: string, opts: { start?: 'pos' | 'stay' } = {}) {
   await page.goto('/login');
@@ -85,7 +85,11 @@ export async function uiLogin(page: Page, username: string, password: string, op
       pos.waitFor({ timeout: 15_000 }).then(() => true),
       page.waitForURL((u) => u.pathname !== '/start', { timeout: 15_000 }).then(() => false),
     ]).catch(() => false);
-    if (shown && new URL(page.url()).pathname === '/start') await pos.click();
+    if (shown && new URL(page.url()).pathname === '/start') {
+      // the chooser is always shown (owner 2026-11-20); a user without the POS opens the back office
+      if (await pos.isEnabled()) await pos.click();
+      else await page.getByTestId('start-backoffice').click();
+    }
   }
 }
 
