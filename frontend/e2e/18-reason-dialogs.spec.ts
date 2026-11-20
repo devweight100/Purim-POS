@@ -199,7 +199,7 @@ test('debts (row-nav list): reason dialog over the payment history dialog takes 
   });
   const debts = await api<{ data: { id: string; orderNumber?: string; order?: { orderNumber: string } }[] }>('GET', `/debts?search=${order.orderNumber}`, adminToken);
   const debt = debts.data[0];
-  await api('POST', `/debts/${debt.id}/pay`, adminToken, { amount: 100, paymentMethod: 'CASH', clientPaymentId: randomUUID(), shiftId });
+  await api('POST', `/debts/${debt.id}/pay`, adminToken, { amount: 100, paymentMethod: 'CASH', clientPaymentId: randomUUID(), shiftId, shiftChoice: 'POS' });
 
   await adminPage(page);
   await page.goto('/debts');

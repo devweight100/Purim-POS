@@ -128,7 +128,7 @@ d('store flow (e2e)', () => {
     it('credit sale, debt receipt and cancelling the receipt', async () => {
       const cust = (await api('post', '/customers', A, { name: 'E2E ลูกค้า', phone: '0800000001' })).body;
       const o = (await api('post', '/orders/checkout', C, { clientOrderId: randomUUID(), shiftId: state.shift.id, customerId: cust.id, items: [{ productId: state.p.id, quantity: 2, unitPrice: state.price }], payments: [{ method: 'CREDIT_DEBT', amount: state.price * 2 }] }).expect(201)).body;
-      const pay = (await api('post', `/debts/${o.id}/pay`, C, { amount: state.price, paymentMethod: 'CASH', clientPaymentId: randomUUID(), shiftId: state.shift.id }).expect(201)).body;
+      const pay = (await api('post', `/debts/${o.id}/pay`, C, { amount: state.price, paymentMethod: 'CASH', clientPaymentId: randomUUID(), shiftId: state.shift.id, shiftChoice: 'POS' }).expect(201)).body;
       expect(Number(pay.debt.remainingAmount)).toBeCloseTo(state.price, 2);
       await api('post', `/debts/payments/${pay.payment.id}/cancel`, C, { reason: 'x' }).expect(403); // cashier may not cancel
       const cancelled = (await api('post', `/debts/payments/${pay.payment.id}/cancel`, A, { reason: 'รับผิดบิล' }).expect(201)).body;
@@ -3274,13 +3274,13 @@ d('store flow (e2e)', () => {
 
     it('back office: cash + QR into a chosen open shift count in that shift exactly like a POS receipt, close matches', async () => {
       const s0 = await summary(rs.shift.id);
-      const cash = (await pay(A, rs.o1.id, { amount: 150, paymentMethod: 'CASH', shiftId: rs.shift.id }).expect(201)).body;
+      const cash = (await pay(A, rs.o1.id, { amount: 150, paymentMethod: 'CASH', shiftChoice: rs.shift.id }).expect(201)).body;
       expect(cash.payment.shiftId).toBe(rs.shift.id);
       expect(cash.payment.shift.shiftNumber).toBe(rs.shift.shiftNumber);
-      const qr = (await pay(A, rs.o1.id, { amount: 60, paymentMethod: 'QR_PROMPTPAY', shiftId: rs.shift.id, bankAccountId: rs.bank.bankAccountId }).expect(201)).body;
+      const qr = (await pay(A, rs.o1.id, { amount: 60, paymentMethod: 'QR_PROMPTPAY', shiftChoice: rs.shift.id, bankAccountId: rs.bank.bankAccountId }).expect(201)).body;
       expect(qr.payment.shiftId).toBe(rs.shift.id);
       // the same as the cashier taking it at the POS
-      const posCash = (await pay(C, rs.o1.id, { amount: 40, paymentMethod: 'CASH', shiftId: rs.shift.id }).expect(201)).body;
+      const posCash = (await pay(C, rs.o1.id, { amount: 40, paymentMethod: 'CASH', shiftId: rs.shift.id, shiftChoice: 'POS' }).expect(201)).body;
       expect(posCash.payment.shiftId).toBe(rs.shift.id);
       const s1 = await summary(rs.shift.id);
       expect(s1.debtCollectionCash).toBeCloseTo(s0.debtCollectionCash + 190, 2);
@@ -3296,8 +3296,8 @@ d('store flow (e2e)', () => {
     it('back office: no shift -> ledger entry (cash to the safe, transfer to the bank), no shift changes', async () => {
       const adminShift = (await api('post', '/shifts/open', A, { startingCash: 0, terminalId: 'rs-term-admin' }).expect(201)).body.shift;
       const before = { c: await summary(rs.shift.id), a: await summary(adminShift.id), safe: await balance(rs.safe.id), bank: await balance(rs.bank.id) };
-      const cash = (await pay(A, rs.o2.id, { amount: 70, paymentMethod: 'CASH', noShift: true }).expect(201)).body;
-      const tr = (await pay(A, rs.o2.id, { amount: 30, paymentMethod: 'TRANSFER', noShift: true, bankAccountId: rs.bank.bankAccountId }).expect(201)).body;
+      const cash = (await pay(A, rs.o2.id, { amount: 70, paymentMethod: 'CASH', shiftChoice: 'NONE' }).expect(201)).body;
+      const tr = (await pay(A, rs.o2.id, { amount: 30, paymentMethod: 'TRANSFER', shiftChoice: 'NONE', bankAccountId: rs.bank.bankAccountId }).expect(201)).body;
       expect(cash.payment.shiftId).toBeNull();
       expect(tr.payment.shiftId).toBeNull();
       expect(cash.payment.receiptNo).toMatch(/^RC\d{4}-\d{4,}$/);
@@ -3317,14 +3317,36 @@ d('store flow (e2e)', () => {
       await api('post', `/shifts/${adminShift.id}/close`, A, { actualCash: 0 }).expect(201);
     });
 
+    it('no explicit shift choice -> 400 SHIFT_CHOICE_REQUIRED, nothing written (owner 2026-11-20: no default)', async () => {
+      const before = await db.customerDebt.findUnique({ where: { orderId: rs.o2.id } });
+      const payments = await db.debtPayment.count();
+      for (const body of [
+        { amount: 10, paymentMethod: 'CASH' },
+        { amount: 10, paymentMethod: 'CASH', shiftId: rs.shift.id }, // a shift id alone is not a choice
+        { amount: 10, paymentMethod: 'TRANSFER', bankAccountId: rs.bank.bankAccountId },
+        { amount: 10, paymentMethod: 'CASH', noShift: true }, // the old field is not a choice either
+        { amount: 10, paymentMethod: 'CASH', shiftChoice: '  ' },
+        { amount: 10, paymentMethod: 'CASH', shiftChoice: 5 },
+      ]) {
+        const r = await pay(A, rs.o2.id, body).expect(400);
+        expect(r.body.code).toBe('SHIFT_CHOICE_REQUIRED');
+      }
+      // an explicit shift id that disagrees with shiftId
+      await pay(A, rs.o2.id, { amount: 10, paymentMethod: 'CASH', shiftId: rs.shift.id, shiftChoice: randomUUID() }).expect(400);
+      // a card is still refused
+      await pay(A, rs.o2.id, { amount: 10, paymentMethod: 'CREDIT_CARD', shiftChoice: 'NONE' }).expect(400);
+      expect(await db.debtPayment.count()).toBe(payments);
+      expect(Number((await db.customerDebt.findUnique({ where: { orderId: rs.o2.id } }))!.remainingAmount)).toBe(Number(before!.remainingAmount));
+    });
+
     it('rights: a cashier cannot pay into another shift or into no shift; POS keeps its own shift', async () => {
-      await pay(C, rs.o2.id, { amount: 10, paymentMethod: 'CASH', noShift: true }).expect(403);
+      await pay(C, rs.o2.id, { amount: 10, paymentMethod: 'CASH', shiftChoice: 'NONE' }).expect(403);
       const other = (await api('post', '/shifts/open', A, { startingCash: 0, terminalId: 'rs-term-admin2' }).expect(201)).body.shift;
-      await pay(C, rs.o2.id, { amount: 10, paymentMethod: 'CASH', shiftId: other.id }).expect(403);
-      await pay(A, rs.o2.id, { amount: 10, paymentMethod: 'CASH', shiftId: rs.shift.id, noShift: true }).expect(400);
+      await pay(C, rs.o2.id, { amount: 10, paymentMethod: 'CASH', shiftChoice: other.id }).expect(403);
+      await pay(A, rs.o2.id, { amount: 10, paymentMethod: 'CASH', shiftId: rs.shift.id, shiftChoice: 'NONE' }).expect(400);
       await api('post', `/shifts/${other.id}/close`, A, { actualCash: 0 }).expect(201);
-      // an older POS sending no shift for a QR receipt: the cashier's own open shift (old summary rule)
-      const legacy = (await pay(C, rs.o2.id, { amount: 5, paymentMethod: 'QR_PROMPTPAY', bankAccountId: rs.bank.bankAccountId }).expect(201)).body;
+      // the POS with no current shift on the device for a QR receipt: the cashier's own open shift (old summary rule)
+      const legacy = (await pay(C, rs.o2.id, { amount: 5, paymentMethod: 'QR_PROMPTPAY', shiftChoice: 'POS', bankAccountId: rs.bank.bankAccountId }).expect(201)).body;
       expect(legacy.payment.shiftId).toBe(rs.shift.id);
       rs.expectedQr = (await summary(rs.shift.id)).debtCollectionQrTransfer;
     });
@@ -3336,7 +3358,7 @@ d('store flow (e2e)', () => {
       expect(Number(closed.expectedCash)).toBeCloseTo(rs.expected, 2);
       expect(Number(closed.cashDifference)).toBeCloseTo(0, 2);
       const debtBefore = await db.customerDebt.findUnique({ where: { orderId: rs.o2.id } });
-      const r = await pay(A, rs.o2.id, { amount: 20, paymentMethod: 'CASH', shiftId: rs.shift.id }).expect(409);
+      const r = await pay(A, rs.o2.id, { amount: 20, paymentMethod: 'CASH', shiftChoice: rs.shift.id }).expect(409);
       expect(r.body.code).toBe('SHIFT_NOT_OPEN');
       expect(r.body.message).toContain(rs.shift.shiftNumber);
       expect(Number((await db.customerDebt.findUnique({ where: { orderId: rs.o2.id } }))!.remainingAmount)).toBe(Number(debtBefore!.remainingAmount));

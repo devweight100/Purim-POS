@@ -133,6 +133,7 @@ export async function recordDebtPayment(
     /**
      * Back office: the cashier shift chosen in the dialog (`{ shiftId }`) or none (`{ noShift: true }`).
      * Omitted (POS): the current shift of this device, for cash and QR / transfer alike.
+     * Sent as the required `shiftChoice` (a shift id / 'NONE' / 'POS'); the server refuses a request without it.
      */
     shift?: { shiftId: string } | { noShift: true };
   },
@@ -155,8 +156,8 @@ export async function recordDebtPayment(
     paymentMethod,
     referenceNo: options?.referenceNo,
     note: options?.note,
-    shiftId,
-    ...(noShift ? { noShift: true } : {}),
+    ...(chosen ? {} : { shiftId }),
+    shiftChoice: !chosen ? 'POS' : noShift ? 'NONE' : shiftId,
   };
   const fingerprint = JSON.stringify(body);
   const bankAccountId = paymentMethod === 'CASH' ? undefined : options?.bankAccountId;

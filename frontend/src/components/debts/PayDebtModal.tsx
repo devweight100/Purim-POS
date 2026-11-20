@@ -7,7 +7,6 @@ import { fetchBankAccountsFromBackend, loadBankAccounts, type BankAccount } from
 import { formatCurrency, formatListDateTime } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
 import { ApiError, errorText } from '@/lib/api-error';
-import { useShiftStore } from '@/lib/store/shift-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -90,9 +89,6 @@ export function PayDebtModal({
   const [shiftsError, setShiftsError] = useState<string | null>(null);
   const [shiftChoice, setShiftChoice] = useState<string>('');
   const [shiftsVersion, setShiftsVersion] = useState(0);
-  // the chosen shift was refused (closed meanwhile): no default, the user picks again
-  const repick = useRef(false);
-  useEffect(() => { if (open) repick.current = false; }, [open, debtRecord]);
   useEffect(() => {
     if (!open || !chooseShift) return;
     let alive = true;
@@ -102,13 +98,8 @@ export function PayDebtModal({
         const list = Array.isArray(rows) ? rows : [];
         setOpenShifts(list);
         setShiftsError(null);
-        // keep a still-open choice; otherwise this user's own open shift, else "not in a shift"
-        setShiftChoice((prev) => {
-          if (prev === NO_SHIFT || list.some((x) => x.id === prev)) return prev;
-          if (prev || repick.current) return ''; // the chosen shift closed: pick again
-          const mine = useShiftStore.getState().currentShift?.id;
-          return mine && list.some((x) => x.id === mine) ? mine : NO_SHIFT;
-        });
+        // keep a still-open choice; no default (owner 2026-11-20): the user picks a shift or "ไม่เข้ากะ"
+        setShiftChoice((prev) => (prev === NO_SHIFT || list.some((x) => x.id === prev) ? prev : ''));
       })
       .catch((err) => { if (alive) setShiftsError(errorText(err) || 'โหลดรายการกะที่เปิดอยู่ไม่สำเร็จ'); });
     return () => { alive = false; };
@@ -140,6 +131,8 @@ export function PayDebtModal({
   if (!debtRecord) return null;
 
   const currentRemaining = debtRecord.remainingDebt;
+  // back office: saving stays disabled until a shift or "ไม่เข้ากะแคชเชียร์" is picked (no default)
+  const needsShift = chooseShift && !shiftChoice;
   const numAmount = parseFloat(amountInput) || 0;
 
   // Chosen bank account (default account until the user picks one). QR for the amount being paid:
@@ -182,7 +175,7 @@ export function PayDebtModal({
       return;
     }
 
-    if (chooseShift && !shiftChoice) {
+    if (needsShift) {
       toast.error('กรุณาเลือกกะแคชเชียร์ที่รับเงิน หรือเลือก "ไม่เข้ากะแคชเชียร์"');
       return;
     }
@@ -217,7 +210,6 @@ export function PayDebtModal({
     } catch (err) {
       if (err instanceof ApiError && err.data?.code === 'SHIFT_NOT_OPEN') {
         // the chosen shift was closed meanwhile: reload the open shifts and let the user pick again
-        repick.current = true;
         setShiftChoice('');
         setShiftsVersion((v) => v + 1);
       }
@@ -346,12 +338,12 @@ export function PayDebtModal({
           {/* Payment Method Selector */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-700">ช่องทางการรับเงิน:</label>
-            <div className="grid grid-cols-4 gap-btn">
+            {/* no card: the server takes debt payments in cash / QR / transfer only */}
+            <div className="grid grid-cols-3 gap-btn">
               {[
                 { id: 'CASH' as PaymentMethodType, label: 'เงินสด', icon: Banknote },
                 { id: 'QR_PROMPTPAY' as PaymentMethodType, label: 'QR โอน', icon: QrCode },
                 { id: 'TRANSFER' as PaymentMethodType, label: 'โอนธนาคาร', icon: Building2 },
-                { id: 'CREDIT_CARD' as PaymentMethodType, label: 'บัตรเครดิต', icon: CreditCard },
               ].map((m) => {
                 const Icon = m.icon;
                 const active = paymentMethod === m.id;
@@ -412,16 +404,16 @@ export function PayDebtModal({
 
           {/* Back office: which cashier shift the money goes into */}
           {chooseShift && (
-            <div className="space-y-1.5 rounded-2xl border border-amber-200 bg-amber-50/60 p-3">
+            <div className={`space-y-1.5 rounded-2xl border p-3 ${shiftChoice ? 'border-amber-200 bg-amber-50/60' : 'border-amber-400 bg-amber-50 ring-2 ring-amber-200'}`}>
               <label htmlFor="pay-debt-shift" className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
                 <Clock className="h-4 w-4 text-amber-600" />
-                รับเงินเข้ากะแคชเชียร์:
+                รับเงินเข้ากะแคชเชียร์: <span className="text-rose-600">* ต้องเลือก</span>
               </label>
               <select
                 id="pay-debt-shift"
                 data-testid="pay-debt-shift"
                 value={shiftChoice}
-                onChange={(e) => { repick.current = false; setShiftChoice(e.target.value); }}
+                onChange={(e) => setShiftChoice(e.target.value)}
                 className="w-full h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
               >
                 <option value="" disabled>
@@ -472,6 +464,15 @@ export function PayDebtModal({
           </div>
         </div>
 
+        {needsShift && (
+          <label
+            htmlFor="pay-debt-shift"
+            data-testid="pay-debt-save-hint"
+            className="shrink-0 cursor-pointer rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900"
+          >
+            ยังบันทึกไม่ได้: เลือก &quot;รับเงินเข้ากะแคชเชียร์&quot; ก่อน (กะที่เปิดอยู่ หรือ &quot;ไม่เข้ากะแคชเชียร์&quot;)
+          </label>
+        )}
         <div className="flex gap-2 pt-3 border-t border-slate-100 shrink-0">
           <Button
             type="button"
@@ -484,7 +485,8 @@ export function PayDebtModal({
           <Button
             type="button"
             onClick={handleSubmit}
-            disabled={isSubmitting || numAmount <= 0}
+            disabled={isSubmitting || numAmount <= 0 || needsShift}
+            title={needsShift ? 'เลือกกะที่รับเงินก่อนบันทึก' : undefined}
             className="flex-1 h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl shadow-md gap-1.5"
           >
             <CheckCircle2 className="w-4 h-4" />

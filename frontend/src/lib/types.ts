@@ -1050,6 +1050,8 @@ export interface DebtPayRequest {
   cashierName?: string;
   note?: string;
   shiftId?: string;
+  /** required: 'NONE' (no cashier shift), 'POS' (the POS's current shift in shiftId) or a picked shift id */
+  shiftChoice: string;
   bankAccountId?: string;
   clientPaymentId?: string;
 }

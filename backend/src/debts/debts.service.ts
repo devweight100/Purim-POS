@@ -43,6 +43,11 @@ export function canReceiveDebtForAnyShift(actor?: DebtPayActor | null): boolean 
 
 /** Error code of a debt payment into a shift that is no longer open (the screen reloads the shift list). */
 export const SHIFT_NOT_OPEN = 'SHIFT_NOT_OPEN';
+/** POST /debts/:id/pay without an explicit `shiftChoice` (400). */
+export const SHIFT_CHOICE_REQUIRED = 'SHIFT_CHOICE_REQUIRED';
+/** `shiftChoice` values besides a shift id: no cashier shift (back office) / the POS's own current shift. */
+export const SHIFT_CHOICE_NONE = 'NONE';
+export const SHIFT_CHOICE_POS = 'POS';
 
 /**
  * Figures of the receivables (debts page cards and the dashboard credit card; one rule):
@@ -220,17 +225,18 @@ export class DebtsService {
   /**
    * Receive a debt payment (receipt RC<YYMM>-<NNNN>).
    *
-   * Which cashier shift the money goes into:
-   *  - `shiftId` given: that shift, which must still be OPEN (409 SHIFT_NOT_OPEN otherwise, e.g. closed while the
-   *    dialog was open). Another cashier's shift needs back-office rights (canReceiveDebtForAnyShift).
-   *    Cash: drawer movement (category DEBT_PAYMENT) of the shift + ledger into that terminal's drawer, so the
-   *    shift's expected cash includes it. QR / transfer: ledger into the bank, counted in the shift's
-   *    debtCollectionQrTransfer.
-   *  - `noShift` (back office "ไม่เข้ากะแคชเชียร์", back-office rights only): no shift is touched. Cash: ledger
-   *    into the safe; QR / transfer: ledger into the chosen bank.
-   *  - neither (older POS clients): cash is refused without a shift (as before); QR / transfer go into the
-   *    caller's own open shift if they have one (the old summary rule), else no shift.
-   * Payment methods are unchanged: CASH, TRANSFER, QR_PROMPTPAY.
+   * `shiftChoice` is required (owner 2026-11-20: no default; a request without an explicit choice is refused with
+   * 400 SHIFT_CHOICE_REQUIRED, nothing written):
+   *  - a shift id (back office, picked in the dialog): that shift, which must still be OPEN (409 SHIFT_NOT_OPEN
+   *    otherwise, e.g. closed while the dialog was open). Another cashier's shift needs back-office rights
+   *    (canReceiveDebtForAnyShift). Cash: drawer movement (category DEBT_PAYMENT) of the shift + ledger into that
+   *    terminal's drawer, so the shift's expected cash includes it. QR / transfer: ledger into the bank, counted in
+   *    the shift's debtCollectionQrTransfer.
+   *  - 'NONE' (back office "ไม่เข้ากะแคชเชียร์", back-office rights only): no shift is touched. Cash: ledger into
+   *    the safe; QR / transfer: ledger into the chosen bank.
+   *  - 'POS' (the POS dialog, automatic): the device's current shift in `shiftId`, same rules as a picked shift;
+   *    without one, cash is refused and QR / transfer go into the caller's own open shift if any (old rule).
+   * Payment methods: CASH, TRANSFER, QR_PROMPTPAY (a card is refused).
    */
   async payDebt(
     debtId: string,
@@ -243,16 +249,29 @@ export class DebtsService {
     shiftId?: string,
     userId?: string,
     bankAccountId?: string,
-    opts: { noShift?: boolean; actor?: DebtPayActor } = {},
+    opts: { shiftChoice?: unknown; actor?: DebtPayActor } = {},
   ) {
     if (!clientPaymentId || !/^[a-zA-Z0-9-]{16,80}$/.test(clientPaymentId)) throw new BadRequestException('กรุณาระบุรหัสรับชำระเพื่อป้องกันรายการซ้ำ');
     if (!Number.isFinite(amount) || amount <= 0 || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.00001) throw new BadRequestException('จำนวนเงินไม่ถูกต้อง');
     if (![PaymentMethod.CASH, PaymentMethod.TRANSFER, PaymentMethod.QR_PROMPTPAY].includes(paymentMethod as any)) throw new BadRequestException('วิธีรับชำระไม่ถูกต้อง');
     if (shiftId !== undefined && shiftId !== null && typeof shiftId !== 'string') throw new BadRequestException('กะที่เลือกไม่ถูกต้อง');
-    const noShift = opts.noShift === true;
+    const choice = typeof opts.shiftChoice === 'string' ? opts.shiftChoice.trim() : '';
+    if (!choice) {
+      throw new BadRequestException({
+        statusCode: 400,
+        code: SHIFT_CHOICE_REQUIRED,
+        message: 'กรุณาเลือกกะแคชเชียร์ที่รับเงิน หรือเลือก "ไม่เข้ากะแคชเชียร์" ก่อนบันทึก',
+      });
+    }
+    const noShift = choice === SHIFT_CHOICE_NONE;
     if (noShift && shiftId) throw new BadRequestException('เลือกได้อย่างใดอย่างหนึ่ง: เข้ากะแคชเชียร์ หรือ ไม่เข้ากะ');
+    if (choice !== SHIFT_CHOICE_NONE && choice !== SHIFT_CHOICE_POS) {
+      // an explicit shift id
+      if (shiftId && shiftId !== choice) throw new BadRequestException('กะที่เลือกไม่ตรงกัน กรุณาเลือกกะใหม่');
+      shiftId = choice;
+    }
     const actor: DebtPayActor = opts.actor || { id: userId };
-    const fingerprint = JSON.stringify({ debtId, amount, paymentMethod, referenceNo: referenceNo || '', note: note || '', shiftId: shiftId || '', userId: userId || '', ...(noShift ? { noShift: true } : {}) });
+    const fingerprint = JSON.stringify({ debtId, amount, paymentMethod, referenceNo: referenceNo || '', note: note || '', shiftId: shiftId || '', userId: userId || '', shiftChoice: choice });
     return businessTransaction(this.prisma, async (tx) => {
       const receiptId = 'debt-pay-' + clientPaymentId;
       const previous = await tx.auditLog.findUnique({ where: { id: receiptId } });
@@ -294,7 +313,7 @@ export class DebtsService {
       } else if (paymentMethod === PaymentMethod.CASH) {
         throw new BadRequestException('กรุณาเปิดกะของผู้รับเงินก่อนรับชำระเงินสด');
       } else if (userId) {
-        // older clients send no shift for QR / transfer: the caller's open shift (the old summary rule)
+        // 'POS' without a current shift for QR / transfer: the caller's open shift (the old summary rule)
         shift = await tx.shift.findFirst({ where: { userId, status: 'OPEN' }, orderBy: { openedAt: 'desc' } });
       }
 

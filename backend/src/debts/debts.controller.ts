@@ -99,11 +99,11 @@ export class DebtsController {
     @Body('clientPaymentId') clientPaymentId?: string,
     @Body('shiftId') shiftId?: string,
     @Body('bankAccountId') bankAccountId?: string,
-    @Body('noShift') noShift?: boolean,
+    @Body('shiftChoice') shiftChoice?: unknown,
   ) {
     const cashier = cashierName || req.user?.fullName || 'เจ้าหน้าที่';
     return this.debtsService.payDebt(id, Number(amount), paymentMethod, referenceNo, cashier, note, clientPaymentId, shiftId, req.user?.id || req.user?.sub, bankAccountId, {
-      noShift: noShift === true,
+      shiftChoice,
       actor: req.user,
     });
   }
