@@ -47,7 +47,6 @@ import {
   CheckCircle2,
   Box,
   Truck,
-  RotateCcw,
   Ban,
   ShieldAlert,
   ArrowRight,
