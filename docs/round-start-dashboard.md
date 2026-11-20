@@ -66,3 +66,70 @@ Owner round 2026-11-19/20. Branch `ccr-8f8b0741-si1a0o`.
 
 ## Verification
 See PROJECT_STATUS.md entry 2026-11-20.
+
+# Follow-up round (owner's answers, 2026-11-20)
+
+## A. Start chooser always shown
+- `startDecision` (`frontend/src/lib/start-screen.ts`) no longer skips the chooser when the user has one option: a
+  POS-only cashier (POS_SELL / POS_DISCOUNT) sees both buttons. **Choice: disabled, not hidden** - "หลังบ้าน" is
+  greyed, cannot be focused or opened (key 2 does nothing), shows a lock + "ไม่มีสิทธิ์เข้าหลังบ้าน" and "ให้ผู้ดูแลร้าน
+  เพิ่มสิทธิ์ที่หน้า พนักงาน & สิทธิ์". The same for a user without the POS ("ไม่มีสิทธิ์ใช้หน้าขาย"). The allowed
+  button is pre-selected; with both allowed the device setting decides as before.
+- "Back office" is still a page beyond the bills / customers / shifts lists POS_SELL opens.
+- Granting a right: changing a user's permissions revokes their sessions (security rule of round 3,
+  `tokenVersion`), so the cashier is signed out; after logging in again the button is active.
+- Kept: an offline selling device goes straight to the POS (when the user may sell); `?go=` opens an allowed option
+  (an option the user may not open shows the chooser with that button disabled).
+
+## B. Back-office debt payment: explicit shift choice
+- `POST /debts/:id/pay` requires `shiftChoice`: a shift id (the picked OPEN shift), `'NONE'` (ไม่เข้ากะแคชเชียร์,
+  back-office rights) or `'POS'` (the POS dialog: the device's current shift in `shiftId`, the old automatic rule).
+  Missing / blank / not a string -> 400 `{ code: 'SHIFT_CHOICE_REQUIRED' }`, nothing written; the old `noShift`
+  field and a bare `shiftId` are not a choice. A `shiftId` that disagrees with an explicit shift choice -> 400.
+- Dialog (debts page): no default (was "this user's shift, else ไม่เข้ากะ"). The picker starts at "— เลือกกะที่รับเงิน —"
+  with "* ต้องเลือก"; "ยืนยันรับชำระ" stays disabled with a hint above it ("ยังบันทึกไม่ได้: เลือกกะที่รับเงิน หรือ
+  "ไม่เข้ากะแคชเชียร์" ก่อน", a label: click / tap focuses the picker). Every open starts without a choice. The picker is
+  a native select (Tab, arrows, type-ahead).
+- POS: `recordDebtPayment` sends `shiftChoice: 'POS'` + its current shift, unchanged behaviour.
+- Note: a browser tab still running the previous build gets the 400 until it reloads (the desktop app and the
+  browser load the current build from the server).
+
+## C. No card button in the debt payment dialog
+"บัตรเครดิต" removed (methods เงินสด / QR โอน / โอนธนาคาร, 3 columns). The dialog is shared, so the POS debt dialog lost
+it too; the server refused card debt payments everywhere anyway.
+
+## D. Dashboard
+- KPI row: "รายได้สุทธิ (Net Sales)" and "คืนเงิน & ยกเลิกบิล" cards removed (steps 3 / 2 of the banner). The row is now
+  2 equal cards, ออเดอร์สำเร็จ (count + average per bill) and ลูกค้าเงินเชื่อ (unchanged), filling the width.
+- Banner: no "+", "-", "=" before ยอดขายรวม / คืนเงิน & ยกเลิกบิล / รายได้สุทธิ (also not before the void / return amounts
+  under step 2).
+
+## E. Back-office sidebar
+- Investigation: the desktop sidebar was `position: fixed; height: 100%` - in a real window it always filled the
+  window and stayed put. The owner's screenshot is a full-page capture: the browser renders a fixed element once, at
+  the window's size (768 px), so below it the page background showed. Inside, all 6 groups were open by default
+  (the menu was 1469 px tall in a 589 px area at 1366x768), so it scrolled internally and looked cut after
+  "สินค้า & คลังสินค้า".
+- Now (`components/layout/Sidebar.tsx`, `(main)/layout.tsx`):
+  - the sidebar is a column of the page row (240 px / 64 px rail) as tall as the page (background + border run down
+    the whole page, also in a full-page capture); inside, a panel `sticky top-0 h-dvh` fills the window, stays in
+    place while the page scrolls, and pins the user box / version / ออกจากระบบ at its bottom. The row uses
+    `overflow-x: clip` (not hidden) so it is no scroll container and sticky follows the window. A full-page capture
+    still shows the panel where the window is (top), with the column continuing below - a capture cannot show a
+    window-fixed panel along the whole page; in a real window it is always beside what you see.
+  - Accordion: only the current page's group is open by default (sub pages too, e.g. `/reports/sales` opens
+    ภาพรวม & รายงาน and the รายงาน submenu); others are closed. The user's opens / closes are remembered per device
+    (`localStorage purim_sidebar_groups`, try/catch, in `sidebar-store.ts`); a remembered "closed" never hides the
+    page being opened (that group re-opens on navigation, the user may close it again).
+  - Compact: header 56 px, POS button one line (the "ขายสด" tag that overlapped the label was dropped), items /
+    headers 4-6 px vertical padding, 4 px between groups. 1366x768: whole menu with the current group open fits
+    (nav area 615 px, no scrolling); 1920x1080 likewise.
+  - Still too short (e.g. 1093x614 on a report page with the 6 report links open): the nav area scrolls, a fade +
+    "เลื่อนดูเมนูเพิ่ม" chip shows at the bottom (fade at the top once scrolled), and the current page's link
+    (`aria-current="page"`) is scrolled into view.
+  - Collapsed rail (Ctrl+B) unchanged, inside the same sticky panel.
+
+## Screenshots
+`/tmp/.../scratchpad/round-start2/` (before-* / after-*): dashboard viewport, scrolled to the bottom and full page at
+1366x768 / 1093x614 (+1920x1080 viewport), collapsed rail, sidebar on /reports/sales and /users, the cashier-only
+chooser (before: straight to the POS), the debt payment dialog before / after choosing a shift.
