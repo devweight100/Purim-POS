@@ -466,7 +466,7 @@ export default function DashboardPage() {
               <Users className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <span className="text-xs text-slate-500 block font-bold group-hover:text-amber-800">ลูกค้าเงินเชื่อค้างชำระ</span>
+              <span className="text-xs text-slate-500 block font-bold group-hover:text-amber-800 whitespace-nowrap">ลูกค้าเงินเชื่อ</span>
               <span className="text-base sm:text-lg font-black text-amber-700 font-mono tracking-tight" data-testid="credit-total">
                 {formatCurrency(credit?.totalOutstanding ?? 0)}
               </span>
