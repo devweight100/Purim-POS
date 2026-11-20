@@ -56,6 +56,7 @@ import {
   Smartphone
 } from "lucide-react";
 import { fetchClaimRefundSummary } from "@/lib/claim-service";
+import { CreditCustomersDialog, type CreditSummary } from "@/components/dashboard/CreditCustomersDialog";
 import { bangkokDate, bangkokParts, bangkokStartOfDay, DAY_MS } from "@shared/bangkok-date";
 
 // Palette colors for charts
@@ -124,19 +125,24 @@ export default function DashboardPage() {
   const [dash, setDash] = useState<DashboardReport | null>(null);
   // claim refunds of the period (computed on the server over every claim)
   const [claimRefunds, setClaimRefunds] = useState<{ count: number; amount: number }>({ count: 0, amount: 0 });
+  // customers with unpaid credit (GET /debts/credit-summary: the debts page rule) and the list dialog
+  const [credit, setCredit] = useState<CreditSummary | null>(null);
+  const [creditOpen, setCreditOpen] = useState(false);
 
   // All figures come from the server aggregate (/reports/dashboard): no row cap for "all",
   // returns netted like the P&L, Bangkok days, one low-stock threshold (StoreSettings).
   /** Loads the figures; state is only updated after the requests. */
   const fetchDashboard = async (range: DashboardRange) => {
     try {
-      const [dashRes, claimsRes] = await Promise.allSettled([
+      const [dashRes, claimsRes, creditRes] = await Promise.allSettled([
         apiFetch(`/reports/dashboard?range=${range}`),
         fetchClaimRefundSummary(claimPeriodStart(range, Date.now())),
+        apiFetch<CreditSummary>("/debts/credit-summary"),
       ]);
       if (dashRes.status === "fulfilled") setDash(dashRes.value);
       else setDash(null);
       if (claimsRes.status === "fulfilled") setClaimRefunds(claimsRes.value);
+      if (creditRes.status === "fulfilled") setCredit(creditRes.value);
     } finally {
       setLoading(false);
     }
@@ -446,28 +452,41 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* 4. Pending Credit Receivables (Amber Theme) */}
-        <Link
-          href="/debts"
-          className="bg-white px-3.5 py-2.5 rounded-xl border border-amber-200/80 shadow-2xs flex items-center justify-between hover:border-amber-400 transition-colors group cursor-pointer"
-          title="คลิกเพื่อไปที่หน้าระบบลูกหนี้"
+        {/* 4. Credit customers (ลูกหนี้): customers / bills still owing + overdue, opens the list */}
+        <button
+          type="button"
+          data-testid="credit-card"
+          onClick={() => setCreditOpen(true)}
+          className={`bg-white px-3.5 py-2.5 rounded-xl border shadow-2xs flex items-center justify-between gap-2 text-left transition-colors group cursor-pointer outline-none focus-visible:ring-4 focus-visible:ring-amber-200 ${
+            (credit?.overdueBillCount ?? 0) > 0 ? "border-rose-300 hover:border-rose-500" : "border-amber-200/80 hover:border-amber-400"
+          }`}
+          title="ดูรายชื่อลูกค้าที่ค้างชำระ"
         >
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 min-w-0">
             <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg border border-amber-100 shrink-0">
-              <Receipt className="w-4 h-4" />
+              <Users className="w-4 h-4" />
             </div>
-            <div>
-              <span className="text-xs text-slate-500 block font-bold group-hover:text-amber-800">เงินเชื่อคงค้าง</span>
-              <span className="text-base sm:text-lg font-black text-amber-700 font-mono tracking-tight">
-                {formatCurrency(kpi.totalPendingDebt)}
+            <div className="min-w-0">
+              <span className="text-xs text-slate-500 block font-bold group-hover:text-amber-800">ลูกค้าเงินเชื่อค้างชำระ</span>
+              <span className="text-base sm:text-lg font-black text-amber-700 font-mono tracking-tight" data-testid="credit-total">
+                {formatCurrency(credit?.totalOutstanding ?? 0)}
               </span>
             </div>
           </div>
-          <div className="text-right text-[10px] text-slate-400">
-            <div>ลูกหนี้ค้าง</div>
-            <div className="font-bold text-amber-800">คลิกดูรายละเอียด &gt;</div>
+          <div className="text-right text-[10px] text-slate-500 shrink-0">
+            <div data-testid="credit-customers">
+              <span className="font-bold text-slate-800">{(credit?.customerCount ?? 0).toLocaleString()} ราย</span> · {(credit?.billCount ?? 0).toLocaleString()} บิล
+            </div>
+            {(credit?.overdueBillCount ?? 0) > 0 ? (
+              <div className="font-bold text-rose-600" data-testid="credit-overdue">
+                เกินกำหนด {credit!.overdueCustomerCount} ราย {formatCurrency(credit!.overdueAmount)}
+              </div>
+            ) : (
+              <div className="text-emerald-600 font-bold">ไม่มีเกินกำหนด</div>
+            )}
+            <div className="font-bold text-amber-800">ดูรายชื่อ &gt;</div>
           </div>
-        </Link>
+        </button>
       </div>
 
       {/* ─── SECONDARY MINI-METRICS BAR ─── */}
@@ -851,53 +870,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* ─── INVENTORY ALERTS & QUICK SHORTCUTS ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-        {/* Quick Shortcut 1: POS Selling */}
-        <Link
-          href="/pos"
-          className="bg-gradient-to-br from-indigo-600 to-indigo-700 p-3.5 sm:p-4 rounded-xl text-white shadow-xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer"
-        >
-          <div className="space-y-1">
-            <span className="text-xs font-semibold text-indigo-200 block">เปิดจุดขายหน้าร้าน</span>
-            <h3 className="text-base font-bold tracking-tight">ไปที่หน้าขาย POS</h3>
-            <p className="text-xs text-indigo-100/90">ยิงบาร์โค้ด คิดเงิน พิมพ์ใบเสร็จ</p>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
-            <ShoppingCart className="w-5 h-5 text-white" />
-          </div>
-        </Link>
-
-        {/* Quick Shortcut 2: Debt Management */}
-        <Link
-          href="/debts"
-          className="bg-gradient-to-br from-amber-500 to-amber-600 p-3.5 sm:p-4 rounded-xl text-white shadow-xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer"
-        >
-          <div className="space-y-1">
-            <span className="text-xs font-semibold text-amber-200 block">ระบบลูกหนี้ & เงินเชื่อ</span>
-            <h3 className="text-base font-bold tracking-tight">ค้างชำระ {formatCurrency(kpi.totalPendingDebt)}</h3>
-            <p className="text-xs text-amber-100/90">รับชำระค่างวด และออกใบเสร็จ</p>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
-            <Receipt className="w-5 h-5 text-white" />
-          </div>
-        </Link>
-
-        {/* Quick Shortcut 3: Inventory Warehouse */}
-        <Link
-          href="/inventory"
-          className="bg-gradient-to-br from-slate-800 to-slate-900 p-3.5 sm:p-4 rounded-xl text-white shadow-xs hover:shadow-md transition-all flex items-center justify-between group cursor-pointer"
-        >
-          <div className="space-y-1">
-            <span className="text-xs font-semibold text-slate-300 block">คลังสินค้า & สต็อก</span>
-            <h3 className="text-base font-bold tracking-tight">สต็อกต่ำ {kpi.lowStockCount + kpi.outOfStockCount} รายการ</h3>
-            <p className="text-xs text-slate-300">ตรวจนับสต็อก และสร้างใบ PO</p>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
-            <Package className="w-5 h-5 text-white" />
-          </div>
-        </Link>
-      </div>
+      <CreditCustomersDialog open={creditOpen} onOpenChange={setCreditOpen} summary={credit} />
     </div>
   );
 }

@@ -65,7 +65,15 @@ function DebtsContent() {
   // "now" for overdue checks: the time the debts were (re)loaded
   const [now, setNow] = useState(() => Date.now());
   const [search, setSearch] = useState<string>('');
-  const [statusTab, setStatusTab] = useState<'all' | 'unpaid' | 'overdue' | 'paid'>('all');
+  // ?status=unpaid|overdue|paid (dashboard credit card)
+  const statusParam = searchParams.get('status');
+  const statusFromParam = (v: string | null) => (v === 'unpaid' || v === 'overdue' || v === 'paid' ? v : 'all');
+  const [statusTab, setStatusTab] = useState<'all' | 'unpaid' | 'overdue' | 'paid'>(() => statusFromParam(statusParam));
+  const [seenStatusParam, setSeenStatusParam] = useState(statusParam);
+  if (seenStatusParam !== statusParam) {
+    setSeenStatusParam(statusParam);
+    if (statusParam) setStatusTab(statusFromParam(statusParam));
+  }
   const [typeFilter, setTypeFilter] = useState<'all' | 'INDIVIDUAL' | 'COMPANY'>('all');
 
   // Specific customer filter from URL params
