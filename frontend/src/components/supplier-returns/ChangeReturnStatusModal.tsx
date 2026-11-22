@@ -74,7 +74,7 @@ export function ChangeReturnStatusModal({
           </DialogTitle>
           <div className="flex items-center justify-between pt-2 text-xs">
             <span className="text-slate-500">เลขที่เอกสาร:</span>
-            <span className="font-mono font-bold text-indigo-600">{returnNote.id}</span>
+            <span className="tabular-nums font-bold text-indigo-600">{returnNote.id}</span>
           </div>
         </DialogHeader>
 

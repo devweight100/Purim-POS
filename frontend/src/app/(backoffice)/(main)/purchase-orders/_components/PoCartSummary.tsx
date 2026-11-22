@@ -157,17 +157,17 @@ export function PoCartSummary({
             <Keyboard className="w-4 h-4" /> ทางลัดคีย์บอร์ด:
           </span>
           <span className="flex items-center gap-1">
-            <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">↑ / ↓</kbd> เลื่อนเลือกสินค้า
+            <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] tabular-nums">↑ / ↓</kbd> เลื่อนเลือกสินค้า
           </span>
           <span className="flex items-center gap-1">
-            <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">Enter</kbd> เพิ่มสินค้าลงตาราง
+            <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] tabular-nums">Enter</kbd> เพิ่มสินค้าลงตาราง
           </span>
           <span className="flex items-center gap-1">
-            <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">Ctrl + Enter</kbd> บันทึกใบ PO
+            <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] tabular-nums">Ctrl + Enter</kbd> บันทึกใบ PO
           </span>
         </div>
         <div className="text-slate-400">
-          กด <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">Esc</kbd> เพื่อยกเลิก
+          กด <kbd className="bg-slate-800 border border-slate-700 px-1.5 py-0.5 rounded text-[10px] tabular-nums">Esc</kbd> เพื่อยกเลิก
         </div>
       </div>
     </>

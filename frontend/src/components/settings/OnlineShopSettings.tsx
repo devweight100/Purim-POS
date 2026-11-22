@@ -81,10 +81,10 @@ export function OnlineShopSettings() {
             </p>
             <p className="text-slate-600">
               ทดลองในร้าน: <a href="/shop" target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-1">เปิดหน้าร้าน /shop <ExternalLink className="w-3 h-3" /></a>
-              {shopUrl && <> · ลูกค้าเปิดจาก: <span className="font-mono">{shopUrl}</span></>}
+              {shopUrl && <> · ลูกค้าเปิดจาก: <span className="tabular-nums">{shopUrl}</span></>}
             </p>
             <p className="text-slate-600">
-              Cloudflare Tunnel ต้องชี้มาที่ <span className="font-mono">http://127.0.0.1:{c.gatewayPort || 3080}</span> เท่านั้น (เปิดได้เฉพาะหน้าร้านออนไลน์) — วิธีตั้งค่าดูคู่มือ “ร้านออนไลน์ LINE” ในโฟลเดอร์ติดตั้งเครื่องแม่
+              Cloudflare Tunnel ต้องชี้มาที่ <span className="tabular-nums">http://127.0.0.1:{c.gatewayPort || 3080}</span> เท่านั้น (เปิดได้เฉพาะหน้าร้านออนไลน์) — วิธีตั้งค่าดูคู่มือ “ร้านออนไลน์ LINE” ในโฟลเดอร์ติดตั้งเครื่องแม่
             </p>
           </div>
 

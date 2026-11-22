@@ -11,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { StatusChip } from '@/components/ui/status-chip';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils';
 import { useShiftStore } from '@/lib/store/shift-store';
@@ -251,7 +252,7 @@ export default function ShiftsHistoryPage() {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto min-h-screen">
+    <div className="page-shell">
       {/* ─── HEADER ─── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -313,8 +314,8 @@ export default function ShiftsHistoryPage() {
             </div>
             <span className="text-sm font-bold text-indigo-950">รอบการปิดกะ:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-indigo-700 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-indigo-700 tracking-tight">
               {totalRoundsCount}
             </span>
             <span className="text-xs text-slate-600 font-sans font-bold">รอบ</span>
@@ -329,8 +330,8 @@ export default function ShiftsHistoryPage() {
             </div>
             <span className="text-sm font-bold text-emerald-950">ยอดขายรวม:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-emerald-700 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-emerald-700 tracking-tight">
               {formatCurrency(totalSalesOverall)}
             </span>
           </div>
@@ -344,8 +345,8 @@ export default function ShiftsHistoryPage() {
             </div>
             <span className="text-sm font-bold text-sky-950">ความถูกต้อง:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-emerald-600 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-emerald-600 tracking-tight">
               {balancedCount}
             </span>
             <span className="text-xs text-slate-600 font-sans font-bold">รอบตรง</span>
@@ -371,8 +372,8 @@ export default function ShiftsHistoryPage() {
             </div>
             <span className="text-sm font-bold text-slate-900">เงินขาด/เกินสุทธิ:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className={`text-lg sm:text-xl font-black tracking-tight ${
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className={`text-lg sm:text-xl font-semibold tracking-tight ${
               totalDiffOverall === 0 
                 ? 'text-slate-800' 
                 : totalDiffOverall > 0 
@@ -480,7 +481,7 @@ export default function ShiftsHistoryPage() {
                     <h3 className="font-bold text-sm text-slate-900">
                       {formatThaiDate(dayGroup.dateKey)}
                     </h3>
-                    <p className="text-[11px] text-slate-500 font-mono">
+                    <p className="text-[11px] text-slate-500 tabular-nums">
                       วันที่ {dayGroup.dateKey}
                     </p>
                   </div>
@@ -493,14 +494,14 @@ export default function ShiftsHistoryPage() {
 
                   <div className="text-right">
                     <span className="text-[11px] text-slate-500 block">ยอดขายรวมประจำวัน</span>
-                    <span className="font-mono text-sm font-black text-emerald-700">
+                    <span className="tabular-nums text-sm font-semibold text-emerald-700">
                       {formatCurrency(dayGroup.totalSalesDay)}
                     </span>
                   </div>
 
                   <div className="text-right pl-3 border-l border-slate-200">
                     <span className="text-[11px] text-slate-500 block">ผลเงินสดสุทธิ</span>
-                    <span className={`font-mono text-xs font-bold ${
+                    <span className={`tabular-nums text-xs font-bold ${
                       dayGroup.totalDiffDay === 0 
                         ? 'text-emerald-600' 
                         : dayGroup.totalDiffDay > 0 
@@ -572,12 +573,12 @@ export default function ShiftsHistoryPage() {
                           </td>
 
                           {/* Opening Cash */}
-                          <td data-narrow="hide" className="text-right doc-no whitespace-nowrap font-medium text-fg">
+                          <td data-narrow="hide" className="text-right tabular-nums whitespace-nowrap font-medium text-fg">
                             {formatCurrency(shift.openingCash)}
                           </td>
 
                           {/* Total Sales */}
-                          <td className="text-right doc-no whitespace-nowrap">
+                          <td className="text-right tabular-nums whitespace-nowrap">
                             <span className="font-medium text-fg block">
                               {formatCurrency(shift.totalSales)}
                             </span>
@@ -587,7 +588,7 @@ export default function ShiftsHistoryPage() {
                           </td>
 
                           {/* Cash In / Out */}
-                          <td data-narrow="hide" className="text-right doc-no whitespace-nowrap">
+                          <td data-narrow="hide" className="text-right tabular-nums whitespace-nowrap">
                             {shift.cashIn > 0 && (
                               <span className="text-ok block font-semibold">
                                 +{formatCurrency(shift.cashIn)}
@@ -604,32 +605,32 @@ export default function ShiftsHistoryPage() {
                           </td>
 
                           {/* Expected Cash */}
-                          <td className="text-right doc-no whitespace-nowrap font-medium text-fg">
+                          <td className="text-right tabular-nums whitespace-nowrap font-medium text-fg">
                             {formatCurrency(shift.expectedCash)}
                           </td>
 
                           {/* Actual Cash */}
-                          <td className="text-right doc-no whitespace-nowrap font-semibold text-fg">
+                          <td className="text-right tabular-nums whitespace-nowrap font-semibold text-fg">
                             {formatCurrency(shift.actualCash)}
                           </td>
 
                           {/* Discrepancy Status Badge */}
                           <td className="text-center whitespace-nowrap">
                             {diff === 0 ? (
-                              <Badge className="bg-emerald-100 text-ok border-emerald-200 font-medium text-sub gap-1">
+                              <StatusChip tone="success">
                                 <CheckCircle2 className="w-3 h-3 text-ok" />
                                 <span>ตรงพอดี</span>
-                              </Badge>
+                              </StatusChip>
                             ) : diff < 0 ? (
-                              <Badge className="bg-rose-100 text-danger border-rose-200 font-medium text-sub gap-1">
+                              <StatusChip tone="danger">
                                 <ArrowDownRight className="w-3 h-3 text-danger" />
                                 <span>ขาด {formatCurrency(Math.abs(diff))}</span>
-                              </Badge>
+                              </StatusChip>
                             ) : (
-                              <Badge className="bg-sky-100 text-sky-800 border-sky-200 font-medium text-sub gap-1">
+                              <StatusChip tone="info">
                                 <ArrowUpRight className="w-3 h-3 text-sky-600" />
                                 <span>เกิน +{formatCurrency(diff)}</span>
-                              </Badge>
+                              </StatusChip>
                             )}
                           </td>
 

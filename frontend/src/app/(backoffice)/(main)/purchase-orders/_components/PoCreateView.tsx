@@ -478,7 +478,7 @@ export function PoCreateView({
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3 sm:p-4">
               <div className="mb-4 flex shrink-0 flex-col gap-3 px-1 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-600 flex items-center gap-2">
+                  <h3 className="text-sm font-bold   text-slate-600 flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-amber-500" /> ตารางสั่งของ
                   </h3>
                   <p className="mt-1 text-xs text-slate-500">เลือกขอบเขตค้นหา สั่งสินค้าตามหน่วยบรรจุ แล้วกด [Enter] หรือคลิกเพิ่มสินค้าอย่างสะดวกรวดเร็ว</p>
@@ -574,7 +574,7 @@ export function PoCreateView({
                                         <span>·</span>
                                         <span>คงเหลือ:</span>
                                         {Number(product.stock ?? 0) < 0 ? (
-                                          <span className="font-extrabold text-rose-600 bg-rose-50 px-1 rounded border border-rose-200">
+                                          <span className="font-semibold text-rose-600 bg-rose-50 px-1 rounded border border-rose-200">
                                             🔻 {product.stock} {product.unit || 'ชิ้น'}
                                           </span>
                                         ) : (

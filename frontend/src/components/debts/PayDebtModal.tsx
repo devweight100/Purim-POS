@@ -229,7 +229,7 @@ export function PayDebtModal({
               <CreditCard className="w-5 h-5 text-indigo-600" />
               <span>รับชำระหนี้ / ชำระบิลเงินเชื่อ</span>
             </div>
-            <span className="text-xs font-mono text-slate-500 font-normal bg-slate-100 px-2.5 py-1 rounded-md">
+            <span className="text-xs tabular-nums text-slate-500 font-normal bg-slate-100 px-2.5 py-1 rounded-md">
               {debtRecord.orderNumber}
             </span>
           </DialogTitle>
@@ -243,7 +243,7 @@ export function PayDebtModal({
                 {debtRecord.customerType === 'COMPANY' ? <Building2 className="w-4 h-4 text-indigo-600" /> : <User className="w-4 h-4 text-sky-600" />}
                 <span>{debtRecord.customerName}</span>
               </div>
-              <span className="text-slate-500 font-mono">{debtRecord.customerPhone || 'ไม่มีเบอร์โทร'}</span>
+              <span className="text-slate-500 tabular-nums">{debtRecord.customerPhone || 'ไม่มีเบอร์โทร'}</span>
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-slate-200/80">
@@ -257,7 +257,7 @@ export function PayDebtModal({
               </div>
               <div className="p-1.5 bg-rose-50/60 rounded-xl border border-rose-200/60 shadow-2xs">
                 <span className="text-[10px] text-rose-700 font-bold block">ยอดคงค้าง</span>
-                <span className="font-black text-xs text-rose-600">{formatCurrency(currentRemaining)}</span>
+                <span className="font-semibold text-xs text-rose-600">{formatCurrency(currentRemaining)}</span>
               </div>
             </div>
           </div>
@@ -322,7 +322,7 @@ export function PayDebtModal({
                 step="any"
                 value={amountInput}
                 onChange={(e) => setAmountInput(e.target.value)}
-                className="text-xl text-center text-slate-900 bg-white border-slate-300 focus:border-indigo-500 font-mono"
+                className="text-xl text-center text-slate-900 bg-white border-slate-300 focus:border-indigo-500 tabular-nums"
                 placeholder="0.00"
               />
               <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">บาท</span>
@@ -330,7 +330,7 @@ export function PayDebtModal({
 
             {/* Live Progress Preview */}
             <div className="pt-1.5 text-[11px] flex items-center justify-between text-slate-600 font-medium">
-              <span>หลังชำระจะคงเหลือ: <strong className={previewRemaining <= 0 ? 'text-emerald-700' : 'text-rose-600 font-mono'}>{formatCurrency(previewRemaining)}</strong></span>
+              <span>หลังชำระจะคงเหลือ: <strong className={previewRemaining <= 0 ? 'text-emerald-700' : 'text-rose-600 tabular-nums'}>{formatCurrency(previewRemaining)}</strong></span>
               <span className="font-bold text-indigo-700">คืบหน้า: {previewPercent}%</span>
             </div>
           </div>

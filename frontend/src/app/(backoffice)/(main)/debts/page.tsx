@@ -10,6 +10,7 @@ import { formatCurrency, formatListDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { StatusChip } from '@/components/ui/status-chip';
 import {
   Table,
   TableBody,
@@ -192,7 +193,7 @@ function DebtsContent() {
 
   const debtNav = useRowNav(paginatedDebts.length, (i) => handleOpenHistory(paginatedDebts[i]));
   return (
-    <div className="mx-auto max-w-[1600px] space-y-2 p-2.5 sm:p-3.5 lg:p-4 font-sans">
+    <div className="page-shell">
       {/* ─── PAGE HEADER (Standard Consistent Header) ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
         <div>
@@ -224,7 +225,7 @@ function DebtsContent() {
           <div className="flex items-center gap-2 text-xs sm:text-sm font-bold">
             <User className="w-4 h-4 text-indigo-600" />
             <span>กำลังแสดงเฉพาะรายการบิลของ:</span>
-            <span className="bg-white px-2 py-0.5 rounded-md border border-indigo-200 text-indigo-900 font-extrabold">
+            <span className="bg-white px-2 py-0.5 rounded-md border border-indigo-200 text-indigo-900 font-semibold">
               {activeFilteredCustomerName}
             </span>
           </div>
@@ -249,8 +250,8 @@ function DebtsContent() {
             </div>
             <span className="text-sm font-bold text-rose-900">ยอดหนี้ทั้งหมด:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-rose-600 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-rose-600 tracking-tight">
               {formatCurrency(stats.totalOutstanding)}
             </span>
             <span className="text-xs text-slate-500 font-sans font-medium">
@@ -267,8 +268,8 @@ function DebtsContent() {
             </div>
             <span className="text-sm font-bold text-amber-950">ยังชำระไม่ครบ:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-amber-700 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-amber-700 tracking-tight">
               {stats.unpaidCount}
             </span>
             <span className="text-xs text-slate-600 font-sans font-bold">บิล</span>
@@ -283,8 +284,8 @@ function DebtsContent() {
             </div>
             <span className="text-sm font-bold text-red-950">เกินกำหนดชำระ:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-red-600 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-red-600 tracking-tight">
               {stats.overdueCount}
             </span>
             <span className="text-xs text-red-700 font-sans font-bold">บิล</span>
@@ -489,18 +490,18 @@ function DebtsContent() {
                       </TableCell>
 
                       {/* 3. Total Amount */}
-                      <TableCell data-narrow="hide" className="text-right font-medium text-fg doc-no whitespace-nowrap">
+                      <TableCell data-narrow="hide" className="text-right font-medium text-fg tabular-nums whitespace-nowrap">
                         {formatCurrency(debt.totalAmount)}
                       </TableCell>
 
                       {/* 4. Paid Amount */}
-                      <TableCell className="text-right font-medium text-ok doc-no whitespace-nowrap">
+                      <TableCell className="text-right font-medium text-ok tabular-nums whitespace-nowrap">
                         {formatCurrency(debt.paidAmount)}
                       </TableCell>
 
                       {/* 5. Remaining Balance */}
-                      <TableCell className="text-right font-semibold doc-no whitespace-nowrap">
-                        <span className={debt.remainingDebt > 0 ? 'text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-100 inline-block font-extrabold text-sm' : 'text-slate-400 text-sm'}>
+                      <TableCell className="text-right font-semibold tabular-nums whitespace-nowrap">
+                        <span className={debt.remainingDebt > 0 ? 'text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-100 inline-block font-semibold text-sm' : 'text-slate-400 text-sm'}>
                           {formatCurrency(debt.remainingDebt)}
                         </span>
                       </TableCell>
@@ -536,17 +537,17 @@ function DebtsContent() {
                       {/* 7. Status Badge */}
                       <TableCell className="text-center">
                         {isPaid ? (
-                          <Badge className="bg-emerald-50 text-ok border-emerald-200 font-medium text-sub gap-1 hover:bg-emerald-50 px-2 py-0.5 whitespace-nowrap">
+                          <StatusChip tone="success">
                             <CheckCircle2 className="w-3 h-3 text-ok" /> ชำระครบแล้ว
-                          </Badge>
+                          </StatusChip>
                         ) : isPartial ? (
-                          <Badge className="bg-amber-50 text-warn border-amber-200 font-medium text-sub gap-1 hover:bg-amber-50 px-2 py-0.5 whitespace-nowrap">
+                          <StatusChip tone="warning">
                             <Clock className="w-3 h-3 text-warn" /> ชำระบางส่วน
-                          </Badge>
+                          </StatusChip>
                         ) : (
-                          <Badge className="bg-rose-50 text-danger border-rose-200 font-medium text-sub gap-1 hover:bg-rose-50 px-2 py-0.5 whitespace-nowrap">
+                          <StatusChip tone="danger">
                             <AlertCircle className="w-3 h-3 text-danger" /> ยังไม่ชำระ
-                          </Badge>
+                          </StatusChip>
                         )}
                       </TableCell>
 

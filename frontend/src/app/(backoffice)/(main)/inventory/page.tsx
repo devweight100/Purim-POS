@@ -428,7 +428,7 @@ export default function InventoryPage() {
 
   const stockNav = useRowNav(paginatedProducts.length, (i) => openStockCardDialog(paginatedProducts[i]));
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
+    <div className="page-shell">
       {loadError && <LoadErrorState message={loadError} onRetry={() => void reloadData()} retrying={isLoading} />}
       {/* Sleek Compact Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -520,7 +520,7 @@ export default function InventoryPage() {
             <b className="font-bold text-slate-900">{stats.totalBaseUnits.toLocaleString()} หน่วย</b>
           </div>
           {stats.negativeStockCount > 0 && (
-            <div className="px-2.5 py-1 rounded-lg bg-rose-100 border border-rose-300 text-rose-800 font-extrabold flex items-center gap-1 shadow-2xs">
+            <div className="px-2.5 py-1 rounded-lg bg-rose-100 border border-rose-300 text-rose-800 font-semibold flex items-center gap-1 shadow-2xs">
               <span>🔻</span> สต็อกติดลบ: {stats.negativeStockCount}
             </div>
           )}
@@ -651,9 +651,9 @@ export default function InventoryPage() {
 
                         {/* Category */}
                         <TableCell >
-                          <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-sub font-semibold max-w-28 xl:max-w-36 truncate block" title={getCategoryName(p.categoryId)}>
+                          <span className="block max-w-28 truncate text-muted-foreground" title={getCategoryName(p.categoryId)}>
                             {getCategoryName(p.categoryId)}
-                          </Badge>
+                          </span>
                         </TableCell>
 
                         {/* Cost */}
@@ -664,8 +664,7 @@ export default function InventoryPage() {
                         {/* Stock Base Units */}
                         <TableCell className="text-right whitespace-nowrap">
                           {isNegative ? (
-                            <span className="inline-flex items-center gap-1 font-semibold text-danger bg-rose-50 px-2.5 py-0.5 rounded-lg border border-rose-200 shadow-2xs">
-                              <span className="text-sub">🔻</span>
+                            <span className="font-medium text-danger tabular-nums">
                               {stock.toLocaleString()}{' '}
                               <span className="text-sub font-normal text-danger">
                                 {p.unit || 'ชิ้น'}
@@ -673,13 +672,7 @@ export default function InventoryPage() {
                             </span>
                           ) : (
                             <span
-                              className={`font-extrabold text-base ${
-                                isOut
-                                  ? 'text-rose-600'
-                                  : isLow
-                                  ? 'text-amber-600'
-                                  : 'text-slate-900'
-                              }`}
+                              className={`tabular-nums ${isOut ? 'font-medium text-danger' : isLow ? 'font-medium text-warn' : 'text-fg'}`}
                             >
                               {stock.toLocaleString()}{' '}
                               <span className="text-sub font-medium text-muted-foreground">
@@ -690,29 +683,28 @@ export default function InventoryPage() {
                         </TableCell>
 
                         {/* Packaging Breakdown */}
-                        <TableCell className={`font-semibold text-xs min-w-28 ${isNegative ? 'text-rose-600 font-bold' : 'text-amber-700'}`}>
-                          {isNegative && <span className="mr-1">🔻</span>}
+                        <TableCell className={`min-w-28 text-sub ${isNegative ? 'text-danger' : 'text-muted-foreground'}`}>
                           {formatPackagingBreakdown(p)}
                         </TableCell>
 
                         {/* Status */}
                         <TableCell className="text-center">
                           {isNegative ? (
-                            <Badge className="bg-rose-600 text-white border-rose-700 text-sub font-medium shadow-2xs">
-                              🔻 ติดลบ
-                            </Badge>
+                            <StatusChip tone="danger">
+                              ติดลบ
+                            </StatusChip>
                           ) : isOut ? (
-                            <Badge className="bg-rose-100 text-danger border-rose-200 text-sub font-medium whitespace-nowrap">
+                            <StatusChip tone="danger">
                               หมดสต็อก
-                            </Badge>
+                            </StatusChip>
                           ) : isLow ? (
-                            <Badge className="bg-amber-100 text-warn border-amber-300 text-sub font-medium whitespace-nowrap">
-                              ⚠️ ใกล้หมด
-                            </Badge>
+                            <StatusChip tone="warning">
+                              ใกล้หมด
+                            </StatusChip>
                           ) : (
-                            <Badge className="bg-emerald-50 text-ok border-emerald-200 text-sub font-medium">
+                            <StatusChip tone="success">
                               ปกติ
-                            </Badge>
+                            </StatusChip>
                           )}
                         </TableCell>
 
@@ -1058,14 +1050,12 @@ export default function InventoryPage() {
                           <span className="text-sub text-subtle doc-no">SKU: {p.sku}</span>
                         </TableCell>
                         <TableCell >
-                          <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-sub">
-                            {getCategoryName(p.categoryId)}
-                          </Badge>
+                          <span className="text-muted-foreground">{getCategoryName(p.categoryId)}</span>
                         </TableCell>
                         <TableCell className="text-right font-semibold">
                           {isNegative ? (
-                            <span className="inline-flex items-center gap-1 font-semibold text-danger bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
-                              <span className="text-sub">🔻</span> {stock.toLocaleString()} {p.unit || 'ชิ้น'}
+                            <span className="font-medium text-danger tabular-nums">
+                              {stock.toLocaleString()} {p.unit || 'ชิ้น'}
                             </span>
                           ) : (
                             <span className={isOut ? 'text-rose-600' : 'text-amber-600'}>
@@ -1078,17 +1068,17 @@ export default function InventoryPage() {
                         </TableCell>
                         <TableCell className="text-center">
                           {isNegative ? (
-                            <Badge className="bg-rose-600 text-white border-rose-700 text-sub font-medium shadow-2xs">
-                              🔻 ติดลบ
-                            </Badge>
+                            <StatusChip tone="danger">
+                              ติดลบ
+                            </StatusChip>
                           ) : isOut ? (
-                            <Badge className="bg-rose-100 text-danger border-rose-200 text-sub font-medium whitespace-nowrap">
+                            <StatusChip tone="danger">
                               หมดสต็อก
-                            </Badge>
+                            </StatusChip>
                           ) : (
-                            <Badge className="bg-amber-100 text-warn border-amber-300 text-sub font-medium whitespace-nowrap">
-                              ⚠️ ใกล้หมด
-                            </Badge>
+                            <StatusChip tone="warning">
+                              ใกล้หมด
+                            </StatusChip>
                           )}
                         </TableCell>
                         <TableCell className="text-center">
@@ -1151,7 +1141,7 @@ export default function InventoryPage() {
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center justify-between text-xs">
                 <div>
                   <span className="text-slate-500 block">สต็อกคงเหลือปัจจุบัน:</span>
-                  <b className="text-slate-900 text-lg font-extrabold">
+                  <b className="text-slate-900 text-lg font-semibold">
                     {targetProduct.stock ?? 0} {targetProduct.unit || 'ชิ้น'}
                   </b>
                 </div>
@@ -1238,7 +1228,7 @@ export default function InventoryPage() {
               {adjustAmount !== '' && targetProduct && (
                 <div className="bg-indigo-50/70 border border-indigo-200 rounded-xl p-3.5 text-xs text-indigo-900 flex items-center justify-between">
                   <span>ผลลัพธ์หลังการปรับ:</span>
-                  <div className="font-extrabold text-sm">
+                  <div className="font-semibold text-sm">
                     {targetProduct.stock ?? 0} ➔{' '}
                     <span className="text-emerald-700 text-base">
                       {adjustType === 'ADD' && formatQty(addQty(targetProduct.stock ?? 0, adjustAmount), { grouping: true })}
@@ -1340,12 +1330,12 @@ export default function InventoryPage() {
       <Dialog open={isStockCardOpen} onOpenChange={setIsStockCardOpen}>
         <DialogContent className="bg-white border-slate-200 text-slate-900 w-[95vw] sm:w-[1320px] max-w-[1320px] max-h-[92vh] flex flex-col p-0 overflow-hidden rounded-2xl shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-8 py-5 bg-slate-50/80 shrink-0">
-            <DialogTitle className="flex items-center justify-between text-xl font-black text-slate-900">
+            <DialogTitle className="flex items-center justify-between text-xl font-semibold text-slate-900">
               <div className="flex items-center gap-2.5">
                 <History className="w-6 h-6 text-indigo-600" />
                 <span>สต็อกการ์ด: {stockCardProduct?.name}</span>
               </div>
-              <Badge variant="outline" className="font-mono font-bold text-sm bg-slate-100 px-3 py-1">
+              <Badge variant="outline" className="tabular-nums font-bold text-sm bg-slate-100 px-3 py-1">
                 SKU: {stockCardProduct?.sku}
               </Badge>
             </DialogTitle>
@@ -1356,18 +1346,18 @@ export default function InventoryPage() {
               <div>
                 <span className="text-slate-500 block font-medium">สต็อกคงเหลือปัจจุบัน:</span>
                 {(stockCardProduct?.stock ?? 0) < 0 ? (
-                  <b className="text-rose-600 text-2xl font-black inline-flex items-center gap-1.5 bg-rose-50 px-3 py-1 rounded-lg border border-rose-200 mt-0.5">
+                  <b className="text-rose-600 text-2xl font-semibold inline-flex items-center gap-1.5 bg-rose-50 px-3 py-1 rounded-lg border border-rose-200 mt-0.5">
                     <span>🔻</span> {stockCardProduct?.stock ?? 0} {stockCardProduct?.unit || 'ชิ้น'}
                   </b>
                 ) : (
-                  <b className="text-emerald-700 text-2xl font-black block mt-0.5">
+                  <b className="text-emerald-700 text-2xl font-semibold block mt-0.5">
                     {stockCardProduct?.stock ?? 0} {stockCardProduct?.unit || 'ชิ้น'}
                   </b>
                 )}
               </div>
               <div className="text-right text-slate-700">
                 <span className="text-slate-500 font-medium">สรุปขนาดบรรจุ: </span>
-                <b className="text-amber-800 font-black text-base ml-1">{stockCardProduct && formatPackagingBreakdown(stockCardProduct)}</b>
+                <b className="text-amber-800 font-semibold text-base ml-1">{stockCardProduct && formatPackagingBreakdown(stockCardProduct)}</b>
               </div>
             </div>
 

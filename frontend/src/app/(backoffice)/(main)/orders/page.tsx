@@ -464,7 +464,7 @@ export default function OrdersPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7 font-sans">
+    <div className="page-shell">
       {/* ─── PAGE HEADER ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
@@ -500,7 +500,7 @@ export default function OrdersPage() {
             <div>
               <p className="text-sm font-bold text-amber-950 flex items-center gap-2">
                 <span>พบบิลที่ยังไม่ได้ส่งขึ้นเซิร์ฟเวอร์</span>
-                <Badge className="bg-amber-600 text-white font-mono text-xs">{unsyncedCount} บิล</Badge>
+                <Badge className="bg-amber-600 text-white tabular-nums text-xs">{unsyncedCount} บิล</Badge>
               </p>
               <p className="text-xs text-amber-800/90 mt-0.5">
                 บิลถูกบันทึกไว้ในเครื่องนี้อย่างปลอดภัย สามารถกดปุ่มเพื่อส่งบิลขึ้นฐานข้อมูลส่วนกลางได้ทันที

@@ -55,7 +55,7 @@ export function ProductImagePreviewDialog({ previewProduct, setPreviewProduct, p
           )}
 
           <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3 flex items-center justify-between">
-            <span>รหัส SKU: <b className="font-mono text-slate-700">{previewProduct?.sku}</b></span>
+            <span>รหัส SKU: <b className="tabular-nums text-slate-700">{previewProduct?.sku}</b></span>
             <span>คงเหลือ: <b className="text-slate-900">{previewProduct?.stock ?? '-'}</b></span>
           </div>
         </div>

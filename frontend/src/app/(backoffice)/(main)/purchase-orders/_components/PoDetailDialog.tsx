@@ -123,28 +123,28 @@ export function PoDetailDialog({
                   {Number(currentPo.discountAmount) > 0 && (
                     <div className="flex justify-between text-xs text-slate-600 font-medium">
                       <span>ส่วนลดรวม:</span>
-                      <span className="font-mono font-bold text-rose-600">-{formatCurrency(Number(currentPo.discountAmount))}</span>
+                      <span className="tabular-nums font-bold text-rose-600">-{formatCurrency(Number(currentPo.discountAmount))}</span>
                     </div>
                   )}
                   {Number(currentPo.vatAmount) > 0 && (
                     <>
                       <div className="flex justify-between text-xs text-slate-600 font-medium">
                         <span>มูลค่าก่อนภาษี:</span>
-                        <span className="font-mono font-bold text-slate-800">{formatCurrency(Number(currentPo.subtotalAmount))}</span>
+                        <span className="tabular-nums font-bold text-slate-800">{formatCurrency(Number(currentPo.subtotalAmount))}</span>
                       </div>
                       <div className="flex justify-between text-xs text-slate-600 font-medium">
                         <span>ภาษีซื้อ (VAT):</span>
-                        <span className="font-mono font-bold text-sky-700">{formatCurrency(Number(currentPo.vatAmount))}</span>
+                        <span className="tabular-nums font-bold text-sky-700">{formatCurrency(Number(currentPo.vatAmount))}</span>
                       </div>
                     </>
                   )}
                   <div className="flex justify-between text-xs text-slate-600 font-medium">
                     <span>ยอดรวมบิลสั่งซื้อ:</span>
-                    <span className="font-mono font-bold text-slate-800">{formatCurrency(currentPo.totalAmount)}</span>
+                    <span className="tabular-nums font-bold text-slate-800">{formatCurrency(currentPo.totalAmount)}</span>
                   </div>
                   <div className="flex justify-between text-xs text-slate-600 font-medium">
                     <span>มูลค่าสินค้าที่รับแล้ว (ตั้งเป็นหนี้):</span>
-                    <span className="font-mono font-bold text-indigo-700">
+                    <span className="tabular-nums font-bold text-indigo-700">
                       {formatCurrency(
                         receivedValue(currentPo)
                       )}
@@ -154,11 +154,11 @@ export function PoDetailDialog({
                   {/* Paid / remaining come from the database (payment vouchers incl. credit-note deductions). */}
                   <div className="flex justify-between text-xs text-slate-600 font-medium">
                     <span>ชำระแล้ว (รวมหักใบลดหนี้):</span>
-                    <span className="font-mono font-bold text-emerald-700">{formatCurrency(Number(currentPo.paidAmount || 0))}</span>
+                    <span className="tabular-nums font-bold text-emerald-700">{formatCurrency(Number(currentPo.paidAmount || 0))}</span>
                   </div>
-                  <div className="border-t border-slate-200 pt-2 flex justify-between font-black text-lg text-slate-900">
+                  <div className="border-t border-slate-200 pt-2 flex justify-between font-semibold text-lg text-slate-900">
                     <span>ยอดค้างชำระ (ของที่รับแล้ว):</span>
-                    <span className="text-rose-700 font-mono font-black">
+                    <span className="text-rose-700 tabular-nums font-semibold">
                       {formatCurrency(
                         Math.max(
                           0,

@@ -46,7 +46,7 @@ export default function ApprovalsPage() {
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 max-w-6xl mx-auto">
+    <div className="page-shell">
       <div>
         <h1 className="page-title"><ShieldCheck className="w-6 h-6 text-amber-600" /> การอนุมัติโดยผู้จัดการ</h1>
         <p className="page-subtitle">ส่วนลดเกินกำหนด / ขายต่ำกว่าราคาในระบบ / ขายต่ำกว่าทุน — แคชเชียร์ต้องให้ผู้จัดการหรือเจ้าของกด PIN อนุมัติที่เครื่องขาย (ADMIN และผู้จัดการไม่ต้องขออนุมัติ)</p>
@@ -87,7 +87,7 @@ export default function ApprovalsPage() {
                 <td className="whitespace-nowrap">{formatListDate(r.createdAt)}</td>
                 <td >{r.requestedBy}</td>
                 <td >{(r.reasons || []).map((x, i) => <div key={i}>• {x.message}</div>)}{r.decisionNote && <div className="text-sub text-muted-foreground">หมายเหตุ: {r.decisionNote}</div>}</td>
-                <td className="text-right doc-no whitespace-nowrap">{formatCurrency(r.amount)}</td>
+                <td className="text-right tabular-nums whitespace-nowrap">{formatCurrency(r.amount)}</td>
                 <td >{r.approvedBy || '-'}</td>
                 <td >{r.channel === 'PIN' ? 'PIN ที่เครื่องขาย' : 'ส่งคำขอ'}</td>
                 <td ><Badge className={`${STATUS[r.status]?.cls || 'bg-slate-400'} text-white`}>{STATUS[r.status]?.label || r.status}</Badge></td>

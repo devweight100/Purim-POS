@@ -162,7 +162,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
           <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto">
             <ShieldAlert className="w-8 h-8" />
           </div>
-          <h2 className="text-xl font-black text-slate-900">ไม่มีสิทธิ์เข้าถึงหน้านี้</h2>
+          <h2 className="text-xl font-semibold text-slate-900">ไม่มีสิทธิ์เข้าถึงหน้านี้</h2>
           <p className="text-sm text-slate-500 font-medium">
             บัญชีของคุณ ({user?.fullName || user?.username || 'Cashier'}) ไม่มีสิทธิ์ในการเข้าถึงเมนูนี้ กรุณาเข้าสู่ระบบด้วยบัญชีผู้ดูแลระบบ (Admin)
           </p>

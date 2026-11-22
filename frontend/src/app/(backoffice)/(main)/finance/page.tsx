@@ -7,6 +7,7 @@ import { formatCurrency, formatListDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { StatusChip } from '@/components/ui/status-chip';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
@@ -174,14 +175,14 @@ export default function FinancePage() {
   const b = summary?.balances;
   if (loadError) {
     return (
-      <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto">
+      <div className="page-shell">
         <LoadErrorState message={loadError} onRetry={() => void load()} retrying={loading} />
       </div>
     );
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 max-w-7xl mx-auto">
+    <div className="page-shell">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="page-title"><Wallet className="w-6 h-6 text-indigo-600" /> การเงินของร้าน</h1>
@@ -233,7 +234,7 @@ export default function FinancePage() {
         ].map((k) => (
           <div key={k.label} className={`rounded-2xl border p-4 ${k.cls}`}>
             <div className="text-xs font-bold opacity-80">{k.label}</div>
-            <div className="text-2xl font-black font-mono mt-1">{formatCurrency(k.value ?? 0)}</div>
+            <div className="text-2xl font-semibold tabular-nums mt-1">{formatCurrency(k.value ?? 0)}</div>
           </div>
         ))}
       </div>
@@ -255,7 +256,7 @@ export default function FinancePage() {
                 </div>
                 <Badge className={`border ${meta.tone} gap-1 shrink-0`}><Icon className="w-3.5 h-3.5" /> {meta.label}</Badge>
               </div>
-              <div className={`text-2xl font-black font-mono ${a.balance < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatCurrency(a.balance)}</div>
+              <div className={`text-2xl font-semibold tabular-nums ${a.balance < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatCurrency(a.balance)}</div>
               <div className="flex flex-wrap gap-2">
                 {a.type !== 'CASH_DRAWER' && !a.hasOpeningBalance && (
                   <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white" onClick={() => setAmountDialog({ kind: 'opening', account: a })}>ตั้งยอดยกมา</Button>
@@ -276,7 +277,7 @@ export default function FinancePage() {
           <div className="rounded-2xl border border-rose-200 bg-white p-4 space-y-3">
             <div className="flex items-baseline justify-between">
               <h2 className="font-bold text-rose-900">ต้องจ่ายเจ้าหนี้ (ของที่รับแล้ว)</h2>
-              <span className="text-xl font-black font-mono text-rose-700">{formatCurrency(overview.payables.total)}</span>
+              <span className="text-xl font-semibold tabular-nums text-rose-700">{formatCurrency(overview.payables.total)}</span>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
               {[
@@ -285,7 +286,7 @@ export default function FinancePage() {
                 ['ภายใน 7 วัน', overview.payables.due7, 'text-slate-800 bg-slate-50 border-slate-200'],
                 ['ภายใน 30 วัน', overview.payables.due30, 'text-slate-800 bg-slate-50 border-slate-200'],
               ].map(([l, v, cls]) => (
-                <div key={String(l)} className={`rounded-xl border p-2 ${cls}`}><div className="font-semibold">{l}</div><div className="font-mono font-black text-sm">{formatCurrency(Number(v))}</div></div>
+                <div key={String(l)} className={`rounded-xl border p-2 ${cls}`}><div className="font-semibold">{l}</div><div className="tabular-nums font-semibold text-sm">{formatCurrency(Number(v))}</div></div>
               ))}
             </div>
             <div className="max-h-64 overflow-y-auto">
@@ -301,7 +302,7 @@ export default function FinancePage() {
                         {!p.dueDateSet && <span className="text-subtle" title="ไม่ได้ระบุวันครบกำหนดใน PO ใช้เครดิตเทอมของผู้จำหน่าย"> *</span>}
                       </td>
                       <td >{p.supplierName} <span className="text-subtle doc-no">{p.invoiceNo || p.poNumber}</span></td>
-                      <td className="text-right doc-no whitespace-nowrap">{formatCurrency(p.amount)}</td>
+                      <td className="text-right tabular-nums whitespace-nowrap">{formatCurrency(p.amount)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -312,7 +313,7 @@ export default function FinancePage() {
           <div className="rounded-2xl border border-emerald-200 bg-white p-4 space-y-3">
             <div className="flex items-baseline justify-between">
               <h2 className="font-bold text-emerald-900">ลูกหนี้ (ต้องได้รับ) {overview.receivables.debtorCount} คน</h2>
-              <span className="text-xl font-black font-mono text-emerald-700">{formatCurrency(overview.receivables.total)}</span>
+              <span className="text-xl font-semibold tabular-nums text-emerald-700">{formatCurrency(overview.receivables.total)}</span>
             </div>
             <div className="text-xs text-slate-600">เกินกำหนด <b className="text-rose-600">{formatCurrency(overview.receivables.overdue)}</b> จาก {overview.receivables.overdueDebtorCount} คน</div>
             <div className="text-[11px] text-slate-500">อายุหนี้: นับจากจำนวนวันที่เลยกำหนดชำระ (ไม่มีกำหนด = 30 วันหลังวันบิล) — หน้ารายงานลูกค้านับตามอายุบิล</div>
@@ -325,7 +326,7 @@ export default function FinancePage() {
                 ['เกิน 90 วัน', overview.receivables.buckets.d90plus],
               ].map(([l, v], i) => (
                 <div key={String(l)} className={`rounded-lg border p-1.5 ${i === 0 ? 'bg-emerald-50 border-emerald-200' : i >= 3 ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200'}`}>
-                  <div className="font-semibold">{l}</div><div className="font-mono font-black">{formatCurrency(Number(v))}</div>
+                  <div className="font-semibold">{l}</div><div className="tabular-nums font-semibold">{formatCurrency(Number(v))}</div>
                 </div>
               ))}
             </div>
@@ -338,8 +339,8 @@ export default function FinancePage() {
                     <tr key={c.customerId} className="border-t border-slate-100">
                       <td >{c.name} <span className="text-subtle">{c.phone || ''}</span></td>
                       <td className="text-right">{c.bills}</td>
-                      <td className={`p-1 text-right font-mono ${c.overdue > 0 ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>{c.overdue > 0 ? `${formatCurrency(c.overdue)} (${c.oldestDaysOverdue} วัน)` : '-'}</td>
-                      <td className="text-right doc-no whitespace-nowrap">{formatCurrency(c.total)}</td>
+                      <td className={`p-1 text-right tabular-nums ${c.overdue > 0 ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>{c.overdue > 0 ? `${formatCurrency(c.overdue)} (${c.oldestDaysOverdue} วัน)` : '-'}</td>
+                      <td className="text-right tabular-nums whitespace-nowrap">{formatCurrency(c.total)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -357,7 +358,7 @@ export default function FinancePage() {
             <span className="text-indigo-900">
               ฐานะเงินภายใน 30 วัน = เงินที่มี {formatCurrency(overview.cash)} + ลูกหนี้ {formatCurrency(overview.receivables.total)} − เจ้าหนี้ {formatCurrency(overview.payables.overdue + overview.payables.due30)} − ค่าใช้จ่ายประจำ {formatCurrency((overview.recurring?.overdue || 0) + (overview.recurring?.dueWithin || 0))} (ภายใน 30 วัน รวมที่เกินกำหนด)
             </span>
-            <b className={`font-mono text-lg ${overview.position30 < 0 ? 'text-rose-700' : 'text-indigo-800'}`}>{formatCurrency(overview.position30)}</b>
+            <b className={`tabular-nums text-lg ${overview.position30 < 0 ? 'text-rose-700' : 'text-indigo-800'}`}>{formatCurrency(overview.position30)}</b>
           </div>
         </div>
       )}
@@ -374,24 +375,24 @@ export default function FinancePage() {
         </div>
         <div className="grid md:grid-cols-3 gap-4 text-sm">
           <div className="space-y-1">
-            <div className="flex justify-between font-bold text-emerald-700"><span>เงินเข้า</span><span className="font-mono">{formatCurrency(summary?.flow.totalIn ?? 0)}</span></div>
+            <div className="flex justify-between font-bold text-emerald-700"><span>เงินเข้า</span><span className="tabular-nums">{formatCurrency(summary?.flow.totalIn ?? 0)}</span></div>
             {Object.entries(summary?.flow.inByType || {}).map(([k, v]) => (
-              <div key={k} className="flex justify-between text-slate-600"><span>{k}</span><span className="font-mono">{formatCurrency(v)}</span></div>
+              <div key={k} className="flex justify-between text-slate-600"><span>{k}</span><span className="tabular-nums">{formatCurrency(v)}</span></div>
             ))}
           </div>
           <div className="space-y-1">
-            <div className="flex justify-between font-bold text-rose-700"><span>เงินออก</span><span className="font-mono">{formatCurrency(summary?.flow.totalOut ?? 0)}</span></div>
+            <div className="flex justify-between font-bold text-rose-700"><span>เงินออก</span><span className="tabular-nums">{formatCurrency(summary?.flow.totalOut ?? 0)}</span></div>
             {Object.entries(summary?.flow.outByType || {}).map(([k, v]) => (
-              <div key={k} className="flex justify-between text-slate-600"><span>{k}</span><span className="font-mono">{formatCurrency(v)}</span></div>
+              <div key={k} className="flex justify-between text-slate-600"><span>{k}</span><span className="tabular-nums">{formatCurrency(v)}</span></div>
             ))}
           </div>
           <div className="space-y-1">
             <div className="flex justify-between font-bold text-slate-800"><span>ค่าใช้จ่ายตามหมวด</span></div>
             {Object.keys(summary?.flow.expenseByCategory || {}).length === 0 && <div className="text-slate-400">ยังไม่มีค่าใช้จ่ายในช่วงนี้</div>}
             {Object.entries(summary?.flow.expenseByCategory || {}).map(([k, v]) => (
-              <div key={k} className="flex justify-between text-slate-600"><span>{k}</span><span className="font-mono">{formatCurrency(v)}</span></div>
+              <div key={k} className="flex justify-between text-slate-600"><span>{k}</span><span className="tabular-nums">{formatCurrency(v)}</span></div>
             ))}
-            <div className="flex justify-between border-t border-slate-200 pt-1 font-black"><span>สุทธิ (เข้า − ออก)</span><span className={`font-mono ${(summary?.flow.net ?? 0) < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{formatCurrency(summary?.flow.net ?? 0)}</span></div>
+            <div className="flex justify-between border-t border-slate-200 pt-1 font-semibold"><span>สุทธิ (เข้า − ออก)</span><span className={`tabular-nums ${(summary?.flow.net ?? 0) < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>{formatCurrency(summary?.flow.net ?? 0)}</span></div>
           </div>
         </div>
         {summary?.daily && summary.daily.length > 1 && (() => {
@@ -439,10 +440,10 @@ export default function FinancePage() {
                   <tr key={r.id} className={`border-t border-slate-100 ${r.isReversed || r.type === 'REVERSAL' ? 'text-slate-400' : ''}`}>
                     <td className="whitespace-nowrap">{formatListDate(r.occurredAt)}</td>
                     <td >{r.account.name}</td>
-                    <td >{r.typeLabel}{r.category ? ` · ${r.category.name}` : ''}{r.isReversed && <Badge className="ml-1 bg-slate-200 text-muted-foreground">ยกเลิกแล้ว</Badge>}</td>
+                    <td >{r.typeLabel}{r.category ? ` · ${r.category.name}` : ''}{r.isReversed && <StatusChip tone="neutral" className="ml-1">ยกเลิกแล้ว</StatusChip>}</td>
                     <td >{r.note}</td>
-                    <td className="text-right doc-no whitespace-nowrap text-ok">{r.direction === 'IN' ? formatCurrency(r.amount) : ''}</td>
-                    <td className="text-right doc-no whitespace-nowrap text-danger">{r.direction === 'OUT' ? formatCurrency(r.amount) : ''}</td>
+                    <td className="text-right tabular-nums whitespace-nowrap text-ok">{r.direction === 'IN' ? formatCurrency(r.amount) : ''}</td>
+                    <td className="text-right tabular-nums whitespace-nowrap text-danger">{r.direction === 'OUT' ? formatCurrency(r.amount) : ''}</td>
                     <td className="text-right">
                       {r.canCancel && (r.type === 'EXPENSE' || r.direction === 'OUT') && (
                         <Button size="sm" variant="ghost" className="text-danger gap-1" onClick={() => void cancelRow(r)}><Ban className="w-3.5 h-3.5" /> ยกเลิก</Button>
@@ -470,7 +471,7 @@ export default function FinancePage() {
                     <td >{e.category.name}</td>
                     <td >{e.description}{e.vendor ? ` (${e.vendor})` : ''}</td>
                     <td >{e.account.name}</td>
-                    <td className="text-right doc-no whitespace-nowrap">{formatCurrency(Number(e.amount))}</td>
+                    <td className="text-right tabular-nums whitespace-nowrap">{formatCurrency(Number(e.amount))}</td>
                     <td className="text-right">
                       {e.status !== 'CANCELLED' && (
                         <Button size="sm" variant="ghost" className="text-danger" onClick={async () => {
@@ -764,7 +765,7 @@ function AmountDialog({ state, onClose, onDone }: { state: null | { kind: 'openi
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>{opening ? 'ตั้งยอดยกมา' : 'ปรับยอดให้ตรงความจริง'}: {state.account.name}</DialogTitle></DialogHeader>
         <div className="space-y-3 text-sm">
-          {!opening && <p className="text-slate-600">ยอดในระบบตอนนี้ <b className="font-mono">{formatCurrency(state.account.balance)}</b> — กรอกยอดจริง (นับเงิน / ดูยอดในแอปธนาคาร) ระบบจะบันทึกส่วนต่างพร้อมเหตุผล</p>}
+          {!opening && <p className="text-slate-600">ยอดในระบบตอนนี้ <b className="tabular-nums">{formatCurrency(state.account.balance)}</b> — กรอกยอดจริง (นับเงิน / ดูยอดในแอปธนาคาร) ระบบจะบันทึกส่วนต่างพร้อมเหตุผล</p>}
           {opening && <p className="text-slate-600">กรอกยอดเงินจริงที่มีอยู่ ณ วันที่เริ่มใช้ระบบการเงิน (ตั้งได้ครั้งเดียว)</p>}
           <Input type="number" inputMode="decimal" min={0} step="0.01" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0.00" />
           {!opening && <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="เหตุผล เช่น ค่าธรรมเนียมธนาคาร, ดอกเบี้ย, นับเงินจริง" />}

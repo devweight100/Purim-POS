@@ -99,7 +99,7 @@ function OnlineOrdersInner() {
   };
 
   return (
-    <div className="p-edge sm:p-6 space-y-4 max-w-[1500px] mx-auto">
+    <div className="page-shell">
       <div className="flex flex-wrap items-center justify-between gap-btn">
         <div>
           <h1 className="page-title">
@@ -157,14 +157,14 @@ function OnlineOrdersInner() {
                     )}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-black text-slate-900">{r.orderNo}</span>
+                      <span className="font-semibold text-slate-900">{r.orderNo}</span>
                       <StatusPill status={r.status} paid={r.paid} />
                     </div>
                     <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-sm">
                       <span className="text-slate-700 min-w-0 truncate">
                         {r.customer?.name || r.contactName} · {r.fulfillment === 'PICKUP' ? 'รับที่ร้าน' : 'ส่งของ'} · {r.itemCount} รายการ
                       </span>
-                      <span className="font-mono font-bold">
+                      <span className="tabular-nums font-bold">
                         {formatCurrency(r.totalAmount)}
                         {r.deliveryFee === null && r.fulfillment === 'DELIVERY' ? ' + ค่าส่ง?' : ''}
                       </span>

@@ -75,7 +75,7 @@ export function ClaimBadge({ claim, meId, status, picked }: { claim: OnlineClaim
   if (!OPEN.includes(status)) return null;
   if (!claim) {
     return status === 'NEW' ? (
-      <span data-testid="claim-badge" className="rounded-full border border-amber-400 bg-amber-100 px-2 py-0.5 text-xs font-black text-amber-900">ยังไม่มีคนจัด</span>
+      <span data-testid="claim-badge" className="rounded-full border border-amber-400 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">ยังไม่มีคนจัด</span>
     ) : (
       <span data-testid="claim-badge" className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-xs font-bold text-slate-700">ยังไม่มีคนจัด</span>
     );
@@ -305,7 +305,7 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
             <ArrowLeft className="w-4 h-4" /> รายการ
           </Button>
           <div>
-            <h2 className="text-xl font-black text-slate-900">{d.orderNo}</h2>
+            <h2 className="text-xl font-semibold text-slate-900">{d.orderNo}</h2>
             <p className="text-xs text-slate-500">
               สั่งเมื่อ {when(d.createdAt)} · LINE: {d.lineName || '-'}
               {d.testProfile ? ' (โปรไฟล์ทดสอบ)' : ''}
@@ -432,7 +432,7 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
                     formatCurrency(it.unitPrice)
                   )}
                 </td>
-                <td className="text-right doc-no font-medium">{formatCurrency(it.total)}</td>
+                <td className="text-right tabular-nums font-medium">{formatCurrency(it.total)}</td>
                 {editable && (
                   <td className="text-right">
                     <Button size="sm" variant="ghost" aria-label={`ลบ ${it.name}`} disabled={items.length <= 1} onClick={() => { setItems((p) => p.filter((_, k) => k !== i)); setDirty(true); }}>
@@ -452,7 +452,7 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
       )}
 
       <div className="ml-auto max-w-sm space-y-1 text-sm">
-        <div className="flex justify-between"><span>ค่าสินค้า</span><b className="font-mono">{formatCurrency(totals.subtotal)}</b></div>
+        <div className="flex justify-between"><span>ค่าสินค้า</span><b className="tabular-nums">{formatCurrency(totals.subtotal)}</b></div>
         <div className="flex items-center justify-between gap-btn">
           <label htmlFor="online-fee">ค่าส่ง</label>
           {d.fulfillment === 'PICKUP' ? (
@@ -460,11 +460,11 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
           ) : editable ? (
             <Input id="online-fee" type="number" min={0} step={1} placeholder="ใส่ค่าส่ง" className={`h-9 w-28 text-right ${fee.trim() === '' ? 'border-amber-500' : ''}`} value={fee} onChange={(e) => { setFee(e.target.value); setDirty(true); }} />
           ) : (
-            <b className="font-mono">{d.deliveryFee === null ? 'ยังไม่ระบุ' : formatCurrency(d.deliveryFee)}</b>
+            <b className="tabular-nums">{d.deliveryFee === null ? 'ยังไม่ระบุ' : formatCurrency(d.deliveryFee)}</b>
           )}
         </div>
         {!feeParsed.ok && <p className="text-xs text-rose-700">{feeParsed.error}</p>}
-        <div className="flex justify-between border-t border-slate-200 pt-1 text-base"><span className="font-bold">ยอดรวม</span><b className="font-mono text-emerald-800">{formatCurrency(totals.total)}{totals.feePending && d.fulfillment === 'DELIVERY' ? ' + ค่าส่ง' : ''}</b></div>
+        <div className="flex justify-between border-t border-slate-200 pt-1 text-base"><span className="font-bold">ยอดรวม</span><b className="tabular-nums text-emerald-800">{formatCurrency(totals.total)}{totals.feePending && d.fulfillment === 'DELIVERY' ? ' + ค่าส่ง' : ''}</b></div>
       </div>
 
       {heldByOther && <p className="rounded-lg bg-rose-50 p-2 text-sm font-semibold text-rose-800" role="status">{lockReason}</p>}

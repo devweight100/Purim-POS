@@ -83,7 +83,7 @@ export function PayableBillDetailsModal({
               <div>
                 <DialogTitle className="text-lg font-bold flex items-center gap-2">
                   <span>รายละเอียดบิลเจ้าหนี้</span>
-                  <span className="font-mono text-indigo-600">{bill.poNumber}</span>
+                  <span className="tabular-nums text-indigo-600">{bill.poNumber}</span>
                 </DialogTitle>
                 <p className="text-xs text-slate-500 font-medium">
                   {bill.supplierName} {bill.supplierPhone ? `• โทร ${bill.supplierPhone}` : ''}
@@ -115,11 +115,11 @@ export function PayableBillDetailsModal({
         <div className="space-y-4 py-3 flex-1 overflow-y-auto pr-1 text-xs">
           {/* Document facts (round 4: moved here from the bills table) */}
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-4" data-testid="bill-facts">
-            <div><dt className="text-[10.5px] font-bold text-slate-400">เลขที่เอกสาร (PO)</dt><dd className="font-mono font-bold text-slate-900">{bill.poNumber}</dd></div>
+            <div><dt className="text-[10.5px] font-bold text-slate-400">เลขที่เอกสาร (PO)</dt><dd className="tabular-nums font-bold text-slate-900">{bill.poNumber}</dd></div>
             <div><dt className="text-[10.5px] font-bold text-slate-400">วันที่บิล</dt><dd className="font-semibold text-slate-800">{formatListDate(bill.billDate)}</dd></div>
             <div>
               <dt className="text-[10.5px] font-bold text-slate-400">เลขที่บิลผู้จำหน่าย</dt>
-              <dd className="font-mono font-semibold text-slate-800 break-all">{bill.supplierInvoiceNo || <span className="font-sans italic text-slate-400">ยังไม่ระบุ</span>}</dd>
+              <dd className="tabular-nums font-semibold text-slate-800 break-all">{bill.supplierInvoiceNo || <span className="font-sans italic text-slate-400">ยังไม่ระบุ</span>}</dd>
             </div>
             <div><dt className="text-[10.5px] font-bold text-slate-400">ลงวันที่ (บิลผู้จำหน่าย)</dt><dd className="font-semibold text-slate-800">{bill.supplierInvoiceDate ? formatListDate(bill.supplierInvoiceDate) : '-'}</dd></div>
             {bill.paymentStatus === 'PARTIALLY_PAID' && bill.remainingPayable <= 0 && (
@@ -131,7 +131,7 @@ export function PayableBillDetailsModal({
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-200">
               <span className="text-[10.5px] text-slate-400 font-bold block">ยอดหนี้ (รับของแล้ว)</span>
-              <span className="font-mono font-bold text-sm text-slate-900">
+              <span className="tabular-nums font-bold text-sm text-slate-900">
                 {formatCurrency(bill.receivedAmount ?? bill.totalAmount)}
                                 {bill.receivedAmount !== undefined && Math.abs(bill.receivedAmount - bill.totalAmount) > 0.004 && (
                                   <span className="block text-[10px] font-medium text-slate-400">จาก PO {formatCurrency(bill.totalAmount)}</span>
@@ -141,28 +141,28 @@ export function PayableBillDetailsModal({
 
             <div className="bg-amber-50/70 p-2.5 rounded-2xl border border-amber-200">
               <span className="text-[10.5px] text-amber-700 font-bold block">ส่วนลดท้ายบิล</span>
-              <span className="font-mono font-bold text-sm text-amber-900">
+              <span className="tabular-nums font-bold text-sm text-amber-900">
                 {formatCurrency(bill.alreadyDiscountAmount || 0)}
               </span>
             </div>
 
             <div className="bg-indigo-50/70 p-2.5 rounded-2xl border border-indigo-200">
               <span className="text-[10.5px] text-indigo-700 font-bold block">ประกบใบลดหนี้</span>
-              <span className="font-mono font-bold text-sm text-indigo-900">
+              <span className="tabular-nums font-bold text-sm text-indigo-900">
                 {formatCurrency(bill.alreadyDeductedReturns || 0)}
               </span>
             </div>
 
             <div className="bg-emerald-50/70 p-2.5 rounded-2xl border border-emerald-200">
               <span className="text-[10.5px] text-emerald-700 font-bold block">จ่ายเงินแล้ว</span>
-              <span className="font-mono font-bold text-sm text-emerald-900">
+              <span className="tabular-nums font-bold text-sm text-emerald-900">
                 {formatCurrency(bill.alreadyPaidAmount || 0)}
               </span>
             </div>
 
             <div className="bg-rose-50/70 p-2.5 rounded-2xl border border-rose-200 col-span-2 sm:col-span-1">
               <span className="text-[10.5px] text-rose-700 font-bold block">หนี้คงค้างสุทธิ</span>
-              <span className="font-mono font-black text-sm text-rose-900">
+              <span className="tabular-nums font-semibold text-sm text-rose-900">
                 {formatCurrency(bill.remainingPayable)}
               </span>
             </div>
@@ -235,10 +235,10 @@ export function PayableBillDetailsModal({
                           <td className="text-center doc-no text-ok font-medium">
                             {item.receivedQuantity ?? qty} {item.unitName || 'ชิ้น'}
                           </td>
-                          <td className="text-right doc-no">
+                          <td className="text-right tabular-nums">
                             {formatCurrency(cost)}
                           </td>
-                          <td className="text-right doc-no font-medium text-fg">
+                          <td className="text-right tabular-nums font-medium text-fg">
                             {formatCurrency(qty * cost)}
                           </td>
                         </tr>
@@ -268,7 +268,7 @@ export function PayableBillDetailsModal({
                     >
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-indigo-700">{p.id}</span>
+                          <span className="tabular-nums font-bold text-indigo-700">{p.id}</span>
                           <Badge variant="outline" className="text-[10px] bg-white font-bold">
                             {p.paymentMethod === 'CASH'
                               ? '💵 เงินสด'
@@ -282,17 +282,17 @@ export function PayableBillDetailsModal({
                         </div>
 
                         <div className="flex items-center gap-3 text-[11px] text-slate-600">
-                          <span>จ่ายจริง: <strong className="text-emerald-700 font-mono">{formatCurrency(p.netCashOrTransferPaid)}</strong></span>
+                          <span>จ่ายจริง: <strong className="text-emerald-700 tabular-nums">{formatCurrency(p.netCashOrTransferPaid)}</strong></span>
                           {p.discountAmount && p.discountAmount > 0 ? (
-                            <span>• ส่วนลดท้ายบิล: <strong className="text-amber-700 font-mono">{formatCurrency(p.discountAmount)}</strong></span>
+                            <span>• ส่วนลดท้ายบิล: <strong className="text-amber-700 tabular-nums">{formatCurrency(p.discountAmount)}</strong></span>
                           ) : null}
                           {p.deductedCreditAmount > 0 ? (
-                            <span>• ประกบใบลดหนี้: <strong className="text-indigo-700 font-mono">{formatCurrency(p.deductedCreditAmount)}</strong></span>
+                            <span>• ประกบใบลดหนี้: <strong className="text-indigo-700 tabular-nums">{formatCurrency(p.deductedCreditAmount)}</strong></span>
                           ) : null}
                         </div>
 
                         {p.referenceNo && (
-                          <p className="text-[10.5px] text-slate-400 font-mono">เลขอ้างอิง: {p.referenceNo}</p>
+                          <p className="text-[10.5px] text-slate-400 tabular-nums">เลขอ้างอิง: {p.referenceNo}</p>
                         )}
                         {p.note && (
                           <p className="text-[10.5px] text-slate-500 italic">หมายเหตุ: {p.note}</p>

@@ -6,6 +6,7 @@ import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { StatusChip } from '@/components/ui/status-chip';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { CalendarClock, Plus } from 'lucide-react';
@@ -53,7 +54,7 @@ export function RecurringPanel({ accounts, categories, onChanged }: { accounts: 
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-black text-slate-900 flex items-center gap-2"><CalendarClock className="w-5 h-5 text-indigo-600" /> ค่าใช้จ่ายประจำ</h2>
+          <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2"><CalendarClock className="w-5 h-5 text-indigo-600" /> ค่าใช้จ่ายประจำ</h2>
           <p className="text-sm text-slate-500">ค่าเช่า เงินเดือน ค่าอินเทอร์เน็ต ฯลฯ — ระบบเตือนเมื่อใกล้ครบกำหนด กด &quot;จ่าย&quot; แล้วบันทึกเป็นค่าใช้จ่ายและเลื่อนไปงวดถัดไปให้</p>
         </div>
         <Button onClick={() => setCreateOpen(true)} className="gap-1.5"><Plus className="w-4 h-4" /> เพิ่มรายการประจำ</Button>
@@ -77,10 +78,10 @@ export function RecurringPanel({ accounts, categories, onChanged }: { accounts: 
                 <td >{ruleText(r)}</td>
                 <td >
                   {thaiDate(r.nextDueDate)}{' '}
-                  {r.status === 'OVERDUE' && <Badge className="bg-rose-600 text-white">เกิน {-r.daysToDue} วัน</Badge>}
-                  {r.status === 'DUE_SOON' && <Badge className="bg-amber-500 text-white">{r.daysToDue === 0 ? 'วันนี้' : `อีก ${r.daysToDue} วัน`}</Badge>}
+                  {r.status === 'OVERDUE' && <StatusChip tone="danger">เกิน {-r.daysToDue} วัน</StatusChip>}
+                  {r.status === 'DUE_SOON' && <StatusChip tone="warning">{r.daysToDue === 0 ? 'วันนี้' : `อีก ${r.daysToDue} วัน`}</StatusChip>}
                 </td>
-                <td className="text-right doc-no whitespace-nowrap">{formatCurrency(r.amount)}</td>
+                <td className="text-right tabular-nums whitespace-nowrap">{formatCurrency(r.amount)}</td>
                 <td >{r.account?.name || '-'}</td>
                 <td className="text-right whitespace-nowrap">
                   {r.isActive && <Button size="sm" className="bg-rose-600 hover:bg-rose-700 text-white" onClick={() => setPayTarget(r)}>จ่าย</Button>}

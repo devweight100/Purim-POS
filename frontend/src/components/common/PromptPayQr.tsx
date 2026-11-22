@@ -49,11 +49,11 @@ export function PromptPayQr({ type, id, amount, accountName, size = 280, compact
         <path d={qrPath(qr.modules, quiet)} fill="#000000" />
       </svg>
       <div className={compact ? 'mt-1 space-y-0' : 'mt-2 space-y-0.5'}>
-        <div data-testid="promptpay-qr-amount" className={`font-extrabold font-mono text-slate-900 ${compact ? 'text-lg' : 'text-3xl'}`}>
+        <div data-testid="promptpay-qr-amount" className={`font-semibold tabular-nums text-slate-900 ${compact ? 'text-lg' : 'text-3xl'}`}>
           {baht(amount)}
         </div>
         {accountName && <div className={`font-bold text-slate-800 ${compact ? 'text-xs' : 'text-base'}`}>{accountName}</div>}
-        <div className={`font-mono text-slate-600 ${compact ? 'text-xs' : 'text-base'}`}>
+        <div className={`tabular-nums text-slate-600 ${compact ? 'text-xs' : 'text-base'}`}>
           พร้อมเพย์ {qr.masked}
         </div>
       </div>

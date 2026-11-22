@@ -101,7 +101,7 @@ export function ReconcilePanel({ accounts, onChanged }: { accounts: FinAccount[]
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-black text-slate-900 flex items-center gap-2"><Landmark className="w-5 h-5 text-indigo-600" /> กระทบยอดกับ statement ธนาคาร</h2>
+        <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2"><Landmark className="w-5 h-5 text-indigo-600" /> กระทบยอดกับ statement ธนาคาร</h2>
         <p className="text-sm text-slate-500">ติ๊กรายการที่เห็นใน statement จริง (หรืออัปโหลดไฟล์ CSV ให้ระบบจับคู่ให้) แล้วเทียบยอดคงเหลือ — ส่วนต่างเช่นค่าธรรมเนียม/ดอกเบี้ยบันทึกเป็นรายการปรับยอดได้</p>
       </div>
       <div className="grid sm:grid-cols-4 gap-2 text-sm">
@@ -118,10 +118,10 @@ export function ReconcilePanel({ accounts, onChanged }: { accounts: FinAccount[]
       {state && (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
-            <div className="rounded-2xl border border-slate-200 bg-white p-3"><div className="text-xs text-slate-500 font-bold">ยอดในระบบ ณ วันที่</div><div className="text-lg font-black font-mono">{formatCurrency(state.ledgerBalance)}</div></div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-3"><div className="text-xs text-slate-500 font-bold">ยอดที่กระทบแล้ว (รวมที่ติ๊ก)</div><div className="text-lg font-black font-mono">{formatCurrency(cleared)}</div></div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-3"><div className="text-xs text-slate-500 font-bold">ยอดตาม statement</div><div className="text-lg font-black font-mono">{statementBalance === '' ? '-' : formatCurrency(Number(statementBalance))}</div></div>
-            <div className={`rounded-2xl border p-3 ${diff === 0 ? 'border-emerald-300 bg-emerald-50' : 'border-rose-300 bg-rose-50'}`}><div className="text-xs font-bold">ส่วนต่าง</div><div className="text-lg font-black font-mono">{formatCurrency(diff)}</div></div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3"><div className="text-xs text-slate-500 font-bold">ยอดในระบบ ณ วันที่</div><div className="text-lg font-semibold tabular-nums">{formatCurrency(state.ledgerBalance)}</div></div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3"><div className="text-xs text-slate-500 font-bold">ยอดที่กระทบแล้ว (รวมที่ติ๊ก)</div><div className="text-lg font-semibold tabular-nums">{formatCurrency(cleared)}</div></div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3"><div className="text-xs text-slate-500 font-bold">ยอดตาม statement</div><div className="text-lg font-semibold tabular-nums">{statementBalance === '' ? '-' : formatCurrency(Number(statementBalance))}</div></div>
+            <div className={`rounded-2xl border p-3 ${diff === 0 ? 'border-emerald-300 bg-emerald-50' : 'border-rose-300 bg-rose-50'}`}><div className="text-xs font-bold">ส่วนต่าง</div><div className="text-lg font-semibold tabular-nums">{formatCurrency(diff)}</div></div>
           </div>
           <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white max-h-96">
             <table className="tbl w-full text-sm">
@@ -135,8 +135,8 @@ export function ReconcilePanel({ accounts, onChanged }: { accounts: FinAccount[]
                   <tr key={r.id} className={`border-t border-slate-100 ${checked.has(r.id) ? 'bg-emerald-50' : ''}`}>
                     <td ><input type="checkbox" checked={checked.has(r.id)} onChange={(e) => { const n = new Set(checked); if (e.target.checked) n.add(r.id); else n.delete(r.id); setChecked(n); }} /></td>
                     <td className="whitespace-nowrap">{thaiDate(r.occurredAt)}</td><td >{r.note}</td>
-                    <td className="text-right doc-no whitespace-nowrap text-ok">{r.direction === 'IN' ? formatCurrency(r.amount) : ''}</td>
-                    <td className="text-right doc-no whitespace-nowrap text-danger">{r.direction === 'OUT' ? formatCurrency(r.amount) : ''}</td>
+                    <td className="text-right tabular-nums whitespace-nowrap text-ok">{r.direction === 'IN' ? formatCurrency(r.amount) : ''}</td>
+                    <td className="text-right tabular-nums whitespace-nowrap text-danger">{r.direction === 'OUT' ? formatCurrency(r.amount) : ''}</td>
                   </tr>
                 ))}
               </tbody>

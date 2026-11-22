@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { StatusChip } from '@/components/ui/status-chip';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -349,7 +350,7 @@ export default function PayablesPage() {
   const billNav = useRowNav(filteredBills.length, (i) => handleOpenDetails(filteredBills[i]));
   const voucherNav = useRowNav(paymentVouchers.length, (i) => handleOpenVoucherDirect(paymentVouchers[i]));
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7 font-sans">
+    <div className="page-shell">
       {loadError && <LoadErrorState message={loadError} onRetry={() => void refreshData()} retrying={loading} />}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
@@ -410,8 +411,8 @@ export default function PayablesPage() {
             </div>
             <span className="text-sm font-bold text-amber-950">หนี้ค้างจ่ายรวม:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-amber-700 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-amber-700 tracking-tight">
               {formatCurrency(totalOutstandingDebt)}
             </span>
           </div>
@@ -425,8 +426,8 @@ export default function PayablesPage() {
             </div>
             <span className="text-sm font-bold text-rose-950">บิลค้างชำระ:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-rose-600 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-rose-600 tracking-tight">
               {unpaidBillsCount}
             </span>
             <span className="text-xs text-rose-700 font-sans font-bold">บิล</span>
@@ -441,8 +442,8 @@ export default function PayablesPage() {
             </div>
             <span className="text-sm font-bold text-indigo-950">ใบลดหนี้พร้อมหัก:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-indigo-700 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-indigo-700 tracking-tight">
               {formatCurrency(totalAvailableDebitCredit)}
             </span>
           </div>
@@ -456,8 +457,8 @@ export default function PayablesPage() {
             </div>
             <span className="text-sm font-bold text-emerald-950">ชำระแล้วทั้งหมด:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-emerald-700 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-emerald-700 tracking-tight">
               {formatCurrency(totalPaidAmount)}
             </span>
           </div>
@@ -629,11 +630,11 @@ export default function PayablesPage() {
           {selectedPoIds.length > 0 && (
             <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3.5 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-4 z-50 animate-in fade-in slide-in-from-bottom-5 max-w-[90vw]">
               <div className="flex items-center gap-2.5">
-                <Badge className="bg-indigo-500 text-white font-mono text-xs px-2.5 py-0.5 font-bold">
+                <Badge className="bg-indigo-500 text-white tabular-nums text-xs px-2.5 py-0.5 font-bold">
                   {selectedPoIds.length} บิล
                 </Badge>
                 <span className="text-xs sm:text-sm font-bold text-slate-200">
-                  เลือกบิลแล้ว ยอดรวม: <strong className="text-amber-400 font-mono">{formatCurrency(selectedTotal)}</strong>
+                  เลือกบิลแล้ว ยอดรวม: <strong className="text-amber-400 tabular-nums">{formatCurrency(selectedTotal)}</strong>
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -692,11 +693,11 @@ export default function PayablesPage() {
                     <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1.5 text-xs sm:text-sm">
                       <div className="flex justify-between text-slate-600">
                         <span>ยอดหนี้ค้างจ่ายรวม:</span>
-                        <strong className="font-mono text-amber-800 text-sm sm:text-base font-bold">{formatCurrency(suppDebt)}</strong>
+                        <strong className="tabular-nums text-amber-800 text-sm sm:text-base font-bold">{formatCurrency(suppDebt)}</strong>
                       </div>
                       <div className="flex justify-between text-slate-600">
                         <span>ใบลดหนี้พร้อมประกบ:</span>
-                        <strong className="font-mono text-indigo-700 font-bold">
+                        <strong className="tabular-nums text-indigo-700 font-bold">
                           {suppCreditCount} ฉบับ ({formatCurrency(suppCreditTotal)})
                         </strong>
                       </div>
@@ -769,9 +770,9 @@ export default function PayablesPage() {
                                 {voucher.voucherNumber}
                               </span>
                               {isCancelled && (
-                                <Badge variant="outline" className="text-sub font-medium text-danger bg-rose-50 border-rose-300">
+                                <StatusChip tone="danger">
                                   ยกเลิกแล้ว
-                                </Badge>
+                                </StatusChip>
                               )}
                             </div>
                             <span className="text-sub text-muted-foreground block mt-0.5">
@@ -786,12 +787,10 @@ export default function PayablesPage() {
 
                           <td >
                             <div className="space-y-1">
-                              <Badge variant="outline" className="text-sub doc-no font-medium bg-slate-50">
-                                {voucher.bills.length} บิล
-                              </Badge>
+                              <div className="text-sub text-muted-foreground">{voucher.bills.length} บิล</div>
                               <div className="flex flex-wrap gap-1 max-w-xs">
                                 {voucher.bills.map((b, i) => (
-                                  <span key={i} className="text-sub doc-no bg-indigo-50/70 text-indigo-900 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">
+                                  <span key={i} className="doc-no text-fg after:content-[','] last:after:content-none">
                                     {b.supplierInvoiceNo || b.poNumber}
                                   </span>
                                 ))}
@@ -803,32 +802,32 @@ export default function PayablesPage() {
                             {voucher.supplierName}
                           </td>
 
-                          <td className="text-right doc-no whitespace-nowrap font-medium text-fg">
+                          <td className="text-right tabular-nums whitespace-nowrap font-medium text-fg">
                             {formatCurrency(voucher.totalBillsAmount)}
                           </td>
 
-                          <td className="text-right doc-no whitespace-nowrap text-warn font-medium">
+                          <td className="text-right tabular-nums whitespace-nowrap text-warn font-medium">
                             {voucher.discountAmount && voucher.discountAmount > 0 ? formatCurrency(voucher.discountAmount) : '-'}
                           </td>
 
-                          <td className="text-right doc-no whitespace-nowrap text-indigo-700 font-medium">
+                          <td className="text-right tabular-nums whitespace-nowrap text-indigo-700 font-medium">
                             {voucher.deductedCreditAmount > 0 ? formatCurrency(voucher.deductedCreditAmount) : '-'}
                           </td>
 
-                          <td className="text-right doc-no whitespace-nowrap font-semibold sm:text-base">
-                            <span className={isCancelled ? 'line-through text-slate-400' : 'text-emerald-700'}>
+                          <td className="text-right tabular-nums whitespace-nowrap font-medium">
+                            <span className={isCancelled ? 'line-through text-subtle' : 'text-fg'}>
                               {formatCurrency(voucher.netPaidAmount)}
                             </span>
                           </td>
 
                           <td className="text-center">
-                            <Badge variant="outline" className="text-sub font-semibold px-2.5 py-0.5">
+                            <span className="text-fg">
                               {voucher.paymentMethod === 'CASH'
-                                ? '💵 เงินสด'
+                                ? 'เงินสด'
                                 : voucher.paymentMethod === 'TRANSFER'
-                                ? '📱 โอนเงิน'
-                                : '💳 อื่นๆ'}
-                            </Badge>
+                                ? 'โอนเงิน'
+                                : 'อื่นๆ'}
+                            </span>
                           </td>
 
                           <td className="text-right">
@@ -925,7 +924,7 @@ export default function PayablesPage() {
                 value={editingInvoiceValue}
                 onChange={(e) => setEditingInvoiceValue(e.target.value)}
                 placeholder="เช่น INV-670123 หรือ DO-9912"
-                className="font-mono"
+                className="tabular-nums"
                 autoFocus
               />
             </div>

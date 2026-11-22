@@ -29,7 +29,7 @@ export function ForecastPanel() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="text-lg font-black text-slate-900 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-indigo-600" /> คาดการณ์เงินสดล่วงหน้า</h2>
+          <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2"><TrendingUp className="w-5 h-5 text-indigo-600" /> คาดการณ์เงินสดล่วงหน้า</h2>
           <p className="text-sm text-slate-500">เงินที่มีตอนนี้ + ลูกหนี้ตามวันครบกำหนด − เจ้าหนี้และค่าใช้จ่ายประจำตามวันครบกำหนด (ยังไม่รวมยอดขายในอนาคต)</p>
         </div>
         <div className="flex gap-1">
@@ -53,7 +53,7 @@ export function ForecastPanel() {
           [`คาดว่าเหลือใน ${data.days} วัน`, data.endCash],
           ['ลูกหนี้ที่เกินกำหนดแล้ว (ไม่นับรวม)', data.overdueReceivables],
         ].map(([l, v]) => (
-          <div key={String(l)} className="rounded-2xl border border-slate-200 bg-white p-3"><div className="text-xs font-bold text-slate-500">{l}</div><div className={`text-xl font-black font-mono ${Number(v) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatCurrency(Number(v))}</div></div>
+          <div key={String(l)} className="rounded-2xl border border-slate-200 bg-white p-3"><div className="text-xs font-bold text-slate-500">{l}</div><div className={`text-xl font-semibold tabular-nums ${Number(v) < 0 ? 'text-rose-600' : 'text-slate-900'}`}>{formatCurrency(Number(v))}</div></div>
         ))}
       </div>
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -80,8 +80,8 @@ export function ForecastPanel() {
             {data.events.map((e, i) => (
               <tr key={i} className="border-t border-slate-100">
                 <td className="whitespace-nowrap">{thaiDate(e.date)}</td><td >{e.label}</td>
-                <td className="text-right doc-no whitespace-nowrap text-ok">{e.kind === 'IN' ? formatCurrency(e.amount) : ''}</td>
-                <td className="text-right doc-no whitespace-nowrap text-danger">{e.kind === 'OUT' ? formatCurrency(e.amount) : ''}</td>
+                <td className="text-right tabular-nums whitespace-nowrap text-ok">{e.kind === 'IN' ? formatCurrency(e.amount) : ''}</td>
+                <td className="text-right tabular-nums whitespace-nowrap text-danger">{e.kind === 'OUT' ? formatCurrency(e.amount) : ''}</td>
               </tr>
             ))}
           </tbody>

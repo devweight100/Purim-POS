@@ -249,7 +249,7 @@ export default function DashboardPage() {
   const recentOrders: DashboardOrder[] = useMemo(() => dash?.recentOrders || [], [dash]);
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-5 p-4 sm:p-6 lg:p-7 font-sans">
+    <div className="page-shell">
       {/* ─── PAGE HEADER & TIME RANGE SELECTOR ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -346,7 +346,7 @@ export default function DashboardPage() {
                 {kpi.totalOrdersCount} ออเดอร์
               </Badge>
             </div>
-            <div className="text-xl sm:text-2xl font-black font-mono text-emerald-700 mt-1">
+            <div className="text-xl sm:text-2xl font-semibold tabular-nums text-emerald-700 mt-1">
               {formatCurrency(kpi.grossSales)}
             </div>
             <p className="text-[11px] text-emerald-700/90 mt-1 font-medium">
@@ -362,7 +362,7 @@ export default function DashboardPage() {
                 {kpi.voidedOrdersCount} ยกเลิก / {kpi.returnCount} คืนสินค้า
               </Badge>
             </div>
-            <div className="text-xl sm:text-2xl font-black font-mono text-rose-600 mt-1">
+            <div className="text-xl sm:text-2xl font-semibold tabular-nums text-rose-600 mt-1">
               {formatCurrency(kpi.totalRefunds)}
             </div>
             <div className="text-[11px] text-rose-700/90 mt-1 flex flex-wrap gap-x-2 font-medium">
@@ -380,7 +380,7 @@ export default function DashboardPage() {
                 รับจริง {kpi.completedOrdersCount} บิล
               </Badge>
             </div>
-            <div className="text-xl sm:text-2xl font-black font-mono text-indigo-700 mt-1">
+            <div className="text-xl sm:text-2xl font-semibold tabular-nums text-indigo-700 mt-1">
               {formatCurrency(kpi.netRevenue)}
             </div>
             <p className="text-[11px] text-indigo-800/90 mt-1 font-medium">
@@ -400,14 +400,14 @@ export default function DashboardPage() {
             </div>
             <div>
               <span className="text-xs text-slate-500 block font-bold">ออเดอร์สำเร็จ</span>
-              <span className="text-base sm:text-lg font-black text-sky-700 font-mono tracking-tight">
+              <span className="text-base sm:text-lg font-semibold text-sky-700 tabular-nums tracking-tight">
                 {kpi.completedOrdersCount} <span className="text-xs font-bold text-slate-600 font-sans">บิล</span>
               </span>
             </div>
           </div>
           <div className="text-right text-[10px] text-slate-400">
             <div>เฉลี่ย/บิล</div>
-            <div className="font-mono font-bold text-sky-700">{formatCurrency(kpi.averageBasket)}</div>
+            <div className="tabular-nums font-bold text-sky-700">{formatCurrency(kpi.averageBasket)}</div>
           </div>
         </div>
 
@@ -427,7 +427,7 @@ export default function DashboardPage() {
             </div>
             <div className="min-w-0">
               <span className="text-xs text-slate-500 block font-bold group-hover:text-amber-800 whitespace-nowrap">ลูกค้าเงินเชื่อ</span>
-              <span className="text-base sm:text-lg font-black text-amber-700 font-mono tracking-tight" data-testid="credit-total">
+              <span className="text-base sm:text-lg font-semibold text-amber-700 tabular-nums tracking-tight" data-testid="credit-total">
                 {formatCurrency(credit?.totalOutstanding ?? 0)}
               </span>
             </div>
@@ -456,7 +456,7 @@ export default function DashboardPage() {
           </div>
           <div className="min-w-0">
             <span className="text-xs text-slate-500 block font-medium">สินค้าในระบบ</span>
-            <span className="font-mono font-bold text-slate-900 text-sm">{kpi.totalProductsCount.toLocaleString()} รายการ</span>
+            <span className="tabular-nums font-bold text-slate-900 text-sm">{kpi.totalProductsCount.toLocaleString()} รายการ</span>
           </div>
         </div>
 
@@ -466,8 +466,8 @@ export default function DashboardPage() {
           </div>
           <div className="min-w-0">
             <span className="text-xs text-slate-500 block font-medium">มูลค่าสต็อก (ราคาทุน)</span>
-            <span className="font-mono font-bold text-emerald-700 text-sm">{formatCurrency(kpi.totalInventoryValue)}</span>
-            <span className="text-[10px] text-slate-400 block font-mono">ตามราคาขาย: {formatCurrency(kpi.totalInventoryRetailValue)}</span>
+            <span className="tabular-nums font-bold text-emerald-700 text-sm">{formatCurrency(kpi.totalInventoryValue)}</span>
+            <span className="text-[10px] text-slate-400 block tabular-nums">ตามราคาขาย: {formatCurrency(kpi.totalInventoryRetailValue)}</span>
           </div>
         </div>
 
@@ -477,7 +477,7 @@ export default function DashboardPage() {
           </div>
           <div className="min-w-0">
             <span className="text-xs text-slate-500 block font-medium">สมาชิกสะสมแต้ม</span>
-            <span className="font-mono font-bold text-indigo-700 text-sm">{kpi.totalCustomers.toLocaleString()} คน</span>
+            <span className="tabular-nums font-bold text-indigo-700 text-sm">{kpi.totalCustomers.toLocaleString()} คน</span>
           </div>
         </div>
 
@@ -487,7 +487,7 @@ export default function DashboardPage() {
           </div>
           <div className="min-w-0">
             <span className="text-xs text-slate-500 block font-medium">สินค้าใกล้หมด (≤ {kpi.lowStockThreshold}) / หมด</span>
-            <span className="font-mono font-bold text-rose-600 text-sm">{kpi.lowStockCount + kpi.outOfStockCount} รายการ</span>
+            <span className="tabular-nums font-bold text-rose-600 text-sm">{kpi.lowStockCount + kpi.outOfStockCount} รายการ</span>
           </div>
         </div>
       </div>
@@ -498,7 +498,7 @@ export default function DashboardPage() {
         <Card className="bg-white border-slate-200 shadow-xs rounded-2xl lg:col-span-2 overflow-hidden">
           <CardHeader className="pb-2 border-b border-slate-100 flex flex-row items-center justify-between">
             <div>
-              <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+              <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-indigo-600" />
                 <span>แนวโน้มยอดขาย & การคืนเงินตามช่วงเวลา</span>
               </CardTitle>
@@ -554,17 +554,17 @@ export default function DashboardPage() {
                         return (
                           <div className="bg-slate-900 text-white p-3.5 rounded-xl shadow-xl text-xs space-y-1.5 border border-slate-700 min-w-[170px]">
                             <p className="font-bold text-slate-300 border-b border-slate-700 pb-1">{label}</p>
-                            <p className="text-emerald-400 font-mono font-medium flex justify-between">
+                            <p className="text-emerald-400 tabular-nums font-medium flex justify-between">
                               <span>ขายรวม:</span>
                               <span>+{formatCurrency(Number(dataItem.grossSales || 0))}</span>
                             </p>
                             {Number(dataItem.refunds || 0) > 0 && (
-                              <p className="text-rose-400 font-mono font-medium flex justify-between">
+                              <p className="text-rose-400 tabular-nums font-medium flex justify-between">
                                 <span>คืนเงิน/ยกเลิก:</span>
                                 <span>-{formatCurrency(Number(dataItem.refunds || 0))}</span>
                               </p>
                             )}
-                            <p className="text-indigo-300 font-mono font-black text-sm border-t border-slate-700/80 pt-1 flex justify-between">
+                            <p className="text-indigo-300 tabular-nums font-semibold text-sm border-t border-slate-700/80 pt-1 flex justify-between">
                               <span>ยอดสุทธิ:</span>
                               <span>{formatCurrency(Number(dataItem.netSales || 0))}</span>
                             </p>
@@ -604,7 +604,7 @@ export default function DashboardPage() {
         {/* 2. Payment Method Distribution Donut Chart (1 Col) */}
         <Card className="bg-white border-slate-200 shadow-xs rounded-2xl overflow-hidden flex flex-col justify-between">
           <CardHeader className="pb-2 border-b border-slate-100">
-            <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+            <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-2">
               <CreditCard className="w-4 h-4 text-emerald-600" />
               <span>สัดส่วนช่องทางชำระเงิน</span>
             </CardTitle>
@@ -647,7 +647,7 @@ export default function DashboardPage() {
               {/* Center Total Text */}
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
                 <span className="text-xs font-bold text-slate-400">รายได้สุทธิ</span>
-                <span className="text-sm font-black text-slate-900 font-mono tracking-tight mt-0.5">
+                <span className="text-sm font-semibold text-slate-900 tabular-nums tracking-tight mt-0.5">
                   {formatCurrency(kpi.netRevenue)}
                 </span>
               </div>
@@ -663,7 +663,7 @@ export default function DashboardPage() {
                       <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
                       <span className="text-slate-700 font-semibold">{p.name}</span>
                     </div>
-                    <div className="font-mono font-bold text-slate-900 flex items-center gap-1.5">
+                    <div className="tabular-nums font-bold text-slate-900 flex items-center gap-1.5">
                       <span>{formatCurrency(p.value)}</span>
                       <span className="text-xs text-slate-500 font-medium font-sans">({percent}%)</span>
                     </div>
@@ -681,7 +681,7 @@ export default function DashboardPage() {
         <Card className="bg-white border-slate-200 shadow-xs rounded-2xl overflow-hidden">
           <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between">
             <div>
-              <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+              <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-amber-500" />
                 <span>สินค้าขายดี 5 อันดับแรก (Top Selling)</span>
               </CardTitle>
@@ -708,7 +708,7 @@ export default function DashboardPage() {
                     <div className="flex justify-between items-center text-xs">
                       <div className="flex items-center gap-2 font-bold text-slate-900 truncate max-w-[65%] text-sm">
                         <span
-                          className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-black text-white shrink-0 ${
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0 ${
                             idx === 0
                               ? "bg-amber-500"
                               : idx === 1
@@ -722,14 +722,14 @@ export default function DashboardPage() {
                         </span>
                         <span className="truncate">{prod.name}</span>
                         {prod.sku && (
-                          <span className="text-xs text-slate-400 font-mono hidden sm:inline font-normal">
+                          <span className="text-xs text-slate-400 tabular-nums hidden sm:inline font-normal">
                             ({prod.sku})
                           </span>
                         )}
                       </div>
 
                       <div className="text-right">
-                        <span className="font-mono font-black text-slate-900 text-sm">
+                        <span className="tabular-nums font-semibold text-slate-900 text-sm">
                           {formatCurrency(prod.revenue)}
                         </span>
                         <span className="text-xs text-slate-500 block font-medium">
@@ -756,7 +756,7 @@ export default function DashboardPage() {
         <Card className="bg-white border-slate-200 shadow-xs rounded-2xl overflow-hidden">
           <CardHeader className="pb-3 border-b border-slate-100 flex flex-row items-center justify-between">
             <div>
-              <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+              <CardTitle className="text-base font-semibold text-slate-900 flex items-center gap-2">
                 <Clock className="w-4 h-4 text-sky-600" />
                 <span>ออเดอร์ล่าสุด (Recent Orders)</span>
               </CardTitle>
@@ -788,7 +788,7 @@ export default function DashboardPage() {
                   >
                     <div className="space-y-0.5 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-mono font-bold text-indigo-600 text-sm">
+                        <span className="tabular-nums font-bold text-indigo-600 text-sm">
                           {ord.orderNumber}
                         </span>
                         {isVoid ? (
@@ -814,7 +814,7 @@ export default function DashboardPage() {
                     </div>
 
                     <div className="text-right shrink-0">
-                      <span className={`font-mono font-black text-sm block ${isVoid ? "text-slate-400 line-through" : "text-slate-900"}`}>
+                      <span className={`tabular-nums font-semibold text-sm block ${isVoid ? "text-slate-400 line-through" : "text-slate-900"}`}>
                         {formatCurrency(ord.totalAmount || ord.total || 0)}
                       </span>
                       <span className="text-xs text-slate-400">

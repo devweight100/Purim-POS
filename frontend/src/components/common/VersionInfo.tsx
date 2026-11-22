@@ -135,7 +135,7 @@ function Row({ name, value, sub }: { name: string; value: React.ReactNode; sub?:
     <div className="flex items-start justify-between gap-3 py-2 border-b border-slate-100 last:border-0">
       <span className="text-xs font-bold text-slate-500 shrink-0">{name}</span>
       <span className="text-right">
-        <span className="block text-sm font-extrabold text-slate-900 font-mono">{value}</span>
+        <span className="block text-sm font-semibold text-slate-900 tabular-nums">{value}</span>
         {sub && <span className="block text-[11px] text-slate-500">{sub}</span>}
       </span>
     </div>
@@ -177,12 +177,12 @@ export function VersionDetails() {
               type="button"
               disabled={!!updating}
               onClick={() => void installUpdate()}
-              className="w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 px-3 py-2 text-sm font-extrabold text-white cursor-pointer"
+              className="w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 px-3 py-2 text-sm font-semibold text-white cursor-pointer"
             >
               ⬆ อัปเดตแอปเครื่องนี้{latestApp ? ` เป็น v${latestApp}` : ''}
             </button>
           ) : (
-            <a href="/api/client-app/download" className="block w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 px-3 py-2 text-center text-sm font-extrabold text-white">
+            <a href="/api/client-app/download" className="block w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 px-3 py-2 text-center text-sm font-semibold text-white">
               ⬇ ดาวน์โหลดตัวติดตั้งแอปเวอร์ชันใหม่ (ติดตั้งทับได้เลย)
             </a>
           )}
@@ -243,7 +243,7 @@ export function VersionBadge({ className = '' }: { className?: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`flex items-center gap-1.5 text-[11px] font-mono font-bold cursor-pointer hover:underline ${warn ? 'text-amber-600' : 'text-slate-400 hover:text-slate-600'} ${className}`}
+        className={`flex items-center gap-1.5 text-[11px] tabular-nums font-bold cursor-pointer hover:underline ${warn ? 'text-amber-600' : 'text-slate-400 hover:text-slate-600'} ${className}`}
         title="ดูข้อมูลเวอร์ชัน"
       >
         {warn && <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" />}

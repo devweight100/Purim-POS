@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { StatusChip } from '@/components/ui/status-chip';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -581,7 +582,7 @@ export function CreateSupplierReturnModal({
                       }`}
                     >
                       <div className="flex justify-between items-center text-xs">
-                        <span className="font-mono font-bold">{po.poNumber}</span>
+                        <span className="tabular-nums font-bold">{po.poNumber}</span>
                         <Badge variant="outline" className="text-[10px] bg-white border-amber-300 text-amber-800">
                           หนี้คงเหลือ {formatCurrency(po.remainingPayable)}
                         </Badge>
@@ -598,10 +599,10 @@ export function CreateSupplierReturnModal({
                   <div className="bg-amber-50/80 p-3 rounded-xl border border-amber-200 mt-2 flex flex-col sm:flex-row justify-between sm:items-center gap-2 text-xs">
                     <div>
                       <p className="font-bold text-amber-950">
-                        ✓ เลือกใบสั่งซื้อ: <span className="font-mono text-amber-900">{selectedPO.poNumber}</span>
+                        ✓ เลือกใบสั่งซื้อ: <span className="tabular-nums text-amber-900">{selectedPO.poNumber}</span>
                       </p>
                       <p className="text-[11px] text-amber-800">
-                        ยอดหนี้ค้างชำระปัจจุบัน: <strong className="font-mono font-bold">{formatCurrency(selectedPO.remainingPayable)}</strong> (หักใบลดหนี้ได้ตอนทำใบสำคัญจ่ายที่หน้าเจ้าหนี้)
+                        ยอดหนี้ค้างชำระปัจจุบัน: <strong className="tabular-nums font-bold">{formatCurrency(selectedPO.remainingPayable)}</strong> (หักใบลดหนี้ได้ตอนทำใบสำคัญจ่ายที่หน้าเจ้าหนี้)
                       </p>
                     </div>
                     <Badge className="bg-amber-600 text-white text-[11px] font-bold self-start sm:self-auto">
@@ -737,7 +738,7 @@ export function CreateSupplierReturnModal({
                                       max={group.totalQuantity}
                                       value={currentItem.quantity}
                                       onChange={(e) => updateGroupReturnQty(group, parseQty(e.target.value, allowDecimalQty) || (allowDecimalQty ? 0 : 1))}
-                                      className="font-mono text-center bg-slate-50 border-slate-300"
+                                      className="tabular-nums text-center bg-slate-50 border-slate-300"
                                     />
                                     <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
                                       {group.unitName}
@@ -756,7 +757,7 @@ export function CreateSupplierReturnModal({
                                       step="any"
                                       value={currentItem.unitCost}
                                       onChange={(e) => updateGroupReturnCost(group, parseFloat(e.target.value) || 0)}
-                                      className="font-mono text-right bg-slate-50 border-slate-300 pr-8"
+                                      className="tabular-nums text-right bg-slate-50 border-slate-300 pr-8"
                                     />
                                     <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
                                       ฿
@@ -768,7 +769,7 @@ export function CreateSupplierReturnModal({
                                   <span className="text-[10px] text-rose-800 font-bold block">
                                     รวมยอดลดหนี้รายการนี้:
                                   </span>
-                                  <span className="text-base font-mono font-black text-rose-900">
+                                  <span className="text-base tabular-nums font-semibold text-rose-900">
                                     {formatCurrency(currentItem.quantity * currentItem.unitCost)}
                                   </span>
                                 </div>
@@ -806,10 +807,10 @@ export function CreateSupplierReturnModal({
 
                               <div className="flex items-center justify-between sm:justify-end gap-3 pl-6 sm:pl-0">
                                 <div className="text-right">
-                                  <span className="text-xs font-mono font-bold block text-slate-900">
+                                  <span className="text-xs tabular-nums font-bold block text-slate-900">
                                     ในสต็อก: {group.totalQuantity} {group.unitName}
                                   </span>
-                                  <span className="text-[11px] text-slate-500 font-mono">
+                                  <span className="text-[11px] text-slate-500 tabular-nums">
                                     ทุนเดิม @{formatCurrency(group.costPrice || 50)}
                                   </span>
                                 </div>
@@ -931,7 +932,7 @@ export function CreateSupplierReturnModal({
                                           max={group.totalQuantity}
                                           value={currentItem.quantity}
                                           onChange={(e) => updateGroupReturnQty(group, parseQty(e.target.value, allowDecimalQty) || (allowDecimalQty ? 0 : 1))}
-                                          className="h-9 text-xs font-mono font-black text-center bg-slate-50 border-slate-300"
+                                          className="h-9 text-xs tabular-nums font-semibold text-center bg-slate-50 border-slate-300"
                                         />
                                         <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
                                           {group.unitName}
@@ -950,7 +951,7 @@ export function CreateSupplierReturnModal({
                                           step="any"
                                           value={currentItem.unitCost}
                                           onChange={(e) => updateGroupReturnCost(group, parseFloat(e.target.value) || 0)}
-                                          className="font-mono text-right bg-slate-50 border-slate-300 pr-8"
+                                          className="tabular-nums text-right bg-slate-50 border-slate-300 pr-8"
                                         />
                                         <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
                                           ฿
@@ -962,7 +963,7 @@ export function CreateSupplierReturnModal({
                                       <span className="text-[10px] text-indigo-800 font-bold block">
                                         รวมยอดลดหนี้:
                                       </span>
-                                      <span className="text-base font-mono font-black text-indigo-900">
+                                      <span className="text-base tabular-nums font-semibold text-indigo-900">
                                         {formatCurrency(currentItem.quantity * currentItem.unitCost)}
                                       </span>
                                     </div>
@@ -1000,10 +1001,10 @@ export function CreateSupplierReturnModal({
 
                                   <div className="flex items-center justify-between sm:justify-end gap-3 pl-6 sm:pl-0">
                                     <div className="text-right">
-                                      <span className="text-xs font-mono font-bold block text-slate-900">
+                                      <span className="text-xs tabular-nums font-bold block text-slate-900">
                                         ในสต็อก: {group.totalQuantity} {group.unitName}
                                       </span>
-                                      <span className="text-[11px] text-slate-500 font-mono">
+                                      <span className="text-[11px] text-slate-500 tabular-nums">
                                         ทุน @{formatCurrency(group.costPrice || 50)}
                                       </span>
                                     </div>
@@ -1072,9 +1073,9 @@ export function CreateSupplierReturnModal({
                               <div>
                                 <p className="font-bold text-slate-800">{p.name}</p>
                                 <SearchMatchHint product={p} query={productSearch} />
-                                <p className="text-[10px] text-slate-400 font-mono">SKU: {p.sku} | สต็อกคงเหลือ: {p.stock || 0} ชิ้น</p>
+                                <p className="text-[10px] text-slate-400 tabular-nums">SKU: {p.sku} | สต็อกคงเหลือ: {p.stock || 0} ชิ้น</p>
                               </div>
-                              <span className="font-bold text-sky-700 font-mono">
+                              <span className="font-bold text-sky-700 tabular-nums">
                                 ทุน: {formatCurrency(p.costPrice || 0)}
                               </span>
                             </button>
@@ -1090,7 +1091,7 @@ export function CreateSupplierReturnModal({
                       <div className="flex justify-between items-start">
                         <div>
                           <p className="text-xs font-bold text-slate-900">{selectedProduct.name}</p>
-                          <p className="text-[11px] text-slate-500 font-mono">
+                          <p className="text-[11px] text-slate-500 tabular-nums">
                             SKU: {selectedProduct.sku} | สต็อกปัจจุบัน: {selectedProduct.stock || 0} ชิ้น
                           </p>
                         </div>
@@ -1116,7 +1117,7 @@ export function CreateSupplierReturnModal({
                             max={selectedProduct.stock || 9999}
                             value={overstockQty}
                             onChange={(e) => setOverstockQty(e.target.value)}
-                            className="bg-white font-mono"
+                            className="bg-white tabular-nums"
                           />
                         </div>
                         <div>
@@ -1128,7 +1129,7 @@ export function CreateSupplierReturnModal({
                             step="any"
                             value={overstockCost}
                             onChange={(e) => setOverstockCost(e.target.value)}
-                            className="bg-white font-mono"
+                            className="bg-white tabular-nums"
                           />
                         </div>
                         <div>
@@ -1200,13 +1201,13 @@ export function CreateSupplierReturnModal({
                       <tr key={idx} className="hover:bg-slate-50/50">
                         <td className="text-center">
                           {item.itemType === 'DEFECTIVE' ? (
-                            <Badge className="bg-rose-100 text-danger hover:bg-rose-100 text-sub font-medium border-rose-300">
+                            <StatusChip tone="danger">
                               ชำรุด
-                            </Badge>
+                            </StatusChip>
                           ) : (
-                            <Badge className="bg-sky-100 text-sky-800 hover:bg-sky-100 text-sub font-medium border-sky-300">
+                            <StatusChip tone="info">
                               ปกติ
-                            </Badge>
+                            </StatusChip>
                           )}
                         </td>
                         <td >
@@ -1236,10 +1237,10 @@ export function CreateSupplierReturnModal({
                             step="any"
                             value={item.unitCost}
                             onChange={(e) => handleUpdateItemCost(idx, parseFloat(e.target.value) || 0)}
-                            className="h-7 w-20 text-right doc-no text-sub ml-auto"
+                            className="h-7 w-20 text-right tabular-nums text-sub ml-auto"
                           />
                         </td>
-                        <td className="text-right doc-no font-medium text-fg">
+                        <td className="text-right tabular-nums font-medium text-fg">
                           {formatCurrency(item.unitCost * item.quantity)}
                         </td>
                         <td className="text-center">
@@ -1283,15 +1284,15 @@ export function CreateSupplierReturnModal({
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 text-xs">
               <div className="flex justify-between text-slate-600">
                 <span>ยอดรวมสินค้าชำรุด (หมวด 1):</span>
-                <span className="font-mono font-bold text-rose-700">{formatCurrency(defectiveTotal)}</span>
+                <span className="tabular-nums font-bold text-rose-700">{formatCurrency(defectiveTotal)}</span>
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>ยอดรวมสินค้าปกติ (หมวด 2):</span>
-                <span className="font-mono font-bold text-sky-700">{formatCurrency(overstockTotal)}</span>
+                <span className="tabular-nums font-bold text-sky-700">{formatCurrency(overstockTotal)}</span>
               </div>
               <div className="flex justify-between border-t border-slate-200 pt-1.5 text-xs text-slate-600">
                 <span>รวมราคาทุนสินค้าทั้งหมด:</span>
-                <span className="font-mono font-bold text-slate-800">{formatCurrency(grandTotalCost)}</span>
+                <span className="tabular-nums font-bold text-slate-800">{formatCurrency(grandTotalCost)}</span>
               </div>
 
               {/* Editable Custom Deduction Amount */}
@@ -1326,7 +1327,7 @@ export function CreateSupplierReturnModal({
                       setIsCustomEdited(true);
                       setCustomDeductAmountStr(e.target.value);
                     }}
-                    className="font-mono text-slate-900 bg-slate-50 border-slate-300 pr-12 text-right"
+                    className="tabular-nums text-slate-900 bg-slate-50 border-slate-300 pr-12 text-right"
                     placeholder="0.00"
                   />
                   <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
@@ -1342,11 +1343,11 @@ export function CreateSupplierReturnModal({
                 <div className="border-t border-dashed border-amber-300 pt-2 text-[11px] text-amber-900 font-semibold space-y-0.5">
                   <div className="flex justify-between">
                     <span>หนี้เดิมของ {selectedPO.poNumber}:</span>
-                    <span className="font-mono">{formatCurrency(selectedPO.remainingPayable)}</span>
+                    <span className="tabular-nums">{formatCurrency(selectedPO.remainingPayable)}</span>
                   </div>
                   <div className="flex justify-between font-bold text-xs">
                     <span>ยอดหนี้สุทธิหลังหัก (เมื่อทำใบสำคัญจ่าย):</span>
-                    <span className="font-mono text-emerald-700">
+                    <span className="tabular-nums text-emerald-700">
                       {formatCurrency(Math.max(0, selectedPO.remainingPayable - finalEffectiveCredit))}
                     </span>
                   </div>

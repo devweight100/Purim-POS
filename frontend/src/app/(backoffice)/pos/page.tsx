@@ -20,10 +20,10 @@ export default function POSPage() {
   if (!pos.mounted) {
     return (
       <div className="min-h-dvh flex flex-col items-center justify-center bg-slate-100 p-6 text-slate-800">
-        <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-black text-2xl shadow-lg mb-3 animate-pulse">
+        <div className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-semibold text-2xl shadow-lg mb-3 animate-pulse">
           P
         </div>
-        <h2 className="text-lg font-black text-slate-900">กำลังเปิดระบบขายหน้าร้าน (POS)...</h2>
+        <h2 className="text-lg font-semibold text-slate-900">กำลังเปิดระบบขายหน้าร้าน (POS)...</h2>
         <p className="text-xs text-slate-500 mt-1">กำลังเตรียมข้อมูลสินค้าและระบบขาย</p>
       </div>
     );
@@ -71,7 +71,7 @@ export default function POSPage() {
         <div className="fixed bottom-0 left-0 right-0 z-30 lg:hidden bg-white/95 backdrop-blur-md border-t border-slate-200 px-4 py-3 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] flex items-center justify-between gap-3">
           <div className="flex flex-col">
             <span className="text-xs text-slate-500 font-bold">ตะกร้า ({formatQty(cart.getItemCount())} ชิ้น)</span>
-            <span className="text-xl font-black text-primary font-mono">{formatCurrency(cart.getTotal())}</span>
+            <span className="text-xl font-semibold text-primary tabular-nums">{formatCurrency(cart.getTotal())}</span>
           </div>
           <div className="flex items-center gap-2">
             <Button

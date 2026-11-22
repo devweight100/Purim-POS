@@ -1,5 +1,6 @@
 import { formatCurrency, formatListDateTime } from '@/lib/utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { StatusChip } from '@/components/ui/status-chip';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,11 +68,11 @@ export function OrdersTable({
             <TableRow className="hover:bg-transparent">
               <TableHead data-mid="hide" className="hidden xl:table-cell text-center w-12">#</TableHead>
               <TableHead className="text-left">เลขออเดอร์</TableHead>
-              <TableHead className="text-center">วันที่</TableHead>
+              <TableHead>วันที่</TableHead>
               <TableHead >ลูกค้า / ผู้ซื้อ</TableHead>
               <TableHead data-narrow="hide" className="text-right">รายการ</TableHead>
               <TableHead className="text-right">ยอดสุทธิ</TableHead>
-              <TableHead className="text-center">ชำระโดย</TableHead>
+              <TableHead>ชำระโดย</TableHead>
               <TableHead className="text-center">สถานะ</TableHead>
               <TableHead className="text-center">
                 พิมพ์ / จัดการ
@@ -124,17 +125,15 @@ export function OrdersTable({
                     {/* 2. Order Number */}
                     <TableCell className="doc-no">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="font-medium text-indigo-600 whitespace-nowrap">{order.orderNumber}</span>
+                        <span className="doc-no text-indigo-700 whitespace-nowrap">{order.orderNumber}</span>
                         {order.hasClaims && (
-                          <span className="text-sub text-warn bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded font-medium font-sans">
-                            ⚠️ เคลมแล้ว
-                          </span>
+                          <StatusChip tone="warning">เคลมแล้ว</StatusChip>
                         )}
                       </div>
                     </TableCell>
 
                     {/* 3. Date (แยก col. วันที่) */}
-                    <TableCell data-narrow="wrap" className="text-center doc-no whitespace-nowrap text-muted-foreground">
+                    <TableCell data-narrow="wrap" className="tabular-nums whitespace-nowrap text-fg">
                       {formatListDateTime(order.createdAt)}
                     </TableCell>
 
@@ -147,79 +146,49 @@ export function OrdersTable({
                     </TableCell>
 
                     {/* 5. Items Count */}
-                    <TableCell data-narrow="hide" className="text-right font-medium text-fg doc-no whitespace-nowrap">
+                    <TableCell data-narrow="hide" className="text-right text-fg tabular-nums whitespace-nowrap">
                       {itemsCount} รายการ
                     </TableCell>
 
                     {/* 6. Total Amount */}
-                    <TableCell className="text-right font-semibold text-fg doc-no whitespace-nowrap">
+                    <TableCell className="text-right font-medium text-fg tabular-nums whitespace-nowrap">
                       {formatCurrency(total)}
                     </TableCell>
 
                     {/* 5. Payment Channel */}
-                    <TableCell className="text-center">
-                      <div className="flex gap-1 justify-center flex-wrap">
-                        {order.payments && order.payments.length > 0 ? (
-                          order.payments.map((p, i: number) => (
-                            <Badge
-                              key={i}
-                              variant="outline"
-                              className={`text-[10px] font-bold px-1.5 py-0.5 ${
-                                p.method === "CREDIT_DEBT" || p.method === "DEBT" || p.method === "CREDIT_NOTE" || p.method === "CREDIT"
-                                  ? "bg-amber-100 text-amber-900 border-amber-300"
-                                  : "bg-white text-slate-800 border-slate-300"
-                              }`}
-                            >
-                              {p.method === "CASH"
-                                ? "💵 เงินสด"
-                                : p.method === "QR_PROMPTPAY"
-                                ? "📱 QR"
-                                : p.method === "CREDIT_CARD"
-                                ? "💳 บัตร"
-                                : p.method === "CREDIT_DEBT" || p.method === "DEBT" || p.method === "CREDIT_NOTE" || p.method === "CREDIT"
-                                ? "👤 เงินเชื่อ"
-                                : p.method}
-                            </Badge>
-                          ))
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className={`text-[10px] ${
-                              isCredit
-                                ? "bg-amber-100 text-amber-900 border-amber-300 font-bold"
-                                : "bg-white text-slate-700 border-slate-300"
-                            }`}
-                          >
-                            {order.paymentMethod || "เงินสด"}
-                          </Badge>
-                        )}
-                      </div>
+                    <TableCell>
+                      {/* payment method = a plain value (style pass): text, no chip */}
+                      <span className="whitespace-nowrap text-fg">
+                        {order.payments && order.payments.length > 0
+                          ? Array.from(new Set(order.payments.map((p) => paymentLabel(p.method)))).join(' + ')
+                          : order.paymentMethod || 'เงินสด'}
+                      </span>
                     </TableCell>
 
                     {/* 6. Status Badge (Credit bills that are fully settled show 'สำเร็จ' in green!) */}
                     <TableCell className="text-center">
                       {isVoid ? (
-                        <Badge className="bg-rose-100 text-danger border-rose-300 line-through font-medium text-sub">
+                        <StatusChip tone="danger" className="line-through">
                           ยกเลิกแล้ว
-                        </Badge>
+                        </StatusChip>
                       ) : isCredit ? (
                         isCreditFullySettled ? (
-                          <Badge className="bg-emerald-100 text-ok border-emerald-300 font-medium text-sub">
+                          <StatusChip tone="success">
                             สำเร็จ
-                          </Badge>
+                          </StatusChip>
                         ) : (
-                          <Badge className="bg-amber-100 text-warn border-amber-300 font-medium text-sub">
+                          <StatusChip tone="warning">
                             เงินเชื่อ
-                          </Badge>
+                          </StatusChip>
                         )
                       ) : order.isSynced === false ? (
-                        <Badge className="bg-amber-100 text-warn border-amber-300 font-medium text-sub">
-                          ⚠️ ออฟไลน์
-                        </Badge>
+                        <StatusChip tone="warning">
+                          ออฟไลน์
+                        </StatusChip>
                       ) : (
-                        <Badge className="bg-emerald-100 text-ok border-emerald-300 font-medium text-sub">
+                        <StatusChip tone="success">
                           สำเร็จ
-                        </Badge>
+                        </StatusChip>
                       )}
                     </TableCell>
 
@@ -267,7 +236,7 @@ export function OrdersTable({
 
                         {/* More Options Dropdown */}
                         <DropdownMenu>
-                          <DropdownMenuTrigger className="inline-flex items-center justify-center h-8 w-8 p-0 text-muted-foreground border border-slate-300 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer outline-none shadow-2xs">
+                          <DropdownMenuTrigger className="inline-flex items-center justify-center size-8 text-muted-foreground border border-border rounded-lg bg-background hover:bg-muted transition-colors cursor-pointer">
                             <MoreVertical className="w-4 h-4" />
                           </DropdownMenuTrigger>
 
@@ -445,4 +414,14 @@ export function OrdersTable({
       </div>
     </div>
   );
+}
+
+/** Payment method as plain text (เงินสด / QR / บัตร / เงินเชื่อ / โอนเงิน). */
+function paymentLabel(method?: string): string {
+  if (method === 'CASH') return 'เงินสด';
+  if (method === 'QR_PROMPTPAY') return 'QR';
+  if (method === 'TRANSFER') return 'โอนเงิน';
+  if (method === 'CREDIT_CARD') return 'บัตร';
+  if (method === 'CREDIT_DEBT' || method === 'DEBT' || method === 'CREDIT_NOTE' || method === 'CREDIT') return 'เงินเชื่อ';
+  return method || 'เงินสด';
 }

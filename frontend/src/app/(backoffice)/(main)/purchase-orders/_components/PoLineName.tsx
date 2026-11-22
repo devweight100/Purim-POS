@@ -13,7 +13,7 @@ export function PoLineName({ item, className = '' }: {
       <span className="block break-words" data-testid="po-line-name">{printed}</span>
       {(item.docCode || printed !== shopName) && (
         <span className="block text-[11px] font-medium text-slate-500" data-testid="po-line-sub">
-          {item.docCode ? <span className="font-mono">รหัสผู้ขาย: {item.docCode}</span> : null}
+          {item.docCode ? <span className="tabular-nums">รหัสผู้ขาย: {item.docCode}</span> : null}
           {item.docCode && printed !== shopName ? ' · ' : null}
           {printed !== shopName ? `ชื่อร้าน: ${shopName}` : null}
         </span>

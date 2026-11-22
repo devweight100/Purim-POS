@@ -42,7 +42,7 @@ function BundleSummary({ bundleItems, products }: { bundleItems: BundleItemForm[
       </div>
       <div>
         <span className="text-slate-500 block">สต็อกชุดที่จัดได้สูงสุด:</span>
-        <span className={`text-sm font-black ${maxPossibleSets > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+        <span className={`text-sm font-semibold ${maxPossibleSets > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
           {maxPossibleSets.toLocaleString()} ชุด
         </span>
       </div>

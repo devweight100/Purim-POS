@@ -331,9 +331,9 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
                   <ScanLine className="w-5 h-5 text-indigo-600 animate-pulse" />
                 </div>
                 <div>
-                  <DialogTitle className="text-lg font-black text-slate-900 flex items-center gap-2">
+                  <DialogTitle className="text-lg font-semibold text-slate-900 flex items-center gap-2">
                     <span>ค้นหาเอกสารทั้งหมด / สแกนบาร์โค้ด</span>
-                    <Badge variant="outline" className="text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200 font-mono font-bold">
+                    <Badge variant="outline" className="text-[10px] bg-indigo-50 text-indigo-700 border-indigo-200 tabular-nums font-bold">
                       F3 Shortcut
                     </Badge>
                   </DialogTitle>
@@ -353,7 +353,7 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="สแกนบาร์โค้ดเอกสาร หรือพิมพ์เลขที่เอกสาร (เช่น IN2611-0001, PO2611-0001, CL..., SH..., SR..., PV... หรือเลขเดิม ORD-...)"
-                className="pl-11 pr-10 bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 font-mono focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="pl-11 pr-10 bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 tabular-nums focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               />
               {searchTerm && (
                 <button
@@ -413,7 +413,7 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
                         {getDocTypeIcon(doc.type)}
                         {doc.typeName}
                       </span>
-                      <span className="font-mono font-black text-slate-900 text-sm">
+                      <span className="tabular-nums font-semibold text-slate-900 text-sm">
                         {doc.docNumber}
                       </span>
                       {doc.customerName && (
@@ -425,7 +425,7 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
                     <p className="text-xs text-slate-600 leading-relaxed">
                       {doc.description}
                     </p>
-                    <p className="text-[11px] text-slate-400 font-mono">
+                    <p className="text-[11px] text-slate-400 tabular-nums">
                       วันที่: {formatListDateTime(doc.date)}
                     </p>
                   </div>
@@ -434,7 +434,7 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
                     {doc.amount !== undefined && (
                       <div className="text-right mr-2 hidden sm:block">
                         <span className="text-xs text-slate-500 block">ยอดเงิน</span>
-                        <span className="text-sm font-black text-slate-900">{formatCurrency(doc.amount)}</span>
+                        <span className="text-sm font-semibold text-slate-900">{formatCurrency(doc.amount)}</span>
                       </div>
                     )}
                     <Button

@@ -197,12 +197,12 @@ export function SettlePayableModal({
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 text-xs">
             <div className="flex justify-between items-center">
               <div>
-                <span className="font-mono font-bold text-base text-slate-900">{bill.poNumber}</span>
+                <span className="tabular-nums font-bold text-base text-slate-900">{bill.poNumber}</span>
                 <p className="text-[11px] text-slate-500 mt-0.5">บริษัท: <b className="text-slate-800">{bill.supplierName}</b></p>
               </div>
               <div className="text-right">
                 <span className="text-[11px] text-slate-400 block">หนี้คงค้างเดิม</span>
-                <span className="font-mono font-black text-amber-700 text-lg">
+                <span className="tabular-nums font-semibold text-amber-700 text-lg">
                   {formatCurrency(bill.remainingPayable)}
                 </span>
               </div>
@@ -235,7 +235,7 @@ export function SettlePayableModal({
                 placeholder="0.00"
                 value={billDiscountStr}
                 onChange={(e) => setBillDiscountStr(e.target.value)}
-                className="font-mono text-amber-950 bg-white border-amber-300 pr-12 text-right"
+                className="tabular-nums text-amber-950 bg-white border-amber-300 pr-12 text-right"
               />
               <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                 บาท
@@ -288,9 +288,9 @@ export function SettlePayableModal({
                             <Square className="w-4 h-4 text-slate-400 shrink-0" />
                           )}
                           <div>
-                            <span className="font-mono font-bold text-slate-900 text-xs">{note.id}</span>
+                            <span className="tabular-nums font-bold text-slate-900 text-xs">{note.id}</span>
                             <p className="text-[11px] text-slate-500">
-                              วันที่ {formatListDate(note.returnDate)} | เครดิตคงเหลือ: <strong className="text-emerald-700 font-mono">{formatCurrency(note.remainingCreditAmount)}</strong>
+                              วันที่ {formatListDate(note.returnDate)} | เครดิตคงเหลือ: <strong className="text-emerald-700 tabular-nums">{formatCurrency(note.remainingCreditAmount)}</strong>
                             </p>
                           </div>
                         </div>
@@ -312,7 +312,7 @@ export function SettlePayableModal({
                                     parseFloat(e.target.value) || 0
                                   )
                                 }
-                                className="h-8 w-24 text-right font-mono font-bold text-xs bg-white"
+                                className="h-8 w-24 text-right tabular-nums font-bold text-xs bg-white"
                               />
                             </div>
                           </div>
@@ -380,7 +380,7 @@ export function SettlePayableModal({
                   max={netDebtToPay}
                   value={cashOrTransferAmountStr !== '' ? cashOrTransferAmountStr : netDebtToPay}
                   onChange={(e) => setCashOrTransferAmountStr(e.target.value)}
-                  className="font-mono text-slate-900 bg-slate-50 pr-12 text-right"
+                  className="tabular-nums text-slate-900 bg-slate-50 pr-12 text-right"
                   placeholder="0.00"
                 />
                 <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
@@ -436,29 +436,29 @@ export function SettlePayableModal({
           <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1.5 text-xs">
             <div className="flex justify-between text-slate-600">
               <span>หนี้เดิมตามบิล:</span>
-              <span className="font-mono">{formatCurrency(bill.remainingPayable)}</span>
+              <span className="tabular-nums">{formatCurrency(bill.remainingPayable)}</span>
             </div>
             {billDiscount > 0 && (
               <div className="flex justify-between text-amber-700 font-bold">
                 <span>ส่วนลดท้ายบิลจากผู้จำหน่าย:</span>
-                <span className="font-mono">{formatCurrency(billDiscount)}</span>
+                <span className="tabular-nums">{formatCurrency(billDiscount)}</span>
               </div>
             )}
             {totalDebitDeducted > 0 && (
               <div className="flex justify-between text-indigo-700 font-bold">
                 <span>ประกบหักใบลดหนี้ ({Object.keys(selectedNotesMap).length} ฉบับ):</span>
-                <span className="font-mono">{formatCurrency(totalDebitDeducted)}</span>
+                <span className="tabular-nums">{formatCurrency(totalDebitDeducted)}</span>
               </div>
             )}
             <div className="flex justify-between text-slate-600">
               <span>ชำระด้วยเงินสด / เงินโอน:</span>
-              <span className="font-mono font-bold text-slate-900">
+              <span className="tabular-nums font-bold text-slate-900">
                 {formatCurrency(finalCashOrTransferAmount)}
               </span>
             </div>
-            <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-black text-slate-900">
+            <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-semibold text-slate-900">
               <span>หนี้คงเหลือสุทธิหลังชำระ:</span>
-              <span className="font-mono text-emerald-700 text-base">
+              <span className="tabular-nums text-emerald-700 text-base">
                 {formatCurrency(Math.max(0, bill.remainingPayable - billDiscount - totalDebitDeducted - finalCashOrTransferAmount))}
               </span>
             </div>

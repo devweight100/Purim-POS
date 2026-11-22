@@ -200,7 +200,7 @@ export default function UsersManagementPage() {
 
   const userNav = useRowNav(filteredUsers.length, (i) => openEditModal(filteredUsers[i]));
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="page-shell">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div>

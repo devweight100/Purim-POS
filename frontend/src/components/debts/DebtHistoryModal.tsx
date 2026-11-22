@@ -62,7 +62,7 @@ export function DebtHistoryModal({
               <History className="w-5 h-5 text-sky-600" />
               <span>ประวัติการชำระหนี้ (Payment History)</span>
             </div>
-            <span className="text-xs font-mono text-slate-500 font-normal bg-slate-100 px-2.5 py-1 rounded-md">
+            <span className="text-xs tabular-nums text-slate-500 font-normal bg-slate-100 px-2.5 py-1 rounded-md">
               {debtRecord.orderNumber}
             </span>
           </DialogTitle>
@@ -76,7 +76,7 @@ export function DebtHistoryModal({
                 {debtRecord.customerType === 'COMPANY' ? <Building2 className="w-4 h-4 text-indigo-600" /> : <User className="w-4 h-4 text-sky-600" />}
                 {debtRecord.customerName}
               </span>
-              <span className="text-slate-500 font-mono">วันที่ซื้อ: {formatListDate(debtRecord.orderDate)}</span>
+              <span className="text-slate-500 tabular-nums">วันที่ซื้อ: {formatListDate(debtRecord.orderDate)}</span>
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-slate-200 text-xs">
@@ -90,7 +90,7 @@ export function DebtHistoryModal({
               </div>
               <div>
                 <span className="text-[10px] text-rose-700 block">คงเหลือ</span>
-                <span className={`font-black ${debtRecord.remainingDebt <= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                <span className={`font-semibold ${debtRecord.remainingDebt <= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
                   {debtRecord.remainingDebt <= 0 ? '฿0 (ครบแล้ว)' : formatCurrency(debtRecord.remainingDebt)}
                 </span>
               </div>
@@ -150,11 +150,11 @@ export function DebtHistoryModal({
                 >
                   <div className="space-y-1 flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-extrabold text-slate-900 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                      <span className="font-semibold text-slate-900 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
                         งวดที่ {inst.installmentNo}
                       </span>
                       {getMethodBadge(inst.paymentMethod)}
-                      <span className="text-[10px] text-slate-400 font-mono">
+                      <span className="text-[10px] text-slate-400 tabular-nums">
                         {formatListDateTime(inst.paymentDate)}
                       </span>
                     </div>

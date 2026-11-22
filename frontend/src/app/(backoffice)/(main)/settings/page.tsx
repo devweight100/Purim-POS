@@ -181,11 +181,11 @@ function BackupSection() {
           <div className="font-bold text-sky-900">สำรองไว้นอกเครื่อง (แนะนำ)</div>
           <p className="text-slate-600">
             ทุกครั้งที่สำรองข้อมูล ระบบจะคัดลอกไฟล์ไปไว้ที่โฟลเดอร์นี้ด้วย เช่น แฟลชไดรฟ์ ฮาร์ดดิสก์ลูกที่สอง หรือโฟลเดอร์ Google Drive / OneDrive
-            ที่ซิงก์ขึ้นคลาวด์ (เก็บ 30 ไฟล์ล่าสุด) — ใส่ตำแหน่งบนเครื่องแม่ เช่น <span className="font-mono">D:\PurimBackup</span>
+            ที่ซิงก์ขึ้นคลาวด์ (เก็บ 30 ไฟล์ล่าสุด) — ใส่ตำแหน่งบนเครื่องแม่ เช่น <span className="tabular-nums">D:\PurimBackup</span>
           </p>
           <div className="flex flex-wrap gap-2">
             <input
-              className="flex-1 min-w-[240px] h-9 rounded-lg border border-slate-300 bg-white px-2 font-mono"
+              className="flex-1 min-w-[240px] h-9 rounded-lg border border-slate-300 bg-white px-2 tabular-nums"
               value={offsiteDir}
               onChange={(e) => setOffsiteDir(e.target.value)}
               placeholder="เช่น E:\PurimBackup หรือ C:\Users\owner\Google Drive\PurimBackup"
@@ -231,7 +231,7 @@ function BackupSection() {
           {files.map((f) => (
             <div key={f.fileName} className="flex items-center justify-between gap-3 p-2.5 text-xs">
               <div className="min-w-0">
-                <div className="font-mono font-bold text-slate-800 truncate">{f.fileName}</div>
+                <div className="tabular-nums font-bold text-slate-800 truncate">{f.fileName}</div>
                 <div className="text-slate-500">{fmt(f.createdAt)} • {formatBytes(f.sizeBytes)}</div>
               </div>
               {role === "ADMIN" && (
@@ -568,7 +568,7 @@ export default function SettingsPage() {
 
   if (loading) return <div className="p-4 text-slate-500 sm:p-6 lg:p-8">Loading...</div>;
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7 font-sans">
+    <div className="page-shell">
       <div>
         <h1 className="page-title">
           <Settings className="w-6 h-6 text-sky-500" /> ตั้งค่าร้าน
@@ -653,7 +653,7 @@ export default function SettingsPage() {
                     onChange={e => setSettings({...settings, taxId: e.target.value})}
                     placeholder="เช่น 0105555555555"
                     maxLength={18}
-                    className="bg-white border-slate-300 font-mono text-slate-900"
+                    className="bg-white border-slate-300 tabular-nums text-slate-900"
                   />
                 </div>
 
@@ -666,7 +666,7 @@ export default function SettingsPage() {
                     value={settings.storePhone || ''}
                     onChange={e => setSettings({...settings, storePhone: e.target.value})}
                     placeholder="เช่น 02-123-4567, 081-234-5678"
-                    className="bg-white border-slate-300 font-mono text-slate-900"
+                    className="bg-white border-slate-300 tabular-nums text-slate-900"
                   />
                 </div>
               </div>
@@ -715,7 +715,7 @@ export default function SettingsPage() {
                     className="mt-0.5 w-5 h-5 rounded text-emerald-600 focus:ring-emerald-500"
                   />
                   <span className="space-y-0.5">
-                    <span className="block text-sm font-extrabold text-slate-900">ร้านคิดภาษีมูลค่าเพิ่ม (VAT) จากการขาย</span>
+                    <span className="block text-sm font-semibold text-slate-900">ร้านคิดภาษีมูลค่าเพิ่ม (VAT) จากการขาย</span>
                     <span className="block text-xs text-slate-600 leading-relaxed">
                       {settings.vatEnabled
                         ? `เปิดอยู่: ราคาขายถือว่ารวม VAT ${settings.vatRate}% แล้ว ระบบถอดยอด VAT แสดงในบิล ใบเสร็จ และรายงานภาษีขาย`
@@ -733,7 +733,7 @@ export default function SettingsPage() {
                       step={0.01}
                       value={settings.vatRate}
                       onChange={(e) => setSettings({ ...settings, vatRate: Number(e.target.value) })}
-                      className="w-24 h-8 bg-white border-slate-300 font-mono"
+                      className="w-24 h-8 bg-white border-slate-300 tabular-nums"
                     />
                     <span className="text-xs font-bold text-slate-700">%</span>
                   </div>
@@ -751,7 +751,7 @@ export default function SettingsPage() {
                     className="mt-0.5 w-5 h-5 rounded text-sky-600 focus:ring-sky-500"
                   />
                   <span className="space-y-0.5">
-                    <span className="block text-sm font-extrabold text-slate-900">อนุญาตจำนวนทศนิยม (สูงสุด 2 ตำแหน่ง) เช่น ขายเป็นเมตร / กิโล</span>
+                    <span className="block text-sm font-semibold text-slate-900">อนุญาตจำนวนทศนิยม (สูงสุด 2 ตำแหน่ง) เช่น ขายเป็นเมตร / กิโล</span>
                     <span className="block text-xs text-slate-600 leading-relaxed">
                       {settings.allowDecimalQty
                         ? 'เปิดอยู่: ใส่จำนวนได้ เช่น 1.5 เมตร, 2.25 กก., 0.5 คิว ทั้งหน้าขาย ใบสั่งซื้อ ปรับสต็อก คืนสินค้า เคลม และนำเข้าสินค้า'
@@ -789,7 +789,7 @@ export default function SettingsPage() {
                     <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
                     <span>ข้อความส่วนบนของใบเสร็จ (Header Message / สโลแกน)</span>
                   </label>
-                  <span className="text-[11px] text-slate-400 font-mono">แสดงใต้ชื่อร้าน</span>
+                  <span className="text-[11px] text-slate-400 tabular-nums">แสดงใต้ชื่อร้าน</span>
                 </div>
                 <Textarea 
                   value={settings.receiptHeader || ''}
@@ -807,7 +807,7 @@ export default function SettingsPage() {
                     <FileText className="w-3.5 h-3.5 text-indigo-600" />
                     <span>ข้อความส่วนท้ายของใบเสร็จ (Footer Policy / คำขอบคุณ / นโยบาย)</span>
                   </label>
-                  <span className="text-[11px] text-slate-400 font-mono">แสดงล่างสุดของสลิป</span>
+                  <span className="text-[11px] text-slate-400 tabular-nums">แสดงล่างสุดของสลิป</span>
                 </div>
                 <Textarea 
                   value={settings.receiptFooter || ''}
@@ -865,7 +865,7 @@ export default function SettingsPage() {
                     value={String(lowStockInput)}
                     onChange={e => setSettings({ ...settings, lowStockThreshold: e.target.value } as unknown as StoreSettings)}
                     aria-invalid={!!storeFieldErrors.lowStockThreshold}
-                    className={`bg-white font-mono text-slate-900 ${storeFieldErrors.lowStockThreshold ? 'border-rose-400' : 'border-slate-300'}`}
+                    className={`bg-white tabular-nums text-slate-900 ${storeFieldErrors.lowStockThreshold ? 'border-rose-400' : 'border-slate-300'}`}
                   />
                   {storeFieldErrors.lowStockThreshold
                     ? <p role="alert" className="text-[11px] font-bold text-rose-600">{storeFieldErrors.lowStockThreshold}</p>
@@ -911,7 +911,7 @@ export default function SettingsPage() {
                     value={String(cashLimitInput)}
                     onChange={e => setSettings({ ...settings, cashMovementApprovalLimit: e.target.value } as unknown as StoreSettings)}
                     aria-invalid={!!storeFieldErrors.cashMovementApprovalLimit}
-                    className={`bg-white font-mono text-slate-900 ${storeFieldErrors.cashMovementApprovalLimit ? 'border-rose-400' : 'border-slate-300'}`}
+                    className={`bg-white tabular-nums text-slate-900 ${storeFieldErrors.cashMovementApprovalLimit ? 'border-rose-400' : 'border-slate-300'}`}
                   />
                   {storeFieldErrors.cashMovementApprovalLimit
                     ? <p role="alert" className="text-[11px] font-bold text-rose-600">{storeFieldErrors.cashMovementApprovalLimit}</p>
@@ -1126,7 +1126,7 @@ export default function SettingsPage() {
                       <span className="font-bold">
                         {lastKickResult.success ? 'สั่งเตะลิ้นชักสำเร็จ' : 'สั่งเตะลิ้นชักไม่สำเร็จ'}
                       </span>
-                      <span className="text-[10px] opacity-75 font-mono">{lastKickResult.time}</span>
+                      <span className="text-[10px] opacity-75 tabular-nums">{lastKickResult.time}</span>
                     </div>
                     <p className="mt-0.5 text-[11px] leading-relaxed">{lastKickResult.text}</p>
                   </div>
@@ -1199,7 +1199,7 @@ export default function SettingsPage() {
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-base font-black text-rose-950 flex items-center gap-2">
+                <h2 className="text-base font-semibold text-rose-950 flex items-center gap-2">
                   พื้นที่อันตราย — ลบข้อมูลถาวร
                   <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-[10px] font-bold">เฉพาะ Admin</Badge>
                 </h2>
@@ -1259,14 +1259,14 @@ export default function SettingsPage() {
                 <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center mx-auto mb-1">
                   <ShieldAlert className="w-6 h-6" />
                 </div>
-                <DialogTitle className="text-center text-lg font-black text-slate-900">ยืนยันการลบสินค้าทั้งหมด?</DialogTitle>
+                <DialogTitle className="text-center text-lg font-semibold text-slate-900">ยืนยันการลบสินค้าทั้งหมด?</DialogTitle>
                 <DialogDescription className="text-center text-xs text-slate-600 leading-relaxed">
                   สินค้า ราคา บาร์โค้ด ขนาดบรรจุ และรูปสินค้า <strong className="text-rose-600 font-bold">จะถูกลบถาวร</strong> — ระบบจะสำรองข้อมูลให้ก่อนลบทุกครั้ง (กู้คืนได้จากไฟล์สำรองนั้นเท่านั้น) ถ้าสำรองไม่สำเร็จจะไม่ลบอะไรเลย
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3 py-3 border-y border-slate-100 my-2">
                 <label className="text-xs font-bold text-slate-700 block">
-                  พิมพ์คำว่า <span className="text-rose-600 font-black">{CLEAR_PRODUCTS_WORD}</span> เพื่อยืนยัน:
+                  พิมพ์คำว่า <span className="text-rose-600 font-semibold">{CLEAR_PRODUCTS_WORD}</span> เพื่อยืนยัน:
                 </label>
                 <Input
                   data-testid="clear-products-confirm-input"
@@ -1302,24 +1302,24 @@ export default function SettingsPage() {
             <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 border border-rose-200 flex items-center justify-center mx-auto mb-1">
               <ShieldAlert className="w-6 h-6" />
             </div>
-            <DialogTitle className="text-center text-lg font-black text-slate-900">
+            <DialogTitle className="text-center text-lg font-semibold text-slate-900">
               ยืนยันการล้างข้อมูลทั้งหมดในระบบ?
             </DialogTitle>
             <DialogDescription className="text-center text-xs text-slate-600 leading-relaxed">
-              การกระทำนี้จะ <strong className="text-rose-600 font-bold">ลบข้อมูลทั้งหมดในฐานข้อมูลอย่างถาวร</strong> (ออเดอร์, สินค้า, ลูกค้า, เจ้าหนี้, สต็อก, กะ, ยอดเงินสด/ธนาคาร, ค่าใช้จ่าย, การคืนสินค้า ฯลฯ) และ <strong className="text-slate-900">ไม่สามารถกู้คืนได้</strong> โดยจะคงเหลือไว้เฉพาะผู้ใช้งาน <code className="bg-slate-100 text-indigo-700 px-1 py-0.5 rounded font-mono font-bold">admin</code> และการตั้งค่าร้าน — ระบบจะสำรองข้อมูลให้ก่อนล้างทุกครั้ง ถ้าสำรองไม่สำเร็จจะไม่ลบอะไรเลย
+              การกระทำนี้จะ <strong className="text-rose-600 font-bold">ลบข้อมูลทั้งหมดในฐานข้อมูลอย่างถาวร</strong> (ออเดอร์, สินค้า, ลูกค้า, เจ้าหนี้, สต็อก, กะ, ยอดเงินสด/ธนาคาร, ค่าใช้จ่าย, การคืนสินค้า ฯลฯ) และ <strong className="text-slate-900">ไม่สามารถกู้คืนได้</strong> โดยจะคงเหลือไว้เฉพาะผู้ใช้งาน <code className="bg-slate-100 text-indigo-700 px-1 py-0.5 rounded tabular-nums font-bold">admin</code> และการตั้งค่าร้าน — ระบบจะสำรองข้อมูลให้ก่อนล้างทุกครั้ง ถ้าสำรองไม่สำเร็จจะไม่ลบอะไรเลย
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 py-3 border-y border-slate-100 my-2">
             <label className="text-xs font-bold text-slate-700 block">
-              พิมพ์คำว่า <span className="text-rose-600 font-mono font-black">RESET</span> เพื่อยืนยัน:
+              พิมพ์คำว่า <span className="text-rose-600 tabular-nums font-semibold">RESET</span> เพื่อยืนยัน:
             </label>
             <Input
               data-testid="reset-confirm-input"
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
               placeholder="พิมพ์ RESET ตรงนี้..."
-              className="text-center font-mono tracking-wider uppercase border-slate-300 focus-visible:ring-rose-500"
+              className="text-center tabular-nums   border-slate-300 focus-visible:ring-rose-500"
               autoFocus
             />
           </div>

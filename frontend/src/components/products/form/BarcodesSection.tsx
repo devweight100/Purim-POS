@@ -28,7 +28,7 @@ export function BarcodesSection({ form, setForm, suppliers }: { form: ProductFor
         {form.barcodes.map((b, i) => (
           <div key={i} className="flex gap-2 items-center">
             <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <Input value={b.barcode} onChange={e => updateBarcode(i, "barcode", e.target.value)} className="border-slate-300 font-mono" />
+              <Input value={b.barcode} onChange={e => updateBarcode(i, "barcode", e.target.value)} className="border-slate-300 tabular-nums" />
               <select
                 value={b.supplierId || ""}
                 onChange={e => updateBarcode(i, "supplierId", e.target.value)}

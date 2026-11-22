@@ -218,7 +218,7 @@ export default function AccountsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
+    <div className="page-shell">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="page-title">
@@ -264,7 +264,7 @@ export default function AccountsPage() {
 
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center">
                 <span className="text-xs text-slate-400 block mb-0.5">เลขที่บัญชี / พร้อมเพย์</span>
-                <span className="font-mono font-bold text-xl text-slate-900 tracking-wider">
+                <span className="tabular-nums font-bold text-xl text-slate-900 ">
                   {acc.accountNumber}
                 </span>
               </div>
@@ -354,7 +354,7 @@ export default function AccountsPage() {
                 placeholder="เช่น 081-234-5678 หรือ 123-4-56789-0"
                 value={accountNumber}
                 onChange={(e) => setAccountNumber(e.target.value)}
-                className="border-slate-300 font-mono"
+                className="border-slate-300 tabular-nums"
               />
             </div>
 
@@ -385,7 +385,7 @@ export default function AccountsPage() {
                     value={promptpayId}
                     onChange={(e) => setPromptpayId(e.target.value)}
                     aria-invalid={promptpayCheck ? !promptpayCheck.ok : undefined}
-                    className="border-slate-300 bg-white font-mono"
+                    className="border-slate-300 bg-white tabular-nums"
                   />
                   {promptpayCheck && !promptpayCheck.ok && (
                     <p role="alert" className="text-xs font-semibold text-red-600">{promptpayCheck.error}</p>
@@ -395,7 +395,7 @@ export default function AccountsPage() {
                       <PromptPayQr type={promptpayType} id={promptpayCheck.id} amount={1} accountName={accountName.trim() || undefined} size={120} compact />
                       <p className="text-xs text-slate-600">
                         ตัวอย่าง QR ฿1.00 ลองสแกนด้วยแอปธนาคารได้ (ไม่ต้องโอน) ตอนรับเงินระบบจะสร้าง QR ตามยอดจริง
-                        <br />แสดงหมายเลขแบบซ่อน: <b className="font-mono">{maskPromptPayId(promptpayType, promptpayCheck.id)}</b>
+                        <br />แสดงหมายเลขแบบซ่อน: <b className="tabular-nums">{maskPromptPayId(promptpayType, promptpayCheck.id)}</b>
                       </p>
                     </div>
                   )}

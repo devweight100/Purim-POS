@@ -23,12 +23,12 @@ function ChangeBadge({ changeType }: { changeType: ImportPreviewRow["changeType"
 function PreviewRow({ row, idx }: { row: ImportPreviewRow; idx: number }) {
   return (
     <TableRow className="hover:bg-slate-50/80">
-      <TableCell className="text-center font-mono text-slate-500">{idx + 1}</TableCell>
+      <TableCell className="text-center tabular-nums text-slate-500">{idx + 1}</TableCell>
       <TableCell><ChangeBadge changeType={row.changeType} /></TableCell>
-      <TableCell className="font-mono text-slate-700 font-bold">{row.sku || "-"}</TableCell>
+      <TableCell className="tabular-nums text-slate-700 font-bold">{row.sku || "-"}</TableCell>
       <TableCell className="font-bold text-slate-900 truncate max-w-[200px]">
         {row.name}
-        {row.barcode && <span className="text-[10.5px] text-slate-400 block font-mono font-normal">บาร์โค้ด: {[row.barcode, ...(row.barcodes || [])].join(", ")}</span>}
+        {row.barcode && <span className="text-[10.5px] text-slate-400 block tabular-nums font-normal">บาร์โค้ด: {[row.barcode, ...(row.barcodes || [])].join(", ")}</span>}
         {Array.isArray(row.packagingUnits) && row.packagingUnits.length > 0 && (
           <span className="text-[10.5px] text-violet-600 block font-normal">
             {/* unit may be undefined: packChainText falls back to "ชิ้น" */}
@@ -36,9 +36,9 @@ function PreviewRow({ row, idx }: { row: ImportPreviewRow; idx: number }) {
           </span>
         )}
       </TableCell>
-      <TableCell className="text-right font-mono text-slate-600">{row.costPrice === undefined ? "-" : formatCurrency(row.costPrice)}</TableCell>
-      <TableCell className="text-right font-mono text-emerald-700 font-bold">{row.priceLevel1 === undefined ? "-" : formatCurrency(row.priceLevel1)}</TableCell>
-      <TableCell className="text-center font-mono text-slate-800">
+      <TableCell className="text-right tabular-nums text-slate-600">{row.costPrice === undefined ? "-" : formatCurrency(row.costPrice)}</TableCell>
+      <TableCell className="text-right tabular-nums text-emerald-700 font-bold">{row.priceLevel1 === undefined ? "-" : formatCurrency(row.priceLevel1)}</TableCell>
+      <TableCell className="text-center tabular-nums text-slate-800">
         {row.stock ?? "-"} {row.unit ?? ""}
         {row.stockNote && <span className="block text-[10px] text-slate-400 font-sans">{row.stockNote}</span>}
       </TableCell>
@@ -82,7 +82,7 @@ export function ImportPreviewDialog({ state }: { state: ProductImportState }) {
       <DialogContent className="flex flex-col bg-white p-0 text-slate-900 sm:max-w-5xl max-h-[88vh] overflow-hidden gap-0 rounded-2xl shadow-2xl">
         <DialogHeader className="border-b border-slate-200 px-6 py-4 pr-14 shrink-0 bg-slate-50/80">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <DialogTitle className="flex items-center gap-2 text-lg font-black text-slate-900">
+            <DialogTitle className="flex items-center gap-2 text-lg font-semibold text-slate-900">
               <FileSpreadsheet className="h-5 w-5 text-indigo-600" />
               <span>ตรวจสอบข้อมูลก่อนนำเข้า (Smart Selective Import & Diff)</span>
             </DialogTitle>
@@ -108,7 +108,7 @@ export function ImportPreviewDialog({ state }: { state: ProductImportState }) {
               <div>
                 <p className="font-bold text-sm text-indigo-950">
                   ตรวจพบรายการที่มีการเปลี่ยนแปลง/เพิ่มใหม่:{" "}
-                  <span className="text-indigo-700 font-black">
+                  <span className="text-indigo-700 font-semibold">
                     {toUpsertCount}
                   </span>{" "}
                   จากทั้งหมด {importPreviewData.length} รายการ
@@ -175,7 +175,7 @@ export function ImportPreviewDialog({ state }: { state: ProductImportState }) {
                 <div className="w-32 bg-slate-200 rounded-full h-2 overflow-hidden">
                   <div className="bg-indigo-600 h-full transition-all duration-300" style={{ width: `${importProgress}%` }} />
                 </div>
-                <span className="font-bold text-indigo-700 font-mono">{importProgress}%</span>
+                <span className="font-bold text-indigo-700 tabular-nums">{importProgress}%</span>
               </div>
             )}
           </div>

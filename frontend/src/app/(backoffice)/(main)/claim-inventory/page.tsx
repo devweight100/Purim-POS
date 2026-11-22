@@ -7,6 +7,7 @@ import { apiFetch } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { StatusChip } from '@/components/ui/status-chip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -237,7 +238,7 @@ export default function ClaimInventoryPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-3 p-3 sm:p-4 lg:p-5 font-sans">
+    <div className="page-shell">
       {loadError && <LoadErrorState message={loadError} onRetry={() => void fetchData()} retrying={loading} />}
       {/* ─── PAGE HEADER (Standard Consistent Header) ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -293,8 +294,8 @@ export default function ClaimInventoryPage() {
             </div>
             <span className="text-sm font-bold text-rose-950">สินค้าเคลมในคลัง:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-rose-600 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-rose-600 tracking-tight">
               {stats.uniqueProducts}
             </span>
             <span className="text-xs text-rose-700 font-sans font-bold">รายการ</span>
@@ -309,8 +310,8 @@ export default function ClaimInventoryPage() {
             </div>
             <span className="text-sm font-bold text-amber-950">จำนวนชิ้นรอเคลม:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-amber-700 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-amber-700 tracking-tight">
               {stats.pieces}
             </span>
             <span className="text-xs text-slate-600 font-sans font-bold">ชิ้น</span>
@@ -325,8 +326,8 @@ export default function ClaimInventoryPage() {
             </div>
             <span className="text-sm font-bold text-indigo-950">มูลค่าต้นทุนรวม:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-indigo-700 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-indigo-700 tracking-tight">
               {formatCurrency(stats.costValue)}
             </span>
           </div>
@@ -340,8 +341,8 @@ export default function ClaimInventoryPage() {
             </div>
             <span className="text-sm font-bold text-slate-800">ผู้จำหน่ายที่มีของเคลม:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-slate-800 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-slate-800 tracking-tight">
               {stats.suppliersCount}
             </span>
             <span className="text-xs text-slate-500 font-sans font-bold">บริษัท</span>
@@ -478,7 +479,7 @@ export default function ClaimInventoryPage() {
             </TabsTrigger>
           </TabsList>
 
-          <span className="text-xs font-bold text-slate-500 font-mono">
+          <span className="text-xs font-bold text-slate-500 tabular-nums">
             แสดง {productTotal} สินค้าเคลม
           </span>
         </div>
@@ -573,19 +574,19 @@ export default function ClaimInventoryPage() {
                           </td>
 
                           {/* 6. Quantity of Claim Pieces */}
-                          <td className="text-right doc-no whitespace-nowrap">
+                          <td className="text-right tabular-nums whitespace-nowrap">
                             <span className="font-semibold text-danger block">
                               {displayQty} <span className="text-sub font-medium text-muted-foreground font-sans">{item.unitName}</span>
                             </span>
                           </td>
 
                           {/* 7. Cost per Unit */}
-                          <td data-mid="hide" className="text-right doc-no whitespace-nowrap text-fg sm:text-sm">
+                          <td data-mid="hide" className="text-right tabular-nums whitespace-nowrap text-fg sm:text-sm">
                             {formatCurrency(item.costPrice)}
                           </td>
 
                           {/* 8. Total Cost Value */}
-                          <td className="text-right doc-no whitespace-nowrap">
+                          <td className="text-right tabular-nums whitespace-nowrap">
                             <span className="font-semibold text-fg block">
                               {formatCurrency(displayCost)}
                             </span>
@@ -658,7 +659,7 @@ export default function ClaimInventoryPage() {
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
                   </Button>
-                  <span className="px-2 font-mono font-bold text-slate-700">
+                  <span className="px-2 tabular-nums font-bold text-slate-700">
                     {currentPage} / {totalProductPages}
                   </span>
                   <Button
@@ -756,14 +757,14 @@ export default function ClaimInventoryPage() {
                           </td>
 
                           {/* 4. Total Pieces */}
-                          <td className="text-right doc-no whitespace-nowrap">
+                          <td className="text-right tabular-nums whitespace-nowrap">
                             <span className="font-semibold text-danger block">
                               {displayQty} <span className="text-sub font-medium text-muted-foreground font-sans">ชิ้น</span>
                             </span>
                           </td>
 
                           {/* 5. Total Cost Value */}
-                          <td className="text-right doc-no whitespace-nowrap">
+                          <td className="text-right tabular-nums whitespace-nowrap">
                             <span className="font-semibold text-fg block">
                               {formatCurrency(displayCost)}
                             </span>
@@ -894,31 +895,31 @@ export default function ClaimInventoryPage() {
                         </td>
 
                         {/* 6. Quantity */}
-                        <td className="text-right doc-no whitespace-nowrap">
+                        <td className="text-right tabular-nums whitespace-nowrap">
                           <span className="font-semibold text-danger block">
                             {claim.quantity} <span className="text-sub font-medium text-muted-foreground font-sans">{claim.unitName}</span>
                           </span>
                         </td>
 
                         {/* 7. Cost Value */}
-                        <td className="text-right doc-no whitespace-nowrap font-semibold text-fg">
+                        <td className="text-right tabular-nums whitespace-nowrap font-semibold text-fg">
                           {formatCurrency(claim.totalCostValue)}
                         </td>
 
                         {/* 8. Status Badge */}
                         <td className="text-center">
                           {claim.returnDocId ? (
-                            <Badge className="bg-emerald-100 text-ok border-emerald-200 text-sub font-medium px-2 py-0.5">
-                              ✓ ส่งคืนใน {claim.returnDocId}
-                            </Badge>
+                            <StatusChip tone="success">
+                              ส่งคืนใน {claim.returnDocId}
+                            </StatusChip>
                           ) : claim.status === 'SCRAPPED' ? (
-                            <Badge variant="outline" className="bg-slate-100 text-muted-foreground border-slate-300 text-sub font-medium px-2 py-0.5">
+                            <StatusChip tone="neutral">
                               ตัดจำหน่าย
-                            </Badge>
+                            </StatusChip>
                           ) : (
-                            <Badge className="bg-rose-100 text-danger border-rose-200 text-sub font-medium px-2 py-0.5">
-                              📦 รอส่งคืนบริษัท
-                            </Badge>
+                            <StatusChip tone="danger">
+                              รอส่งคืนบริษัท
+                            </StatusChip>
                           )}
                         </td>
                       </tr>
@@ -936,7 +937,7 @@ export default function ClaimInventoryPage() {
                   <Button variant="outline" size="sm" onClick={() => setRecordsPage((p) => Math.max(1, p - 1))} disabled={recordsPage === 1} className="h-7 w-7 p-0">
                     <ChevronLeft className="w-3.5 h-3.5" />
                   </Button>
-                  <span className="px-2 font-mono font-bold text-slate-700">{recordsPage} / {totalRecordPages}</span>
+                  <span className="px-2 tabular-nums font-bold text-slate-700">{recordsPage} / {totalRecordPages}</span>
                   <Button variant="outline" size="sm" onClick={() => setRecordsPage((p) => Math.min(totalRecordPages, p + 1))} disabled={recordsPage >= totalRecordPages} className="h-7 w-7 p-0">
                     <ChevronRight className="w-3.5 h-3.5" />
                   </Button>
@@ -963,7 +964,7 @@ export default function ClaimInventoryPage() {
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                 <div>
                   <span className="text-slate-500 block">บาร์โค้ด / SKU:</span>
-                  <span className="font-mono font-bold text-slate-900 text-sm">
+                  <span className="tabular-nums font-bold text-slate-900 text-sm">
                     {selectedProductForModal.sku || '-'}
                   </span>
                 </div>
@@ -975,13 +976,13 @@ export default function ClaimInventoryPage() {
                 </div>
                 <div>
                   <span className="text-slate-500 block">จำนวนของเคลมรวม:</span>
-                  <span className="font-mono font-black text-rose-600 text-sm">
+                  <span className="tabular-nums font-semibold text-rose-600 text-sm">
                     {selectedProductForModal.totalPieces} {selectedProductForModal.unitName}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">มูลค่าทุนรวม:</span>
-                  <span className="font-mono font-black text-slate-900 text-sm">
+                  <span className="tabular-nums font-semibold text-slate-900 text-sm">
                     {formatCurrency(selectedProductForModal.totalCostValue)}
                   </span>
                 </div>
@@ -1016,21 +1017,21 @@ export default function ClaimInventoryPage() {
                         <td className="text-fg">
                           {c.defectReason}
                         </td>
-                        <td className="text-right doc-no whitespace-nowrap font-medium text-danger">
+                        <td className="text-right tabular-nums whitespace-nowrap font-medium text-danger">
                           {c.quantity} {c.unitName}
                         </td>
-                        <td className="text-right doc-no whitespace-nowrap font-medium text-fg">
+                        <td className="text-right tabular-nums whitespace-nowrap font-medium text-fg">
                           {formatCurrency(c.totalCostValue)}
                         </td>
                         <td className="text-center">
                           {c.returnDocId ? (
-                            <Badge className="bg-emerald-100 text-ok border-emerald-200 text-sub font-medium">
+                            <StatusChip tone="success">
                               ส่งคืนแล้ว
-                            </Badge>
+                            </StatusChip>
                           ) : (
-                            <Badge className="bg-rose-100 text-danger border-rose-200 text-sub font-medium">
+                            <StatusChip tone="danger">
                               ในสต็อกเคลม
-                            </Badge>
+                            </StatusChip>
                           )}
                         </td>
                       </TableRow>

@@ -29,7 +29,7 @@ export default function ProductsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
+    <div className="page-shell">
       <ProductsHeader loadAll={data.ensureCatalog} onImportFile={productImport.handleFileSelectForImport} onAdd={productForm.handleOpenAdd} />
 
       {/* Filter Toolbar */}

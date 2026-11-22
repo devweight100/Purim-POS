@@ -263,6 +263,16 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 /* numbers in tables: right aligned by tc.num, digits of equal width */
 .tbl td.tabular-nums, .tbl td .tabular-nums { font-variant-numeric: tabular-nums; }
 
+/* Back-office page: one width, one edge padding (16 / 24 / 28 px), 16 px between blocks */
+.page-shell {
+  margin-inline: auto;
+  max-width: 1600px;
+  padding: 1rem;
+}
+.page-shell > * + * { margin-top: 1rem; }
+@media (min-width: 640px) { .page-shell { padding: 1.5rem; } }
+@media (min-width: 1024px) { .page-shell { padding: 1.75rem; } }
+
 /* Page chrome: one page title / subtitle / section title for every back-office page */
 .page-title {
   display: flex;

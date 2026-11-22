@@ -139,7 +139,7 @@ export default function CategoriesPage() {
 
   const categoryNav = useRowNav(filteredCategories.length, (i) => handleOpenEdit(filteredCategories[i]));
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
+    <div className="page-shell">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>

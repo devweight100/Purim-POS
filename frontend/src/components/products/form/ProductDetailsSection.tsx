@@ -131,7 +131,7 @@ export function ProductDetailsSection({ form, updateForm, categories, currentSto
             จำนวนสต๊อกคงเหลือปัจจุบัน ({form.unit || 'ชิ้น'})
           </label>
           <div className="h-10 px-3.5 bg-slate-100 border border-slate-300 rounded-xl flex items-center justify-between">
-            <span className="font-black text-slate-900 text-base">
+            <span className="font-semibold text-slate-900 text-base">
               {currentStock.toLocaleString()} {form.unit || 'ชิ้น'}
             </span>
             <span className="text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-lg flex items-center gap-1">
@@ -169,7 +169,7 @@ export function ProductDetailsSection({ form, updateForm, categories, currentSto
                 tabIndex={-1}
                 aria-readonly="true"
                 onFocus={e => e.currentTarget.select()}
-                className="flex-1 cursor-default border-slate-200 bg-slate-100 font-mono text-slate-500 focus-visible:ring-0"
+                className="flex-1 cursor-default border-slate-200 bg-slate-100 tabular-nums text-slate-500 focus-visible:ring-0"
               />
               <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0 hover:border-primary hover:text-primary" title="คัดลอกรหัสสินค้า" aria-label="คัดลอกรหัสสินค้า" onClick={() => void copySku(form.sku)}>
                 <Copy className="w-4 h-4" />

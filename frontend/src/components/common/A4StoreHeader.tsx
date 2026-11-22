@@ -45,7 +45,7 @@ export function A4StoreHeader({
           <img src={logo} alt="" className="h-10 max-w-[120px] object-contain" />
         )}
         <div>
-          <h2 className="text-lg font-black text-slate-900 tracking-tight leading-none">{settings.storeName}</h2>
+          <h2 className="text-lg font-semibold text-slate-900 tracking-tight leading-none">{settings.storeName}</h2>
           {o.showBranch && settings.branchName && (
             <span className="text-[10.5px] font-bold text-slate-700 tracking-wide">สาขา: {settings.branchName}</span>
           )}

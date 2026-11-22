@@ -82,7 +82,7 @@ export function LinkRequests({ onChanged }: { onChanged: () => void }) {
             <li key={r.id} data-testid="link-request" className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="font-bold">
-                  LINE: {r.displayName || '-'} · เบอร์ที่กรอก <span className="font-mono">{r.phone}</span>
+                  LINE: {r.displayName || '-'} · เบอร์ที่กรอก <span className="tabular-nums">{r.phone}</span>
                 </p>
                 <span className="text-xs text-slate-500">{when(r.createdAt)}</span>
               </div>

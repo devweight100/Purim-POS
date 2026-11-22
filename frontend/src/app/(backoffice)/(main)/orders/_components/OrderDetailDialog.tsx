@@ -35,7 +35,7 @@ export function OrderDetailDialog({
       <DialogContent className="bg-white border-slate-200 text-slate-900 w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto p-5 sm:p-7 rounded-3xl shadow-2xl">
         <DialogHeader className="border-b border-slate-200 pb-3">
           <DialogTitle className="flex justify-between items-center mr-4">
-            <span className="text-xl font-extrabold text-slate-900">
+            <span className="text-xl font-semibold text-slate-900">
               รายละเอียดออเดอร์ {currentOrder?.orderNumber}
             </span>
             {currentOrder?.status === "VOIDED" || currentOrder?.status === "CANCELLED" ? (
@@ -105,10 +105,10 @@ export function OrderDetailDialog({
                       <TableCell className="text-center doc-no font-medium">
                         {item.quantity} {item.unitName || "ชิ้น"}
                       </TableCell>
-                      <TableCell className="text-right doc-no">
+                      <TableCell className="text-right tabular-nums">
                         {formatCurrency(item.unitPrice || item.price || 0)}
                       </TableCell>
-                      <TableCell className="text-right font-medium doc-no">
+                      <TableCell className="text-right font-medium tabular-nums">
                         {formatCurrency(item.lineTotal || item.quantity * (item.unitPrice || item.price || 0))}
                       </TableCell>
                     </TableRow>
@@ -121,23 +121,23 @@ export function OrderDetailDialog({
             <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-1.5">
               <div className="flex justify-between text-slate-600">
                 <span>รวมราคาสินค้า:</span>
-                <span className="font-mono font-bold">{formatCurrency(currentOrder.subtotal || currentOrder.totalAmount || 0)}</span>
+                <span className="tabular-nums font-bold">{formatCurrency(currentOrder.subtotal || currentOrder.totalAmount || 0)}</span>
               </div>
               {(currentOrder.billDiscountAmount ?? 0) > 0 && (
                 <div className="flex justify-between text-rose-600 font-semibold">
                   <span>ส่วนลดท้ายบิล:</span>
-                  <span className="font-mono">-{formatCurrency(currentOrder.billDiscountAmount)}</span>
+                  <span className="tabular-nums">-{formatCurrency(currentOrder.billDiscountAmount)}</span>
                 </div>
               )}
               {(currentOrder.pointsDiscountAmount ?? 0) > 0 && (
                 <div className="flex justify-between text-amber-800 font-bold">
                   <span>ส่วนลดแต้มสะสม:</span>
-                  <span className="font-mono">-{formatCurrency(currentOrder.pointsDiscountAmount)}</span>
+                  <span className="tabular-nums">-{formatCurrency(currentOrder.pointsDiscountAmount)}</span>
                 </div>
               )}
               <div className="flex justify-between items-center pt-2 border-t border-slate-200 text-slate-900">
                 <span className="font-bold text-sm">ยอดเงินรวมสุทธิ:</span>
-                <span className="font-black text-2xl text-indigo-700 font-mono">
+                <span className="font-semibold text-2xl text-indigo-700 tabular-nums">
                   {formatCurrency(currentOrder.totalAmount || currentOrder.total || 0)}
                 </span>
               </div>

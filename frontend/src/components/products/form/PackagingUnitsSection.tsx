@@ -71,7 +71,7 @@ export function PackagingUnitsSection({ form, setForm, updateForm }: { form: Pro
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-slate-600">บาร์โค้ดหน่วยนี้</label>
                       <div className="flex gap-1">
-                        <Input value={unit.barcode} onChange={e => updatePackagingUnit(idx, "barcode", e.target.value)} className="border-slate-300 bg-white font-mono flex-1" />
+                        <Input value={unit.barcode} onChange={e => updatePackagingUnit(idx, "barcode", e.target.value)} className="border-slate-300 bg-white tabular-nums flex-1" />
                         <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-slate-400 hover:text-primary" onClick={() => updatePackagingUnit(idx, "barcode", generateEAN13())}><RefreshCw className="w-3.5 h-3.5" /></Button>
                       </div>
                     </div>
@@ -79,7 +79,7 @@ export function PackagingUnitsSection({ form, setForm, updateForm }: { form: Pro
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <Tags className="w-3.5 h-3.5 text-primary" />
-                      <label className="text-xs font-semibold text-slate-700 uppercase tracking-wide">ราคาขาย 1–5 ของ {unit.name || "หน่วยนี้"}</label>
+                      <label className="text-xs font-semibold text-slate-700  tracking-wide">ราคาขาย 1–5 ของ {unit.name || "หน่วยนี้"}</label>
                       {autoCost && <span className="text-xs text-slate-400">(ต้นทุน ≈ {formatCurrency(parseFloat(autoCost))})</span>}
                     </div>
                     <div className="grid grid-cols-5 gap-2">

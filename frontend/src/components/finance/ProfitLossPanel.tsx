@@ -20,9 +20,9 @@ const iso = (d: Date) => bangkokDayKey(d); // Bangkok calendar day
 
 /** One line of the statement. */
 const Row = ({ label, value, strong, indent, sign }: { label: string; value: number; strong?: boolean; indent?: boolean; sign?: '-' | '+' }) => (
-  <div className={`flex justify-between py-1 ${strong ? 'font-black border-t border-slate-300 mt-1 pt-2' : ''} ${indent ? 'pl-5 text-slate-600' : ''}`}>
+  <div className={`flex justify-between py-1 ${strong ? 'font-semibold border-t border-slate-300 mt-1 pt-2' : ''} ${indent ? 'pl-5 text-slate-600' : ''}`}>
     <span>{label}</span>
-    <span className={`font-mono ${value < 0 ? 'text-rose-600' : ''}`}>{sign === '-' && value ? `(${formatCurrency(value)})` : formatCurrency(value)}</span>
+    <span className={`tabular-nums ${value < 0 ? 'text-rose-600' : ''}`}>{sign === '-' && value ? `(${formatCurrency(value)})` : formatCurrency(value)}</span>
   </div>
 );
 
@@ -65,7 +65,7 @@ export function ProfitLossPanel() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-2 print:hidden">
         <div>
-          <h2 className="text-lg font-black text-slate-900 flex items-center gap-2"><FileSpreadsheet className="w-5 h-5 text-indigo-600" /> งบกำไรขาดทุน</h2>
+          <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2"><FileSpreadsheet className="w-5 h-5 text-indigo-600" /> งบกำไรขาดทุน</h2>
           <p className="text-sm text-slate-500">ยอดขาย − ต้นทุนขาย − เคลม − สินค้าเสียหาย − ค่าใช้จ่ายร้าน = กำไรสุทธิจริง</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -81,7 +81,7 @@ export function ProfitLossPanel() {
       {!data ? <div className="p-6 text-slate-400">กำลังคำนวณ...</div> : (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 max-w-2xl text-sm">
           <div className="text-center mb-3">
-            <div className="font-black text-base">งบกำไรขาดทุน</div>
+            <div className="font-semibold text-base">งบกำไรขาดทุน</div>
             <div className="text-slate-500">{formatListDate(data.period.from)} – {formatListDate(data.period.to)} ({data.orderCount} บิล)</div>
           </div>
           <Row label="ยอดขายรวม VAT" value={data.salesInclVat} indent />
@@ -100,8 +100,8 @@ export function ProfitLossPanel() {
           <Row label="บวก รายรับอื่น" value={data.otherIncome} indent />
           <Row label="เงินขาด / เกินตอนปิดกะ" value={data.cashOverShort} indent />
           <Row label="ปรับยอดบัญชี (ค่าธรรมเนียม / ดอกเบี้ย)" value={data.accountAdjustments} indent />
-          <div className={`flex justify-between py-2 mt-2 border-t-2 border-double border-slate-400 text-base font-black ${data.netProfit < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-            <span>{data.netProfit < 0 ? 'ขาดทุนสุทธิ' : 'กำไรสุทธิ'} ({data.netMargin}%)</span><span className="font-mono">{formatCurrency(data.netProfit)}</span>
+          <div className={`flex justify-between py-2 mt-2 border-t-2 border-double border-slate-400 text-base font-semibold ${data.netProfit < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+            <span>{data.netProfit < 0 ? 'ขาดทุนสุทธิ' : 'กำไรสุทธิ'} ({data.netMargin}%)</span><span className="tabular-nums">{formatCurrency(data.netProfit)}</span>
           </div>
           <p className="text-xs text-slate-400 mt-3">รายได้คิดจากบิลที่ขายในช่วงนี้ (ขายเชื่อนับเป็นรายได้ตั้งแต่วันขาย) · ไม่รวมเงินทุน/ถอนใช้ของเจ้าของ และการย้ายเงินระหว่างบัญชี</p>
         </div>

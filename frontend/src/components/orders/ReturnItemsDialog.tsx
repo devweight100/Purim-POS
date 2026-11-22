@@ -123,8 +123,8 @@ export function ReturnItemsDialog({ orderId, onClose, onDone }: { orderId: strin
               </select>
             )}
             <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="เหตุผล เช่น ลูกค้าซื้อเกิน, สินค้าไม่ตรงรุ่น" />
-            <div className="flex justify-between rounded-xl bg-amber-50 border border-amber-200 p-3 font-black">
-              <span>ยอดคืนเงิน (รวมส่วนลดท้ายบิลตามสัดส่วน)</span><span className="font-mono">{formatCurrency(refund)}</span>
+            <div className="flex justify-between rounded-xl bg-amber-50 border border-amber-200 p-3 font-semibold">
+              <span>ยอดคืนเงิน (รวมส่วนลดท้ายบิลตามสัดส่วน)</span><span className="tabular-nums">{formatCurrency(refund)}</span>
             </div>
           </div>
         )}

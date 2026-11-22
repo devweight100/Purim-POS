@@ -88,7 +88,7 @@ export function CreditCustomersDialog({ open, onOpenChange, summary }: { open: b
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] sm:max-w-5xl max-h-[90vh] flex flex-col gap-3 bg-white p-5">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg font-black text-slate-900">
+          <DialogTitle className="flex items-center gap-2 text-lg font-semibold text-slate-900">
             <Users className="h-5 w-5 text-amber-600" />
             ลูกค้าเงินเชื่อ (ลูกหนี้ค้างชำระ)
           </DialogTitle>
@@ -145,8 +145,8 @@ export function CreditCustomersDialog({ open, onOpenChange, summary }: { open: b
                 <tr key={c.customerId} {...nav.rowProps(i)} data-testid="credit-row" className={`border-t border-slate-100 hover:bg-slate-50 ${ROW_NAV_CLASS}`}>
                   <td className="font-medium text-fg">{c.name}</td>
                   <td className="doc-no text-muted-foreground whitespace-nowrap">{c.phone || '-'}</td>
-                  <td className="text-right doc-no font-semibold text-danger whitespace-nowrap">{formatCurrency(c.owed)}</td>
-                  <td className="text-right doc-no">{c.bills}</td>
+                  <td className="text-right tabular-nums font-semibold text-danger whitespace-nowrap">{formatCurrency(c.owed)}</td>
+                  <td className="text-right tabular-nums">{c.bills}</td>
                   <td className="text-muted-foreground whitespace-nowrap">{formatDate(c.oldestBillAt)}</td>
                   <td className="whitespace-nowrap">
                     {c.overdueBills > 0 ? (

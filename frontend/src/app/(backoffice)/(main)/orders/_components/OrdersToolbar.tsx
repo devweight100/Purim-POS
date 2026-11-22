@@ -32,8 +32,8 @@ export function OrdersToolbar({
             </div>
             <span className="text-sm font-bold text-sky-950">ออเดอร์สำเร็จทั้งหมด:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-sky-700 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-sky-700 tracking-tight">
               {stats.totalOrders}
             </span>
             <span className="text-xs text-slate-600 font-sans font-bold">บิล</span>
@@ -48,8 +48,8 @@ export function OrdersToolbar({
             </div>
             <span className="text-sm font-bold text-emerald-950">ยอดขายรวมสุทธิ:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-emerald-600 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-emerald-600 tracking-tight">
               {formatCurrency(stats.totalRevenue)}
             </span>
           </div>
@@ -63,8 +63,8 @@ export function OrdersToolbar({
             </div>
             <span className="text-sm font-bold text-rose-950">บิลที่ยกเลิก (Void):</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-rose-600 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-rose-600 tracking-tight">
               {stats.voidedOrders}
             </span>
             <span className="text-xs text-rose-700 font-sans font-bold">บิล</span>

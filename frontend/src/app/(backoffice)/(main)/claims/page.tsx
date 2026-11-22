@@ -167,7 +167,7 @@ export default function ClaimsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7 font-sans">
+    <div className="page-shell">
       {loadError && <LoadErrorState message={loadError} onRetry={() => void fetchClaims()} retrying={loading} />}
       {/* ─── PAGE HEADER ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-3xl border border-slate-200 shadow-xs">
@@ -222,8 +222,8 @@ export default function ClaimsPage() {
             </div>
             <span className="text-sm font-bold text-indigo-950">รายการเคลมทั้งหมด:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-indigo-700 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-indigo-700 tracking-tight">
               {summary.totalClaims}
             </span>
             <span className="text-xs text-slate-600 font-sans font-bold">รายการ</span>
@@ -238,8 +238,8 @@ export default function ClaimsPage() {
             </div>
             <span className="text-sm font-bold text-rose-950">มูลค่าเคลมรวม:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-rose-600 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-rose-600 tracking-tight">
               {formatCurrency(summary.totalClaimValue)}
             </span>
           </div>
@@ -253,8 +253,8 @@ export default function ClaimsPage() {
             </div>
             <span className="text-sm font-bold text-indigo-950">เปลี่ยนชิ้นใหม่:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-indigo-600 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-indigo-600 tracking-tight">
               {summary.replacedItemCount}
             </span>
             <span className="text-xs text-slate-600 font-sans font-bold">รายการ</span>
@@ -269,8 +269,8 @@ export default function ClaimsPage() {
             </div>
             <span className="text-sm font-bold text-emerald-950">คืนเงินสด/โอน:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-emerald-700 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-emerald-700 tracking-tight">
               {summary.refundedCount}
             </span>
             <span className="text-xs text-slate-600 font-sans font-bold">รายการ</span>
@@ -446,7 +446,7 @@ export default function ClaimsPage() {
                     </TableCell>
 
                     {/* 6. Total Claim Value */}
-                    <TableCell className="text-right doc-no whitespace-nowrap">
+                    <TableCell className="text-right tabular-nums whitespace-nowrap">
                       <span className="font-semibold text-fg block">
                         {formatCurrency(claim.totalClaimValue)}
                       </span>

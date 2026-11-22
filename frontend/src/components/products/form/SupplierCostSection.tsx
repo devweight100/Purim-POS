@@ -95,7 +95,7 @@ export function SupplierCostSection({ form, setForm, updateForm, suppliers, onCr
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-slate-500">รหัสสินค้าของผู้ขาย</label>
-                    <Input aria-label={`รหัสสินค้าของผู้ขาย ${i + 1}`} maxLength={NAME_LIMITS.supplierSku} value={entry.supplierSku} onChange={e => updateSupplierEntry(i, "supplierSku", e.target.value)} className="border-slate-300 font-mono" />
+                    <Input aria-label={`รหัสสินค้าของผู้ขาย ${i + 1}`} maxLength={NAME_LIMITS.supplierSku} value={entry.supplierSku} onChange={e => updateSupplierEntry(i, "supplierSku", e.target.value)} className="border-slate-300 tabular-nums" />
                   </div>
                 </div>
               </div>

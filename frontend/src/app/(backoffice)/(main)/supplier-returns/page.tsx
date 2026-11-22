@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { StatusChip } from '@/components/ui/status-chip';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { formatCurrency, formatListDate } from '@/lib/utils';
@@ -201,7 +202,7 @@ export default function SupplierReturnsPage() {
 
   const noteNav = useRowNav(filteredNotes.length, (i) => handleViewPdf(filteredNotes[i]));
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7 font-sans">
+    <div className="page-shell">
       {loadError && <LoadErrorState message={loadError} onRetry={() => void refreshData()} retrying={loading} />}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
@@ -248,8 +249,8 @@ export default function SupplierReturnsPage() {
             </div>
             <span className="text-sm font-bold text-rose-950">รอส่งเคลมบริษัท:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-rose-600 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-rose-600 tracking-tight">
               {pending.total}
             </span>
             <span className="text-xs text-rose-700 font-sans font-bold">รายการ</span>
@@ -264,8 +265,8 @@ export default function SupplierReturnsPage() {
             </div>
             <span className="text-sm font-bold text-indigo-950">เครดิตลดหนี้คงเหลือ:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-indigo-700 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-indigo-700 tracking-tight">
               {formatCurrency(totalAvailableCredit)}
             </span>
           </div>
@@ -279,8 +280,8 @@ export default function SupplierReturnsPage() {
             </div>
             <span className="text-sm font-bold text-emerald-950">เอกสารส่งคืนทั้งหมด:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-emerald-700 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-emerald-700 tracking-tight">
               {returnNotes.filter((n) => n.status !== 'CANCELLED').length}
             </span>
             <span className="text-xs text-slate-600 font-sans font-bold">ฉบับ</span>
@@ -295,8 +296,8 @@ export default function SupplierReturnsPage() {
             </div>
             <span className="text-sm font-bold text-slate-700">เอกสารในถังขยะ:</span>
           </div>
-          <div className="flex items-baseline gap-1.5 font-mono">
-            <span className="text-lg sm:text-xl font-black text-slate-700 tracking-tight">
+          <div className="flex items-baseline gap-1.5 tabular-nums">
+            <span className="text-lg sm:text-xl font-semibold text-slate-700 tracking-tight">
               {cancelledNotes.length}
             </span>
             <span className="text-xs text-slate-500 font-sans font-bold">ฉบับ</span>
@@ -435,7 +436,7 @@ export default function SupplierReturnsPage() {
                           )}
                         </td>
 
-                        <td className="text-right doc-no whitespace-nowrap">
+                        <td className="text-right tabular-nums whitespace-nowrap">
                           <span className="font-semibold text-fg block">
                             {formatCurrency(note.totalCreditAmount)}
                           </span>
@@ -456,13 +457,13 @@ export default function SupplierReturnsPage() {
 
                         <td className="text-center">
                           {note.status === 'DEDUCTED' ? (
-                            <Badge className="bg-emerald-600 text-white font-medium text-sub px-2 py-0.5 whitespace-nowrap">หักลดหนี้แล้ว</Badge>
+                            <StatusChip tone="success">หักลดหนี้แล้ว</StatusChip>
                           ) : note.status === 'PARTIALLY_DEDUCTED' ? (
-                            <Badge className="bg-sky-600 text-white font-medium text-sub px-2 py-0.5 whitespace-nowrap">หักหนี้บางส่วน</Badge>
+                            <StatusChip tone="info">หักหนี้บางส่วน</StatusChip>
                           ) : (
-                            <Badge variant="outline" className="border-amber-400 text-warn bg-amber-50 font-medium text-sub px-2 py-0.5 whitespace-nowrap">
+                            <StatusChip tone="warning">
                               รอหักลดหนี้
-                            </Badge>
+                            </StatusChip>
                           )}
                         </td>
 
@@ -567,13 +568,13 @@ export default function SupplierReturnsPage() {
                           </Badge>
                         </div>
                         <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                          มูลค่ารวม: <strong className="text-rose-700 font-mono text-sm">{formatCurrency(totalVal)}</strong>
+                          มูลค่ารวม: <strong className="text-rose-700 tabular-nums text-sm">{formatCurrency(totalVal)}</strong>
                         </p>
                         <ul className="text-xs text-slate-600 mt-2.5 space-y-1 divide-y divide-slate-200">
                           {group.top.map((c) => (
                             <li key={c.id} className="pt-1.5 flex justify-between">
                               <span className="truncate max-w-[160px]">• {c.productName}</span>
-                              <span className="font-mono font-semibold">{c.quantity} ชิ้น</span>
+                              <span className="tabular-nums font-semibold">{c.quantity} ชิ้น</span>
                             </li>
                           ))}
                           {group.count > 3 && (
@@ -675,7 +676,7 @@ export default function SupplierReturnsPage() {
                           )}
                         </td>
 
-                        <td className="text-right doc-no whitespace-nowrap">
+                        <td className="text-right tabular-nums whitespace-nowrap">
                           <span className="line-through text-subtle font-medium block">
                             {formatCurrency(note.totalCreditAmount)}
                           </span>
@@ -685,9 +686,9 @@ export default function SupplierReturnsPage() {
                         </td>
 
                         <td className="text-center">
-                          <Badge className="bg-rose-100 text-danger border-rose-200 font-semibold text-sub px-2 py-0.5 whitespace-nowrap">
-                            ❌ ยกเลิกเอกสารแล้ว
-                          </Badge>
+                          <StatusChip tone="danger">
+                            ยกเลิกเอกสารแล้ว
+                          </StatusChip>
                         </td>
 
                         <td className="w-px whitespace-nowrap">

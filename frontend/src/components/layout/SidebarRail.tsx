@@ -163,7 +163,7 @@ export function SidebarRail({
     <>
       <div className="flex h-16 shrink-0 items-center justify-center border-b border-sidebar-border">
         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 shadow-sm" aria-hidden="true">
-          <span className="text-base font-black leading-none text-white">P</span>
+          <span className="text-base font-semibold leading-none text-white">P</span>
         </div>
       </div>
 
@@ -237,7 +237,7 @@ export function SidebarRail({
                 >
                   <Icon className="h-5 w-5" />
                   {badge > 0 && (
-                    <span data-testid="online-orders-badge" className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white">
+                    <span data-testid="online-orders-badge" className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-semibold text-white">
                       {badge}
                     </span>
                   )}
@@ -320,7 +320,7 @@ function FlyoutLink({ item, active, badge = 0, small = false }: { item: RailItem
       <Icon className={cn('shrink-0', small ? 'h-3.5 w-3.5' : 'h-4 w-4', active ? 'text-white' : 'text-slate-400')} />
       <span className="truncate">{item.label}</span>
       {badge > 0 && (
-        <span className="ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[11px] font-black text-white">{badge}</span>
+        <span className="ml-auto inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[11px] font-semibold text-white">{badge}</span>
       )}
     </Link>
   );

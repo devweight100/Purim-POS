@@ -63,11 +63,11 @@ export function OrderActionDialogs({
               <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 flex justify-between">
                 <div>
                   <span className="text-slate-500 block">เลขออเดอร์</span>
-                  <span className="font-bold text-slate-900 font-mono">{editPaymentOrder.orderNumber}</span>
+                  <span className="font-bold text-slate-900 tabular-nums">{editPaymentOrder.orderNumber}</span>
                 </div>
                 <div className="text-right">
                   <span className="text-slate-500 block">ยอดรวมทั้งสิ้น</span>
-                  <span className="font-black text-indigo-700 font-mono text-sm">
+                  <span className="font-semibold text-indigo-700 tabular-nums text-sm">
                     {formatCurrency(editPaymentOrder.totalAmount || editPaymentOrder.total || 0)}
                   </span>
                 </div>
@@ -157,7 +157,7 @@ export function OrderActionDialogs({
           <div className="py-2 text-xs text-slate-600 space-y-2">
             <p>
               ระบบจะทำการล้างตะกร้าปัจจุบัน และนำรายการสินค้าของบิล{" "}
-              <b className="font-mono text-slate-900">{editItemsTarget?.orderNumber}</b> ไปเปิดในหน้าขาย
+              <b className="tabular-nums text-slate-900">{editItemsTarget?.orderNumber}</b> ไปเปิดในหน้าขาย
             </p>
             <p className="bg-sky-50 text-sky-900 p-3 rounded-xl border border-sky-200 leading-relaxed font-semibold">
               💡 คุณสามารถเพิ่ม/ลดจำนวน ปรับส่วนลด และเมื่อกดชำระเงิน ระบบจะบันทึกทับบิลเดิมให้อัตโนมัติ
@@ -188,7 +188,7 @@ export function OrderActionDialogs({
           <div className="py-2 text-xs text-slate-600 space-y-2">
             <p>
               คุณต้องการคัดลอกรายการสินค้าจากบิล{" "}
-              <b className="font-mono text-slate-900">{repeatOrderTarget?.orderNumber}</b> ลงในตะกร้าหน้าขายเพื่อเปิดบิลใหม่ใช่หรือไม่?
+              <b className="tabular-nums text-slate-900">{repeatOrderTarget?.orderNumber}</b> ลงในตะกร้าหน้าขายเพื่อเปิดบิลใหม่ใช่หรือไม่?
             </p>
           </div>
 

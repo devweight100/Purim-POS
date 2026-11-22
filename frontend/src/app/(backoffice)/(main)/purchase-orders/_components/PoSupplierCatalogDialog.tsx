@@ -53,7 +53,7 @@ export function PoSupplierCatalogDialog({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
-          <div className="hidden grid-cols-[48px_minmax(0,1.8fr)_110px_120px_130px_140px] items-center gap-4 rounded-t-xl border border-slate-200 bg-slate-100 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-600 lg:grid">
+          <div className="hidden grid-cols-[48px_minmax(0,1.8fr)_110px_120px_130px_140px] items-center gap-4 rounded-t-xl border border-slate-200 bg-slate-100 px-4 py-3 text-xs font-bold  tracking-wide text-slate-600 lg:grid">
             <div className="text-center">ลำดับ</div>
             <div>สินค้า</div>
             <div className="text-right">คงเหลือ</div>
@@ -97,7 +97,7 @@ export function PoSupplierCatalogDialog({
                           <div className="min-w-0">
                             <div className="truncate text-base font-semibold text-slate-900">{product.name}</div>
                             <SearchMatchHint product={product} query={catalogSearch} />
-                            <div className="truncate text-xs text-slate-500 font-mono">{product.sku}</div>
+                            <div className="truncate text-xs text-slate-500 tabular-nums">{product.sku}</div>
                           </div>
                         </div>
                       </div>
@@ -105,7 +105,7 @@ export function PoSupplierCatalogDialog({
                       <div className="flex items-center justify-between text-sm font-semibold text-slate-700 lg:block lg:text-right">
                         <span className="text-xs font-medium text-slate-500 lg:hidden">คงเหลือ</span>
                         {Number(product.stock ?? 0) < 0 ? (
-                          <span className="inline-flex items-center gap-1 font-extrabold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                          <span className="inline-flex items-center gap-1 font-semibold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
                             🔻 {product.stock} {product.unit || 'ชิ้น'}
                           </span>
                         ) : (

@@ -407,9 +407,9 @@ export function SettleMultipleBillsModal({
               <Receipt className="w-6 h-6" />
             </div>
             <div>
-              <DialogTitle className="text-xl font-black text-slate-900 flex items-center gap-2">
+              <DialogTitle className="text-xl font-semibold text-slate-900 flex items-center gap-2">
                 <span>สร้างใบชำระหนี้ / จ่ายเงินเจ้าหนี้</span>
-                <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200 font-mono text-xs font-bold px-2 py-0.5">
+                <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200 tabular-nums text-xs font-bold px-2 py-0.5">
                   Multi-Invoice Settlement
                 </Badge>
               </DialogTitle>
@@ -432,7 +432,7 @@ export function SettleMultipleBillsModal({
               {selectedSupplierObj && (
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-slate-500">ยอดหนี้ค้างชำระรวม:</span>
-                  <span className="font-mono font-black text-rose-600 text-sm">
+                  <span className="tabular-nums font-semibold text-rose-600 text-sm">
                     {formatCurrency(selectedSupplierObj.totalUnpaid)}
                   </span>
                   <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 text-[11px] font-bold">
@@ -506,7 +506,7 @@ export function SettleMultipleBillsModal({
                             </div>
                             <div>
                               <p className="font-bold text-xs sm:text-sm">{s.name}</p>
-                              <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono">
+                              <div className="flex items-center gap-2 text-[11px] text-slate-500 tabular-nums">
                                 {s.contact && <span>ติดต่อ: {s.contact}</span>}
                                 {s.phone && <span>โทร: {s.phone}</span>}
                               </div>
@@ -515,7 +515,7 @@ export function SettleMultipleBillsModal({
 
                           <div className="text-right">
                             <span className="text-[11px] text-slate-400 block font-sans">หนี้ค้าง {s.unpaidCount} บิล</span>
-                            <span className="font-mono font-black text-xs sm:text-sm text-rose-600">
+                            <span className="tabular-nums font-semibold text-xs sm:text-sm text-rose-600">
                               {formatCurrency(s.totalUnpaid)}
                             </span>
                           </div>
@@ -536,12 +536,12 @@ export function SettleMultipleBillsModal({
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-black text-indigo-950 text-sm">{selectedSupplierObj.name}</span>
+                      <span className="font-semibold text-indigo-950 text-sm">{selectedSupplierObj.name}</span>
                       <Badge variant="outline" className="bg-white text-indigo-700 text-[10px] font-bold">
                         หนี้ค้าง {selectedSupplierObj.unpaidCount} บิล
                       </Badge>
                     </div>
-                    <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                    <p className="text-[11px] text-slate-500 tabular-nums mt-0.5">
                       {selectedSupplierObj.contact && `ติดต่อ: ${selectedSupplierObj.contact} • `}
                       {selectedSupplierObj.phone && `โทร: ${selectedSupplierObj.phone} • `}
                       ยอดหนี้รวม: <b className="text-rose-600">{formatCurrency(selectedSupplierObj.totalUnpaid)}</b>
@@ -584,11 +584,11 @@ export function SettleMultipleBillsModal({
               <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                    <span className="text-xs font-semibold text-slate-900 flex items-center gap-1.5">
                       <FileText className="w-4 h-4 text-indigo-600" />
                       <span>2. รายการบิล / Invoice ที่เลือกชำระ:</span>
                     </span>
-                    <Badge variant="outline" className="text-xs font-bold font-mono bg-slate-50">
+                    <Badge variant="outline" className="text-xs font-bold tabular-nums bg-slate-50">
                       เลือกแล้ว {selectedBillIds.size} / {supplierBills.length} บิล
                     </Badge>
                   </div>
@@ -718,7 +718,7 @@ export function SettleMultipleBillsModal({
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-1.5">
-                                    <span className={`font-mono font-bold text-xs ${b.supplierInvoiceNo ? 'text-indigo-900' : 'text-slate-400 italic'}`}>
+                                    <span className={`tabular-nums font-bold text-xs ${b.supplierInvoiceNo ? 'text-indigo-900' : 'text-slate-400 italic'}`}>
                                       {b.supplierInvoiceNo || 'ยังไม่ระบุเลขที่บิล'}
                                     </span>
                                     <button
@@ -740,13 +740,13 @@ export function SettleMultipleBillsModal({
                               <td className="text-center text-muted-foreground">
                                 {formatListDate(b.billDate)}
                               </td>
-                              <td className="text-right doc-no text-muted-foreground">
+                              <td className="text-right tabular-nums text-muted-foreground">
                                 {formatCurrency(b.receivedAmount ?? b.totalAmount)}
                                 {b.receivedAmount !== undefined && Math.abs(b.receivedAmount - b.totalAmount) > 0.004 && (
                                   <span className="block text-sub text-subtle">จาก PO {formatCurrency(b.totalAmount)}</span>
                                 )}
                               </td>
-                              <td className="text-right doc-no font-medium text-danger">
+                              <td className="text-right tabular-nums font-medium text-danger">
                                 {formatCurrency(b.remainingPayable)}
                               </td>
                               <td className="text-right">
@@ -756,7 +756,7 @@ export function SettleMultipleBillsModal({
                                     step="any"
                                     value={currentAmount}
                                     onChange={(e) => handleBillAmountChange(b.poId, e.target.value, b.remainingPayable)}
-                                    className="text-right doc-no text-indigo-700 bg-white border-indigo-300"
+                                    className="text-right tabular-nums text-indigo-700 bg-white border-indigo-300"
                                   />
                                 ) : (
                                   <span className="text-subtle doc-no text-sub">-</span>
@@ -804,10 +804,10 @@ export function SettleMultipleBillsModal({
                             <td colSpan={6} className="py-3 px-3 text-right text-slate-700">
                               รวมยอดที่เลือกชำระ ({selectedBillIds.size} บิล):
                             </td>
-                            <td className="py-3 px-3 text-right font-mono font-black text-indigo-700 text-sm">
+                            <td className="py-3 px-3 text-right tabular-nums font-semibold text-indigo-700 text-sm">
                               {formatCurrency(totalBillsPayAmount)}
                             </td>
-                            <td className="py-3 px-3 text-center font-mono text-xs text-slate-500">
+                            <td className="py-3 px-3 text-center tabular-nums text-xs text-slate-500">
                               {selectedBillIds.size} รายการ
                             </td>
                           </tr>
@@ -848,11 +848,11 @@ export function SettleMultipleBillsModal({
                               onCheckedChange={() => handleToggleDebitNote(dn.id, dn.remainingCreditAmount)}
                             />
                             <div>
-                              <p className="font-mono font-bold text-xs text-slate-900">
+                              <p className="tabular-nums font-bold text-xs text-slate-900">
                                 ใบลดหนี้เลขที่ {dn.id}
                               </p>
                               <p className="text-[11px] text-slate-500">
-                                สินค้าส่งคืน: {dn.totalQuantity} ชิ้น • เครดิตคงเหลือ: <strong className="text-emerald-700 font-mono">{formatCurrency(dn.remainingCreditAmount)}</strong>
+                                สินค้าส่งคืน: {dn.totalQuantity} ชิ้น • เครดิตคงเหลือ: <strong className="text-emerald-700 tabular-nums">{formatCurrency(dn.remainingCreditAmount)}</strong>
                               </p>
                             </div>
                           </div>
@@ -868,7 +868,7 @@ export function SettleMultipleBillsModal({
                                   const v = Math.max(0, Math.min(dn.remainingCreditAmount, Number(e.target.value) || 0));
                                   setMatchedDebitNotes(cur => ({ ...cur, [dn.id]: v }));
                                 }}
-                                className="h-8 w-28 text-right font-mono text-rose-700 border-amber-300"
+                                className="h-8 w-28 text-right tabular-nums text-rose-700 border-amber-300"
                               />
                             </div>
                           )}
@@ -965,7 +965,7 @@ export function SettleMultipleBillsModal({
                           value={referenceNo}
                           onChange={(e) => setReferenceNo(e.target.value)}
                           placeholder="เช่น K-12398471"
-                          className="h-8.5 font-mono bg-slate-50 border-slate-300"
+                          className="h-8.5 tabular-nums bg-slate-50 border-slate-300"
                         />
                       </div>
                     </div>
@@ -1003,13 +1003,13 @@ export function SettleMultipleBillsModal({
 
                     <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-100">
                       <span className="text-slate-600 font-medium">ยอดรวมบิลที่เลือกชำระ ({selectedBillIds.size} ใบ):</span>
-                      <span className="font-mono font-bold text-slate-900 text-sm">{formatCurrency(totalBillsPayAmount)}</span>
+                      <span className="tabular-nums font-bold text-slate-900 text-sm">{formatCurrency(totalBillsPayAmount)}</span>
                     </div>
 
                     {totalDebitDeducted > 0 && (
                       <div className="flex items-center justify-between text-xs text-rose-600 pb-2 border-b border-slate-100">
                         <span className="font-medium">หักเครดิตใบลดหนี้รวม:</span>
-                        <span className="font-mono font-bold text-sm">-{formatCurrency(totalDebitDeducted)}</span>
+                        <span className="tabular-nums font-bold text-sm">-{formatCurrency(totalDebitDeducted)}</span>
                       </div>
                     )}
 
@@ -1026,7 +1026,7 @@ export function SettleMultipleBillsModal({
                           placeholder="0.00"
                           value={discountAmount || ''}
                           onChange={(e) => setDiscountAmount(Math.max(0, Number(e.target.value) || 0))}
-                          className="h-8.5 w-32 text-right font-mono text-amber-800 bg-amber-50/60 border-amber-300 focus:bg-white"
+                          className="h-8.5 w-32 text-right tabular-nums text-amber-800 bg-amber-50/60 border-amber-300 focus:bg-white"
                         />
                       </div>
                     </div>
@@ -1045,10 +1045,10 @@ export function SettleMultipleBillsModal({
                   {/* Total Net Payment Box (Consistent Pastel Emerald Highlight Box) */}
                   <div className="pt-3 border-t border-slate-200 space-y-1.5 bg-emerald-50/70 border border-emerald-200/80 p-4 rounded-xl">
                     <div className="flex justify-between items-baseline">
-                      <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
+                      <span className="text-xs font-bold text-emerald-950  ">
                         ยอดเงินสุทธิที่ต้องจ่ายจริง:
                       </span>
-                      <span className="text-2xl font-black font-mono text-emerald-700">
+                      <span className="text-2xl font-semibold tabular-nums text-emerald-700">
                         {formatCurrency(netCashOrTransferRequired)}
                       </span>
                     </div>

@@ -21,6 +21,7 @@ import { BankAccount, loadBankAccounts } from '@/lib/bank-account-storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { StatusChip } from '@/components/ui/status-chip';
 import {
   Dialog,
   DialogContent,
@@ -522,16 +523,16 @@ export function ProductClaimModal({
                           </td>
                           <td className="text-center">
                             {isQuotaExhausted ? (
-                              <Badge className="bg-slate-200 text-muted-foreground text-sub font-medium">
+                              <StatusChip tone="neutral">
                                 หมดโควต้า (0 ชิ้น)
-                              </Badge>
+                              </StatusChip>
                             ) : (
-                              <Badge className="bg-emerald-100 text-ok border-emerald-300 text-sub font-semibold px-2">
+                              <StatusChip tone="success">
                                 เคลมได้ {item.availableBaseClaimQuantity !== undefined ? item.availableBaseClaimQuantity : item.availableClaimQuantity} ชิ้น
-                              </Badge>
+                              </StatusChip>
                             )}
                           </td>
-                          <td className="text-right doc-no font-medium text-fg">
+                          <td className="text-right tabular-nums font-medium text-fg">
                             {formatCurrency(item.unitPrice)}
                           </td>
                           <td className="text-center">

@@ -317,24 +317,18 @@ export default function CustomersPage() {
 
   // Price Level Badge Helper
   const getPriceLevelBadge = (level: number) => {
-    switch (level) {
-      case 1:
-        return <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-xs font-semibold">ระดับ 1 (ทั่วไป)</Badge>;
-      case 2:
-        return <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-300 text-xs font-bold">ระดับ 2 (สมาชิก)</Badge>;
-      case 3:
-        return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-300 text-xs font-bold">ระดับ 3 (ช่าง/ส่ง)</Badge>;
-      case 4:
-        return <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300 text-xs font-bold">ระดับ 4 (VIP)</Badge>;
-      case 5:
-        return <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 text-xs font-bold">ระดับ 5 (ตัวแทน)</Badge>;
-      default:
-        return <Badge variant="outline">ระดับ {level}</Badge>;
-    }
+    // plain text (style pass: no chip around a plain value)
+    const names: Record<number, string> = { 1: 'ทั่วไป', 2: 'สมาชิก', 3: 'ช่าง/ส่ง', 4: 'VIP', 5: 'ตัวแทน' };
+    return (
+      <span className="text-fg">
+        ระดับ {level}
+        {names[level] && <span className="text-muted-foreground"> ({names[level]})</span>}
+      </span>
+    );
   };
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
+    <div className="page-shell">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
@@ -498,32 +492,15 @@ export default function CustomersPage() {
                       {/* Name & Type */}
                       <TableCell className="min-w-44 xl:min-w-64">
                         <div className="flex items-start gap-2.5">
-                          <div
-                            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
-                              isCompany
-                                ? 'bg-indigo-50 text-indigo-600 border-indigo-200'
-                                : 'bg-sky-50 text-sky-600 border-sky-200'
-                            }`}
-                          >
-                            {isCompany ? <Building2 className="w-5 h-5" /> : <User className="w-5 h-5" />}
-                          </div>
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                               <span className="font-medium text-fg line-clamp-2 break-words hover:text-sky-600" title={c.name}>
                                 {c.name}
                               </span>
-                              {isCompany ? (
-                                <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 text-sub font-medium px-1.5 py-0">
-                                  🏢 นิติบุคคล
-                                </Badge>
-                              ) : (
-                                <Badge className="bg-slate-100 text-muted-foreground border-slate-200 text-sub font-medium px-1.5 py-0">
-                                  บุคคล
-                                </Badge>
-                              )}
                             </div>
-                            <div className="flex items-center gap-2 text-sub text-subtle doc-no mt-0.5">
-                              <span>{c.code || '-'}</span>
+                            <div className="flex items-center gap-2 text-sub text-muted-foreground mt-0.5">
+                              <span className="doc-no">{c.code || '-'}</span>
+                              <span>· {isCompany ? 'นิติบุคคล' : 'บุคคล'}</span>
                               {c.companyName && c.companyName !== c.name && (
                                 <span className="truncate max-w-[200px] text-muted-foreground">· {c.companyName}</span>
                               )}
@@ -535,7 +512,7 @@ export default function CustomersPage() {
                       {/* Contact & Tax Info */}
                       <TableCell className="whitespace-nowrap">
                         <div className="space-y-0.5">
-                          <div className="flex items-center gap-1.5 text-fg doc-no font-semibold">
+                          <div className="flex items-center gap-1.5 text-fg tabular-nums">
                             <Phone className="w-3.5 h-3.5 text-subtle" />
                             <span>{c.phone}</span>
                           </div>
@@ -569,7 +546,7 @@ export default function CustomersPage() {
                             {hasDebt ? (
                               <Link
                                 href={`/debts?customerId=${c.id}&customerName=${encodeURIComponent(c.name)}`}
-                                className="font-medium text-danger bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded-lg border border-rose-200 inline-flex items-center gap-1 shadow-2xs transition-all group"
+                                className="font-medium text-danger hover:underline inline-flex items-center gap-1 group"
                                 title="คลิกเพื่อเปิดดูบิลค้างชำระและรับชำระเงิน"
                               >
                                 <span>ค้างชำระ: {formatCurrency(c.currentDebt)}</span>
@@ -579,11 +556,11 @@ export default function CustomersPage() {
                               <span className="text-ok font-medium">ไม่มียอดค้าง</span>
                             )}
                             {c.isCreditBlocked && (
-                              <span className="block text-sub text-danger font-medium">🚫 ระงับเครดิตชั่วคราว</span>
+                              <span className="block text-sub text-danger font-medium">ระงับเครดิตชั่วคราว</span>
                             )}
                           </div>
                         ) : (
-                          <span className="text-subtle font-medium">เงินสด (ไม่มีเครดิต)</span>
+                          <span className="text-muted-foreground">เงินสด (ไม่มีเครดิต)</span>
                         )}
                       </TableCell>
 
@@ -591,11 +568,10 @@ export default function CustomersPage() {
                       <TableCell className="text-center">
                         {/* round 3: the member's earn / redeem rate is the badge tooltip (it is the same for most members) */}
                         <div
-                          className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-sub font-semibold bg-amber-50 text-warn border border-amber-200 whitespace-nowrap"
+                          className="whitespace-nowrap tabular-nums text-fg"
                           title={`สะสม ${c.pointEarnRateBaht || 500}฿ = ${c.pointEarnUnits || 10} แต้ม | แลก ${c.pointRedeemRatePoints || 100} แต้ม = ${c.pointRedeemDiscountBaht || 1}฿`}
                         >
-                          <Coins className="w-3.5 h-3.5 text-warn" />
-                          <span>{(c.points || 0).toLocaleString()} แต้ม</span>
+                          {(c.points || 0).toLocaleString()} <span className="text-sub text-muted-foreground">แต้ม</span>
                         </div>
                       </TableCell>
 
@@ -730,7 +706,7 @@ export default function CustomersPage() {
                       <label className="font-bold text-slate-700">รหัสสมาชิก</label>
                       <span className="text-[10px] text-slate-400 font-medium">(ระบบสร้างให้อัตโนมัติ)</span>
                     </div>
-                    <div className="h-9 px-3 rounded-lg bg-slate-100 border border-slate-200 flex items-center font-mono font-bold text-slate-700 text-xs select-none">
+                    <div className="h-9 px-3 rounded-lg bg-slate-100 border border-slate-200 flex items-center tabular-nums font-bold text-slate-700 text-xs select-none">
                       {formData.code || 'CUST-XXXX (อัตโนมัติ)'}
                     </div>
                   </div>
@@ -753,7 +729,7 @@ export default function CustomersPage() {
                       value={formData.phone || ''}
                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                       placeholder="เช่น 081-234-5678"
-                      className="font-mono"
+                      className="tabular-nums"
                     />
                   </div>
 
@@ -822,7 +798,7 @@ export default function CustomersPage() {
                       value={formData.taxId || ''}
                       onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
                       placeholder="เช่น 0105560123456"
-                      className="font-mono text-indigo-700"
+                      className="tabular-nums text-indigo-700"
                     />
                   </div>
 
@@ -847,7 +823,7 @@ export default function CustomersPage() {
                       value={formData.branchNumber || ''}
                       onChange={(e) => setFormData({ ...formData, branchNumber: e.target.value })}
                       placeholder="เช่น 00001"
-                      className="font-mono"
+                      className="tabular-nums"
                     />
                   </div>
                 )}
@@ -879,7 +855,7 @@ export default function CustomersPage() {
                       value={formData.contactPhone || ''}
                       onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
                       placeholder="เช่น 089-111-2233"
-                      className="font-mono"
+                      className="tabular-nums"
                     />
                   </div>
                 </div>
@@ -1110,7 +1086,7 @@ export default function CustomersPage() {
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
         <DialogContent className="bg-white border-slate-200 text-slate-900 w-[95vw] sm:w-[650px] max-w-[650px] max-h-[92vh] flex flex-col p-0 overflow-hidden rounded-2xl shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-7 py-4.5 bg-slate-50 shrink-0">
-            <DialogTitle className="flex items-center justify-between text-xl font-extrabold text-slate-900">
+            <DialogTitle className="flex items-center justify-between text-xl font-semibold text-slate-900">
               <div className="flex items-center gap-2.5">
                 {selectedCustomer?.type === 'COMPANY' ? (
                   <Building2 className="w-6 h-6 text-indigo-600" />
@@ -1119,7 +1095,7 @@ export default function CustomersPage() {
                 )}
                 <span>{selectedCustomer?.name}</span>
               </div>
-              <Badge variant="outline" className="font-mono font-bold text-sm bg-slate-100 px-2.5 py-1">
+              <Badge variant="outline" className="tabular-nums font-bold text-sm bg-slate-100 px-2.5 py-1">
                 {selectedCustomer?.code}
               </Badge>
             </DialogTitle>
@@ -1134,11 +1110,11 @@ export default function CustomersPage() {
               </div>
               <div className="bg-amber-50 p-3.5 rounded-xl border border-amber-200 text-center">
                 <span className="text-amber-800 block text-xs font-bold">แต้มสะสมปัจจุบัน</span>
-                <b className="text-amber-900 text-lg font-black block mt-0.5">{(selectedCustomer?.points || 0).toLocaleString()} แต้ม</b>
+                <b className="text-amber-900 text-lg font-semibold block mt-0.5">{(selectedCustomer?.points || 0).toLocaleString()} แต้ม</b>
               </div>
               <div className="bg-rose-50/80 p-3.5 rounded-xl border border-rose-200 text-center">
                 <span className="text-rose-800 block text-xs font-bold">ยอดหนี้คงค้าง</span>
-                <b className="text-rose-600 text-lg font-extrabold block mt-0.5">{formatCurrency(selectedCustomer?.currentDebt || 0)}</b>
+                <b className="text-rose-600 text-lg font-semibold block mt-0.5">{formatCurrency(selectedCustomer?.currentDebt || 0)}</b>
                 {(selectedCustomer?.currentDebt || 0) > 0 && (
                   <Link
                     href={`/debts?customerId=${selectedCustomer?.id}&customerName=${encodeURIComponent(selectedCustomer?.name || '')}`}
@@ -1164,7 +1140,7 @@ export default function CustomersPage() {
                 </div>
                 <div>
                   <span className="text-slate-500 block text-xs font-bold">เลขประจำตัวผู้เสียภาษี (Tax ID):</span>
-                  <b className="text-indigo-700 font-mono font-bold text-sm sm:text-base">{selectedCustomer?.taxId || '-'}</b>
+                  <b className="text-indigo-700 tabular-nums font-bold text-sm sm:text-base">{selectedCustomer?.taxId || '-'}</b>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-xs font-bold">สาขา:</span>
@@ -1192,11 +1168,11 @@ export default function CustomersPage() {
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
                   <span className="text-slate-500 block text-xs font-bold">วงเงินเครดิตสูงสุด:</span>
-                  <b className="text-slate-900 font-extrabold text-sm sm:text-base">{formatCurrency(selectedCustomer?.creditLimit || 0)}</b>
+                  <b className="text-slate-900 font-semibold text-sm sm:text-base">{formatCurrency(selectedCustomer?.creditLimit || 0)}</b>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-xs font-bold">ระยะเวลาเครดิตเทอม:</span>
-                  <b className="text-slate-900 font-extrabold text-sm sm:text-base">{selectedCustomer?.creditTerms || 0} วัน</b>
+                  <b className="text-slate-900 font-semibold text-sm sm:text-base">{selectedCustomer?.creditTerms || 0} วัน</b>
                 </div>
               </div>
             </div>

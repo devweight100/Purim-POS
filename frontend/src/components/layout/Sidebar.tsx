@@ -253,7 +253,7 @@ export function Sidebar() {
       {/* Brand Header */}
       <div className="px-3 flex items-center h-14 shrink-0 border-b border-sidebar-border bg-sidebar">
         <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0 shadow-sm">
-          <span className="font-black text-white text-base leading-none">P</span>
+          <span className="font-semibold text-white text-base leading-none">P</span>
         </div>
         <div className="ml-3 min-w-0 flex-1 overflow-hidden">
           <span className="font-bold text-sm text-slate-900 block leading-tight">ร้านปุริม POS</span>
@@ -300,7 +300,7 @@ export function Sidebar() {
                 <ShoppingCart className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <span className="text-[13px] font-black block whitespace-nowrap leading-tight">หน้าขายหน้าร้าน (POS)</span>
+                <span className="text-[13px] font-semibold block whitespace-nowrap leading-tight">หน้าขายหน้าร้าน (POS)</span>
                 <span className={cn('text-[10px] block font-normal leading-tight', pathname === '/pos' ? 'text-white/90' : 'text-sky-700')}>สลับไปหน้าจอแคชเชียร์</span>
               </div>
             </div>
@@ -320,7 +320,7 @@ export function Sidebar() {
               </div>
               <span className="font-bold">ค้นหาเอกสารทั้งหมด</span>
             </div>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-white text-indigo-700 border border-indigo-200 font-black">
+            <span className="text-[10px] tabular-nums px-1.5 py-0.5 rounded-md bg-white text-indigo-700 border border-indigo-200 font-semibold">
               F3
             </span>
           </button>
@@ -468,7 +468,7 @@ export function Sidebar() {
                           <span className="truncate">{item.label}</span>
                           {item.href === '/online-orders' && onlineBadge > 0 && (
                             <span data-testid="online-orders-badge" aria-label={`${onlineBadge} รายการใหม่`} className="ml-auto pl-2 shrink-0">
-                              <span className="inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[11px] font-black text-white">{onlineBadge}</span>
+                              <span className="inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-rose-600 px-1.5 text-[11px] font-semibold text-white">{onlineBadge}</span>
                             </span>
                           )}
                         </Link>

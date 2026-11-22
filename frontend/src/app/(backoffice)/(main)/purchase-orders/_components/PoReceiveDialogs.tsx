@@ -98,7 +98,7 @@ export function PoReceiveDialog({
                 placeholder="เช่น INV-670123 หรือ DO-8899"
                 value={receiveSupplierInvoiceNo}
                 onChange={(e) => setReceiveSupplierInvoiceNo(e.target.value)}
-                className="bg-white border-slate-300 font-mono text-slate-900"
+                className="bg-white border-slate-300 tabular-nums text-slate-900"
               />
               <p className="text-[11px] text-slate-500 mt-1">ใช้ประกบคู่กับ PO เพื่อนำไปจับคู่ชำระเงินในระบบเจ้าหนี้การค้า</p>
             </div>
