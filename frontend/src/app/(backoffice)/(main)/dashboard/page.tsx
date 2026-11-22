@@ -254,9 +254,7 @@ export default function DashboardPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="page-title">
-            <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-sm">
-              <LayoutDashboard className="w-5 h-5" />
-            </div>
+            <LayoutDashboard />
             <span>แดชบอร์ด & ภาพรวมรายได้ (Dashboard & Revenue Overview)</span>
           </h1>
           <p className="page-subtitle">

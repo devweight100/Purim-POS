@@ -7,6 +7,7 @@ import { ClaimRecord, ClaimResolutionType } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { StatusChip, type ChipTone } from '@/components/ui/status-chip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -123,40 +124,16 @@ export default function ClaimsPage() {
 
   // Resolution Badge Helper
   const getResolutionBadge = (res: ClaimResolutionType) => {
-    switch (res) {
-      case 'REPLACE_ITEM':
-        return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-200">
-            <RotateCcw className="w-3.5 h-3.5" /> เปลี่ยนชิ้นใหม่
-          </span>
-        );
-      case 'REFUND_CASH':
-        return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-700 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200">
-            <Banknote className="w-3.5 h-3.5" /> คืนเงินสด
-          </span>
-        );
-      case 'REFUND_TRANSFER':
-        return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-700 bg-sky-50 px-2.5 py-1 rounded-lg border border-sky-200">
-            <Banknote className="w-3.5 h-3.5" /> คืนเงินโอน
-          </span>
-        );
-      case 'STORE_DISCOUNT':
-        return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
-            <Percent className="w-3.5 h-3.5" /> ส่วนลดบิล
-          </span>
-        );
-      case 'SUPPLIER_RMA':
-        return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
-            <Truck className="w-3.5 h-3.5" /> ส่งเคลมประกัน
-          </span>
-        );
-      default:
-        return <span className="text-xs font-bold">{res}</span>;
-    }
+    // how the claim was resolved = a status chip (one chip style)
+    const map: Partial<Record<ClaimResolutionType, [string, ChipTone]>> = {
+      REPLACE_ITEM: ['เปลี่ยนชิ้นใหม่', 'primary'],
+      REFUND_CASH: ['คืนเงินสด', 'warning'],
+      REFUND_TRANSFER: ['คืนเงินโอน', 'info'],
+      STORE_DISCOUNT: ['ส่วนลดบิล', 'success'],
+      SUPPLIER_RMA: ['ส่งเคลมประกัน', 'neutral'],
+    };
+    const [label, tone] = map[res] ?? [String(res), 'neutral' as ChipTone];
+    return <StatusChip tone={tone}>{label}</StatusChip>;
   };
 
   // Open Print PDF Modal
@@ -170,10 +147,10 @@ export default function ClaimsPage() {
     <div className="page-shell">
       {loadError && <LoadErrorState message={loadError} onRetry={() => void fetchClaims()} retrying={loading} />}
       {/* ─── PAGE HEADER ─── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-3xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="page-title">
-            <ShieldAlert className="w-6 h-6 text-indigo-600 shrink-0" />
+            <ShieldAlert />
             <span>ประวัติการเคลมสินค้า (ลูกค้า)</span>
           </h1>
           <p className="page-subtitle">
@@ -298,12 +275,12 @@ export default function ClaimsPage() {
               onChange={(e) => setResolutionFilter(e.target.value)}
               className="h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 w-full md:w-48"
             >
-              <option value="ALL">🔍 ทุกประเภทการรับเคลม</option>
-              <option value="REPLACE_ITEM">🔄 เปลี่ยนชิ้นใหม่</option>
-              <option value="REFUND_CASH">💵 คืนเงินสด</option>
-              <option value="REFUND_TRANSFER">📱 คืนเงินโอน</option>
+              <option value="ALL">ทุกประเภทการรับเคลม</option>
+              <option value="REPLACE_ITEM">เปลี่ยนชิ้นใหม่</option>
+              <option value="REFUND_CASH">คืนเงินสด</option>
+              <option value="REFUND_TRANSFER">คืนเงินโอน</option>
               <option value="STORE_DISCOUNT">🏷️ ส่วนลดบิล</option>
-              <option value="SUPPLIER_RMA">🚚 ส่งเคลมประกัน</option>
+              <option value="SUPPLIER_RMA">ส่งเคลมประกัน</option>
             </select>
 
             <select
@@ -447,7 +424,7 @@ export default function ClaimsPage() {
 
                     {/* 6. Total Claim Value */}
                     <TableCell className="text-right tabular-nums whitespace-nowrap">
-                      <span className="font-semibold text-fg block">
+                      <span className="font-medium text-fg block">
                         {formatCurrency(claim.totalClaimValue)}
                       </span>
                     </TableCell>

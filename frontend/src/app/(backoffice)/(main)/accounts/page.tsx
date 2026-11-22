@@ -222,7 +222,7 @@ export default function AccountsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="page-title">
-            <Building2 className="w-6 h-6 text-sky-500" /> จัดการบัญชีการเงิน & QR Code (Accounts)
+            <Building2 /> จัดการบัญชีการเงิน & QR Code (Accounts)
           </h1>
           <p className="page-subtitle">ตั้งค่าและจัดการบัญชีธนาคารสำหรับรับโอนเงินและ QR PromptPay หน้าร้าน</p>
         </div>
@@ -264,7 +264,7 @@ export default function AccountsPage() {
 
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center">
                 <span className="text-xs text-slate-400 block mb-0.5">เลขที่บัญชี / พร้อมเพย์</span>
-                <span className="tabular-nums font-bold text-xl text-slate-900 ">
+                <span className="tabular-nums font-bold text-xl text-slate-900">
                   {acc.accountNumber}
                 </span>
               </div>

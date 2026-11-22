@@ -105,14 +105,14 @@ export function PoListTable({
                   <TableCell className="font-medium text-fg doc-no whitespace-nowrap">{po.poNumber}</TableCell>
                   <TableCell className="text-fg font-medium min-w-40 xl:min-w-48"><span className="line-clamp-2 break-words" title={po.supplier?.name || po.supplierName || ""}>{po.supplier?.name || po.supplierName || "-"}</span></TableCell>
                   <TableCell data-narrow="wrap" className="text-muted-foreground text-center doc-no whitespace-nowrap">{formatDate(po.createdAt)}</TableCell>
-                  <TableCell className="text-right text-fg font-semibold tabular-nums whitespace-nowrap">
+                  <TableCell className="text-right text-fg font-medium tabular-nums whitespace-nowrap">
                     <div>{formatCurrency(po.totalAmount)}</div>
                     {po.deductedReturns && po.deductedReturns.length > 0 && (
                       <div className="text-sub text-ok font-normal mt-0.5">
-                        <span className="bg-emerald-50 border border-emerald-200 px-1 py-0.2 rounded font-medium">
+                        <span className="font-medium">
                           หักเคลม -{formatCurrency(po.deductedReturns.reduce((s: number, r) => s + Number(r.amount || 0), 0))}
                         </span>
-                        <span className="font-semibold block text-fg doc-no mt-0.5">
+                        <span className="font-medium block text-fg doc-no mt-0.5">
                           จ่ายจริง {formatCurrency(po.netAmountPayable ?? (po.totalAmount - po.deductedReturns.reduce((s: number, r) => s + Number(r.amount || 0), 0)))}
                         </span>
                       </div>

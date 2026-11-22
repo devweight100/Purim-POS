@@ -434,7 +434,7 @@ export default function InventoryPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="page-title">
-            <Package className="w-6 h-6 text-sky-500" /> คลังสินค้าและความเคลื่อนไหวสต็อก (Inventory)
+            <Package /> คลังสินค้าและความเคลื่อนไหวสต็อก (Inventory)
           </h1>
           <p className="page-subtitle">
             ตรวจเช็กสต็อกสินค้า บันทึกประวัติสต็อกการ์ด และปรับยอดสต็อก
@@ -521,17 +521,17 @@ export default function InventoryPage() {
           </div>
           {stats.negativeStockCount > 0 && (
             <div className="px-2.5 py-1 rounded-lg bg-rose-100 border border-rose-300 text-rose-800 font-semibold flex items-center gap-1 shadow-2xs">
-              <span>🔻</span> สต็อกติดลบ: {stats.negativeStockCount}
+              <span></span> สต็อกติดลบ: {stats.negativeStockCount}
             </div>
           )}
           {stats.lowStockCount > 0 && (
             <div className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 font-bold">
-              ⚠️ ใกล้หมด: {stats.lowStockCount}
+              ใกล้หมด: {stats.lowStockCount}
             </div>
           )}
           {stats.outOfStockCount > 0 && (
             <div className="px-2.5 py-1 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 font-bold">
-              🚫 หมด: {stats.outOfStockCount}
+              หมด: {stats.outOfStockCount}
             </div>
           )}
         </div>
@@ -571,11 +571,11 @@ export default function InventoryPage() {
               {[
                 { value: 'all', label: 'ทั้งหมด' },
                 ...(stats.negativeStockCount > 0
-                  ? [{ value: 'negative', label: `🔻 ติดลบ (${stats.negativeStockCount})` }]
+                  ? [{ value: 'negative', label: `ติดลบ (${stats.negativeStockCount})` }]
                   : []),
                 { value: 'normal', label: 'สต็อกปกติ' },
-                { value: 'low', label: '⚠️ ใกล้หมด' },
-                { value: 'out', label: '🚫 หมด' },
+                { value: 'low', label: 'ใกล้หมด' },
+                { value: 'out', label: 'หมด' },
               ].map((st) => (
                 <Button
                   key={st.value}
@@ -657,7 +657,7 @@ export default function InventoryPage() {
                         </TableCell>
 
                         {/* Cost */}
-                        <TableCell className="text-right font-semibold text-fg whitespace-nowrap tabular-nums">
+                        <TableCell className="text-right font-medium text-fg whitespace-nowrap tabular-nums">
                           {displayUnitCost(p) !== undefined ? formatCurrency(displayUnitCost(p)!) : '-'}
                         </TableCell>
 
@@ -901,7 +901,7 @@ export default function InventoryPage() {
                           <div className="text-sub text-subtle doc-no">{m.sku}</div>
                         </TableCell>
                         <TableCell >{getMovementBadge(m.type)}</TableCell>
-                        <TableCell className="text-right font-semibold whitespace-nowrap">
+                        <TableCell className="text-right font-medium whitespace-nowrap">
                           <span className={isPositive ? 'text-emerald-600' : 'text-rose-600'}>
                             {isPositive ? `+${m.quantityChange.toLocaleString()}` : m.quantityChange.toLocaleString()}{' '}
                             <span className="text-sub font-normal text-muted-foreground">{m.unitName}</span>
@@ -911,7 +911,7 @@ export default function InventoryPage() {
                           <span className="text-muted-foreground">{m.previousStock}</span> ➔{' '}
                           <b className="text-fg font-medium">{m.currentStock}</b>
                         </TableCell>
-                        <TableCell className="doc-no whitespace-nowrap font-semibold text-fg">
+                        <TableCell className="doc-no whitespace-nowrap font-medium text-fg">
                           {m.referenceNo || '-'}
                         </TableCell>
                         <TableCell >
@@ -1052,7 +1052,7 @@ export default function InventoryPage() {
                         <TableCell >
                           <span className="text-muted-foreground">{getCategoryName(p.categoryId)}</span>
                         </TableCell>
-                        <TableCell className="text-right font-semibold">
+                        <TableCell className="text-right font-medium">
                           {isNegative ? (
                             <span className="font-medium text-danger tabular-nums">
                               {stock.toLocaleString()} {p.unit || 'ชิ้น'}
@@ -1063,7 +1063,7 @@ export default function InventoryPage() {
                             </span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right text-muted-foreground font-semibold">
+                        <TableCell className="text-right text-muted-foreground font-medium">
                           {minAlert.toLocaleString()} {p.unit || 'ชิ้น'}
                         </TableCell>
                         <TableCell className="text-center">
@@ -1347,7 +1347,7 @@ export default function InventoryPage() {
                 <span className="text-slate-500 block font-medium">สต็อกคงเหลือปัจจุบัน:</span>
                 {(stockCardProduct?.stock ?? 0) < 0 ? (
                   <b className="text-rose-600 text-2xl font-semibold inline-flex items-center gap-1.5 bg-rose-50 px-3 py-1 rounded-lg border border-rose-200 mt-0.5">
-                    <span>🔻</span> {stockCardProduct?.stock ?? 0} {stockCardProduct?.unit || 'ชิ้น'}
+                    <span></span> {stockCardProduct?.stock ?? 0} {stockCardProduct?.unit || 'ชิ้น'}
                   </b>
                 ) : (
                   <b className="text-emerald-700 text-2xl font-semibold block mt-0.5">
@@ -1391,12 +1391,12 @@ export default function InventoryPage() {
                           <TableRow key={m.id} className="hover:bg-slate-50 border-slate-100">
                             <TableCell className="font-medium text-fg">{formatDate(m.createdAt)}</TableCell>
                             <TableCell >{getMovementBadge(m.type)}</TableCell>
-                            <TableCell className="text-right font-semibold">
+                            <TableCell className="text-right font-medium">
                               <span className={isPositive ? 'text-emerald-600' : 'text-rose-600'}>
                                 {isPositive ? `+${m.quantityChange}` : m.quantityChange} {m.unitName}
                               </span>
                             </TableCell>
-                            <TableCell className="text-right font-semibold text-fg">{m.currentStock} {stockCardProduct?.unit || 'ชิ้น'}</TableCell>
+                            <TableCell className="text-right font-medium text-fg">{m.currentStock} {stockCardProduct?.unit || 'ชิ้น'}</TableCell>
                             <TableCell className="text-fg">
                               {m.referenceNo && <b className="doc-no text-fg mr-1.5">{m.referenceNo}:</b>}
                               {m.reason || '-'}

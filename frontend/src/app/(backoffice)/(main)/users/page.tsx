@@ -338,11 +338,11 @@ export default function UsersManagementPage() {
                       <td >
                         <div className="flex items-center gap-1.5 flex-wrap">
                           {u.role === 'ADMIN' ? (
-                            <span className="text-sub font-medium text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md">
+                            <span className="text-sub font-medium text-purple-600">
                               เข้าถึงได้ทุกส่วน (Full Access)
                             </span>
                           ) : permCount > 0 ? (
-                            <span className="text-sub font-medium text-muted-foreground bg-slate-100 px-2 py-0.5 rounded-md">
+                            <span className="text-sub font-medium text-muted-foreground">
                               กำหนดไว้ {permCount} สิทธิ์
                             </span>
                           ) : (

@@ -77,10 +77,10 @@ export function OrderActionDialogs({
                 <label className="font-bold text-slate-700 block">เลือกช่องทางการชำระเงินใหม่:</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { id: "CASH", label: "💵 เงินสด (Cash)" },
-                    { id: "QR_PROMPTPAY", label: "📱 QR พร้อมเพย์" },
+                    { id: "CASH", label: "เงินสด (Cash)" },
+                    { id: "QR_PROMPTPAY", label: "QR พร้อมเพย์" },
                     { id: "TRANSFER", label: "🏦 โอนเงินผ่านธนาคาร" },
-                    { id: "CREDIT_CARD", label: "💳 บัตรเครดิต" },
+                    { id: "CREDIT_CARD", label: "บัตรเครดิต" },
                   ].map((method) => (
                     <button
                       key={method.id}
@@ -160,7 +160,7 @@ export function OrderActionDialogs({
               <b className="tabular-nums text-slate-900">{editItemsTarget?.orderNumber}</b> ไปเปิดในหน้าขาย
             </p>
             <p className="bg-sky-50 text-sky-900 p-3 rounded-xl border border-sky-200 leading-relaxed font-semibold">
-              💡 คุณสามารถเพิ่ม/ลดจำนวน ปรับส่วนลด และเมื่อกดชำระเงิน ระบบจะบันทึกทับบิลเดิมให้อัตโนมัติ
+              คุณสามารถเพิ่ม/ลดจำนวน ปรับส่วนลด และเมื่อกดชำระเงิน ระบบจะบันทึกทับบิลเดิมให้อัตโนมัติ
             </p>
           </div>
 

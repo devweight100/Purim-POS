@@ -180,7 +180,7 @@ export default function SuppliersPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="page-title">
-            <Building2 className="w-6 h-6 text-indigo-600" /> ข้อมูลบริษัทผู้จำหน่าย (Suppliers)
+            <Building2 /> ข้อมูลบริษัทผู้จำหน่าย (Suppliers)
           </h1>
           <p className="page-subtitle">จัดการรายชื่อคู่ค้า ซัพพลายเออร์ เครดิตเทอม และช่องทางติดต่อ</p>
         </div>

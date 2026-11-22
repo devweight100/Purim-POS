@@ -91,7 +91,7 @@ export function PoDetailDialog({
                 <TableBody>
                   {currentPo.items?.map((item, idx: number) => (
                     <TableRow key={idx} className="border-slate-100 hover:bg-slate-50">
-                      <TableCell className="text-center text-subtle font-semibold">{idx + 1}</TableCell>
+                      <TableCell className="text-center text-subtle font-medium">{idx + 1}</TableCell>
                       <TableCell className="text-fg font-medium flex items-center gap-2">
                         <button
                           type="button"
@@ -103,7 +103,7 @@ export function PoDetailDialog({
                         </button>
                         <PoLineName item={item} />
                       </TableCell>
-                      <TableCell className="text-right text-fg font-semibold">{formatQty(item.quantity)}</TableCell>
+                      <TableCell className="text-right text-fg font-medium">{formatQty(item.quantity)}</TableCell>
                       <TableCell className="text-right text-ok font-medium">{formatQty(Number(item.receivedQty ?? item.receivedQuantity) || 0)}</TableCell>
                       <TableCell className="text-right text-muted-foreground">{formatCurrency(item.unitCost)}</TableCell>
                       <TableCell className="text-right text-fg font-medium">

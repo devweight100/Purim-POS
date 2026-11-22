@@ -215,7 +215,7 @@ function BackupSection() {
               ? status.lastOffsiteOk === false
                 ? `คัดลอกครั้งล่าสุดล้มเหลว: ${status.lastOffsiteError}`
                 : `คัดลอกไปนอกเครื่องล่าสุด: ${fmt(status.lastOffsiteAt)}`
-              : "⚠️ ยังไม่ได้ตั้งโฟลเดอร์ ถ้าฮาร์ดดิสก์เครื่องแม่เสีย ไฟล์สำรองจะหายไปด้วย"}
+              : "ยังไม่ได้ตั้งโฟลเดอร์ ถ้าฮาร์ดดิสก์เครื่องแม่เสีย ไฟล์สำรองจะหายไปด้วย"}
           </div>
         </div>
         {verifyMsg && (
@@ -542,7 +542,7 @@ export default function SettingsPage() {
       });
       const nowStr = new Date().toLocaleTimeString('th-TH');
       if (res.success) {
-        toast.success(`⚡ สั่งเตะลิ้นชักสำเร็จ (${res.printer || 'เครื่องพิมพ์สลิป'})`);
+        toast.success(`สั่งเตะลิ้นชักสำเร็จ (${res.printer || 'เครื่องพิมพ์สลิป'})`);
         setLastKickResult({
           success: true,
           printer: res.printer,
@@ -550,7 +550,7 @@ export default function SettingsPage() {
           time: nowStr
         });
       } else {
-        toast.error(`❌ ไม่สามารถสั่งเปิดลิ้นชักได้: ${res.error || 'ตรวจสอบเครื่องพิมพ์'}`);
+        toast.error(`ไม่สามารถสั่งเปิดลิ้นชักได้: ${res.error || 'ตรวจสอบเครื่องพิมพ์'}`);
         setLastKickResult({
           success: false,
           printer: res.printer,
@@ -571,7 +571,7 @@ export default function SettingsPage() {
     <div className="page-shell">
       <div>
         <h1 className="page-title">
-          <Settings className="w-6 h-6 text-sky-500" /> ตั้งค่าร้าน
+          <Settings /> ตั้งค่าร้าน
         </h1>
         <p className="page-subtitle">
           แยกเป็นหมวด เลือกหมวดด้านล่าง — ค่าแต่ละอย่างอยู่ที่เดียว
@@ -984,7 +984,7 @@ export default function SettingsPage() {
                       <option value="">-- ตรวจหาอัตโนมัติ (EPSON TM-T82 / Slip / Thermal Receipt) --</option>
                       {installedPrinters.map((p) => (
                         <option key={p.name} value={p.name}>
-                          {p.name} {p.isDefault ? '⭐ (เครื่องเริ่มต้น Windows)' : ''}
+                          {p.name} {p.isDefault ? '(เครื่องเริ่มต้น Windows)' : ''}
                         </option>
                       ))}
                     </select>
@@ -999,13 +999,13 @@ export default function SettingsPage() {
                       <option value="">-- ไม่ระบุ (แสดงหน้าต่างเลือกเครื่องพิมพ์ของ Windows) --</option>
                       {installedPrinters.map((p) => (
                         <option key={p.name} value={p.name}>
-                          {p.name} {p.isDefault ? '⭐ (เครื่องเริ่มต้น Windows)' : ''}
+                          {p.name} {p.isDefault ? '(เครื่องเริ่มต้น Windows)' : ''}
                         </option>
                       ))}
                     </select>
                   </div>
                   <p className="text-[11px] text-sky-700/80">
-                    💡 หากต่อเครื่องพิมพ์ Epson TM-T82 ไว้ สามารถเลือกชื่อเครื่องพิมพ์โดยตรง หรือปล่อยให้ระบบตรวจหาอัตโนมัติได้
+                    หากต่อเครื่องพิมพ์ Epson TM-T82 ไว้ สามารถเลือกชื่อเครื่องพิมพ์โดยตรง หรือปล่อยให้ระบบตรวจหาอัตโนมัติได้
                   </p>
                 </div>
               )}

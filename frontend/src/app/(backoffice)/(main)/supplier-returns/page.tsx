@@ -205,10 +205,10 @@ export default function SupplierReturnsPage() {
     <div className="page-shell">
       {loadError && <LoadErrorState message={loadError} onRetry={() => void refreshData()} retrying={loading} />}
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="page-title">
-            <ArrowLeftRight className="w-6 h-6 text-indigo-600 shrink-0" />
+            <ArrowLeftRight />
             <span>ส่งเคลม & คืนสินค้าบริษัท (Supplier Returns)</span>
           </h1>
           <p className="page-subtitle">
@@ -353,7 +353,7 @@ export default function SupplierReturnsPage() {
                 onChange={(e) => setSelectedSupplierFilter(e.target.value)}
                 className="h-10 px-3 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 w-full md:w-56"
               >
-                <option value="ALL">🏢 ผู้จำหน่ายทั้งหมด</option>
+                <option value="ALL">ผู้จำหน่ายทั้งหมด</option>
                 {suppliers.map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
@@ -420,7 +420,7 @@ export default function SupplierReturnsPage() {
                             {note.supplierPhone && (
                               <span className="text-sub text-subtle doc-no">{note.supplierPhone}</span>
                             )}
-                            <span className="text-sub font-semibold text-muted-foreground bg-slate-100 px-2 py-0.5 rounded-md whitespace-nowrap">
+                            <span className="text-sub font-medium text-muted-foreground whitespace-nowrap">
                               รวม {note.items?.length ?? note.totalQuantity ?? 0} รายการ
                             </span>
                           </div>
@@ -428,7 +428,7 @@ export default function SupplierReturnsPage() {
 
                         <td data-narrow="hide" className="text-center whitespace-nowrap">
                           {note.linkedPoNumber ? (
-                            <span className="doc-no font-medium text-warn bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-sub">
+                            <span className="doc-no font-medium text-warn text-sub">
                               {note.linkedPoNumber}
                             </span>
                           ) : (
@@ -437,19 +437,19 @@ export default function SupplierReturnsPage() {
                         </td>
 
                         <td className="text-right tabular-nums whitespace-nowrap">
-                          <span className="font-semibold text-fg block">
+                          <span className="font-medium text-fg block">
                             {formatCurrency(note.totalCreditAmount)}
                           </span>
                           {note.status === 'DEDUCTED' ? (
-                            <span className="text-sub text-ok font-semibold block mt-0.5">
+                            <span className="text-sub text-ok font-medium block mt-0.5">
                               ✓ หักลดหนี้ครบแล้ว
                             </span>
                           ) : note.remainingCreditAmount < note.totalCreditAmount && note.remainingCreditAmount > 0 ? (
-                            <span className="text-sub text-sky-600 font-semibold block mt-0.5">
+                            <span className="text-sub text-sky-600 font-medium block mt-0.5">
                               คงเหลือ {formatCurrency(note.remainingCreditAmount)}
                             </span>
                           ) : (
-                            <span className="text-sub text-warn font-semibold block mt-0.5">
+                            <span className="text-sub text-warn font-medium block mt-0.5">
                               รอประกบหัก
                             </span>
                           )}
@@ -661,7 +661,7 @@ export default function SupplierReturnsPage() {
 
                         <td >
                           <p className="font-medium text-fg line-clamp-2 break-words" title={note.supplierName}>{note.supplierName}</p>
-                          <span className="text-sub font-semibold text-muted-foreground bg-slate-200/60 px-2 py-0.5 rounded-md mt-0.5 inline-block">
+                          <span className="text-sub font-medium text-muted-foreground bg-slate-200/60 px-2 py-0.5 rounded-md mt-0.5 inline-block">
                             รวม {note.items?.length ?? note.totalQuantity ?? 0} รายการ
                           </span>
                         </td>
@@ -680,7 +680,7 @@ export default function SupplierReturnsPage() {
                           <span className="line-through text-subtle font-medium block">
                             {formatCurrency(note.totalCreditAmount)}
                           </span>
-                          <span className="text-sub text-danger font-semibold block mt-0.5">
+                          <span className="text-sub text-danger font-medium block mt-0.5">
                             ยกเลิกแล้ว (ไม่มีเครดิต)
                           </span>
                         </td>

@@ -38,7 +38,7 @@ export function ForecastPanel() {
       </div>
       {data.firstNegative ? (
         <div className="rounded-2xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-900">
-          ⚠️ เงินจะไม่พอจ่ายตั้งแต่วันที่ <b>{thaiDate(data.firstNegative)}</b> — ต่ำสุด <b>{formatCurrency(data.lowest.balance)}</b> ({thaiDate(data.lowest.date)}) ควรเร่งเก็บลูกหนี้หรือเลื่อนการจ่าย
+          เงินจะไม่พอจ่ายตั้งแต่วันที่ <b>{thaiDate(data.firstNegative)}</b> — ต่ำสุด <b>{formatCurrency(data.lowest.balance)}</b> ({thaiDate(data.lowest.date)}) ควรเร่งเก็บลูกหนี้หรือเลื่อนการจ่าย
         </div>
       ) : (
         <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900">

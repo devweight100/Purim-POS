@@ -415,7 +415,7 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
             {items.map((it, i) => (
               <tr key={`${it.productId}|${it.unitId}`} className="border-t border-slate-100">
                 <td >
-                  <span className="font-semibold">{it.name}</span>
+                  <span className="font-medium">{it.name}</span>
                   <span className="block text-sub text-muted-foreground">{it.sku} · {it.unitName}{it.factor > 1 ? ` (${it.factor} ชิ้นฐาน)` : ''}{it.active === false ? ' · ปิดขายแล้ว' : ''}</span>
                 </td>
                 <td className="text-right">

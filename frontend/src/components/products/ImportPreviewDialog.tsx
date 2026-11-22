@@ -12,12 +12,12 @@ import type { ImportFilterTab, ImportPreviewRow } from "./types";
 
 function ChangeBadge({ changeType }: { changeType: ImportPreviewRow["changeType"] }) {
   if (changeType === "CHANGED") {
-    return <Badge className="bg-sky-50 text-sky-700 border-sky-200 text-[10.5px] font-bold">🔵 แก้ไข</Badge>;
+    return <Badge className="bg-sky-50 text-sky-700 border-sky-200 text-[10.5px] font-bold">แก้ไข</Badge>;
   }
   if (changeType === "NEW") {
-    return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10.5px] font-bold">🟢 เพิ่มใหม่</Badge>;
+    return <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10.5px] font-bold">เพิ่มใหม่</Badge>;
   }
-  return <Badge className="bg-slate-100 text-slate-500 border-slate-200 text-[10.5px] font-medium">⚪ ไม่เปลี่ยน</Badge>;
+  return <Badge className="bg-slate-100 text-slate-500 border-slate-200 text-[10.5px] font-medium">ไม่เปลี่ยน</Badge>;
 }
 
 function PreviewRow({ row, idx }: { row: ImportPreviewRow; idx: number }) {
@@ -72,9 +72,9 @@ export function ImportPreviewDialog({ state }: { state: ProductImportState }) {
 
   const tabs: Array<{ id: ImportFilterTab; label: string }> = [
     { id: "all", label: `ทั้งหมด (${importPreviewData.length})` },
-    { id: "changed", label: `🔵 มีการแก้ไข (${changedCount})` },
-    { id: "new", label: `🟢 เพิ่มใหม่ (${newCount})` },
-    { id: "unchanged", label: `⚪ ไม่เปลี่ยน (${unchangedCount})` },
+    { id: "changed", label: `มีการแก้ไข (${changedCount})` },
+    { id: "new", label: `เพิ่มใหม่ (${newCount})` },
+    { id: "unchanged", label: `ไม่เปลี่ยน (${unchangedCount})` },
   ];
 
   return (
@@ -88,13 +88,13 @@ export function ImportPreviewDialog({ state }: { state: ProductImportState }) {
             </DialogTitle>
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <Badge className="bg-sky-100 text-sky-800 border-sky-300 font-bold">
-                🔵 แก้ไข {changedCount} รายการ
+                แก้ไข {changedCount} รายการ
               </Badge>
               <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 font-bold">
-                🟢 เพิ่มใหม่ {newCount} รายการ
+                เพิ่มใหม่ {newCount} รายการ
               </Badge>
               <Badge className="bg-slate-100 text-slate-700 border-slate-300 font-bold">
-                ⚪ ไม่เปลี่ยน {unchangedCount} รายการ (ข้าม)
+                ไม่เปลี่ยน {unchangedCount} รายการ (ข้าม)
               </Badge>
             </div>
           </div>
@@ -114,7 +114,7 @@ export function ImportPreviewDialog({ state }: { state: ProductImportState }) {
                   จากทั้งหมด {importPreviewData.length} รายการ
                 </p>
                 <p className="text-slate-600 mt-0.5">
-                  💡 ระบบจะส่งเฉพาะรายการที่มีการแก้ไขหรือเพิ่มใหม่เท่านั้นไปยังฐานข้อมูล (ข้าม {unchangedCount} รายการที่ตรงกับของเดิม) เพื่อประหยัดทรัพยากรและทำงานได้รวดเร็วสูงสุด
+                  ระบบจะส่งเฉพาะรายการที่มีการแก้ไขหรือเพิ่มใหม่เท่านั้นไปยังฐานข้อมูล (ข้าม {unchangedCount} รายการที่ตรงกับของเดิม) เพื่อประหยัดทรัพยากรและทำงานได้รวดเร็วสูงสุด
                 </p>
               </div>
             </div>

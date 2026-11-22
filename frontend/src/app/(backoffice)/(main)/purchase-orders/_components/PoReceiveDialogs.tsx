@@ -139,7 +139,7 @@ export function PoReceiveDialog({
 
                   return (
                     <TableRow key={idx} className="border-slate-100 hover:bg-slate-50/70">
-                      <TableCell className="text-center text-subtle font-semibold">{idx + 1}</TableCell>
+                      <TableCell className="text-center text-subtle font-medium">{idx + 1}</TableCell>
                       <TableCell className="text-fg font-medium">
                         <div className="flex items-center gap-2.5">
                           <button
@@ -161,7 +161,7 @@ export function PoReceiveDialog({
                           {item.unitName} {mult > 1 ? `(×${mult})` : ''}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-center text-fg font-semibold">{formatQty(item.orderedQty)}</TableCell>
+                      <TableCell className="text-center text-fg font-medium">{formatQty(item.orderedQty)}</TableCell>
                       <TableCell className="text-center text-ok font-medium">{formatQty(item.receivedQty)}</TableCell>
                       <TableCell className="text-center text-warn font-medium">{formatQty(item.remainingQty)}</TableCell>
                       <TableCell className="text-right">
@@ -182,7 +182,7 @@ export function PoReceiveDialog({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-col items-end">
-                          <span className="font-semibold text-fg">
+                          <span className="font-medium text-fg">
                             {formatQty(currentStock)} → <b className="text-ok font-medium">{formatQty(newStock)}</b>
                           </span>
                           {stockDelta > 0 && (

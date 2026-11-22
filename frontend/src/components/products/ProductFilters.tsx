@@ -8,8 +8,8 @@ import type { CategoryOption, StatusFilter, StockFilter, SupplierOption } from "
 
 const STOCK_OPTIONS: ReadonlyArray<{ key: StockFilter; label: string }> = [
   { key: "all", label: "ทั้งหมด" },
-  { key: "low", label: "⚠️ ใกล้หมด" },
-  { key: "out", label: "🔴 หมดสต็อก" },
+  { key: "low", label: "ใกล้หมด" },
+  { key: "out", label: "หมดสต็อก" },
 ];
 
 const STATUS_OPTIONS: ReadonlyArray<{ key: StatusFilter; label: string }> = [
@@ -40,11 +40,11 @@ export function ProductFilters({ f, categories, suppliers, totalCount, inactiveC
           {f.search && <button type="button" aria-label="ล้างคำค้นหา" onClick={() => f.setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>}
         </div>
         <select aria-label="กรองตามหมวดหมู่" value={f.categoryFilter} onChange={e => f.setCategoryFilter(e.target.value)} className={selectClass}>
-          <option value="all">📁 ทุกหมวดหมู่</option>
+          <option value="all">ทุกหมวดหมู่</option>
           {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
         </select>
         <select aria-label="กรองตามผู้จำหน่าย" value={f.supplierFilter} onChange={e => f.setSupplierFilter(e.target.value)} className={selectClass}>
-          <option value="all">🏢 ทุกผู้จำหน่าย</option>
+          <option value="all">ทุกผู้จำหน่าย</option>
           {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         <div className="flex flex-wrap gap-btn rounded-lg border border-slate-200 bg-white p-1">

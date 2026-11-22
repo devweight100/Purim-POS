@@ -477,7 +477,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
           <h1 className="page-title">
-            <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600 shrink-0" />
+            <BarChart3 />
             <span>รายงาน & วิเคราะห์ธุรกิจ (Business Analytics & Reports)</span>
           </h1>
           <p className="page-subtitle">
@@ -798,7 +798,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td className="text-right tabular-nums whitespace-nowrap text-warn">
                             {formatCurrency(row.cogs)}
                           </td>
-                          <td className="text-right tabular-nums whitespace-nowrap font-semibold text-ok">
+                          <td className="text-right tabular-nums whitespace-nowrap font-medium text-ok">
                             {formatCurrency(row.grossProfit)}
                           </td>
                           <td className="text-center">
@@ -933,8 +933,8 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td data-narrow="hide" className="text-center">
                             <span className="block max-w-36 truncate text-muted-foreground" title={formatCategory(p.category)}>{formatCategory(p.category)}</span>
                           </td>
-                          <td className="text-right tabular-nums whitespace-nowrap font-semibold text-indigo-700">
-                            {p.quantitySold} <span className="text-sub font-medium text-muted-foreground font-sans">{p.unitName}</span>
+                          <td className="text-right tabular-nums whitespace-nowrap font-medium text-indigo-700">
+                            {p.quantitySold} <span className="text-sub font-medium text-muted-foreground">{p.unitName}</span>
                           </td>
                           <td className="text-right tabular-nums whitespace-nowrap font-medium text-fg">
                             {formatCurrency(p.totalRevenue)}
@@ -942,11 +942,11 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td className="text-right tabular-nums whitespace-nowrap text-warn">
                             {formatCurrency(p.totalCost)}
                           </td>
-                          <td className="text-right tabular-nums whitespace-nowrap font-semibold text-ok">
+                          <td className="text-right tabular-nums whitespace-nowrap font-medium text-ok">
                             {formatCurrency(p.totalProfit)}
                           </td>
                           <td className="text-center doc-no whitespace-nowrap font-medium">
-                            <span className="bg-emerald-50 text-ok border border-emerald-200 px-2 py-0.5 rounded">
+                            <span className="text-ok">
                               {p.profitMarginPercent}%
                             </span>
                           </td>
@@ -1045,7 +1045,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 inventorySubFilter === 'deadstock' ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-700'
               }`}
             >
-              ⚠️ ขายช้า: ไม่มีขายและไม่ได้รับเข้า &gt; 30 วัน ({inventoryReport.listCounts.deadstock})
+              ขายช้า: ไม่มีขายและไม่ได้รับเข้า &gt; 30 วัน ({inventoryReport.listCounts.deadstock})
             </button>
             <button
               type="button"
@@ -1054,7 +1054,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 inventorySubFilter === 'lowstock' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-700'
               }`}
             >
-              📦 สินค้าใกล้หมดสต็อก ({inventoryReport.listCounts.lowstock})
+              สินค้าใกล้หมดสต็อก ({inventoryReport.listCounts.lowstock})
             </button>
           </div>
 
@@ -1106,7 +1106,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td data-narrow="hide" className="text-right tabular-nums whitespace-nowrap text-fg">
                             {formatCurrency(item.costPrice)}
                           </td>
-                          <td className="text-right tabular-nums whitespace-nowrap font-semibold text-fg">
+                          <td className="text-right tabular-nums whitespace-nowrap font-medium text-fg">
                             {formatCurrency(item.totalCostValue)}
                           </td>
                           <td data-narrow="hide" className="text-right tabular-nums whitespace-nowrap font-medium text-ok">
@@ -1242,7 +1242,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                     <td className="text-center doc-no whitespace-nowrap font-medium text-muted-foreground">{i + 1}</td>
                     <td className="font-medium text-fg">{c.label}</td>
                     <td className="text-center doc-no whitespace-nowrap text-fg">{c.orderCount} ครั้ง</td>
-                    <td className="text-right tabular-nums whitespace-nowrap font-semibold text-fg">
+                    <td className="text-right tabular-nums whitespace-nowrap font-medium text-fg">
                       {formatCurrency(c.totalAmount)}
                     </td>
                     <td className="text-center">
@@ -1377,7 +1377,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td data-narrow="hide" className="text-right tabular-nums whitespace-nowrap text-fg">
                             {formatCurrency(c.averageTicket)}
                           </td>
-                          <td className="text-right tabular-nums whitespace-nowrap font-semibold text-indigo-700">
+                          <td className="text-right tabular-nums whitespace-nowrap font-medium text-indigo-700">
                             {formatCurrency(c.totalSpent)}
                           </td>
                           <td className="text-right tabular-nums whitespace-nowrap font-medium text-warn">
@@ -1385,7 +1385,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           </td>
                           <td className="text-right tabular-nums whitespace-nowrap font-medium">
                             {c.outstandingDebt > 0 ? (
-                              <span className="text-danger font-semibold">{formatCurrency(c.outstandingDebt)}</span>
+                              <span className="text-danger font-medium">{formatCurrency(c.outstandingDebt)}</span>
                             ) : (
                               <span className="text-subtle">-</span>
                             )}
@@ -1436,7 +1436,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                     <td className="text-center doc-no whitespace-nowrap font-medium text-muted-foreground">{i + 1}</td>
                     <td className="font-medium text-fg">{bucket.bucketName}</td>
                     <td className="text-center doc-no whitespace-nowrap font-medium text-fg">{bucket.billCount} บิล</td>
-                    <td className="text-right tabular-nums whitespace-nowrap font-semibold">
+                    <td className="text-right tabular-nums whitespace-nowrap font-medium">
                       <span className={bucket.totalAmount > 0 ? (i >= 2 ? 'text-rose-600' : 'text-slate-900') : 'text-slate-400'}>
                         {formatCurrency(bucket.totalAmount)}
                       </span>
@@ -1483,7 +1483,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                 </div>
                 <span className="text-sm font-bold text-emerald-950" title="ยอดค้างจ่ายสำหรับสินค้าที่รับแล้ว (ตรงกับหน้าการเงิน) / สั่งแล้วยังไม่ได้รับของ">ค้างจ่าย / สั่งแล้วยังไม่รับ:</span>
               </div>
-              <span className="text-sm sm:text-base font-semibold text-emerald-700 tabular-nums tracking-tight text-right">
+              <span className="text-sm sm:text-base font-medium text-emerald-700 tabular-nums tracking-tight text-right">
                 {formatCurrency(purchasesClaimsReport.totalRemainingPayable)}
                 <span className="block text-xs text-slate-500 font-bold">{formatCurrency(purchasesClaimsReport.totalOrderedNotReceived)}</span>
               </span>
@@ -1553,7 +1553,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td className="text-center doc-no whitespace-nowrap font-medium text-fg">
                             {supp.poCount} ใบ
                           </td>
-                          <td className="text-right tabular-nums whitespace-nowrap font-semibold text-fg">
+                          <td className="text-right tabular-nums whitespace-nowrap font-medium text-fg">
                             {formatCurrency(supp.totalPurchaseAmount)}
                           </td>
                           <td className="text-right tabular-nums whitespace-nowrap text-muted-foreground">
@@ -1565,7 +1565,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td className="text-right tabular-nums whitespace-nowrap font-medium text-danger">
                             {supp.claimPieces} ชิ้น
                           </td>
-                          <td className="text-right tabular-nums whitespace-nowrap font-semibold text-danger">
+                          <td className="text-right tabular-nums whitespace-nowrap font-medium text-danger">
                             {formatCurrency(supp.claimCostTotal)}
                           </td>
                         </tr>

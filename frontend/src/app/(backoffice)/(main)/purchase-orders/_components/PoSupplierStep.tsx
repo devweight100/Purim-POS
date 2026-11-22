@@ -22,7 +22,7 @@ export function PoSupplierStep({ editingPo, searchSupplier, setSearchSupplier, f
       <div className="flex shrink-0 flex-col gap-3 border-b border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div>
           <h1 className="page-title">
-            <Building2 className="w-6 h-6 text-primary" />
+            <Building2 />
             {editingPo ? `แก้ไขใบสั่งซื้อ (PO: ${editingPo.poNumber})` : 'เปิดใบสั่งซื้อ (PO) ใหม่'}
             {editingPo && (
               <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold ml-2">

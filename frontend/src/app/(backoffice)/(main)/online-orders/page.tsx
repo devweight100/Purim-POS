@@ -103,7 +103,7 @@ function OnlineOrdersInner() {
       <div className="flex flex-wrap items-center justify-between gap-btn">
         <div>
           <h1 className="page-title">
-            <ShoppingBag className="w-6 h-6 text-emerald-700" /> ออเดอร์ออนไลน์ (LINE)
+            <ShoppingBag /> ออเดอร์ออนไลน์ (LINE)
           </h1>
           <p className="page-subtitle">ลูกค้าสั่งจากหน้าร้านออนไลน์ใน LINE — ตรวจรายการ ใส่ค่าส่ง กดรับ แล้วไปรับเงินที่หน้าขาย (บิลพัก)</p>
         </div>

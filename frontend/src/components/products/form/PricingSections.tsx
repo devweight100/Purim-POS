@@ -40,7 +40,7 @@ export function WholesaleSection({ steps, setForm }: { steps: WholesaleStepForm[
       <div className="space-y-3">
         {steps.map((step, idx) => (
           <div key={idx} className="rounded-lg border border-slate-200 bg-white p-3">
-            <div className="mb-1.5 text-xs font-semibold text-slate-400 ">Step {idx + 1}</div>
+            <div className="mb-1.5 text-xs font-semibold text-slate-400">Step {idx + 1}</div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <label className="text-xs text-slate-500">จำนวนตั้งแต่</label>

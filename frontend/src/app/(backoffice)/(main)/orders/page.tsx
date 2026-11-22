@@ -330,7 +330,7 @@ export default function OrdersPage() {
       cart.setEditingOrderId(editItemsTarget.orderNumber || editItemsTarget.id);
       setIsEditItemsOpen(false);
       setIsDetailOpen(false);
-      toast.success(`✏️ ดึงบิล #${editItemsTarget.orderNumber} มาแก้ไขในหน้าขายแล้ว`);
+      toast.success(`ดึงบิล #${editItemsTarget.orderNumber} มาแก้ไขในหน้าขายแล้ว`);
       router.push("/pos");
     }
   };
@@ -347,7 +347,7 @@ export default function OrdersPage() {
       await populateOrderToCart(repeatOrderTarget);
       setIsRepeatOrderOpen(false);
       setIsDetailOpen(false);
-      toast.success(`🔄 ดึงรายการบิล #${repeatOrderTarget.orderNumber} ลงในตะกร้าแล้ว`);
+      toast.success(`ดึงรายการบิล #${repeatOrderTarget.orderNumber} ลงในตะกร้าแล้ว`);
       router.push("/pos");
     }
   };
@@ -410,7 +410,7 @@ export default function OrdersPage() {
       });
 
 
-      toast.success(`📝 อัปเดตหมายเหตุบิล #${orderId} เรียบร้อยแล้ว`);
+      toast.success(`อัปเดตหมายเหตุบิล #${orderId} เรียบร้อยแล้ว`);
       setIsEditNoteOpen(false);
       setEditNoteOrder(null);
       fetchOrders();
@@ -469,7 +469,7 @@ export default function OrdersPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="page-title">
-            <FileText className="w-6 h-6 text-indigo-600 shrink-0" />
+            <FileText />
             <span>รายการออเดอร์และใบเสร็จ (Orders & Tax Invoices)</span>
           </h1>
           <p className="page-subtitle">
@@ -523,7 +523,7 @@ export default function OrdersPage() {
             className="bg-amber-600 hover:bg-amber-700 text-white shrink-0 cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isSyncingAll ? "animate-spin" : ""}`} />
-            {isSyncingAll ? "กำลังซิงค์บิล..." : "🔄 ซิงค์ขึ้นเซิร์ฟเวอร์ทันที"}
+            {isSyncingAll ? "กำลังซิงค์บิล..." : "ซิงค์ขึ้นเซิร์ฟเวอร์ทันที"}
           </Button>
         </div>
       )}

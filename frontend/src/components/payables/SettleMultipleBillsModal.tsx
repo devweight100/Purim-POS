@@ -767,7 +767,7 @@ export function SettleMultipleBillsModal({
                               <td className="text-center">
                                 {isSelected ? (
                                   <div className="space-y-1 max-w-[130px] mx-auto">
-                                    <div className="flex items-center justify-between text-sub font-semibold">
+                                    <div className="flex items-center justify-between text-sub font-medium">
                                       <span className={isFull ? 'text-teal-700 font-bold' : isPartial ? 'text-indigo-700 font-bold' : 'text-slate-400'}>
                                         {isFull ? 'ครบ 100%' : `${billPercent}%`}
                                       </span>
@@ -804,7 +804,7 @@ export function SettleMultipleBillsModal({
                             <td colSpan={6} className="py-3 px-3 text-right text-slate-700">
                               รวมยอดที่เลือกชำระ ({selectedBillIds.size} บิล):
                             </td>
-                            <td className="py-3 px-3 text-right tabular-nums font-semibold text-indigo-700 text-sm">
+                            <td className="py-3 px-3 text-right tabular-nums font-medium text-indigo-700 text-sm">
                               {formatCurrency(totalBillsPayAmount)}
                             </td>
                             <td className="py-3 px-3 text-center tabular-nums text-xs text-slate-500">
@@ -1045,7 +1045,7 @@ export function SettleMultipleBillsModal({
                   {/* Total Net Payment Box (Consistent Pastel Emerald Highlight Box) */}
                   <div className="pt-3 border-t border-slate-200 space-y-1.5 bg-emerald-50/70 border border-emerald-200/80 p-4 rounded-xl">
                     <div className="flex justify-between items-baseline">
-                      <span className="text-xs font-bold text-emerald-950  ">
+                      <span className="text-xs font-bold text-emerald-950">
                         ยอดเงินสุทธิที่ต้องจ่ายจริง:
                       </span>
                       <span className="text-2xl font-semibold tabular-nums text-emerald-700">

@@ -587,7 +587,7 @@ export default function PurchaseOrdersPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="page-title">
-            <PackageOpen className="w-6 h-6 text-sky-500" /> เอกสารใบสั่งซื้อสินค้า (Purchase Orders)
+            <PackageOpen /> เอกสารใบสั่งซื้อสินค้า (Purchase Orders)
           </h1>
           <p className="page-subtitle">จัดการเอกสารใบสั่งซื้อสินค้า ตรวจรับของเข้าคลัง และเปิดใบ PO ถึงผู้จำหน่าย</p>
         </div>

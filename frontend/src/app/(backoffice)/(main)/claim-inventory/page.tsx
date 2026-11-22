@@ -244,7 +244,7 @@ export default function ClaimInventoryPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
           <h1 className="page-title">
-            <PackageX className="w-5 h-5 sm:w-6 sm:h-6 text-rose-600 shrink-0" />
+            <PackageX />
             <span>สต๊อกของเคลม (Claim Stock Inventory)</span>
           </h1>
           <p className="page-subtitle">
@@ -384,7 +384,7 @@ export default function ClaimInventoryPage() {
                 onChange={(e) => setSelectedSupplierId(e.target.value)}
                 className="h-9 px-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800 max-w-[220px] truncate outline-none focus:border-indigo-500 shadow-2xs"
               >
-                <option value="ALL">🏢 ทุกผู้จำหน่าย ({suppliersList.length} บริษัท)</option>
+                <option value="ALL">ทุกผู้จำหน่าย ({suppliersList.length} บริษัท)</option>
                 {suppliersList.map((supp) => (
                   <option key={supp.id} value={supp.id}>
                     {supp.name}
@@ -401,9 +401,9 @@ export default function ClaimInventoryPage() {
                 onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
                 className="h-9 px-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800 outline-none focus:border-indigo-500 shadow-2xs"
               >
-                <option value="IN_STOCK">📦 ของเคลมรอส่งคืน (ในสต็อก)</option>
-                <option value="RETURNED">🚚 ส่งคืนบริษัทแล้ว</option>
-                <option value="ALL">📋 ทั้งหมด</option>
+                <option value="IN_STOCK">ของเคลมรอส่งคืน (ในสต็อก)</option>
+                <option value="RETURNED">ส่งคืนบริษัทแล้ว</option>
+                <option value="ALL">ทั้งหมด</option>
               </select>
             </div>
 
@@ -555,10 +555,10 @@ export default function ClaimInventoryPage() {
                                 รวม {item.claimCount} ใบเคลม
                               </span>
                               {item.category && (
-                                <span className="max-w-full truncate rounded-full border border-slate-300 bg-slate-50 px-1.5 text-sub text-fg" title={item.category}>{item.category}</span>
+                                <span className="max-w-full truncate text-sub text-muted-foreground" title={item.category}>{item.category}</span>
                               )}
                               {item.inStockPieces > 0 && item.inStockPieces < item.totalPieces && (
-                                <span className="text-sub text-warn font-medium bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                                <span className="text-sub text-warn font-medium">
                                   รอส่ง {item.inStockPieces} / ส่งแล้ว {item.totalPieces - item.inStockPieces}
                                 </span>
                               )}
@@ -575,8 +575,8 @@ export default function ClaimInventoryPage() {
 
                           {/* 6. Quantity of Claim Pieces */}
                           <td className="text-right tabular-nums whitespace-nowrap">
-                            <span className="font-semibold text-danger block">
-                              {displayQty} <span className="text-sub font-medium text-muted-foreground font-sans">{item.unitName}</span>
+                            <span className="font-medium text-danger block">
+                              {displayQty} <span className="text-sub font-medium text-muted-foreground">{item.unitName}</span>
                             </span>
                           </td>
 
@@ -587,7 +587,7 @@ export default function ClaimInventoryPage() {
 
                           {/* 8. Total Cost Value */}
                           <td className="text-right tabular-nums whitespace-nowrap">
-                            <span className="font-semibold text-fg block">
+                            <span className="font-medium text-fg block">
                               {formatCurrency(displayCost)}
                             </span>
                           </td>
@@ -758,14 +758,14 @@ export default function ClaimInventoryPage() {
 
                           {/* 4. Total Pieces */}
                           <td className="text-right tabular-nums whitespace-nowrap">
-                            <span className="font-semibold text-danger block">
-                              {displayQty} <span className="text-sub font-medium text-muted-foreground font-sans">ชิ้น</span>
+                            <span className="font-medium text-danger block">
+                              {displayQty} <span className="text-sub font-medium text-muted-foreground">ชิ้น</span>
                             </span>
                           </td>
 
                           {/* 5. Total Cost Value */}
                           <td className="text-right tabular-nums whitespace-nowrap">
-                            <span className="font-semibold text-fg block">
+                            <span className="font-medium text-fg block">
                               {formatCurrency(displayCost)}
                             </span>
                           </td>
@@ -896,13 +896,13 @@ export default function ClaimInventoryPage() {
 
                         {/* 6. Quantity */}
                         <td className="text-right tabular-nums whitespace-nowrap">
-                          <span className="font-semibold text-danger block">
-                            {claim.quantity} <span className="text-sub font-medium text-muted-foreground font-sans">{claim.unitName}</span>
+                          <span className="font-medium text-danger block">
+                            {claim.quantity} <span className="text-sub font-medium text-muted-foreground">{claim.unitName}</span>
                           </span>
                         </td>
 
                         {/* 7. Cost Value */}
-                        <td className="text-right tabular-nums whitespace-nowrap font-semibold text-fg">
+                        <td className="text-right tabular-nums whitespace-nowrap font-medium text-fg">
                           {formatCurrency(claim.totalCostValue)}
                         </td>
 

@@ -271,10 +271,10 @@ export function PayableBillDetailsModal({
                           <span className="tabular-nums font-bold text-indigo-700">{p.id}</span>
                           <Badge variant="outline" className="text-[10px] bg-white font-bold">
                             {p.paymentMethod === 'CASH'
-                              ? '💵 เงินสด'
+                              ? 'เงินสด'
                               : p.paymentMethod === 'TRANSFER'
-                              ? '📱 โอนเงิน'
-                              : '💳 เช็ค/อื่นๆ'}
+                              ? 'โอนเงิน'
+                              : 'เช็ค/อื่นๆ'}
                           </Badge>
                           <span className="text-[11px] text-slate-400">
                             {formatListDate(p.paymentDate)}

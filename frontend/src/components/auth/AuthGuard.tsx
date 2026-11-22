@@ -186,7 +186,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
             </button>
           </div>
           <div className="mt-4 p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl text-left text-xs text-indigo-900 space-y-1">
-            <p className="font-bold">💡 ข้อมูลสำหรับผู้ดูแลร้าน:</p>
+            <p className="font-bold">ข้อมูลสำหรับผู้ดูแลร้าน:</p>
             <p>• เมนูหลังบ้านจำเป็นต้องใช้สิทธิ์ <b>ผู้ดูแลระบบ (Admin)</b></p>
             <p>• หากต้องใช้งานเมนูนี้ กรุณาติดต่อผู้ดูแลร้านเพื่อขอสิทธิ์</p>
           </div>

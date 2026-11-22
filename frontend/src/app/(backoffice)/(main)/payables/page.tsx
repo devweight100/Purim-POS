@@ -353,10 +353,10 @@ export default function PayablesPage() {
     <div className="page-shell">
       {loadError && <LoadErrorState message={loadError} onRetry={() => void refreshData()} retrying={loading} />}
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="page-title">
-            <Receipt className="w-6 h-6 text-indigo-600 shrink-0" />
+            <Receipt />
             <span>เจ้าหนี้การค้า & บิลค้างจ่ายบริษัท (Accounts Payable)</span>
           </h1>
           <p className="page-subtitle">
@@ -511,7 +511,7 @@ export default function PayablesPage() {
                 onChange={(e) => setSupplierFilter(e.target.value)}
                 className="h-10 px-3 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 w-full md:w-56"
               >
-                <option value="ALL">🏢 ผู้จำหน่ายทั้งหมด</option>
+                <option value="ALL">ผู้จำหน่ายทั้งหมด</option>
                 {suppliers.map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}

@@ -198,7 +198,7 @@ function DebtsContent() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
         <div>
           <h1 className="page-title">
-            <Receipt className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600 shrink-0" />
+            <Receipt />
             <span>ลูกหนี้และบิลค้างชำระ (Accounts Receivable)</span>
           </h1>
           <p className="page-subtitle">
@@ -360,8 +360,8 @@ function DebtsContent() {
               className="h-8 rounded-lg border border-slate-300 bg-white px-2 font-bold text-slate-800 text-xs sm:text-sm outline-none focus:border-indigo-500 shadow-2xs"
             >
               <option value="all">ทั้งหมด</option>
-              <option value="INDIVIDUAL">👤 บุคคลธรรมดา</option>
-              <option value="COMPANY">🏢 นิติบุคคล / บริษัท</option>
+              <option value="INDIVIDUAL">บุคคลธรรมดา</option>
+              <option value="COMPANY">นิติบุคคล / บริษัท</option>
             </select>
           </div>
         </div>

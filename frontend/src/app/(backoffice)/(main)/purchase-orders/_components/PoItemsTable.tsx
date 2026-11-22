@@ -32,7 +32,7 @@ export function PoItemsTable({
 }: Props) {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="hidden grid-cols-[40px_minmax(0,1.6fr)_70px_96px_80px_140px_150px_112px_44px] items-center gap-3 border-b border-slate-200 bg-slate-100 px-4 py-2.5 text-xs font-bold  tracking-wide text-slate-600 lg:grid">
+      <div className="hidden grid-cols-[40px_minmax(0,1.6fr)_70px_96px_80px_140px_150px_112px_44px] items-center gap-3 border-b border-slate-200 bg-slate-100 px-4 py-2.5 text-xs font-bold tracking-wide text-slate-600 lg:grid">
         <div className="text-center">#</div>
         <div>สินค้า</div>
         <div className="text-right">คงเหลือ</div>

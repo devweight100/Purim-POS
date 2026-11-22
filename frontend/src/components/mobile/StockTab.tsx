@@ -199,7 +199,7 @@ function ProductCard({ p, canViewCost, query }: { p: LookupProduct; canViewCost:
           {units.map((u) => (
             <tr key={u.name + u.size} className="border-t border-slate-100">
               <td className="text-fg">
-                <span className="font-semibold">{u.name}</span>
+                <span className="font-medium">{u.name}</span>
                 {u.size > 1 && <span className="block text-sub text-muted-foreground">= {formatQty(u.size, { grouping: true })} {p.unit}</span>}
               </td>
               {levels.map((i) => (

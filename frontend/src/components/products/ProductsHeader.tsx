@@ -42,7 +42,7 @@ export function ProductsHeader({ loadAll, onImportFile, onAdd }: {
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
         <h1 className="page-title">
-          <Package className="w-6 h-6 text-sky-500" /> จัดการสินค้า (Products)
+          <Package /> จัดการสินค้า (Products)
         </h1>
         <p className="page-subtitle">จัดการรายการสินค้า ราคาขาย ขนาดบรรจุ บาร์โค้ด และนำเข้าข้อมูลสินค้า</p>
       </div>

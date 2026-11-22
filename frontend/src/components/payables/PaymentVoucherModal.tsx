@@ -138,7 +138,7 @@ export function PaymentVoucherModal({
               {data.status === 'CANCELLED' && (
                 <div className="bg-rose-50 border-2 border-dashed border-rose-400 p-2.5 rounded-lg text-rose-900 flex items-center justify-between text-xs">
                   <div>
-                    <span className="font-black text-rose-700 uppercase tracking-wide">⚠️ เอกสารนี้ถูกยกเลิกแล้ว (VOID / CANCELLED)</span>
+                    <span className="font-black text-rose-700 uppercase tracking-wide">เอกสารนี้ถูกยกเลิกแล้ว (VOID / CANCELLED)</span>
                     {data.cancelReason && <p className="text-[11px] text-rose-800 mt-0.5 font-medium">เหตุผล: {data.cancelReason}</p>}
                   </div>
                   {data.cancelledAt && (
@@ -197,10 +197,10 @@ export function PaymentVoucherModal({
                   <div className="flex items-center gap-2">
                     <Badge className="bg-emerald-600 text-white font-bold text-xs px-2 py-0.5">
                       {data.paymentMethod === 'CASH'
-                        ? '💵 ชำระด้วยเงินสด (Cash)'
+                        ? 'ชำระด้วยเงินสด (Cash)'
                         : data.paymentMethod === 'TRANSFER'
-                        ? '📱 โอนเงินผ่านธนาคาร (Bank Transfer)'
-                        : '💳 เช็ค / อื่นๆ'}
+                        ? 'โอนเงินผ่านธนาคาร (Bank Transfer)'
+                        : 'เช็ค / อื่นๆ'}
                     </Badge>
                   </div>
                   {data.bankAccountLabel && (

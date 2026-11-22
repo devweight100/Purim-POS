@@ -74,7 +74,7 @@ export function RecurringPanel({ accounts, categories, onChanged }: { accounts: 
             {rows.length === 0 && <tr><td colSpan={6} className="text-center text-subtle">ยังไม่มีค่าใช้จ่ายประจำ</td></tr>}
             {rows.map((r) => (
               <tr key={r.id} className={`border-t border-slate-100 ${!r.isActive ? 'text-slate-400' : ''}`}>
-                <td ><div className="font-semibold">{r.name}</div><div className="text-sub text-muted-foreground">{r.category.name}</div></td>
+                <td ><div className="font-medium">{r.name}</div><div className="text-sub text-muted-foreground">{r.category.name}</div></td>
                 <td >{ruleText(r)}</td>
                 <td >
                   {thaiDate(r.nextDueDate)}{' '}

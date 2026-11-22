@@ -257,11 +257,9 @@ export default function ShiftsHistoryPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-md">
-              <History className="w-5 h-5" />
-            </div>
             <div>
               <h1 className="page-title">
+                <History />
                 ประวัติการปิดกะ (Shift History)
               </h1>
               <p className="page-subtitle">
@@ -408,10 +406,10 @@ export default function ShiftsHistoryPage() {
             onChange={(e) => setUserFilter(e.target.value)}
             className="h-11 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:border-indigo-500"
           >
-            <option value="ALL">👤 แคชเชียร์ทุกคน {uniqueCashiers.length > 0 ? `(${uniqueCashiers.length})` : ''}</option>
+            <option value="ALL">แคชเชียร์ทุกคน {uniqueCashiers.length > 0 ? `(${uniqueCashiers.length})` : ''}</option>
             {uniqueCashiers.map((c) => (
               <option key={c.id} value={c.id}>
-                👤 {c.name}
+                {c.name}
               </option>
             ))}
           </select>
@@ -422,7 +420,7 @@ export default function ShiftsHistoryPage() {
             onChange={(e) => setDateFilter(e.target.value as typeof dateFilter)}
             className="h-11 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:border-indigo-500"
           >
-            <option value="ALL">📅 ทุกช่วงวันที่</option>
+            <option value="ALL">ทุกช่วงวันที่</option>
             <option value="TODAY">วันนี้</option>
             <option value="YESTERDAY">เมื่อวาน</option>
             <option value="7DAYS">7 วันล่าสุด</option>
@@ -447,7 +445,7 @@ export default function ShiftsHistoryPage() {
           >
             <option value="ALL">ทุกผลการปิดกะ</option>
             <option value="BALANCED">✓ เงินตรงพอดี</option>
-            <option value="SHORT">⚠️ เงินขาด</option>
+            <option value="SHORT">เงินขาด</option>
             <option value="OVER">ℹ️ เงินเกิน</option>
           </select>
         </div>

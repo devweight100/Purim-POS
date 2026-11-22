@@ -857,7 +857,7 @@ export function CreateSupplierReturnModal({
                         {showOtherClaims && (
                           <div className="max-h-60 overflow-y-auto space-y-2 pr-1 border border-indigo-100 rounded-2xl p-2.5 bg-indigo-50/30">
                             <p className="text-[11px] text-indigo-800 font-medium pb-1 px-1">
-                              💡 สามารถคลิกเลือกรายการด้านล่างเพื่อดึงมาส่งคืนและลดหนี้กับบริษัทนี้ได้:
+                              สามารถคลิกเลือกรายการด้านล่างเพื่อดึงมาส่งคืนและลดหนี้กับบริษัทนี้ได้:
                             </p>
                             {groupedOtherClaims.map((group) => {
                               const currentItem = returnItems.find(

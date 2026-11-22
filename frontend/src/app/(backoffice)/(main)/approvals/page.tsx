@@ -48,7 +48,7 @@ export default function ApprovalsPage() {
   return (
     <div className="page-shell">
       <div>
-        <h1 className="page-title"><ShieldCheck className="w-6 h-6 text-amber-600" /> การอนุมัติโดยผู้จัดการ</h1>
+        <h1 className="page-title"><ShieldCheck /> การอนุมัติโดยผู้จัดการ</h1>
         <p className="page-subtitle">ส่วนลดเกินกำหนด / ขายต่ำกว่าราคาในระบบ / ขายต่ำกว่าทุน — แคชเชียร์ต้องให้ผู้จัดการหรือเจ้าของกด PIN อนุมัติที่เครื่องขาย (ADMIN และผู้จัดการไม่ต้องขออนุมัติ)</p>
       </div>
 

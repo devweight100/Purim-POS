@@ -79,7 +79,7 @@ export function PackagingUnitsSection({ form, setForm, updateForm }: { form: Pro
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <Tags className="w-3.5 h-3.5 text-primary" />
-                      <label className="text-xs font-semibold text-slate-700  tracking-wide">ราคาขาย 1–5 ของ {unit.name || "หน่วยนี้"}</label>
+                      <label className="text-xs font-semibold text-slate-700 tracking-wide">ราคาขาย 1–5 ของ {unit.name || "หน่วยนี้"}</label>
                       {autoCost && <span className="text-xs text-slate-400">(ต้นทุน ≈ {formatCurrency(parseFloat(autoCost))})</span>}
                     </div>
                     <div className="grid grid-cols-5 gap-2">
@@ -101,7 +101,7 @@ export function PackagingUnitsSection({ form, setForm, updateForm }: { form: Pro
       {/* Default Selling Unit Picker */}
       <div className="mt-4 pt-4 border-t border-slate-200">
         <label className="text-sm font-bold text-slate-900 block mb-1">
-          🎯 หน่วยเริ่มต้นในการขาย (Default Selling Unit)
+          หน่วยเริ่มต้นในการขาย (Default Selling Unit)
         </label>
         <p className="text-xs text-slate-500 mb-2">
           เลือกหน่วยที่จะถูกเลือกเป็นค่าเริ่มต้นเมื่อพิมพ์ค้นหาในหน้าขาย POS (หากไม่ระบุ ระบบจะใช้หน่วยย่อยสุดเป็นค่าเริ่มต้น)

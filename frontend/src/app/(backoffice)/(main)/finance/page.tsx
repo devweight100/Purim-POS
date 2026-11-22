@@ -185,7 +185,7 @@ export default function FinancePage() {
     <div className="page-shell">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="page-title"><Wallet className="w-6 h-6 text-indigo-600" /> การเงินของร้าน</h1>
+          <h1 className="page-title"><Wallet /> การเงินของร้าน</h1>
           <p className="page-subtitle">เงินสด / เงินในบัญชีธนาคาร / เงินเข้า-ออก / ค่าใช้จ่าย — ทุกการขาย รับชำระหนี้ และจ่ายเจ้าหนี้ ลงบัญชีให้อัตโนมัติ</p>
         </div>
         <div className="flex flex-wrap gap-2">

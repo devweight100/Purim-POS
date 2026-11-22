@@ -333,7 +333,7 @@ export default function CustomersPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="page-title">
-            <UserPlus className="w-6 h-6 text-sky-500" /> ลูกค้าสมาชิกและ CRM (Customers & Membership)
+            <UserPlus /> ลูกค้าสมาชิกและ CRM (Customers & Membership)
           </h1>
           <p className="page-subtitle">
             จัดการข้อมูลสมาชิก วงเงินเครดิต ระดับราคาขาย อัตราสะสมแต้ม และข้อมูลนิติบุคคลออกใบกำกับภาษี
@@ -433,10 +433,10 @@ export default function CustomersPage() {
           <div className="flex flex-wrap gap-btn w-full lg:w-auto pb-1 lg:pb-0">
             {[
               { value: 'all', label: 'ทั้งหมด' },
-              { value: 'INDIVIDUAL', label: '👤 บุคคลธรรมดา' },
-              { value: 'COMPANY', label: '🏢 บริษัท/นิติบุคคล' },
-              { value: 'credit', label: '💳 มีเครดิต' },
-              { value: 'hasDebt', label: '⚠️ มียอดค้างชำระ' },
+              { value: 'INDIVIDUAL', label: 'บุคคลธรรมดา' },
+              { value: 'COMPANY', label: 'บริษัท/นิติบุคคล' },
+              { value: 'credit', label: 'มีเครดิต' },
+              { value: 'hasDebt', label: 'มียอดค้างชำระ' },
             ].map((st) => (
               <Button
                 key={st.value}
@@ -895,7 +895,7 @@ export default function CustomersPage() {
                     ))}
                   </div>
                   <p className="text-[11px] text-slate-500">
-                    💡 เมื่อเลือกลูกค้ารายนี้ในหน้าขายหน้าร้าน (POS) ระบบจะดึงราคาขายตามระดับนี้ให้อัตโนมัติ
+                    เมื่อเลือกลูกค้ารายนี้ในหน้าขายหน้าร้าน (POS) ระบบจะดึงราคาขายตามระดับนี้ให้อัตโนมัติ
                   </p>
                   <CustomerLevelNote level={formData.priceLevel} />
                 </div>
@@ -1024,7 +1024,7 @@ export default function CustomersPage() {
                     </div>
                   </div>
                   <div className="text-[11px] text-emerald-700 font-medium">
-                    📌 สรุปกฎ: ซื้อของครบ <b>{formData.pointEarnRateBaht ?? 500} บาท</b> จะได้รับ <b>{formData.pointEarnUnits ?? 10} คะแนน</b>
+                    สรุปกฎ: ซื้อของครบ <b>{formData.pointEarnRateBaht ?? 500} บาท</b> จะได้รับ <b>{formData.pointEarnUnits ?? 10} คะแนน</b>
                   </div>
                 </div>
 
@@ -1057,7 +1057,7 @@ export default function CustomersPage() {
                     </div>
                   </div>
                   <div className="text-[11px] text-indigo-700 font-medium">
-                    📌 สรุปกฎ: ใช้ <b>{formData.pointRedeemRatePoints ?? 100} คะแนน</b> จะได้ส่วนลดเงินสด <b>{formData.pointRedeemDiscountBaht ?? 1} บาท</b>
+                    สรุปกฎ: ใช้ <b>{formData.pointRedeemRatePoints ?? 100} คะแนน</b> จะได้ส่วนลดเงินสด <b>{formData.pointRedeemDiscountBaht ?? 1} บาท</b>
                   </div>
                 </div>
               </div>

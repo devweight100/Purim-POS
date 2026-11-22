@@ -116,7 +116,7 @@ export function ReturnItemsDialog({ orderId, onClose, onDone }: { orderId: strin
               <Button type="button" variant={method === 'TRANSFER' ? 'default' : 'outline'} onClick={() => setMethod('TRANSFER')}>โอนคืน</Button>
               <Button type="button" variant={method === 'DEBT_REDUCTION' ? 'default' : 'outline'} disabled={debtLeft <= 0} onClick={() => setMethod('DEBT_REDUCTION')}>หักจากหนี้{debtLeft > 0 ? ` (${formatCurrency(debtLeft)})` : ''}</Button>
             </div>
-            {method === 'CASH' && <p className="text-xs text-slate-500">{currentShift?.id ? 'จ่ายเงินสดจากลิ้นชักของกะที่เปิดอยู่' : '⚠️ ยังไม่ได้เปิดกะ — เปิดกะที่หน้าขายก่อนคืนเงินสด'}</p>}
+            {method === 'CASH' && <p className="text-xs text-slate-500">{currentShift?.id ? 'จ่ายเงินสดจากลิ้นชักของกะที่เปิดอยู่' : 'ยังไม่ได้เปิดกะ — เปิดกะที่หน้าขายก่อนคืนเงินสด'}</p>}
             {method === 'TRANSFER' && (
               <select className="w-full h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm" value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)}>
                 {banks.map((b) => <option key={b.id} value={b.id}>โอนจาก {b.bankName} {b.accountNumber}</option>)}

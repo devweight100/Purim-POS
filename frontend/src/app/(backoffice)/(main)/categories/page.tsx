@@ -144,7 +144,7 @@ export default function CategoriesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="page-title">
-            <FolderTree className="w-6 h-6 text-sky-500" /> จัดการหมวดหมู่สินค้า (Categories)
+            <FolderTree /> จัดการหมวดหมู่สินค้า (Categories)
           </h1>
           <p className="page-subtitle">เพิ่ม แก้ไข หรือลบหมวดหมู่สำหรับจัดกลุ่มสินค้าในร้าน</p>
         </div>
@@ -207,23 +207,21 @@ export default function CategoriesPage() {
                   return (
                     <TableRow key={cat.id} className={`border-slate-100 hover:bg-slate-50 ${ROW_NAV_CLASS}`} {...categoryNav.rowProps(ci)}>
                       <TableCell className="text-center">
-                        <div className="w-10 h-10 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-xl mx-auto shadow-sm">
+                        <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-lg mx-auto">
                           {cat.icon || "📦"}
                         </div>
                       </TableCell>
-                      <TableCell className="font-semibold text-fg">
+                      <TableCell className="font-medium text-fg">
                         {cat.name}
                       </TableCell>
                       <TableCell className="text-center">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-sub font-medium" style={{ backgroundColor: `${cat.color}15`, borderColor: `${cat.color}40`, color: cat.color }}>
+                        <div className="inline-flex items-center gap-1.5 text-sub text-muted-foreground tabular-nums">
                           <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
                           {cat.color}
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge variant="outline" className="bg-slate-50 text-fg border-slate-200 px-3 py-1 font-semibold">
-                          {count} รายการ
-                        </Badge>
+                        <span className="tabular-nums text-fg">{count.toLocaleString()}</span> <span className="text-sub text-muted-foreground">รายการ</span>
                       </TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-btn">
@@ -332,7 +330,7 @@ export default function CategoriesPage() {
             <p>คุณแน่ใจหรือไม่ว่าต้องการลบหมวดหมู่ <b className="text-slate-900">{deletingCat?.name}</b>?</p>
             {deletingCat && (productCountMap[deletingCat.id] || 0) > 0 && (
               <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
-                ⚠️ มีสินค้า <b>{productCountMap[deletingCat.id]}</b> รายการอยู่ในหมวดหมู่นี้ การลบจะทำให้สินค้าดังกล่าวไม่มีหมวดหมู่ระบุ
+                มีสินค้า <b>{productCountMap[deletingCat.id]}</b> รายการอยู่ในหมวดหมู่นี้ การลบจะทำให้สินค้าดังกล่าวไม่มีหมวดหมู่ระบุ
               </div>
             )}
           </div>

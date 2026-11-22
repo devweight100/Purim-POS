@@ -530,12 +530,12 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span>#{order.orderNumber || order.id}</span>
                             {isCancelled && (
-                              <span className="text-sub text-danger bg-rose-100 border border-rose-200 px-1.5 py-0.5 rounded font-medium">
+                              <span className="text-sub text-danger font-medium">
                                 ยกเลิกแล้ว
                               </span>
                             )}
                             {order.hasClaims && (
-                              <span className="text-sub text-warn bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded font-medium">
+                              <span className="text-sub text-warn font-medium">
                                 ⚠️ มีรายการเคลม
                               </span>
                             )}
@@ -560,7 +560,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                         </td>
 
                         {/* Date & Time */}
-                        <td className="text-muted-foreground font-semibold whitespace-nowrap">
+                        <td className="text-muted-foreground font-medium whitespace-nowrap">
                           {formatListDateTime(order.createdAt)}
                         </td>
 
@@ -774,13 +774,13 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                             <div className="text-sub text-warn italic">📝 {item.itemNote}</div>
                           )}
                         </td>
-                        <td className="text-center font-semibold text-fg">
+                        <td className="text-center font-medium text-fg">
                           {item.quantity} {item.unitName}
                         </td>
-                        <td className="text-right font-semibold text-fg">
+                        <td className="text-right font-medium text-fg">
                           {formatCurrency(price)}
                         </td>
-                        <td className="text-right font-semibold text-fg">
+                        <td className="text-right font-medium text-fg">
                           {formatCurrency(total)}
                         </td>
                       </tr>
