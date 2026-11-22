@@ -141,16 +141,16 @@ export function ImportPreviewDialog({ state }: { state: ProductImportState }) {
           {/* Table Preview */}
           <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
             <Table>
-              <TableHeader className="">
-                <TableRow className="">
+              <TableHeader >
+                <TableRow >
                   <TableHead className="w-12 text-center">ลำดับ</TableHead>
                   <TableHead className="w-28">สถานะ</TableHead>
                   <TableHead className="w-32">รหัส (SKU)</TableHead>
-                  <TableHead className="">ชื่อสินค้า</TableHead>
+                  <TableHead >ชื่อสินค้า</TableHead>
                   <TableHead className="w-24 text-right">ราคาทุน</TableHead>
                   <TableHead className="w-24 text-right text-emerald-700">ราคาขาย 1</TableHead>
                   <TableHead className="w-20 text-center">สต็อก</TableHead>
-                  <TableHead className="">รายการที่เปลี่ยนแปลง</TableHead>
+                  <TableHead >รายการที่เปลี่ยนแปลง</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody className="text-sub font-medium">
@@ -186,7 +186,7 @@ export function ImportPreviewDialog({ state }: { state: ProductImportState }) {
               variant="outline"
               onClick={() => setIsImportPreviewOpen(false)}
               disabled={isImporting}
-              className="text-xs font-bold rounded-xl h-10 px-5 cursor-pointer border-slate-300 text-slate-700 hover:bg-slate-100"
+              className="cursor-pointer border-slate-300 text-slate-700 hover:bg-slate-100"
             >
               ยกเลิก
             </Button>
@@ -194,7 +194,7 @@ export function ImportPreviewDialog({ state }: { state: ProductImportState }) {
               type="button"
               onClick={handleConfirmImport}
               disabled={isImporting || toUpsertCount === 0}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl h-10 px-6 gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 cursor-pointer disabled:opacity-50"
             >
               {isImporting ? (
                 <>

@@ -487,9 +487,8 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
         <div className="flex flex-wrap gap-2 items-center">
           <Button
             variant="outline"
-            size="sm"
             onClick={loadData}
-            className="border-slate-300 text-slate-700 hover:bg-slate-50 h-8 px-3 text-xs sm:text-sm font-semibold shadow-2xs"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50 sm:text-sm"
             title="รีเฟรชข้อมูลล่าสุด"
           >
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
@@ -498,9 +497,8 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
 
           <Button
             variant="outline"
-            size="sm"
             onClick={handlePrint}
-            className="border-slate-300 text-slate-700 hover:bg-slate-50 h-8 px-3 text-xs sm:text-sm font-bold shadow-2xs gap-1.5"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50 sm:text-sm gap-1.5"
             title="พิมพ์หน้ารายงานปัจจุบัน"
           >
             <Printer className="w-3.5 h-3.5 text-slate-600" />
@@ -508,9 +506,8 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           </Button>
 
           <Button
-            size="sm"
             onClick={() => handleExport('xlsx')}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm h-8 px-3.5 rounded-lg shadow-2xs gap-1.5"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white sm:text-sm gap-1.5"
             title="ส่งออกไฟล์ Excel (.xlsx)"
           >
             <Download className="w-3.5 h-3.5" />
@@ -518,9 +515,8 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           </Button>
           <Button
             variant="outline"
-            size="sm"
             onClick={() => handleExport('csv')}
-            className="border-slate-300 text-slate-700 hover:bg-slate-50 h-8 px-3 text-xs sm:text-sm font-bold shadow-2xs gap-1.5"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50 sm:text-sm gap-1.5"
             title="ส่งออกไฟล์ CSV (UTF-8)"
           >
             <Download className="w-3.5 h-3.5" />
@@ -571,14 +567,14 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               type="date"
               value={customStartDate}
               onChange={(e) => setCustomStartDate(e.target.value)}
-              className="h-7 text-xs w-36"
+              className="h-7 w-36"
             />
             <span className="text-slate-400">ถึง</span>
             <Input
               type="date"
               value={customEndDate}
               onChange={(e) => setCustomEndDate(e.target.value)}
-              className="h-7 text-xs w-36"
+              className="h-7 w-36"
             />
           </div>
         )}
@@ -627,7 +623,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={activeTab === 'customers' ? 'ค้นหาชื่อ / รหัส / เบอร์โทรลูกค้า' : 'ค้นหาชื่อสินค้า / SKU / หมวดหมู่'}
-            className="h-8 pl-8 text-sm bg-white"
+            className="pl-8 bg-white"
             aria-label="ค้นหาในรายงาน"
           />
         </div>
@@ -754,7 +750,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
               <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
-                <TableHeader className="">
+                <TableHeader >
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="text-center w-10">ลำดับ</TableHead>
                     <TableHead className="text-center">วันที่</TableHead>
@@ -898,7 +894,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
               <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
-                <TableHeader className="">
+                <TableHeader >
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="text-center w-10">ลำดับ</TableHead>
                     <TableHead className="text-left">บาร์โค้ด / SKU</TableHead>
@@ -1065,7 +1061,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
               <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
-                <TableHeader className="">
+                <TableHeader >
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="text-center w-10">ลำดับ</TableHead>
                     <TableHead className="text-left">บาร์โค้ด / SKU</TableHead>
@@ -1230,7 +1226,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               <span className="text-xs text-slate-500 font-mono">กระทบยอดเงินสดและเงินโอนเข้าบัญชี</span>
             </div>
             <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
-              <TableHeader className="">
+              <TableHeader >
                 <TableRow>
                   <TableHead className="text-center w-10">ลำดับ</TableHead>
                   <TableHead className="text-left">ช่องทางการชำระเงิน</TableHead>
@@ -1331,7 +1327,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
             </div>
             <div className="overflow-x-auto">
               <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
-                <TableHeader className="">
+                <TableHeader >
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="text-center w-10">ลำดับ</TableHead>
                     <TableHead className="text-left">รหัสสมาชิก</TableHead>
@@ -1426,7 +1422,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               </p>
             </div>
             <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
-              <TableHeader className="">
+              <TableHeader >
                 <TableRow>
                   <TableHead className="text-center w-10">ลำดับ</TableHead>
                   <TableHead className="text-left">ช่วงอายุบิล</TableHead>
@@ -1523,7 +1519,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
               <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
-                <TableHeader className="">
+                <TableHeader >
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="text-center w-10">ลำดับ</TableHead>
                     <TableHead className="text-left min-w-44 xl:min-w-56">บริษัทผู้จำหน่าย</TableHead>

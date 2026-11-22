@@ -50,7 +50,7 @@ export function PoSupplierStep({ editingPo, searchSupplier, setSearchSupplier, f
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
           <Input 
             placeholder="ค้นหาชื่อผู้จำหน่าย หรือ เบอร์โทร..." 
-            className="pl-12 bg-slate-50 border-slate-300 focus-visible:ring-sky-500 h-12 text-lg rounded-full"
+            className="pl-12 bg-slate-50 border-slate-300 focus-visible:ring-sky-500 text-lg"
             value={searchSupplier}
             onChange={(e) => setSearchSupplier(e.target.value)}
           />

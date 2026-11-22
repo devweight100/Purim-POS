@@ -235,7 +235,7 @@ export function SettlePayableModal({
                 placeholder="0.00"
                 value={billDiscountStr}
                 onChange={(e) => setBillDiscountStr(e.target.value)}
-                className="h-10 text-base font-mono font-bold text-amber-950 bg-white border-amber-300 pr-12 text-right rounded-xl"
+                className="font-mono text-amber-950 bg-white border-amber-300 pr-12 text-right"
               />
               <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
                 บาท
@@ -380,7 +380,7 @@ export function SettlePayableModal({
                   max={netDebtToPay}
                   value={cashOrTransferAmountStr !== '' ? cashOrTransferAmountStr : netDebtToPay}
                   onChange={(e) => setCashOrTransferAmountStr(e.target.value)}
-                  className="h-10 text-base font-mono font-black text-slate-900 bg-slate-50 pr-12 text-right rounded-xl"
+                  className="font-mono text-slate-900 bg-slate-50 pr-12 text-right"
                   placeholder="0.00"
                 />
                 <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
@@ -416,7 +416,7 @@ export function SettlePayableModal({
                   placeholder="เช่น SLIP-0912..."
                   value={referenceNo}
                   onChange={(e) => setReferenceNo(e.target.value)}
-                  className="h-9 text-xs bg-slate-50"
+                  className="bg-slate-50"
                 />
               </div>
               <div>
@@ -426,7 +426,7 @@ export function SettlePayableModal({
                   placeholder="ระบุข้อความ..."
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  className="h-9 text-xs bg-slate-50"
+                  className="bg-slate-50"
                 />
               </div>
             </div>
@@ -471,7 +471,7 @@ export function SettlePayableModal({
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="rounded-xl font-bold text-slate-600"
+            className="text-slate-600"
           >
             ยกเลิก
           </Button>
@@ -480,7 +480,7 @@ export function SettlePayableModal({
             type="button"
             onClick={handleSubmit}
             disabled={isSubmitting}
-            className="rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 shadow-md px-5"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>ยืนยันการชำระเงิน</span>

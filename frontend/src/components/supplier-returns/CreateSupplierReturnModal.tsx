@@ -645,7 +645,7 @@ export function CreateSupplierReturnModal({
                     value={claimSearch}
                     onChange={(e) => setClaimSearch(e.target.value)}
                     placeholder="ค้นหาสินค้าเคลม (ชื่อสินค้า, SKU, เลขที่เคลม, บิลขาย)..."
-                    className="pl-8 h-9 text-xs rounded-xl"
+                    className="pl-8"
                   />
                 </div>
                 {claimGroupsError && (
@@ -737,7 +737,7 @@ export function CreateSupplierReturnModal({
                                       max={group.totalQuantity}
                                       value={currentItem.quantity}
                                       onChange={(e) => updateGroupReturnQty(group, parseQty(e.target.value, allowDecimalQty) || (allowDecimalQty ? 0 : 1))}
-                                      className="h-9 text-xs font-mono font-black text-center bg-slate-50 border-slate-300"
+                                      className="font-mono text-center bg-slate-50 border-slate-300"
                                     />
                                     <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
                                       {group.unitName}
@@ -756,7 +756,7 @@ export function CreateSupplierReturnModal({
                                       step="any"
                                       value={currentItem.unitCost}
                                       onChange={(e) => updateGroupReturnCost(group, parseFloat(e.target.value) || 0)}
-                                      className="h-9 text-xs font-mono font-black text-right bg-slate-50 border-slate-300 pr-8"
+                                      className="font-mono text-right bg-slate-50 border-slate-300 pr-8"
                                     />
                                     <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
                                       ฿
@@ -817,7 +817,7 @@ export function CreateSupplierReturnModal({
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  className="h-7 text-xs font-bold rounded-lg border-rose-200 text-rose-700 hover:bg-rose-50"
+                                  className="border-rose-200 text-rose-700 hover:bg-rose-50"
                                 >
                                   + เลือกลดหนี้
                                 </Button>
@@ -826,7 +826,7 @@ export function CreateSupplierReturnModal({
                           );
                         })}
                         {supplierGroups.data.length < supplierGroups.meta.total && (
-                          <Button type="button" size="sm" variant="outline" onClick={() => loadMoreGroups('supplier')} className="w-full h-8 text-xs font-bold rounded-xl">
+                          <Button type="button" size="sm" variant="outline" onClick={() => loadMoreGroups('supplier')} className="w-full">
                             แสดงเพิ่ม ({supplierGroups.data.length} จาก {supplierGroups.meta.total} รายการสินค้า)
                           </Button>
                         )}
@@ -950,7 +950,7 @@ export function CreateSupplierReturnModal({
                                           step="any"
                                           value={currentItem.unitCost}
                                           onChange={(e) => updateGroupReturnCost(group, parseFloat(e.target.value) || 0)}
-                                          className="h-9 text-xs font-mono font-black text-right bg-slate-50 border-slate-300 pr-8"
+                                          className="font-mono text-right bg-slate-50 border-slate-300 pr-8"
                                         />
                                         <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">
                                           ฿
@@ -1011,7 +1011,7 @@ export function CreateSupplierReturnModal({
                                       type="button"
                                       size="sm"
                                       variant="outline"
-                                      className="h-7 text-xs font-bold rounded-lg border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+                                      className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
                                     >
                                       + เลือกลดหนี้
                                     </Button>
@@ -1020,7 +1020,7 @@ export function CreateSupplierReturnModal({
                               );
                             })}
                             {otherGroups.data.length < otherGroups.meta.total && (
-                              <Button type="button" size="sm" variant="outline" onClick={() => loadMoreGroups('other')} className="w-full h-8 text-xs font-bold rounded-xl">
+                              <Button type="button" size="sm" variant="outline" onClick={() => loadMoreGroups('other')} className="w-full">
                                 แสดงเพิ่ม ({otherGroups.data.length} จาก {otherGroups.meta.total} รายการสินค้า)
                               </Button>
                             )}
@@ -1046,7 +1046,7 @@ export function CreateSupplierReturnModal({
                         placeholder="พิมพ์ชื่อสินค้า หรือ SKU เพื่อค้นหา..."
                         value={productSearch}
                         onChange={(e) => setProductSearch(e.target.value)}
-                        className="pl-9 h-10 text-xs bg-white"
+                        className="pl-9 bg-white"
                       />
                     </div>
 
@@ -1116,7 +1116,7 @@ export function CreateSupplierReturnModal({
                             max={selectedProduct.stock || 9999}
                             value={overstockQty}
                             onChange={(e) => setOverstockQty(e.target.value)}
-                            className="h-9 bg-white font-mono font-bold"
+                            className="bg-white font-mono"
                           />
                         </div>
                         <div>
@@ -1128,7 +1128,7 @@ export function CreateSupplierReturnModal({
                             step="any"
                             value={overstockCost}
                             onChange={(e) => setOverstockCost(e.target.value)}
-                            className="h-9 bg-white font-mono font-bold"
+                            className="bg-white font-mono"
                           />
                         </div>
                         <div>
@@ -1139,7 +1139,7 @@ export function CreateSupplierReturnModal({
                             type="text"
                             value={overstockReason}
                             onChange={(e) => setOverstockReason(e.target.value)}
-                            className="h-9 bg-white text-[11px]"
+                            className="bg-white"
                           />
                         </div>
                       </div>
@@ -1148,7 +1148,7 @@ export function CreateSupplierReturnModal({
                         type="button"
                         onClick={handleAddOverstockItem}
                         size="sm"
-                        className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold h-8 text-xs rounded-lg"
+                        className="w-full bg-sky-600 hover:bg-sky-700 text-white"
                       >
                         <Plus className="w-3.5 h-3.5 mr-1" />
                         เพิ่มสินค้าปกติลงในรายการส่งคืน
@@ -1184,7 +1184,7 @@ export function CreateSupplierReturnModal({
             ) : (
               <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
                 <table className="tbl w-full text-xs">
-                  <thead className="">
+                  <thead >
                     <tr>
                       <th className="text-center w-14">ประเภท</th>
                       <th className="text-left">สินค้า / SKU</th>
@@ -1209,7 +1209,7 @@ export function CreateSupplierReturnModal({
                             </Badge>
                           )}
                         </td>
-                        <td className="">
+                        <td >
                           <p className="font-medium text-fg">{item.productName}</p>
                           <p className="text-sub text-subtle doc-no">SKU: {item.sku}</p>
                           {item.claimId && (
@@ -1227,7 +1227,7 @@ export function CreateSupplierReturnModal({
                             inputMode={qtyInputMode(allowDecimalQty)}
                             value={item.quantity}
                             onChange={(e) => handleUpdateItemQty(idx, parseQty(e.target.value, allowDecimalQty) || (allowDecimalQty ? 0.01 : 1))}
-                            className="h-7 w-16 text-center doc-no font-medium text-sub mx-auto"
+                            className="h-7 w-16 text-center doc-no text-sub mx-auto"
                           />
                         </td>
                         <td className="text-right">
@@ -1268,7 +1268,7 @@ export function CreateSupplierReturnModal({
                 placeholder="ระบุข้อความอ้างอิง เช่น หักส่วนลดท้ายบิล..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="h-10 text-xs rounded-xl"
+                
               />
               <DocNameModeToggle label="ชื่อสินค้าบนใบส่งคืน" value={docNameMode} onChange={setDocNameMode} className="pt-1" />
 
@@ -1326,7 +1326,7 @@ export function CreateSupplierReturnModal({
                       setIsCustomEdited(true);
                       setCustomDeductAmountStr(e.target.value);
                     }}
-                    className="h-10 text-base font-mono font-black text-slate-900 bg-slate-50 border-slate-300 pr-12 text-right rounded-lg"
+                    className="font-mono text-slate-900 bg-slate-50 border-slate-300 pr-12 text-right"
                     placeholder="0.00"
                   />
                   <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
@@ -1362,7 +1362,7 @@ export function CreateSupplierReturnModal({
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="rounded-xl font-bold text-slate-700"
+            className="text-slate-700"
           >
             ยกเลิก
           </Button>
@@ -1371,7 +1371,7 @@ export function CreateSupplierReturnModal({
             type="button"
             onClick={handleSubmit}
             disabled={isSubmitting || returnItems.length === 0}
-            className="rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white gap-2 shadow-md"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>

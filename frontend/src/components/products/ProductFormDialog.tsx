@@ -98,8 +98,8 @@ export function ProductFormDialog({ state, products, onNeedCatalog, categories, 
         </div>
         {/* ✅ Footer มี padding ด้านล่าง pb-7 เพื่อเว้นระยะห่างขอบล่างกับปุ่มไม่ให้ชิดกัน */}
         <DialogFooter className="border-t border-slate-200 bg-slate-50 px-6 pt-5 pb-7 shrink-0 flex-row gap-3 justify-end">
-          <Button variant="outline" className="border-slate-300 text-slate-600 px-6 h-10 font-medium" onClick={close}>ยกเลิก</Button>
-          <Button className={`px-8 h-10 font-bold ${dialogMode === "edit" ? "bg-sky-500 text-white hover:bg-sky-600" : "bg-primary text-white hover:bg-primary/90"}`} onClick={handleSave} title="Ctrl+Enter">
+          <Button variant="outline" className="border-slate-300 text-slate-600" onClick={close}>ยกเลิก</Button>
+          <Button className={` ${dialogMode === "edit" ? "bg-sky-500 text-white hover:bg-sky-600" : "bg-primary text-white hover:bg-primary/90"}`} onClick={handleSave} title="Ctrl+Enter">
             {dialogMode === "edit" ? "บันทึกการแก้ไข" : "บันทึกสินค้า"}
           </Button>
         </DialogFooter>

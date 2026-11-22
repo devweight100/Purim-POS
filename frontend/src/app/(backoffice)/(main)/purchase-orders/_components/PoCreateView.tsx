@@ -517,7 +517,7 @@ export function PoCreateView({
                     <Input
                       ref={searchInputRef}
                       placeholder="พิมพ์ค้นหาสินค้า (↑/↓ เลื่อน, Enter เลือก)..."
-                      className="h-10 bg-white pl-9 pr-8 text-sm border-slate-300 focus-visible:ring-sky-500 shadow-sm"
+                      className="bg-white pl-9 pr-8 border-slate-300 focus-visible:ring-sky-500"
                       value={searchProduct}
                       onChange={(e) => {
                         setSearchProduct(e.target.value);
@@ -625,7 +625,7 @@ export function PoCreateView({
                   </div>
                   <Button
                     variant="outline"
-                    className="h-10 border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 shadow-sm"
+                    className="border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                     onClick={() => setIsSupplierCatalogOpen(true)}
                   >
                     <Package className="mr-2 h-4 w-4 text-sky-500" />

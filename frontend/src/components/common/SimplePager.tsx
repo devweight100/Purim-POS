@@ -38,10 +38,10 @@ export function SimplePager({
         <div className="px-2 font-bold text-slate-800">
           หน้า {page} / {totalPages}
         </div>
-        <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPage(Math.min(totalPages, page + 1))} className="h-7.5 w-7.5 p-0 rounded-md" title="หน้าถัดไป">
+        <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPage(Math.min(totalPages, page + 1))} className="h-7.5 w-7.5 p-0" title="หน้าถัดไป">
           <ChevronRight className="w-3.5 h-3.5" />
         </Button>
-        <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPage(totalPages)} className="h-7.5 w-7.5 p-0 rounded-md" title="หน้าสุดท้าย">
+        <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => onPage(totalPages)} className="h-7.5 w-7.5 p-0" title="หน้าสุดท้าย">
           <ChevronsRight className="w-3.5 h-3.5" />
         </Button>
       </div>

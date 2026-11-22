@@ -480,9 +480,8 @@ export default function OrdersPage() {
         <div className="flex flex-wrap gap-2 items-center">
           <Button
             variant="outline"
-            size="sm"
             onClick={fetchOrders}
-            className="border-slate-300 text-slate-700 hover:bg-slate-50 h-9 px-3 text-xs font-semibold shadow-2xs"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50"
             title="รีเฟรชข้อมูลออเดอร์"
           >
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`} />
@@ -509,7 +508,6 @@ export default function OrdersPage() {
             </div>
           </div>
           <Button
-            size="sm"
             onClick={async () => {
               setIsSyncingAll(true);
               try {
@@ -522,7 +520,7 @@ export default function OrdersPage() {
               }
             }}
             disabled={isSyncingAll}
-            className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs h-9 px-4 rounded-xl shadow-xs shrink-0 cursor-pointer"
+            className="bg-amber-600 hover:bg-amber-700 text-white shrink-0 cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isSyncingAll ? "animate-spin" : ""}`} />
             {isSyncingAll ? "กำลังซิงค์บิล..." : "🔄 ซิงค์ขึ้นเซิร์ฟเวอร์ทันที"}

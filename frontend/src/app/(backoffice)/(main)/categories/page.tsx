@@ -148,7 +148,7 @@ export default function CategoriesPage() {
           </h1>
           <p className="page-subtitle">เพิ่ม แก้ไข หรือลบหมวดหมู่สำหรับจัดกลุ่มสินค้าในร้าน</p>
         </div>
-        <Button className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-10 px-5 text-xs shadow-sm rounded-xl" onClick={handleOpenAdd}>
+        <Button className="bg-sky-500 hover:bg-sky-600 text-white" onClick={handleOpenAdd}>
           <Plus className="w-4 h-4 mr-1.5" /> เพิ่มหมวดหมู่ใหม่
         </Button>
       </div>
@@ -159,7 +159,7 @@ export default function CategoriesPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input
             placeholder="ค้นหาชื่อหมวดหมู่..."
-            className="pl-9 bg-white border-slate-300 h-10"
+            className="pl-9 bg-white border-slate-300"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -179,10 +179,10 @@ export default function CategoriesPage() {
       <div className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader className="">
+            <TableHeader >
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-16 text-center">ไอคอน</TableHead>
-                <TableHead className="">ชื่อหมวดหมู่</TableHead>
+                <TableHead >ชื่อหมวดหมู่</TableHead>
                 <TableHead className="text-center">สีหมวดหมู่</TableHead>
                 <TableHead className="text-center">จำนวนสินค้า</TableHead>
                 <TableHead className="text-center w-32">จัดการ</TableHead>
@@ -263,7 +263,7 @@ export default function CategoriesPage() {
                 value={name}
                 onChange={e => setName(e.target.value)}
                 placeholder="เช่น เครื่องดื่ม, ของใช้ในบ้าน"
-                className="h-10 border-slate-300 bg-white"
+                className="border-slate-300 bg-white"
               />
             </div>
 

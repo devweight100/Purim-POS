@@ -63,12 +63,12 @@ export function OrdersTable({
     <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
       <div className="overflow-x-auto">
         <Table>
-          <TableHeader className="">
+          <TableHeader >
             <TableRow className="hover:bg-transparent">
               <TableHead data-mid="hide" className="hidden xl:table-cell text-center w-12">#</TableHead>
               <TableHead className="text-left">เลขออเดอร์</TableHead>
               <TableHead className="text-center">วันที่</TableHead>
-              <TableHead className="">ลูกค้า / ผู้ซื้อ</TableHead>
+              <TableHead >ลูกค้า / ผู้ซื้อ</TableHead>
               <TableHead data-narrow="hide" className="text-right">รายการ</TableHead>
               <TableHead className="text-right">ยอดสุทธิ</TableHead>
               <TableHead className="text-center">ชำระโดย</TableHead>
@@ -139,7 +139,7 @@ export function OrdersTable({
                     </TableCell>
 
                     {/* 4. Customer Name */}
-                    <TableCell className="">
+                    <TableCell >
                       <div className="font-medium text-fg flex items-center gap-1.5 min-w-32 xl:min-w-40">
                         <User className="w-3.5 h-3.5 shrink-0 text-subtle" />
                         <span className="line-clamp-2 break-words">{order.customerName || (typeof order.customer === "object" ? order.customer?.name : order.customer) || "ลูกค้าทั่วไป"}</span>
@@ -231,7 +231,7 @@ export function OrdersTable({
                           <Button
                             size="sm"
                             onClick={(e) => handleOpenCreditHistory(order, e)}
-                            className="h-8 px-2.5 text-sub font-medium bg-amber-600 hover:bg-amber-700 text-white rounded-xl shadow-xs gap-1"
+                            className="text-sub bg-amber-600 hover:bg-amber-700 text-white gap-1"
                             title="ดูประวัติการชำระเงินเชื่อ และพิมพ์ใบเสร็จตามจริง"
                                 aria-label="ประวัติชำระ"
                           >
@@ -243,7 +243,7 @@ export function OrdersTable({
                           <Button
                             size="sm"
                             onClick={(e) => handleOpenA4Receipt(order, e)}
-                            className="h-8 px-2.5 text-sub font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl shadow-xs gap-1"
+                            className="text-sub bg-indigo-600 hover:bg-indigo-700 text-white gap-1"
                             title="พิมพ์ใบเสร็จรับเงิน / ใบกำกับภาษีเต็มรูปแบบ (A4)"
                                 aria-label="พิมพ์ A4"
                           >
@@ -257,7 +257,7 @@ export function OrdersTable({
                           size="sm"
                           variant="outline"
                           onClick={(e) => handleOpenSlipReceipt(order, e)}
-                          className="h-8 px-2 text-sub font-semibold text-fg border-slate-300 hover:bg-slate-100 rounded-xl"
+                          className="text-sub text-fg border-slate-300 hover:bg-slate-100"
                           title="พิมพ์สลิป 80mm"
                                 aria-label="80mm"
                         >

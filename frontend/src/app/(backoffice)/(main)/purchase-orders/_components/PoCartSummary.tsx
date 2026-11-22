@@ -61,7 +61,7 @@ export function PoCartSummary({
                 step="0.01"
                 value={billDiscountValue}
                 onChange={(e) => setBillDiscountValue(Math.max(0, Number(e.target.value) || 0))}
-                className="h-9 bg-white text-right text-sm border-slate-300 font-semibold"
+                className="bg-white text-right border-slate-300"
               />
               <select
                 value={billDiscountType}
@@ -136,7 +136,7 @@ export function PoCartSummary({
               <span className="text-2xl font-bold text-sky-600">{formatCurrency(cartTotal)}</span>
             </div>
             <Button
-              className={`h-12 w-full text-base font-bold text-white shadow-md ${
+              className={`w-full text-white ${
                 editingPo 
                   ? 'bg-amber-600 hover:bg-amber-700' 
                   : 'bg-sky-500 hover:bg-sky-600'

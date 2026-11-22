@@ -366,7 +366,7 @@ export function PaymentVoucherModal({
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="rounded-xl font-bold text-slate-700"
+            className="text-slate-700"
           >
             ปิดหน้าต่าง
           </Button>
@@ -376,7 +376,7 @@ export function PaymentVoucherModal({
               type="button"
               variant="outline"
               onClick={handlePrint}
-              className="gap-1.5 rounded-xl font-bold border-indigo-300 text-indigo-700 hover:bg-indigo-50 h-10 px-4"
+              className="gap-1.5 border-indigo-300 text-indigo-700 hover:bg-indigo-50"
             >
               <Printer className="w-4 h-4" />
               <span>พิมพ์ใบสำคัญจ่าย (A4)</span>
@@ -386,7 +386,7 @@ export function PaymentVoucherModal({
               type="button"
               onClick={handleDownloadPdf}
               disabled={isExporting}
-              className="gap-1.5 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md h-10 px-4"
+              className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white"
             >
               <Download className="w-4 h-4" />
               <span>{isExporting ? 'กำลังสร้าง PDF...' : 'ดาวน์โหลด PDF (A4)'}</span>

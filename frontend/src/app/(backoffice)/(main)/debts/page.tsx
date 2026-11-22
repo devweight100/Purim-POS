@@ -208,9 +208,8 @@ function DebtsContent() {
         <div className="flex flex-wrap gap-2 items-center">
           <Button
             variant="outline"
-            size="sm"
             onClick={reloadData}
-            className="border-slate-300 text-slate-700 hover:bg-slate-50 h-8 px-3 text-xs sm:text-sm font-semibold shadow-2xs"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50 sm:text-sm"
             title="รีเฟรชข้อมูลลูกหนี้"
           >
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
@@ -375,7 +374,7 @@ function DebtsContent() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="ค้นหาตามเลขที่บิล, ชื่อลูกค้า, บริษัท, เบอร์โทร, เลขผู้เสียภาษี..."
-              className="pl-9 h-8.5 bg-slate-50 border-slate-300 rounded-lg focus:bg-white text-xs sm:text-sm font-medium shadow-inner"
+              className="pl-9 h-8.5 bg-slate-50 border-slate-300 focus:bg-white sm:text-sm"
             />
             {search && (
               <button
@@ -394,10 +393,10 @@ function DebtsContent() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader className="">
+            <TableHeader >
               <TableRow className="hover:bg-transparent">
                 <TableHead className="hidden xl:table-cell text-center w-16">ลำดับ</TableHead>
-                <TableHead className="">เลขที่บิล</TableHead>
+                <TableHead >เลขที่บิล</TableHead>
                 <TableHead className="text-center">วันที่บิล</TableHead>
                 <TableHead className="min-w-40 xl:min-w-48">ลูกค้า / ผู้ซื้อ</TableHead>
                 <TableHead data-narrow="hide" className="text-right">ยอดเต็มบิล</TableHead>
@@ -468,7 +467,7 @@ function DebtsContent() {
                       </TableCell>
 
                       {/* 4. Customer Name, Phone & Type */}
-                      <TableCell className="">
+                      <TableCell >
                         <div className="flex items-center gap-1.5 font-medium text-fg leading-snug min-w-44">
                           {debt.customerType === 'COMPANY' ? (
                             <span className="inline-flex items-center gap-1 text-sub text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0 font-medium">
@@ -559,7 +558,7 @@ function DebtsContent() {
                             <Button
                               size="sm"
                               onClick={() => handleOpenPay(debt)}
-                              className="h-7.5 px-2.5 text-sub sm:text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-2xs gap-1"
+                              className="h-7.5 text-sub sm:text-sm bg-indigo-600 hover:bg-indigo-700 text-white gap-1"
                               title="รับชำระหนี้บิลนี้"
                                 aria-label="รับชำระ"
                             >
@@ -577,7 +576,7 @@ function DebtsContent() {
                             size="sm"
                             variant="outline"
                             onClick={() => handleOpenHistory(debt)}
-                            className="h-7.5 px-2 text-sub sm:text-sm text-fg border-slate-300 hover:bg-slate-100 rounded-lg font-medium"
+                            className="h-7.5 text-sub sm:text-sm text-fg border-slate-300 hover:bg-slate-100"
                             title="ดูประวัติการชำระและพิมพ์สลิป"
                                 aria-label="ประวัติ"
                           >
@@ -655,7 +654,7 @@ function DebtsContent() {
                 size="sm"
                 disabled={currentPage >= totalPages}
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                className="h-7.5 w-7.5 p-0 text-slate-600 rounded-md"
+                className="h-7.5 w-7.5 p-0 text-slate-600"
                 title="หน้าถัดไป"
               >
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -665,7 +664,7 @@ function DebtsContent() {
                 size="sm"
                 disabled={currentPage >= totalPages}
                 onClick={() => setCurrentPage(totalPages)}
-                className="h-7.5 w-7.5 p-0 text-slate-600 rounded-md"
+                className="h-7.5 w-7.5 p-0 text-slate-600"
                 title="หน้าสุดท้าย"
               >
                 <ChevronsRight className="w-3.5 h-3.5" />

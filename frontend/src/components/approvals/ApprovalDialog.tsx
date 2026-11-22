@@ -59,7 +59,7 @@ export function ApprovalDialog({ request, onApproved, onCancel }: { request: App
             </div>
             <div className="grid grid-cols-3 gap-2">
               {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'].map((k) => k === '' ? <span key="blank" /> : (
-                <Button key={k} type="button" variant="outline" className="h-12 text-lg font-bold" onClick={() => press(k)}>
+                <Button key={k} type="button" variant="outline" className="text-lg" onClick={() => press(k)}>
                   {k === 'del' ? <Delete className="w-5 h-5" /> : k}
                 </Button>
               ))}

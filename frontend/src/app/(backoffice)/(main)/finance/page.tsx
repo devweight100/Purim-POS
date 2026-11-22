@@ -205,7 +205,7 @@ export default function FinancePage() {
           ['pl', 'งบกำไรขาดทุน'],
           ['reconcile', 'กระทบยอดธนาคาร'],
         ] as const).map(([k, l]) => (
-          <Button key={k} size="sm" variant={view === k ? 'default' : 'ghost'} onClick={() => setView(k)}>{l}</Button>
+          <Button key={k} variant={view === k ? 'default' : 'ghost'} onClick={() => setView(k)}>{l}</Button>
         ))}
       </div>
 
@@ -290,7 +290,7 @@ export default function FinancePage() {
             </div>
             <div className="max-h-64 overflow-y-auto">
               <table className="tbl w-full text-xs">
-                <thead className=""><tr><th className="text-left">ครบกำหนด</th><th className="text-left">ผู้จำหน่าย / บิล</th><th className="text-right">ยอด</th></tr></thead>
+                <thead ><tr><th className="text-left">ครบกำหนด</th><th className="text-left">ผู้จำหน่าย / บิล</th><th className="text-right">ยอด</th></tr></thead>
                 <tbody>
                   {overview.payables.items.length === 0 && <tr><td colSpan={3} className="text-center text-subtle">ไม่มียอดค้างจ่าย</td></tr>}
                   {overview.payables.items.map((p) => (
@@ -300,7 +300,7 @@ export default function FinancePage() {
                         {p.daysToDue < 0 ? ` (เกิน ${-p.daysToDue} วัน)` : p.daysToDue === 0 ? ' (วันนี้)' : ` (อีก ${p.daysToDue} วัน)`}
                         {!p.dueDateSet && <span className="text-subtle" title="ไม่ได้ระบุวันครบกำหนดใน PO ใช้เครดิตเทอมของผู้จำหน่าย"> *</span>}
                       </td>
-                      <td className="">{p.supplierName} <span className="text-subtle doc-no">{p.invoiceNo || p.poNumber}</span></td>
+                      <td >{p.supplierName} <span className="text-subtle doc-no">{p.invoiceNo || p.poNumber}</span></td>
                       <td className="text-right doc-no whitespace-nowrap">{formatCurrency(p.amount)}</td>
                     </tr>
                   ))}
@@ -331,12 +331,12 @@ export default function FinancePage() {
             </div>
             <div className="max-h-52 overflow-y-auto">
               <table className="tbl w-full text-xs">
-                <thead className=""><tr><th className="text-left">ลูกค้า</th><th className="text-right">บิล</th><th className="text-right">เกินกำหนด</th><th className="text-right">ค้างทั้งหมด</th></tr></thead>
+                <thead ><tr><th className="text-left">ลูกค้า</th><th className="text-right">บิล</th><th className="text-right">เกินกำหนด</th><th className="text-right">ค้างทั้งหมด</th></tr></thead>
                 <tbody>
                   {overview.receivables.topDebtors.length === 0 && <tr><td colSpan={4} className="text-center text-subtle">ไม่มีลูกหนี้ค้างชำระ</td></tr>}
                   {overview.receivables.topDebtors.map((c) => (
                     <tr key={c.customerId} className="border-t border-slate-100">
-                      <td className="">{c.name} <span className="text-subtle">{c.phone || ''}</span></td>
+                      <td >{c.name} <span className="text-subtle">{c.phone || ''}</span></td>
                       <td className="text-right">{c.bills}</td>
                       <td className={`p-1 text-right font-mono ${c.overdue > 0 ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>{c.overdue > 0 ? `${formatCurrency(c.overdue)} (${c.oldestDaysOverdue} วัน)` : '-'}</td>
                       <td className="text-right doc-no whitespace-nowrap">{formatCurrency(c.total)}</td>
@@ -429,18 +429,18 @@ export default function FinancePage() {
         {tab === 'ledger' && (
           <div className="tbl-wrap overflow-x-auto">
             <table className="tbl w-full text-sm">
-              <thead className=""><tr>
+              <thead ><tr>
                 <th className="text-left">วันเวลา</th><th className="text-left">บัญชี</th><th className="text-left">ประเภท</th>
-                <th className="text-left">รายละเอียด</th><th className="text-right">เข้า</th><th className="text-right">ออก</th><th className="" />
+                <th className="text-left">รายละเอียด</th><th className="text-right">เข้า</th><th className="text-right">ออก</th><th  />
               </tr></thead>
               <tbody>
                 {rows.length === 0 && <tr><td colSpan={7} className="text-center text-subtle">ไม่มีรายการในช่วงนี้</td></tr>}
                 {rows.map((r) => (
                   <tr key={r.id} className={`border-t border-slate-100 ${r.isReversed || r.type === 'REVERSAL' ? 'text-slate-400' : ''}`}>
                     <td className="whitespace-nowrap">{formatListDate(r.occurredAt)}</td>
-                    <td className="">{r.account.name}</td>
-                    <td className="">{r.typeLabel}{r.category ? ` · ${r.category.name}` : ''}{r.isReversed && <Badge className="ml-1 bg-slate-200 text-muted-foreground">ยกเลิกแล้ว</Badge>}</td>
-                    <td className="">{r.note}</td>
+                    <td >{r.account.name}</td>
+                    <td >{r.typeLabel}{r.category ? ` · ${r.category.name}` : ''}{r.isReversed && <Badge className="ml-1 bg-slate-200 text-muted-foreground">ยกเลิกแล้ว</Badge>}</td>
+                    <td >{r.note}</td>
                     <td className="text-right doc-no whitespace-nowrap text-ok">{r.direction === 'IN' ? formatCurrency(r.amount) : ''}</td>
                     <td className="text-right doc-no whitespace-nowrap text-danger">{r.direction === 'OUT' ? formatCurrency(r.amount) : ''}</td>
                     <td className="text-right">
@@ -457,19 +457,19 @@ export default function FinancePage() {
         {tab === 'expenses' && (
           <div className="tbl-wrap overflow-x-auto">
             <table className="tbl w-full text-sm">
-              <thead className=""><tr>
+              <thead ><tr>
                 <th className="text-left">เลขที่</th><th className="text-left">วันที่จ่าย</th><th className="text-left">หมวด</th>
-                <th className="text-left">รายละเอียด</th><th className="text-left">จ่ายจาก</th><th className="text-right">จำนวนเงิน</th><th className="" />
+                <th className="text-left">รายละเอียด</th><th className="text-left">จ่ายจาก</th><th className="text-right">จำนวนเงิน</th><th  />
               </tr></thead>
               <tbody>
                 {expenses.length === 0 && <tr><td colSpan={7} className="text-center text-subtle">ยังไม่มีค่าใช้จ่ายในช่วงนี้</td></tr>}
                 {expenses.map((e) => (
                   <tr key={e.id} className={`border-t border-slate-100 ${e.status === 'CANCELLED' ? 'text-slate-400 line-through' : ''}`}>
                     <td className="doc-no whitespace-nowrap">{e.expenseNumber}</td>
-                    <td className="">{formatListDate(e.paidAt)}</td>
-                    <td className="">{e.category.name}</td>
-                    <td className="">{e.description}{e.vendor ? ` (${e.vendor})` : ''}</td>
-                    <td className="">{e.account.name}</td>
+                    <td >{formatListDate(e.paidAt)}</td>
+                    <td >{e.category.name}</td>
+                    <td >{e.description}{e.vendor ? ` (${e.vendor})` : ''}</td>
+                    <td >{e.account.name}</td>
                     <td className="text-right doc-no whitespace-nowrap">{formatCurrency(Number(e.amount))}</td>
                     <td className="text-right">
                       {e.status !== 'CANCELLED' && (

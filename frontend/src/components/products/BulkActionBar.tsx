@@ -140,22 +140,22 @@ export function BulkActionBar({ data, sel }: { data: ProductsData; sel: ProductS
         เลือกสินค้าแล้ว {selectedProductIds.size.toLocaleString()} รายการ
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="outline" className="h-9 border-slate-300 bg-white text-slate-700 hover:bg-slate-50" onClick={clearSelection}>
+        <Button type="button" variant="outline" className="border-slate-300 bg-white text-slate-700 hover:bg-slate-50" onClick={clearSelection}>
           ยกเลิกเลือก
         </Button>
         {showEnable && (
-          <Button type="button" variant="outline" className="h-9 border-slate-300 bg-white text-slate-700 hover:bg-slate-50" onClick={() => void setActive(Array.from(selectedProductIds), true)} disabled={busy !== null} data-testid="bulk-enable">
+          <Button type="button" variant="outline" className="border-slate-300 bg-white text-slate-700 hover:bg-slate-50" onClick={() => void setActive(Array.from(selectedProductIds), true)} disabled={busy !== null} data-testid="bulk-enable">
             <Power className="mr-1.5 h-4 w-4" />
             เปิดใช้งาน
           </Button>
         )}
         {showDisable && (
-          <Button type="button" variant="outline" className="h-9 border-slate-300 bg-white text-slate-700 hover:bg-slate-50" onClick={() => void handleBulkDisable()} disabled={busy !== null} data-testid="bulk-disable">
+          <Button type="button" variant="outline" className="border-slate-300 bg-white text-slate-700 hover:bg-slate-50" onClick={() => void handleBulkDisable()} disabled={busy !== null} data-testid="bulk-disable">
             <PowerOff className="mr-1.5 h-4 w-4" />
             ปิดการใช้งาน
           </Button>
         )}
-        <Button type="button" className="h-9 bg-rose-600 text-white hover:bg-rose-700" onClick={() => void handleBulkDelete()} disabled={busy !== null}>
+        <Button type="button" className="bg-rose-600 text-white hover:bg-rose-700" onClick={() => void handleBulkDelete()} disabled={busy !== null}>
           <Trash2 className="mr-1.5 h-4 w-4" />
           {busy === "delete" ? "กำลังลบ..." : "ลบรายการที่เลือก"}
         </Button>

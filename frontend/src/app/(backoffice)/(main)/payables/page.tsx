@@ -366,13 +366,12 @@ export default function PayablesPage() {
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
-            size="sm"
             disabled={openingMulti}
             onClick={() => {
               setSelectedBills({});
               void openMultiSettle(undefined);
             }}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white h-10 px-4 text-xs font-bold shadow-sm gap-1.5 rounded-xl"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
           >
             <Plus className="w-4 h-4" />
             <span>+ สร้างใบชำระหนี้ (หลายบิล)</span>
@@ -381,8 +380,7 @@ export default function PayablesPage() {
           <Link href="/supplier-returns">
             <Button
               variant="outline"
-              size="sm"
-              className="border-indigo-200 text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 h-10 px-4 text-xs font-bold shadow-2xs gap-1.5 rounded-xl"
+              className="border-indigo-200 text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 gap-1.5"
             >
               <ArrowLeftRight className="w-4 h-4" />
               <span>ส่งเคลม / ใบลดหนี้</span>
@@ -392,9 +390,8 @@ export default function PayablesPage() {
           <Button
             type="button"
             variant="outline"
-            size="sm"
             onClick={refreshData}
-            className="border-slate-200 text-slate-700 hover:bg-slate-50 h-10 px-3.5 text-xs font-semibold shadow-2xs rounded-xl gap-1.5"
+            className="border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5"
             title="รีเฟรชข้อมูล"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -503,7 +500,7 @@ export default function PayablesPage() {
                 placeholder="ค้นหาเลขที่ PO, ชื่อบริษัทผู้จำหน่าย..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-10 h-10 text-xs sm:text-sm bg-slate-50 border-slate-200 rounded-xl"
+                className="pl-10 sm:text-sm bg-slate-50 border-slate-200"
               />
             </div>
 
@@ -546,7 +543,7 @@ export default function PayablesPage() {
                     detail (invoice date, discount, credit notes, paid, PO amount, items, payments) is in the bill
                     details (row click / Enter); the row's actions are in one "⋯" menu */}
                 <table className="tbl w-full text-sm" data-testid="payable-bills-table">
-                  <thead className="">
+                  <thead >
                     <tr>
                       <th className="text-center w-10">
                         <Checkbox
@@ -647,7 +644,7 @@ export default function PayablesPage() {
                     const firstBill = selectedBills[selectedPoIds[0]];
                     void openMultiSettle(firstBill?.supplierId, 'selection');
                   }}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 px-4 rounded-xl gap-1.5 shadow-sm"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
                 >
                   <Receipt className="w-4 h-4" />
                   <span>สร้างใบชำระหนี้ (ออกใบสำคัญจ่าย)</span>
@@ -714,7 +711,7 @@ export default function PayablesPage() {
                         setSelectedBills({});
                         void openMultiSettle(supp.id, 'supplier');
                       }}
-                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-9 text-xs rounded-xl shadow-xs gap-1.5"
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
                     >
                       <Receipt className="w-3.5 h-3.5" />
                       <span>ชำระหนี้รอบบิล ({suppOpenCount} บิล)</span>
@@ -787,7 +784,7 @@ export default function PayablesPage() {
                             )}
                           </td>
 
-                          <td className="">
+                          <td >
                             <div className="space-y-1">
                               <Badge variant="outline" className="text-sub doc-no font-medium bg-slate-50">
                                 {voucher.bills.length} บิล
@@ -928,7 +925,7 @@ export default function PayablesPage() {
                 value={editingInvoiceValue}
                 onChange={(e) => setEditingInvoiceValue(e.target.value)}
                 placeholder="เช่น INV-670123 หรือ DO-9912"
-                className="font-mono font-bold"
+                className="font-mono"
                 autoFocus
               />
             </div>
@@ -939,7 +936,7 @@ export default function PayablesPage() {
             </Button>
             <Button
               size="sm"
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white"
               onClick={() => {
                 if (editingInvoicePoId) {
                   handleSaveInlineInvoice(editingInvoicePoId);

@@ -94,7 +94,7 @@ export function BundleItemsSection({ form, setForm, products, editingProductId }
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 text-xs border-purple-400 bg-white text-purple-700 hover:bg-purple-50 font-bold shadow-2xs cursor-pointer"
+          className="border-purple-400 bg-white text-purple-700 hover:bg-purple-50 cursor-pointer"
           onClick={addBundleItem}
         >
           <Plus className="w-3.5 h-3.5 mr-1" /> เพิ่มสินค้าเข้าชุด
@@ -149,7 +149,7 @@ export function BundleItemsSection({ form, setForm, products, editingProductId }
                       inputMode={qtyInputMode(allowDecimalQty)}
                       value={bi.quantity}
                       onChange={(e) => updateBundleItem(idx, "quantity", e.target.value)}
-                      className="h-9 border-slate-300 font-bold text-center"
+                      className="border-slate-300 text-center"
                     />
                     <span className="text-xs text-slate-500 shrink-0">{child?.unit || "ชิ้น"}</span>
                   </div>

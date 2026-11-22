@@ -284,9 +284,8 @@ export default function ShiftsHistoryPage() {
 
           <Button
             variant="outline"
-            size="sm"
             onClick={fetchShifts}
-            className="border-slate-200 text-slate-700 hover:bg-slate-50 h-10 px-3.5 text-xs font-semibold shadow-2xs rounded-2xl gap-1.5"
+            className="border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5"
             title="รีเฟรชข้อมูล"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -295,8 +294,7 @@ export default function ShiftsHistoryPage() {
 
           <Link href="/pos">
             <Button
-              size="sm"
-              className="bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs h-10 px-4 rounded-2xl shadow-xs gap-1.5"
+              className="bg-sky-500 hover:bg-sky-600 text-white gap-1.5"
             >
               <ShoppingCart className="w-3.5 h-3.5" />
               <span>เปิดหน้าขาย (Purim POS)</span>
@@ -397,7 +395,7 @@ export default function ShiftsHistoryPage() {
             placeholder="ค้นหาชื่อพนักงานแคชเชียร์, หรือรหัสกะ (SHIFT-...)..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-10 h-11 text-xs bg-slate-50 border-slate-200 rounded-2xl"
+            className="pl-10 bg-slate-50 border-slate-200"
           />
         </div>
 
@@ -436,7 +434,7 @@ export default function ShiftsHistoryPage() {
               type="date"
               value={customDate}
               onChange={(e) => setCustomDate(e.target.value)}
-              className="h-11 text-xs bg-slate-50 border-slate-200 rounded-2xl w-40"
+              className="h-11 bg-slate-50 border-slate-200 w-40"
             />
           )}
 
@@ -522,7 +520,7 @@ export default function ShiftsHistoryPage() {
               {/* Table of Shifts in this Day */}
               <div className="tbl-wrap overflow-x-auto">
                 <table className="tbl w-full text-sm">
-                  <thead className="">
+                  <thead >
                     <tr>
                       <th data-narrow="hide" className="text-center w-12">รอบ</th>
                       <th className="text-left">รหัสกะ / แคชเชียร์</th>
@@ -641,7 +639,7 @@ export default function ShiftsHistoryPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => handlePrintSlip(shift)}
-                              className="h-8 px-2.5 rounded-xl border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-medium text-sub gap-1.5 shadow-2xs"
+                              className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-sub gap-1.5"
                               title="พิมพ์ใบสรุปปิดกะ (Slip 80mm / A4)"
                               aria-label="พิมพ์สลิปซ้ำ"
                             >

@@ -38,11 +38,11 @@ export function SupplierCostSection({ form, setForm, updateForm, suppliers, onCr
         </div>
         <div className="flex flex-wrap items-center gap-btn">
           {onCreateSupplier && (
-            <Button type="button" variant="ghost" size="sm" className="h-8 text-xs text-primary hover:bg-primary/5" onClick={onCreateSupplier}>
+            <Button type="button" variant="ghost" size="sm" className="text-primary hover:bg-primary/5" onClick={onCreateSupplier}>
               + เพิ่มผู้จำหน่าย
             </Button>
           )}
-          <Button type="button" variant="outline" size="sm" className="h-8 text-xs border-primary text-primary hover:bg-primary/5" onClick={addSupplierEntry}>
+          <Button type="button" variant="outline" size="sm" className="border-primary text-primary hover:bg-primary/5" onClick={addSupplierEntry}>
             <Plus className="w-3 h-3 mr-1" /> เพิ่มแถวผู้จำหน่าย
           </Button>
         </div>
@@ -82,7 +82,7 @@ export function SupplierCostSection({ form, setForm, updateForm, suppliers, onCr
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-slate-500">ต้นทุน/ชิ้น</label>
-                    <Input aria-label={`ต้นทุน/ชิ้น ผู้จำหน่าย ${i + 1}`} type="number" min="0" step="0.01" value={entry.lastCost} onChange={e => updateSupplierEntry(i, "lastCost", e.target.value)} className="h-9 border-slate-300 text-sm text-right" />
+                    <Input aria-label={`ต้นทุน/ชิ้น ผู้จำหน่าย ${i + 1}`} type="number" min="0" step="0.01" value={entry.lastCost} onChange={e => updateSupplierEntry(i, "lastCost", e.target.value)} className="border-slate-300 text-right" />
                   </div>
                   <Button type="button" variant="ghost" size="icon" aria-label={`ลบ${who}`} className="h-9 w-9 shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50" onClick={() => removeSupplierEntry(i)}>
                     <Trash2 className="w-3.5 h-3.5" />
@@ -91,11 +91,11 @@ export function SupplierCostSection({ form, setForm, updateForm, suppliers, onCr
                 <div className="grid grid-cols-[minmax(0,1fr)_160px_36px] gap-2 items-end">
                   <div className="space-y-1 min-w-0">
                     <label className="text-xs font-medium text-slate-500">ชื่อสินค้าของผู้ขาย <span className="font-normal text-slate-400">(ตามบิลผู้ขาย ไม่บังคับ)</span></label>
-                    <Input aria-label={`ชื่อสินค้าของผู้ขาย ${i + 1}`} maxLength={NAME_LIMITS.supplierProductName} value={entry.supplierProductName} onChange={e => updateSupplierEntry(i, "supplierProductName", e.target.value)} className="h-9 border-slate-300 text-sm" />
+                    <Input aria-label={`ชื่อสินค้าของผู้ขาย ${i + 1}`} maxLength={NAME_LIMITS.supplierProductName} value={entry.supplierProductName} onChange={e => updateSupplierEntry(i, "supplierProductName", e.target.value)} className="border-slate-300" />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-medium text-slate-500">รหัสสินค้าของผู้ขาย</label>
-                    <Input aria-label={`รหัสสินค้าของผู้ขาย ${i + 1}`} maxLength={NAME_LIMITS.supplierSku} value={entry.supplierSku} onChange={e => updateSupplierEntry(i, "supplierSku", e.target.value)} className="h-9 border-slate-300 text-sm font-mono" />
+                    <Input aria-label={`รหัสสินค้าของผู้ขาย ${i + 1}`} maxLength={NAME_LIMITS.supplierSku} value={entry.supplierSku} onChange={e => updateSupplierEntry(i, "supplierSku", e.target.value)} className="border-slate-300 font-mono" />
                   </div>
                 </div>
               </div>
@@ -107,7 +107,7 @@ export function SupplierCostSection({ form, setForm, updateForm, suppliers, onCr
             <div className="mt-3 flex items-center gap-3 rounded-lg bg-emerald-50 border border-emerald-100 px-4 py-2.5 text-sm">
               <span className="text-emerald-700">ต้นทุนเฉลี่ยจากทุก supplier:</span>
               <span className="font-bold text-emerald-800">{formatCurrency(parseFloat(avgCostFromSuppliers))}</span>
-              <Button type="button" variant="ghost" size="sm" className="ml-auto h-7 text-xs text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100" onClick={() => updateForm("basePrice", avgCostFromSuppliers)}>
+              <Button type="button" variant="ghost" size="sm" className="ml-auto text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100" onClick={() => updateForm("basePrice", avgCostFromSuppliers)}>
                 ใช้เป็นต้นทุนอ้างอิง →
               </Button>
             </div>
@@ -119,7 +119,7 @@ export function SupplierCostSection({ form, setForm, updateForm, suppliers, onCr
       <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-3">
         <div className="flex-1 space-y-1.5">
           <label className="text-sm font-medium text-slate-700">ต้นทุนอ้างอิง (สำหรับแสดงผล/ประมาณการ)</label>
-          <Input aria-label="ต้นทุนอ้างอิง (สำหรับแสดงผล/ประมาณการ)" type="number" min="0" step="0.01" value={form.basePrice} onChange={e => updateForm("basePrice", e.target.value)} className="h-10 border-slate-300 text-right max-w-[160px]" />
+          <Input aria-label="ต้นทุนอ้างอิง (สำหรับแสดงผล/ประมาณการ)" type="number" min="0" step="0.01" value={form.basePrice} onChange={e => updateForm("basePrice", e.target.value)} className="border-slate-300 text-right max-w-[160px]" />
         </div>
         <p className="text-xs text-slate-400 flex-1">ต้นทุนจริงคำนวณจาก FIFO เมื่อมีการขาย ตัวเลขนี้ใช้แสดงในรายงานประมาณการเท่านั้น</p>
       </div>

@@ -112,7 +112,7 @@ export function PoItemsTable({
                     step="0.01"
                     value={unitCost}
                     onChange={(e) => updateProductUnitCost(product, Number(e.target.value))}
-                    className="h-9 bg-white text-right text-sm border-slate-300 focus-visible:ring-sky-500 font-semibold text-slate-900"
+                    className="bg-white text-right border-slate-300 focus-visible:ring-sky-500 text-slate-900"
                   />
                 </label>
 
@@ -126,7 +126,7 @@ export function PoItemsTable({
                     inputMode={qtyInputMode(allowDecimalQty)}
                     value={quantity}
                     onChange={(e) => updateProductQuantity(product, Number(e.target.value))}
-                    className="h-9 bg-white text-right text-sm border-slate-300 focus-visible:ring-sky-500 font-bold text-sky-600"
+                    className="bg-white text-right border-slate-300 focus-visible:ring-sky-500 text-sky-600"
                   />
                 </label>
 
@@ -140,7 +140,7 @@ export function PoItemsTable({
                       step="0.01"
                       value={discountValue}
                       onChange={(e) => updateProductDiscount(product, 'discountValue', Number(e.target.value))}
-                      className="h-9 bg-white text-right text-sm border-slate-300"
+                      className="bg-white text-right border-slate-300"
                     />
                     <select
                       value={discountType}
@@ -175,7 +175,7 @@ export function PoItemsTable({
                       disabled={normVatType(item.vatType) === 'NONE'}
                       value={normVatType(item.vatType) === 'NONE' ? '' : (item.vatRate ?? 7)}
                       onChange={(e) => updateItemVat(item.productId, { vatRate: Math.max(0, Math.min(30, Number(e.target.value) || 0)) })}
-                      className="h-9 bg-white text-right text-xs border-slate-300 px-1.5"
+                      className="bg-white text-right border-slate-300"
                       title="อัตรา VAT (%)"
                     />
                   </div>

@@ -66,11 +66,11 @@ export function PoListTable({
 
       <div className="overflow-x-auto">
         <Table>
-          <TableHeader className="">
+          <TableHeader >
             <TableRow className="hover:bg-transparent">
               <TableHead data-narrow="hide" className="text-center w-12">#</TableHead>
-              <TableHead className="">เลข PO</TableHead>
-              <TableHead className="">ผู้จำหน่าย</TableHead>
+              <TableHead >เลข PO</TableHead>
+              <TableHead >ผู้จำหน่าย</TableHead>
               <TableHead className="text-center">วันที่สร้าง</TableHead>
               <TableHead className="text-right">ยอดรวมสุทธิ</TableHead>
               <TableHead className="text-center">สถานะ</TableHead>
@@ -200,7 +200,7 @@ export function PoListTable({
           <div className="flex items-center gap-1.5">
             <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(Math.max(1, page - 1))} className="h-8 px-3 text-xs">‹ ก่อนหน้า</Button>
             <span className="px-2 text-xs font-bold text-slate-700">หน้า {page} / {Math.max(1, Math.ceil(total / pageSize))}</span>
-            <Button variant="outline" size="sm" disabled={page * pageSize >= total} onClick={() => setPage(page + 1)} className="h-8 px-3 text-xs">ถัดไป ›</Button>
+            <Button variant="outline" size="sm" disabled={page * pageSize >= total} onClick={() => setPage(page + 1)} >ถัดไป ›</Button>
           </div>
         </div>
       )}

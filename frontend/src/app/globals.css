@@ -211,6 +211,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
+.tbl > thead > tr > th :is(button, a, span, div) {
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.tbl > thead > tr > th .text-sub, .tbl > thead > tr > th [class*='text-[1'] { font-size: 11px; font-weight: 400; }
+.tbl .doc-no { font-weight: 500; }
 .tbl > thead > tr {
   background-color: var(--tbl-head-bg);
   border-bottom: 1px solid var(--border);

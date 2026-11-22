@@ -592,7 +592,7 @@ export default function PurchaseOrdersPage() {
           <p className="page-subtitle">จัดการเอกสารใบสั่งซื้อสินค้า ตรวจรับของเข้าคลัง และเปิดใบ PO ถึงผู้จำหน่าย</p>
         </div>
         <Button
-          className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-10 px-5 text-xs shadow-sm rounded-xl"
+          className="bg-sky-500 hover:bg-sky-600 text-white"
           onClick={openCreateDialog}
         >
           <Plus className="w-4 h-4 mr-1.5" />

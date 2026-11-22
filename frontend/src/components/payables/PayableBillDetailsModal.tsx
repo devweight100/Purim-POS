@@ -201,7 +201,7 @@ export function PayableBillDetailsModal({
           {activeTab === 'items' && (
             <div className="border border-slate-200 rounded-2xl overflow-hidden">
               <table className="tbl w-full text-xs">
-                <thead className="">
+                <thead >
                   <tr>
                     <th className="text-center w-10">ลำดับ</th>
                     <th className="text-left">สินค้า / SKU</th>
@@ -225,7 +225,7 @@ export function PayableBillDetailsModal({
                       return (
                         <tr key={idx} className="hover:bg-slate-50/50">
                           <td className="text-center text-subtle">{idx + 1}</td>
-                          <td className="">
+                          <td >
                             <p className="font-medium text-fg">{item.productName}</p>
                             <p className="text-sub text-subtle doc-no">SKU: {item.sku}</p>
                           </td>
@@ -306,7 +306,7 @@ export function PayableBillDetailsModal({
                           variant="outline"
                           disabled={isRollingBack}
                           onClick={() => handleRollbackPayment(p.id)}
-                          className="h-8 text-xs font-bold rounded-xl border-amber-200 text-amber-700 hover:bg-amber-50 gap-1"
+                          className="border-amber-200 text-amber-700 hover:bg-amber-50 gap-1"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
                           <span>ย้อนสถานะรอบนี้</span>
@@ -329,7 +329,7 @@ export function PayableBillDetailsModal({
                 variant="outline"
                 disabled={isRollingBack}
                 onClick={() => handleRollbackPayment()}
-                className="rounded-xl font-bold border-amber-300 text-amber-800 hover:bg-amber-50 gap-1.5 text-xs w-full sm:w-auto"
+                className="border-amber-300 text-amber-800 hover:bg-amber-50 gap-1.5 w-full sm:w-auto"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>ย้อนสถานะการชำระเงินทั้งหมด</span>
@@ -342,7 +342,7 @@ export function PayableBillDetailsModal({
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              className="rounded-xl font-bold text-slate-600"
+              className="text-slate-600"
             >
               ปิด
             </Button>
@@ -354,7 +354,7 @@ export function PayableBillDetailsModal({
                   onOpenChange(false);
                   onSettleClick(bill);
                 }}
-                className="rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 shadow-md"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
               >
                 <Receipt className="w-4 h-4" />
                 <span>ชำระหนี้ & ประกบใบลดหนี้</span>

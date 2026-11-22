@@ -254,9 +254,8 @@ export default function ClaimInventoryPage() {
         <div className="flex flex-wrap gap-2 items-center">
           <Button
             variant="outline"
-            size="sm"
             onClick={fetchData}
-            className="border-slate-300 text-slate-700 hover:bg-slate-50 h-8 px-3 text-xs sm:text-sm font-semibold shadow-2xs"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50 sm:text-sm"
             title="รีเฟรชข้อมูลสต๊อกของเคลม"
           >
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
@@ -265,8 +264,7 @@ export default function ClaimInventoryPage() {
 
           <Link href="/supplier-returns">
             <Button
-              size="sm"
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm h-8 px-3.5 rounded-lg shadow-2xs gap-1.5"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white sm:text-sm gap-1.5"
             >
               <ArrowLeftRight className="w-3.5 h-3.5" />
               <span>ส่งเคลม & ใบลดหนี้บริษัท</span>
@@ -276,8 +274,7 @@ export default function ClaimInventoryPage() {
           <Link href="/claims">
             <Button
               variant="outline"
-              size="sm"
-              className="border-rose-200 text-rose-700 hover:bg-rose-50 h-8 px-3 text-xs sm:text-sm font-bold shadow-2xs gap-1.5"
+              className="border-rose-200 text-rose-700 hover:bg-rose-50 sm:text-sm gap-1.5"
             >
               <ShieldAlert className="w-3.5 h-3.5" />
               <span>รับเคลมสินค้า (ลูกค้า)</span>
@@ -363,7 +360,7 @@ export default function ClaimInventoryPage() {
               placeholder="ค้นหาชื่อสินค้า, บาร์โค้ด, รหัสสินค้า, ชื่อผู้จำหน่าย, หรือเลขที่ใบเคลม..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9 bg-slate-50 border-slate-200 focus:bg-white text-xs sm:text-sm font-medium rounded-lg"
+              className="pl-9 bg-slate-50 border-slate-200 focus:bg-white sm:text-sm"
             />
             {search && (
               <button
@@ -494,7 +491,7 @@ export default function ClaimInventoryPage() {
             <div className="overflow-x-auto">
               {/* round 3: category under the name (was its own column); "#" and ทุน/หน่วย hidden when the table is under 1150 px */}
               <Table>
-                <TableHeader className="">
+                <TableHeader >
                   <TableRow className="hover:bg-transparent">
                     <TableHead data-mid="hide" className="text-center w-10">#</TableHead>
                     <TableHead className="text-left">บาร์โค้ด / SKU</TableHead>
@@ -606,7 +603,7 @@ export default function ClaimInventoryPage() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleOpenProductDetail(item)}
-                                className="h-8 px-2.5 border-slate-300 hover:bg-slate-50 text-fg font-medium text-sub rounded-lg shadow-2xs gap-1"
+                                className="border-slate-300 hover:bg-slate-50 text-fg text-sub gap-1"
                                 title="ดูประวัติใบเคลมทั้งหมดของสินค้านี้"
                                 aria-label={`ใบเคลม (${item.claimCount})`}
                               >
@@ -617,7 +614,7 @@ export default function ClaimInventoryPage() {
                               <Link href="/supplier-returns">
                                 <Button
                                   size="sm"
-                                  className="h-8 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sub rounded-lg shadow-2xs gap-1"
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-sub gap-1"
                                   title="ไปสร้างใบส่งคืนบริษัทผู้จำหน่าย"
                                   aria-label="ส่งคืน"
                                 >
@@ -695,7 +692,7 @@ export default function ClaimInventoryPage() {
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader className="">
+                <TableHeader >
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="text-center w-16">
                       ลำดับ
@@ -787,7 +784,7 @@ export default function ClaimInventoryPage() {
                                   setSelectedSupplierId(supp.supplierId);
                                   setActiveTab('products');
                                 }}
-                                className="h-8 px-2.5 border-slate-300 hover:bg-slate-50 text-fg font-medium text-sub rounded-lg shadow-2xs gap-1"
+                                className="border-slate-300 hover:bg-slate-50 text-fg text-sub gap-1"
                               >
                                 <span>ดู {supp.productCount} สินค้า</span>
                               </Button>
@@ -795,7 +792,7 @@ export default function ClaimInventoryPage() {
                               <Link href="/supplier-returns">
                                 <Button
                                   size="sm"
-                                  className="h-8 px-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sub rounded-lg shadow-2xs gap-1"
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-sub gap-1"
                                 >
                                   <ArrowLeftRight className="w-3.5 h-3.5" />
                                   <span>สร้างใบส่งคืน</span>
@@ -820,7 +817,7 @@ export default function ClaimInventoryPage() {
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader className="">
+                <TableHeader >
                   <TableRow className="hover:bg-transparent">
                     <TableHead className="text-center w-16">
                       ลำดับ
@@ -882,7 +879,7 @@ export default function ClaimInventoryPage() {
                         </td>
 
                         {/* 4. Product Name & Defect */}
-                        <td className="">
+                        <td >
                           <p className="font-medium text-fg">{claim.productName}</p>
                           <p className="text-sub text-danger font-medium mt-0.5">
                             อาการ: {claim.defectReason}
@@ -890,7 +887,7 @@ export default function ClaimInventoryPage() {
                         </td>
 
                         {/* 5. Supplier */}
-                        <td className="">
+                        <td >
                           <span className="font-medium text-fg block">
                             {claim.supplierName}
                           </span>
@@ -993,12 +990,12 @@ export default function ClaimInventoryPage() {
               {/* Claims Breakdown Table */}
               <div className="rounded-xl border border-slate-200 overflow-hidden">
                 <Table>
-                  <TableHeader className="">
+                  <TableHeader >
                     <TableRow>
                       <TableHead className="w-12 text-center">ลำดับ</TableHead>
                       <TableHead className="w-32">เลขที่เคลม</TableHead>
                       <TableHead className="w-28 text-center">วันที่</TableHead>
-                      <TableHead className="">อาการชำรุด</TableHead>
+                      <TableHead >อาการชำรุด</TableHead>
                       <TableHead className="w-24 text-right">จำนวน</TableHead>
                       <TableHead className="w-28 text-right">มูลค่าทุน</TableHead>
                       <TableHead className="w-28 text-center">สถานะ</TableHead>
@@ -1048,14 +1045,14 @@ export default function ClaimInventoryPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => setIsDetailModalOpen(false)}
-                  className="font-bold text-xs"
+                  
                 >
                   ปิดหน้าต่าง
                 </Button>
                 <Link href="/supplier-returns">
                   <Button
                     size="sm"
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs gap-1.5"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
                   >
                     <ArrowLeftRight className="w-3.5 h-3.5" />
                     <span>ไปหน้าสร้างใบส่งคืนบริษัท</span>

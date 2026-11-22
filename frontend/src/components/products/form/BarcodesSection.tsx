@@ -20,7 +20,7 @@ export function BarcodesSection({ form, setForm, suppliers }: { form: ProductFor
           <h3 className="font-semibold text-slate-900">บาร์โค้ดทั้งหมด</h3>
           <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">สแกนบาร์โค้ดไหนก็ได้ → ตัดสต็อกสินค้าเดียวกัน</span>
         </div>
-        <Button type="button" variant="outline" size="sm" className="h-8 text-xs border-primary text-primary hover:bg-primary/5" onClick={addBarcode}>
+        <Button type="button" variant="outline" size="sm" className="border-primary text-primary hover:bg-primary/5" onClick={addBarcode}>
           <Plus className="w-3 h-3 mr-1" /> เพิ่มบาร์โค้ด
         </Button>
       </div>
@@ -28,7 +28,7 @@ export function BarcodesSection({ form, setForm, suppliers }: { form: ProductFor
         {form.barcodes.map((b, i) => (
           <div key={i} className="flex gap-2 items-center">
             <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <Input value={b.barcode} onChange={e => updateBarcode(i, "barcode", e.target.value)} className="h-9 border-slate-300 font-mono text-sm" />
+              <Input value={b.barcode} onChange={e => updateBarcode(i, "barcode", e.target.value)} className="border-slate-300 font-mono" />
               <select
                 value={b.supplierId || ""}
                 onChange={e => updateBarcode(i, "supplierId", e.target.value)}
@@ -39,7 +39,7 @@ export function BarcodesSection({ form, setForm, suppliers }: { form: ProductFor
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>
-              <Input value={b.label || ""} onChange={e => updateBarcode(i, "label", e.target.value)} className="h-9 border-slate-300 text-sm" />
+              <Input value={b.label || ""} onChange={e => updateBarcode(i, "label", e.target.value)} className="border-slate-300" />
             </div>
             {form.barcodes.length > 1 && (
               <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-red-400 hover:text-red-600 hover:bg-red-50" onClick={() => removeBarcode(i)}>

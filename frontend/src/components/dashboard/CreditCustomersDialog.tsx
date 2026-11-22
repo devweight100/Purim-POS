@@ -110,7 +110,7 @@ export function CreditCustomersDialog({ open, onOpenChange, summary }: { open: b
               onKeyDown={(e) => { if (e.key === 'ArrowDown') { e.preventDefault(); focusRowNav(listRef.current); } }}
               placeholder="ค้นหาชื่อ / เบอร์โทร / รหัสลูกค้า"
               aria-label="ค้นหาลูกค้าเงินเชื่อ"
-              className="h-9 pl-9 text-sm"
+              className="pl-9"
             />
           </div>
           <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
@@ -137,7 +137,7 @@ export function CreditCustomersDialog({ open, onOpenChange, summary }: { open: b
                 <th className="text-right">บิล</th>
                 <th className="text-left whitespace-nowrap">บิลเก่าสุด</th>
                 <th className="text-left whitespace-nowrap">เกินกำหนด</th>
-                <th className=""><span className="sr-only">เปิด</span></th>
+                <th ><span className="sr-only">เปิด</span></th>
               </tr>
             </thead>
             <tbody ref={listRef} data-row-nav-root>

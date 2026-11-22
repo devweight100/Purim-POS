@@ -133,8 +133,8 @@ export function ReconcilePanel({ accounts, onChanged }: { accounts: FinAccount[]
                 {state.unreconciled.length === 0 && <tr><td colSpan={5} className="text-center text-subtle">ไม่มีรายการรอกระทบยอด</td></tr>}
                 {state.unreconciled.map((r) => (
                   <tr key={r.id} className={`border-t border-slate-100 ${checked.has(r.id) ? 'bg-emerald-50' : ''}`}>
-                    <td className=""><input type="checkbox" checked={checked.has(r.id)} onChange={(e) => { const n = new Set(checked); if (e.target.checked) n.add(r.id); else n.delete(r.id); setChecked(n); }} /></td>
-                    <td className="whitespace-nowrap">{thaiDate(r.occurredAt)}</td><td className="">{r.note}</td>
+                    <td ><input type="checkbox" checked={checked.has(r.id)} onChange={(e) => { const n = new Set(checked); if (e.target.checked) n.add(r.id); else n.delete(r.id); setChecked(n); }} /></td>
+                    <td className="whitespace-nowrap">{thaiDate(r.occurredAt)}</td><td >{r.note}</td>
                     <td className="text-right doc-no whitespace-nowrap text-ok">{r.direction === 'IN' ? formatCurrency(r.amount) : ''}</td>
                     <td className="text-right doc-no whitespace-nowrap text-danger">{r.direction === 'OUT' ? formatCurrency(r.amount) : ''}</td>
                   </tr>

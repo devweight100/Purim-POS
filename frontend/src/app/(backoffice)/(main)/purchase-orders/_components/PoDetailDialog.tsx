@@ -78,10 +78,10 @@ export function PoDetailDialog({
             <div>
               <h4 className="font-bold text-slate-900 mb-3 border-b border-slate-200 pb-2">รายการสินค้าสั่งซื้อ</h4>
               <Table>
-                <TableHeader className="">
-                  <TableRow className="">
+                <TableHeader >
+                  <TableRow >
                     <TableHead className="w-12 text-center">ลำดับ</TableHead>
-                    <TableHead className="">สินค้า</TableHead>
+                    <TableHead >สินค้า</TableHead>
                     <TableHead className="text-right">สั่ง (ชิ้น)</TableHead>
                     <TableHead className="text-right">รับแล้ว (ชิ้น)</TableHead>
                     <TableHead className="text-right">ต้นทุน/หน่วย</TableHead>
@@ -179,7 +179,7 @@ export function PoDetailDialog({
                         setIsDetailOpen(false);
                         router.push('/payables');
                       }}
-                      className="mt-2 w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-9 rounded-xl shadow-xs gap-1.5"
+                      className="mt-2 w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
                       title="ชำระเงินและหักใบลดหนี้ทำที่หน้าเจ้าหนี้การค้า เพื่อให้ยอดตรงกับฐานข้อมูล"
                     >
                       <Sparkles className="w-3.5 h-3.5" />
@@ -194,37 +194,37 @@ export function PoDetailDialog({
         <DialogFooter className="flex justify-between items-center w-full sm:justify-between border-t border-slate-100 pt-4">
            <div className="flex gap-2 flex-wrap items-center">
               {currentPo?.status === 'DRAFT' && (
-                <Button variant="outline" className="border-emerald-500 text-emerald-600 hover:bg-emerald-50 font-bold" onClick={(e) => openIssueConfirmDialog(currentPo, e)}>
+                <Button variant="outline" className="border-emerald-500 text-emerald-600 hover:bg-emerald-50" onClick={(e) => openIssueConfirmDialog(currentPo, e)}>
                   <CheckCircle className="w-4 h-4 mr-2" /> ออกใบสั่งซื้อ (Issue)
                 </Button>
               )}
               {(currentPo?.status === 'ISSUED' || currentPo?.status === 'PARTIALLY_RECEIVED') && (
-                <Button variant="outline" className="border-indigo-500 text-indigo-600 hover:bg-indigo-50 font-bold" onClick={(e) => { setIsDetailOpen(false); openReceiveDialog(currentPo, e); }}>
+                <Button variant="outline" className="border-indigo-500 text-indigo-600 hover:bg-indigo-50" onClick={(e) => { setIsDetailOpen(false); openReceiveDialog(currentPo, e); }}>
                   <PackageOpen className="w-4 h-4 mr-2" /> รับสินค้า (GRN)
                 </Button>
               )}
               {currentPo?.status === 'DRAFT' && (
-                <Button variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-50 font-bold" onClick={() => openEditDialog(currentPo)}>
+                <Button variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-50" onClick={() => openEditDialog(currentPo)}>
                   <Pencil className="w-4 h-4 mr-2" /> แก้ไขใบสั่งซื้อ
                 </Button>
               )}
               {/* Status Change / Rollback Button in Detail Modal */}
-              <Button variant="outline" className="border-indigo-400 text-indigo-700 hover:bg-indigo-50 font-bold" onClick={(e) => { setIsDetailOpen(false); openStatusChangeDialog(currentPo!, e); }}>
+              <Button variant="outline" className="border-indigo-400 text-indigo-700 hover:bg-indigo-50" onClick={(e) => { setIsDetailOpen(false); openStatusChangeDialog(currentPo!, e); }}>
                 <RotateCcw className="w-4 h-4 mr-2" /> เปลี่ยน / ย้อนสถานะ
               </Button>
               {(currentPo?.status === 'PARTIALLY_RECEIVED' || currentPo?.status === 'COMPLETED' || currentPo?.status === 'RECEIVED') && (
-                <Button variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-50 font-bold" onClick={() => { setIsDetailOpen(false); setReturnPo(currentPo); }}>
+                <Button variant="outline" className="border-amber-400 text-amber-700 hover:bg-amber-50" onClick={() => { setIsDetailOpen(false); setReturnPo(currentPo); }}>
                   <RotateCcw className="w-4 h-4 mr-2" /> คืนสินค้าให้บริษัท
                 </Button>
               )}
               {currentPo?.status !== 'CANCELLED' && (
-                <Button variant="outline" className="border-rose-300 text-rose-600 hover:bg-rose-50 font-bold" onClick={() => { setIsDetailOpen(false); openCancelDialog(currentPo!); }}>
+                <Button variant="outline" className="border-rose-300 text-rose-600 hover:bg-rose-50" onClick={() => { setIsDetailOpen(false); openCancelDialog(currentPo!); }}>
                   <Ban className="w-4 h-4 mr-2" /> ยกเลิกใบสั่งซื้อ
                 </Button>
               )}
            </div>
            <div className="flex gap-2">
-             <Button variant="outline" className="font-bold" onClick={() => { if (currentPo) { setIsDetailOpen(false); openPdfModal(currentPo); } }}>
+             <Button variant="outline"  onClick={() => { if (currentPo) { setIsDetailOpen(false); openPdfModal(currentPo); } }}>
                <Eye className="w-4 h-4 mr-2" /> ดู/พิมพ์ PDF
              </Button>
              <Button variant="ghost" onClick={() => setIsDetailOpen(false)} className="text-slate-500 hover:text-slate-900 hover:bg-slate-100">ปิดหน้าต่าง</Button>

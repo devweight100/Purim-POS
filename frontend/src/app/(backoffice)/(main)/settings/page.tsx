@@ -273,7 +273,7 @@ function SaveBar({ onSave, label = "บันทึกการตั้งค�
       <Button
         type="button"
         onClick={onSave}
-        className="bg-sky-600 hover:bg-sky-700 text-white font-bold h-10 px-5 rounded-xl shadow-2xs gap-2 cursor-pointer"
+        className="bg-sky-600 hover:bg-sky-700 text-white gap-2 cursor-pointer"
       >
         <Save className="w-4 h-4" /> {label}
       </Button>
@@ -293,7 +293,7 @@ function LinkCard({ href, icon: Icon, title, text, button }: { href: string; ico
           <CardDescription className="text-slate-500 text-xs mt-0.5">{text}</CardDescription>
         </div>
         <Link href={href}>
-          <Button variant="outline" className="font-bold h-10 px-4 shrink-0 text-xs sm:text-sm rounded-xl">
+          <Button variant="outline" className="shrink-0 sm:text-sm">
             {button} <ArrowRight className="w-4 h-4 ml-1.5" />
           </Button>
         </Link>
@@ -622,7 +622,7 @@ export default function SettingsPage() {
                     placeholder="เช่น ร้านปุริม ซุปเปอร์มาร์เก็ต"
                     required
                     aria-invalid={!!storeFieldErrors.storeName}
-                    className={`bg-white font-bold text-slate-900 ${storeFieldErrors.storeName ? 'border-rose-400' : 'border-slate-300'}`}
+                    className={`bg-white text-slate-900 ${storeFieldErrors.storeName ? 'border-rose-400' : 'border-slate-300'}`}
                   />
                   {storeFieldErrors.storeName && (
                     <p role="alert" className="text-[11px] font-bold text-rose-600">{storeFieldErrors.storeName}</p>
@@ -638,7 +638,7 @@ export default function SettingsPage() {
                     value={settings.branchName || ''}
                     onChange={e => setSettings({...settings, branchName: e.target.value})}
                     placeholder="เช่น สำนักงานใหญ่, สาขา 1"
-                    className="bg-white border-slate-300 font-medium text-slate-900"
+                    className="bg-white border-slate-300 text-slate-900"
                   />
                 </div>
               </div>
@@ -653,7 +653,7 @@ export default function SettingsPage() {
                     onChange={e => setSettings({...settings, taxId: e.target.value})}
                     placeholder="เช่น 0105555555555"
                     maxLength={18}
-                    className="bg-white border-slate-300 font-mono font-bold text-slate-900"
+                    className="bg-white border-slate-300 font-mono text-slate-900"
                   />
                 </div>
 
@@ -733,7 +733,7 @@ export default function SettingsPage() {
                       step={0.01}
                       value={settings.vatRate}
                       onChange={(e) => setSettings({ ...settings, vatRate: Number(e.target.value) })}
-                      className="w-24 h-8 bg-white border-slate-300 font-mono font-bold"
+                      className="w-24 h-8 bg-white border-slate-300 font-mono"
                     />
                     <span className="text-xs font-bold text-slate-700">%</span>
                   </div>
@@ -865,7 +865,7 @@ export default function SettingsPage() {
                     value={String(lowStockInput)}
                     onChange={e => setSettings({ ...settings, lowStockThreshold: e.target.value } as unknown as StoreSettings)}
                     aria-invalid={!!storeFieldErrors.lowStockThreshold}
-                    className={`bg-white font-mono font-bold text-slate-900 ${storeFieldErrors.lowStockThreshold ? 'border-rose-400' : 'border-slate-300'}`}
+                    className={`bg-white font-mono text-slate-900 ${storeFieldErrors.lowStockThreshold ? 'border-rose-400' : 'border-slate-300'}`}
                   />
                   {storeFieldErrors.lowStockThreshold
                     ? <p role="alert" className="text-[11px] font-bold text-rose-600">{storeFieldErrors.lowStockThreshold}</p>
@@ -911,7 +911,7 @@ export default function SettingsPage() {
                     value={String(cashLimitInput)}
                     onChange={e => setSettings({ ...settings, cashMovementApprovalLimit: e.target.value } as unknown as StoreSettings)}
                     aria-invalid={!!storeFieldErrors.cashMovementApprovalLimit}
-                    className={`bg-white font-mono font-bold text-slate-900 ${storeFieldErrors.cashMovementApprovalLimit ? 'border-rose-400' : 'border-slate-300'}`}
+                    className={`bg-white font-mono text-slate-900 ${storeFieldErrors.cashMovementApprovalLimit ? 'border-rose-400' : 'border-slate-300'}`}
                   />
                   {storeFieldErrors.cashMovementApprovalLimit
                     ? <p role="alert" className="text-[11px] font-bold text-rose-600">{storeFieldErrors.cashMovementApprovalLimit}</p>
@@ -967,7 +967,7 @@ export default function SettingsPage() {
                       size="sm"
                       onClick={handleRefreshPrinters}
                       disabled={loadingPrinters}
-                      className="h-7 px-2 text-[11px] text-sky-700 hover:bg-sky-100 rounded-lg gap-1"
+                      className="text-sky-700 hover:bg-sky-100 gap-1"
                       title="ค้นหาเครื่องพิมพ์ใหม่อีกครั้ง"
                     >
                       <RefreshCcw className={`w-3 h-3 ${loadingPrinters ? 'animate-spin' : ''}`} />
@@ -1100,7 +1100,7 @@ export default function SettingsPage() {
                       type="button"
                       onClick={handleTestKick}
                       disabled={testingKick}
-                      className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white font-bold text-xs h-10 rounded-xl shadow-2xs gap-1.5 cursor-pointer transition-all active:scale-95"
+                      className="w-full bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white gap-1.5 cursor-pointer transition-all active:scale-95"
                     >
                       <Coins className={`w-4 h-4 ${testingKick ? 'animate-spin' : ''}`} />
                       {testingKick ? 'กำลังส่งสัญญาณเตะลิ้นชัก...' : 'ทดสอบสั่งเตะลิ้นชักเก็บเงินเดี๋ยวนี้ (Test Kick)'}
@@ -1222,7 +1222,7 @@ export default function SettingsPage() {
                   setClearProductsText("");
                   setIsClearProductsOpen(true);
                 }}
-                className="border-rose-300 text-rose-700 hover:bg-rose-50 font-bold text-xs h-10 px-4 rounded-xl gap-2 shrink-0 cursor-pointer"
+                className="border-rose-300 text-rose-700 hover:bg-rose-50 gap-2 shrink-0 cursor-pointer"
               >
                 <PackageX className="w-4 h-4" /> ลบสินค้าทั้งหมด...
               </Button>
@@ -1244,7 +1244,7 @@ export default function SettingsPage() {
                   setConfirmText("");
                   setIsResetModalOpen(true);
                 }}
-                className="border-rose-300 text-rose-700 hover:bg-rose-50 font-bold text-xs h-10 px-4 rounded-xl gap-2 shrink-0 cursor-pointer"
+                className="border-rose-300 text-rose-700 hover:bg-rose-50 gap-2 shrink-0 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" /> ล้างข้อมูลทั้งหมด...
               </Button>
@@ -1273,12 +1273,12 @@ export default function SettingsPage() {
                   value={clearProductsText}
                   onChange={(e) => setClearProductsText(e.target.value)}
                   placeholder={CLEAR_PRODUCTS_WORD}
-                  className="text-center font-bold text-sm border-slate-300 focus-visible:ring-rose-500 h-10 rounded-xl"
+                  className="text-center border-slate-300 focus-visible:ring-rose-500"
                   autoFocus
                 />
               </div>
               <DialogFooter className="flex sm:justify-between gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={() => setIsClearProductsOpen(false)} disabled={isClearingProducts} className="w-full sm:w-auto text-xs font-bold rounded-xl h-10 cursor-pointer">
+                <Button type="button" variant="outline" onClick={() => setIsClearProductsOpen(false)} disabled={isClearingProducts} className="w-full sm:w-auto cursor-pointer">
                   ยกเลิก
                 </Button>
                 <Button
@@ -1286,7 +1286,7 @@ export default function SettingsPage() {
                   variant="destructive"
                   onClick={() => void handleClearAllProducts()}
                   disabled={clearProductsText.trim() !== CLEAR_PRODUCTS_WORD || isClearingProducts}
-                  className="w-full sm:w-auto bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl h-10 gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="w-full sm:w-auto bg-rose-600 hover:bg-rose-700 text-white gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   {isClearingProducts ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <PackageX className="w-4 h-4" />}
                   {isClearingProducts ? "กำลังลบ..." : "ยืนยันลบสินค้าทั้งหมด"}
@@ -1319,7 +1319,7 @@ export default function SettingsPage() {
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
               placeholder="พิมพ์ RESET ตรงนี้..."
-              className="text-center font-mono font-bold text-sm tracking-wider uppercase border-slate-300 focus-visible:ring-rose-500 h-10 rounded-xl"
+              className="text-center font-mono tracking-wider uppercase border-slate-300 focus-visible:ring-rose-500"
               autoFocus
             />
           </div>
@@ -1330,7 +1330,7 @@ export default function SettingsPage() {
               variant="outline"
               onClick={() => setIsResetModalOpen(false)}
               disabled={isResetting}
-              className="w-full sm:w-auto text-xs font-bold rounded-xl h-10 cursor-pointer"
+              className="w-full sm:w-auto cursor-pointer"
             >
               ยกเลิก
             </Button>
@@ -1339,7 +1339,7 @@ export default function SettingsPage() {
               variant="destructive"
               onClick={handleResetAllData}
               disabled={confirmText.trim() !== RESET_WORD || isResetting}
-              className="w-full sm:w-auto bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl h-10 gap-1.5 cursor-pointer disabled:opacity-50"
+              className="w-full sm:w-auto bg-rose-600 hover:bg-rose-700 text-white gap-1.5 cursor-pointer disabled:opacity-50"
             >
               {isResetting ? (
                 <>

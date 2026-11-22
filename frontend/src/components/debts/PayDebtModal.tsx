@@ -322,7 +322,7 @@ export function PayDebtModal({
                 step="any"
                 value={amountInput}
                 onChange={(e) => setAmountInput(e.target.value)}
-                className="text-xl font-black text-center text-slate-900 bg-white border-slate-300 h-12 rounded-xl focus:border-indigo-500 font-mono shadow-inner"
+                className="text-xl text-center text-slate-900 bg-white border-slate-300 focus:border-indigo-500 font-mono"
                 placeholder="0.00"
               />
               <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">บาท</span>
@@ -448,7 +448,7 @@ export function PayDebtModal({
               <Input
                 value={referenceNo}
                 onChange={(e) => setReferenceNo(e.target.value)}
-                className="h-8.5 text-xs rounded-xl bg-slate-50 border-slate-200"
+                className="h-8.5 bg-slate-50 border-slate-200"
                 placeholder="เช่น TXN12345"
               />
             </div>
@@ -457,7 +457,7 @@ export function PayDebtModal({
               <Input
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                className="h-8.5 text-xs rounded-xl bg-slate-50 border-slate-200"
+                className="h-8.5 bg-slate-50 border-slate-200"
                 placeholder="เช่น โอนงวด 2"
               />
             </div>
@@ -478,7 +478,7 @@ export function PayDebtModal({
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="flex-1 h-11 border-slate-300 text-slate-700 font-bold rounded-xl"
+            className="flex-1 border-slate-300 text-slate-700"
           >
             ยกเลิก
           </Button>

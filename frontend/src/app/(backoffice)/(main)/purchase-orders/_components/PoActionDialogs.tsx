@@ -49,7 +49,7 @@ export function PoIssueDialog({ isIssueModalOpen, setIsIssueModalOpen, targetIss
           </Button>
           <Button
             onClick={handleConfirmIssue}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
           >
             <CheckCircle className="w-4 h-4 mr-1.5" /> ยืนยันออกใบสั่งซื้อ
           </Button>
@@ -166,19 +166,19 @@ export function PoStatusChangeDialog({
               placeholder="เช่น ตรวจนับสต็อกใหม่, ผู้จำหน่ายส่งของไม่ถูกต้อง, ลูกค้าเปลี่ยนใจ..."
               value={statusChangeNote}
               onChange={(e) => setStatusChangeNote(e.target.value)}
-              className="text-xs bg-white border-slate-300 h-10"
+              className="bg-white border-slate-300"
             />
           </div>
         </div>
 
         <DialogFooter className="border-t border-slate-200 px-8 py-5 bg-slate-50 shrink-0 flex justify-between items-center w-full">
-          <Button variant="ghost" onClick={() => setIsStatusChangeModalOpen(false)} className="text-slate-600 hover:bg-slate-200/60 font-semibold">
+          <Button variant="ghost" onClick={() => setIsStatusChangeModalOpen(false)} className="text-slate-600 hover:bg-slate-200/60">
             ยกเลิก
           </Button>
           <Button
             onClick={handleConfirmStatusChange}
             disabled={newSelectedStatus === targetStatusChangePo?.status}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-7 h-11 shadow-sm text-sm"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white"
           >
             <ArrowLeftRight className="w-4 h-4 mr-2" /> ยืนยันการเปลี่ยนสถานะ
           </Button>
@@ -260,7 +260,7 @@ export function PoCancelDialog({
                 placeholder="พิมพ์เหตุผลการยกเลิก..."
                 value={cancelCustomReason}
                 onChange={(e) => setCancelCustomReason(e.target.value)}
-                className="mt-2 text-xs bg-slate-50 border-slate-300"
+                className="mt-2 bg-slate-50 border-slate-300"
                 autoFocus
               />
             )}
@@ -273,7 +273,7 @@ export function PoCancelDialog({
           <Button
             variant="destructive"
             onClick={handleConfirmCancelPO}
-            className="bg-rose-600 hover:bg-rose-700 text-white font-bold"
+            className="bg-rose-600 hover:bg-rose-700 text-white"
           >
             <Ban className="w-4 h-4 mr-1.5" /> ยืนยันยกเลิกใบสั่งซื้อ
           </Button>

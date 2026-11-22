@@ -353,7 +353,7 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="สแกนบาร์โค้ดเอกสาร หรือพิมพ์เลขที่เอกสาร (เช่น IN2611-0001, PO2611-0001, CL..., SH..., SR..., PV... หรือเลขเดิม ORD-...)"
-                className="pl-11 pr-10 h-12 bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 text-sm font-mono rounded-2xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 shadow-xs"
+                className="pl-11 pr-10 bg-white border-slate-300 text-slate-900 placeholder:text-slate-400 font-mono focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
               />
               {searchTerm && (
                 <button
@@ -440,7 +440,7 @@ export function UniversalDocumentSearchModal({ open: controlledOpen, onOpenChang
                     <Button
                       size="sm"
                       onClick={() => handleOpenDocument(doc)}
-                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs gap-1.5 rounded-xl h-9 px-3.5 shadow-sm group-hover:scale-105 transition-transform"
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 group-hover:scale-105 transition-transform"
                     >
                       <Printer className="w-3.5 h-3.5" />
                       <span>ดู & พิมพ์สลิป</span>

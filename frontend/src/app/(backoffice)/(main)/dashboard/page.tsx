@@ -291,9 +291,8 @@ export default function DashboardPage() {
 
           <Button
             variant="outline"
-            size="sm"
             onClick={() => loadDashboardData()}
-            className="border-slate-300 text-slate-700 hover:bg-slate-50 h-9 px-3 text-xs font-bold rounded-xl shadow-2xs gap-1.5 cursor-pointer"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50 gap-1.5 cursor-pointer"
             title="รีเฟรชข้อมูลแดชบอร์ด"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />

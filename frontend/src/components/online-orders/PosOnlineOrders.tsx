@@ -98,7 +98,7 @@ export function PosOnlineOrders({ onOpened }: { onOpened: () => void }) {
             <div className="flex items-center gap-3">
               <span className="font-black font-mono text-lg">{formatCurrency(r.totalAmount)}</span>
               <Button
-                className="h-11 bg-emerald-700 hover:bg-emerald-800 text-white font-bold gap-2"
+                className="bg-emerald-700 hover:bg-emerald-800 text-white gap-2"
                 disabled={busy !== null || current === r.id}
                 title={r.picked ? undefined : 'ยังไม่ได้จัดของ — รับชำระได้ ตรวจของก่อนส่งมอบ'}
                 onClick={() => void open(r.id)}

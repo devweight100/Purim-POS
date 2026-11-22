@@ -89,13 +89,13 @@ export function ReturnItemsDialog({ orderId, onClose, onDone }: { orderId: strin
         {!order ? <div className="p-6 text-slate-400">กำลังโหลด...</div> : (
           <div className="space-y-3 text-sm max-h-[65vh] overflow-y-auto pr-1">
             <table className="tbl w-full text-sm">
-              <thead className=""><tr><th className="text-left">สินค้า</th><th className="text-right">ซื้อ</th><th className="text-right">คืนแล้ว</th><th className="text-center">คืนครั้งนี้</th><th className="text-center">เข้าสต็อก</th></tr></thead>
+              <thead ><tr><th className="text-left">สินค้า</th><th className="text-right">ซื้อ</th><th className="text-right">คืนแล้ว</th><th className="text-center">คืนครั้งนี้</th><th className="text-center">เข้าสต็อก</th></tr></thead>
               <tbody>
                 {order.items.map((it) => {
                   const left = subQty(it.quantity, returned.get(it.id) || 0);
                   return (
                     <tr key={it.id} className="border-t border-slate-100">
-                      <td className="">{it.product?.name}<div className="text-sub text-subtle">{formatCurrency(Number(it.total) / it.quantity)} / {it.unitName || it.product?.unit || 'ชิ้น'}</div></td>
+                      <td >{it.product?.name}<div className="text-sub text-subtle">{formatCurrency(Number(it.total) / it.quantity)} / {it.unitName || it.product?.unit || 'ชิ้น'}</div></td>
                       <td className="text-right">{formatQty(it.quantity)}</td>
                       <td className="text-right">{formatQty(returned.get(it.id) || 0)}</td>
                       <td className="text-center">

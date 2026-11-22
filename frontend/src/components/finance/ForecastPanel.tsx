@@ -79,7 +79,7 @@ export function ForecastPanel() {
             {data.events.length === 0 && <tr><td colSpan={4} className="text-center text-subtle">ไม่มีรายการครบกำหนดในช่วงนี้</td></tr>}
             {data.events.map((e, i) => (
               <tr key={i} className="border-t border-slate-100">
-                <td className="whitespace-nowrap">{thaiDate(e.date)}</td><td className="">{e.label}</td>
+                <td className="whitespace-nowrap">{thaiDate(e.date)}</td><td >{e.label}</td>
                 <td className="text-right doc-no whitespace-nowrap text-ok">{e.kind === 'IN' ? formatCurrency(e.amount) : ''}</td>
                 <td className="text-right doc-no whitespace-nowrap text-danger">{e.kind === 'OUT' ? formatCurrency(e.amount) : ''}</td>
               </tr>

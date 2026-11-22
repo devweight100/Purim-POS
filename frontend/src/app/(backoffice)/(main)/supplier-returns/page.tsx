@@ -219,9 +219,8 @@ export default function SupplierReturnsPage() {
           <Button
             type="button"
             variant="outline"
-            size="sm"
             onClick={refreshData}
-            className="border-slate-200 text-slate-700 hover:bg-slate-50 h-10 px-3.5 text-xs font-semibold shadow-2xs rounded-xl gap-1.5"
+            className="border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5"
             title="รีเฟรชข้อมูล"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -230,9 +229,8 @@ export default function SupplierReturnsPage() {
 
           <Button
             type="button"
-            size="sm"
             onClick={() => handleOpenCreate()}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-10 px-4 rounded-xl shadow-xs gap-1.5"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
           >
             <Plus className="w-4 h-4" />
             <span>สร้างใบส่งคืน / ลดหนี้บริษัท</span>
@@ -344,7 +342,7 @@ export default function SupplierReturnsPage() {
                 placeholder="ค้นหาเลขที่เอกสาร, บริษัทผู้จำหน่าย, ใบสั่งซื้อ PO หรือชื่อสินค้า..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-10 h-10 text-xs sm:text-sm bg-slate-50 border-slate-200 rounded-xl"
+                className="pl-10 sm:text-sm bg-slate-50 border-slate-200"
               />
             </div>
 
@@ -385,7 +383,7 @@ export default function SupplierReturnsPage() {
             ) : (
               <div className="tbl-wrap overflow-x-auto">
                 <table className="tbl w-full text-sm">
-                  <thead className="">
+                  <thead >
                     <tr>
                       <th data-narrow="hide" className="text-center w-10">#</th>
                       <th className="text-left">เลขที่เอกสาร</th>
@@ -415,7 +413,7 @@ export default function SupplierReturnsPage() {
                           {formatListDate(note.returnDate)}
                         </td>
 
-                        <td className="">
+                        <td >
                           <p className="font-medium text-fg line-clamp-2 break-words" title={note.supplierName}>{note.supplierName}</p>
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
                             {note.supplierPhone && (
@@ -474,7 +472,7 @@ export default function SupplierReturnsPage() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleViewPdf(note)}
-                                className="h-8 px-2.5 rounded-xl border-slate-200 hover:border-indigo-300 hover:text-indigo-600 font-medium text-sub gap-1 shrink-0"
+                                className="border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-sub gap-1 shrink-0"
                                 title="ดูเอกสาร / พิมพ์"
                                 aria-label="ดู"
                               >
@@ -487,7 +485,7 @@ export default function SupplierReturnsPage() {
                                   size="sm"
                                   variant="outline"
                                   onClick={() => handleEditNote(note)}
-                                  className="h-8 px-2 rounded-xl border-slate-200 hover:border-amber-400 hover:text-warn font-medium text-sub gap-1 shrink-0"
+                                  className="border-slate-200 hover:border-amber-400 hover:text-warn text-sub gap-1 shrink-0"
                                   title="แก้ไขเอกสารส่งคืน"
                                   aria-label="แก้ไข"
                                 >
@@ -500,7 +498,7 @@ export default function SupplierReturnsPage() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleOpenChangeStatus(note)}
-                                className="h-8 w-8 p-0 rounded-xl border-slate-200 hover:border-sky-400 hover:text-sky-700 font-medium text-sub shrink-0"
+                                className="h-8 w-8 p-0 border-slate-200 hover:border-sky-400 hover:text-sky-700 text-sub shrink-0"
                                 title="เปลี่ยน / ย้อนสถานะเอกสาร"
                               >
                                 <RotateCcw className="w-3.5 h-3.5" />
@@ -511,7 +509,7 @@ export default function SupplierReturnsPage() {
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => handleCancelNote(note)}
-                                  className="h-8 w-8 p-0 rounded-xl text-subtle hover:text-danger hover:bg-rose-50 transition-colors shrink-0"
+                                  className="h-8 w-8 p-0 text-subtle hover:text-danger hover:bg-rose-50 transition-colors shrink-0"
                                   title="ยกเลิกเอกสารนี้"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -589,7 +587,7 @@ export default function SupplierReturnsPage() {
                       <Button
                         type="button"
                         onClick={() => handleOpenCreate(supp.id)}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-9 text-xs rounded-xl shadow-xs gap-1.5"
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>รวมส่งคืนบริษัทนี้ (ออกใบลดหนี้)</span>
@@ -631,7 +629,7 @@ export default function SupplierReturnsPage() {
             ) : (
               <div className="tbl-wrap overflow-x-auto">
                 <table className="tbl w-full text-sm">
-                  <thead className="">
+                  <thead >
                     <tr>
                       <th className="text-center w-10">#</th>
                       <th className="text-left">เลขที่เอกสาร</th>
@@ -660,7 +658,7 @@ export default function SupplierReturnsPage() {
                           {formatListDate(note.returnDate)}
                         </td>
 
-                        <td className="">
+                        <td >
                           <p className="font-medium text-fg line-clamp-2 break-words" title={note.supplierName}>{note.supplierName}</p>
                           <span className="text-sub font-semibold text-muted-foreground bg-slate-200/60 px-2 py-0.5 rounded-md mt-0.5 inline-block">
                             รวม {note.items?.length ?? note.totalQuantity ?? 0} รายการ
@@ -698,7 +696,7 @@ export default function SupplierReturnsPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => handleViewPdf(note)}
-                              className="h-8 px-2.5 rounded-xl border-slate-200 text-fg hover:bg-slate-100 font-medium text-sub gap-1 shrink-0"
+                              className="border-slate-200 text-fg hover:bg-slate-100 text-sub gap-1 shrink-0"
                               title="ดูเอกสารฉบับนี้"
                             >
                               <Eye className="w-3.5 h-3.5" />
@@ -709,7 +707,7 @@ export default function SupplierReturnsPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => handleRestoreNote(note)}
-                              className="h-8 px-2.5 rounded-xl border-emerald-300 text-ok hover:bg-emerald-50 font-medium text-sub gap-1 shrink-0"
+                              className="border-emerald-300 text-ok hover:bg-emerald-50 text-sub gap-1 shrink-0"
                               title="กู้คืนเอกสารนี้กลับมาใช้งาน"
                             >
                               <RotateCcw className="w-3.5 h-3.5" />

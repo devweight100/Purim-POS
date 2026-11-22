@@ -184,7 +184,7 @@ export default function SuppliersPage() {
           </h1>
           <p className="page-subtitle">จัดการรายชื่อคู่ค้า ซัพพลายเออร์ เครดิตเทอม และช่องทางติดต่อ</p>
         </div>
-        <Button className="h-11 bg-primary px-6 font-bold text-white hover:bg-primary/90" onClick={handleOpenAdd}>
+        <Button className="bg-primary text-white hover:bg-primary/90" onClick={handleOpenAdd}>
           <Plus className="w-5 h-5 mr-2" /> เพิ่มผู้จำหน่ายใหม่
         </Button>
       </div>
@@ -206,12 +206,12 @@ export default function SuppliersPage() {
 
         <div className="overflow-x-auto">
           <Table className="tbl">
-            <TableHeader className="">
+            <TableHeader >
               <TableRow>
                 <TableHead className="min-w-44 xl:min-w-56">ชื่อบริษัท / ผู้จำหน่าย</TableHead>
-                <TableHead className="">ชื่อผู้ติดต่อ</TableHead>
-                <TableHead className="">เบอร์โทร</TableHead>
-                <TableHead className="">อีเมล</TableHead>
+                <TableHead >ชื่อผู้ติดต่อ</TableHead>
+                <TableHead >เบอร์โทร</TableHead>
+                <TableHead >อีเมล</TableHead>
                 <TableHead className="text-center">เครดิตเทอม</TableHead>
                 <TableHead className="text-right">จัดการ</TableHead>
               </TableRow>

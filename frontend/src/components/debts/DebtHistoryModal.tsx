@@ -123,7 +123,7 @@ export function DebtHistoryModal({
               <Button
                 size="sm"
                 onClick={onPrintFullA4}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 px-3 rounded-xl shadow-xs shrink-0 gap-1.5"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 gap-1.5"
               >
                 <FileText className="w-3.5 h-3.5" />
                 <span>พิมพ์ใบเสร็จยอดครบทั้งหมด (A4)</span>
@@ -177,7 +177,7 @@ export function DebtHistoryModal({
                       <Button
                         size="sm"
                         onClick={() => onSelectInstallmentA4(inst)}
-                        className="h-8 px-2.5 text-xs text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl font-bold gap-1 shadow-2xs"
+                        className="text-white bg-indigo-600 hover:bg-indigo-700 gap-1"
                         title="พิมพ์ใบเสร็จรับเงิน A4 ของงวดนี้"
                       >
                         <FileText className="w-3.5 h-3.5" />
@@ -190,7 +190,7 @@ export function DebtHistoryModal({
                         size="sm"
                         variant="outline"
                         onClick={() => onCancelInstallment(inst)}
-                        className="h-8 px-2 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 rounded-xl font-semibold"
+                        className="text-rose-600 border-rose-200 hover:bg-rose-50"
                         title="ยกเลิกใบรับชำระนี้ (บันทึกผิด) ยอดหนี้จะกลับมาค้างชำระ"
                       >
                         ยกเลิก
@@ -203,7 +203,7 @@ export function DebtHistoryModal({
                         size="sm"
                         variant="outline"
                         onClick={() => onSelectInstallment(inst)}
-                        className="h-8 px-2 text-xs text-slate-700 border-slate-300 hover:bg-slate-100 rounded-xl font-semibold gap-1"
+                        className="text-slate-700 border-slate-300 hover:bg-slate-100 gap-1"
                         title="พิมพ์สลิป 80mm ของงวดนี้"
                       >
                         <Printer className="w-3.5 h-3.5" />
@@ -222,7 +222,7 @@ export function DebtHistoryModal({
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="h-10 px-5 border-slate-300 text-slate-700 font-bold rounded-xl"
+            className="border-slate-300 text-slate-700"
           >
             ปิด
           </Button>

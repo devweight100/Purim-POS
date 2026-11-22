@@ -146,7 +146,7 @@ export function ChangeReturnStatusModal({
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="rounded-xl font-bold text-slate-600"
+            className="text-slate-600"
           >
             ยกเลิก
           </Button>
@@ -155,7 +155,7 @@ export function ChangeReturnStatusModal({
             type="button"
             onClick={handleConfirm}
             disabled={isSubmitting || selectedStatus === returnNote.status}
-            className="rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 shadow-md"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>ยืนยันเปลี่ยนสถานะ</span>

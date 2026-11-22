@@ -105,7 +105,7 @@ export function OrderActionDialogs({
             <Button variant="ghost" onClick={() => setIsEditPaymentOpen(false)} className="text-slate-600">
               ยกเลิก
             </Button>
-            <Button onClick={handleConfirmEditPayment} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 rounded-xl shadow-xs">
+            <Button onClick={handleConfirmEditPayment} className="bg-indigo-600 hover:bg-indigo-700 text-white">
               บันทึกการเปลี่ยนแปลง
             </Button>
           </DialogFooter>
@@ -137,7 +137,7 @@ export function OrderActionDialogs({
             <Button variant="ghost" onClick={() => setIsEditNoteOpen(false)} className="text-slate-600">
               ยกเลิก
             </Button>
-            <Button onClick={handleConfirmEditNote} className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-5 rounded-xl shadow-xs">
+            <Button onClick={handleConfirmEditNote} className="bg-amber-600 hover:bg-amber-700 text-white">
               บันทึกหมายเหตุ
             </Button>
           </DialogFooter>
@@ -168,7 +168,7 @@ export function OrderActionDialogs({
             <Button variant="ghost" onClick={() => setIsEditItemsOpen(false)} className="text-slate-600">
               ยกเลิก
             </Button>
-            <Button onClick={handleConfirmEditItems} className="bg-sky-600 hover:bg-sky-700 text-white font-bold px-5 rounded-xl shadow-xs">
+            <Button onClick={handleConfirmEditItems} className="bg-sky-600 hover:bg-sky-700 text-white">
               ไปหน้าขายทันที
             </Button>
           </DialogFooter>
@@ -196,7 +196,7 @@ export function OrderActionDialogs({
             <Button variant="ghost" onClick={() => setIsRepeatOrderOpen(false)} className="text-slate-600">
               ยกเลิก
             </Button>
-            <Button onClick={handleConfirmRepeatOrder} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 rounded-xl shadow-xs">
+            <Button onClick={handleConfirmRepeatOrder} className="bg-indigo-600 hover:bg-indigo-700 text-white">
               คัดลอกลงตะกร้า
             </Button>
           </DialogFooter>
@@ -223,7 +223,7 @@ export function OrderActionDialogs({
                 value={voidReason}
                 onChange={(e) => setVoidReason(e.target.value)}
                 placeholder="เช่น ลูกค้าขอคืนสินค้า, คีย์รายการผิดพลาด..."
-                className="bg-white border-slate-300 h-10 text-slate-900 text-xs rounded-xl shadow-inner"
+                className="bg-white border-slate-300 text-slate-900"
               />
             </div>
           </div>
@@ -232,7 +232,7 @@ export function OrderActionDialogs({
             <Button variant="ghost" onClick={() => setIsVoidOpen(false)} className="text-slate-600">
               ย้อนกลับ
             </Button>
-            <Button onClick={handleConfirmVoid} className="bg-rose-600 hover:bg-rose-700 text-white font-bold h-10 px-5 rounded-xl shadow-sm">
+            <Button onClick={handleConfirmVoid} className="bg-rose-600 hover:bg-rose-700 text-white">
               ยืนยันยกเลิกบิล
             </Button>
           </DialogFooter>

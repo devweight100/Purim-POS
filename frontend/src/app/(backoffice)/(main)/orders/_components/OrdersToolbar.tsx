@@ -145,7 +145,7 @@ export function OrdersToolbar({
             value={search}
             onChange={(e) => changeSearch(e.target.value)}
             placeholder="ค้นหาตามเลขออเดอร์, ชื่อลูกค้า, หรือสินค้า..."
-            className="pl-9 h-10 bg-slate-50 border-slate-300 rounded-xl focus:bg-white text-xs sm:text-sm font-medium shadow-inner"
+            className="pl-9 bg-slate-50 border-slate-300 focus:bg-white sm:text-sm"
           />
           {search && (
             <button

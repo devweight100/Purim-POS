@@ -88,9 +88,9 @@ export function OrderDetailDialog({
             {/* Items Table */}
             <div className="border border-slate-200 rounded-2xl overflow-hidden">
               <Table>
-                <TableHeader className="">
+                <TableHeader >
                   <TableRow>
-                    <TableHead className="">รายการสินค้า</TableHead>
+                    <TableHead >รายการสินค้า</TableHead>
                     <TableHead className="text-center">จำนวน</TableHead>
                     <TableHead className="text-right">ราคา/หน่วย</TableHead>
                     <TableHead className="text-right">รวม</TableHead>
@@ -150,7 +150,7 @@ export function OrderDetailDialog({
                   <Button
                     size="sm"
                     onClick={(e) => handleOpenCreditHistory(currentOrder, e)}
-                    className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs h-9 px-3.5 rounded-xl shadow-xs gap-1.5"
+                    className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
                   >
                     <History className="w-4 h-4" />
                     <span>ประวัติชำระ & ออกใบเสร็จ</span>
@@ -159,7 +159,7 @@ export function OrderDetailDialog({
                   <Button
                     size="sm"
                     onClick={(e) => handleOpenA4Receipt(currentOrder, e)}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-9 px-3.5 rounded-xl shadow-xs gap-1.5"
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
                   >
                     <FileText className="w-4 h-4" />
                     <span>พิมพ์ใบเสร็จเต็มรูปแบบ (A4)</span>
@@ -170,7 +170,7 @@ export function OrderDetailDialog({
                   size="sm"
                   variant="outline"
                   onClick={(e) => handleOpenSlipReceipt(currentOrder, e)}
-                  className="border-slate-300 text-slate-700 font-semibold text-xs h-9 px-3 rounded-xl gap-1.5"
+                  className="border-slate-300 text-slate-700 gap-1.5"
                 >
                   <Printer className="w-4 h-4" />
                   <span>พิมพ์สลิป 80mm</span>
@@ -184,7 +184,7 @@ export function OrderDetailDialog({
                     void printOrderPickingSlip(currentOrder);
                   }}
                   title="ใบจัดของ: ชื่อสินค้า หน่วย จำนวน ไม่มีราคา (พิมพ์ซ้ำ)"
-                  className="border-slate-300 text-slate-700 font-semibold text-xs h-9 px-3 rounded-xl gap-1.5"
+                  className="border-slate-300 text-slate-700 gap-1.5"
                 >
                   <ClipboardList className="w-4 h-4" />
                   <span>พิมพ์ใบจัดของ</span>
@@ -198,7 +198,7 @@ export function OrderDetailDialog({
                       size="sm"
                       variant="outline"
                       onClick={(e) => handleStartEditPayment(currentOrder, e)}
-                      className="border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-bold text-xs h-9 px-3 rounded-xl"
+                      className="border-emerald-300 text-emerald-800 hover:bg-emerald-50"
                     >
                       <CreditCard className="w-3.5 h-3.5 mr-1" />
                       เปลี่ยนวิธีชำระ
@@ -208,7 +208,7 @@ export function OrderDetailDialog({
                       size="sm"
                       variant="outline"
                       onClick={(e) => handleStartEditItems(currentOrder, e)}
-                      className="border-sky-300 text-sky-800 hover:bg-sky-50 font-bold text-xs h-9 px-3 rounded-xl"
+                      className="border-sky-300 text-sky-800 hover:bg-sky-50"
                     >
                       <Edit3 className="w-3.5 h-3.5 mr-1" />
                       แก้ไขในหน้าขาย
@@ -218,7 +218,7 @@ export function OrderDetailDialog({
                       size="sm"
                       variant="outline"
                       onClick={() => setReturnOrderId(currentOrder.id)}
-                      className="border-amber-300 text-amber-700 hover:bg-amber-50 font-bold text-xs h-9 px-3 rounded-xl"
+                      className="border-amber-300 text-amber-700 hover:bg-amber-50"
                     >
                       <RotateCcw className="w-3.5 h-3.5 mr-1" />
                       รับคืนสินค้า
@@ -228,7 +228,7 @@ export function OrderDetailDialog({
                       size="sm"
                       variant="outline"
                       onClick={(e) => handleStartVoid(currentOrder, e)}
-                      className="border-rose-200 text-rose-600 hover:bg-rose-50 font-bold text-xs h-9 px-3 rounded-xl"
+                      className="border-rose-200 text-rose-600 hover:bg-rose-50"
                     >
                       <Ban className="w-3.5 h-3.5 mr-1" />
                       ยกเลิกบิล

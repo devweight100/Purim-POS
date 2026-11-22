@@ -63,7 +63,7 @@ export function PoReceiveDialog({
                 size="sm"
                 variant="outline"
                 onClick={() => setReceiveItems(prev => prev.map(i => ({ ...i, toReceive: i.remainingQty })))}
-                className="text-xs border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 font-semibold h-8"
+                className="border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100"
               >
                 ✓ รับครบทั้งหมด
               </Button>
@@ -72,7 +72,7 @@ export function PoReceiveDialog({
                 size="sm"
                 variant="outline"
                 onClick={() => setReceiveItems(prev => prev.map(i => ({ ...i, toReceive: 0 })))}
-                className="text-xs border-slate-300 text-slate-600 hover:bg-slate-100 font-semibold h-8"
+                className="border-slate-300 text-slate-600 hover:bg-slate-100"
               >
                 ล้างเป็น 0
               </Button>
@@ -98,7 +98,7 @@ export function PoReceiveDialog({
                 placeholder="เช่น INV-670123 หรือ DO-8899"
                 value={receiveSupplierInvoiceNo}
                 onChange={(e) => setReceiveSupplierInvoiceNo(e.target.value)}
-                className="bg-white border-slate-300 h-9 text-xs font-mono font-bold text-slate-900"
+                className="bg-white border-slate-300 font-mono text-slate-900"
               />
               <p className="text-[11px] text-slate-500 mt-1">ใช้ประกบคู่กับ PO เพื่อนำไปจับคู่ชำระเงินในระบบเจ้าหนี้การค้า</p>
             </div>
@@ -110,15 +110,15 @@ export function PoReceiveDialog({
                 type="date"
                 value={receiveSupplierInvoiceDate}
                 onChange={(e) => setReceiveSupplierInvoiceDate(e.target.value)}
-                className="bg-white border-slate-300 h-9 text-xs text-slate-800"
+                className="bg-white border-slate-300 text-slate-800"
               />
             </div>
           </div>
 
           <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
             <Table>
-              <TableHeader className="">
-                <TableRow className="">
+              <TableHeader >
+                <TableRow >
                   <TableHead className="w-10 text-center">#</TableHead>
                   <TableHead className="min-w-[200px]">สินค้า</TableHead>
                   <TableHead className="text-center">หน่วย</TableHead>
@@ -229,10 +229,10 @@ export function PoReceiveDialog({
         </div>
 
         <DialogFooter className="border-t border-slate-200 px-8 py-4.5 bg-slate-50 shrink-0 flex justify-between items-center w-full">
-          <Button variant="ghost" onClick={() => setIsReceiveOpen(false)} className="text-slate-600 hover:bg-slate-200/60 font-semibold">
+          <Button variant="ghost" onClick={() => setIsReceiveOpen(false)} className="text-slate-600 hover:bg-slate-200/60">
             ยกเลิก
           </Button>
-          <Button onClick={handleTriggerReceivePO} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-7 h-11 shadow-sm text-sm">
+          <Button onClick={handleTriggerReceivePO} className="bg-emerald-600 hover:bg-emerald-700 text-white">
             <PackageOpen className="w-4 h-4 mr-2" /> ยืนยันรับสินค้าและปรับสต็อกเข้าคลัง
           </Button>
         </DialogFooter>
@@ -276,9 +276,9 @@ export function PoUnderReceiveDialog({
             </p>
             <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-40 overflow-y-auto">
               <table className="tbl w-full text-left text-xs">
-                <thead className="">
+                <thead >
                   <tr>
-                    <th className="">สินค้า</th>
+                    <th >สินค้า</th>
                     <th className="text-center">สั่งซื้อ</th>
                     <th className="text-center">รับรวมครั้งนี้</th>
                     <th className="text-right text-rose-600">ค้างรับ/ขาด</th>
@@ -376,13 +376,13 @@ export function PoUnderReceiveDialog({
           <Button
             variant="ghost"
             onClick={() => setIsUnderReceiveModalOpen(false)}
-            className="text-slate-600 hover:bg-slate-200/60 font-semibold"
+            className="text-slate-600 hover:bg-slate-200/60"
           >
             ย้อนกลับไปแก้ไขจำนวน
           </Button>
           <Button
             onClick={() => executeReceivePO(underReceiveAction === 'ADJUST_AND_COMPLETE')}
-            className={`text-white font-bold px-7 h-11 shadow-sm text-sm ${
+            className={`text-white ${
               underReceiveAction === 'ADJUST_AND_COMPLETE'
                 ? 'bg-emerald-600 hover:bg-emerald-700'
                 : 'bg-amber-600 hover:bg-amber-700'

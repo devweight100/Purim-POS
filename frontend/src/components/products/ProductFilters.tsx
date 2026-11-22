@@ -34,7 +34,7 @@ export function ProductFilters({ f, categories, suppliers, totalCount, inactiveC
       <div className="mb-4 flex flex-wrap gap-3 items-center">
         <div className="relative min-w-[200px] flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <Input placeholder="ค้นหาชื่อ, รหัส, บาร์โค้ด..." className="pl-9 bg-white border-slate-300 h-10" value={f.search} onChange={e => f.setSearch(e.target.value)}
+          <Input placeholder="ค้นหาชื่อ, รหัส, บาร์โค้ด..." className="pl-9 bg-white border-slate-300" value={f.search} onChange={e => f.setSearch(e.target.value)}
             aria-label="ค้นหาสินค้า (↓ = ไปที่ตาราง)"
             onKeyDown={e => { if (e.key === "ArrowDown") { e.preventDefault(); focusRowNav(document.querySelector("[data-row-nav-root]")); } }} />
           {f.search && <button type="button" aria-label="ล้างคำค้นหา" onClick={() => f.setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>}

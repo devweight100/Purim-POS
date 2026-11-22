@@ -443,23 +443,21 @@ export default function InventoryPage() {
         <div className="flex flex-wrap gap-2 items-center">
           <Button
             variant="outline"
-            size="sm"
             onClick={reloadData}
-            className="border-slate-300 text-slate-700 hover:bg-slate-50 h-9 px-3 text-xs font-semibold shadow-2xs"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50"
             title="รีเฟรชข้อมูลสต็อก"
           >
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> รีเฟรช
           </Button>
           <Button
-            size="sm"
             onClick={() => openAdjustDialog()}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-9 px-3.5 text-xs shadow-2xs"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white"
           >
             <SlidersHorizontal className="w-3.5 h-3.5 mr-1.5" />
             ปรับยอดสต็อก
           </Button>
           <Link href="/purchase-orders">
-            <Button size="sm" className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-9 px-3.5 text-xs shadow-2xs">
+            <Button className="bg-sky-500 hover:bg-sky-600 text-white">
               <Plus className="w-3.5 h-3.5 mr-1.5" />
               สั่งซื้อ (PO)
             </Button>
@@ -551,7 +549,7 @@ export default function InventoryPage() {
                   placeholder="ค้นหาชื่อสินค้า, SKU, บาร์โค้ด..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="pl-10 bg-white border-slate-300 h-9 text-sm"
+                  className="pl-10 bg-white border-slate-300"
                 />
               </div>
               <select
@@ -601,13 +599,13 @@ export default function InventoryPage() {
           {/* Inventory Table - Responsive, Full Width with No Horizontal Scroll on standard viewports */}
           <div className="w-full">
             <Table className="w-full">
-              <TableHeader className="">
+              <TableHeader >
                 <TableRow>
                   <TableHead className="min-w-44 xl:min-w-64">ชื่อสินค้า / รหัส (SKU)</TableHead>
-                  <TableHead className="">หมวดหมู่</TableHead>
+                  <TableHead >หมวดหมู่</TableHead>
                   <TableHead className="text-right">ต้นทุน / หน่วย</TableHead>
                   <TableHead className="text-right">คงเหลือ (หน่วยฐาน)</TableHead>
-                  <TableHead className="">ตามขนาดบรรจุ</TableHead>
+                  <TableHead >ตามขนาดบรรจุ</TableHead>
                   <TableHead className="text-center">สถานะ</TableHead>
                   <TableHead className="text-right">จัดการ</TableHead>
                 </TableRow>
@@ -652,7 +650,7 @@ export default function InventoryPage() {
                         </TableCell>
 
                         {/* Category */}
-                        <TableCell className="">
+                        <TableCell >
                           <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-sub font-semibold max-w-28 xl:max-w-36 truncate block" title={getCategoryName(p.categoryId)}>
                             {getCategoryName(p.categoryId)}
                           </Badge>
@@ -725,7 +723,7 @@ export default function InventoryPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => openAdjustDialog(p)}
-                              className="h-8 text-sub border-indigo-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100 font-medium px-2.5 rounded-lg shadow-2xs"
+                              className="text-sub border-indigo-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100"
                               title="ปรับยอดสต็อก"
                             >
                               <SlidersHorizontal className="w-3.5 h-3.5 mr-1" /> ปรับยอด
@@ -734,7 +732,7 @@ export default function InventoryPage() {
                               size="sm"
                               variant="ghost"
                               onClick={() => openStockCardDialog(p)}
-                              className="h-8 text-sub text-muted-foreground hover:text-fg hover:bg-slate-100 px-2 rounded-lg"
+                              className="text-sub text-muted-foreground hover:text-fg hover:bg-slate-100"
                               title="ดูประวัติสต็อกการ์ด"
                               aria-label={`ประวัติสต็อกการ์ด ${p.name}`}
                             >
@@ -846,7 +844,7 @@ export default function InventoryPage() {
                 placeholder="ค้นหาชื่อสินค้า, SKU, เลขที่เอกสาร, หมายเหตุ..."
                 value={movementSearch}
                 onChange={(e) => setMovementSearch(e.target.value)}
-                className="pl-10 bg-white border-slate-300 h-9 text-sm"
+                className="pl-10 bg-white border-slate-300"
               />
             </div>
 
@@ -878,16 +876,16 @@ export default function InventoryPage() {
           {/* Movement Table */}
           <div className="w-full">
             <Table className="w-full">
-              <TableHeader className="">
+              <TableHeader >
                 <TableRow>
-                  <TableHead className="">วัน-เวลา</TableHead>
+                  <TableHead >วัน-เวลา</TableHead>
                   <TableHead className="min-w-44 xl:min-w-56">สินค้า</TableHead>
-                  <TableHead className="">ประเภท</TableHead>
+                  <TableHead >ประเภท</TableHead>
                   <TableHead className="text-right">เปลี่ยน</TableHead>
                   <TableHead className="text-right">
                     ก่อน ➔ คงเหลือ
                   </TableHead>
-                  <TableHead className="">เอกสารอ้างอิง</TableHead>
+                  <TableHead >เอกสารอ้างอิง</TableHead>
                   <TableHead className="min-w-40">หมายเหตุ / ผู้ทำ</TableHead>
                 </TableRow>
               </TableHeader>
@@ -906,11 +904,11 @@ export default function InventoryPage() {
                         <TableCell className="font-medium text-muted-foreground whitespace-nowrap">
                           {formatDate(m.createdAt)}
                         </TableCell>
-                        <TableCell className="">
+                        <TableCell >
                           <div className="font-medium text-fg line-clamp-2 break-words" title={m.productName}>{m.productName}</div>
                           <div className="text-sub text-subtle doc-no">{m.sku}</div>
                         </TableCell>
-                        <TableCell className="">{getMovementBadge(m.type)}</TableCell>
+                        <TableCell >{getMovementBadge(m.type)}</TableCell>
                         <TableCell className="text-right font-semibold whitespace-nowrap">
                           <span className={isPositive ? 'text-emerald-600' : 'text-rose-600'}>
                             {isPositive ? `+${m.quantityChange.toLocaleString()}` : m.quantityChange.toLocaleString()}{' '}
@@ -924,7 +922,7 @@ export default function InventoryPage() {
                         <TableCell className="doc-no whitespace-nowrap font-semibold text-fg">
                           {m.referenceNo || '-'}
                         </TableCell>
-                        <TableCell className="">
+                        <TableCell >
                           <div className="text-fg font-medium">{m.reason || '-'}</div>
                           <div className="text-sub text-subtle">โดย: {m.userName || 'ระบบ'}</div>
                         </TableCell>
@@ -1027,7 +1025,7 @@ export default function InventoryPage() {
               รายการสินค้าที่ต้องสั่งซื้อเข้าคลังด่วน (สต็อกต่ำกว่าจุดเตือน)
             </div>
             <Link href="/purchase-orders">
-              <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white font-bold h-9 text-xs px-3.5 rounded-xl shadow-2xs">
+              <Button size="sm" className="bg-amber-600 hover:bg-amber-700 text-white">
                 <Plus className="w-3.5 h-3.5 mr-1" /> เปิดใบสั่งซื้อ PO ทั้งหมด
               </Button>
             </Link>
@@ -1035,7 +1033,7 @@ export default function InventoryPage() {
 
           <div className="w-full">
             <Table className="w-full">
-              <TableHeader className="">
+              <TableHeader >
                 <TableRow>
                   <TableHead className="w-[30%]">ชื่อสินค้า / รหัส (SKU)</TableHead>
                   <TableHead className="w-[15%]">หมวดหมู่</TableHead>
@@ -1055,11 +1053,11 @@ export default function InventoryPage() {
 
                     return (
                       <TableRow key={p.id} className="hover:bg-slate-50 border-slate-100">
-                        <TableCell className="">
+                        <TableCell >
                           <span className="font-medium text-fg block">{p.name}</span>
                           <span className="text-sub text-subtle doc-no">SKU: {p.sku}</span>
                         </TableCell>
-                        <TableCell className="">
+                        <TableCell >
                           <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-sub">
                             {getCategoryName(p.categoryId)}
                           </Badge>
@@ -1097,7 +1095,7 @@ export default function InventoryPage() {
                           <Link href="/purchase-orders">
                             <Button
                               size="sm"
-                              className="bg-sky-500 hover:bg-sky-600 text-white font-medium h-8 text-sub px-3 rounded-lg shadow-2xs"
+                              className="bg-sky-500 hover:bg-sky-600 text-white text-sub"
                             >
                               <ShoppingCart className="w-3.5 h-3.5 mr-1" /> สั่งซื้อเพิ่ม (PO)
                             </Button>
@@ -1233,7 +1231,7 @@ export default function InventoryPage() {
                 placeholder="ระบุจำนวนตัวเลข..."
                 value={adjustAmount}
                 onChange={(e) => setAdjustAmount(e.target.value)}
-                className="h-11 border-slate-300 font-extrabold text-lg text-indigo-600"
+                className="border-slate-300 text-lg text-indigo-600"
               />
 
               {/* Real-time Result Preview */}
@@ -1312,7 +1310,7 @@ export default function InventoryPage() {
                   placeholder="พิมพ์เหตุผลการปรับสต็อก..."
                   value={adjustCustomReason}
                   onChange={(e) => setAdjustCustomReason(e.target.value)}
-                  className="mt-2 text-xs bg-slate-50 border-slate-300"
+                  className="mt-2 bg-slate-50 border-slate-300"
                   autoFocus
                 />
               )}
@@ -1323,7 +1321,7 @@ export default function InventoryPage() {
             <Button
               variant="ghost"
               onClick={() => setIsAdjustModalOpen(false)}
-              className="text-slate-600 hover:bg-slate-200/60 font-semibold"
+              className="text-slate-600 hover:bg-slate-200/60"
             >
               ยกเลิก
             </Button>
@@ -1375,13 +1373,13 @@ export default function InventoryPage() {
 
             <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
               <Table>
-                <TableHeader className="">
-                  <TableRow className="">
-                    <TableHead className="">วัน-เวลา</TableHead>
-                    <TableHead className="">ประเภท</TableHead>
+                <TableHeader >
+                  <TableRow >
+                    <TableHead >วัน-เวลา</TableHead>
+                    <TableHead >ประเภท</TableHead>
                     <TableHead className="text-right">จำนวน</TableHead>
                     <TableHead className="text-right">คงเหลือ</TableHead>
-                    <TableHead className="">เอกสาร/เหตุผล</TableHead>
+                    <TableHead >เอกสาร/เหตุผล</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1402,7 +1400,7 @@ export default function InventoryPage() {
                         return (
                           <TableRow key={m.id} className="hover:bg-slate-50 border-slate-100">
                             <TableCell className="font-medium text-fg">{formatDate(m.createdAt)}</TableCell>
-                            <TableCell className="">{getMovementBadge(m.type)}</TableCell>
+                            <TableCell >{getMovementBadge(m.type)}</TableCell>
                             <TableCell className="text-right font-semibold">
                               <span className={isPositive ? 'text-emerald-600' : 'text-rose-600'}>
                                 {isPositive ? `+${m.quantityChange}` : m.quantityChange} {m.unitName}
@@ -1423,7 +1421,7 @@ export default function InventoryPage() {
           </div>
 
           <DialogFooter className="border-t border-slate-200 px-8 py-4 bg-slate-50 shrink-0 flex justify-end">
-            <Button onClick={() => setIsStockCardOpen(false)} className="bg-slate-800 hover:bg-slate-900 text-white font-bold px-6">
+            <Button onClick={() => setIsStockCardOpen(false)} className="bg-slate-800 hover:bg-slate-900 text-white">
               ปิดหน้าต่าง
             </Button>
           </DialogFooter>

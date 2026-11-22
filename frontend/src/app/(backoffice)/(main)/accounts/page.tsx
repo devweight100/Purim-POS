@@ -226,7 +226,7 @@ export default function AccountsPage() {
           </h1>
           <p className="page-subtitle">ตั้งค่าและจัดการบัญชีธนาคารสำหรับรับโอนเงินและ QR PromptPay หน้าร้าน</p>
         </div>
-        <Button onClick={handleOpenAdd} className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-10 px-5 text-xs shadow-sm rounded-xl">
+        <Button onClick={handleOpenAdd} className="bg-sky-500 hover:bg-sky-600 text-white">
           <Plus className="w-4 h-4 mr-1.5" /> เพิ่มบัญชีการเงิน
         </Button>
       </div>
@@ -291,7 +291,7 @@ export default function AccountsPage() {
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  className="text-xs border-slate-300 text-slate-600 hover:bg-sky-50 hover:text-sky-600"
+                  className="border-slate-300 text-slate-600 hover:bg-sky-50 hover:text-sky-600"
                   onClick={() => handleSetDefault(acc.id)}
                 >
                   <Star className="w-3.5 h-3.5 mr-1 text-amber-500" /> ตั้งเป็นบัญชีหลัก
@@ -344,7 +344,7 @@ export default function AccountsPage() {
                 placeholder="เช่น ร้านปุริม โดย นายปุริม"
                 value={accountName}
                 onChange={(e) => setAccountName(e.target.value)}
-                className="h-10 border-slate-300 text-sm font-medium"
+                className="border-slate-300"
               />
             </div>
 
@@ -354,7 +354,7 @@ export default function AccountsPage() {
                 placeholder="เช่น 081-234-5678 หรือ 123-4-56789-0"
                 value={accountNumber}
                 onChange={(e) => setAccountNumber(e.target.value)}
-                className="h-10 border-slate-300 font-mono text-sm font-bold"
+                className="border-slate-300 font-mono"
               />
             </div>
 
@@ -385,7 +385,7 @@ export default function AccountsPage() {
                     value={promptpayId}
                     onChange={(e) => setPromptpayId(e.target.value)}
                     aria-invalid={promptpayCheck ? !promptpayCheck.ok : undefined}
-                    className="h-10 border-slate-300 bg-white font-mono text-sm font-bold"
+                    className="border-slate-300 bg-white font-mono"
                   />
                   {promptpayCheck && !promptpayCheck.ok && (
                     <p role="alert" className="text-xs font-semibold text-red-600">{promptpayCheck.error}</p>
@@ -457,7 +457,7 @@ export default function AccountsPage() {
             <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="border-slate-300 text-slate-600">
               ยกเลิก
             </Button>
-            <Button onClick={handleSave} disabled={saving} data-testid="account-save" className="bg-sky-500 hover:bg-sky-600 text-white font-bold">
+            <Button onClick={handleSave} disabled={saving} data-testid="account-save" className="bg-sky-500 hover:bg-sky-600 text-white">
               บันทึกบัญชี
             </Button>
           </DialogFooter>

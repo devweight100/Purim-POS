@@ -348,26 +348,23 @@ export default function CustomersPage() {
         <div className="flex flex-wrap gap-2 items-center">
           <Button
             variant="outline"
-            size="sm"
             onClick={reloadData}
-            className="border-slate-300 text-slate-700 hover:bg-slate-50 h-9 px-3 text-xs font-semibold shadow-2xs"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50"
             title="รีเฟรชข้อมูล"
           >
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> รีเฟรช
           </Button>
           <Button
             variant="outline"
-            size="sm"
             onClick={() => setIsSettingsOpen(true)}
-            className="border-slate-300 text-slate-700 hover:bg-slate-50 h-9 px-3 text-xs font-semibold shadow-2xs"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50"
           >
             <SlidersHorizontal className="w-3.5 h-3.5 mr-1.5 text-indigo-600" />
             ตั้งค่าสะสมแต้ม
           </Button>
           <Button
-            size="sm"
             onClick={handleOpenAdd}
-            className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-9 px-4 text-xs shadow-2xs rounded-lg"
+            className="bg-sky-500 hover:bg-sky-600 text-white"
           >
             <UserPlus className="w-4 h-4 mr-1.5" />
             เพิ่มสมาชิกใหม่
@@ -420,7 +417,7 @@ export default function CustomersPage() {
                 placeholder="ค้นหาชื่อ, เบอร์โทร, เลขผู้เสียภาษี (Tax ID), ชื่อบริษัท, รหัสสมาชิก..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-10 bg-white border-slate-300 h-9 text-sm"
+                className="pl-10 bg-white border-slate-300"
               />
             </div>
 
@@ -452,7 +449,7 @@ export default function CustomersPage() {
                 variant={typeFilter === st.value ? 'secondary' : 'ghost'}
                 size="sm"
                 onClick={() => setTypeFilter(st.value as typeof typeFilter)}
-                className={`h-8 px-3 text-xs font-bold rounded-lg transition-all ${
+                className={`transition-all ${
                   typeFilter === st.value
                     ? 'bg-sky-50 text-sky-700 border border-sky-300 shadow-2xs'
                     : 'text-slate-600 hover:bg-slate-100 border border-transparent'
@@ -467,10 +464,10 @@ export default function CustomersPage() {
         {/* Customers Table */}
         <div className="w-full">
           <Table className="w-full table-fixed">
-            <TableHeader className="">
+            <TableHeader >
               <TableRow>
                 <TableHead className="min-w-44 xl:min-w-64">รหัส / ชื่อสมาชิก & บริษัท</TableHead>
-                <TableHead className="">ติดต่อ & เลขผู้เสียภาษี</TableHead>
+                <TableHead >ติดต่อ & เลขผู้เสียภาษี</TableHead>
                 <TableHead className="text-center">ระดับราคา</TableHead>
                 <TableHead className="text-right">วงเงินเครดิต / ยอดค้าง</TableHead>
                 <TableHead className="text-center">แต้มสะสม</TableHead>
@@ -609,7 +606,7 @@ export default function CustomersPage() {
                             size="sm"
                             variant="ghost"
                             onClick={() => handleOpenDetail(c)}
-                            className="h-8 w-8 p-0 text-muted-foreground hover:text-sky-600 hover:bg-sky-50 rounded-lg"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-sky-600 hover:bg-sky-50"
                             title="ดูข้อมูลละเอียด & ใบกำกับภาษี"
                             aria-label={`ดูข้อมูล ${c.name}`}
                           >
@@ -619,7 +616,7 @@ export default function CustomersPage() {
                             size="sm"
                             variant="ghost"
                             onClick={() => handleOpenEdit(c)}
-                            className="h-8 w-8 p-0 text-muted-foreground hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-indigo-600 hover:bg-indigo-50"
                             title="แก้ไขข้อมูลสมาชิก"
                             aria-label={`แก้ไข ${c.name}`}
                           >
@@ -643,7 +640,7 @@ export default function CustomersPage() {
             <div className="flex items-center gap-1.5">
               <Button variant="outline" size="sm" disabled={currentPage <= 1} onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} className="h-8 px-3 text-xs font-semibold border-slate-300">‹ ก่อนหน้า</Button>
               <span className="px-2 text-xs font-bold text-slate-700">หน้า {currentPage} <span className="font-normal text-slate-400">/ {totalPages}</span></span>
-              <Button variant="outline" size="sm" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} className="h-8 px-3 text-xs font-semibold border-slate-300">ถัดไป ›</Button>
+              <Button variant="outline" size="sm" disabled={currentPage >= totalPages} onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} className="border-slate-300">ถัดไป ›</Button>
             </div>
           </div>
         )}
@@ -746,7 +743,7 @@ export default function CustomersPage() {
                       value={formData.name || ''}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       placeholder={formData.type === 'COMPANY' ? 'เช่น บริษัท ปุริม จำกัด' : 'เช่น คุณสมชาย ใจดี'}
-                      className="h-9 font-bold"
+                      
                     />
                   </div>
 
@@ -756,7 +753,7 @@ export default function CustomersPage() {
                       value={formData.phone || ''}
                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                       placeholder="เช่น 081-234-5678"
-                      className="h-9 font-mono font-semibold"
+                      className="font-mono"
                     />
                   </div>
 
@@ -767,7 +764,7 @@ export default function CustomersPage() {
                       value={formData.email || ''}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       placeholder="เช่น contact@example.com"
-                      className="h-9"
+                      
                     />
                   </div>
                 </div>
@@ -778,7 +775,7 @@ export default function CustomersPage() {
                     value={formData.address || ''}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                     placeholder="บ้านเลขที่, ถนน, ตำบล, อำเภอ, จังหวัด, รหัสไปรษณีย์"
-                    className="h-9"
+                    
                   />
                 </div>
 
@@ -788,7 +785,7 @@ export default function CustomersPage() {
                     value={formData.note || ''}
                     onChange={(e) => setFormData({ ...formData, note: e.target.value })}
                     placeholder="บันทึกข้อความเฉพาะลูกค้าท่านนี้..."
-                    className="h-9"
+                    
                   />
                 </div>
               </div>
@@ -813,7 +810,7 @@ export default function CustomersPage() {
                     value={formData.companyName || ''}
                     onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
                     placeholder="เช่น บริษัท ปุริมพัฒนา คอนสตรัคชั่น จำกัด"
-                    className="h-9 font-semibold"
+                    
                   />
                 </div>
 
@@ -825,7 +822,7 @@ export default function CustomersPage() {
                       value={formData.taxId || ''}
                       onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
                       placeholder="เช่น 0105560123456"
-                      className="h-9 font-mono font-bold text-indigo-700"
+                      className="font-mono text-indigo-700"
                     />
                   </div>
 
@@ -850,7 +847,7 @@ export default function CustomersPage() {
                       value={formData.branchNumber || ''}
                       onChange={(e) => setFormData({ ...formData, branchNumber: e.target.value })}
                       placeholder="เช่น 00001"
-                      className="h-9 font-mono"
+                      className="font-mono"
                     />
                   </div>
                 )}
@@ -873,7 +870,7 @@ export default function CustomersPage() {
                       value={formData.contactPerson || ''}
                       onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
                       placeholder="เช่น คุณกิตติศักดิ์"
-                      className="h-9"
+                      
                     />
                   </div>
                   <div className="space-y-1">
@@ -882,7 +879,7 @@ export default function CustomersPage() {
                       value={formData.contactPhone || ''}
                       onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
                       placeholder="เช่น 089-111-2233"
-                      className="h-9 font-mono"
+                      className="font-mono"
                     />
                   </div>
                 </div>
@@ -952,7 +949,7 @@ export default function CustomersPage() {
                         value={formData.creditLimit ?? 0}
                         onChange={(e) => setFormData({ ...formData, creditLimit: Number(e.target.value) })}
                         placeholder="0 = ไม่ให้เชื่อ"
-                        className="h-9 font-extrabold text-indigo-600"
+                        className="text-indigo-600"
                       />
                       <span className="text-[10px] text-slate-400">ใส่ 0 หากซื้อขายสดเท่านั้น</span>
                     </div>
@@ -967,7 +964,7 @@ export default function CustomersPage() {
                         value={formData.creditTerms ?? 30}
                         onChange={(e) => setFormData({ ...formData, creditTerms: Number(e.target.value) })}
                         placeholder="เช่น 30 วัน"
-                        className="h-9 font-bold"
+                        
                       />
                     </div>
 
@@ -978,7 +975,7 @@ export default function CustomersPage() {
                         min="0"
                         value={formData.currentDebt ?? 0}
                         onChange={(e) => setFormData({ ...formData, currentDebt: Number(e.target.value) })}
-                        className="h-9 font-extrabold text-amber-600"
+                        className="text-amber-600"
                       />
                     </div>
                   </div>
@@ -1018,7 +1015,7 @@ export default function CustomersPage() {
                     type="number"
                     value={formData.points ?? 0}
                     onChange={(e) => setFormData({ ...formData, points: Number(e.target.value) })}
-                    className="h-9 font-extrabold text-base text-amber-700"
+                    className="text-amber-700"
                   />
                 </div>
 
@@ -1036,7 +1033,7 @@ export default function CustomersPage() {
                         min="1"
                         value={formData.pointEarnRateBaht ?? 500}
                         onChange={(e) => setFormData({ ...formData, pointEarnRateBaht: Number(e.target.value) })}
-                        className="h-9 font-bold text-slate-900"
+                        className="text-slate-900"
                       />
                     </div>
                     <div className="space-y-1">
@@ -1046,7 +1043,7 @@ export default function CustomersPage() {
                         min="1"
                         value={formData.pointEarnUnits ?? 10}
                         onChange={(e) => setFormData({ ...formData, pointEarnUnits: Number(e.target.value) })}
-                        className="h-9 font-extrabold text-emerald-600"
+                        className="text-emerald-600"
                       />
                     </div>
                   </div>
@@ -1069,7 +1066,7 @@ export default function CustomersPage() {
                         min="1"
                         value={formData.pointRedeemRatePoints ?? 100}
                         onChange={(e) => setFormData({ ...formData, pointRedeemRatePoints: Number(e.target.value) })}
-                        className="h-9 font-bold text-slate-900"
+                        className="text-slate-900"
                       />
                     </div>
                     <div className="space-y-1">
@@ -1079,7 +1076,7 @@ export default function CustomersPage() {
                         min="1"
                         value={formData.pointRedeemDiscountBaht ?? 1}
                         onChange={(e) => setFormData({ ...formData, pointRedeemDiscountBaht: Number(e.target.value) })}
-                        className="h-9 font-extrabold text-indigo-600"
+                        className="text-indigo-600"
                       />
                     </div>
                   </div>
@@ -1095,13 +1092,13 @@ export default function CustomersPage() {
             <Button
               variant="ghost"
               onClick={() => setIsFormOpen(false)}
-              className="text-slate-600 hover:bg-slate-200/60 font-semibold h-10 px-5"
+              className="text-slate-600 hover:bg-slate-200/60"
             >
               ยกเลิก
             </Button>
             <Button
               onClick={handleSaveCustomer}
-              className="bg-sky-500 hover:bg-sky-600 text-white font-bold px-7 h-10 shadow-sm text-sm"
+              className="bg-sky-500 hover:bg-sky-600 text-white"
             >
               <CheckCircle2 className="w-4 h-4 mr-1.5" /> บันทึกข้อมูลสมาชิก
             </Button>
@@ -1224,7 +1221,7 @@ export default function CustomersPage() {
           </div>
 
           <DialogFooter className="m-0 border-t border-slate-200 px-7 py-4.5 bg-slate-50 shrink-0 flex justify-end">
-            <Button onClick={() => setIsDetailOpen(false)} className="bg-slate-800 hover:bg-slate-900 text-white font-bold px-6 h-10 text-sm">
+            <Button onClick={() => setIsDetailOpen(false)} className="bg-slate-800 hover:bg-slate-900 text-white">
               ปิดหน้าต่าง
             </Button>
           </DialogFooter>
@@ -1264,7 +1261,7 @@ export default function CustomersPage() {
                         defaultPointEarnRateBaht: Number(e.target.value),
                       })
                     }
-                    className="h-9 font-bold"
+                    
                   />
                 </div>
                 <div>
@@ -1279,7 +1276,7 @@ export default function CustomersPage() {
                         defaultPointEarnUnits: Number(e.target.value),
                       })
                     }
-                    className="h-9 font-bold text-emerald-600"
+                    className="text-emerald-600"
                   />
                 </div>
               </div>
@@ -1303,7 +1300,7 @@ export default function CustomersPage() {
                         defaultPointRedeemRatePoints: Number(e.target.value),
                       })
                     }
-                    className="h-9 font-bold"
+                    
                   />
                 </div>
                 <div>
@@ -1318,7 +1315,7 @@ export default function CustomersPage() {
                         defaultPointRedeemDiscountBaht: Number(e.target.value),
                       })
                     }
-                    className="h-9 font-bold text-indigo-600"
+                    className="text-indigo-600"
                   />
                 </div>
               </div>
@@ -1326,10 +1323,10 @@ export default function CustomersPage() {
           </div>
 
           <DialogFooter className="m-0 border-t border-slate-200 px-6 py-4.5 bg-slate-50 flex justify-between">
-            <Button variant="ghost" onClick={() => setIsSettingsOpen(false)} className="text-slate-600 h-10 px-4">
+            <Button variant="ghost" onClick={() => setIsSettingsOpen(false)} className="text-slate-600">
               ยกเลิก
             </Button>
-            <Button onClick={handleSaveLoyaltySettings} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm h-10 px-5">
+            <Button onClick={handleSaveLoyaltySettings} className="bg-indigo-600 hover:bg-indigo-700 text-white">
               <CheckCircle2 className="w-4 h-4 mr-1.5" /> บันทึกการตั้งค่า
             </Button>
           </DialogFooter>

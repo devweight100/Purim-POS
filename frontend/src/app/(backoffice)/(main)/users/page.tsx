@@ -287,13 +287,13 @@ export default function UsersManagementPage() {
 
         <div className="tbl-wrap overflow-x-auto">
           <table className="tbl w-full text-left text-sm text-slate-600">
-            <thead className="">
+            <thead >
               <tr>
-                <th className="">ชื่อ-นามสกุล / ชื่อผู้ใช้</th>
+                <th >ชื่อ-นามสกุล / ชื่อผู้ใช้</th>
                 <th className="text-center">บทบาท (Role)</th>
-                <th className="">สิทธิ์การใช้งาน (Permissions)</th>
+                <th >สิทธิ์การใช้งาน (Permissions)</th>
                 <th className="text-center">สถานะ</th>
-                <th className="">เข้าสู่ระบบล่าสุด</th>
+                <th >เข้าสู่ระบบล่าสุด</th>
                 <th className="text-right">การกระทำ</th>
               </tr>
             </thead>
@@ -316,7 +316,7 @@ export default function UsersManagementPage() {
                   const permCount = Array.isArray(u.permissions) ? u.permissions.length : 0;
                   return (
                     <tr key={u.id} className={`hover:bg-slate-50/70 transition-colors ${ROW_NAV_CLASS}`} {...userNav.rowProps(ui)}>
-                      <td className="">
+                      <td >
                         <div className="font-medium text-fg">{u.fullName}</div>
                         <div className="text-sub text-subtle flex items-center gap-1 mt-0.5">
                           <span>@{u.username}</span>
@@ -335,7 +335,7 @@ export default function UsersManagementPage() {
                           {u.role}
                         </span>
                       </td>
-                      <td className="">
+                      <td >
                         <div className="flex items-center gap-1.5 flex-wrap">
                           {u.role === 'ADMIN' ? (
                             <span className="text-sub font-medium text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md">

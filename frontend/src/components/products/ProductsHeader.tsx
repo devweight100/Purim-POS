@@ -68,7 +68,7 @@ export function ProductsHeader({ loadAll, onImportFile, onAdd }: {
               .then(exportProductsExcel)
               .catch((err: unknown) => toast.error(`ส่งออกไม่สำเร็จ: ${(err as Error | undefined)?.message || "ติดต่อเซิร์ฟเวอร์ไม่ได้"}`));
           }}
-          className="h-10 border-emerald-300 bg-emerald-50/60 font-bold text-emerald-800 hover:bg-emerald-100 hover:border-emerald-400 shadow-2xs cursor-pointer"
+          className="border-emerald-300 bg-emerald-50/60 text-emerald-800 hover:bg-emerald-100 hover:border-emerald-400 cursor-pointer"
           title="ส่งออกรายการสินค้าทั้งหมดเป็นไฟล์ Excel (.xlsx) เพื่อแก้ไขราคา บาร์โค้ด ชื่อ หรือสต็อก"
         >
           <Download className="w-4 h-4 mr-1.5 text-emerald-700" /> ส่งออก Excel (.xlsx)
@@ -78,7 +78,7 @@ export function ProductsHeader({ loadAll, onImportFile, onAdd }: {
         <Button
           variant="outline"
           onClick={() => excelInputRef.current?.click()}
-          className="h-10 border-indigo-300 bg-indigo-50/60 font-bold text-indigo-800 hover:bg-indigo-100 hover:border-indigo-400 shadow-2xs cursor-pointer"
+          className="border-indigo-300 bg-indigo-50/60 text-indigo-800 hover:bg-indigo-100 hover:border-indigo-400 cursor-pointer"
           title="นำเข้าไฟล์ Excel หรือ CSV เพื่ออัพเดตและเพิ่มสินค้าเป็นชุด"
         >
           <Upload className="w-4 h-4 mr-1.5 text-indigo-700" /> นำเข้า Excel / CSV
@@ -88,13 +88,13 @@ export function ProductsHeader({ loadAll, onImportFile, onAdd }: {
         <Button
           variant="outline"
           onClick={downloadImportTemplate}
-          className="h-10 border-slate-300 bg-white font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs cursor-pointer"
+          className="border-slate-300 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer"
           title="ดาวน์โหลดไฟล์แม่แบบ Excel สำหรับกรอกข้อมูลสินค้าเพื่อนำเข้า"
         >
           <FileSpreadsheet className="w-4 h-4 mr-1.5 text-sky-600" /> โหลด Template
         </Button>
 
-        <Button className="h-10 w-full bg-indigo-600 px-5 font-bold text-white hover:bg-indigo-700 shadow-2xs cursor-pointer sm:w-auto" onClick={onAdd}>
+        <Button className="w-full bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer sm:w-auto" onClick={onAdd}>
           <Plus className="w-4 h-4 mr-1.5" /> เพิ่มสินค้าใหม่
         </Button>
       </div>

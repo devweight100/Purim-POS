@@ -45,7 +45,7 @@ export function PoSupplierCatalogDialog({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
             <Input
               placeholder="ค้นหาชื่อ หรือ SKU สินค้า..."
-              className="pl-9 bg-white border-slate-300 h-10 text-sm"
+              className="pl-9 bg-white border-slate-300"
               value={catalogSearch}
               onChange={(e) => setCatalogSearch(e.target.value)}
             />
@@ -125,7 +125,7 @@ export function PoSupplierCatalogDialog({
                             <Button
                               key={ui}
                               size="sm"
-                              className={`h-8 text-xs font-semibold px-2.5 ${
+                              className={` ${
                                 existing
                                   ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                                   : "bg-sky-500 text-white hover:bg-sky-600 shadow-xs"

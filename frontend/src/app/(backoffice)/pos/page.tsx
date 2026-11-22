@@ -79,7 +79,7 @@ export default function POSPage() {
               variant="outline"
               size="sm"
               onClick={() => document.getElementById('pos-cart')?.scrollIntoView({ behavior: 'smooth' })}
-              className="h-11 px-3 text-xs font-bold rounded-xl border-slate-300 text-slate-700"
+              className="border-slate-300 text-slate-700"
             >
               <ShoppingCart className="w-4 h-4 mr-1" />
               ดูตะกร้า
@@ -88,7 +88,7 @@ export default function POSPage() {
               type="button"
               size="sm"
               onClick={d.openPayment}
-              className="h-11 px-5 text-sm font-black rounded-xl bg-primary hover:bg-primary/90 text-white shadow-md flex items-center gap-1.5"
+              className="bg-primary hover:bg-primary/90 text-white flex items-center gap-1.5"
             >
               <CreditCard className="w-4 h-4" />
               ชำระเงิน

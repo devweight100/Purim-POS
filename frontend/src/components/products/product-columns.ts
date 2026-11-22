@@ -8,7 +8,7 @@
  * (name only since round 4: no photo, no barcodes) takes the rest and keeps at least NAME_MIN.
  */
 export const NAME_MIN = 240;
-export const COL = { select: 32, expand: 28, stock: 112, cost: 80, edit: 40, category: 104, categoryWide: 128 } as const;
+export const COL = { select: 40, expand: 32, stock: 112, cost: 80, edit: 40, category: 104, categoryWide: 128 } as const;
 /** table width from which the category is a narrow column of its own (round 4: 1366x768 in both sidebar states) */
 export const CATEGORY_TABLE = 1000;
 /** table width from which the price and category columns are wider */

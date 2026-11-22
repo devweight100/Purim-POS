@@ -17,7 +17,7 @@ export function PricesSection({ form, updateForm }: { form: ProductForm; updateF
         {PRICE_LEVELS.map(n => (
           <div key={n} className="space-y-1.5">
             <label className="text-xs font-medium text-slate-600">ราคา {n}</label>
-            <Input aria-label={`ราคา ${n}`} type="number" min="0" step="0.01" value={form[priceLevelKey(n)]} onChange={e => updateForm(priceLevelKey(n), e.target.value)} className="h-9 border-slate-300 text-right text-sm" />
+            <Input aria-label={`ราคา ${n}`} type="number" min="0" step="0.01" value={form[priceLevelKey(n)]} onChange={e => updateForm(priceLevelKey(n), e.target.value)} className="border-slate-300 text-right" />
           </div>
         ))}
       </div>
@@ -44,11 +44,11 @@ export function WholesaleSection({ steps, setForm }: { steps: WholesaleStepForm[
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <label className="text-xs text-slate-500">จำนวนตั้งแต่</label>
-                <Input type="number" min="0" step={qtyStep(allowDecimalQty)} value={step.minQuantity} onChange={e => updateWholesale(idx, "minQuantity", e.target.value)} className="h-8 border-slate-300 text-right text-sm" />
+                <Input type="number" min="0" step={qtyStep(allowDecimalQty)} value={step.minQuantity} onChange={e => updateWholesale(idx, "minQuantity", e.target.value)} className="border-slate-300 text-right" />
               </div>
               <div className="space-y-1">
                 <label className="text-xs text-slate-500">ราคา/ชิ้น</label>
-                <Input type="number" min="0" step="0.01" value={step.unitPrice} onChange={e => updateWholesale(idx, "unitPrice", e.target.value)} className="h-8 border-slate-300 text-right text-sm" />
+                <Input type="number" min="0" step="0.01" value={step.unitPrice} onChange={e => updateWholesale(idx, "unitPrice", e.target.value)} className="border-slate-300 text-right" />
               </div>
             </div>
           </div>

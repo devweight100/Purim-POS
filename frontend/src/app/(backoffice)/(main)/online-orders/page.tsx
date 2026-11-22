@@ -124,7 +124,7 @@ function OnlineOrdersInner() {
           <section aria-label="รายการออเดอร์" className={cn('space-y-3 min-w-0', selected && 'hidden xl:block')}>
             <div className="flex flex-wrap gap-btn">
               {FILTERS.map((f) => (
-                <Button key={f.value} size="sm" variant={filter === f.value ? 'default' : 'outline'} aria-pressed={filter === f.value} onClick={() => setFilter(f.value)}>
+                <Button key={f.value} variant={filter === f.value ? 'default' : 'outline'} aria-pressed={filter === f.value} onClick={() => setFilter(f.value)}>
                   {f.label}
                   {f.value === 'NEW' && counts?.new ? ` (${counts.new})` : ''}
                   {f.value === 'payable' && counts?.payable ? ` (${counts.payable})` : ''}

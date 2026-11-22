@@ -63,7 +63,7 @@ export function CustomerOnlineFields({ customerId, value, onChange }: { customer
             {linked.map((l) => (
               <li key={l.lineUserId} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1">
                 <span>{l.displayName || l.lineUserId}</span>
-                <Button type="button" size="sm" variant="ghost" className="h-7 text-rose-700" onClick={() => void unlink(l.lineUserId)}>
+                <Button type="button" size="sm" variant="ghost" className="text-rose-700" onClick={() => void unlink(l.lineUserId)}>
                   ยกเลิกการผูก
                 </Button>
               </li>

@@ -57,7 +57,7 @@ export function QuickCreateDialog({ open, onOpenChange, title, label, placeholde
         <form onSubmit={submit} className="space-y-4">
           <div className="space-y-1.5">
             <label htmlFor="quick-create-name" className="text-sm font-medium text-slate-700">{label} *</label>
-            <Input id="quick-create-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder} className="h-10" />
+            <Input id="quick-create-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={placeholder}  />
             {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
           </div>
           <div className="flex justify-end gap-btn-lg">

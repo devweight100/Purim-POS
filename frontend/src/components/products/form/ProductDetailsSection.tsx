@@ -91,17 +91,17 @@ export function ProductDetailsSection({ form, updateForm, categories, currentSto
 
         <div className="space-y-1.5 sm:col-span-2">
           <label className="text-sm font-medium text-slate-700">ชื่อสินค้า *</label>
-          <Input aria-label="ชื่อสินค้า *" value={form.name} onChange={e => updateForm("name", e.target.value)} className="h-10 border-slate-300" />
+          <Input aria-label="ชื่อสินค้า *" value={form.name} onChange={e => updateForm("name", e.target.value)} className="border-slate-300" />
           <p className="text-[11px] text-slate-500">ชื่อร้าน: ใช้ทุกที่ (หน้าขาย ใบเสร็จ ร้านออนไลน์ รายงาน)</p>
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <label htmlFor="product-form-manufacturer" className="text-sm font-medium text-slate-700">ชื่อผู้ผลิต <span className="font-normal text-slate-400">(ไม่บังคับ)</span></label>
-          <Input id="product-form-manufacturer" maxLength={NAME_LIMITS.manufacturerName} value={form.manufacturerName} onChange={e => updateForm("manufacturerName", e.target.value)} placeholder="เช่น ชื่อบนกล่อง / ชื่อจากโรงงาน" className="h-10 border-slate-300" />
+          <Input id="product-form-manufacturer" maxLength={NAME_LIMITS.manufacturerName} value={form.manufacturerName} onChange={e => updateForm("manufacturerName", e.target.value)} placeholder="เช่น ชื่อบนกล่อง / ชื่อจากโรงงาน" className="border-slate-300" />
           <p className="text-[11px] text-slate-500">ค้นหาด้วยชื่อนี้ได้ทุกหน้า · เลือกพิมพ์ชื่อนี้บนใบสั่งซื้อ / ใบคืนสินค้าถึงผู้ขายได้</p>
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">หน่วยย่อยสุด</label>
-          <Input value={form.unit} onChange={e => updateForm("unit", e.target.value)} className="h-10 border-slate-300" />
+          <Input value={form.unit} onChange={e => updateForm("unit", e.target.value)} className="border-slate-300" />
         </div>
         <div className="space-y-1.5">
           <div className="flex items-center justify-between gap-btn">
@@ -119,11 +119,11 @@ export function ProductDetailsSection({ form, updateForm, categories, currentSto
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">ขนาด</label>
-          <Input value={form.size} onChange={e => updateForm("size", e.target.value)} className="h-10 border-slate-300" />
+          <Input value={form.size} onChange={e => updateForm("size", e.target.value)} className="border-slate-300" />
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium text-slate-700">สี</label>
-          <Input value={form.color} onChange={e => updateForm("color", e.target.value)} className="h-10 border-slate-300" />
+          <Input value={form.color} onChange={e => updateForm("color", e.target.value)} className="border-slate-300" />
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
@@ -152,7 +152,7 @@ export function ProductDetailsSection({ form, updateForm, categories, currentSto
             min="0"
             value={form.minStockAlert}
             onChange={e => updateForm("minStockAlert", e.target.value)}
-            className="h-10 border-slate-300 font-bold text-slate-800"
+            className="border-slate-300 text-slate-800"
           />
           <p className="text-xs text-slate-400">เมื่อสต๊อกเหลือน้อยกว่าหรือเท่ากับจำนวนนี้ ระบบจะแสดงสถานะใกล้หมด</p>
         </div>
@@ -169,7 +169,7 @@ export function ProductDetailsSection({ form, updateForm, categories, currentSto
                 tabIndex={-1}
                 aria-readonly="true"
                 onFocus={e => e.currentTarget.select()}
-                className="h-10 flex-1 cursor-default border-slate-200 bg-slate-100 font-mono text-slate-500 shadow-none focus-visible:ring-0"
+                className="flex-1 cursor-default border-slate-200 bg-slate-100 font-mono text-slate-500 focus-visible:ring-0"
               />
               <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0 hover:border-primary hover:text-primary" title="คัดลอกรหัสสินค้า" aria-label="คัดลอกรหัสสินค้า" onClick={() => void copySku(form.sku)}>
                 <Copy className="w-4 h-4" />

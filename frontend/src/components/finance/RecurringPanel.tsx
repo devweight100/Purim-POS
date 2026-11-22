@@ -65,23 +65,23 @@ export function RecurringPanel({ accounts, categories, onChanged }: { accounts: 
       )}
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         <table className="tbl w-full text-sm">
-          <thead className=""><tr>
+          <thead ><tr>
             <th className="text-left">รายการ</th><th className="text-left">รอบ</th><th className="text-left">ครบกำหนดถัดไป</th>
-            <th className="text-right">จำนวนเงิน</th><th className="text-left">จ่ายจาก</th><th className="" />
+            <th className="text-right">จำนวนเงิน</th><th className="text-left">จ่ายจาก</th><th  />
           </tr></thead>
           <tbody>
             {rows.length === 0 && <tr><td colSpan={6} className="text-center text-subtle">ยังไม่มีค่าใช้จ่ายประจำ</td></tr>}
             {rows.map((r) => (
               <tr key={r.id} className={`border-t border-slate-100 ${!r.isActive ? 'text-slate-400' : ''}`}>
-                <td className=""><div className="font-semibold">{r.name}</div><div className="text-sub text-muted-foreground">{r.category.name}</div></td>
-                <td className="">{ruleText(r)}</td>
-                <td className="">
+                <td ><div className="font-semibold">{r.name}</div><div className="text-sub text-muted-foreground">{r.category.name}</div></td>
+                <td >{ruleText(r)}</td>
+                <td >
                   {thaiDate(r.nextDueDate)}{' '}
                   {r.status === 'OVERDUE' && <Badge className="bg-rose-600 text-white">เกิน {-r.daysToDue} วัน</Badge>}
                   {r.status === 'DUE_SOON' && <Badge className="bg-amber-500 text-white">{r.daysToDue === 0 ? 'วันนี้' : `อีก ${r.daysToDue} วัน`}</Badge>}
                 </td>
                 <td className="text-right doc-no whitespace-nowrap">{formatCurrency(r.amount)}</td>
-                <td className="">{r.account?.name || '-'}</td>
+                <td >{r.account?.name || '-'}</td>
                 <td className="text-right whitespace-nowrap">
                   {r.isActive && <Button size="sm" className="bg-rose-600 hover:bg-rose-700 text-white" onClick={() => setPayTarget(r)}>จ่าย</Button>}
                   {r.isActive && <Button size="sm" variant="ghost" onClick={() => void skip(r)}>ข้ามงวด</Button>}

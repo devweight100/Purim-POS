@@ -76,7 +76,7 @@ export default function ApprovalsPage() {
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         <table className="tbl w-full text-sm">
-          <thead className=""><tr>
+          <thead ><tr>
             <th className="text-left">เวลา</th><th className="text-left">ผู้ขอ</th><th className="text-left">เหตุผล</th>
             <th className="text-right">ยอดบิล</th><th className="text-left">ผู้อนุมัติ</th><th className="text-left">วิธี</th><th className="text-left">สถานะ</th>
           </tr></thead>
@@ -85,12 +85,12 @@ export default function ApprovalsPage() {
             {rows.map((r) => (
               <tr key={r.id} className="border-t border-slate-100 align-top">
                 <td className="whitespace-nowrap">{formatListDate(r.createdAt)}</td>
-                <td className="">{r.requestedBy}</td>
-                <td className="">{(r.reasons || []).map((x, i) => <div key={i}>• {x.message}</div>)}{r.decisionNote && <div className="text-sub text-muted-foreground">หมายเหตุ: {r.decisionNote}</div>}</td>
+                <td >{r.requestedBy}</td>
+                <td >{(r.reasons || []).map((x, i) => <div key={i}>• {x.message}</div>)}{r.decisionNote && <div className="text-sub text-muted-foreground">หมายเหตุ: {r.decisionNote}</div>}</td>
                 <td className="text-right doc-no whitespace-nowrap">{formatCurrency(r.amount)}</td>
-                <td className="">{r.approvedBy || '-'}</td>
-                <td className="">{r.channel === 'PIN' ? 'PIN ที่เครื่องขาย' : 'ส่งคำขอ'}</td>
-                <td className=""><Badge className={`${STATUS[r.status]?.cls || 'bg-slate-400'} text-white`}>{STATUS[r.status]?.label || r.status}</Badge></td>
+                <td >{r.approvedBy || '-'}</td>
+                <td >{r.channel === 'PIN' ? 'PIN ที่เครื่องขาย' : 'ส่งคำขอ'}</td>
+                <td ><Badge className={`${STATUS[r.status]?.cls || 'bg-slate-400'} text-white`}>{STATUS[r.status]?.label || r.status}</Badge></td>
               </tr>
             ))}
           </tbody>

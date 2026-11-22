@@ -185,8 +185,7 @@ export default function ClaimsPage() {
           <Link href="/supplier-returns">
             <Button
               variant="outline"
-              size="sm"
-              className="border-indigo-200 text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 h-10 px-4 text-xs font-bold shadow-2xs gap-1.5 rounded-2xl"
+              className="border-indigo-200 text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 gap-1.5"
               title="ไปยังหน้าระบบส่งเคลมและคืนสินค้าบริษัทผู้จำหน่าย"
             >
               <ArrowLeftRight className="w-4 h-4" />
@@ -195,9 +194,8 @@ export default function ClaimsPage() {
           </Link>
 
           <Button
-            size="sm"
             onClick={() => setIsClaimModalOpen(true)}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-10 px-4 rounded-2xl shadow-xs gap-1.5"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
           >
             <Plus className="w-4 h-4" />
             <span>รับเคลมสินค้าใหม่</span>
@@ -205,9 +203,8 @@ export default function ClaimsPage() {
 
           <Button
             variant="outline"
-            size="sm"
             onClick={fetchClaims}
-            className="border-slate-200 text-slate-700 hover:bg-slate-50 h-10 px-3.5 text-xs font-semibold shadow-2xs rounded-2xl"
+            className="border-slate-200 text-slate-700 hover:bg-slate-50"
             title="รีเฟรชข้อมูลรายการเคลม"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -291,7 +288,7 @@ export default function ClaimsPage() {
               placeholder="ค้นหาเลขที่ใบเคลม, บิลขาย, ชื่อลูกค้า, หรือชื่อสินค้า/SKU..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-10 h-10 text-xs bg-slate-50 border-slate-200 rounded-2xl"
+              className="pl-10 bg-slate-50 border-slate-200"
             />
           </div>
 
@@ -348,8 +345,8 @@ export default function ClaimsPage() {
         <div className="overflow-x-auto">
           {/* round 3: the claimed product is shown (it was only in the printed document); "#" and จำนวน hidden when the table is narrow */}
           <Table>
-            <TableHeader className="">
-              <TableRow className="">
+            <TableHeader >
+              <TableRow >
                 <TableHead data-narrow="hide" className="text-center w-10">#</TableHead>
                 <TableHead className="text-left">เลขที่เคลม</TableHead>
                 <TableHead className="text-center">วันที่</TableHead>
@@ -378,7 +375,7 @@ export default function ClaimsPage() {
                       <Button
                         size="sm"
                         onClick={() => setIsClaimModalOpen(true)}
-                        className="bg-indigo-600 text-white font-medium text-sub h-8 px-3 rounded-xl mt-1"
+                        className="bg-indigo-600 text-white text-sub mt-1"
                       >
                         + รับเคลมสินค้าใหม่
                       </Button>
@@ -466,7 +463,7 @@ export default function ClaimsPage() {
                         size="sm"
                         variant="outline"
                         onClick={(e) => handlePrintPdf(claim, e)}
-                        className="h-8 px-3 text-sub text-indigo-700 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 rounded-xl font-medium gap-1.5 whitespace-nowrap"
+                        className="text-sub text-indigo-700 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 gap-1.5 whitespace-nowrap"
                         title="พิมพ์ใบรับเคลม / ดูรายละเอียด"
                         aria-label="พิมพ์"
                       >
@@ -528,7 +525,7 @@ export default function ClaimsPage() {
                 variant="outline"
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 disabled={currentPage >= totalPages}
-                className="h-8 w-8 p-0 rounded-lg"
+                className="h-8 w-8 p-0"
               >
                 <ChevronRight className="w-4 h-4" />
               </Button>
@@ -537,7 +534,7 @@ export default function ClaimsPage() {
                 variant="outline"
                 onClick={() => setCurrentPage(totalPages)}
                 disabled={currentPage >= totalPages}
-                className="h-8 w-8 p-0 rounded-lg"
+                className="h-8 w-8 p-0"
               >
                 <ChevronsRight className="w-4 h-4" />
               </Button>

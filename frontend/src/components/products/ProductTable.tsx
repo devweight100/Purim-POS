@@ -31,7 +31,7 @@ function SortButton({ col, label, sub, f, align = "left" }: { col: SortKey; labe
       type="button"
       onClick={() => f.handleSort(col)}
       aria-label={sub ? `${label} (${sub})` : undefined}
-      className={`flex w-full items-center rounded font-bold text-slate-500 hover:text-sky-600 select-none outline-none focus-visible:ring-2 focus-visible:ring-sky-400 whitespace-nowrap ${align === "right" ? "justify-end text-right" : "justify-start"}`}
+      className={`flex w-full items-center rounded font-medium text-muted-foreground hover:text-sky-700 select-none outline-none focus-visible:ring-2 focus-visible:ring-sky-400 whitespace-nowrap ${align === "right" ? "justify-end text-right" : "justify-start"}`}
     >
       <span className="min-w-0">
         <span className="block">{label}</span>
@@ -99,9 +99,9 @@ export function ProductTable({ data, f, sel, onEdit, actions }: {
       </div>
       <div ref={boxRef}>
         <Table className="table-fixed">
-          <TableHeader className="">
+          <TableHeader >
             <TableRow className="hover:bg-transparent">
-              <TableHead style={{ width: COL.select }} className="text-center">
+              <TableHead style={{ width: COL.select }} className="cell-tight text-center">
                 <div className="flex justify-center">
                   <Checkbox
                     checked={sel.isCurrentPageSelected}
@@ -110,20 +110,20 @@ export function ProductTable({ data, f, sel, onEdit, actions }: {
                   />
                 </div>
               </TableHead>
-              <TableHead style={{ width: COL.expand }} className=""><span className="sr-only">ขนาดบรรจุ</span></TableHead>
-              <TableHead className=""><SortButton col="name" label="ชื่อสินค้า" f={f} /></TableHead>
-              {layout.showCategory && <TableHead style={{ width: layout.categoryWidth }} className="">หมวดหมู่</TableHead>}
-              <TableHead style={{ width: COL.stock }} className="">
+              <TableHead style={{ width: COL.expand }} className="cell-tight"><span className="sr-only">ขนาดบรรจุ</span></TableHead>
+              <TableHead ><SortButton col="name" label="ชื่อสินค้า" f={f} /></TableHead>
+              {layout.showCategory && <TableHead style={{ width: layout.categoryWidth }} >หมวดหมู่</TableHead>}
+              <TableHead style={{ width: COL.stock }} >
                 {/* over the number slot of StockQty (unit slot 2.75rem + gap) */}
                 <div className="pr-[3.125rem]"><SortButton col="stock" label="จำนวน" f={f} align="right" /></div>
               </TableHead>
-              {showCost && <TableHead style={{ width: COL.cost }} className="text-right"><SortButton col="cost" label="ต้นทุน" f={f} align="right" /></TableHead>}
+              {showCost && <TableHead style={{ width: COL.cost }} className="cell-tight text-right"><SortButton col="cost" label="ต้นทุน" f={f} align="right" /></TableHead>}
               {layout.levels.map((n) => (
-                <TableHead key={n} style={{ width: layout.priceWidth }} className="text-right" data-testid={`price-head-${n}`}>
+                <TableHead key={n} style={{ width: layout.priceWidth }} className="cell-tight text-right" data-testid={`price-head-${n}`}>
                   <SortButton col={priceLevelKey(n)} label={`ราคา ${n}`} sub={levelSubtitle(levelNames[n as 1 | 2 | 3 | 4 | 5], n)} f={f} align="right" />
                 </TableHead>
               ))}
-              <TableHead style={{ width: COL.edit }} className="text-center"><span className="sr-only">จัดการ</span></TableHead>
+              <TableHead style={{ width: COL.edit }} className="cell-tight text-center"><span className="sr-only">จัดการ</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody {...nav.bodyProps}>
@@ -180,7 +180,7 @@ export function ProductTable({ data, f, sel, onEdit, actions }: {
               size="sm"
               disabled={currentPage >= totalPages}
               onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              className="h-8 px-3 text-xs font-semibold border-slate-300"
+              className="border-slate-300"
             >
               ถัดไป ›
             </Button>

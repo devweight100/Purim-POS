@@ -24,7 +24,7 @@ export function PackagingUnitsSection({ form, setForm, updateForm }: { form: Pro
           <Layers className="h-4 w-4 text-primary" />
           <h3 className="font-semibold text-slate-900">สินค้าสัมพันธ์ — หน่วยบรรจุ</h3>
         </div>
-        <Button type="button" variant="outline" size="sm" className="h-8 text-xs border-primary text-primary hover:bg-primary/5" onClick={addPackagingUnit}>
+        <Button type="button" variant="outline" size="sm" className="border-primary text-primary hover:bg-primary/5" onClick={addPackagingUnit}>
           <Plus className="w-3 h-3 mr-1" /> เพิ่มหน่วยบรรจุ
         </Button>
       </div>
@@ -62,16 +62,16 @@ export function PackagingUnitsSection({ form, setForm, updateForm }: { form: Pro
                   <div className="grid gap-3 sm:grid-cols-3">
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-slate-600">ชื่อหน่วย</label>
-                      <Input value={unit.name} onChange={e => updatePackagingUnit(idx, "name", e.target.value)} className="h-9 border-slate-300 bg-white text-sm" />
+                      <Input value={unit.name} onChange={e => updatePackagingUnit(idx, "name", e.target.value)} className="border-slate-300 bg-white" />
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-slate-600">จำนวน {prevName} ต่อ 1 {unit.name || "หน่วยนี้"}</label>
-                      <Input type="number" min="1" value={unit.qtyPerPrev} onChange={e => updatePackagingUnit(idx, "qtyPerPrev", e.target.value)} className="h-9 border-slate-300 bg-white text-sm text-right" />
+                      <Input type="number" min="1" value={unit.qtyPerPrev} onChange={e => updatePackagingUnit(idx, "qtyPerPrev", e.target.value)} className="border-slate-300 bg-white text-right" />
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-slate-600">บาร์โค้ดหน่วยนี้</label>
                       <div className="flex gap-1">
-                        <Input value={unit.barcode} onChange={e => updatePackagingUnit(idx, "barcode", e.target.value)} className="h-9 border-slate-300 bg-white text-sm font-mono flex-1" />
+                        <Input value={unit.barcode} onChange={e => updatePackagingUnit(idx, "barcode", e.target.value)} className="border-slate-300 bg-white font-mono flex-1" />
                         <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-slate-400 hover:text-primary" onClick={() => updatePackagingUnit(idx, "barcode", generateEAN13())}><RefreshCw className="w-3.5 h-3.5" /></Button>
                       </div>
                     </div>
@@ -86,7 +86,7 @@ export function PackagingUnitsSection({ form, setForm, updateForm }: { form: Pro
                       {PRICE_LEVELS.map(n => (
                         <div key={n} className="space-y-1">
                           <label className="text-[10px] text-slate-500">ราคา {n}</label>
-                          <Input type="number" min="0" step="0.01" value={unit[priceLevelKey(n)]} onChange={e => updatePackagingUnit(idx, priceLevelKey(n), e.target.value)} className="h-8 border-slate-300 bg-white text-xs text-right" />
+                          <Input type="number" min="0" step="0.01" value={unit[priceLevelKey(n)]} onChange={e => updatePackagingUnit(idx, priceLevelKey(n), e.target.value)} className="border-slate-300 bg-white text-right" />
                         </div>
                       ))}
                     </div>

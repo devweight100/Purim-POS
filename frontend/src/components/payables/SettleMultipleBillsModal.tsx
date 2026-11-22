@@ -455,7 +455,7 @@ export function SettleMultipleBillsModal({
                       setIsSupplierDropdownOpen(val.trim().length > 0);
                     }}
                     placeholder="พิมพ์ชื่อบริษัท, ผู้ติดต่อ หรือเบอร์โทรศัพท์เพื่อค้นหาผู้จำหน่าย..."
-                    className="pl-10 h-10 text-xs sm:text-sm bg-slate-50 border-slate-300 rounded-xl focus:bg-white font-medium"
+                    className="pl-10 sm:text-sm bg-slate-50 border-slate-300 focus:bg-white"
                   />
                   {supplierSearchQuery && (
                     <button
@@ -475,7 +475,7 @@ export function SettleMultipleBillsModal({
                   type="button"
                   variant="outline"
                   onClick={() => setIsSupplierDropdownOpen((prev) => !prev)}
-                  className="h-10 px-3.5 text-xs font-bold border-slate-300 rounded-xl gap-1.5 shrink-0"
+                  className="border-slate-300 gap-1.5 shrink-0"
                 >
                   <span>รายชื่อทั้งหมด ({availableSuppliers.length})</span>
                   <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isSupplierDropdownOpen ? 'rotate-180' : ''}`} />
@@ -557,7 +557,7 @@ export function SettleMultipleBillsModal({
                     setSupplierSearchQuery('');
                     setIsSupplierDropdownOpen(false);
                   }}
-                  className="h-8 text-xs font-bold text-slate-600 hover:text-indigo-600 border-slate-200 bg-white"
+                  className="text-slate-600 hover:text-indigo-600 border-slate-200 bg-white"
                 >
                   เปลี่ยนผู้จำหน่าย
                 </Button>
@@ -645,7 +645,7 @@ export function SettleMultipleBillsModal({
                         size="sm"
                         variant="outline"
                         onClick={handleSelectAllBills}
-                        className="h-8 text-xs font-bold text-indigo-700 border-indigo-200 hover:bg-indigo-50 rounded-xl"
+                        className="text-indigo-700 border-indigo-200 hover:bg-indigo-50"
                       >
                         {selectedBillIds.size === supplierBills.length ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทุกบิล'}
                       </Button>
@@ -661,7 +661,7 @@ export function SettleMultipleBillsModal({
                 ) : (
                   <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
                     <table className="tbl w-full text-xs text-left border-collapse">
-                      <thead className="">
+                      <thead >
                         <tr>
                           <th className="w-10 text-center">
                             <Checkbox
@@ -669,7 +669,7 @@ export function SettleMultipleBillsModal({
                               onCheckedChange={handleSelectAllBills}
                             />
                           </th>
-                          <th className="">เลขที่บิลผู้จำหน่าย (Invoice No.)</th>
+                          <th >เลขที่บิลผู้จำหน่าย (Invoice No.)</th>
                           <th className="text-center w-28">เลขที่ PO</th>
                           <th className="text-center w-24">วันที่ในบิล</th>
                           <th className="text-right w-28">ยอดหนี้ (รับของแล้ว)</th>
@@ -698,19 +698,19 @@ export function SettleMultipleBillsModal({
                                   onCheckedChange={() => handleToggleBill(b.poId, b.remainingPayable)}
                                 />
                               </td>
-                              <td className="">
+                              <td >
                                 {isEditingThis ? (
                                   <div className="flex items-center gap-1">
                                     <Input
                                       value={tempInvoiceNo}
                                       onChange={(e) => setTempInvoiceNo(e.target.value)}
                                       placeholder="ระบุเลข Invoice"
-                                      className="h-7 text-sub doc-no font-medium w-36"
+                                      className="h-7 text-sub doc-no w-36"
                                       autoFocus
                                     />
                                     <Button
                                       size="sm"
-                                      className="h-7 px-2 text-sub bg-emerald-600 hover:bg-emerald-700"
+                                      className="text-sub bg-emerald-600 hover:bg-emerald-700"
                                       onClick={() => handleSaveInvoiceNo(b.poId)}
                                     >
                                       บันทึก
@@ -756,7 +756,7 @@ export function SettleMultipleBillsModal({
                                     step="any"
                                     value={currentAmount}
                                     onChange={(e) => handleBillAmountChange(b.poId, e.target.value, b.remainingPayable)}
-                                    className="h-8 text-right doc-no font-medium text-indigo-700 bg-white border-indigo-300 shadow-2xs"
+                                    className="text-right doc-no text-indigo-700 bg-white border-indigo-300"
                                   />
                                 ) : (
                                   <span className="text-subtle doc-no text-sub">-</span>
@@ -868,7 +868,7 @@ export function SettleMultipleBillsModal({
                                   const v = Math.max(0, Math.min(dn.remainingCreditAmount, Number(e.target.value) || 0));
                                   setMatchedDebitNotes(cur => ({ ...cur, [dn.id]: v }));
                                 }}
-                                className="h-8 w-28 text-right font-mono font-bold text-rose-700 border-amber-300"
+                                className="h-8 w-28 text-right font-mono text-rose-700 border-amber-300"
                               />
                             </div>
                           )}
@@ -954,7 +954,7 @@ export function SettleMultipleBillsModal({
                         <Input
                           value={bankAccountLabel}
                           onChange={(e) => setBankAccountLabel(e.target.value)}
-                          className="h-8.5 text-xs bg-slate-50 border-slate-300 rounded-xl"
+                          className="h-8.5 bg-slate-50 border-slate-300"
                         />
                       </div>
                       <div>
@@ -965,7 +965,7 @@ export function SettleMultipleBillsModal({
                           value={referenceNo}
                           onChange={(e) => setReferenceNo(e.target.value)}
                           placeholder="เช่น K-12398471"
-                          className="h-8.5 text-xs font-mono bg-slate-50 border-slate-300 rounded-xl"
+                          className="h-8.5 font-mono bg-slate-50 border-slate-300"
                         />
                       </div>
                     </div>
@@ -979,7 +979,7 @@ export function SettleMultipleBillsModal({
                         value={paymentDate}
                         max={maxPaymentDate}
                         onChange={(e) => setPaymentDate(e.target.value)}
-                        className="h-8.5 text-xs bg-slate-50 border-slate-300 rounded-xl"
+                        className="h-8.5 bg-slate-50 border-slate-300"
                       />
                     </div>
                     <div>
@@ -987,7 +987,7 @@ export function SettleMultipleBillsModal({
                       <Input
                         value={cashierName}
                         onChange={(e) => setCashierName(e.target.value)}
-                        className="h-8.5 text-xs bg-slate-50 border-slate-300 rounded-xl"
+                        className="h-8.5 bg-slate-50 border-slate-300"
                       />
                     </div>
                   </div>
@@ -1026,7 +1026,7 @@ export function SettleMultipleBillsModal({
                           placeholder="0.00"
                           value={discountAmount || ''}
                           onChange={(e) => setDiscountAmount(Math.max(0, Number(e.target.value) || 0))}
-                          className="h-8.5 w-32 text-right font-mono font-bold text-amber-800 bg-amber-50/60 border-amber-300 text-xs rounded-xl focus:bg-white"
+                          className="h-8.5 w-32 text-right font-mono text-amber-800 bg-amber-50/60 border-amber-300 focus:bg-white"
                         />
                       </div>
                     </div>
@@ -1037,7 +1037,7 @@ export function SettleMultipleBillsModal({
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
                         placeholder="เช่น จ่ายรอบบิลประจำสัปดาห์ / งวดที่ 1"
-                        className="h-8.5 text-xs bg-slate-50 border-slate-300 text-slate-800 placeholder:text-slate-400 rounded-xl focus:bg-white"
+                        className="h-8.5 bg-slate-50 border-slate-300 text-slate-800 placeholder:text-slate-400 focus:bg-white"
                       />
                     </div>
                   </div>
@@ -1068,7 +1068,7 @@ export function SettleMultipleBillsModal({
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="text-slate-700 bg-white hover:bg-slate-100 border-slate-300 font-bold text-xs sm:text-sm px-6 h-10 rounded-xl ml-2 shadow-2xs"
+            className="text-slate-700 bg-white hover:bg-slate-100 border-slate-300 sm:text-sm ml-2"
           >
             ยกเลิก
           </Button>
@@ -1077,7 +1077,7 @@ export function SettleMultipleBillsModal({
             type="button"
             onClick={handleSubmit}
             disabled={isSubmitting || !selectedSupplierId || selectedBillIds.size === 0}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs sm:text-sm px-8 h-10 rounded-xl shadow-md mr-2 gap-2"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white sm:text-sm mr-2 gap-2"
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>{isSubmitting ? 'กำลังบันทึก...' : 'บันทึกชำระหนี้ & พิมพ์ใบสำคัญจ่าย (A4)'}</span>
