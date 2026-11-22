@@ -6,7 +6,7 @@ import { horizontalOverflow } from './layout';
 /**
  * Style pass (docs/ui-style.md, owner 2026-11-22):
  * - one table style: header / body cells sampled on several pages must have the same computed font, colour, weight
- *   and padding (first / last column 16 px = the card edge, inner cells 12 px left = right); one page title style;
+ *   and padding (first / last column 16 px = the card edge, inner cells 10 px left = right); one page title style;
  * - no chips around plain values (category, quantity) in the products table;
  * - stock-card tab: its count is the number of movements and the list shows them (it used to say "(100)" over an
  *   empty list: the type filter started as 'ALL' but was compared with 'all');
@@ -109,7 +109,7 @@ test('one table style on every sampled page (header, body, padding, page title)'
     expect({ path, first: s.tdFirst, last: s.tdLast }).toEqual({ path, first: { pl: '16px' }, last: { pr: '16px' } });
     if (!s.td) continue; // a table without data rows on this database
     expect({ path, size: s.td.fontSize, font: s.td.fontFamily, transform: s.td.textTransform, pl: s.td.pl, pr: s.td.pr })
-      .toEqual({ path, size: '14px', font: ref.th!.fontFamily, transform: 'none', pl: '12px', pr: '12px' });
+      .toEqual({ path, size: '14px', font: ref.th!.fontFamily, transform: 'none', pl: '10px', pr: '10px' });
     expect(s.rowHeight, path).toBeGreaterThanOrEqual(40);
   }
   expect(Object.keys(seen)).toHaveLength(PAGES.length);

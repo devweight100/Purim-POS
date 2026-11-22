@@ -116,7 +116,7 @@ test('dashboard: no KPI cards that repeat the banner, no + / - / = before the ba
   const rowWidth = (await cards.boundingBox())!.width;
   expect(boxes[0] + boxes[1]).toBeGreaterThan(rowWidth - 24);
   // banner amounts: "฿46,729", not "+฿..." / "-฿..." / "=฿..."
-  const amounts = await page.locator('.font-mono.text-xl').allTextContents();
+  const amounts = await page.getByTestId('flow-amount').allTextContents();
   expect(amounts).toHaveLength(3);
   for (const a of amounts) expect(a.trim()).toMatch(/^฿/);
   await expect(page.getByText(/[+=−-]฿/)).toHaveCount(0);

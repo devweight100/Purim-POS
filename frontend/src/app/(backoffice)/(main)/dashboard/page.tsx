@@ -300,7 +300,7 @@ export default function DashboardPage() {
                 {kpi.totalOrdersCount} ออเดอร์
               </Badge>
             </div>
-            <div className="text-xl sm:text-2xl font-semibold tabular-nums text-emerald-700 mt-1">
+            <div data-testid="flow-amount" className="text-xl sm:text-2xl font-semibold tabular-nums text-emerald-700 mt-1">
               {formatCurrency(kpi.grossSales)}
             </div>
             <p className="text-[11px] text-emerald-700/90 mt-1 font-medium">
@@ -316,7 +316,7 @@ export default function DashboardPage() {
                 {kpi.voidedOrdersCount} ยกเลิก / {kpi.returnCount} คืนสินค้า
               </Badge>
             </div>
-            <div className="text-xl sm:text-2xl font-semibold tabular-nums text-rose-600 mt-1">
+            <div data-testid="flow-amount" className="text-xl sm:text-2xl font-semibold tabular-nums text-rose-600 mt-1">
               {formatCurrency(kpi.totalRefunds)}
             </div>
             <div className="text-[11px] text-rose-700/90 mt-1 flex flex-wrap gap-x-2 font-medium">
@@ -334,7 +334,7 @@ export default function DashboardPage() {
                 รับจริง {kpi.completedOrdersCount} บิล
               </Badge>
             </div>
-            <div className="text-xl sm:text-2xl font-semibold tabular-nums text-indigo-700 mt-1">
+            <div data-testid="flow-amount" className="text-xl sm:text-2xl font-semibold tabular-nums text-indigo-700 mt-1">
               {formatCurrency(kpi.netRevenue)}
             </div>
             <p className="text-[11px] text-indigo-800/90 mt-1 font-medium">
