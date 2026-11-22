@@ -65,12 +65,14 @@ plain values are **plain text**, never a chip or a bordered box.
   so their content lines up with the card's 16 px edge padding (toolbar, pagination).
 - Dividers between rows (`#edf1f5`), **no zebra**. Hover slate-50, selected indigo-50, keyboard row sky-50 with the
   sky focus outline.
-- Header alignment follows the column: numbers and money right, status / actions centre, text left.
+- Header alignment follows the column: numbers and money right, status / actions centre, text left (dates left).
+- A first column that is hidden on narrow screens / tables (`#`, `hidden xl:table-cell`, `data-mid` / `data-narrow="hide"`) hands the 16 px edge padding to the next visible cell.
 - Narrow helper cells (checkbox, chevron, the products price grid) use `cell-tight` (8 px each side) - the only
   exception, and the same on header and body.
 - Empty state: one row, `tbl-empty` (128 px high, centred, muted text, optional icon). Loading: the same row with
   "กำลังโหลด...".
-- Row actions: `size="sm"` buttons (32 px) side by side 8 px apart, or one ⋯ menu (`RowActionsMenu`).
+- Row actions: `size="sm"` buttons (32 px) side by side 8 px apart, outline; at most one filled (primary) button per row for the row's main job (e.g. ลูกหนี้ "รับชำระ"); or one ⋯ menu (`RowActionsMenu`).
+- Weights in a table body: 400 regular, 500 medium (names, totals, document numbers); no bold / black.
 
 ## Page chrome
 
