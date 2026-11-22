@@ -14,7 +14,8 @@ import { api, apiLogin, uiLogin } from './helpers';
 test.use({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
 
 const SHOT_DIR = process.env.E2E_MOBILE_SHOTS || '';
-const baht = (n: number) => '฿' + n.toLocaleString('th-TH', { minimumFractionDigits: n % 1 !== 0 ? 2 : 0, maximumFractionDigits: 2 });
+// money: always 2 decimals (docs/ui-style.md)
+const baht = (n: number) => '฿' + n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 interface LookupRow {
   id: string;

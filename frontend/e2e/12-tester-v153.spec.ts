@@ -277,7 +277,7 @@ test('BUG-05: cost columns and stock value use the recorded cost (12), never the
   await expect(page).toHaveURL(/\/pos/);
   await page.goto('/products');
   await page.getByPlaceholder(/ค้นหา/).first().fill(NAME);
-  await expect(page.locator('tr').filter({ hasText: NAME }).getByTestId('product-cost')).toHaveText('฿12');
+  await expect(page.locator('tr').filter({ hasText: NAME }).getByTestId('product-cost')).toHaveText('฿12.00');
   await page.goto('/inventory');
   await page.getByPlaceholder('ค้นหาชื่อสินค้า, SKU, บาร์โค้ด...').fill(NAME);
   const row = page.locator('tr').filter({ hasText: NAME });

@@ -117,7 +117,7 @@ test('approved while the shop is open: link page, prices, cart bar, cart, order 
   // cart + order at level 2
   await phone.getByTestId('shop-cart-bar').click();
   await expect(phone.getByTestId('shop-cart-line')).toContainText('฿180');
-  await expect(phone.getByTestId('shop-cart-subtotal')).toHaveText('฿180');
+  await expect(phone.getByTestId('shop-cart-subtotal')).toHaveText('฿180.00');
   await phone.getByRole('link', { name: 'สั่งซื้อ' }).click();
   await phone.getByText('รับเองที่ร้าน', { exact: true }).click();
   await phone.getByRole('button', { name: /ยืนยันสั่งซื้อ/ }).click();

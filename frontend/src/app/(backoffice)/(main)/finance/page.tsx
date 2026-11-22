@@ -290,16 +290,16 @@ export default function FinancePage() {
               ))}
             </div>
             <div className="max-h-64 overflow-y-auto">
-              <table className="tbl w-full text-xs">
+              <table className="tbl w-full">
                 <thead ><tr><th className="text-left">ครบกำหนด</th><th className="text-left">ผู้จำหน่าย / บิล</th><th className="text-right">ยอด</th></tr></thead>
                 <tbody>
                   {overview.payables.items.length === 0 && <tr><td colSpan={3} className="text-center text-subtle">ไม่มียอดค้างจ่าย</td></tr>}
                   {overview.payables.items.map((p) => (
                     <tr key={p.poId} className="border-t border-slate-100">
-                      <td className={`p-1 whitespace-nowrap ${p.daysToDue < 0 ? 'text-rose-600 font-bold' : p.daysToDue <= 7 ? 'text-amber-700 font-semibold' : ''}`}>
+                      <td className={`whitespace-nowrap tabular-nums ${p.daysToDue < 0 ? 'text-danger' : p.daysToDue <= 7 ? 'text-warn' : ''}`}>
                         {formatListDate(p.dueDate)}
-                        {p.daysToDue < 0 ? ` (เกิน ${-p.daysToDue} วัน)` : p.daysToDue === 0 ? ' (วันนี้)' : ` (อีก ${p.daysToDue} วัน)`}
                         {!p.dueDateSet && <span className="text-subtle" title="ไม่ได้ระบุวันครบกำหนดใน PO ใช้เครดิตเทอมของผู้จำหน่าย"> *</span>}
+                        <div className="text-sub">{p.daysToDue < 0 ? `เกิน ${-p.daysToDue} วัน` : p.daysToDue === 0 ? 'วันนี้' : `อีก ${p.daysToDue} วัน`}</div>
                       </td>
                       <td >{p.supplierName} <span className="text-subtle doc-no">{p.invoiceNo || p.poNumber}</span></td>
                       <td className="text-right tabular-nums whitespace-nowrap">{formatCurrency(p.amount)}</td>
@@ -331,7 +331,7 @@ export default function FinancePage() {
               ))}
             </div>
             <div className="max-h-52 overflow-y-auto">
-              <table className="tbl w-full text-xs">
+              <table className="tbl w-full">
                 <thead ><tr><th className="text-left">ลูกค้า</th><th className="text-right">บิล</th><th className="text-right">เกินกำหนด</th><th className="text-right">ค้างทั้งหมด</th></tr></thead>
                 <tbody>
                   {overview.receivables.topDebtors.length === 0 && <tr><td colSpan={4} className="text-center text-subtle">ไม่มีลูกหนี้ค้างชำระ</td></tr>}

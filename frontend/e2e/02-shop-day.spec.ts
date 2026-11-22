@@ -169,7 +169,7 @@ test('partial return by the manager', async ({ browser }) => {
     await dlg.getByRole('button', { name: 'โอนคืน' }).click();
     await expect(dlg).toContainText('฿12');
     await dlg.getByRole('button', { name: 'ยืนยันรับคืน' }).click();
-    await expect(mgr.getByText(/บันทึกรับคืน .* คืนเงิน ฿12 แล้ว/)).toBeVisible();
+    await expect(mgr.getByText(/บันทึกรับคืน .* คืนเงิน ฿12\.00 แล้ว/)).toBeVisible();
   } finally {
     await ctx.close();
   }

@@ -3,11 +3,11 @@
  * the products page (confirmations), so both say the same thing.
  */
 
-/** Stock on hand that a delete removes, e.g. "ยังมีสต็อก 24 ชิ้น มูลค่าทุน ฿288 จะถูกลบออกจากคลัง" (value only when known). */
+/** Stock on hand that a delete removes, e.g. "ยังมีสต็อก 24 ชิ้น มูลค่าทุน ฿288.00 จะถูกลบออกจากคลัง" (value only when known; money always 2 decimals, docs/ui-style.md). */
 export function stockWarning(qty: number, unit: string, value?: number | null): string {
   const q = qty.toLocaleString('en-US', { maximumFractionDigits: 2 });
   const v = value !== undefined && value !== null
-    ? ` มูลค่าทุน ฿${value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+    ? ` มูลค่าทุน ฿${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     : '';
   return `ยังมีสต็อก ${q} ${unit || 'ชิ้น'}${v} จะถูกลบออกจากคลัง`;
 }

@@ -109,7 +109,7 @@ test('customer (phone, test profile): browse a category, search, choose the pack
   await expect(page.getByTestId('shop-cart-line')).toHaveCount(2);
   const bag = page.getByTestId('shop-cart-line').filter({ hasText: 'ถุง' });
   await bag.getByRole('button', { name: 'เพิ่มจำนวน' }).click();
-  await expect(page.getByTestId('shop-cart-subtotal')).toHaveText('฿3,200');
+  await expect(page.getByTestId('shop-cart-subtotal')).toHaveText('฿3,200.00');
   await expect(page.getByText('ร้านจะแจ้ง')).toBeVisible();
   await mobileOk(page);
   await shot(page, 'm-03-cart.png');
@@ -124,7 +124,7 @@ test('customer (phone, test profile): browse a category, search, choose the pack
   await page.getByLabel('ที่อยู่ส่งของ').fill('12/3 หมู่ 4 ต.ทดสอบ');
   await page.getByLabel('หมายเหตุถึงร้าน (ถ้ามี)').fill('ส่งช่วงบ่าย');
   await expect(page.getByTestId('shop-checkout-fee')).toHaveText('ร้านจะแจ้ง');
-  await expect(page.getByTestId('shop-checkout-total')).toHaveText('฿3,200 + ค่าส่ง');
+  await expect(page.getByTestId('shop-checkout-total')).toHaveText('฿3,200.00 + ค่าส่ง');
   await mobileOk(page);
   await shot(page, 'm-04-checkout.png');
   await page.getByRole('button', { name: 'ยืนยันสั่งซื้อ' }).click();
@@ -133,7 +133,7 @@ test('customer (phone, test profile): browse a category, search, choose the pack
   state.orderNo = (await page.getByTestId('shop-order-no').textContent())!.trim();
   expect(state.orderNo).toMatch(/^WB\d{4}-\d{4}$/); // round 4 document number
   state.orderId = page.url().split('/shop/orders/')[1].split('?')[0];
-  await expect(page.getByTestId('shop-order-total')).toHaveText('฿3,200 + ค่าส่ง');
+  await expect(page.getByTestId('shop-order-total')).toHaveText('฿3,200.00 + ค่าส่ง');
   await mobileOk(page);
   await shot(page, 'm-05-confirmed.png');
 
@@ -198,7 +198,7 @@ test('back office: badge, order detail, delivery fee, accept; the page fits 3 wi
 test('the customer sees the accepted total and a PromptPay QR with the amount', async () => {
   await phone.goto(`/shop/orders/${state.orderId}`);
   await expect(phone.getByText('ร้านยืนยันแล้ว')).toBeVisible();
-  await expect(phone.getByTestId('shop-order-total')).toHaveText('฿3,260');
+  await expect(phone.getByTestId('shop-order-total')).toHaveText('฿3,260.00');
   // the default bank account has a PromptPay ID (14-promptpay.spec.ts): QR with the amount locked
   const qr = phone.getByTestId('shop-qr');
   await expect(qr).toBeVisible();

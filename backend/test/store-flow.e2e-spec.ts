@@ -3398,4 +3398,49 @@ d('store flow (e2e)', () => {
       expect((await api('get', '/debts/owing-customers?search=0810000001', A)).body.data.map((r: any) => r.customerId)).toEqual([rs.cust1.id]);
     });
   });
+  describe('stock card paging (style pass 2026-11-22): GET /inventory/movements/page', () => {
+    it('total / allCount agree with the rows, filters by type / search / from / product, newest first', async () => {
+      const tag = randomUUID().slice(0, 6);
+      const prod = (await api('post', '/products', A, { name: `สินค้าสต็อกการ์ด ${tag}`, basePrice: 10, priceLevel1: 10, unit: 'ชิ้น' }).expect(201)).body;
+      await api('post', '/inventory/adjust', A, { productId: prod.id, type: 'SET', amount: 20, reason: 'ยอดยกมา' }).expect(201);
+      for (let i = 0; i < 3; i++) await api('post', '/inventory/adjust', A, { productId: prod.id, type: 'ADD', amount: 1 + i, reason: `รับเพิ่ม ${i}` }).expect(201);
+      await api('post', '/inventory/adjust', A, { productId: prod.id, type: 'SUB', amount: 2, reason: 'ชำรุด' }).expect(201);
+
+      // everything: allCount = total = every STOCK_* audit row; pages cover it without overlap
+      const all = (await api('get', '/inventory/movements/page?page=1&limit=500', A).expect(200)).body;
+      const prisma = new PrismaClient();
+      const dbCount = await prisma.auditLog.count({ where: { action: { startsWith: 'STOCK_' } } });
+      await prisma.$disconnect();
+      expect(all.meta).toMatchObject({ page: 1, limit: 500, total: dbCount, allCount: dbCount });
+      expect(all.data).toHaveLength(Math.min(dbCount, 500));
+      const times = all.data.map((m: any) => new Date(m.createdAt).getTime());
+      expect(times).toEqual([...times].sort((a, b) => b - a));
+      const p1 = (await api('get', '/inventory/movements/page?page=1&limit=3', A)).body;
+      const p2 = (await api('get', '/inventory/movements/page?page=2&limit=3', A)).body;
+      expect([...p1.data, ...p2.data].map((m: any) => m.id)).toEqual(all.data.slice(0, 6).map((m: any) => m.id));
+
+      // search (product name), type, product id: total = the filtered rows, allCount unchanged
+      const mine = (await api('get', `/inventory/movements/page?q=${encodeURIComponent(tag)}&limit=50`, A)).body;
+      expect(mine.meta).toMatchObject({ total: 5, allCount: dbCount });
+      // the opening count (SET from 0) is logged as ADJUST_ADD
+      expect(mine.data.map((m: any) => m.type)).toEqual(['ADJUST_SUB', 'ADJUST_ADD', 'ADJUST_ADD', 'ADJUST_ADD', 'ADJUST_ADD']);
+      const adds = (await api('get', `/inventory/movements/page?q=${encodeURIComponent(tag)}&type=ADJUST_ADD`, A)).body;
+      expect(adds.meta.total).toBe(4);
+      expect(adds.data.every((m: any) => m.type === 'ADJUST_ADD' && m.productId === prod.id)).toBe(true);
+      const byProduct = (await api('get', `/inventory/movements/page?productId=${prod.id}`, A)).body;
+      expect(byProduct.meta).toMatchObject({ total: 5, allCount: 5 });
+      // the reason is searchable too; the same rows as the old list endpoint for the product
+      expect((await api('get', `/inventory/movements/page?productId=${prod.id}&q=${encodeURIComponent('ชำรุด')}`, A)).body.meta.total).toBe(1);
+      const old = (await api('get', `/inventory/movements?productId=${prod.id}`, A)).body;
+      expect(old.map((m: any) => m.id)).toEqual(byProduct.data.map((m: any) => m.id));
+      // from: in the future -> nothing; a bad type is ignored (no SQL from the query string)
+      const future = new Date(Date.now() + 3600_000).toISOString();
+      expect((await api('get', `/inventory/movements/page?productId=${prod.id}&from=${encodeURIComponent(future)}`, A)).body.meta.total).toBe(0);
+      expect((await api('get', `/inventory/movements/page?productId=${prod.id}&type=${encodeURIComponent("X' OR 1=1")}`, A)).body.meta.total).toBe(5);
+      // like % / _ in the search are literal
+      expect((await api('get', '/inventory/movements/page?q=%25%25%25', A)).body.meta.total).toBe(0);
+      // cashier without MANAGE_INVENTORY / VIEW_REPORTS: refused
+      await api('get', '/inventory/movements/page', C).expect(403);
+    });
+  });
 });

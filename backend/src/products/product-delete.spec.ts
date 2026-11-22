@@ -16,7 +16,7 @@ describe('product delete texts', () => {
   });
 
   it('stock warning with and without the cost value', () => {
-    expect(stockWarning(24, 'ชิ้น', 288)).toBe('ยังมีสต็อก 24 ชิ้น มูลค่าทุน ฿288 จะถูกลบออกจากคลัง');
+    expect(stockWarning(24, 'ชิ้น', 288)).toBe('ยังมีสต็อก 24 ชิ้น มูลค่าทุน ฿288.00 จะถูกลบออกจากคลัง');
     expect(stockWarning(1234.5, 'กล่อง', 1000.25)).toBe('ยังมีสต็อก 1,234.5 กล่อง มูลค่าทุน ฿1,000.25 จะถูกลบออกจากคลัง');
     expect(stockWarning(2, '')).toBe('ยังมีสต็อก 2 ชิ้น จะถูกลบออกจากคลัง');
   });

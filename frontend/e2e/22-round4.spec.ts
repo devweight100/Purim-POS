@@ -59,11 +59,11 @@ test('payables: 4 columns with a paid progress bar, new PO numbers, list dates w
   for (const b of made.bills) expect(b.poNumber).toMatch(NEW_NUMBER('PO'));
 
   await expect(row(0).getByTestId('bill-progress')).toHaveAttribute('data-state', 'unpaid');
-  await expect(row(0).getByTestId('bill-progress')).toContainText('จ่ายแล้ว ฿0 / ค้าง ฿1,000');
+  await expect(row(0).getByTestId('bill-progress')).toContainText('จ่ายแล้ว ฿0.00 / ค้าง ฿1,000.00');
   await expect(row(1).getByTestId('bill-progress')).toHaveAttribute('data-state', 'partial');
   await expect(row(1).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25');
-  await expect(row(1).getByTestId('bill-progress')).toContainText('จ่ายแล้ว ฿500 / ค้าง ฿1,500');
-  await expect(row(1).getByTestId('bill-progress')).toHaveAttribute('title', /จ่ายเงินแล้ว ฿500/);
+  await expect(row(1).getByTestId('bill-progress')).toContainText('จ่ายแล้ว ฿500.00 / ค้าง ฿1,500.00');
+  await expect(row(1).getByTestId('bill-progress')).toHaveAttribute('title', /จ่ายเงินแล้ว ฿500\.00/);
   await expect(row(2).getByTestId('bill-progress')).toHaveAttribute('data-state', 'paid');
   await expect(row(2).getByTestId('bill-progress')).toContainText('ชำระครบแล้ว');
   // the amount column is the document total

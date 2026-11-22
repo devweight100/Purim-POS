@@ -120,7 +120,7 @@ test('delete a never-sold product with stock: the confirmation names the stock, 
   await page.getByRole('menuitem', { name: 'ลบสินค้า' }).click();
   const dialog = page.getByTestId('confirm-dialog');
   await expect(dialog).toContainText(`ลบสินค้า "${NEVER}"?`);
-  await expect(dialog).toContainText('ยังมีสต็อก 24 ชิ้น มูลค่าทุน ฿288 จะถูกลบออกจากคลัง');
+  await expect(dialog).toContainText('ยังมีสต็อก 24 ชิ้น มูลค่าทุน ฿288.00 จะถูกลบออกจากคลัง');
   await expect(dialog.getByRole('button', { name: 'ลบสินค้า' })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(row).toHaveCount(0);
