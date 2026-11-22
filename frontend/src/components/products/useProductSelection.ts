@@ -15,6 +15,16 @@ export function useProductSelection(paginatedList: ProductRecord[]) {
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set());
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
+  // active / inactive of every product row seen (any page), so the bulk bar offers only the action that applies
+  const [activeById, setActiveById] = useState<Record<string, boolean>>({});
+  const pageStatusKey = paginatedList.map((p) => `${p.id}:${p.isActive === false ? 0 : 1}`).join(",");
+  const [pageStatusSeen, setPageStatusSeen] = useState("");
+  if (pageStatusSeen !== pageStatusKey) {
+    // adjusted while rendering (no extra effect pass)
+    setPageStatusSeen(pageStatusKey);
+    setActiveById((prev) => ({ ...prev, ...Object.fromEntries(paginatedList.map((p) => [p.id, p.isActive !== false])) }));
+  }
+
   const toggleExpand = (id: string) => setExpandedRows(prev => toggled(prev, id));
   const currentPageIds = useMemo(() => paginatedList.map((p) => p.id).filter(Boolean), [paginatedList]);
   const isCurrentPageSelected = currentPageIds.length > 0 && currentPageIds.every((id) => selectedProductIds.has(id));
@@ -47,7 +57,7 @@ export function useProductSelection(paginatedList: ProductRecord[]) {
   };
 
   return {
-    selectedProductIds, toggleSelectProduct, toggleSelectCurrentPage, isCurrentPageSelected, clearSelection, forget,
+    selectedProductIds, activeById, toggleSelectProduct, toggleSelectCurrentPage, isCurrentPageSelected, clearSelection, forget,
     expandedRows, setExpandedRows, toggleExpand,
   };
 }

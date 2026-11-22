@@ -32,6 +32,10 @@ function Tip({ label, children }: { label: string; children: React.ReactElement 
   );
 }
 
+/** Hover flyout timing (owner 2026-11-22): open after 100 ms of pointing, close 250 ms after leaving. */
+export const RAIL_OPEN_DELAY = 100;
+export const RAIL_CLOSE_DELAY = 250;
+
 const railBtn =
   'relative flex h-10 w-10 items-center justify-center rounded-xl outline-none transition-colors focus-visible:ring-2 focus-visible:ring-indigo-400';
 
@@ -52,17 +56,51 @@ export function SidebarRail({
   onExpand: () => void;
   onLogout: () => void;
 }) {
-  const [open, setOpen] = useState<{ id: string; top: number } | null>(null);
+  // byHover: opened by pointing at the icon (closes again when the pointer leaves icon + flyout);
+  // a click or the keyboard opens it "pinned" (closes on Escape, a click outside or a page change)
+  const [open, setOpen] = useState<{ id: string; top: number; byHover: boolean } | null>(null);
   const triggers = useRef<Record<string, HTMLButtonElement | null>>({});
   const flyoutRef = useRef<HTMLDivElement>(null);
   const focusFirst = useRef(false);
+  const openTimer = useRef<number | undefined>(undefined);
+  const closeTimer = useRef<number | undefined>(undefined);
+
+  const clearTimers = useCallback(() => {
+    window.clearTimeout(openTimer.current);
+    window.clearTimeout(closeTimer.current);
+  }, []);
+  useEffect(() => clearTimers, [clearTimers]);
 
   const close = useCallback((refocus: boolean) => {
+    clearTimers();
     setOpen((cur) => {
       if (cur && refocus) triggers.current[cur.id]?.focus();
       return null;
     });
-  }, []);
+  }, [clearTimers]);
+
+  const flyoutTop = (id: string) => {
+    const r = triggers.current[id]?.getBoundingClientRect();
+    return Math.max(8, Math.min(r?.top ?? 80, window.innerHeight - 340));
+  };
+
+  // Hover: open after RAIL_OPEN_DELAY (a pointer passing over the rail opens nothing), close RAIL_CLOSE_DELAY after
+  // the pointer left both the icon and the flyout (time to cross the gap between them).
+  const hoverGroup = (id: string) => {
+    window.clearTimeout(closeTimer.current);
+    if (open?.id === id) return;
+    window.clearTimeout(openTimer.current);
+    openTimer.current = window.setTimeout(() => {
+      setOpen((cur) => (cur && cur.id === id ? cur : { id, top: flyoutTop(id), byHover: true }));
+    }, RAIL_OPEN_DELAY);
+  };
+  const leaveHover = () => {
+    window.clearTimeout(openTimer.current);
+    window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(() => {
+      setOpen((cur) => (cur?.byHover ? null : cur));
+    }, RAIL_CLOSE_DELAY);
+  };
 
   // a page change closes the flyout
   const [shownPath, setShownPath] = useState(pathname);
@@ -98,10 +136,12 @@ export function SidebarRail({
   }, [open, close]);
 
   const toggleGroup = (id: string, byKeyboard: boolean) => {
+    clearTimers();
+    // a click on an icon whose flyout the hover already opened keeps it open (pins it)
+    if (open?.id === id && open.byHover && !byKeyboard) return setOpen({ ...open, byHover: false });
     if (open?.id === id) return close(false);
-    const r = triggers.current[id]?.getBoundingClientRect();
     focusFirst.current = byKeyboard;
-    setOpen({ id, top: Math.max(8, Math.min(r?.top ?? 80, window.innerHeight - 340)) });
+    setOpen({ id, top: flyoutTop(id), byHover: false });
   };
 
   // ↑/↓ inside the flyout move between its links
@@ -176,13 +216,15 @@ export function SidebarRail({
               {group.separatorBefore && index > 0 && (
                 <div data-testid="sidebar-divider" aria-hidden="true" className="my-1 w-8 border-t border-slate-200" />
               )}
-              <Tip label={group.title}>
+              {/* no tooltip: pointing at the icon opens the flyout, whose heading is the group title */}
                 <button
                   type="button"
                   ref={(el) => {
                     triggers.current[group.id] = el;
                   }}
                   onClick={(e) => toggleGroup(group.id, e.detail === 0)}
+                  onPointerEnter={(e) => { if (e.pointerType === 'mouse') hoverGroup(group.id); }}
+                  onPointerLeave={(e) => { if (e.pointerType === 'mouse') leaveHover(); }}
                   aria-label={badge > 0 ? `${group.title} (${badge} รายการใหม่)` : group.title}
                   aria-haspopup="true"
                   aria-expanded={expanded}
@@ -200,7 +242,6 @@ export function SidebarRail({
                     </span>
                   )}
                 </button>
-              </Tip>
             </React.Fragment>
           );
         })}
@@ -237,6 +278,9 @@ export function SidebarRail({
           aria-label={openGroup.title}
           data-testid="sidebar-flyout"
           onKeyDown={onFlyoutKey}
+          onPointerEnter={() => window.clearTimeout(closeTimer.current)}
+          onPointerLeave={(e) => { if (e.pointerType === 'mouse') leaveHover(); }}
+          data-by-hover={open.byHover ? 'true' : undefined}
           style={{ top: open.top }}
           className="fixed left-[72px] z-[60] max-h-[calc(100dvh-16px)] w-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
         >

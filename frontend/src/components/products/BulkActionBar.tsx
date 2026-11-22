@@ -11,6 +11,7 @@ import { errorMessage } from "./product-helpers";
 import type { ProductsData } from "./useProducts";
 import type { ProductSelection } from "./useProductSelection";
 import { askConfirm } from '@/lib/ask-dialog';
+import { bulkActiveActions } from "./bulk-active";
 
 const withoutKeys = <T,>(prev: Record<string, T>, ids: string[]) => {
   const next = { ...prev };
@@ -129,6 +130,10 @@ export function BulkActionBar({ data, sel }: { data: ProductsData; sel: ProductS
 
   if (selectedProductIds.size === 0) return null;
 
+  // only the action(s) that change something: all active -> ปิด only, all inactive -> เปิด only, mixed -> both
+  // (a product whose state is unknown counts as both)
+  const { showEnable, showDisable } = bulkActiveActions(Array.from(selectedProductIds), sel.activeById);
+
   return (
     <div className="mb-3 flex flex-col gap-2 rounded-xl border border-rose-200 bg-rose-50/80 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
       <div className="text-sm font-bold text-rose-900">
@@ -138,14 +143,18 @@ export function BulkActionBar({ data, sel }: { data: ProductsData; sel: ProductS
         <Button type="button" variant="outline" className="h-9 border-slate-300 bg-white text-slate-700 hover:bg-slate-50" onClick={clearSelection}>
           ยกเลิกเลือก
         </Button>
-        <Button type="button" variant="outline" className="h-9 border-slate-300 bg-white text-slate-700 hover:bg-slate-50" onClick={() => void setActive(Array.from(selectedProductIds), true)} disabled={busy !== null}>
-          <Power className="mr-1.5 h-4 w-4" />
-          เปิดใช้งาน
-        </Button>
-        <Button type="button" variant="outline" className="h-9 border-slate-300 bg-white text-slate-700 hover:bg-slate-50" onClick={() => void handleBulkDisable()} disabled={busy !== null}>
-          <PowerOff className="mr-1.5 h-4 w-4" />
-          ปิดการใช้งาน
-        </Button>
+        {showEnable && (
+          <Button type="button" variant="outline" className="h-9 border-slate-300 bg-white text-slate-700 hover:bg-slate-50" onClick={() => void setActive(Array.from(selectedProductIds), true)} disabled={busy !== null} data-testid="bulk-enable">
+            <Power className="mr-1.5 h-4 w-4" />
+            เปิดใช้งาน
+          </Button>
+        )}
+        {showDisable && (
+          <Button type="button" variant="outline" className="h-9 border-slate-300 bg-white text-slate-700 hover:bg-slate-50" onClick={() => void handleBulkDisable()} disabled={busy !== null} data-testid="bulk-disable">
+            <PowerOff className="mr-1.5 h-4 w-4" />
+            ปิดการใช้งาน
+          </Button>
+        )}
         <Button type="button" className="h-9 bg-rose-600 text-white hover:bg-rose-700" onClick={() => void handleBulkDelete()} disabled={busy !== null}>
           <Trash2 className="mr-1.5 h-4 w-4" />
           {busy === "delete" ? "กำลังลบ..." : "ลบรายการที่เลือก"}

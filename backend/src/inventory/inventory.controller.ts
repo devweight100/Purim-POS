@@ -48,6 +48,28 @@ export class InventoryController {
     return this.inventoryService.adjustStock({ ...data, userId: req.user?.id, userName: req.user?.fullName || req.user?.username || data.userName });
   }
 
+  /** Paged stock-card list: `{ data, meta: { page, limit, total, allCount } }` (see InventoryService.getMovementsPage). */
+  @RequirePermissions('MANAGE_INVENTORY', 'VIEW_REPORTS')
+  @Get('movements/page')
+  getMovementsPage(
+    @Query('page') pageStr?: string,
+    @Query('limit') limitStr?: string,
+    @Query('q') q?: string,
+    @Query('type') type?: string,
+    @Query('from') from?: string,
+    @Query('productId') productId?: string,
+  ) {
+    const cleanType = type && /^[A-Z_]{2,40}$/.test(type) ? type : undefined;
+    return this.inventoryService.getMovementsPage({
+      page: clampInt(pageStr, 1, 1, 1_000_000),
+      limit: clampInt(limitStr, 20, 1, 500),
+      q: q ? String(q).slice(0, 200) : undefined,
+      type: cleanType,
+      from: from ? new Date(from) : undefined,
+      productId: productId || undefined,
+    });
+  }
+
   @RequirePermissions('MANAGE_INVENTORY', 'VIEW_REPORTS')
   @Get('movements')
   getMovements(@Query('productId') productId?: string, @Query('limit') limitStr?: string) {

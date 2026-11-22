@@ -1,5 +1,6 @@
 import { businessTransaction } from '../prisma/business-transaction';
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { DECIMAL_QTY_DISABLED, decimalQtyAllowed, fromHund, hasMax2Decimals, isWholeQty, parseQty, toHund } from '../common/qty';
 
@@ -295,28 +296,68 @@ export class InventoryService {
 
     const logs = await this.prisma.auditLog.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit,
     });
 
-    return logs.map((log: any) => {
-      const details = (log.details as any) || {};
-      return {
-        id: log.id,
-        productId: log.entityId,
-        sku: details.sku || '-',
-        productName: details.productName || 'สินค้า',
-        unitName: details.unitName || 'ชิ้น',
-        type: details.type || log.action.replace('STOCK_', ''),
-        quantityChange: details.quantityChange || 0,
-        previousStock: details.previousStock || 0,
-        currentStock: details.currentStock || 0,
-        referenceType: details.referenceType || 'ADJUST',
-        referenceNo: details.referenceNo || '-',
-        reason: details.reason || '-',
-        userName: details.userName || 'ระบบ',
-        createdAt: log.createdAt.toISOString(),
-      };
-    });
+    return logs.map(toMovement);
   }
+
+  /**
+   * One page of stock movements (newest first) with the number that match the filters (`meta.total`) and the number
+   * of all movements (`meta.allCount`), so the stock-card tab's count and its list come from the same query.
+   * Filters: `type` (IN_PO, OUT_POS, ... = action without STOCK_), `from` (ISO time, inclusive), `productId`,
+   * `q` (product name / SKU / reference / reason / user, case-insensitive).
+   */
+  async getMovementsPage(opts: { page: number; limit: number; q?: string; type?: string; from?: Date; productId?: string }) {
+    const base: Prisma.Sql[] = [Prisma.sql`left(a.action, 6) = 'STOCK_'`];
+    if (opts.productId) base.push(Prisma.sql`a.entity_id = ${opts.productId}`);
+    const conds = [...base];
+    if (opts.type) conds.push(Prisma.sql`a.action = ${'STOCK_' + opts.type}`);
+    if (opts.from && !Number.isNaN(opts.from.getTime())) conds.push(Prisma.sql`a.created_at >= ${opts.from}`);
+    const q = opts.q?.trim();
+    if (q) {
+      const pat = '%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%';
+      conds.push(Prisma.sql`(a.details->>'productName' ILIKE ${pat} OR a.details->>'sku' ILIKE ${pat}
+        OR a.details->>'referenceNo' ILIKE ${pat} OR a.details->>'reason' ILIKE ${pat} OR a.details->>'userName' ILIKE ${pat})`);
+    }
+    const where = Prisma.join(conds, ' AND ');
+    const filtered = conds.length > base.length;
+    const offset = (opts.page - 1) * opts.limit;
+    const [rows, total, all] = await Promise.all([
+      this.prisma.$queryRaw<{ id: string; action: string; entity_id: string | null; details: any; created_at: Date }[]>`
+        SELECT a.id, a.action, a.entity_id, a.details, a.created_at FROM audit_logs a WHERE ${where}
+        ORDER BY a.created_at DESC, a.id DESC LIMIT ${opts.limit} OFFSET ${offset}`,
+      this.prisma.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM audit_logs a WHERE ${where}`,
+      filtered
+        ? this.prisma.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM audit_logs a WHERE ${Prisma.join(base, ' AND ')}`
+        : Promise.resolve(null),
+    ]);
+    const totalN = Number(total[0]?.n ?? 0);
+    return {
+      data: rows.map((r) => toMovement({ id: r.id, action: r.action, entityId: r.entity_id, details: r.details, createdAt: r.created_at })),
+      meta: { page: opts.page, limit: opts.limit, total: totalN, allCount: all ? Number(all[0]?.n ?? 0) : totalN },
+    };
+  }
+}
+
+/** Audit log row (action STOCK_*) -> the stock movement the inventory screens show. */
+function toMovement(log: { id: string; action: string; entityId: string | null; details: any; createdAt: Date }) {
+  const details = (log.details as any) || {};
+  return {
+    id: log.id,
+    productId: log.entityId,
+    sku: details.sku || '-',
+    productName: details.productName || 'สินค้า',
+    unitName: details.unitName || 'ชิ้น',
+    type: details.type || log.action.replace('STOCK_', ''),
+    quantityChange: details.quantityChange || 0,
+    previousStock: details.previousStock || 0,
+    currentStock: details.currentStock || 0,
+    referenceType: details.referenceType || 'ADJUST',
+    referenceNo: details.referenceNo || '-',
+    reason: details.reason || '-',
+    userName: details.userName || 'ระบบ',
+    createdAt: log.createdAt.toISOString(),
+  };
 }
