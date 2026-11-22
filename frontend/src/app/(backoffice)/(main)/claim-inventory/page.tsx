@@ -5,8 +5,6 @@ import Link from 'next/link';
 import { fetchSuppliers } from '@/lib/supplier-return-service';
 import { apiFetch } from '@/lib/api';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { StatusChip } from '@/components/ui/status-chip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,31 +28,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  PackageX,
-  Search,
-  RefreshCw,
-  Truck,
-  Building2,
-  Calendar,
-  Layers,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  ShieldAlert,
-  ArrowLeftRight,
-  Boxes,
-  Eye,
-  ExternalLink,
-  Plus,
-  CheckCircle2,
-  FileText,
-  Clock
-} from 'lucide-react';
-import { toast } from 'sonner';
+import { PackageX, Search, RefreshCw, Truck, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ShieldAlert, ArrowLeftRight, Boxes, Eye, FileText } from 'lucide-react';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
-import { addQty } from '@/lib/qty';
 
 // Item representation for Claim Stock
 interface ClaimStockItem {

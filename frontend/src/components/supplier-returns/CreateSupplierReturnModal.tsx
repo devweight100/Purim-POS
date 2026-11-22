@@ -5,7 +5,7 @@ import { DocNameModeToggle } from '@/components/common/DocNameModeToggle';
 import { defaultSupplierDocNameMode } from '@/lib/store-settings-storage';
 import { matchesOtherNames } from '@shared/product-names';
 import { SearchMatchHint } from '@/components/common/SearchMatchHint';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Building2, CheckCircle2, FileText, Plus, Trash2, 
   ShieldAlert, Package, Search, Receipt, CheckSquare, Square, DollarSign, RotateCcw, ChevronDown
@@ -38,7 +38,7 @@ import {
   CreateSupplierReturnItemInput
 } from '@/lib/supplier-return-service';
 import { SupplierReturnNote } from '@/lib/types';
-import { addQty, formatQty, isValidQty, parseQty, qtyInputMode, qtyStep, roundQty, useAllowDecimalQty } from '@/lib/qty';
+import { formatQty, isValidQty, parseQty, qtyInputMode, qtyStep, roundQty, useAllowDecimalQty } from '@/lib/qty';
 import { useProductStore } from '@/lib/store/product-store';
 import { usePosDataDemand } from '@/lib/pos-data-policy';
 

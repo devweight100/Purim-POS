@@ -26,12 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { 
-  Clock, Search, Calendar, ChevronDown, FileText, 
-  RotateCcw, Ban, CheckCircle2, AlertTriangle, TrendingUp,
-  Package, CreditCard, Edit3, ClipboardList
-} from 'lucide-react';
+import { Clock, Search, Calendar, ChevronDown, FileText, RotateCcw, Ban, AlertTriangle, TrendingUp, Package, CreditCard, Edit3, ClipboardList } from 'lucide-react';
 import { printOrderPickingSlip } from '@/lib/pos/picking';
 import { toast } from 'sonner';
 import { addQty } from '@/lib/qty';

@@ -1,10 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { 
-  Building2, FileText, Receipt, CheckCircle2, RotateCcw, 
-  Printer, DollarSign, Calendar, Phone, Package, Tag, ShieldAlert, AlertTriangle, ArrowRight
-} from 'lucide-react';
+import { FileText, Receipt, RotateCcw, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {

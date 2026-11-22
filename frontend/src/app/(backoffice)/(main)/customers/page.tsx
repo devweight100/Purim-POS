@@ -8,21 +8,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
-import {
-  Customer,
-  CustomerType,
-  LoyaltySystemConfig,
-  fetchCustomerPage,
-  type CustomerPageStats,
-  fetchLoyaltyConfig,
-  upsertCustomer,
-  deleteCustomer,
-  loadLoyaltyConfig,
-  saveLoyaltyConfig,
-  calculateEarnedPoints,
-  calculateRedemptionDiscount,
-
-} from '@/lib/customer-service';
+import { Customer, LoyaltySystemConfig, fetchCustomerPage, type CustomerPageStats, fetchLoyaltyConfig, loadLoyaltyConfig, saveLoyaltyConfig } from '@/lib/customer-service';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -34,30 +20,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import {
-  Search,
-  UserPlus,
-  Edit,
-  Building2,
-  User,
-  CreditCard,
-  Coins,
-  Receipt,
-  Phone,
-  Mail,
-  MapPin,
-  FileText,
-  Sliders,
-  CheckCircle2,
-  AlertCircle,
-  HelpCircle,
-  Tag,
-  Gift,
-  RefreshCw,
-  Eye,
-  SlidersHorizontal,
-  ArrowRight,
-} from 'lucide-react';
+import { Search, UserPlus, Edit, Building2, User, CreditCard, Coins, Receipt, Phone, CheckCircle2, AlertCircle, Tag, Gift, RefreshCw, Eye, SlidersHorizontal, ArrowRight } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/lib/store/auth-store';

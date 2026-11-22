@@ -3,7 +3,7 @@ import { normDocNameMode, type DocNameMode } from '@shared/product-names';
 import { DocNameModeToggle } from '@/components/common/DocNameModeToggle';
 import { PoLineName } from './PoLineName';
 import { normVatType } from '@shared/po-calc';
-import { formatCurrency, formatDate, formatListDateTime } from '@/lib/utils';
+import { formatCurrency, formatListDateTime } from '@/lib/utils';
 import {
   Table, TableBody, TableCell, TableHead,
   TableHeader, TableRow

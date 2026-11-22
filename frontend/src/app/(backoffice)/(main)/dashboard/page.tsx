@@ -2,57 +2,13 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { api, apiFetch } from "@/lib/api";
-import { formatCurrency, formatDate, formatListDateTime } from '@/lib/utils';
+import { apiFetch } from "@/lib/api";
+import { formatCurrency, formatListDateTime } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-  CartesianGrid,
-} from "recharts";
-import {
-  DollarSign,
-  ShoppingCart,
-  Users,
-  Package,
-  LayoutDashboard,
-  TrendingUp,
-  CreditCard,
-  Banknote,
-  QrCode,
-  ArrowUpRight,
-  ArrowDownRight,
-  AlertTriangle,
-  Calendar,
-  Layers,
-  ChevronRight,
-  ShoppingBag,
-  Clock,
-  Sparkles,
-  RefreshCw,
-  Eye,
-  Percent,
-  CheckCircle2,
-  Box,
-  Truck,
-  Ban,
-  ShieldAlert,
-  ArrowRight,
-  Info,
-  Smartphone
-} from "lucide-react";
+import { AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { DollarSign, ShoppingCart, Users, Package, LayoutDashboard, TrendingUp, CreditCard, AlertTriangle, ChevronRight, Clock, Sparkles, RefreshCw, Info, Smartphone } from "lucide-react";
 import { fetchClaimRefundSummary } from "@/lib/claim-service";
 import { CreditCustomersDialog, type CreditSummary } from "@/components/dashboard/CreditCustomersDialog";
 import { bangkokDate, bangkokParts, bangkokStartOfDay, DAY_MS } from "@shared/bangkok-date";

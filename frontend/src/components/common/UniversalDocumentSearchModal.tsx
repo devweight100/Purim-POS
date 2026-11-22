@@ -1,12 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { 
-  Search, ScanLine, X, FileText, ShoppingBag, ShieldAlert, 
-  Calendar, CreditCard, Truck, RotateCcw, FileCheck, Printer, 
-  ArrowRight, Loader2, Sparkles, AlertCircle 
-} from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Search, ScanLine, X, FileText, ShoppingBag, ShieldAlert, Calendar, CreditCard, Truck, RotateCcw, FileCheck, Printer, Loader2, AlertCircle } from 'lucide-react';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

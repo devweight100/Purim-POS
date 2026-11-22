@@ -1,7 +1,7 @@
 'use client';
 
 import { DebtRecord, DebtPaymentInstallment } from '@/lib/types';
-import { formatCurrency, formatDate, formatListDate, formatListDateTime } from '@/lib/utils';
+import { formatCurrency, formatListDate, formatListDateTime } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -9,10 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { 
-  History, Receipt, FileText, CheckCircle2, User, Building2, 
-  Printer, ArrowDownRight, Calendar, Banknote, QrCode, CreditCard 
-} from 'lucide-react';
+import { History, Receipt, FileText, CheckCircle2, User, Building2, Printer, Banknote, QrCode, CreditCard } from 'lucide-react';
 
 interface DebtHistoryModalProps {
   open: boolean;

@@ -52,7 +52,7 @@ import {
 import { LoadErrorState, errorMessage } from "@/components/common/LoadErrorState";
 import { isValidQty, qtyInputMode, qtyStep } from "@/lib/qty";
 import { ReceiptOptionsSection, ReceiptPreview, LayoutTabs, type ReceiptLayout } from "@/components/settings/ReceiptOptionsSection";
-import { formatCurrency, formatListDateTime } from '@/lib/utils';
+import { formatListDateTime } from '@/lib/utils';
 import { VersionDetails } from "@/components/common/VersionInfo";
 import { clearLocalShopData } from '@/lib/local-data-reset';
 import { clearCachedProducts } from '@/lib/offline-db';

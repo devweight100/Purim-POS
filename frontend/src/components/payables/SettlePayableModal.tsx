@@ -1,13 +1,9 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { 
-  Building2, CheckCircle2, DollarSign, Receipt, CreditCard, 
-  Wallet, Banknote, ShieldAlert, ArrowDownCircle, CheckSquare, Square, X, Tag, Percent
-} from 'lucide-react';
+import { CheckCircle2, Receipt, CreditCard, Wallet, Banknote, ShieldAlert, CheckSquare, Square, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,

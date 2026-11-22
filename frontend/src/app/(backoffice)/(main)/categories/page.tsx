@@ -3,15 +3,14 @@
 import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { RowDeleteMenu } from '@/components/common/RowDeleteMenu';
 import { useEffect, useState, useMemo } from "react";
-import { api, apiFetch } from "@/lib/api";
+import { api } from "@/lib/api";
 import { fetchCategoriesFromBackend, CategoryItem } from "@/lib/category-storage";
 import { LoadErrorState, errorMessage } from "@/components/common/LoadErrorState";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
-import { FolderTree, Plus, Pencil, Search, Tag, AlertTriangle, X } from "lucide-react";
+import { FolderTree, Plus, Pencil, Search, AlertTriangle, X } from "lucide-react";
 import { toast } from "sonner";
 
 const emojiPresets = ["🥤", "🥬", "🍿", "🏠", "✏️", "📦", "👕", "💊", "⚡", "📱", "🚗", "🍔", "🍺", "🎨", "🐾", "🛍️"];

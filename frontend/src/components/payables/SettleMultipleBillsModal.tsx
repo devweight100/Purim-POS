@@ -2,12 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { apiFetch } from '@/lib/api';
-import { 
-  Building2, CheckCircle2, DollarSign, FileText, 
-  Receipt, ShieldAlert, Sparkles, Tag, Wallet, ArrowRight,
-  HelpCircle, CreditCard, Banknote, Calendar, AlertCircle,
-  Search, X, Check, ChevronDown, Percent
-} from 'lucide-react';
+import { Building2, CheckCircle2, DollarSign, FileText, Receipt, ShieldAlert, Tag, Wallet, CreditCard, Banknote, Search, X, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';

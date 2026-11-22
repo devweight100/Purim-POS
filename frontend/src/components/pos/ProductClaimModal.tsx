@@ -4,12 +4,7 @@ import { matchesOtherNames } from '@shared/product-names';
 import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useHasChanged } from '@/lib/pos/use-has-changed';
-import { 
-  verifyClaimEligibility,
-  fetchClaimEligibleItems,
-  processClaim, 
-  ClaimVerificationQuery,
-} from '@/lib/claim-service';
+import { fetchClaimEligibleItems, processClaim } from '@/lib/claim-service';
 import { ClaimEligibleItem, ClaimResolutionType, ClaimRecord, Product, ProductUnit } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useCartStore } from '@/lib/store/cart-store';
@@ -28,29 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  ShieldAlert,
-  Search,
-  CheckCircle2,
-  AlertTriangle,
-  RotateCcw,
-  Banknote,
-  Percent,
-  Truck,
-  ArrowRight,
-  Package,
-  Calendar,
-  User,
-  Phone,
-  FileText,
-  ScanLine,
-  RefreshCw,
-  Clock,
-  Sparkles,
-  QrCode,
-  CreditCard,
-  Layers
-} from 'lucide-react';
+import { ShieldAlert, Search, CheckCircle2, AlertTriangle, RotateCcw, Banknote, Percent, Truck, Package, User, ScanLine, RefreshCw, CreditCard, Layers } from 'lucide-react';
 import { toast } from 'sonner';
 import { addQty, formatQty, minQty, parseQty, qtyInputMode, qtyStep, subQty, useAllowDecimalQty } from '@/lib/qty';
 

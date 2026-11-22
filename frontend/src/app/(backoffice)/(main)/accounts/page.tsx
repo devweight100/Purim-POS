@@ -12,10 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader,
   DialogTitle, DialogFooter
 } from '@/components/ui/dialog';
-import { 
-  Building2, Plus, QrCode, Edit, 
-  CheckCircle2, Info, Star, Upload, CreditCard 
-} from 'lucide-react';
+import { Building2, Plus, QrCode, Edit, Star, Upload, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
 import { PromptPayQr } from '@/components/common/PromptPayQr';
 import { promptPayOf } from '@/lib/promptpay-qr';

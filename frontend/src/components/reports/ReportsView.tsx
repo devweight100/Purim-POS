@@ -31,51 +31,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  AreaChart,
-  Area,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  CartesianGrid,
-} from 'recharts';
-import {
-  BarChart3,
-  TrendingUp,
-  Sparkles,
-  Boxes,
-  Coins,
-  Users,
-  Truck,
-  Calendar,
-  Printer,
-  Download,
-  Search,
-  ArrowUpRight,
-  ArrowDownRight,
-  AlertTriangle,
-  CheckCircle2,
-  PackageX,
-  FileText,
-  RefreshCw,
-  Clock,
-  Layers,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  Receipt,
-  Building2,
-  Tag,
-  ShieldAlert
-} from 'lucide-react';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from 'recharts';
+import { BarChart3, TrendingUp, Sparkles, Boxes, Coins, Users, Truck, Calendar, Printer, Download, Search, AlertTriangle, PackageX, RefreshCw, Layers, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Receipt, Building2, Tag } from 'lucide-react';
 import { toast } from 'sonner';
 
 export type ReportTabKey = 'sales' | 'bestsellers' | 'inventory' | 'payments' | 'customers' | 'purchases';

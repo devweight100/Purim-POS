@@ -1,10 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { 
-  Building2, CheckCircle2, Download, Printer, 
-  FileText, Phone, MapPin, Hash
-} from 'lucide-react';
+import { Download, Printer, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {

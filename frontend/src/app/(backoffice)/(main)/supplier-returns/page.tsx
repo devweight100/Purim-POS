@@ -2,30 +2,16 @@
 
 import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { useState, useEffect } from 'react';
-import { 
-  Building2, Plus, Search, Filter, FileText, Download, Printer, 
-  Trash2, ShieldAlert, Package, CheckCircle2, Clock, AlertCircle, 
-  Receipt, ArrowLeftRight, ChevronRight, Eye, RefreshCw, XCircle, Pencil, RotateCcw
-} from 'lucide-react';
+import { Plus, Search, FileText, Trash2, ShieldAlert, CheckCircle2, Receipt, ArrowLeftRight, Eye, RefreshCw, Pencil, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { StatusChip } from '@/components/ui/status-chip';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { formatCurrency, formatListDate } from '@/lib/utils';
 import { toast } from 'sonner';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
-import { 
-  loadSuppliers,
-  fetchSuppliers, 
-  loadSupplierReturnNotes,
-  fetchSupplierReturnNotes,
-  fetchReturnableSummary,
-  type ReturnableSupplierGroup,
-  cancelSupplierReturnNote,
-  restoreSupplierReturnNote
-} from '@/lib/supplier-return-service';
+import { fetchSuppliers, fetchSupplierReturnNotes, fetchReturnableSummary, type ReturnableSupplierGroup, cancelSupplierReturnNote, restoreSupplierReturnNote } from '@/lib/supplier-return-service';
 import { SupplierReturnNote } from '@/lib/types';
 import { CreateSupplierReturnModal } from '@/components/supplier-returns/CreateSupplierReturnModal';
 import { SupplierReturnPdfModal } from '@/components/supplier-returns/SupplierReturnPdfModal';

@@ -3,19 +3,13 @@
 import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { 
-  Building2, Receipt, DollarSign, Plus, Search, Filter, 
-  CreditCard, Banknote, ShieldAlert, CheckCircle2, Clock, 
-  ArrowLeftRight, FileText, Printer, Eye, ChevronRight, RefreshCw, AlertCircle, RotateCcw, XCircle,
-  Edit3
-} from 'lucide-react';
+import { Building2, Receipt, DollarSign, Plus, Search, ShieldAlert, CheckCircle2, ArrowLeftRight, FileText, Printer, Eye, RefreshCw, RotateCcw, XCircle, Edit3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { StatusChip } from '@/components/ui/status-chip';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,

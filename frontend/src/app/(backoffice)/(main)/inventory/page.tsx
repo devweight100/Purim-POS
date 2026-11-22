@@ -3,7 +3,7 @@
 import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { getLowStockThreshold } from '@/lib/store-settings-storage';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api, apiFetch } from '@/lib/api';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import Link from 'next/link';
@@ -31,24 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Search,
-  Plus,
-  Filter,
-  AlertTriangle,
-  Package,
-  SlidersHorizontal,
-  History,
-  TrendingDown,
-  TrendingUp,
-  CheckCircle2,
-  ShoppingCart,
-  RefreshCw,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-} from 'lucide-react';
+import { Search, Plus, AlertTriangle, Package, SlidersHorizontal, History, TrendingDown, TrendingUp, CheckCircle2, ShoppingCart, RefreshCw, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 import {
   StockMovement,
   fetchStockMovements,

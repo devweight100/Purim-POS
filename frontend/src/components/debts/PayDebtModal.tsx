@@ -15,10 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { 
-  CreditCard, Banknote, QrCode, Building2, CheckCircle2, User, 
-  FileText, ArrowRight, ShieldCheck, AlertCircle, Clock
-} from 'lucide-react';
+import { CreditCard, Banknote, QrCode, Building2, CheckCircle2, User, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { PromptPayQr } from '@/components/common/PromptPayQr';
 import { promptPayOf } from '@/lib/promptpay-qr';

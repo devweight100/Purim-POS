@@ -5,8 +5,6 @@ import Link from 'next/link';
 import { fetchClaimsPage, type ClaimSummary } from '@/lib/claim-service';
 import { ClaimRecord, ClaimResolutionType } from '@/lib/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { StatusChip, type ChipTone } from '@/components/ui/status-chip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,29 +16,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  ShieldAlert,
-  Search,
-  RefreshCw,
-  Printer,
-  RotateCcw,
-  Banknote,
-  Percent,
-  Truck,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  User,
-  Plus,
-  ArrowLeftRight,
-  Building2,
-  Calendar
-} from 'lucide-react';
+import { ShieldAlert, Search, RefreshCw, Printer, RotateCcw, Banknote, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, User, Plus, ArrowLeftRight, Building2, Calendar } from 'lucide-react';
 import { ProductClaimModal } from '@/components/pos/ProductClaimModal';
 import { ClaimReceiptPdfModal } from '@/components/claims/ClaimReceiptPdfModal';
-import { toast } from 'sonner';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 
 const EMPTY_SUMMARY: ClaimSummary = {

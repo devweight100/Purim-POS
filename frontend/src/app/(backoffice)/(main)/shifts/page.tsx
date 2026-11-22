@@ -3,16 +3,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { bangkokDayKey, DAY_MS } from '@shared/bangkok-date';
 import Link from 'next/link';
-import { 
-  History, Clock, Calendar, Search, Filter, Printer, Eye, 
-  Coins, CheckCircle2, AlertTriangle, ArrowUpRight, ArrowDownRight, 
-  RefreshCw, FileText, ShoppingCart, User, ChevronRight, Layers
-} from 'lucide-react';
+import { History, Calendar, Search, Printer, Coins, CheckCircle2, AlertTriangle, RefreshCw, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { StatusChip } from '@/components/ui/status-chip';
-import { Card, CardContent } from '@/components/ui/card';
 import { formatCurrency } from '@/lib/utils';
 import { useShiftStore } from '@/lib/store/shift-store';
 import { ShiftSummaryData, ShiftSummaryPdfModal } from '@/components/pos/ShiftSummaryPdfModal';

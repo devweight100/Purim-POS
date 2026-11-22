@@ -3,13 +3,12 @@
 import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { DebtRecord, DebtPaymentInstallment, DebtStatus } from '@/lib/types';
+import { DebtRecord, DebtPaymentInstallment } from '@/lib/types';
 import { fetchDebtPage, cancelDebtPayment, type DebtPageStats } from '@/lib/debt-service';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { formatCurrency, formatListDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { StatusChip } from '@/components/ui/status-chip';
 import {
   Table,
@@ -19,33 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Receipt,
-  Search,
-  RefreshCw,
-  CreditCard,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  TrendingUp,
-  User,
-  Building2,
-  History,
-  Printer,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  FileText,
-  SlidersHorizontal,
-  Calendar,
-  Layers,
-  Banknote,
-  DollarSign,
-  X,
-  ArrowRight,
-  AlertTriangle
-} from 'lucide-react';
+import { Receipt, Search, RefreshCw, CreditCard, CheckCircle2, Clock, AlertCircle, User, History, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Layers, X, AlertTriangle } from 'lucide-react';
 import { PayDebtModal } from '@/components/debts/PayDebtModal';
 import { DebtReceiptPdfModal } from '@/components/debts/DebtReceiptPdfModal';
 import { DebtHistoryModal } from '@/components/debts/DebtHistoryModal';
