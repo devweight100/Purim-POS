@@ -248,7 +248,8 @@ test('collapsed sidebar: hover opens the group flyout after a short delay, the p
   await page.mouse.move(700, 400, { steps: 3 });
   await page.waitForTimeout(400);
   await expect(flyout).toBeVisible();
-  await page.mouse.click(700, 400);
+  // a click outside (on the page title: a table row would open the product form) closes it
+  await page.locator('main h1').click();
   await expect(flyout).toBeHidden();
   // keyboard still works: Enter opens with the focus on the first page, Escape closes and refocuses the icon
   await group.focus();
