@@ -142,4 +142,5 @@ export async function shopFetch<T>(path: string, init: { method?: string; body?:
   return data as T;
 }
 
-export const baht = (n: number) => '฿' + n.toLocaleString('th-TH', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+/** money in the shop: same rule as the back office (formatCurrency): always 2 decimals */
+export const baht = (n: number) => (n < 0 ? '-฿' : '฿') + Math.abs(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

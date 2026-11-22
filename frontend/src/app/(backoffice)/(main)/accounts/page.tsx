@@ -221,10 +221,10 @@ export default function AccountsPage() {
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+          <h1 className="page-title">
             <Building2 className="w-6 h-6 text-sky-500" /> จัดการบัญชีการเงิน & QR Code (Accounts)
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">ตั้งค่าและจัดการบัญชีธนาคารสำหรับรับโอนเงินและ QR PromptPay หน้าร้าน</p>
+          <p className="page-subtitle">ตั้งค่าและจัดการบัญชีธนาคารสำหรับรับโอนเงินและ QR PromptPay หน้าร้าน</p>
         </div>
         <Button onClick={handleOpenAdd} className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-10 px-5 text-xs shadow-sm rounded-xl">
           <Plus className="w-4 h-4 mr-1.5" /> เพิ่มบัญชีการเงิน

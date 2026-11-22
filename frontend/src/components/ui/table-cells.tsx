@@ -16,10 +16,10 @@ export const tc = {
   num: 'text-right whitespace-nowrap tabular-nums',
   /** small centred value (status badge, count, row number) on one line */
   center: 'text-center whitespace-nowrap',
-  /** document / bill / PO numbers, codes: one line */
-  doc: 'whitespace-nowrap',
-  /** dates and times: one line (date + time may stack with <TwoLine>) */
-  date: 'whitespace-nowrap text-xs',
+  /** document / bill / PO numbers, codes: one line, tabular digits (no monospace font) */
+  doc: 'doc-no whitespace-nowrap',
+  /** dates and times: one line (date + time may stack with <TwoLine>); body size, tabular digits */
+  date: 'whitespace-nowrap tabular-nums',
   /** row number column */
   index: 'w-10 text-center whitespace-nowrap',
   /** text column (name, supplier, customer): wraps, but never narrower than ~11 rem */
@@ -45,7 +45,7 @@ export function TwoLine({ main, sub, className, subClassName }: { main: React.Re
   return (
     <div className={cn('min-w-0', className)}>
       <div>{main}</div>
-      {sub != null && sub !== '' && <div className={cn('mt-0.5 text-[11px] font-normal text-slate-500', subClassName)}>{sub}</div>}
+      {sub != null && sub !== '' && <div className={cn('mt-0.5 text-sub font-normal text-muted-foreground', subClassName)}>{sub}</div>}
     </div>
   );
 }

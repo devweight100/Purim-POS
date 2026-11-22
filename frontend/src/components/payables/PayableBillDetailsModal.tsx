@@ -200,21 +200,21 @@ export function PayableBillDetailsModal({
           {/* TAB 1: PO ITEMS TABLE */}
           {activeTab === 'items' && (
             <div className="border border-slate-200 rounded-2xl overflow-hidden">
-              <table className="w-full text-xs">
-                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+              <table className="tbl w-full text-xs">
+                <thead className="">
                   <tr>
-                    <th className="p-2.5 text-center w-10">ลำดับ</th>
-                    <th className="p-2.5 text-left">สินค้า / SKU</th>
-                    <th className="p-2.5 text-center w-24">จำนวนที่สั่ง</th>
-                    <th className="p-2.5 text-center w-24">รับเข้าแล้ว</th>
-                    <th className="p-2.5 text-right w-24">ราคาทุน (฿)</th>
-                    <th className="p-2.5 text-right w-28">รวม (฿)</th>
+                    <th className="text-center w-10">ลำดับ</th>
+                    <th className="text-left">สินค้า / SKU</th>
+                    <th className="text-center w-24">จำนวนที่สั่ง</th>
+                    <th className="text-center w-24">รับเข้าแล้ว</th>
+                    <th className="text-right w-24">ราคาทุน (฿)</th>
+                    <th className="text-right w-28">รวม (฿)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {(!bill.items || bill.items.length === 0) ? (
                     <tr>
-                      <td colSpan={6} className="p-4 text-center text-slate-400">
+                      <td colSpan={6} className="text-center text-subtle">
                         ไม่มีข้อมูลรายการสินค้าในบิลนี้
                       </td>
                     </tr>
@@ -224,21 +224,21 @@ export function PayableBillDetailsModal({
                       const cost = Number(item.unitPrice || item.costPrice || 0);
                       return (
                         <tr key={idx} className="hover:bg-slate-50/50">
-                          <td className="p-2.5 text-center text-slate-400">{idx + 1}</td>
-                          <td className="p-2.5">
-                            <p className="font-bold text-slate-900">{item.productName}</p>
-                            <p className="text-[10px] text-slate-400 font-mono">SKU: {item.sku}</p>
+                          <td className="text-center text-subtle">{idx + 1}</td>
+                          <td className="">
+                            <p className="font-medium text-fg">{item.productName}</p>
+                            <p className="text-sub text-subtle doc-no">SKU: {item.sku}</p>
                           </td>
-                          <td className="p-2.5 text-center font-mono">
+                          <td className="text-center doc-no">
                             {qty} {item.unitName || 'ชิ้น'}
                           </td>
-                          <td className="p-2.5 text-center font-mono text-emerald-700 font-bold">
+                          <td className="text-center doc-no text-ok font-medium">
                             {item.receivedQuantity ?? qty} {item.unitName || 'ชิ้น'}
                           </td>
-                          <td className="p-2.5 text-right font-mono">
+                          <td className="text-right doc-no">
                             {formatCurrency(cost)}
                           </td>
-                          <td className="p-2.5 text-right font-mono font-bold text-slate-900">
+                          <td className="text-right doc-no font-medium text-fg">
                             {formatCurrency(qty * cost)}
                           </td>
                         </tr>

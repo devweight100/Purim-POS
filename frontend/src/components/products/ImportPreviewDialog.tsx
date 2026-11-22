@@ -141,19 +141,19 @@ export function ImportPreviewDialog({ state }: { state: ProductImportState }) {
           {/* Table Preview */}
           <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
             <Table>
-              <TableHeader className="bg-slate-100">
-                <TableRow className="text-xs">
-                  <TableHead className="w-12 text-center font-bold">ลำดับ</TableHead>
-                  <TableHead className="w-28 font-bold">สถานะ</TableHead>
-                  <TableHead className="w-32 font-bold">รหัส (SKU)</TableHead>
-                  <TableHead className="font-bold">ชื่อสินค้า</TableHead>
-                  <TableHead className="w-24 font-bold text-right text-slate-700">ราคาทุน</TableHead>
-                  <TableHead className="w-24 font-bold text-right text-emerald-700">ราคาขาย 1</TableHead>
-                  <TableHead className="w-20 font-bold text-center">สต็อก</TableHead>
-                  <TableHead className="font-bold">รายการที่เปลี่ยนแปลง</TableHead>
+              <TableHeader className="">
+                <TableRow className="">
+                  <TableHead className="w-12 text-center">ลำดับ</TableHead>
+                  <TableHead className="w-28">สถานะ</TableHead>
+                  <TableHead className="w-32">รหัส (SKU)</TableHead>
+                  <TableHead className="">ชื่อสินค้า</TableHead>
+                  <TableHead className="w-24 text-right">ราคาทุน</TableHead>
+                  <TableHead className="w-24 text-right text-emerald-700">ราคาขาย 1</TableHead>
+                  <TableHead className="w-20 text-center">สต็อก</TableHead>
+                  <TableHead className="">รายการที่เปลี่ยนแปลง</TableHead>
                 </TableRow>
               </TableHeader>
-              <TableBody className="text-xs font-medium">
+              <TableBody className="text-sub font-medium">
                 {importPreviewData
                   .filter((row) => {
                     if (importFilterTab === "changed") return row.changeType === "CHANGED";

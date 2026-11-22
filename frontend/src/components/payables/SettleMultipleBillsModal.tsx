@@ -660,22 +660,22 @@ export function SettleMultipleBillsModal({
                   </div>
                 ) : (
                   <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-                    <table className="w-full text-xs text-left border-collapse">
-                      <thead className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200">
+                    <table className="tbl w-full text-xs text-left border-collapse">
+                      <thead className="">
                         <tr>
-                          <th className="py-3 px-3 w-10 text-center">
+                          <th className="w-10 text-center">
                             <Checkbox
                               checked={supplierBills.length > 0 && selectedBillIds.size === supplierBills.length}
                               onCheckedChange={handleSelectAllBills}
                             />
                           </th>
-                          <th className="py-3 px-3">เลขที่บิลผู้จำหน่าย (Invoice No.)</th>
-                          <th className="py-3 px-2 text-center w-28">เลขที่ PO</th>
-                          <th className="py-3 px-2 text-center w-24">วันที่ในบิล</th>
-                          <th className="py-3 px-3 text-right w-28">ยอดหนี้ (รับของแล้ว)</th>
-                          <th className="py-3 px-3 text-right w-28">หนี้คงเหลือ</th>
-                          <th className="py-3 px-3 text-right w-40">ยอดตัดจ่ายรอบนี้ (฿)</th>
-                          <th className="py-3 px-3 text-center w-40">ความคืบหน้าชำระ</th>
+                          <th className="">เลขที่บิลผู้จำหน่าย (Invoice No.)</th>
+                          <th className="text-center w-28">เลขที่ PO</th>
+                          <th className="text-center w-24">วันที่ในบิล</th>
+                          <th className="text-right w-28">ยอดหนี้ (รับของแล้ว)</th>
+                          <th className="text-right w-28">หนี้คงเหลือ</th>
+                          <th className="text-right w-40">ยอดตัดจ่ายรอบนี้ (฿)</th>
+                          <th className="text-center w-40">ความคืบหน้าชำระ</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 bg-white">
@@ -692,25 +692,25 @@ export function SettleMultipleBillsModal({
                               key={b.poId}
                               className={`transition-colors ${isSelected ? 'bg-indigo-50/40' : 'hover:bg-slate-50/60'}`}
                             >
-                              <td className="py-2.5 px-3 text-center">
+                              <td className="text-center">
                                 <Checkbox
                                   checked={isSelected}
                                   onCheckedChange={() => handleToggleBill(b.poId, b.remainingPayable)}
                                 />
                               </td>
-                              <td className="py-2.5 px-3">
+                              <td className="">
                                 {isEditingThis ? (
                                   <div className="flex items-center gap-1">
                                     <Input
                                       value={tempInvoiceNo}
                                       onChange={(e) => setTempInvoiceNo(e.target.value)}
                                       placeholder="ระบุเลข Invoice"
-                                      className="h-7 text-xs font-mono font-bold w-36"
+                                      className="h-7 text-sub doc-no font-medium w-36"
                                       autoFocus
                                     />
                                     <Button
                                       size="sm"
-                                      className="h-7 px-2 text-[11px] bg-emerald-600 hover:bg-emerald-700"
+                                      className="h-7 px-2 text-sub bg-emerald-600 hover:bg-emerald-700"
                                       onClick={() => handleSaveInvoiceNo(b.poId)}
                                     >
                                       บันทึก
@@ -727,51 +727,51 @@ export function SettleMultipleBillsModal({
                                         setEditingPoId(b.poId);
                                         setTempInvoiceNo(b.supplierInvoiceNo || '');
                                       }}
-                                      className="text-[10px] text-slate-400 hover:text-indigo-600 underline ml-1"
+                                      className="text-sub text-subtle hover:text-indigo-600 underline ml-1"
                                     >
                                       [แก้ไข]
                                     </button>
                                   </div>
                                 )}
                               </td>
-                              <td className="py-2.5 px-2 text-center font-mono text-slate-600 text-[11px]">
+                              <td className="text-center doc-no text-muted-foreground">
                                 {b.poNumber}
                               </td>
-                              <td className="py-2.5 px-2 text-center text-slate-500 text-[11px]">
+                              <td className="text-center text-muted-foreground">
                                 {formatListDate(b.billDate)}
                               </td>
-                              <td className="py-2.5 px-3 text-right font-mono text-slate-600">
+                              <td className="text-right doc-no text-muted-foreground">
                                 {formatCurrency(b.receivedAmount ?? b.totalAmount)}
                                 {b.receivedAmount !== undefined && Math.abs(b.receivedAmount - b.totalAmount) > 0.004 && (
-                                  <span className="block text-[10px] text-slate-400">จาก PO {formatCurrency(b.totalAmount)}</span>
+                                  <span className="block text-sub text-subtle">จาก PO {formatCurrency(b.totalAmount)}</span>
                                 )}
                               </td>
-                              <td className="py-2.5 px-3 text-right font-mono font-bold text-rose-600">
+                              <td className="text-right doc-no font-medium text-danger">
                                 {formatCurrency(b.remainingPayable)}
                               </td>
-                              <td className="py-2.5 px-3 text-right">
+                              <td className="text-right">
                                 {isSelected ? (
                                   <Input
                                     type="number"
                                     step="any"
                                     value={currentAmount}
                                     onChange={(e) => handleBillAmountChange(b.poId, e.target.value, b.remainingPayable)}
-                                    className="h-8 text-right font-mono font-bold text-indigo-700 bg-white border-indigo-300 shadow-2xs"
+                                    className="h-8 text-right doc-no font-medium text-indigo-700 bg-white border-indigo-300 shadow-2xs"
                                   />
                                 ) : (
-                                  <span className="text-slate-400 font-mono text-xs">-</span>
+                                  <span className="text-subtle doc-no text-sub">-</span>
                                 )}
                               </td>
 
                               {/* ─── หลอดพลังความคืบหน้ารายบิล (Row-Level Progress Bar) ─── */}
-                              <td className="py-2.5 px-3 text-center">
+                              <td className="text-center">
                                 {isSelected ? (
                                   <div className="space-y-1 max-w-[130px] mx-auto">
-                                    <div className="flex items-center justify-between text-[11px] font-semibold">
+                                    <div className="flex items-center justify-between text-sub font-semibold">
                                       <span className={isFull ? 'text-teal-700 font-bold' : isPartial ? 'text-indigo-700 font-bold' : 'text-slate-400'}>
                                         {isFull ? 'ครบ 100%' : `${billPercent}%`}
                                       </span>
-                                      <span className="text-[10px] text-slate-500 font-mono">
+                                      <span className="text-sub text-muted-foreground doc-no">
                                         {isFull ? 'ครบแล้ว' : `ค้าง ${formatCurrency(b.remainingPayable - currentAmount)}`}
                                       </span>
                                     </div>
@@ -791,7 +791,7 @@ export function SettleMultipleBillsModal({
                                     </div>
                                   </div>
                                 ) : (
-                                  <span className="text-slate-300 text-xs">-</span>
+                                  <span className="text-subtle text-sub">-</span>
                                 )}
                               </td>
                             </tr>

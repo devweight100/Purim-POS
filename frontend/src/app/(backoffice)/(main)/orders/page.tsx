@@ -468,11 +468,11 @@ export default function OrdersPage() {
       {/* ─── PAGE HEADER ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+          <h1 className="page-title">
             <FileText className="w-6 h-6 text-indigo-600 shrink-0" />
             <span>รายการออเดอร์และใบเสร็จ (Orders & Tax Invoices)</span>
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="page-subtitle">
             ดูประวัติการขาย พิมพ์ใบเสร็จรับเงิน A4 / สลิป 80mm ออกใบเสร็จเงินเชื่อตามจริง และจัดการบิล
           </p>
         </div>

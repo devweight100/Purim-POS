@@ -10,10 +10,11 @@ export function cn(...inputs: ClassValue[]) {
  * Format currency with THB symbol and comma thousands separators e.g. ฿12,500 (no decimal if whole) or ฿12,500.50 (2 decimals if fraction)
  */
 export function formatCurrency(amount: number | string | null | undefined): string {
+  // style pass 2026-11-22 (docs/ui-style.md): money always with 2 decimals ("฿1,234.50", "฿4,798.00"), so the
+  // digits of a money column line up; negative as "-฿1,234.50"
   const val = Number(amount) || 0;
-  const hasDecimal = val % 1 !== 0;
-  return '฿' + val.toLocaleString('th-TH', {
-    minimumFractionDigits: hasDecimal ? 2 : 0,
+  return (val < 0 ? '-฿' : '฿') + Math.abs(val).toLocaleString('th-TH', {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 }

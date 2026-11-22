@@ -253,13 +253,13 @@ export default function DashboardPage() {
       {/* ─── PAGE HEADER & TIME RANGE SELECTOR ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-xl font-black text-slate-900 sm:text-2xl flex items-center gap-2.5">
+          <h1 className="page-title">
             <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-sm">
               <LayoutDashboard className="w-5 h-5" />
             </div>
             <span>แดชบอร์ด & ภาพรวมรายได้ (Dashboard & Revenue Overview)</span>
           </h1>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="page-subtitle">
             วิเคราะห์ยอดขายจริง สรุปรายการคืนเงิน/ยกเลิกบิล และสถานะการเงินหน้าร้านแบบเรียลไทม์
           </p>
         </div>

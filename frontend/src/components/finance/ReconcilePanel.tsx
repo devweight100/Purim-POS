@@ -125,18 +125,18 @@ export function ReconcilePanel({ accounts, onChanged }: { accounts: FinAccount[]
           </div>
           <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white max-h-96">
             <table className="tbl w-full text-sm">
-              <thead className="bg-slate-50 text-slate-600 sticky top-0"><tr>
-                <th className="p-2 w-10"><input type="checkbox" checked={state.unreconciled.length > 0 && checked.size === state.unreconciled.length} onChange={(e) => setChecked(e.target.checked ? new Set(state.unreconciled.map((r) => r.id)) : new Set())} /></th>
-                <th className="p-2 text-left">วันที่</th><th className="p-2 text-left">รายละเอียด</th><th className="p-2 text-right">เข้า</th><th className="p-2 text-right">ออก</th>
+              <thead className="sticky top-0"><tr>
+                <th className="w-10"><input type="checkbox" checked={state.unreconciled.length > 0 && checked.size === state.unreconciled.length} onChange={(e) => setChecked(e.target.checked ? new Set(state.unreconciled.map((r) => r.id)) : new Set())} /></th>
+                <th className="text-left">วันที่</th><th className="text-left">รายละเอียด</th><th className="text-right">เข้า</th><th className="text-right">ออก</th>
               </tr></thead>
               <tbody>
-                {state.unreconciled.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-slate-400">ไม่มีรายการรอกระทบยอด</td></tr>}
+                {state.unreconciled.length === 0 && <tr><td colSpan={5} className="text-center text-subtle">ไม่มีรายการรอกระทบยอด</td></tr>}
                 {state.unreconciled.map((r) => (
                   <tr key={r.id} className={`border-t border-slate-100 ${checked.has(r.id) ? 'bg-emerald-50' : ''}`}>
-                    <td className="p-2"><input type="checkbox" checked={checked.has(r.id)} onChange={(e) => { const n = new Set(checked); if (e.target.checked) n.add(r.id); else n.delete(r.id); setChecked(n); }} /></td>
-                    <td className="p-2 whitespace-nowrap">{thaiDate(r.occurredAt)}</td><td className="p-2">{r.note}</td>
-                    <td className="p-2 text-right font-mono whitespace-nowrap text-emerald-700">{r.direction === 'IN' ? formatCurrency(r.amount) : ''}</td>
-                    <td className="p-2 text-right font-mono whitespace-nowrap text-rose-700">{r.direction === 'OUT' ? formatCurrency(r.amount) : ''}</td>
+                    <td className=""><input type="checkbox" checked={checked.has(r.id)} onChange={(e) => { const n = new Set(checked); if (e.target.checked) n.add(r.id); else n.delete(r.id); setChecked(n); }} /></td>
+                    <td className="whitespace-nowrap">{thaiDate(r.occurredAt)}</td><td className="">{r.note}</td>
+                    <td className="text-right doc-no whitespace-nowrap text-ok">{r.direction === 'IN' ? formatCurrency(r.amount) : ''}</td>
+                    <td className="text-right doc-no whitespace-nowrap text-danger">{r.direction === 'OUT' ? formatCurrency(r.amount) : ''}</td>
                   </tr>
                 ))}
               </tbody>

@@ -260,10 +260,10 @@ export default function ShiftsHistoryPage() {
               <History className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              <h1 className="page-title">
                 ประวัติการปิดกะ (Shift History)
               </h1>
-              <p className="text-xs sm:text-sm text-slate-500">
+              <p className="page-subtitle">
                 ตรวจสอบผลการปิดกะแต่ละวัน สรุปยอดเงินสดลิ้นชัก ยอดขาด/เกิน และพิมพ์ใบสรุปปิดกะซ้ำ
               </p>
             </div>
@@ -522,7 +522,7 @@ export default function ShiftsHistoryPage() {
               {/* Table of Shifts in this Day */}
               <div className="tbl-wrap overflow-x-auto">
                 <table className="tbl w-full text-sm">
-                  <thead className="bg-slate-100/70 text-slate-700 font-bold border-b border-slate-200 text-sm">
+                  <thead className="">
                     <tr>
                       <th data-narrow="hide" className="text-center w-12">รอบ</th>
                       <th className="text-left">รหัสกะ / แคชเชียร์</th>
@@ -546,89 +546,89 @@ export default function ShiftsHistoryPage() {
                         <tr key={shift.shiftId} className="hover:bg-slate-50/70 transition-colors">
                           {/* Round Number */}
                           <td data-narrow="hide" className="text-center">
-                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-indigo-50 text-indigo-700 font-black text-sm">
+                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-indigo-50 text-indigo-700 font-semibold">
                               {roundNumber}
                             </span>
                           </td>
 
                           {/* Shift ID & Cashier */}
                           <td className="whitespace-nowrap">
-                            <span className="font-mono font-bold text-slate-900 text-[13px] block">
+                            <span className="doc-no font-medium text-fg block">
                               {shift.shiftId}
                             </span>
-                            <span className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                              <User className="w-3.5 h-3.5 text-slate-400" />
+                            <span className="text-sub text-muted-foreground flex items-center gap-1 mt-0.5">
+                              <User className="w-3.5 h-3.5 text-subtle" />
                               <span>{shift.userName}</span>
                             </span>
                           </td>
 
                           {/* Time & Duration */}
                           <td className="min-w-36">
-                            <div className="font-bold text-slate-800 text-sm flex items-center gap-1.5 whitespace-nowrap">
-                              <Clock className="w-3.5 h-3.5 text-slate-400" />
+                            <div className="font-medium text-fg flex items-center gap-1.5 whitespace-nowrap">
+                              <Clock className="w-3.5 h-3.5 text-subtle" />
                               <span>{openTime} - {closeTime} น.</span>
                             </div>
-                            <span className="text-xs text-slate-500 font-mono block mt-0.5">
+                            <span className="text-sub text-muted-foreground doc-no block mt-0.5">
                               ระยะเวลา: {duration} (ขาย {shift.orderCount || 0} บิล)
                             </span>
                           </td>
 
                           {/* Opening Cash */}
-                          <td data-narrow="hide" className="text-right font-mono whitespace-nowrap font-bold text-slate-700 text-sm">
+                          <td data-narrow="hide" className="text-right doc-no whitespace-nowrap font-medium text-fg">
                             {formatCurrency(shift.openingCash)}
                           </td>
 
                           {/* Total Sales */}
-                          <td className="text-right font-mono whitespace-nowrap">
-                            <span className="font-bold text-slate-900 block text-sm">
+                          <td className="text-right doc-no whitespace-nowrap">
+                            <span className="font-medium text-fg block">
                               {formatCurrency(shift.totalSales)}
                             </span>
-                            <span className="text-[11px] text-slate-500 block">
+                            <span className="text-sub text-muted-foreground block">
                               สด {formatCurrency(shift.cashSales)} | อื่นๆ {formatCurrency(shift.totalSales - shift.cashSales)}
                             </span>
                           </td>
 
                           {/* Cash In / Out */}
-                          <td data-narrow="hide" className="text-right font-mono whitespace-nowrap text-xs">
+                          <td data-narrow="hide" className="text-right doc-no whitespace-nowrap">
                             {shift.cashIn > 0 && (
-                              <span className="text-emerald-700 block font-semibold">
+                              <span className="text-ok block font-semibold">
                                 +{formatCurrency(shift.cashIn)}
                               </span>
                             )}
                             {shift.cashOut > 0 && (
-                              <span className="text-rose-700 block font-semibold">
+                              <span className="text-danger block font-semibold">
                                 -{formatCurrency(shift.cashOut)}
                               </span>
                             )}
                             {shift.cashIn === 0 && shift.cashOut === 0 && (
-                              <span className="text-slate-400">-</span>
+                              <span className="text-subtle">-</span>
                             )}
                           </td>
 
                           {/* Expected Cash */}
-                          <td className="text-right font-mono whitespace-nowrap font-bold text-slate-800 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap font-medium text-fg">
                             {formatCurrency(shift.expectedCash)}
                           </td>
 
                           {/* Actual Cash */}
-                          <td className="text-right font-mono whitespace-nowrap font-black text-slate-900 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap font-semibold text-fg">
                             {formatCurrency(shift.actualCash)}
                           </td>
 
                           {/* Discrepancy Status Badge */}
                           <td className="text-center whitespace-nowrap">
                             {diff === 0 ? (
-                              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 font-bold text-[10.5px] gap-1">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              <Badge className="bg-emerald-100 text-ok border-emerald-200 font-medium text-sub gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-ok" />
                                 <span>ตรงพอดี</span>
                               </Badge>
                             ) : diff < 0 ? (
-                              <Badge className="bg-rose-100 text-rose-800 border-rose-200 font-bold text-[10.5px] gap-1">
-                                <ArrowDownRight className="w-3 h-3 text-rose-600" />
+                              <Badge className="bg-rose-100 text-danger border-rose-200 font-medium text-sub gap-1">
+                                <ArrowDownRight className="w-3 h-3 text-danger" />
                                 <span>ขาด {formatCurrency(Math.abs(diff))}</span>
                               </Badge>
                             ) : (
-                              <Badge className="bg-sky-100 text-sky-800 border-sky-200 font-bold text-[10.5px] gap-1">
+                              <Badge className="bg-sky-100 text-sky-800 border-sky-200 font-medium text-sub gap-1">
                                 <ArrowUpRight className="w-3 h-3 text-sky-600" />
                                 <span>เกิน +{formatCurrency(diff)}</span>
                               </Badge>
@@ -641,7 +641,7 @@ export default function ShiftsHistoryPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => handlePrintSlip(shift)}
-                              className="h-8 px-2.5 rounded-xl border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold text-xs gap-1.5 shadow-2xs"
+                              className="h-8 px-2.5 rounded-xl border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-medium text-sub gap-1.5 shadow-2xs"
                               title="พิมพ์ใบสรุปปิดกะ (Slip 80mm / A4)"
                               aria-label="พิมพ์สลิปซ้ำ"
                             >

@@ -401,42 +401,42 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600">
+        <table className="tbl w-full text-sm">
+          <thead className="">
             <tr>
-              <th className="p-2 text-left">สินค้า</th>
-              <th className="p-2 text-right w-24">จำนวน</th>
-              <th className="p-2 text-right w-28">ราคา/หน่วย</th>
-              <th className="p-2 text-right w-28">รวม</th>
-              {editable && <th className="p-2 w-12"><span className="sr-only">ลบ</span></th>}
+              <th className="text-left">สินค้า</th>
+              <th className="text-right w-24">จำนวน</th>
+              <th className="text-right w-28">ราคา/หน่วย</th>
+              <th className="text-right w-28">รวม</th>
+              {editable && <th className="w-12"><span className="sr-only">ลบ</span></th>}
             </tr>
           </thead>
           <tbody>
             {items.map((it, i) => (
               <tr key={`${it.productId}|${it.unitId}`} className="border-t border-slate-100">
-                <td className="p-2">
+                <td className="">
                   <span className="font-semibold">{it.name}</span>
-                  <span className="block text-xs text-slate-500">{it.sku} · {it.unitName}{it.factor > 1 ? ` (${it.factor} ชิ้นฐาน)` : ''}{it.active === false ? ' · ปิดขายแล้ว' : ''}</span>
+                  <span className="block text-sub text-muted-foreground">{it.sku} · {it.unitName}{it.factor > 1 ? ` (${it.factor} ชิ้นฐาน)` : ''}{it.active === false ? ' · ปิดขายแล้ว' : ''}</span>
                 </td>
-                <td className="p-2 text-right">
+                <td className="text-right">
                   {editable ? (
                     <Input aria-label={`จำนวน ${it.name}`} type="number" min={1} step={1} className="h-9 w-20 text-right ml-auto" value={it.quantity} onChange={(e) => change(i, { quantity: Math.max(1, Math.floor(Number(e.target.value)) || 1) })} />
                   ) : (
                     it.quantity.toLocaleString('th-TH')
                   )}
                 </td>
-                <td className="p-2 text-right">
+                <td className="text-right">
                   {editable ? (
                     <Input aria-label={`ราคา ${it.name}`} type="number" min={0} step={0.01} className="h-9 w-24 text-right ml-auto" value={it.unitPrice} onChange={(e) => change(i, { unitPrice: Math.max(0, Math.round(Number(e.target.value) * 100) / 100 || 0) })} />
                   ) : (
                     formatCurrency(it.unitPrice)
                   )}
                 </td>
-                <td className="p-2 text-right font-mono font-bold">{formatCurrency(it.total)}</td>
+                <td className="text-right doc-no font-medium">{formatCurrency(it.total)}</td>
                 {editable && (
-                  <td className="p-2 text-right">
+                  <td className="text-right">
                     <Button size="sm" variant="ghost" aria-label={`ลบ ${it.name}`} disabled={items.length <= 1} onClick={() => { setItems((p) => p.filter((_, k) => k !== i)); setDirty(true); }}>
-                      <Trash2 className="w-4 h-4 text-rose-600" />
+                      <Trash2 className="w-4 h-4 text-danger" />
                     </Button>
                   </td>
                 )}

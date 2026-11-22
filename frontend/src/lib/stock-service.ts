@@ -35,10 +35,31 @@ export interface StockMovement {
 
 /** Stock movements from the server. Throws when the server cannot be reached. */
 export async function fetchStockMovements(productId?: string): Promise<StockMovement[]> {
-  const url = productId ? `/inventory/movements?productId=${productId}` : '/inventory/movements';
+  const url = productId ? `/inventory/movements?productId=${encodeURIComponent(productId)}&limit=1000` : '/inventory/movements';
   const data = await apiFetch(url);
   if (!Array.isArray(data)) throw new Error('ข้อมูลความเคลื่อนไหวสต็อกจากเซิร์ฟเวอร์ไม่ถูกต้อง');
   return data;
+}
+
+export interface StockMovementsPage {
+  data: StockMovement[];
+  /** total = rows matching the filters; allCount = every stock movement */
+  meta: { page: number; limit: number; total: number; allCount: number };
+}
+
+/** One page of the stock card (GET /inventory/movements/page: page, limit, q, type, from, productId). */
+export async function fetchStockMovementsPage(qs: URLSearchParams): Promise<StockMovementsPage> {
+  const data = await apiFetch(`/inventory/movements/page?${qs.toString()}`);
+  if (!data || !Array.isArray(data.data) || !data.meta) throw new Error('ข้อมูลความเคลื่อนไหวสต็อกจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+  return data as StockMovementsPage;
+}
+
+/** Start of the stock-card date filter ('today' = local midnight, '7days' / '30days' back from `now`) as ISO. */
+export function movementFrom(filter: string, now: number): string | null {
+  if (filter === 'today') return new Date(new Date(now).setHours(0, 0, 0, 0)).toISOString();
+  if (filter === '7days') return new Date(now - 7 * 86_400_000).toISOString();
+  if (filter === '30days') return new Date(now - 30 * 86_400_000).toISOString();
+  return null;
 }
 
 /**

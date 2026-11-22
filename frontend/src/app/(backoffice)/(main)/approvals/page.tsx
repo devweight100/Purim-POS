@@ -48,8 +48,8 @@ export default function ApprovalsPage() {
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-6xl mx-auto">
       <div>
-        <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2"><ShieldCheck className="w-6 h-6 text-amber-600" /> การอนุมัติโดยผู้จัดการ</h1>
-        <p className="text-sm text-slate-500">ส่วนลดเกินกำหนด / ขายต่ำกว่าราคาในระบบ / ขายต่ำกว่าทุน — แคชเชียร์ต้องให้ผู้จัดการหรือเจ้าของกด PIN อนุมัติที่เครื่องขาย (ADMIN และผู้จัดการไม่ต้องขออนุมัติ)</p>
+        <h1 className="page-title"><ShieldCheck className="w-6 h-6 text-amber-600" /> การอนุมัติโดยผู้จัดการ</h1>
+        <p className="page-subtitle">ส่วนลดเกินกำหนด / ขายต่ำกว่าราคาในระบบ / ขายต่ำกว่าทุน — แคชเชียร์ต้องให้ผู้จัดการหรือเจ้าของกด PIN อนุมัติที่เครื่องขาย (ADMIN และผู้จัดการไม่ต้องขออนุมัติ)</p>
       </div>
 
       {rules && (
@@ -76,21 +76,21 @@ export default function ApprovalsPage() {
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
         <table className="tbl w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600"><tr>
-            <th className="p-2 text-left">เวลา</th><th className="p-2 text-left">ผู้ขอ</th><th className="p-2 text-left">เหตุผล</th>
-            <th className="p-2 text-right">ยอดบิล</th><th className="p-2 text-left">ผู้อนุมัติ</th><th className="p-2 text-left">วิธี</th><th className="p-2 text-left">สถานะ</th>
+          <thead className=""><tr>
+            <th className="text-left">เวลา</th><th className="text-left">ผู้ขอ</th><th className="text-left">เหตุผล</th>
+            <th className="text-right">ยอดบิล</th><th className="text-left">ผู้อนุมัติ</th><th className="text-left">วิธี</th><th className="text-left">สถานะ</th>
           </tr></thead>
           <tbody>
-            {rows.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-slate-400">ยังไม่มีรายการอนุมัติ</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={7} className="text-center text-subtle">ยังไม่มีรายการอนุมัติ</td></tr>}
             {rows.map((r) => (
               <tr key={r.id} className="border-t border-slate-100 align-top">
-                <td className="p-2 whitespace-nowrap">{formatListDate(r.createdAt)}</td>
-                <td className="p-2">{r.requestedBy}</td>
-                <td className="p-2">{(r.reasons || []).map((x, i) => <div key={i}>• {x.message}</div>)}{r.decisionNote && <div className="text-xs text-slate-500">หมายเหตุ: {r.decisionNote}</div>}</td>
-                <td className="p-2 text-right font-mono whitespace-nowrap">{formatCurrency(r.amount)}</td>
-                <td className="p-2">{r.approvedBy || '-'}</td>
-                <td className="p-2">{r.channel === 'PIN' ? 'PIN ที่เครื่องขาย' : 'ส่งคำขอ'}</td>
-                <td className="p-2"><Badge className={`${STATUS[r.status]?.cls || 'bg-slate-400'} text-white`}>{STATUS[r.status]?.label || r.status}</Badge></td>
+                <td className="whitespace-nowrap">{formatListDate(r.createdAt)}</td>
+                <td className="">{r.requestedBy}</td>
+                <td className="">{(r.reasons || []).map((x, i) => <div key={i}>• {x.message}</div>)}{r.decisionNote && <div className="text-sub text-muted-foreground">หมายเหตุ: {r.decisionNote}</div>}</td>
+                <td className="text-right doc-no whitespace-nowrap">{formatCurrency(r.amount)}</td>
+                <td className="">{r.approvedBy || '-'}</td>
+                <td className="">{r.channel === 'PIN' ? 'PIN ที่เครื่องขาย' : 'ส่งคำขอ'}</td>
+                <td className=""><Badge className={`${STATUS[r.status]?.cls || 'bg-slate-400'} text-white`}>{STATUS[r.status]?.label || r.status}</Badge></td>
               </tr>
             ))}
           </tbody>

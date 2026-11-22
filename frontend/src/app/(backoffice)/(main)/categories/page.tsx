@@ -143,10 +143,10 @@ export default function CategoriesPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+          <h1 className="page-title">
             <FolderTree className="w-6 h-6 text-sky-500" /> จัดการหมวดหมู่สินค้า (Categories)
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">เพิ่ม แก้ไข หรือลบหมวดหมู่สำหรับจัดกลุ่มสินค้าในร้าน</p>
+          <p className="page-subtitle">เพิ่ม แก้ไข หรือลบหมวดหมู่สำหรับจัดกลุ่มสินค้าในร้าน</p>
         </div>
         <Button className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-10 px-5 text-xs shadow-sm rounded-xl" onClick={handleOpenAdd}>
           <Plus className="w-4 h-4 mr-1.5" /> เพิ่มหมวดหมู่ใหม่
@@ -179,19 +179,19 @@ export default function CategoriesPage() {
       <div className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader className="bg-slate-50">
-              <TableRow className="border-slate-200 hover:bg-transparent">
-                <TableHead className="w-16 text-center text-slate-500">ไอคอน</TableHead>
-                <TableHead className="text-slate-500">ชื่อหมวดหมู่</TableHead>
-                <TableHead className="text-slate-500 text-center">สีหมวดหมู่</TableHead>
-                <TableHead className="text-slate-500 text-center">จำนวนสินค้า</TableHead>
-                <TableHead className="text-slate-500 text-center w-32">จัดการ</TableHead>
+            <TableHeader className="">
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-16 text-center">ไอคอน</TableHead>
+                <TableHead className="">ชื่อหมวดหมู่</TableHead>
+                <TableHead className="text-center">สีหมวดหมู่</TableHead>
+                <TableHead className="text-center">จำนวนสินค้า</TableHead>
+                <TableHead className="text-center w-32">จัดการ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody {...categoryNav.bodyProps}>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center h-32 text-slate-500">กำลังโหลด...</TableCell>
+                  <TableCell colSpan={5} className="text-center h-32 text-muted-foreground">กำลังโหลด...</TableCell>
                 </TableRow>
               ) : loadError ? (
                 <TableRow>
@@ -199,7 +199,7 @@ export default function CategoriesPage() {
                 </TableRow>
               ) : filteredCategories.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center h-36 text-slate-400">ไม่พบหมวดหมู่สินค้า</TableCell>
+                  <TableCell colSpan={5} className="text-center h-36 text-subtle">ไม่พบหมวดหมู่สินค้า</TableCell>
                 </TableRow>
               ) : (
                 filteredCategories.map((cat, ci) => {
@@ -211,17 +211,17 @@ export default function CategoriesPage() {
                           {cat.icon || "📦"}
                         </div>
                       </TableCell>
-                      <TableCell className="font-semibold text-slate-900 text-base">
+                      <TableCell className="font-semibold text-fg">
                         {cat.name}
                       </TableCell>
                       <TableCell className="text-center">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium" style={{ backgroundColor: `${cat.color}15`, borderColor: `${cat.color}40`, color: cat.color }}>
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-sub font-medium" style={{ backgroundColor: `${cat.color}15`, borderColor: `${cat.color}40`, color: cat.color }}>
                           <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
                           {cat.color}
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 px-3 py-1 font-semibold">
+                        <Badge variant="outline" className="bg-slate-50 text-fg border-slate-200 px-3 py-1 font-semibold">
                           {count} รายการ
                         </Badge>
                       </TableCell>
@@ -230,7 +230,7 @@ export default function CategoriesPage() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-slate-400 hover:text-sky-600 hover:bg-sky-50"
+                            className="h-8 w-8 text-subtle hover:text-sky-600 hover:bg-sky-50"
                             onClick={() => handleOpenEdit(cat)}
                           >
                             <Pencil className="w-4 h-4" />

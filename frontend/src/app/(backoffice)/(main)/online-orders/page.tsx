@@ -102,10 +102,10 @@ function OnlineOrdersInner() {
     <div className="p-edge sm:p-6 space-y-4 max-w-[1500px] mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-btn">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 flex items-center gap-2">
+          <h1 className="page-title">
             <ShoppingBag className="w-6 h-6 text-emerald-700" /> ออเดอร์ออนไลน์ (LINE)
           </h1>
-          <p className="text-sm text-slate-500">ลูกค้าสั่งจากหน้าร้านออนไลน์ใน LINE — ตรวจรายการ ใส่ค่าส่ง กดรับ แล้วไปรับเงินที่หน้าขาย (บิลพัก)</p>
+          <p className="page-subtitle">ลูกค้าสั่งจากหน้าร้านออนไลน์ใน LINE — ตรวจรายการ ใส่ค่าส่ง กดรับ แล้วไปรับเงินที่หน้าขาย (บิลพัก)</p>
         </div>
         <div className="flex gap-btn" role="tablist" aria-label="หัวข้อ">
           <Button role="tab" aria-selected={tab === 'orders'} variant={tab === 'orders' ? 'default' : 'outline'} onClick={() => setTab('orders')} className="gap-2">

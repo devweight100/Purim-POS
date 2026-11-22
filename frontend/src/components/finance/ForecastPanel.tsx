@@ -74,14 +74,14 @@ export function ForecastPanel() {
       </div>
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white max-h-96">
         <table className="tbl w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600 sticky top-0"><tr><th className="p-2 text-left">วันที่</th><th className="p-2 text-left">รายการ</th><th className="p-2 text-right">เข้า</th><th className="p-2 text-right">ออก</th></tr></thead>
+          <thead className="sticky top-0"><tr><th className="text-left">วันที่</th><th className="text-left">รายการ</th><th className="text-right">เข้า</th><th className="text-right">ออก</th></tr></thead>
           <tbody>
-            {data.events.length === 0 && <tr><td colSpan={4} className="p-6 text-center text-slate-400">ไม่มีรายการครบกำหนดในช่วงนี้</td></tr>}
+            {data.events.length === 0 && <tr><td colSpan={4} className="text-center text-subtle">ไม่มีรายการครบกำหนดในช่วงนี้</td></tr>}
             {data.events.map((e, i) => (
               <tr key={i} className="border-t border-slate-100">
-                <td className="p-2 whitespace-nowrap">{thaiDate(e.date)}</td><td className="p-2">{e.label}</td>
-                <td className="p-2 text-right font-mono whitespace-nowrap text-emerald-700">{e.kind === 'IN' ? formatCurrency(e.amount) : ''}</td>
-                <td className="p-2 text-right font-mono whitespace-nowrap text-rose-700">{e.kind === 'OUT' ? formatCurrency(e.amount) : ''}</td>
+                <td className="whitespace-nowrap">{thaiDate(e.date)}</td><td className="">{e.label}</td>
+                <td className="text-right doc-no whitespace-nowrap text-ok">{e.kind === 'IN' ? formatCurrency(e.amount) : ''}</td>
+                <td className="text-right doc-no whitespace-nowrap text-danger">{e.kind === 'OUT' ? formatCurrency(e.amount) : ''}</td>
               </tr>
             ))}
           </tbody>

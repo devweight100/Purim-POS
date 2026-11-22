@@ -88,27 +88,27 @@ export function OrderDetailDialog({
             {/* Items Table */}
             <div className="border border-slate-200 rounded-2xl overflow-hidden">
               <Table>
-                <TableHeader className="bg-slate-50">
+                <TableHeader className="">
                   <TableRow>
-                    <TableHead className="font-bold text-slate-800 text-xs">รายการสินค้า</TableHead>
-                    <TableHead className="text-center font-bold text-slate-800 text-xs">จำนวน</TableHead>
-                    <TableHead className="text-right font-bold text-slate-800 text-xs">ราคา/หน่วย</TableHead>
-                    <TableHead className="text-right font-bold text-slate-800 text-xs">รวม</TableHead>
+                    <TableHead className="">รายการสินค้า</TableHead>
+                    <TableHead className="text-center">จำนวน</TableHead>
+                    <TableHead className="text-right">ราคา/หน่วย</TableHead>
+                    <TableHead className="text-right">รวม</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-slate-100">
                   {(currentOrder.items || []).map((item, idx: number) => (
                     <TableRow key={idx}>
-                      <TableCell className="font-bold text-slate-800 text-xs">
+                      <TableCell className="font-medium text-fg">
                         {item.name || item.productName || "สินค้า"}
                       </TableCell>
-                      <TableCell className="text-center font-mono font-bold text-xs">
+                      <TableCell className="text-center doc-no font-medium">
                         {item.quantity} {item.unitName || "ชิ้น"}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-xs">
+                      <TableCell className="text-right doc-no">
                         {formatCurrency(item.unitPrice || item.price || 0)}
                       </TableCell>
-                      <TableCell className="text-right font-bold font-mono text-xs">
+                      <TableCell className="text-right font-medium doc-no">
                         {formatCurrency(item.lineTotal || item.quantity * (item.unitPrice || item.price || 0))}
                       </TableCell>
                     </TableRow>

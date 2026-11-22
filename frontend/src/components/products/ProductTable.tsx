@@ -99,9 +99,9 @@ export function ProductTable({ data, f, sel, onEdit, actions }: {
       </div>
       <div ref={boxRef}>
         <Table className="table-fixed">
-          <TableHeader className="bg-slate-50">
-            <TableRow className="border-slate-200 hover:bg-transparent">
-              <TableHead style={{ width: COL.select }} className="px-1.5 text-center">
+          <TableHeader className="">
+            <TableRow className="hover:bg-transparent">
+              <TableHead style={{ width: COL.select }} className="text-center">
                 <div className="flex justify-center">
                   <Checkbox
                     checked={sel.isCurrentPageSelected}
@@ -110,29 +110,29 @@ export function ProductTable({ data, f, sel, onEdit, actions }: {
                   />
                 </div>
               </TableHead>
-              <TableHead style={{ width: COL.expand }} className="px-0"><span className="sr-only">ขนาดบรรจุ</span></TableHead>
-              <TableHead className="px-2"><SortButton col="name" label="ชื่อสินค้า" f={f} /></TableHead>
-              {layout.showCategory && <TableHead style={{ width: layout.categoryWidth }} className="px-2 text-slate-500">หมวดหมู่</TableHead>}
-              <TableHead style={{ width: COL.stock }} className="px-2">
+              <TableHead style={{ width: COL.expand }} className=""><span className="sr-only">ขนาดบรรจุ</span></TableHead>
+              <TableHead className=""><SortButton col="name" label="ชื่อสินค้า" f={f} /></TableHead>
+              {layout.showCategory && <TableHead style={{ width: layout.categoryWidth }} className="">หมวดหมู่</TableHead>}
+              <TableHead style={{ width: COL.stock }} className="">
                 {/* over the number slot of StockQty (unit slot 2.75rem + gap) */}
                 <div className="pr-[3.125rem]"><SortButton col="stock" label="จำนวน" f={f} align="right" /></div>
               </TableHead>
-              {showCost && <TableHead style={{ width: COL.cost }} className="px-2 text-right"><SortButton col="cost" label="ต้นทุน" f={f} align="right" /></TableHead>}
+              {showCost && <TableHead style={{ width: COL.cost }} className="text-right"><SortButton col="cost" label="ต้นทุน" f={f} align="right" /></TableHead>}
               {layout.levels.map((n) => (
-                <TableHead key={n} style={{ width: layout.priceWidth }} className="px-2 text-right" data-testid={`price-head-${n}`}>
+                <TableHead key={n} style={{ width: layout.priceWidth }} className="text-right" data-testid={`price-head-${n}`}>
                   <SortButton col={priceLevelKey(n)} label={`ราคา ${n}`} sub={levelSubtitle(levelNames[n as 1 | 2 | 3 | 4 | 5], n)} f={f} align="right" />
                 </TableHead>
               ))}
-              <TableHead style={{ width: COL.edit }} className="px-0 text-center"><span className="sr-only">จัดการ</span></TableHead>
+              <TableHead style={{ width: COL.edit }} className="text-center"><span className="sr-only">จัดการ</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody {...nav.bodyProps}>
             {loading ? (
-              <TableRow><TableCell colSpan={cols} className="text-center h-32 text-slate-500">กำลังโหลด...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={cols} className="text-center h-32 text-muted-foreground">กำลังโหลด...</TableCell></TableRow>
             ) : loadError ? (
               <TableRow><TableCell colSpan={cols}><LoadErrorState message={loadError} onRetry={() => loadData()} /></TableCell></TableRow>
             ) : filteredCount === 0 ? (
-              <TableRow><TableCell colSpan={cols} className="text-center h-40 text-slate-400">ไม่พบสินค้าที่ตรงกับเงื่อนไข</TableCell></TableRow>
+              <TableRow><TableCell colSpan={cols} className="text-center h-40 text-subtle">ไม่พบสินค้าที่ตรงกับเงื่อนไข</TableCell></TableRow>
             ) : paginatedList.map((p, i) => (
               <ProductTableRow
                 key={p.id}

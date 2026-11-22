@@ -128,41 +128,41 @@ export function CreditCustomersDialog({ open, onOpenChange, summary }: { open: b
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-slate-200">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-slate-50 text-xs text-slate-600">
+          <table className="tbl w-full text-sm">
+            <thead className="sticky top-0 z-10">
               <tr>
-                <th className="px-3 py-2 text-left font-bold">ลูกค้า</th>
-                <th className="px-3 py-2 text-left font-bold whitespace-nowrap">เบอร์โทร</th>
-                <th className="px-3 py-2 text-right font-bold whitespace-nowrap">ยอดค้าง</th>
-                <th className="px-3 py-2 text-right font-bold">บิล</th>
-                <th className="px-3 py-2 text-left font-bold whitespace-nowrap">บิลเก่าสุด</th>
-                <th className="px-3 py-2 text-left font-bold whitespace-nowrap">เกินกำหนด</th>
-                <th className="px-3 py-2"><span className="sr-only">เปิด</span></th>
+                <th className="text-left">ลูกค้า</th>
+                <th className="text-left whitespace-nowrap">เบอร์โทร</th>
+                <th className="text-right whitespace-nowrap">ยอดค้าง</th>
+                <th className="text-right">บิล</th>
+                <th className="text-left whitespace-nowrap">บิลเก่าสุด</th>
+                <th className="text-left whitespace-nowrap">เกินกำหนด</th>
+                <th className=""><span className="sr-only">เปิด</span></th>
               </tr>
             </thead>
             <tbody ref={listRef} data-row-nav-root>
               {rows.map((c, i) => (
                 <tr key={c.customerId} {...nav.rowProps(i)} data-testid="credit-row" className={`border-t border-slate-100 hover:bg-slate-50 ${ROW_NAV_CLASS}`}>
-                  <td className="px-3 py-2 font-bold text-slate-900">{c.name}</td>
-                  <td className="px-3 py-2 font-mono text-slate-600 whitespace-nowrap">{c.phone || '-'}</td>
-                  <td className="px-3 py-2 text-right font-mono font-black text-rose-600 whitespace-nowrap">{formatCurrency(c.owed)}</td>
-                  <td className="px-3 py-2 text-right font-mono">{c.bills}</td>
-                  <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{formatDate(c.oldestBillAt)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="font-medium text-fg">{c.name}</td>
+                  <td className="doc-no text-muted-foreground whitespace-nowrap">{c.phone || '-'}</td>
+                  <td className="text-right doc-no font-semibold text-danger whitespace-nowrap">{formatCurrency(c.owed)}</td>
+                  <td className="text-right doc-no">{c.bills}</td>
+                  <td className="text-muted-foreground whitespace-nowrap">{formatDate(c.oldestBillAt)}</td>
+                  <td className="whitespace-nowrap">
                     {c.overdueBills > 0 ? (
-                      <span className="inline-flex items-center gap-1 font-bold text-rose-700">
+                      <span className="inline-flex items-center gap-1 font-medium text-danger">
                         <AlertTriangle className="h-3.5 w-3.5" />
                         {formatCurrency(c.overdueAmount)} ({c.overdueBills} บิล) · ครบ {formatDate(c.oldestOverdueDue)}
                       </span>
                     ) : (
-                      <span className="text-slate-400">-</span>
+                      <span className="text-subtle">-</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="text-right">
                     <Link
                       href={customerDebtsHref(c)}
                       onClick={() => onOpenChange(false)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-100 whitespace-nowrap"
+                      className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-sub font-medium text-indigo-700 hover:bg-indigo-100 whitespace-nowrap"
                     >
                       ดูหนี้
                     </Link>
@@ -171,7 +171,7 @@ export function CreditCustomersDialog({ open, onOpenChange, summary }: { open: b
               ))}
               {!loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-3 py-10 text-center text-slate-400">{error || 'ไม่มีลูกค้าที่ค้างชำระ'}</td>
+                  <td colSpan={7} className="text-center text-subtle">{error || 'ไม่มีลูกค้าที่ค้างชำระ'}</td>
                 </tr>
               )}
             </tbody>

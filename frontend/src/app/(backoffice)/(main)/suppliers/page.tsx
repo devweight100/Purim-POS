@@ -179,10 +179,10 @@ export default function SuppliersPage() {
       {loadError && <LoadErrorState message={loadError} onRetry={() => void fetchSuppliers()} retrying={loading} />}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+          <h1 className="page-title">
             <Building2 className="w-6 h-6 text-indigo-600" /> ข้อมูลบริษัทผู้จำหน่าย (Suppliers)
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">จัดการรายชื่อคู่ค้า ซัพพลายเออร์ เครดิตเทอม และช่องทางติดต่อ</p>
+          <p className="page-subtitle">จัดการรายชื่อคู่ค้า ซัพพลายเออร์ เครดิตเทอม และช่องทางติดต่อ</p>
         </div>
         <Button className="h-11 bg-primary px-6 font-bold text-white hover:bg-primary/90" onClick={handleOpenAdd}>
           <Plus className="w-5 h-5 mr-2" /> เพิ่มผู้จำหน่ายใหม่
@@ -206,43 +206,43 @@ export default function SuppliersPage() {
 
         <div className="overflow-x-auto">
           <Table className="tbl">
-            <TableHeader className="bg-slate-50">
+            <TableHeader className="">
               <TableRow>
-                <TableHead className="font-semibold min-w-44 xl:min-w-56">ชื่อบริษัท / ผู้จำหน่าย</TableHead>
-                <TableHead className="font-semibold">ชื่อผู้ติดต่อ</TableHead>
-                <TableHead className="font-semibold">เบอร์โทร</TableHead>
-                <TableHead className="font-semibold">อีเมล</TableHead>
-                <TableHead className="font-semibold text-center">เครดิตเทอม</TableHead>
-                <TableHead className="text-right font-semibold">จัดการ</TableHead>
+                <TableHead className="min-w-44 xl:min-w-56">ชื่อบริษัท / ผู้จำหน่าย</TableHead>
+                <TableHead className="">ชื่อผู้ติดต่อ</TableHead>
+                <TableHead className="">เบอร์โทร</TableHead>
+                <TableHead className="">อีเมล</TableHead>
+                <TableHead className="text-center">เครดิตเทอม</TableHead>
+                <TableHead className="text-right">จัดการ</TableHead>
               </TableRow>
             </TableHeader>
             <tbody className="divide-y divide-slate-100" {...supplierNav.bodyProps}>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={6} className="text-center text-subtle">
                     กำลังโหลดข้อมูลผู้จำหน่าย...
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={6} className="text-center text-subtle">
                     ไม่พบข้อมูลผู้จำหน่ายในฐานข้อมูล
                   </td>
                 </tr>
               ) : (
                 filtered.map((supp, si) => (
                   <TableRow key={supp.id} className={`hover:bg-slate-50/70 ${ROW_NAV_CLASS}`} {...supplierNav.rowProps(si)}>
-                    <td className="font-medium text-slate-900 min-w-44 xl:min-w-56"><span className="line-clamp-2 break-words" title={supp.name}>{supp.name}</span></td>
-                    <td className="text-slate-600 min-w-28 xl:min-w-36"><span className="line-clamp-2 break-words" title={supp.contactName || ""}>{supp.contactName || "-"}</span></td>
-                    <td className="text-slate-600 whitespace-nowrap font-mono text-[13px]">{supp.phone || "-"}</td>
-                    <td className="text-slate-600 max-w-40 xl:max-w-56"><span className="block truncate" title={supp.email || ""}>{supp.email || "-"}</span></td>
-                    <td className="text-center text-slate-600 whitespace-nowrap">
+                    <td className="font-medium text-fg min-w-44 xl:min-w-56"><span className="line-clamp-2 break-words" title={supp.name}>{supp.name}</span></td>
+                    <td className="text-muted-foreground min-w-28 xl:min-w-36"><span className="line-clamp-2 break-words" title={supp.contactName || ""}>{supp.contactName || "-"}</span></td>
+                    <td className="text-muted-foreground whitespace-nowrap doc-no">{supp.phone || "-"}</td>
+                    <td className="text-muted-foreground max-w-40 xl:max-w-56"><span className="block truncate" title={supp.email || ""}>{supp.email || "-"}</span></td>
+                    <td className="text-center text-muted-foreground whitespace-nowrap">
                       {supp.creditTerms ? `${supp.creditTerms} วัน` : "-"}
                     </td>
                     <td className="text-right w-px whitespace-nowrap">
                       <div className="flex items-center justify-end gap-btn">
                         <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(supp)} aria-label={`แก้ไข ${supp.name}`} title="แก้ไข">
-                          <Edit className="w-4 h-4 text-slate-600" />
+                          <Edit className="w-4 h-4 text-muted-foreground" />
                         </Button>
                         <RowDeleteMenu label="ลบผู้จำหน่าย" onDelete={() => handleDelete(supp.id, supp.name)} />
                       </div>

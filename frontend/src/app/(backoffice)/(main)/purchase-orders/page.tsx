@@ -586,10 +586,10 @@ export default function PurchaseOrdersPage() {
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+          <h1 className="page-title">
             <PackageOpen className="w-6 h-6 text-sky-500" /> เอกสารใบสั่งซื้อสินค้า (Purchase Orders)
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">จัดการเอกสารใบสั่งซื้อสินค้า ตรวจรับของเข้าคลัง และเปิดใบ PO ถึงผู้จำหน่าย</p>
+          <p className="page-subtitle">จัดการเอกสารใบสั่งซื้อสินค้า ตรวจรับของเข้าคลัง และเปิดใบ PO ถึงผู้จำหน่าย</p>
         </div>
         <Button
           className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-10 px-5 text-xs shadow-sm rounded-xl"

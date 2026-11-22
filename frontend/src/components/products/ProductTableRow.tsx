@@ -24,7 +24,7 @@ function StockQty({ value, unit, badgeClass, prefix, unitClass = "text-slate-500
     <div className="grid grid-cols-[minmax(0,1fr)_2.75rem] items-center gap-1.5 whitespace-nowrap">
       <span className="flex justify-end">
         <Badge variant="outline" className={`${badgeClass} px-1.5 tabular-nums`}>
-          {prefix && <span className="mr-0.5 text-[10px]">{prefix}</span>}
+          {prefix && <span className="mr-0.5 text-sub">{prefix}</span>}
           {value}
         </Badge>
       </span>
@@ -83,7 +83,7 @@ export function ProductTableRow({
         data-testid="product-row"
         className={`border-slate-100 hover:bg-slate-50 ${ROW_NAV_CLASS} ${isExpanded ? "bg-sky-50/20" : ""} ${inactive ? "bg-slate-50/80 text-slate-500 [&>td:not(:last-child)]:opacity-60" : ""}`}
       >
-        <TableCell className="text-center align-middle px-1.5">
+        <TableCell className="text-center align-middle">
           <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
             <Checkbox
               checked={isSelected}
@@ -92,30 +92,30 @@ export function ProductTableRow({
             />
           </div>
         </TableCell>
-        <TableCell className="text-center p-0">
+        <TableCell className="text-center">
           {pkgUnits.length > 0 ? (
             <button type="button" onClick={onToggleExpand} aria-label={`${isExpanded ? "ซ่อน" : "แสดง"}ขนาดบรรจุ ${p.name}`} aria-expanded={isExpanded} className="mx-auto w-6 h-7 rounded flex items-center justify-center text-sky-500 hover:bg-sky-100 transition-colors">
               <ChevronRight className={`w-4 h-4 transition-transform duration-150 ${isExpanded ? "rotate-90" : ""}`} />
             </button>
           ) : null}
         </TableCell>
-        <TableCell className="font-semibold text-slate-900 whitespace-normal px-2 py-2">
+        <TableCell className="font-semibold text-fg whitespace-normal">
           {/* round 4 (owner): the name only - no photo / icon, no barcodes (search by barcode / SKU still works) */}
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[13px] leading-snug">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 leading-snug">
               <span className="line-clamp-2 break-words" title={p.name} data-testid="product-name">{p.name}</span>
               {inactive && (
-                <span data-testid="product-inactive-chip" className="shrink-0 rounded-full border border-slate-300 bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-700">ปิดใช้งาน</span>
+                <span data-testid="product-inactive-chip" className="shrink-0 rounded-full border border-slate-300 bg-slate-200 px-1.5 py-0.5 text-sub font-medium text-fg">ปิดใช้งาน</span>
               )}
               {p.isBundle && (
-                <span className="text-[10px] text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded font-bold shrink-0">
+                <span className="text-sub text-purple-700 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded font-medium shrink-0">
                   🎁 ชุด ({p.bundleItems?.length || 0} ชิ้น)
                 </span>
               )}
             </div>
             <SearchMatchHint product={p} query={searchText} />
             {(pkgUnits.length > 0 || (!layout.showCategory && category?.name)) && (
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-normal text-slate-500">
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sub font-normal text-muted-foreground">
                 {pkgUnits.length > 0 && (
                   <button
                     type="button"
@@ -135,13 +135,13 @@ export function ProductTableRow({
           </div>
         </TableCell>
         {layout.showCategory && (
-          <TableCell className="px-2">
+          <TableCell className="">
             {category?.name ? (
-              <span data-testid="product-category" className="block max-w-full truncate rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] text-sky-700" title={category.name}>{category.name}</span>
-            ) : <span className="text-xs text-slate-300">-</span>}
+              <span data-testid="product-category" className="block max-w-full truncate rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-sub text-sky-700" title={category.name}>{category.name}</span>
+            ) : <span className="text-sub text-subtle">-</span>}
           </TableCell>
         )}
-        <TableCell className="px-2" data-testid="product-stock">
+        <TableCell className="" data-testid="product-stock">
           <StockQty
             value={isNegativeStock ? String(stock) : stock === 0 ? "หมด" : stock.toLocaleString()}
             unit={p.unit || "-"}
@@ -156,11 +156,11 @@ export function ProductTableRow({
           const v = n === 1 ? (p.priceLevel1 ?? p.basePrice) : p[priceLevelKey(n)];
           return (
             <TableCell key={n} className={`text-right whitespace-nowrap tabular-nums px-2 ${numCls} ${n === 1 ? "font-semibold text-emerald-600" : "text-slate-700"}`} data-testid={`product-price-${n}`}>
-              {v != null && v !== "" ? formatCurrency(v) : <span className="text-slate-300">-</span>}
+              {v != null && v !== "" ? formatCurrency(v) : <span className="text-subtle">-</span>}
             </TableCell>
           );
         })}
-        <TableCell className="text-center px-0" onClick={(e) => e.stopPropagation()}>
+        <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
           <div className="flex justify-center">
             <RowActionsMenu
               label={`จัดการสินค้า ${p.name}`}
@@ -185,17 +185,17 @@ export function ProductTableRow({
         const unitCost = unitCostOf !== undefined ? unitCostOf * mult : null;
         return (
           <TableRow key={`${p.id}-pkg-${ui}`} className="bg-sky-50/40 border-sky-100 hover:bg-sky-50/60">
-            <TableCell className="py-1.5" />
-            <TableCell className="p-0"><div className="mx-auto w-px h-5 bg-sky-200" /></TableCell>
-            <TableCell className="py-1.5 whitespace-normal px-2">
+            <TableCell className="" />
+            <TableCell className=""><div className="mx-auto w-px h-5 bg-sky-200" /></TableCell>
+            <TableCell className="whitespace-normal">
               <div className="flex flex-wrap items-center gap-1.5">
                 <div className="w-1 h-4 rounded-full bg-sky-300 shrink-0" />
-                <span className="text-[13px] font-semibold text-sky-800">{unit.name}</span>
-                <span className="text-[11px] text-sky-600 bg-sky-100 px-1.5 py-0.5 rounded-full">× {mult.toLocaleString()} {p.unit || "ชิ้น"}</span>
+                <span className="font-semibold text-sky-800">{unit.name}</span>
+                <span className="text-sub text-sky-600 bg-sky-100 px-1.5 py-0.5 rounded-full">× {mult.toLocaleString()} {p.unit || "ชิ้น"}</span>
               </div>
             </TableCell>
-            {layout.showCategory && <TableCell className="py-1.5"><span className="text-xs text-slate-300">—</span></TableCell>}
-            <TableCell className="py-1.5 px-2">
+            {layout.showCategory && <TableCell className=""><span className="text-sub text-subtle">—</span></TableCell>}
+            <TableCell className="">
               <StockQty
                 value={String(unitStock)}
                 unit={unit.name}
@@ -208,11 +208,11 @@ export function ProductTableRow({
               const v = unit[priceLevelKey(n)];
               return (
                 <TableCell key={n} className={`text-right py-1.5 px-2 whitespace-nowrap tabular-nums ${numCls} ${n === 1 ? "font-semibold text-emerald-600" : "text-slate-600"}`}>
-                  {v ? formatCurrency(parseFloat(v)) : <span className="text-slate-300">—</span>}
+                  {v ? formatCurrency(parseFloat(v)) : <span className="text-subtle">—</span>}
                 </TableCell>
               );
             })}
-            <TableCell className="py-1.5 text-center"><span className="text-slate-300 text-xs">—</span></TableCell>
+            <TableCell className="text-center"><span className="text-subtle text-sub">—</span></TableCell>
           </TableRow>
         );
       })}

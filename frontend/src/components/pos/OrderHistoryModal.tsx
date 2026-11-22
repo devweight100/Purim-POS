@@ -503,16 +503,16 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                 <p>ไม่พบรายการประวัติการขายที่ตรงกับเงื่อนไข</p>
               </div>
             ) : (
-              <table className="w-full text-left border-collapse text-xs sm:text-sm">
+              <table className="tbl w-full text-left border-collapse text-xs sm:text-sm">
                 <thead>
-                  <tr className="border-b border-slate-200 text-slate-500 font-bold bg-slate-50/80 sticky top-0">
-                    <th className="py-3 px-3">ใบเสร็จ</th>
-                    <th className="py-3 px-3">ลูกค้า</th>
-                    <th className="py-3 px-3 text-center">รายการ</th>
-                    <th className="py-3 px-3">วันที่/เวลา</th>
-                    <th className="py-3 px-3">ชำระเงิน</th>
-                    <th className="py-3 px-3 text-right">รวมทั้งสิ้น</th>
-                    <th className="py-3 px-3 text-center">เครื่องมือ</th>
+                  <tr className="sticky top-0">
+                    <th className="">ใบเสร็จ</th>
+                    <th className="">ลูกค้า</th>
+                    <th className="text-center">รายการ</th>
+                    <th className="">วันที่/เวลา</th>
+                    <th className="">ชำระเงิน</th>
+                    <th className="text-right">รวมทั้งสิ้น</th>
+                    <th className="text-center">เครื่องมือ</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -526,16 +526,16 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                         className={`hover:bg-slate-50/80 transition-colors ${isCancelled ? 'bg-rose-50/40 text-slate-400' : ''}`}
                       >
                         {/* Receipt # */}
-                        <td className="py-3.5 px-3 font-bold text-sky-700">
+                        <td className="font-medium text-sky-700">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span>#{order.orderNumber || order.id}</span>
                             {isCancelled && (
-                              <span className="text-[10px] text-rose-600 bg-rose-100 border border-rose-200 px-1.5 py-0.5 rounded font-bold">
+                              <span className="text-sub text-danger bg-rose-100 border border-rose-200 px-1.5 py-0.5 rounded font-medium">
                                 ยกเลิกแล้ว
                               </span>
                             )}
                             {order.hasClaims && (
-                              <span className="text-[10px] text-amber-700 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded font-bold">
+                              <span className="text-sub text-warn bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded font-medium">
                                 ⚠️ มีรายการเคลม
                               </span>
                             )}
@@ -543,16 +543,16 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                         </td>
 
                         {/* Customer */}
-                        <td className="py-3.5 px-3 font-bold text-slate-800">
+                        <td className="font-medium text-fg">
                           {order.customerName || 'ลูกค้าทั่วไป (Walk-in)'}
                         </td>
 
                         {/* Item Count */}
-                        <td className="py-3.5 px-3 text-center">
+                        <td className="text-center">
                           <button
                             type="button"
                             onClick={() => setViewItemsOrder(order)}
-                            className="font-extrabold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
+                            className="font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
                             title="คลิกเพื่อดูายการสินค้า"
                           >
                             {itemCount} รายการ
@@ -560,12 +560,12 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                         </td>
 
                         {/* Date & Time */}
-                        <td className="py-3.5 px-3 text-slate-600 font-semibold whitespace-nowrap">
+                        <td className="text-muted-foreground font-semibold whitespace-nowrap">
                           {formatListDateTime(order.createdAt)}
                         </td>
 
                         {/* Payment Method */}
-                        <td className="py-3.5 px-3">
+                        <td className="">
                           {getPaymentBadge(order.paymentMethod, order.payments)}
                         </td>
 
@@ -575,25 +575,25 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                         </td>
 
                         {/* Action Tools Dropdown */}
-                        <td className="py-3.5 px-3 text-center">
+                        <td className="text-center">
                           <DropdownMenu>
-                            <DropdownMenuTrigger className="h-8 bg-sky-500 hover:bg-sky-600 text-white font-bold border-none text-xs rounded-lg px-2.5 shadow-sm inline-flex items-center outline-none cursor-pointer">
+                            <DropdownMenuTrigger className="h-8 bg-sky-500 hover:bg-sky-600 text-white font-medium border-none text-sub rounded-lg px-2.5 shadow-sm inline-flex items-center outline-none cursor-pointer">
                               เครื่องมือ <ChevronDown className="w-3.5 h-3.5 ml-1" />
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-52 bg-white border-slate-200 font-semibold p-1 rounded-xl shadow-xl space-y-0.5">
                               {/* 1. View Items Breakdown */}
                               <DropdownMenuItem 
                                 onClick={() => setViewItemsOrder(order)}
-                                className="cursor-pointer py-2 px-3 text-slate-700 hover:bg-slate-100 rounded-lg flex items-center gap-2"
+                                className="cursor-pointer py-2 px-3 text-fg hover:bg-slate-100 rounded-lg flex items-center gap-2"
                               >
-                                <Package className="w-4 h-4 text-emerald-600" />
+                                <Package className="w-4 h-4 text-ok" />
                                 <span>ดูรายการสินค้า</span>
                               </DropdownMenuItem>
 
                               {/* 2. View Receipt PDF */}
                               <DropdownMenuItem 
                                 onClick={() => handleViewReceipt(order)}
-                                className="cursor-pointer py-2 px-3 text-slate-700 hover:bg-slate-100 rounded-lg flex items-center gap-2"
+                                className="cursor-pointer py-2 px-3 text-fg hover:bg-slate-100 rounded-lg flex items-center gap-2"
                               >
                                 <FileText className="w-4 h-4 text-sky-600" />
                                 <span>ดูใบเสร็จ</span>
@@ -602,9 +602,9 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                               {/* 2b. Picking slip (no prices), reprint */}
                               <DropdownMenuItem
                                 onClick={() => void printOrderPickingSlip(order)}
-                                className="cursor-pointer py-2 px-3 text-slate-700 hover:bg-slate-100 rounded-lg flex items-center gap-2"
+                                className="cursor-pointer py-2 px-3 text-fg hover:bg-slate-100 rounded-lg flex items-center gap-2"
                               >
-                                <ClipboardList className="w-4 h-4 text-slate-600" />
+                                <ClipboardList className="w-4 h-4 text-muted-foreground" />
                                 <span>พิมพ์ใบจัดของ</span>
                               </DropdownMenuItem>
 
@@ -612,9 +612,9 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                               {!isCancelled && (
                                 <DropdownMenuItem 
                                   onClick={() => handleRepeatOrderClick(order)}
-                                  className="cursor-pointer py-2 px-3 text-slate-700 hover:bg-amber-50 hover:text-amber-800 rounded-lg flex items-center gap-2"
+                                  className="cursor-pointer py-2 px-3 text-fg hover:bg-amber-50 hover:text-warn rounded-lg flex items-center gap-2"
                                 >
-                                  <RotateCcw className="w-4 h-4 text-amber-600" />
+                                  <RotateCcw className="w-4 h-4 text-warn" />
                                   <span>ออเดอร์ซ้ำอีกครั้ง</span>
                                 </DropdownMenuItem>
                               )}
@@ -623,7 +623,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                               {!isCancelled && (
                                 <DropdownMenuItem 
                                   onClick={() => setEditPaymentOrder(order)}
-                                  className="cursor-pointer py-2 px-3 text-slate-700 hover:bg-purple-50 hover:text-purple-800 rounded-lg flex items-center gap-2"
+                                  className="cursor-pointer py-2 px-3 text-fg hover:bg-purple-50 hover:text-purple-800 rounded-lg flex items-center gap-2"
                                 >
                                   <CreditCard className="w-4 h-4 text-purple-600" />
                                   <span>แก้ไขวิธีชำระเงิน</span>
@@ -634,7 +634,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                               {!isCancelled && (
                                 <DropdownMenuItem 
                                   onClick={() => setEditItemsTargetOrder(order)}
-                                  className="cursor-pointer py-2 px-3 text-slate-700 hover:bg-indigo-50 hover:text-indigo-800 rounded-lg flex items-center gap-2"
+                                  className="cursor-pointer py-2 px-3 text-fg hover:bg-indigo-50 hover:text-indigo-800 rounded-lg flex items-center gap-2"
                                 >
                                   <Edit3 className="w-4 h-4 text-indigo-600" />
                                   <span>แก้ไขรายการสินค้า</span>
@@ -645,9 +645,9 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                               {!isCancelled && (
                                 <DropdownMenuItem 
                                   onClick={() => { setVoidTargetOrder(order); setVoidReason(''); }}
-                                  className="cursor-pointer py-2 px-3 text-rose-600 hover:bg-rose-50 rounded-lg flex items-center gap-2 border-t border-slate-100"
+                                  className="cursor-pointer py-2 px-3 text-danger hover:bg-rose-50 rounded-lg flex items-center gap-2 border-t border-slate-100"
                                 >
-                                  <Ban className="w-4 h-4 text-rose-600" />
+                                  <Ban className="w-4 h-4 text-danger" />
                                   <span>ยกเลิกบิล (คืนเงิน)</span>
                                 </DropdownMenuItem>
                               )}
@@ -751,14 +751,14 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
 
             {/* Table */}
             <div className="max-h-[350px] overflow-y-auto border border-slate-200 rounded-xl">
-              <table className="w-full text-left text-xs sm:text-sm">
-                <thead className="bg-slate-100 text-slate-600 font-bold sticky top-0">
+              <table className="tbl w-full text-left text-xs sm:text-sm">
+                <thead className="sticky top-0">
                   <tr>
-                    <th className="py-2.5 px-3">#</th>
-                    <th className="py-2.5 px-3">ชื่อสินค้า</th>
-                    <th className="py-2.5 px-3 text-center">จำนวน</th>
-                    <th className="py-2.5 px-3 text-right">ราคา/หน่วย</th>
-                    <th className="py-2.5 px-3 text-right">รวม (฿)</th>
+                    <th className="">#</th>
+                    <th className="">ชื่อสินค้า</th>
+                    <th className="text-center">จำนวน</th>
+                    <th className="text-right">ราคา/หน่วย</th>
+                    <th className="text-right">รวม (฿)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
@@ -767,20 +767,20 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                     const total = item.lineTotal || (item.quantity * price);
                     return (
                       <tr key={idx} className="hover:bg-slate-50">
-                        <td className="py-2.5 px-3 text-slate-400 font-bold">{idx + 1}.</td>
-                        <td className="py-2.5 px-3">
-                          <div className="font-bold text-slate-900">{item.name || item.productName}</div>
+                        <td className="text-subtle font-medium">{idx + 1}.</td>
+                        <td className="">
+                          <div className="font-medium text-fg">{item.name || item.productName}</div>
                           {item.itemNote && (
-                            <div className="text-[10px] text-amber-700 italic">📝 {item.itemNote}</div>
+                            <div className="text-sub text-warn italic">📝 {item.itemNote}</div>
                           )}
                         </td>
-                        <td className="py-2.5 px-3 text-center font-extrabold text-slate-800">
+                        <td className="text-center font-semibold text-fg">
                           {item.quantity} {item.unitName}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-semibold text-slate-700">
+                        <td className="text-right font-semibold text-fg">
                           {formatCurrency(price)}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-black text-slate-900">
+                        <td className="text-right font-semibold text-fg">
                           {formatCurrency(total)}
                         </td>
                       </tr>

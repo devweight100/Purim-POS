@@ -78,35 +78,35 @@ export function PoDetailDialog({
             <div>
               <h4 className="font-bold text-slate-900 mb-3 border-b border-slate-200 pb-2">รายการสินค้าสั่งซื้อ</h4>
               <Table>
-                <TableHeader className="bg-slate-50">
-                  <TableRow className="border-slate-200">
-                    <TableHead className="w-12 text-center text-slate-500 font-bold">ลำดับ</TableHead>
-                    <TableHead className="text-slate-500 font-bold">สินค้า</TableHead>
-                    <TableHead className="text-right text-slate-500 font-bold">สั่ง (ชิ้น)</TableHead>
-                    <TableHead className="text-right text-slate-500 font-bold">รับแล้ว (ชิ้น)</TableHead>
-                    <TableHead className="text-right text-slate-500 font-bold">ต้นทุน/หน่วย</TableHead>
-                    <TableHead className="text-right text-slate-500 font-bold">รวม (รวม VAT)</TableHead>
+                <TableHeader className="">
+                  <TableRow className="">
+                    <TableHead className="w-12 text-center">ลำดับ</TableHead>
+                    <TableHead className="">สินค้า</TableHead>
+                    <TableHead className="text-right">สั่ง (ชิ้น)</TableHead>
+                    <TableHead className="text-right">รับแล้ว (ชิ้น)</TableHead>
+                    <TableHead className="text-right">ต้นทุน/หน่วย</TableHead>
+                    <TableHead className="text-right">รวม (รวม VAT)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {currentPo.items?.map((item, idx: number) => (
                     <TableRow key={idx} className="border-slate-100 hover:bg-slate-50">
-                      <TableCell className="text-center text-slate-400 font-semibold">{idx + 1}</TableCell>
-                      <TableCell className="text-slate-900 font-bold flex items-center gap-2">
+                      <TableCell className="text-center text-subtle font-semibold">{idx + 1}</TableCell>
+                      <TableCell className="text-fg font-medium flex items-center gap-2">
                         <button
                           type="button"
                           onClick={(e) => openImagePreview(item, e)}
-                          className="w-7 h-7 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-sky-600 shrink-0"
+                          className="w-7 h-7 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-subtle hover:text-sky-600 shrink-0"
                           title="ดูรูปภาพสินค้า"
                         >
                           <ImageIcon className="w-3.5 h-3.5" />
                         </button>
                         <PoLineName item={item} />
                       </TableCell>
-                      <TableCell className="text-right text-slate-700 font-semibold">{formatQty(item.quantity)}</TableCell>
-                      <TableCell className="text-right text-emerald-600 font-bold">{formatQty(Number(item.receivedQty ?? item.receivedQuantity) || 0)}</TableCell>
-                      <TableCell className="text-right text-slate-600">{formatCurrency(item.unitCost)}</TableCell>
-                      <TableCell className="text-right text-slate-900 font-bold">
+                      <TableCell className="text-right text-fg font-semibold">{formatQty(item.quantity)}</TableCell>
+                      <TableCell className="text-right text-ok font-medium">{formatQty(Number(item.receivedQty ?? item.receivedQuantity) || 0)}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{formatCurrency(item.unitCost)}</TableCell>
+                      <TableCell className="text-right text-fg font-medium">
                         {formatCurrency(item.total !== undefined && item.total !== null ? Number(item.total) : item.quantity * item.unitCost)}
                         {normVatType(item.vatType) !== 'NONE' && (
                           <span className={`block text-[10px] font-semibold ${normVatType(item.vatType) === 'INCLUDED' ? 'text-emerald-700' : 'text-amber-700'}`}>

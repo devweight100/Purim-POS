@@ -570,10 +570,10 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-[1600px] space-y-4 p-4 sm:p-6 lg:p-7 font-sans">
       <div>
-        <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+        <h1 className="page-title">
           <Settings className="w-6 h-6 text-sky-500" /> ตั้งค่าร้าน
         </h1>
-        <p className="text-xs text-slate-500 mt-0.5">
+        <p className="page-subtitle">
           แยกเป็นหมวด เลือกหมวดด้านล่าง — ค่าแต่ละอย่างอยู่ที่เดียว
         </p>
       </div>

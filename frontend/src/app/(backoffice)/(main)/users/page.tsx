@@ -209,8 +209,8 @@ export default function UsersManagementPage() {
               <Users className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-800">จัดการพนักงาน & กำหนดสิทธิ์ (Admin Panel)</h1>
-              <p className="text-sm text-slate-500">จัดการรายชื่อผู้ใช้งาน สิทธิ์การเข้าถึงเมนู และรหัส PIN แคชเชียร์</p>
+              <h1 className="page-title">จัดการพนักงาน & กำหนดสิทธิ์ (Admin Panel)</h1>
+              <p className="page-subtitle">จัดการรายชื่อผู้ใช้งาน สิทธิ์การเข้าถึงเมนู และรหัส PIN แคชเชียร์</p>
             </div>
           </div>
         </div>
@@ -287,7 +287,7 @@ export default function UsersManagementPage() {
 
         <div className="tbl-wrap overflow-x-auto">
           <table className="tbl w-full text-left text-sm text-slate-600">
-            <thead className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase border-b border-slate-100">
+            <thead className="">
               <tr>
                 <th className="">ชื่อ-นามสกุล / ชื่อผู้ใช้</th>
                 <th className="text-center">บทบาท (Role)</th>
@@ -300,14 +300,14 @@ export default function UsersManagementPage() {
             <tbody className="divide-y divide-slate-100" {...userNav.bodyProps}>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={6} className="text-center text-subtle">
                     <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
                     กำลังโหลดข้อมูลพนักงาน...
                   </td>
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                  <td colSpan={6} className="text-center text-subtle">
                     ไม่พบข้อมูลพนักงาน
                   </td>
                 </tr>
@@ -317,8 +317,8 @@ export default function UsersManagementPage() {
                   return (
                     <tr key={u.id} className={`hover:bg-slate-50/70 transition-colors ${ROW_NAV_CLASS}`} {...userNav.rowProps(ui)}>
                       <td className="">
-                        <div className="font-medium text-slate-800">{u.fullName}</div>
-                        <div className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                        <div className="font-medium text-fg">{u.fullName}</div>
+                        <div className="text-sub text-subtle flex items-center gap-1 mt-0.5">
                           <span>@{u.username}</span>
                         </div>
                       </td>
@@ -338,15 +338,15 @@ export default function UsersManagementPage() {
                       <td className="">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           {u.role === 'ADMIN' ? (
-                            <span className="text-xs font-medium text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md">
+                            <span className="text-sub font-medium text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md">
                               เข้าถึงได้ทุกส่วน (Full Access)
                             </span>
                           ) : permCount > 0 ? (
-                            <span className="text-xs font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
+                            <span className="text-sub font-medium text-muted-foreground bg-slate-100 px-2 py-0.5 rounded-md">
                               กำหนดไว้ {permCount} สิทธิ์
                             </span>
                           ) : (
-                            <span className="text-xs text-slate-400">ยังไม่ได้กำหนดสิทธิ์</span>
+                            <span className="text-sub text-subtle">ยังไม่ได้กำหนดสิทธิ์</span>
                           )}
                         </div>
                       </td>
@@ -364,7 +364,7 @@ export default function UsersManagementPage() {
                           {u.isActive ? 'ใช้งาน' : 'ระงับ'}
                         </button>
                       </td>
-                      <td className="text-xs text-slate-500">
+                      <td className="text-muted-foreground">
                         {u.lastLoginAt ? formatListDate(u.lastLoginAt) : '-'}
                       </td>
                       <td className="text-right">

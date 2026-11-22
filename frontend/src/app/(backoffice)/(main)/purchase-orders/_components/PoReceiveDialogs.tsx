@@ -117,16 +117,16 @@ export function PoReceiveDialog({
 
           <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
             <Table>
-              <TableHeader className="bg-slate-50">
-                <TableRow className="border-slate-200">
-                  <TableHead className="w-10 text-center text-slate-500 font-bold">#</TableHead>
-                  <TableHead className="text-slate-500 font-bold min-w-[200px]">สินค้า</TableHead>
-                  <TableHead className="text-center text-slate-500 font-bold">หน่วย</TableHead>
-                  <TableHead className="text-center text-slate-500 font-bold">สั่งซื้อ</TableHead>
-                  <TableHead className="text-center text-slate-500 font-bold">รับแล้ว</TableHead>
-                  <TableHead className="text-center text-slate-500 font-bold">ค้างรับ</TableHead>
-                  <TableHead className="text-right text-slate-500 font-bold w-32">รับเพิ่มครั้งนี้</TableHead>
-                  <TableHead className="text-right text-slate-500 font-bold min-w-[130px]">สต็อกในคลัง</TableHead>
+              <TableHeader className="">
+                <TableRow className="">
+                  <TableHead className="w-10 text-center">#</TableHead>
+                  <TableHead className="min-w-[200px]">สินค้า</TableHead>
+                  <TableHead className="text-center">หน่วย</TableHead>
+                  <TableHead className="text-center">สั่งซื้อ</TableHead>
+                  <TableHead className="text-center">รับแล้ว</TableHead>
+                  <TableHead className="text-center">ค้างรับ</TableHead>
+                  <TableHead className="text-right w-32">รับเพิ่มครั้งนี้</TableHead>
+                  <TableHead className="text-right min-w-[130px]">สต็อกในคลัง</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -139,31 +139,31 @@ export function PoReceiveDialog({
 
                   return (
                     <TableRow key={idx} className="border-slate-100 hover:bg-slate-50/70">
-                      <TableCell className="text-center text-slate-400 font-semibold text-xs">{idx + 1}</TableCell>
-                      <TableCell className="text-slate-900 font-bold">
+                      <TableCell className="text-center text-subtle font-semibold">{idx + 1}</TableCell>
+                      <TableCell className="text-fg font-medium">
                         <div className="flex items-center gap-2.5">
                           <button
                             type="button"
                             onClick={(e) => openImagePreview(item, e)}
-                            className="w-8 h-8 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 hover:text-sky-600 shrink-0 shadow-2xs"
+                            className="w-8 h-8 rounded bg-slate-100 border border-slate-200 flex items-center justify-center text-subtle hover:text-sky-600 shrink-0 shadow-2xs"
                             title="ดูรูปภาพสินค้า"
                           >
                             <ImageIcon className="w-4 h-4" />
                           </button>
                           <div className="min-w-0">
-                            <PoLineName item={item} className="block text-sm" />
-                            <div className="text-xs text-slate-400 font-mono font-normal">{item.sku}</div>
+                            <PoLineName item={item} className="block" />
+                            <div className="text-sub text-subtle doc-no font-normal">{item.sku}</div>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-xs font-semibold">
+                        <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-sub font-semibold">
                           {item.unitName} {mult > 1 ? `(×${mult})` : ''}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-center text-slate-700 font-semibold">{formatQty(item.orderedQty)}</TableCell>
-                      <TableCell className="text-center text-emerald-600 font-bold">{formatQty(item.receivedQty)}</TableCell>
-                      <TableCell className="text-center text-amber-700 font-bold">{formatQty(item.remainingQty)}</TableCell>
+                      <TableCell className="text-center text-fg font-semibold">{formatQty(item.orderedQty)}</TableCell>
+                      <TableCell className="text-center text-ok font-medium">{formatQty(item.receivedQty)}</TableCell>
+                      <TableCell className="text-center text-warn font-medium">{formatQty(item.remainingQty)}</TableCell>
                       <TableCell className="text-right">
                         <Input 
                           type="number" 
@@ -177,16 +177,16 @@ export function PoReceiveDialog({
                             newItems[idx].toReceive = val;
                             setReceiveItems(newItems);
                           }}
-                          className="bg-white border-slate-300 h-9 text-right font-bold text-sky-600 focus-visible:ring-sky-500 w-full"
+                          className="bg-white border-slate-300 h-9 text-right font-medium text-sky-600 focus-visible:ring-sky-500 w-full"
                         />
                       </TableCell>
-                      <TableCell className="text-right text-xs">
+                      <TableCell className="text-right">
                         <div className="flex flex-col items-end">
-                          <span className="font-semibold text-slate-800">
-                            {formatQty(currentStock)} → <b className="text-emerald-600 font-bold">{formatQty(newStock)}</b>
+                          <span className="font-semibold text-fg">
+                            {formatQty(currentStock)} → <b className="text-ok font-medium">{formatQty(newStock)}</b>
                           </span>
                           {stockDelta > 0 && (
-                            <span className="text-[11px] font-bold text-emerald-600">
+                            <span className="text-sub font-medium text-ok">
                               (+{formatQty(stockDelta)} ชิ้น)
                             </span>
                           )}
@@ -275,13 +275,13 @@ export function PoUnderReceiveDialog({
               รายการสินค้าด้านล่างนี้ มียอดรับจริงน้อยกว่าจำนวนที่ระบุในใบสั่งซื้อ:
             </p>
             <div className="border border-slate-200 rounded-lg overflow-hidden bg-white max-h-40 overflow-y-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
+              <table className="tbl w-full text-left text-xs">
+                <thead className="">
                   <tr>
-                    <th className="p-2.5">สินค้า</th>
-                    <th className="p-2.5 text-center">สั่งซื้อ</th>
-                    <th className="p-2.5 text-center">รับรวมครั้งนี้</th>
-                    <th className="p-2.5 text-right text-rose-600">ค้างรับ/ขาด</th>
+                    <th className="">สินค้า</th>
+                    <th className="text-center">สั่งซื้อ</th>
+                    <th className="text-center">รับรวมครั้งนี้</th>
+                    <th className="text-right text-rose-600">ค้างรับ/ขาด</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -292,10 +292,10 @@ export function PoUnderReceiveDialog({
                       const diff = subQty(item.orderedQty, totalRec);
                       return (
                         <tr key={idx} className="hover:bg-slate-50">
-                          <td className="p-2.5 font-medium text-slate-900">{item.docName || item.name}</td>
-                          <td className="p-2.5 text-center font-bold text-slate-700">{formatQty(item.orderedQty)} {item.unitName}</td>
-                          <td className="p-2.5 text-center font-bold text-emerald-700">{formatQty(totalRec)} {item.unitName}</td>
-                          <td className="p-2.5 text-right font-bold text-rose-600">-{formatQty(diff)} {item.unitName}</td>
+                          <td className="font-medium text-fg">{item.docName || item.name}</td>
+                          <td className="text-center font-medium text-fg">{formatQty(item.orderedQty)} {item.unitName}</td>
+                          <td className="text-center font-medium text-ok">{formatQty(totalRec)} {item.unitName}</td>
+                          <td className="text-right font-medium text-danger">-{formatQty(diff)} {item.unitName}</td>
                         </tr>
                       );
                     })}

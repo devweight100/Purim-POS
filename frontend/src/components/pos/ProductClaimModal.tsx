@@ -428,31 +428,31 @@ export function ProductClaimModal({
 
             {/* Matching Items Table */}
             <div className={`border border-slate-200 rounded-xl overflow-hidden bg-white overflow-y-auto shadow-2xs ${selectedItem ? 'max-h-[220px]' : 'flex-1 min-h-[300px]'}`}>
-              <table className="w-full text-left border-collapse text-xs">
-                <thead className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200 sticky top-0">
+              <table className="tbl w-full text-left border-collapse text-xs">
+                <thead className="sticky top-0">
                   <tr>
-                    <th className="py-2.5 px-3">เลขออเดอร์ / วันที่</th>
-                    <th className="py-2.5 px-3">ลูกค้า</th>
-                    <th className="py-2.5 px-3">สินค้าที่ซื้อ</th>
-                    <th className="py-2.5 px-2 text-center">ซื้อ</th>
-                    <th className="py-2.5 px-2 text-center">เคลมแล้ว</th>
-                    <th className="py-2.5 px-3 text-center">โควต้าเคลมได้</th>
-                    <th className="py-2.5 px-3 text-right">ราคา/หน่วย</th>
-                    <th className="py-2.5 px-3 text-center">เลือก</th>
+                    <th className="">เลขออเดอร์ / วันที่</th>
+                    <th className="">ลูกค้า</th>
+                    <th className="">สินค้าที่ซื้อ</th>
+                    <th className="text-center">ซื้อ</th>
+                    <th className="text-center">เคลมแล้ว</th>
+                    <th className="text-center">โควต้าเคลมได้</th>
+                    <th className="text-right">ราคา/หน่วย</th>
+                    <th className="text-center">เลือก</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {!searchKeyword.trim() ? (
                     <tr>
-                      <td colSpan={8} className="py-16 text-center text-slate-400 text-xs">
+                      <td colSpan={8} className="text-center text-subtle">
                         <div className="flex flex-col items-center justify-center gap-2">
                           <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-2xs">
                             <Search className="w-6 h-6" />
                           </div>
-                          <span className="font-bold text-slate-700 text-sm">
+                          <span className="font-medium text-fg">
                             พิมพ์คำค้นหาเพื่อตรวจสอบประวัติการซื้อ
                           </span>
-                          <p className="text-[11px] text-slate-400 max-w-md leading-relaxed">
+                          <p className="text-sub text-subtle max-w-md leading-relaxed">
                             กรุณากรอก <b>เลขที่บิล (IN... หรือเลขเดิม ORD-...), เบอร์โทรศัพท์ลูกค้า, ชื่อลูกค้า, หรือสแกนบาร์โค้ดสินค้า</b> เพื่อค้นหาประวัติบิลและคำนวณโควต้าที่สามารถเคลมได้
                           </p>
                         </div>
@@ -460,10 +460,10 @@ export function ProductClaimModal({
                     </tr>
                   ) : eligibleItems.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-12 text-center text-slate-400 text-xs">
+                      <td colSpan={8} className="text-center text-subtle">
                         <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-2" />
-                        <span className="font-bold text-slate-700 text-sm block">ไม่พบประวัติการซื้อที่ตรงกับ &quot;{searchKeyword}&quot;</span>
-                        <span className="text-[11px] text-slate-400 block mt-1">
+                        <span className="font-medium text-fg block">ไม่พบประวัติการซื้อที่ตรงกับ &quot;{searchKeyword}&quot;</span>
+                        <span className="text-sub text-subtle block mt-1">
                           (หากลูกค้าไม่ได้ซื้อจากร้าน หรือเคลมครบตามจำนวนแล้ว จะไม่ปรากฏในตาราง)
                         </span>
                       </td>
@@ -488,53 +488,53 @@ export function ProductClaimModal({
                               : 'hover:bg-slate-50'
                           }`}
                         >
-                          <td className="py-2.5 px-3 font-mono">
-                            <div className="font-bold text-indigo-700">{item.orderNumber}</div>
-                            <div className="text-[10px] text-slate-400">{formatDate(item.orderDate)}</div>
+                          <td className="doc-no">
+                            <div className="font-medium text-indigo-700">{item.orderNumber}</div>
+                            <div className="text-sub text-subtle">{formatDate(item.orderDate)}</div>
                           </td>
-                          <td className="py-2.5 px-3">
-                            <div className="font-bold text-slate-800 flex items-center gap-1">
-                              <User className="w-3 h-3 text-slate-400" />
+                          <td className="">
+                            <div className="font-medium text-fg flex items-center gap-1">
+                              <User className="w-3 h-3 text-subtle" />
                               <span>{item.customerName}</span>
                             </div>
                             {item.customerPhone && (
-                              <div className="text-[10px] text-slate-400 font-mono">{item.customerPhone}</div>
+                              <div className="text-sub text-subtle doc-no">{item.customerPhone}</div>
                             )}
                           </td>
-                          <td className="py-2.5 px-3">
-                            <div className="font-bold text-slate-900 line-clamp-1">{item.productName}</div>
-                            <div className="text-[10px] text-slate-400 font-mono">{item.sku}</div>
+                          <td className="">
+                            <div className="font-medium text-fg line-clamp-1">{item.productName}</div>
+                            <div className="text-sub text-subtle doc-no">{item.sku}</div>
                           </td>
-                          <td className="py-2.5 px-2 text-center font-mono font-bold text-slate-700">
+                          <td className="text-center doc-no font-medium text-fg">
                             {item.baseBoughtQuantity !== undefined ? item.baseBoughtQuantity : (item.boughtQuantity * (item.conversionFactor || 1))} ชิ้น
                             {(item.conversionFactor || 1) > 1 && (
-                              <span className="text-[10px] text-slate-400 font-normal block">({item.boughtQuantity} {item.unitName})</span>
+                              <span className="text-sub text-subtle font-normal block">({item.boughtQuantity} {item.unitName})</span>
                             )}
                           </td>
-                          <td className="py-2.5 px-2 text-center font-mono text-slate-500">
+                          <td className="text-center doc-no text-muted-foreground">
                             {(item.alreadyClaimedBaseQuantity !== undefined ? item.alreadyClaimedBaseQuantity : item.alreadyClaimedQuantity) > 0 ? (
-                              <span className="text-amber-700 font-bold">
+                              <span className="text-warn font-medium">
                                 {item.alreadyClaimedBaseQuantity !== undefined ? item.alreadyClaimedBaseQuantity : item.alreadyClaimedQuantity} ชิ้น
                               </span>
                             ) : (
                               '0 ชิ้น'
                             )}
                           </td>
-                          <td className="py-2.5 px-3 text-center">
+                          <td className="text-center">
                             {isQuotaExhausted ? (
-                              <Badge className="bg-slate-200 text-slate-600 text-[10px] font-bold">
+                              <Badge className="bg-slate-200 text-muted-foreground text-sub font-medium">
                                 หมดโควต้า (0 ชิ้น)
                               </Badge>
                             ) : (
-                              <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10.5px] font-extrabold px-2">
+                              <Badge className="bg-emerald-100 text-ok border-emerald-300 text-sub font-semibold px-2">
                                 เคลมได้ {item.availableBaseClaimQuantity !== undefined ? item.availableBaseClaimQuantity : item.availableClaimQuantity} ชิ้น
                               </Badge>
                             )}
                           </td>
-                          <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                          <td className="text-right doc-no font-medium text-fg">
                             {formatCurrency(item.unitPrice)}
                           </td>
-                          <td className="py-2.5 px-3 text-center">
+                          <td className="text-center">
                             <button
                               type="button"
                               disabled={isQuotaExhausted}

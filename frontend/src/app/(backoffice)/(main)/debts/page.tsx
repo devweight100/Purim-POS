@@ -196,11 +196,11 @@ function DebtsContent() {
       {/* ─── PAGE HEADER (Standard Consistent Header) ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+          <h1 className="page-title">
             <Receipt className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600 shrink-0" />
             <span>ลูกหนี้และบิลค้างชำระ (Accounts Receivable)</span>
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="page-subtitle">
             ติดตามยอดค้างชำระ จัดการเงินเชื่อ และบันทึกรับชำระหนี้ (ชำระเต็มจำนวน / แบ่งชำระ)
           </p>
         </div>
@@ -394,27 +394,27 @@ function DebtsContent() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader className="bg-slate-50/90 border-b border-slate-200">
+            <TableHeader className="">
               <TableRow className="hover:bg-transparent">
-                <TableHead className="hidden xl:table-cell font-bold text-slate-700 text-sm pl-3 text-center w-16">ลำดับ</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm">เลขที่บิล</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm text-center">วันที่บิล</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm min-w-40 xl:min-w-48">ลูกค้า / ผู้ซื้อ</TableHead>
-                <TableHead data-narrow="hide" className="font-bold text-slate-700 text-sm text-right">ยอดเต็มบิล</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm text-right">ชำระแล้ว</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm text-right">คงค้าง</TableHead>
-                <TableHead data-mid="hide" className="hidden xl:table-cell font-bold text-slate-700 text-sm text-center">
+                <TableHead className="hidden xl:table-cell text-center w-16">ลำดับ</TableHead>
+                <TableHead className="">เลขที่บิล</TableHead>
+                <TableHead className="text-center">วันที่บิล</TableHead>
+                <TableHead className="min-w-40 xl:min-w-48">ลูกค้า / ผู้ซื้อ</TableHead>
+                <TableHead data-narrow="hide" className="text-right">ยอดเต็มบิล</TableHead>
+                <TableHead className="text-right">ชำระแล้ว</TableHead>
+                <TableHead className="text-right">คงค้าง</TableHead>
+                <TableHead data-mid="hide" className="hidden xl:table-cell text-center">
                   ความคืบหน้าชำระ
                 </TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm text-center">สถานะ</TableHead>
-                <TableHead className="font-bold text-slate-700 text-sm text-center pr-3">การจัดการ</TableHead>
+                <TableHead className="text-center">สถานะ</TableHead>
+                <TableHead className="text-center">การจัดการ</TableHead>
               </TableRow>
             </TableHeader>
 
             <TableBody className="divide-y divide-slate-100" {...debtNav.bodyProps}>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-8 text-slate-400 text-sm">
+                  <TableCell colSpan={10} className="text-center text-subtle">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-1.5 text-indigo-500" />
                     กำลังโหลดข้อมูลลูกหนี้และบิลค้างชำระ...
                   </TableCell>
@@ -427,11 +427,11 @@ function DebtsContent() {
                 </TableRow>
               ) : paginatedDebts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-8 text-slate-400 text-sm">
+                  <TableCell colSpan={10} className="text-center text-subtle">
                     <div className="flex flex-col items-center gap-1">
-                      <Receipt className="w-6 h-6 text-slate-300" />
-                      <span className="font-bold text-slate-600 text-sm">ไม่พบบิลค้างชำระตามเงื่อนไข</span>
-                      <span className="text-xs text-slate-400">ลองเปลี่ยนคำค้นหาหรือเปลี่ยนแท็บสถานะ</span>
+                      <Receipt className="w-6 h-6 text-subtle" />
+                      <span className="font-medium text-muted-foreground">ไม่พบบิลค้างชำระตามเงื่อนไข</span>
+                      <span className="text-sub text-subtle">ลองเปลี่ยนคำค้นหาหรือเปลี่ยนแท็บสถานะ</span>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -445,75 +445,75 @@ function DebtsContent() {
                   return (
                     <TableRow key={debt.orderId} className={`hover:bg-slate-50/70 transition-colors ${ROW_NAV_CLASS}`} {...debtNav.rowProps(idx)}>
                       {/* 1. Index (ลำดับ) */}
-                      <TableCell className="hidden xl:table-cell pl-3 text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
+                      <TableCell className="hidden xl:table-cell text-center doc-no whitespace-nowrap font-medium text-muted-foreground">
                         {(currentPage - 1) * pageSize + idx + 1}
                       </TableCell>
 
                       {/* 2. Order Number */}
-                      <TableCell className="font-mono whitespace-nowrap">
-                        <span className="font-bold text-slate-900 text-[13px] block whitespace-nowrap">{debt.orderNumber}</span>
+                      <TableCell className="doc-no whitespace-nowrap">
+                        <span className="font-medium text-fg block whitespace-nowrap">{debt.orderNumber}</span>
                       </TableCell>
 
                       {/* 3. Date (แยก col. วันที่) */}
-                      <TableCell data-narrow="wrap" className="text-center font-mono whitespace-nowrap">
-                        <div className="text-xs text-slate-600 font-bold">
+                      <TableCell data-narrow="wrap" className="text-center doc-no whitespace-nowrap">
+                        <div className="text-sub text-muted-foreground font-medium">
                           {formatListDate(debt.orderDate)}
                         </div>
                         {debt.dueDate && (
                           <div className={`text-[11px] font-sans font-medium flex flex-wrap items-center justify-center gap-x-1 mt-0.5 ${isOverdue ? 'text-rose-600 font-bold' : 'text-amber-700'}`}>
                             <span className="whitespace-nowrap">ครบ {formatListDate(debt.dueDate)}</span>
-                            {isOverdue && <span className="text-[9.5px] bg-rose-100 text-rose-700 px-1 py-0.2 rounded font-bold whitespace-nowrap">เกินกำหนด</span>}
+                            {isOverdue && <span className="text-[9.5px] bg-rose-100 text-danger px-1 py-0.2 rounded font-medium whitespace-nowrap">เกินกำหนด</span>}
                           </div>
                         )}
                       </TableCell>
 
                       {/* 4. Customer Name, Phone & Type */}
                       <TableCell className="">
-                        <div className="flex items-center gap-1.5 font-bold text-slate-900 text-sm leading-snug min-w-44">
+                        <div className="flex items-center gap-1.5 font-medium text-fg leading-snug min-w-44">
                           {debt.customerType === 'COMPANY' ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0 font-medium">
+                            <span className="inline-flex items-center gap-1 text-sub text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0 font-medium">
                               <Building2 className="w-3 h-3" /> นิติบุคคล
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200 shrink-0 font-medium">
+                            <span className="inline-flex items-center gap-1 text-sub text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200 shrink-0 font-medium">
                               <User className="w-3 h-3" /> บุคคล
                             </span>
                           )}
                           <span className="line-clamp-2 break-words" title={debt.customerName}>{debt.customerName}</span>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 font-mono">
-                          {debt.customerCode && <span className="text-slate-600">[{debt.customerCode}]</span>}
+                        <div className="flex flex-wrap items-center gap-1.5 text-sub text-muted-foreground doc-no">
+                          {debt.customerCode && <span className="text-muted-foreground">[{debt.customerCode}]</span>}
                           {debt.customerPhone && <span>โทร: {debt.customerPhone}</span>}
                           {debt.taxId && <span>Tax: {debt.taxId}</span>}
                         </div>
                       </TableCell>
 
                       {/* 3. Total Amount */}
-                      <TableCell data-narrow="hide" className="text-right font-bold text-sm text-slate-800 font-mono whitespace-nowrap">
+                      <TableCell data-narrow="hide" className="text-right font-medium text-fg doc-no whitespace-nowrap">
                         {formatCurrency(debt.totalAmount)}
                       </TableCell>
 
                       {/* 4. Paid Amount */}
-                      <TableCell className="text-right font-bold text-sm text-emerald-600 font-mono whitespace-nowrap">
+                      <TableCell className="text-right font-medium text-ok doc-no whitespace-nowrap">
                         {formatCurrency(debt.paidAmount)}
                       </TableCell>
 
                       {/* 5. Remaining Balance */}
-                      <TableCell className="text-right font-black font-mono whitespace-nowrap">
+                      <TableCell className="text-right font-semibold doc-no whitespace-nowrap">
                         <span className={debt.remainingDebt > 0 ? 'text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-100 inline-block font-extrabold text-sm' : 'text-slate-400 text-sm'}>
                           {formatCurrency(debt.remainingDebt)}
                         </span>
                       </TableCell>
 
                       {/* 6. Pastel Progress Bar */}
-                      <TableCell data-mid="hide" className="hidden xl:table-cell text-center px-2">
+                      <TableCell data-mid="hide" className="hidden xl:table-cell text-center">
                         <div className="space-y-0.5 max-w-[125px] mx-auto">
-                          <div className="flex items-center justify-between text-[11px] font-semibold">
+                          <div className="flex items-center justify-between text-sub font-semibold">
                             <span className={isPaid ? 'text-teal-700 font-bold' : isPartial ? 'text-indigo-700 font-bold' : 'text-slate-500'}>
                               {isPaid ? '100%' : `${progressPct}%`}
                             </span>
-                            <span className="text-[11px] text-slate-400">
+                            <span className="text-sub text-subtle">
                               {debt.installments?.length || 0} งวด
                             </span>
                           </div>
@@ -537,29 +537,29 @@ function DebtsContent() {
                       {/* 7. Status Badge */}
                       <TableCell className="text-center">
                         {isPaid ? (
-                          <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 font-bold text-xs gap-1 hover:bg-emerald-50 px-2 py-0.5 whitespace-nowrap">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> ชำระครบแล้ว
+                          <Badge className="bg-emerald-50 text-ok border-emerald-200 font-medium text-sub gap-1 hover:bg-emerald-50 px-2 py-0.5 whitespace-nowrap">
+                            <CheckCircle2 className="w-3 h-3 text-ok" /> ชำระครบแล้ว
                           </Badge>
                         ) : isPartial ? (
-                          <Badge className="bg-amber-50 text-amber-800 border-amber-200 font-bold text-xs gap-1 hover:bg-amber-50 px-2 py-0.5 whitespace-nowrap">
-                            <Clock className="w-3 h-3 text-amber-600" /> ชำระบางส่วน
+                          <Badge className="bg-amber-50 text-warn border-amber-200 font-medium text-sub gap-1 hover:bg-amber-50 px-2 py-0.5 whitespace-nowrap">
+                            <Clock className="w-3 h-3 text-warn" /> ชำระบางส่วน
                           </Badge>
                         ) : (
-                          <Badge className="bg-rose-50 text-rose-700 border-rose-200 font-bold text-xs gap-1 hover:bg-rose-50 px-2 py-0.5 whitespace-nowrap">
-                            <AlertCircle className="w-3 h-3 text-rose-600" /> ยังไม่ชำระ
+                          <Badge className="bg-rose-50 text-danger border-rose-200 font-medium text-sub gap-1 hover:bg-rose-50 px-2 py-0.5 whitespace-nowrap">
+                            <AlertCircle className="w-3 h-3 text-danger" /> ยังไม่ชำระ
                           </Badge>
                         )}
                       </TableCell>
 
                       {/* 8. Action Buttons */}
-                      <TableCell className="pr-3 text-center w-px whitespace-nowrap">
+                      <TableCell className="text-center w-px whitespace-nowrap">
                         <div className="flex flex-nowrap items-center justify-center gap-btn">
                           {/* Pay Button */}
                           {!isPaid ? (
                             <Button
                               size="sm"
                               onClick={() => handleOpenPay(debt)}
-                              className="h-7.5 px-2.5 text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-2xs gap-1"
+                              className="h-7.5 px-2.5 text-sub sm:text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg shadow-2xs gap-1"
                               title="รับชำระหนี้บิลนี้"
                                 aria-label="รับชำระ"
                             >
@@ -567,7 +567,7 @@ function DebtsContent() {
                               <span data-act-label>รับชำระ</span>
                             </Button>
                           ) : (
-                            <span className="text-xs text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            <span className="text-sub text-ok font-medium bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                               เคลียร์แล้ว
                             </span>
                           )}
@@ -577,7 +577,7 @@ function DebtsContent() {
                             size="sm"
                             variant="outline"
                             onClick={() => handleOpenHistory(debt)}
-                            className="h-7.5 px-2 text-xs sm:text-sm text-slate-700 border-slate-300 hover:bg-slate-100 rounded-lg font-medium"
+                            className="h-7.5 px-2 text-sub sm:text-sm text-fg border-slate-300 hover:bg-slate-100 rounded-lg font-medium"
                             title="ดูประวัติการชำระและพิมพ์สลิป"
                                 aria-label="ประวัติ"
                           >

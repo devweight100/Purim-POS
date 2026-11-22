@@ -354,11 +354,11 @@ export default function PayablesPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+          <h1 className="page-title">
             <Receipt className="w-6 h-6 text-indigo-600 shrink-0" />
             <span>เจ้าหนี้การค้า & บิลค้างจ่ายบริษัท (Accounts Payable)</span>
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+          <p className="page-subtitle">
             จัดการหนี้ค้างชำระจากการรับสินค้า (PO), ประกบเอกสารลดหนี้ (Debit Note) เพื่อหักยอด และบันทึกจ่ายเงิน
           </p>
         </div>
@@ -546,7 +546,7 @@ export default function PayablesPage() {
                     detail (invoice date, discount, credit notes, paid, PO amount, items, payments) is in the bill
                     details (row click / Enter); the row's actions are in one "⋯" menu */}
                 <table className="tbl w-full text-sm" data-testid="payable-bills-table">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-sm">
+                  <thead className="">
                     <tr>
                       <th className="text-center w-10">
                         <Checkbox
@@ -585,21 +585,21 @@ export default function PayablesPage() {
                               onCheckedChange={() => handleToggleSelectPo(bill)}
                             />
                           ) : (
-                            <span className="text-slate-300">-</span>
+                            <span className="text-subtle">-</span>
                           )}
                         </td>
                         <td className="whitespace-nowrap">
-                          <p className="font-mono font-bold text-slate-900 text-[13px]" data-testid="bill-doc-no">{bill.poNumber}</p>
+                          <p className="doc-no font-medium text-fg" data-testid="bill-doc-no">{bill.poNumber}</p>
                           {bill.supplierInvoiceNo && (
-                            <p className="mt-0.5 max-w-[14rem] truncate font-mono text-[11px] text-slate-500" title={`เลขที่บิลผู้จำหน่าย ${bill.supplierInvoiceNo}`}>บิล {bill.supplierInvoiceNo}</p>
+                            <p className="mt-0.5 max-w-[14rem] truncate doc-no text-sub text-muted-foreground" title={`เลขที่บิลผู้จำหน่าย ${bill.supplierInvoiceNo}`}>บิล {bill.supplierInvoiceNo}</p>
                           )}
                         </td>
-                        <td className="whitespace-nowrap text-[13px] text-slate-700" data-testid="bill-date">{formatListDate(bill.billDate)}</td>
+                        <td className="whitespace-nowrap text-fg" data-testid="bill-date">{formatListDate(bill.billDate)}</td>
                         <td>
-                          <p className="font-bold text-slate-900 text-[13px] line-clamp-2 break-words min-w-40" title={bill.supplierName}>{bill.supplierName}</p>
+                          <p className="font-medium text-fg line-clamp-2 break-words min-w-40" title={bill.supplierName}>{bill.supplierName}</p>
                         </td>
                         <td className="text-right">
-                          <span className="font-mono whitespace-nowrap font-bold text-slate-800 text-[13px]">{formatCurrency(bill.receivedAmount ?? bill.totalAmount)}</span>
+                          <span className="doc-no whitespace-nowrap font-medium text-fg">{formatCurrency(bill.receivedAmount ?? bill.totalAmount)}</span>
                           <PaidProgress bill={bill} />
                         </td>
                         <td className="text-right">
@@ -742,7 +742,7 @@ export default function PayablesPage() {
             ) : (
               <div className="tbl-wrap overflow-x-auto">
                 <table className="tbl w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-xs sm:text-[13px]">
+                  <thead className="sm:text-[13px]">
                     <tr>
                       <th className="text-left">เลขที่สำคัญจ่าย / วันที่</th>
                       <th className="text-left">บิลและ Invoice ที่จ่าย</th>
@@ -766,22 +766,22 @@ export default function PayablesPage() {
                           className={`transition-colors ${ROW_NAV_CLASS} ${isCancelled ? 'bg-rose-50/30 opacity-75' : 'hover:bg-slate-50/70'}`}
                           {...voucherNav.rowProps(vIdx)}
                         >
-                          <td className="font-mono whitespace-nowrap">
+                          <td className="doc-no whitespace-nowrap">
                             <div className="flex items-center gap-1.5">
                               <span className={`font-bold text-sm block ${isCancelled ? 'text-slate-500 line-through' : 'text-indigo-700'}`}>
                                 {voucher.voucherNumber}
                               </span>
                               {isCancelled && (
-                                <Badge variant="outline" className="text-[10px] font-bold text-rose-700 bg-rose-50 border-rose-300">
+                                <Badge variant="outline" className="text-sub font-medium text-danger bg-rose-50 border-rose-300">
                                   ยกเลิกแล้ว
                                 </Badge>
                               )}
                             </div>
-                            <span className="text-xs text-slate-500 block mt-0.5">
+                            <span className="text-sub text-muted-foreground block mt-0.5">
                               {formatListDate(voucher.paymentDate)}
                             </span>
                             {isCancelled && voucher.cancelReason && (
-                              <p className="text-[10px] text-rose-600 italic mt-0.5">
+                              <p className="text-sub text-danger italic mt-0.5">
                                 เหตุผล: {voucher.cancelReason}
                               </p>
                             )}
@@ -789,12 +789,12 @@ export default function PayablesPage() {
 
                           <td className="">
                             <div className="space-y-1">
-                              <Badge variant="outline" className="text-[11px] font-mono font-bold bg-slate-50">
+                              <Badge variant="outline" className="text-sub doc-no font-medium bg-slate-50">
                                 {voucher.bills.length} บิล
                               </Badge>
                               <div className="flex flex-wrap gap-1 max-w-xs">
                                 {voucher.bills.map((b, i) => (
-                                  <span key={i} className="text-[11px] font-mono bg-indigo-50/70 text-indigo-900 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">
+                                  <span key={i} className="text-sub doc-no bg-indigo-50/70 text-indigo-900 border border-indigo-100 px-1.5 py-0.5 rounded font-semibold">
                                     {b.supplierInvoiceNo || b.poNumber}
                                   </span>
                                 ))}
@@ -802,30 +802,30 @@ export default function PayablesPage() {
                             </div>
                           </td>
 
-                          <td className="font-bold text-slate-900 text-sm">
+                          <td className="font-medium text-fg">
                             {voucher.supplierName}
                           </td>
 
-                          <td className="text-right font-mono whitespace-nowrap font-bold text-slate-800">
+                          <td className="text-right doc-no whitespace-nowrap font-medium text-fg">
                             {formatCurrency(voucher.totalBillsAmount)}
                           </td>
 
-                          <td className="text-right font-mono whitespace-nowrap text-amber-700 font-bold">
+                          <td className="text-right doc-no whitespace-nowrap text-warn font-medium">
                             {voucher.discountAmount && voucher.discountAmount > 0 ? formatCurrency(voucher.discountAmount) : '-'}
                           </td>
 
-                          <td className="text-right font-mono whitespace-nowrap text-indigo-700 font-bold">
+                          <td className="text-right doc-no whitespace-nowrap text-indigo-700 font-medium">
                             {voucher.deductedCreditAmount > 0 ? formatCurrency(voucher.deductedCreditAmount) : '-'}
                           </td>
 
-                          <td className="text-right font-mono whitespace-nowrap font-black text-sm sm:text-base">
+                          <td className="text-right doc-no whitespace-nowrap font-semibold sm:text-base">
                             <span className={isCancelled ? 'line-through text-slate-400' : 'text-emerald-700'}>
                               {formatCurrency(voucher.netPaidAmount)}
                             </span>
                           </td>
 
                           <td className="text-center">
-                            <Badge variant="outline" className="text-xs font-semibold px-2.5 py-0.5">
+                            <Badge variant="outline" className="text-sub font-semibold px-2.5 py-0.5">
                               {voucher.paymentMethod === 'CASH'
                                 ? '💵 เงินสด'
                                 : voucher.paymentMethod === 'TRANSFER'

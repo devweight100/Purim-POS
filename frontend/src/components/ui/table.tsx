@@ -5,8 +5,10 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 /**
- * Back-office tables share one density (owner 2026-11-18, round 3): 10 px cell padding, 40 px header row, 13 px
- * headers. Per-column helpers (numbers, document numbers, dates, names, action groups) are in ./table-cells.
+ * Back-office tables share one look (docs/ui-style.md): header 13 px medium muted on slate-50, body 14 px, 12 px
+ * cell padding (16 px at the card edges), ~44 px rows, dividers. The typography / padding live in globals.css
+ * (`.tbl`), so do not add text size, weight, colour or padding classes to TableHead / TableCell. Per-column helpers
+ * (numbers, document numbers, dates, names, action groups) are in ./table-cells; status chips in ./status-chip.
  */
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
@@ -27,7 +29,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      className={className}
       {...props}
     />
   )
@@ -61,7 +63,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
+        "transition-colors has-aria-expanded:bg-muted/50",
         className
       )}
       {...props}
@@ -74,7 +76,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2.5 py-2 text-left align-middle text-[13px] leading-tight font-bold text-muted-foreground [&:has([role=checkbox])]:pr-0",
+        "text-left align-middle",
         className
       )}
       {...props}
@@ -87,7 +89,7 @@ function TableCell({ className, ...props }: React.ComponentProps<"td">) {
     <td
       data-slot="table-cell"
       className={cn(
-        "py-2.5 px-2.5 align-middle break-words text-foreground [&:has([role=checkbox])]:pr-0",
+        "align-middle break-words",
         className
       )}
       {...props}

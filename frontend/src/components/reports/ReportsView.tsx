@@ -475,11 +475,11 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       {/* ─── PAGE HEADER ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+          <h1 className="page-title">
             <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600 shrink-0" />
             <span>รายงาน & วิเคราะห์ธุรกิจ (Business Analytics & Reports)</span>
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="page-subtitle">
             ศูนย์รวมรายงานเชิงลึกสำหรับผู้ประกอบการ: ยอดขาย กำไร สต็อกจม ช่องทางชำระเงิน อายุหนี้ และยอดจัดซื้อ
           </p>
         </div>
@@ -754,24 +754,24 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
               <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
-                <TableHeader className="bg-slate-50 border-b border-slate-200">
+                <TableHeader className="">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-center w-10 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
-                    <TableHead className="text-center text-slate-700 font-bold text-sm">วันที่</TableHead>
-                    <TableHead className="text-center text-slate-700 font-bold text-sm">จำนวนออเดอร์</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">ยอดขายรวม (Gross)</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">ส่วนลด</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">ยอดขายสุทธิ (Net)</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">ต้นทุน (COGS)</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">กำไรขั้นต้น</TableHead>
-                    <TableHead className="text-center text-slate-700 font-bold text-sm">% กำไร (Margin)</TableHead>
+                    <TableHead className="text-center w-10">ลำดับ</TableHead>
+                    <TableHead className="text-center">วันที่</TableHead>
+                    <TableHead className="text-center">จำนวนออเดอร์</TableHead>
+                    <TableHead className="text-right">ยอดขายรวม (Gross)</TableHead>
+                    <TableHead className="text-right">ส่วนลด</TableHead>
+                    <TableHead className="text-right">ยอดขายสุทธิ (Net)</TableHead>
+                    <TableHead className="text-right">ต้นทุน (COGS)</TableHead>
+                    <TableHead className="text-right">กำไรขั้นต้น</TableHead>
+                    <TableHead className="text-center">% กำไร (Margin)</TableHead>
                   </TableRow>
                 </TableHeader>
 
                 <TableBody className="divide-y divide-slate-100">
                   {filteredDailySales.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-12 text-slate-400 text-sm">
+                      <TableCell colSpan={9} className="text-center text-subtle">
                         ไม่พบข้อมูลยอดขายในช่วงเวลาที่เลือก
                       </TableCell>
                     </TableRow>
@@ -780,28 +780,28 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                       const itemIndex = (currentPage - 1) * pageSize + idx + 1;
                       return (
                         <tr key={row.date} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
+                          <td className="text-center doc-no whitespace-nowrap font-medium text-muted-foreground">
                             {itemIndex}
                           </td>
-                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-900 text-xs">
+                          <td className="text-center doc-no whitespace-nowrap font-medium text-fg">
                             {formatDate(row.date)}
                           </td>
-                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-700 text-sm">
+                          <td className="text-center doc-no whitespace-nowrap font-medium text-fg">
                             {row.orderCount} บิล
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap text-slate-600 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap text-muted-foreground">
                             {formatCurrency(row.grossSales)}
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap text-rose-600 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap text-danger">
                             {row.discounts > 0 ? `-${formatCurrency(row.discounts)}` : '-'}
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap font-bold text-slate-900 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap font-medium text-fg">
                             {formatCurrency(row.netSales)}
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap text-amber-700 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap text-warn">
                             {formatCurrency(row.cogs)}
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap font-black text-emerald-700 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap font-semibold text-ok">
                             {formatCurrency(row.grossProfit)}
                           </td>
                           <td className="text-center">
@@ -898,24 +898,24 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
               <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
-                <TableHeader className="bg-slate-50 border-b border-slate-200">
+                <TableHeader className="">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-center w-10 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
-                    <TableHead className="text-left text-slate-700 font-bold text-sm">บาร์โค้ด / SKU</TableHead>
-                    <TableHead className="text-left min-w-44 xl:min-w-56 text-slate-700 font-bold text-sm">ชื่อสินค้า</TableHead>
-                    <TableHead data-narrow="hide" className="text-center text-slate-700 font-bold text-sm">หมวดหมู่</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">จำนวนที่ขายได้</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">ยอดขายรวม</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">ต้นทุนรวม</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">กำไรสุทธิ</TableHead>
-                    <TableHead className="text-center text-slate-700 font-bold text-sm">% กำไร</TableHead>
+                    <TableHead className="text-center w-10">ลำดับ</TableHead>
+                    <TableHead className="text-left">บาร์โค้ด / SKU</TableHead>
+                    <TableHead className="text-left min-w-44 xl:min-w-56">ชื่อสินค้า</TableHead>
+                    <TableHead data-narrow="hide" className="text-center">หมวดหมู่</TableHead>
+                    <TableHead className="text-right">จำนวนที่ขายได้</TableHead>
+                    <TableHead className="text-right">ยอดขายรวม</TableHead>
+                    <TableHead className="text-right">ต้นทุนรวม</TableHead>
+                    <TableHead className="text-right">กำไรสุทธิ</TableHead>
+                    <TableHead className="text-center">% กำไร</TableHead>
                   </TableRow>
                 </TableHeader>
 
                 <TableBody className="divide-y divide-slate-100">
                   {paginatedBestSellers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-12 text-slate-400 text-sm">
+                      <TableCell colSpan={9} className="text-center text-subtle">
                         ไม่พบข้อมูลสินค้าขายในช่วงเวลานี้
                       </TableCell>
                     </TableRow>
@@ -924,32 +924,32 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                       const itemIndex = (currentPage - 1) * pageSize + idx + 1;
                       return (
                         <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
+                          <td className="text-center doc-no whitespace-nowrap font-medium text-muted-foreground">
                             {itemIndex}
                           </td>
-                          <td className="font-mono whitespace-nowrap text-indigo-700 font-bold text-sm">
+                          <td className="doc-no whitespace-nowrap text-indigo-700 font-medium">
                             {p.sku}
                           </td>
-                          <td className="font-bold text-slate-900 text-[13px] min-w-44 xl:min-w-56">
+                          <td className="font-medium text-fg min-w-44 xl:min-w-56">
                             <span className="line-clamp-2 break-words" title={p.name}>{p.name}</span>
                           </td>
                           <td data-narrow="hide" className="text-center">
-                            <Badge variant="outline" className="text-xs h-auto max-w-36 truncate block" title={formatCategory(p.category)}>{formatCategory(p.category)}</Badge>
+                            <Badge variant="outline" className="text-sub h-auto max-w-36 truncate block" title={formatCategory(p.category)}>{formatCategory(p.category)}</Badge>
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap font-black text-indigo-700 text-sm">
-                            {p.quantitySold} <span className="text-xs font-bold text-slate-500 font-sans">{p.unitName}</span>
+                          <td className="text-right doc-no whitespace-nowrap font-semibold text-indigo-700">
+                            {p.quantitySold} <span className="text-sub font-medium text-muted-foreground font-sans">{p.unitName}</span>
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap font-bold text-slate-800 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap font-medium text-fg">
                             {formatCurrency(p.totalRevenue)}
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap text-amber-700 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap text-warn">
                             {formatCurrency(p.totalCost)}
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap font-black text-emerald-700 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap font-semibold text-ok">
                             {formatCurrency(p.totalProfit)}
                           </td>
-                          <td className="text-center font-mono whitespace-nowrap font-bold text-xs">
-                            <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded">
+                          <td className="text-center doc-no whitespace-nowrap font-medium">
+                            <span className="bg-emerald-50 text-ok border border-emerald-200 px-2 py-0.5 rounded">
                               {p.profitMarginPercent}%
                             </span>
                           </td>
@@ -1065,24 +1065,24 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
               <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
-                <TableHeader className="bg-slate-50 border-b border-slate-200">
+                <TableHeader className="">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-center w-10 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
-                    <TableHead className="text-left text-slate-700 font-bold text-sm">บาร์โค้ด / SKU</TableHead>
-                    <TableHead className="text-left min-w-44 xl:min-w-56 text-slate-700 font-bold text-sm">ชื่อสินค้า</TableHead>
-                    <TableHead className="text-left text-slate-700 font-bold text-sm">ผู้จำหน่าย</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">คงคลัง</TableHead>
-                    <TableHead data-narrow="hide" className="text-right text-slate-700 font-bold text-sm">ราคาทุน</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">มูลค่าทุนรวม</TableHead>
-                    <TableHead data-narrow="hide" className="text-right text-slate-700 font-bold text-sm">มูลค่าขายรวม</TableHead>
-                    <TableHead className="text-center text-slate-700 font-bold text-sm">สถานะสต็อก</TableHead>
+                    <TableHead className="text-center w-10">ลำดับ</TableHead>
+                    <TableHead className="text-left">บาร์โค้ด / SKU</TableHead>
+                    <TableHead className="text-left min-w-44 xl:min-w-56">ชื่อสินค้า</TableHead>
+                    <TableHead className="text-left">ผู้จำหน่าย</TableHead>
+                    <TableHead className="text-right">คงคลัง</TableHead>
+                    <TableHead data-narrow="hide" className="text-right">ราคาทุน</TableHead>
+                    <TableHead className="text-right">มูลค่าทุนรวม</TableHead>
+                    <TableHead data-narrow="hide" className="text-right">มูลค่าขายรวม</TableHead>
+                    <TableHead className="text-center">สถานะสต็อก</TableHead>
                   </TableRow>
                 </TableHeader>
 
                 <TableBody className="divide-y divide-slate-100">
                   {paginatedInventoryItems.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-12 text-slate-400 text-sm">
+                      <TableCell colSpan={9} className="text-center text-subtle">
                         ไม่พบรายการสินค้าคงคลังที่ตรงกับเงื่อนไข
                       </TableCell>
                     </TableRow>
@@ -1091,41 +1091,41 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                       const itemIndex = (currentPage - 1) * pageSize + idx + 1;
                       return (
                         <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
+                          <td className="text-center doc-no whitespace-nowrap font-medium text-muted-foreground">
                             {itemIndex}
                           </td>
-                          <td className="font-mono whitespace-nowrap text-indigo-700 font-bold text-sm">
+                          <td className="doc-no whitespace-nowrap text-indigo-700 font-medium">
                             {item.sku}
                           </td>
-                          <td className="font-bold text-slate-900 text-[13px] min-w-44 xl:min-w-56">
+                          <td className="font-medium text-fg min-w-44 xl:min-w-56">
                             <span className="line-clamp-2 break-words" title={item.name}>{item.name}</span>
                           </td>
-                          <td className="text-slate-800 font-medium text-[13px] min-w-40">
+                          <td className="text-fg font-medium min-w-40">
                             <span className="line-clamp-2 break-words" title={item.supplierName}>{item.supplierName}</span>
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap font-bold text-sm text-slate-900">
-                            {item.stock} <span className="text-xs font-normal text-slate-500">{item.unitName}</span>
+                          <td className="text-right doc-no whitespace-nowrap font-medium text-fg">
+                            {item.stock} <span className="text-sub font-normal text-muted-foreground">{item.unitName}</span>
                           </td>
-                          <td data-narrow="hide" className="text-right font-mono whitespace-nowrap text-sm text-slate-700">
+                          <td data-narrow="hide" className="text-right doc-no whitespace-nowrap text-fg">
                             {formatCurrency(item.costPrice)}
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap font-black text-slate-900 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap font-semibold text-fg">
                             {formatCurrency(item.totalCostValue)}
                           </td>
-                          <td data-narrow="hide" className="text-right font-mono whitespace-nowrap font-bold text-emerald-700 text-sm">
+                          <td data-narrow="hide" className="text-right doc-no whitespace-nowrap font-medium text-ok">
                             {formatCurrency(item.totalRetailValue)}
                           </td>
                           <td className="text-center">
                             {item.isDeadstock ? (
-                              <Badge className="bg-rose-100 text-rose-800 border-rose-200 text-xs font-bold">
+                              <Badge className="bg-rose-100 text-danger border-rose-200 text-sub font-medium">
                                 ⚠️ ขายช้า ({item.daysSinceLastSale === 999 ? 'ไม่เคยขาย' : `${item.daysSinceLastSale} วัน`})
                               </Badge>
                             ) : item.isLowStock ? (
-                              <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs font-bold">
+                              <Badge className="bg-amber-100 text-warn border-amber-200 text-sub font-medium">
                                 📦 สต็อกต่ำ
                               </Badge>
                             ) : (
-                              <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs">
+                              <Badge className="bg-emerald-50 text-ok border-emerald-200 text-sub">
                                 ✓ ปกติ
                               </Badge>
                             )}
@@ -1230,26 +1230,26 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               <span className="text-xs text-slate-500 font-mono">กระทบยอดเงินสดและเงินโอนเข้าบัญชี</span>
             </div>
             <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
-              <TableHeader className="bg-slate-50">
+              <TableHeader className="">
                 <TableRow>
-                  <TableHead className="text-center w-10 font-bold text-sm">ลำดับ</TableHead>
-                  <TableHead className="text-left font-bold text-sm">ช่องทางการชำระเงิน</TableHead>
-                  <TableHead className="text-center font-bold text-sm">จำนวนรายการ</TableHead>
-                  <TableHead className="text-right font-bold text-sm">ยอดเงินรวม</TableHead>
-                  <TableHead className="text-center font-bold text-sm">สัดส่วนยอดขาย</TableHead>
+                  <TableHead className="text-center w-10">ลำดับ</TableHead>
+                  <TableHead className="text-left">ช่องทางการชำระเงิน</TableHead>
+                  <TableHead className="text-center">จำนวนรายการ</TableHead>
+                  <TableHead className="text-right">ยอดเงินรวม</TableHead>
+                  <TableHead className="text-center">สัดส่วนยอดขาย</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-slate-100">
                 {paymentsShiftsReport.channels.map((c, i) => (
                   <TableRow key={c.method} className="hover:bg-slate-50">
-                    <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">{i + 1}</td>
-                    <td className="font-bold text-slate-900 text-sm">{c.label}</td>
-                    <td className="text-center font-mono whitespace-nowrap text-slate-700 text-sm">{c.orderCount} ครั้ง</td>
-                    <td className="text-right font-mono whitespace-nowrap font-black text-slate-900 text-sm">
+                    <td className="text-center doc-no whitespace-nowrap font-medium text-muted-foreground">{i + 1}</td>
+                    <td className="font-medium text-fg">{c.label}</td>
+                    <td className="text-center doc-no whitespace-nowrap text-fg">{c.orderCount} ครั้ง</td>
+                    <td className="text-right doc-no whitespace-nowrap font-semibold text-fg">
                       {formatCurrency(c.totalAmount)}
                     </td>
                     <td className="text-center">
-                      <Badge variant="outline" className="font-mono font-bold text-xs bg-slate-50">
+                      <Badge variant="outline" className="doc-no font-medium text-sub bg-slate-50">
                         {c.percentage}%
                       </Badge>
                     </td>
@@ -1331,24 +1331,24 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
             </div>
             <div className="overflow-x-auto">
               <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
-                <TableHeader className="bg-slate-50 border-b border-slate-200">
+                <TableHeader className="">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-center w-10 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
-                    <TableHead className="text-left text-slate-700 font-bold text-sm">รหัสสมาชิก</TableHead>
-                    <TableHead className="text-left min-w-40 xl:min-w-48 text-slate-700 font-bold text-sm">ชื่อ-นามสกุลลูกค้า</TableHead>
-                    <TableHead className="text-left text-slate-700 font-bold text-sm">เบอร์โทรศัพท์</TableHead>
-                    <TableHead className="text-center text-slate-700 font-bold text-sm">จำนวนบิล</TableHead>
-                    <TableHead data-narrow="hide" className="text-right text-slate-700 font-bold text-sm">ยอดซื้อเฉลี่ย/บิล</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">ยอดซื้อสะสมรวม</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">แต้มสะสม</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">หนี้ค้างชำระ</TableHead>
-                    <TableHead className="text-center text-slate-700 font-bold text-sm">ซื้อล่าสุด</TableHead>
+                    <TableHead className="text-center w-10">ลำดับ</TableHead>
+                    <TableHead className="text-left">รหัสสมาชิก</TableHead>
+                    <TableHead className="text-left min-w-40 xl:min-w-48">ชื่อ-นามสกุลลูกค้า</TableHead>
+                    <TableHead className="text-left">เบอร์โทรศัพท์</TableHead>
+                    <TableHead className="text-center">จำนวนบิล</TableHead>
+                    <TableHead data-narrow="hide" className="text-right">ยอดซื้อเฉลี่ย/บิล</TableHead>
+                    <TableHead className="text-right">ยอดซื้อสะสมรวม</TableHead>
+                    <TableHead className="text-right">แต้มสะสม</TableHead>
+                    <TableHead className="text-right">หนี้ค้างชำระ</TableHead>
+                    <TableHead className="text-center">ซื้อล่าสุด</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody className="divide-y divide-slate-100">
                   {paginatedCustomers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center py-12 text-slate-400 text-sm">
+                      <TableCell colSpan={10} className="text-center text-subtle">
                         ไม่พบข้อมูลประวัติยอดซื้อของลูกค้าที่ตรงกับเงื่อนไข
                       </TableCell>
                     </TableRow>
@@ -1357,45 +1357,45 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                       const itemIndex = (currentPage - 1) * pageSize + idx + 1;
                       return (
                         <tr key={c.id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
+                          <td className="text-center doc-no whitespace-nowrap font-medium text-muted-foreground">
                             {itemIndex}
                           </td>
-                          <td className="font-mono whitespace-nowrap text-indigo-700 font-bold text-[14px]">
+                          <td className="doc-no whitespace-nowrap text-indigo-700 font-medium">
                             {c.code}
                           </td>
-                          <td className="font-bold text-slate-900 text-[13px] min-w-40 xl:min-w-48">
+                          <td className="font-medium text-fg min-w-40 xl:min-w-48">
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span className="line-clamp-2 break-words" title={c.name}>{c.name}</span>
                               {idx === 0 && currentPage === 1 && !serverSearch && (
-                                <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px] px-1 py-0 font-bold">
+                                <Badge className="bg-amber-100 text-warn border-amber-200 text-sub px-1 py-0 font-medium">
                                   👑 VIP #1
                                 </Badge>
                               )}
                             </div>
                           </td>
-                          <td className="font-mono whitespace-nowrap text-slate-700 text-sm">
+                          <td className="doc-no whitespace-nowrap text-fg">
                             {c.phone}
                           </td>
-                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-700 text-sm">
+                          <td className="text-center doc-no whitespace-nowrap font-medium text-fg">
                             {c.orderCount} ครั้ง
                           </td>
-                          <td data-narrow="hide" className="text-right font-mono whitespace-nowrap text-slate-700 text-sm">
+                          <td data-narrow="hide" className="text-right doc-no whitespace-nowrap text-fg">
                             {formatCurrency(c.averageTicket)}
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap font-black text-indigo-700 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap font-semibold text-indigo-700">
                             {formatCurrency(c.totalSpent)}
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap font-bold text-amber-700 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap font-medium text-warn">
                             {c.points.toLocaleString()} แต้ม
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap font-bold text-sm">
+                          <td className="text-right doc-no whitespace-nowrap font-medium">
                             {c.outstandingDebt > 0 ? (
-                              <span className="text-rose-600 font-black">{formatCurrency(c.outstandingDebt)}</span>
+                              <span className="text-danger font-semibold">{formatCurrency(c.outstandingDebt)}</span>
                             ) : (
-                              <span className="text-slate-400">-</span>
+                              <span className="text-subtle">-</span>
                             )}
                           </td>
-                          <td data-narrow="wrap" className="text-center font-mono whitespace-nowrap text-xs text-slate-500">
+                          <td data-narrow="wrap" className="text-center doc-no whitespace-nowrap text-muted-foreground">
                             {c.lastOrderDate ? formatDate(c.lastOrderDate) : '-'}
                           </td>
                         </tr>
@@ -1426,22 +1426,22 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               </p>
             </div>
             <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
-              <TableHeader className="bg-slate-50">
+              <TableHeader className="">
                 <TableRow>
-                  <TableHead className="text-center w-10 font-bold text-sm">ลำดับ</TableHead>
-                  <TableHead className="text-left font-bold text-sm">ช่วงอายุบิล</TableHead>
-                  <TableHead className="text-center font-bold text-sm">จำนวนบิล</TableHead>
-                  <TableHead className="text-right font-bold text-sm">ยอดหนี้ค้างชำระ</TableHead>
-                  <TableHead className="text-center font-bold text-sm">ระดับความเสี่ยง</TableHead>
+                  <TableHead className="text-center w-10">ลำดับ</TableHead>
+                  <TableHead className="text-left">ช่วงอายุบิล</TableHead>
+                  <TableHead className="text-center">จำนวนบิล</TableHead>
+                  <TableHead className="text-right">ยอดหนี้ค้างชำระ</TableHead>
+                  <TableHead className="text-center">ระดับความเสี่ยง</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-slate-100">
                 {customerDebtsReport.agingBuckets.map((bucket, i) => (
                   <TableRow key={bucket.rangeDays} className="hover:bg-slate-50">
-                    <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">{i + 1}</td>
-                    <td className="font-bold text-slate-900 text-sm">{bucket.bucketName}</td>
-                    <td className="text-center font-mono whitespace-nowrap font-bold text-slate-700 text-sm">{bucket.billCount} บิล</td>
-                    <td className="text-right font-mono whitespace-nowrap font-black text-sm">
+                    <td className="text-center doc-no whitespace-nowrap font-medium text-muted-foreground">{i + 1}</td>
+                    <td className="font-medium text-fg">{bucket.bucketName}</td>
+                    <td className="text-center doc-no whitespace-nowrap font-medium text-fg">{bucket.billCount} บิล</td>
+                    <td className="text-right doc-no whitespace-nowrap font-semibold">
                       <span className={bucket.totalAmount > 0 ? (i >= 2 ? 'text-rose-600' : 'text-slate-900') : 'text-slate-400'}>
                         {formatCurrency(bucket.totalAmount)}
                       </span>
@@ -1523,23 +1523,23 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
             <div className="overflow-x-auto">
               <Table className="max-xl:[&_th:first-child]:hidden max-xl:[&_td:first-child:not([colspan])]:hidden">
-                <TableHeader className="bg-slate-50 border-b border-slate-200">
+                <TableHeader className="">
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-center w-10 text-slate-700 font-bold text-sm">ลำดับ</TableHead>
-                    <TableHead className="text-left min-w-44 xl:min-w-56 text-slate-700 font-bold text-sm">บริษัทผู้จำหน่าย</TableHead>
-                    <TableHead className="text-center text-slate-700 font-bold text-sm">PO ที่รับของ</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">ยอดซื้อ (รับแล้วในช่วงนี้)</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">สั่งแล้วยังไม่รับ</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">ค้างจ่าย (AP) ปัจจุบัน</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">จำนวนเคลม</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">มูลค่าเคลมรวม</TableHead>
+                    <TableHead className="text-center w-10">ลำดับ</TableHead>
+                    <TableHead className="text-left min-w-44 xl:min-w-56">บริษัทผู้จำหน่าย</TableHead>
+                    <TableHead className="text-center">PO ที่รับของ</TableHead>
+                    <TableHead className="text-right">ยอดซื้อ (รับแล้วในช่วงนี้)</TableHead>
+                    <TableHead className="text-right">สั่งแล้วยังไม่รับ</TableHead>
+                    <TableHead className="text-right">ค้างจ่าย (AP) ปัจจุบัน</TableHead>
+                    <TableHead className="text-right">จำนวนเคลม</TableHead>
+                    <TableHead className="text-right">มูลค่าเคลมรวม</TableHead>
                   </TableRow>
                 </TableHeader>
 
                 <TableBody className="divide-y divide-slate-100">
                   {filteredSuppliers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-12 text-slate-400 text-sm">
+                      <TableCell colSpan={8} className="text-center text-subtle">
                         ไม่พบข้อมูลการสั่งซื้อบริษัทคู่ค้าที่ตรงกับเงื่อนไข
                       </TableCell>
                     </TableRow>
@@ -1548,29 +1548,29 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                       const itemIndex = (currentPage - 1) * pageSize + idx + 1;
                       return (
                         <tr key={supp.supplierId} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">{itemIndex}</td>
-                          <td className="font-bold text-slate-900 text-[13px] min-w-44 xl:min-w-56">
+                          <td className="text-center doc-no whitespace-nowrap font-medium text-muted-foreground">{itemIndex}</td>
+                          <td className="font-medium text-fg min-w-44 xl:min-w-56">
                             <div className="flex items-center gap-1.5">
                               <Truck className="w-4 h-4 text-indigo-600 shrink-0" />
                               <span className="line-clamp-2 break-words" title={supp.supplierName}>{supp.supplierName}</span>
                             </div>
                           </td>
-                          <td className="text-center font-mono whitespace-nowrap font-bold text-slate-700 text-sm">
+                          <td className="text-center doc-no whitespace-nowrap font-medium text-fg">
                             {supp.poCount} ใบ
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap font-black text-slate-900 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap font-semibold text-fg">
                             {formatCurrency(supp.totalPurchaseAmount)}
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap text-slate-600 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap text-muted-foreground">
                             {formatCurrency(supp.orderedNotReceived)}
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap font-bold text-amber-700 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap font-medium text-warn">
                             {formatCurrency(supp.remainingPayable)}
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap font-bold text-rose-600 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap font-medium text-danger">
                             {supp.claimPieces} ชิ้น
                           </td>
-                          <td className="text-right font-mono whitespace-nowrap font-black text-rose-700 text-sm">
+                          <td className="text-right doc-no whitespace-nowrap font-semibold text-danger">
                             {formatCurrency(supp.claimCostTotal)}
                           </td>
                         </tr>

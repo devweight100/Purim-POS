@@ -13,6 +13,7 @@ import type { ApiProduct, Product } from '@/lib/types';
 import { displayUnitCost } from '@/lib/product-cost';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { StatusChip, type ChipTone } from '@/components/ui/status-chip';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,31 +37,23 @@ import {
   Filter,
   AlertTriangle,
   Package,
-  ArrowDownRight,
-  ArrowUpRight,
-  RotateCcw,
   SlidersHorizontal,
   History,
-  DollarSign,
   TrendingDown,
   TrendingUp,
-  PackageCheck,
-  PackageX,
   CheckCircle2,
-  Calendar,
-  Layers,
-  ArrowRight,
   ShoppingCart,
   RefreshCw,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  FileText,
 } from 'lucide-react';
 import {
   StockMovement,
   fetchStockMovements,
+  fetchStockMovementsPage,
+  movementFrom,
   adjustSingleProductStock,
 } from '@/lib/stock-service';
 import { toast } from 'sonner';
@@ -71,6 +64,20 @@ import { addQty, formatQty, isValidQty, qtyInputMode, qtyStep, subQty, useAllowD
 type InvProduct = Product & { cost?: number; price?: number };
 /** A packaging unit of a product, whichever naming the row uses. */
 type PkgUnit = { name?: string; unitName?: string; multiplier?: number; factor?: number; qtyPerPrev?: number | string };
+
+/** Stock movement types (audit action STOCK_<type>) with their label and chip tone. */
+const MOVEMENT_TYPES: Record<string, { label: string; tone: ChipTone }> = {
+  IN_PO: { label: 'รับเข้าจาก PO', tone: 'success' },
+  OUT_POS: { label: 'ขายออกหน้าร้าน', tone: 'info' },
+  IN_VOID: { label: 'คืนสต็อก (ยกเลิกบิล)', tone: 'primary' },
+  IN_RETURN: { label: 'รับคืนจากลูกค้า', tone: 'primary' },
+  OUT_CLAIM: { label: 'จ่ายเปลี่ยนสินค้าเคลม', tone: 'warning' },
+  IN_CLAIM_REVERSAL: { label: 'คืนสต็อก (ยกเลิกเคลม)', tone: 'primary' },
+  ADJUST_ADD: { label: 'ปรับเพิ่ม', tone: 'success' },
+  ADJUST_SUB: { label: 'ปรับลด (ชำรุด / หาย)', tone: 'warning' },
+  ADJUST_SET: { label: 'ตรวจนับจริง', tone: 'neutral' },
+  PRODUCT_DELETE: { label: 'ลบสินค้า', tone: 'danger' },
+};
 
 export default function InventoryPage() {
   const allowDecimalQty = useAllowDecimalQty();
@@ -84,10 +91,19 @@ export default function InventoryPage() {
   const [inventoryPageSize, setInventoryPageSize] = useState(10);
 
   // Movements filtering & pagination
+  // Stock-card tab (ประวัติสต็อกการ์ด): one server page (GET /inventory/movements/page) + its totals, so the count on
+  // the tab (all movements) and the list (paged, filtered on the server) come from the same query. Before
+  // 2026-11-22 the tab showed the length of a 100-row client list and the list stayed empty: the filters started
+  // as 'ALL' but were compared with 'all', so the type filter matched nothing.
   const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [movementTotal, setMovementTotal] = useState(0);
+  const [movementAllCount, setMovementAllCount] = useState<number | null>(null);
+  const [movementsLoading, setMovementsLoading] = useState(false);
   const [movementSearch, setMovementSearch] = useState('');
-  const [movementTypeFilter, setMovementTypeFilter] = useState<string>('ALL');
-  const [movementDateFilter, setMovementDateFilter] = useState<string>('ALL');
+  const [movementTypeFilter, setMovementTypeFilter] = useState<string>('all');
+  const [movementDateFilter, setMovementDateFilter] = useState<string>('all');
+  // single product stock card (dialog): that product's own movements
+  const [cardMovements, setCardMovements] = useState<StockMovement[] | null>(null);
   const [movementPage, setMovementPage] = useState(1);
   const [movementPageSize, setMovementPageSize] = useState(10);
 
@@ -167,21 +183,15 @@ export default function InventoryPage() {
   const [movementsError, setMovementsError] = useState<string | null>(null);
   // "now" for the movement date filter: when the movements were (re)loaded
   const [movementsLoadedAt, setMovementsLoadedAt] = useState(() => Date.now());
+  const [movementsReload, setMovementsReload] = useState(0);
   const loadError = productsError || movementsError;
 
   const reloadData = async () => {
     await loadPage(latestPageUrl.current);
     if (activeTab === 'reorder') await loadReorder();
     if (products.length) void fetchProducts();
-    try {
-      const movs = await fetchStockMovements();
-      setMovements(movs);
-      setMovementsError(null);
-    } catch (err) {
-      setMovements([]);
-      setMovementsError((err as Error | undefined)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้');
-    }
     setMovementsLoadedAt(Date.now());
+    setMovementsReload((n) => n + 1);
   };
 
   useEffect(() => {
@@ -262,41 +272,42 @@ export default function InventoryPage() {
   const totalInventoryPages = Math.max(1, Math.ceil(filteredCount / inventoryPageSize));
   const paginatedProducts = pageRows;
 
-  // Filtered Movements
-  const filteredMovements = useMemo(() => {
-    return movements.filter((m) => {
-      const matchSearch =
-        m.productName.toLowerCase().includes(movementSearch.toLowerCase()) ||
-        m.sku.toLowerCase().includes(movementSearch.toLowerCase()) ||
-        (m.referenceNo && m.referenceNo.toLowerCase().includes(movementSearch.toLowerCase())) ||
-        (m.reason && m.reason.toLowerCase().includes(movementSearch.toLowerCase()));
-
-      const matchType = movementTypeFilter === 'all' || m.type === movementTypeFilter;
-
-      let matchDate = true;
-      if (movementDateFilter !== 'all') {
-        const moveTime = new Date(m.createdAt).getTime();
-        const now = movementsLoadedAt;
-        if (movementDateFilter === 'today') {
-          const todayStart = new Date(now).setHours(0, 0, 0, 0);
-          matchDate = moveTime >= todayStart;
-        } else if (movementDateFilter === '7days') {
-          matchDate = now - moveTime <= 7 * 24 * 60 * 60 * 1000;
-        } else if (movementDateFilter === '30days') {
-          matchDate = now - moveTime <= 30 * 24 * 60 * 60 * 1000;
-        }
+  // Stock-card page from the server (same filters as before: search, type, today / 7 / 30 days)
+  const debouncedMovementSearch = useDebouncedValue(movementSearch, 300);
+  useEffect(() => {
+    let cancelled = false;
+    const qs = new URLSearchParams({ page: String(movementPage), limit: String(movementPageSize) });
+    if (debouncedMovementSearch.trim()) qs.set('q', debouncedMovementSearch.trim());
+    if (movementTypeFilter !== 'all') qs.set('type', movementTypeFilter);
+    const from = movementFrom(movementDateFilter, movementsLoadedAt);
+    if (from) qs.set('from', from);
+    const run = async () => {
+      setMovementsLoading(true);
+      try {
+        const res = await fetchStockMovementsPage(qs);
+        if (cancelled) return;
+        setMovements(res.data);
+        setMovementTotal(res.meta.total);
+        setMovementAllCount(res.meta.allCount);
+        setMovementsError(null);
+      } catch (err) {
+        if (cancelled) return;
+        setMovements([]);
+        setMovementTotal(0);
+        setMovementsError((err as Error | undefined)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้');
+      } finally {
+        if (!cancelled) setMovementsLoading(false);
       }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [movementPage, movementPageSize, debouncedMovementSearch, movementTypeFilter, movementDateFilter, movementsLoadedAt, movementsReload]);
 
-      return matchSearch && matchType && matchDate;
-    });
-  }, [movements, movementSearch, movementTypeFilter, movementDateFilter, movementsLoadedAt]);
-
-  // Paginated Movements
-  const totalMovementPages = Math.max(1, Math.ceil(filteredMovements.length / movementPageSize));
-  const paginatedMovements = useMemo(() => {
-    const start = (movementPage - 1) * movementPageSize;
-    return filteredMovements.slice(start, start + movementPageSize);
-  }, [filteredMovements, movementPage, movementPageSize]);
+  const filteredMovements = { length: movementTotal };
+  const totalMovementPages = Math.max(1, Math.ceil(movementTotal / movementPageSize));
+  const paginatedMovements = movements;
 
   // Handle Opening Adjustment Modal
   const openAdjustDialog = (prod: InvProduct | null = null) => {
@@ -315,7 +326,14 @@ export default function InventoryPage() {
   // Handle Opening Stock Card Modal
   const openStockCardDialog = (prod: InvProduct) => {
     setStockCardProduct(prod);
+    setCardMovements(null);
     setIsStockCardOpen(true);
+    fetchStockMovements(prod.id)
+      .then((rows) => setCardMovements(rows))
+      .catch((err) => {
+        setCardMovements([]);
+        toast.error(`โหลดสต็อกการ์ดไม่สำเร็จ: ${(err as Error | undefined)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'}`);
+      });
   };
 
   // Deep link from the products page "⋯" menu: /inventory?product=<id>&open=card|adjust opens that dialog once
@@ -402,54 +420,10 @@ export default function InventoryPage() {
     }
   };
 
-  // Helper for Movement Badge
+  // Movement type = a status chip (one chip style, docs/ui-style.md)
   const getMovementBadge = (type: string) => {
-    switch (type) {
-      case 'IN_PO':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-            <ArrowDownRight className="w-3.5 h-3.5 text-emerald-600" /> รับเข้าจาก PO
-          </span>
-        );
-      case 'OUT_POS':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-sky-100 text-sky-800 border border-sky-300">
-            <ArrowUpRight className="w-3.5 h-3.5 text-sky-600" /> ขายออกหน้าร้าน (POS)
-          </span>
-        );
-      case 'IN_VOID':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-300">
-            <RotateCcw className="w-3.5 h-3.5 text-purple-600" /> คืนสต็อก (ยกเลิกบิล)
-          </span>
-        );
-      case 'ADJUST_ADD':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 text-indigo-800 border border-indigo-300">
-            <TrendingUp className="w-3.5 h-3.5 text-indigo-600" /> ปรับยอดเพิ่ม (+)
-          </span>
-        );
-      case 'ADJUST_SUB':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
-            <TrendingDown className="w-3.5 h-3.5 text-amber-600" /> ปรับยอดยกออก (-)
-          </span>
-        );
-      case 'ADJUST_SET':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300">
-            <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" /> ตรวจนับสต็อกจริง (=)
-          </span>
-        );
-      case 'PRODUCT_DELETE':
-        return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-300">
-            <TrendingDown className="w-3.5 h-3.5 text-rose-600" /> ลบสินค้า (สต็อกออกจากคลัง)
-          </span>
-        );
-      default:
-        return <Badge variant="outline">{type}</Badge>;
-    }
+    const t = MOVEMENT_TYPES[type];
+    return <StatusChip tone={t?.tone ?? 'neutral'}>{t?.label ?? type}</StatusChip>;
   };
 
   const stockNav = useRowNav(paginatedProducts.length, (i) => openStockCardDialog(paginatedProducts[i]));
@@ -459,10 +433,10 @@ export default function InventoryPage() {
       {/* Sleek Compact Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+          <h1 className="page-title">
             <Package className="w-6 h-6 text-sky-500" /> คลังสินค้าและความเคลื่อนไหวสต็อก (Inventory)
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="page-subtitle">
             ตรวจเช็กสต็อกสินค้า บันทึกประวัติสต็อกการ์ด และปรับยอดสต็อก
           </p>
         </div>
@@ -520,7 +494,7 @@ export default function InventoryPage() {
             }`}
           >
             <History className="w-3.5 h-3.5" />
-            <span>ประวัติสต็อกการ์ด ({movements.length.toLocaleString()})</span>
+            <span>ประวัติสต็อกการ์ด{movementAllCount !== null ? ` (${movementAllCount.toLocaleString()})` : ''}</span>
           </button>
 
           <button
@@ -627,27 +601,27 @@ export default function InventoryPage() {
           {/* Inventory Table - Responsive, Full Width with No Horizontal Scroll on standard viewports */}
           <div className="w-full">
             <Table className="w-full">
-              <TableHeader className="bg-slate-50/90 border-b border-slate-200">
+              <TableHeader className="">
                 <TableRow>
-                  <TableHead className="min-w-44 xl:min-w-64 text-slate-600 font-bold text-xs">ชื่อสินค้า / รหัส (SKU)</TableHead>
-                  <TableHead className="text-slate-600 font-bold text-xs">หมวดหมู่</TableHead>
-                  <TableHead className="text-right text-slate-600 font-bold text-xs">ต้นทุน / หน่วย</TableHead>
-                  <TableHead className="text-right text-slate-600 font-bold text-xs">คงเหลือ (หน่วยฐาน)</TableHead>
-                  <TableHead className="text-slate-600 font-bold text-xs">ตามขนาดบรรจุ</TableHead>
-                  <TableHead className="text-center text-slate-600 font-bold text-xs">สถานะ</TableHead>
-                  <TableHead className="text-right text-slate-600 font-bold text-xs">จัดการ</TableHead>
+                  <TableHead className="min-w-44 xl:min-w-64">ชื่อสินค้า / รหัส (SKU)</TableHead>
+                  <TableHead className="">หมวดหมู่</TableHead>
+                  <TableHead className="text-right">ต้นทุน / หน่วย</TableHead>
+                  <TableHead className="text-right">คงเหลือ (หน่วยฐาน)</TableHead>
+                  <TableHead className="">ตามขนาดบรรจุ</TableHead>
+                  <TableHead className="text-center">สถานะ</TableHead>
+                  <TableHead className="text-right">จัดการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody {...stockNav.bodyProps}>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center h-48 text-slate-500">
+                    <TableCell colSpan={7} className="text-center h-48 text-muted-foreground">
                       กำลังโหลดข้อมูลคลังสินค้า...
                     </TableCell>
                   </TableRow>
                 ) : paginatedProducts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center h-48 text-slate-400">
+                    <TableCell colSpan={7} className="text-center h-48 text-subtle">
                       ไม่พบข้อมูลสินค้าที่ตรงกับเงื่อนไขการค้นหา
                     </TableCell>
                   </TableRow>
@@ -664,11 +638,11 @@ export default function InventoryPage() {
                         {/* Product Info */}
                         <TableCell className="min-w-44 xl:min-w-64">
                           <div className="space-y-0.5">
-                            <span className="font-bold text-slate-900 text-[13px] line-clamp-2 break-words hover:text-sky-600 transition-colors" title={p.name}>
+                            <span className="font-medium text-fg line-clamp-2 break-words hover:text-sky-600 transition-colors" title={p.name}>
                               {p.name}
                             </span>
                             <SearchMatchHint product={p} query={debouncedSearch} />
-                            <div className="flex flex-wrap items-center gap-x-2 text-[11px] text-slate-400 font-mono">
+                            <div className="flex flex-wrap items-center gap-x-2 text-sub text-subtle doc-no">
                               <span className="whitespace-nowrap">SKU: {p.sku || '-'}</span>
                               {p.barcodes && p.barcodes.length > 0 && (
                                 <span className="whitespace-nowrap">บาร์โค้ด: {p.barcodes[0]?.barcode}</span>
@@ -679,23 +653,23 @@ export default function InventoryPage() {
 
                         {/* Category */}
                         <TableCell className="">
-                          <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-xs font-semibold max-w-28 xl:max-w-36 truncate block" title={getCategoryName(p.categoryId)}>
+                          <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-sub font-semibold max-w-28 xl:max-w-36 truncate block" title={getCategoryName(p.categoryId)}>
                             {getCategoryName(p.categoryId)}
                           </Badge>
                         </TableCell>
 
                         {/* Cost */}
-                        <TableCell className="text-right font-semibold text-slate-700 text-[13px] whitespace-nowrap tabular-nums">
+                        <TableCell className="text-right font-semibold text-fg whitespace-nowrap tabular-nums">
                           {displayUnitCost(p) !== undefined ? formatCurrency(displayUnitCost(p)!) : '-'}
                         </TableCell>
 
                         {/* Stock Base Units */}
                         <TableCell className="text-right whitespace-nowrap">
                           {isNegative ? (
-                            <span className="inline-flex items-center gap-1 font-extrabold text-base text-rose-600 bg-rose-50 px-2.5 py-0.5 rounded-lg border border-rose-200 shadow-2xs">
-                              <span className="text-xs">🔻</span>
+                            <span className="inline-flex items-center gap-1 font-semibold text-danger bg-rose-50 px-2.5 py-0.5 rounded-lg border border-rose-200 shadow-2xs">
+                              <span className="text-sub">🔻</span>
                               {stock.toLocaleString()}{' '}
-                              <span className="text-xs font-normal text-rose-500">
+                              <span className="text-sub font-normal text-danger">
                                 {p.unit || 'ชิ้น'}
                               </span>
                             </span>
@@ -710,7 +684,7 @@ export default function InventoryPage() {
                               }`}
                             >
                               {stock.toLocaleString()}{' '}
-                              <span className="text-xs font-medium text-slate-500">
+                              <span className="text-sub font-medium text-muted-foreground">
                                 {p.unit || 'ชิ้น'}
                               </span>
                             </span>
@@ -726,19 +700,19 @@ export default function InventoryPage() {
                         {/* Status */}
                         <TableCell className="text-center">
                           {isNegative ? (
-                            <Badge className="bg-rose-600 text-white border-rose-700 text-xs font-bold shadow-2xs">
+                            <Badge className="bg-rose-600 text-white border-rose-700 text-sub font-medium shadow-2xs">
                               🔻 ติดลบ
                             </Badge>
                           ) : isOut ? (
-                            <Badge className="bg-rose-100 text-rose-700 border-rose-200 text-xs font-bold whitespace-nowrap">
+                            <Badge className="bg-rose-100 text-danger border-rose-200 text-sub font-medium whitespace-nowrap">
                               หมดสต็อก
                             </Badge>
                           ) : isLow ? (
-                            <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold whitespace-nowrap">
+                            <Badge className="bg-amber-100 text-warn border-amber-300 text-sub font-medium whitespace-nowrap">
                               ⚠️ ใกล้หมด
                             </Badge>
                           ) : (
-                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs font-medium">
+                            <Badge className="bg-emerald-50 text-ok border-emerald-200 text-sub font-medium">
                               ปกติ
                             </Badge>
                           )}
@@ -751,7 +725,7 @@ export default function InventoryPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => openAdjustDialog(p)}
-                              className="h-8 text-xs border-indigo-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100 font-bold px-2.5 rounded-lg shadow-2xs"
+                              className="h-8 text-sub border-indigo-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100 font-medium px-2.5 rounded-lg shadow-2xs"
                               title="ปรับยอดสต็อก"
                             >
                               <SlidersHorizontal className="w-3.5 h-3.5 mr-1" /> ปรับยอด
@@ -760,7 +734,7 @@ export default function InventoryPage() {
                               size="sm"
                               variant="ghost"
                               onClick={() => openStockCardDialog(p)}
-                              className="h-8 text-xs text-slate-500 hover:text-slate-900 hover:bg-slate-100 px-2 rounded-lg"
+                              className="h-8 text-sub text-muted-foreground hover:text-fg hover:bg-slate-100 px-2 rounded-lg"
                               title="ดูประวัติสต็อกการ์ด"
                               aria-label={`ประวัติสต็อกการ์ด ${p.name}`}
                             >
@@ -883,12 +857,9 @@ export default function InventoryPage() {
                 className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 shadow-2xs"
               >
                 <option value="all">ประเภทความเคลื่อนไหวทั้งหมด</option>
-                <option value="IN_PO">📥 รับเข้าจากใบ PO</option>
-                <option value="OUT_POS">📤 ขายออกหน้าร้าน (POS)</option>
-                <option value="IN_VOID">🔄 คืนสต็อก (ยกเลิกบิล)</option>
-                <option value="ADJUST_ADD">➕ ปรับเพิ่มสต็อก</option>
-                <option value="ADJUST_SUB">➖ ปรับลดสต็อก (ชำรุด/หมดอายุ)</option>
-                <option value="ADJUST_SET">🎯 ตรวจนับสต็อกจริง</option>
+                {Object.entries(MOVEMENT_TYPES).map(([id, t]) => (
+                  <option key={id} value={id}>{t.label}</option>
+                ))}
               </select>
 
               <select
@@ -907,55 +878,55 @@ export default function InventoryPage() {
           {/* Movement Table */}
           <div className="w-full">
             <Table className="w-full">
-              <TableHeader className="bg-slate-50/90 border-b border-slate-200">
+              <TableHeader className="">
                 <TableRow>
-                  <TableHead className="text-slate-600 font-bold text-xs">วัน-เวลา</TableHead>
-                  <TableHead className="min-w-44 xl:min-w-56 text-slate-600 font-bold text-xs">สินค้า</TableHead>
-                  <TableHead className="text-slate-600 font-bold text-xs">ประเภท</TableHead>
-                  <TableHead className="text-right text-slate-600 font-bold text-xs">เปลี่ยน</TableHead>
-                  <TableHead className="text-right text-slate-600 font-bold text-xs">
+                  <TableHead className="">วัน-เวลา</TableHead>
+                  <TableHead className="min-w-44 xl:min-w-56">สินค้า</TableHead>
+                  <TableHead className="">ประเภท</TableHead>
+                  <TableHead className="text-right">เปลี่ยน</TableHead>
+                  <TableHead className="text-right">
                     ก่อน ➔ คงเหลือ
                   </TableHead>
-                  <TableHead className="text-slate-600 font-bold text-xs">เอกสารอ้างอิง</TableHead>
-                  <TableHead className="min-w-40 text-slate-600 font-bold text-xs">หมายเหตุ / ผู้ทำ</TableHead>
+                  <TableHead className="">เอกสารอ้างอิง</TableHead>
+                  <TableHead className="min-w-40">หมายเหตุ / ผู้ทำ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {paginatedMovements.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center h-48 text-slate-400">
-                      ยังไม่มีประวัติความเคลื่อนไหวสต็อกที่ตรงกับเงื่อนไข
+                    <TableCell colSpan={7} className="tbl-empty" data-testid="movements-empty">
+                      {movementsLoading ? 'กำลังโหลด...' : 'ยังไม่มีประวัติความเคลื่อนไหวสต็อกที่ตรงกับเงื่อนไข'}
                     </TableCell>
                   </TableRow>
                 ) : (
                   paginatedMovements.map((m) => {
                     const isPositive = m.quantityChange > 0;
                     return (
-                      <TableRow key={m.id} className="hover:bg-slate-50 border-slate-100 text-xs">
-                        <TableCell className="font-medium text-slate-600 whitespace-nowrap">
+                      <TableRow key={m.id} className="hover:bg-slate-50 border-slate-100 text-sub">
+                        <TableCell className="font-medium text-muted-foreground whitespace-nowrap">
                           {formatDate(m.createdAt)}
                         </TableCell>
                         <TableCell className="">
-                          <div className="font-bold text-slate-900 text-[13px] line-clamp-2 break-words" title={m.productName}>{m.productName}</div>
-                          <div className="text-[11px] text-slate-400 font-mono">{m.sku}</div>
+                          <div className="font-medium text-fg line-clamp-2 break-words" title={m.productName}>{m.productName}</div>
+                          <div className="text-sub text-subtle doc-no">{m.sku}</div>
                         </TableCell>
                         <TableCell className="">{getMovementBadge(m.type)}</TableCell>
-                        <TableCell className="text-right font-extrabold text-sm whitespace-nowrap">
+                        <TableCell className="text-right font-semibold whitespace-nowrap">
                           <span className={isPositive ? 'text-emerald-600' : 'text-rose-600'}>
                             {isPositive ? `+${m.quantityChange.toLocaleString()}` : m.quantityChange.toLocaleString()}{' '}
-                            <span className="text-xs font-normal text-slate-500">{m.unitName}</span>
+                            <span className="text-sub font-normal text-muted-foreground">{m.unitName}</span>
                           </span>
                         </TableCell>
                         <TableCell className="text-right font-medium whitespace-nowrap">
-                          <span className="text-slate-500">{m.previousStock}</span> ➔{' '}
-                          <b className="text-slate-900 font-bold">{m.currentStock}</b>
+                          <span className="text-muted-foreground">{m.previousStock}</span> ➔{' '}
+                          <b className="text-fg font-medium">{m.currentStock}</b>
                         </TableCell>
-                        <TableCell className="font-mono whitespace-nowrap font-semibold text-slate-700">
+                        <TableCell className="doc-no whitespace-nowrap font-semibold text-fg">
                           {m.referenceNo || '-'}
                         </TableCell>
                         <TableCell className="">
-                          <div className="text-slate-700 font-medium">{m.reason || '-'}</div>
-                          <div className="text-[11px] text-slate-400">โดย: {m.userName || 'ระบบ'}</div>
+                          <div className="text-fg font-medium">{m.reason || '-'}</div>
+                          <div className="text-sub text-subtle">โดย: {m.userName || 'ระบบ'}</div>
                         </TableCell>
                       </TableRow>
                     );
@@ -1064,14 +1035,14 @@ export default function InventoryPage() {
 
           <div className="w-full">
             <Table className="w-full">
-              <TableHeader className="bg-slate-50/90 border-b border-slate-200">
+              <TableHeader className="">
                 <TableRow>
-                  <TableHead className="w-[30%] text-slate-600 font-bold text-xs uppercase">ชื่อสินค้า / รหัส (SKU)</TableHead>
-                  <TableHead className="w-[15%] text-slate-600 font-bold text-xs uppercase">หมวดหมู่</TableHead>
-                  <TableHead className="w-[15%] text-right text-slate-600 font-bold text-xs uppercase">สต็อกคงเหลือ</TableHead>
-                  <TableHead className="w-[15%] text-right text-slate-600 font-bold text-xs uppercase">จุดแจ้งเตือน</TableHead>
-                  <TableHead className="w-[10%] text-center text-slate-600 font-bold text-xs uppercase">สถานะ</TableHead>
-                  <TableHead className="w-[15%] text-center text-slate-600 font-bold text-xs uppercase">ดำเนินการ</TableHead>
+                  <TableHead className="w-[30%]">ชื่อสินค้า / รหัส (SKU)</TableHead>
+                  <TableHead className="w-[15%]">หมวดหมู่</TableHead>
+                  <TableHead className="w-[15%] text-right">สต็อกคงเหลือ</TableHead>
+                  <TableHead className="w-[15%] text-right">จุดแจ้งเตือน</TableHead>
+                  <TableHead className="w-[10%] text-center">สถานะ</TableHead>
+                  <TableHead className="w-[15%] text-center">ดำเนินการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1085,18 +1056,18 @@ export default function InventoryPage() {
                     return (
                       <TableRow key={p.id} className="hover:bg-slate-50 border-slate-100">
                         <TableCell className="">
-                          <span className="font-bold text-slate-900 text-sm block">{p.name}</span>
-                          <span className="text-xs text-slate-400 font-mono">SKU: {p.sku}</span>
+                          <span className="font-medium text-fg block">{p.name}</span>
+                          <span className="text-sub text-subtle doc-no">SKU: {p.sku}</span>
                         </TableCell>
                         <TableCell className="">
-                          <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-xs">
+                          <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-sub">
                             {getCategoryName(p.categoryId)}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right font-extrabold text-base">
+                        <TableCell className="text-right font-semibold">
                           {isNegative ? (
-                            <span className="inline-flex items-center gap-1 font-extrabold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
-                              <span className="text-xs">🔻</span> {stock.toLocaleString()} {p.unit || 'ชิ้น'}
+                            <span className="inline-flex items-center gap-1 font-semibold text-danger bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
+                              <span className="text-sub">🔻</span> {stock.toLocaleString()} {p.unit || 'ชิ้น'}
                             </span>
                           ) : (
                             <span className={isOut ? 'text-rose-600' : 'text-amber-600'}>
@@ -1104,20 +1075,20 @@ export default function InventoryPage() {
                             </span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right text-slate-600 font-semibold text-xs">
+                        <TableCell className="text-right text-muted-foreground font-semibold">
                           {minAlert.toLocaleString()} {p.unit || 'ชิ้น'}
                         </TableCell>
                         <TableCell className="text-center">
                           {isNegative ? (
-                            <Badge className="bg-rose-600 text-white border-rose-700 text-xs font-bold shadow-2xs">
+                            <Badge className="bg-rose-600 text-white border-rose-700 text-sub font-medium shadow-2xs">
                               🔻 ติดลบ
                             </Badge>
                           ) : isOut ? (
-                            <Badge className="bg-rose-100 text-rose-700 border-rose-200 text-xs font-bold whitespace-nowrap">
+                            <Badge className="bg-rose-100 text-danger border-rose-200 text-sub font-medium whitespace-nowrap">
                               หมดสต็อก
                             </Badge>
                           ) : (
-                            <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold whitespace-nowrap">
+                            <Badge className="bg-amber-100 text-warn border-amber-300 text-sub font-medium whitespace-nowrap">
                               ⚠️ ใกล้หมด
                             </Badge>
                           )}
@@ -1126,7 +1097,7 @@ export default function InventoryPage() {
                           <Link href="/purchase-orders">
                             <Button
                               size="sm"
-                              className="bg-sky-500 hover:bg-sky-600 text-white font-bold h-8 text-xs px-3 rounded-lg shadow-2xs"
+                              className="bg-sky-500 hover:bg-sky-600 text-white font-medium h-8 text-sub px-3 rounded-lg shadow-2xs"
                             >
                               <ShoppingCart className="w-3.5 h-3.5 mr-1" /> สั่งซื้อเพิ่ม (PO)
                             </Button>
@@ -1404,49 +1375,42 @@ export default function InventoryPage() {
 
             <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
               <Table>
-                <TableHeader className="bg-slate-50">
-                  <TableRow className="border-slate-200">
-                    <TableHead className="text-slate-700 font-bold text-sm">วัน-เวลา</TableHead>
-                    <TableHead className="text-slate-700 font-bold text-sm">ประเภท</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">จำนวน</TableHead>
-                    <TableHead className="text-right text-slate-700 font-bold text-sm">คงเหลือ</TableHead>
-                    <TableHead className="text-slate-700 font-bold text-sm">เอกสาร/เหตุผล</TableHead>
+                <TableHeader className="">
+                  <TableRow className="">
+                    <TableHead className="">วัน-เวลา</TableHead>
+                    <TableHead className="">ประเภท</TableHead>
+                    <TableHead className="text-right">จำนวน</TableHead>
+                    <TableHead className="text-right">คงเหลือ</TableHead>
+                    <TableHead className="">เอกสาร/เหตุผล</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {movements.filter(
-                    (m) =>
-                      m.productId === stockCardProduct?.id ||
-                      m.productId === stockCardProduct?.sku ||
-                      m.sku === stockCardProduct?.sku
-                  ).length === 0 ? (
+                  {cardMovements === null ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center h-32 text-slate-400 text-sm">
+                      <TableCell colSpan={5} className="tbl-empty">กำลังโหลด...</TableCell>
+                    </TableRow>
+                  ) : cardMovements.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="tbl-empty">
                         ยังไม่มีประวัติการเคลื่อนไหวของสินค้านี้
                       </TableCell>
                     </TableRow>
                   ) : (
-                    movements
-                      .filter(
-                        (m) =>
-                          m.productId === stockCardProduct?.id ||
-                          m.productId === stockCardProduct?.sku ||
-                          m.sku === stockCardProduct?.sku
-                      )
+                    cardMovements
                       .map((m) => {
                         const isPositive = m.quantityChange > 0;
                         return (
-                          <TableRow key={m.id} className="hover:bg-slate-50 text-sm border-slate-100">
-                            <TableCell className="font-medium text-slate-700">{formatDate(m.createdAt)}</TableCell>
+                          <TableRow key={m.id} className="hover:bg-slate-50 border-slate-100">
+                            <TableCell className="font-medium text-fg">{formatDate(m.createdAt)}</TableCell>
                             <TableCell className="">{getMovementBadge(m.type)}</TableCell>
-                            <TableCell className="text-right font-black">
+                            <TableCell className="text-right font-semibold">
                               <span className={isPositive ? 'text-emerald-600' : 'text-rose-600'}>
                                 {isPositive ? `+${m.quantityChange}` : m.quantityChange} {m.unitName}
                               </span>
                             </TableCell>
-                            <TableCell className="text-right font-black text-slate-900 text-base">{m.currentStock} {stockCardProduct?.unit || 'ชิ้น'}</TableCell>
-                            <TableCell className="text-slate-700">
-                              {m.referenceNo && <b className="font-mono text-slate-900 mr-1.5">{m.referenceNo}:</b>}
+                            <TableCell className="text-right font-semibold text-fg">{m.currentStock} {stockCardProduct?.unit || 'ชิ้น'}</TableCell>
+                            <TableCell className="text-fg">
+                              {m.referenceNo && <b className="doc-no text-fg mr-1.5">{m.referenceNo}:</b>}
                               {m.reason || '-'}
                             </TableCell>
                           </TableRow>

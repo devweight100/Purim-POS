@@ -206,11 +206,11 @@ export default function SupplierReturnsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+          <h1 className="page-title">
             <ArrowLeftRight className="w-6 h-6 text-indigo-600 shrink-0" />
             <span>ส่งเคลม & คืนสินค้าบริษัท (Supplier Returns)</span>
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+          <p className="page-subtitle">
             ทำเอกสารส่งคืนสินค้าชำรุดหรือสินค้าปกติขายไม่ออกเพื่อลดหนี้ใบสั่งซื้อ (PO) แยกตามคู่ค้าผู้จำหน่าย
           </p>
         </div>
@@ -385,7 +385,7 @@ export default function SupplierReturnsPage() {
             ) : (
               <div className="tbl-wrap overflow-x-auto">
                 <table className="tbl w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-sm">
+                  <thead className="">
                     <tr>
                       <th data-narrow="hide" className="text-center w-10">#</th>
                       <th className="text-left">เลขที่เอกสาร</th>
@@ -401,27 +401,27 @@ export default function SupplierReturnsPage() {
                     {filteredNotes.map((note, idx) => {
                       return (
                         <tr key={note.id} className={`hover:bg-slate-50/70 transition-colors ${ROW_NAV_CLASS}`} {...noteNav.rowProps(idx)}>
-                        <td data-narrow="hide" className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
+                        <td data-narrow="hide" className="text-center doc-no whitespace-nowrap font-medium text-muted-foreground">
                           {idx + 1}
                         </td>
 
-                        <td className="font-mono whitespace-nowrap">
-                          <span className="font-bold text-indigo-700 text-sm block">
+                        <td className="doc-no whitespace-nowrap">
+                          <span className="font-medium text-indigo-700 block">
                             {note.id}
                           </span>
                         </td>
 
-                        <td data-narrow="wrap" className="text-center font-mono whitespace-nowrap text-xs text-slate-600">
+                        <td data-narrow="wrap" className="text-center doc-no whitespace-nowrap text-muted-foreground">
                           {formatListDate(note.returnDate)}
                         </td>
 
                         <td className="">
-                          <p className="font-bold text-slate-900 text-[13px] line-clamp-2 break-words" title={note.supplierName}>{note.supplierName}</p>
+                          <p className="font-medium text-fg line-clamp-2 break-words" title={note.supplierName}>{note.supplierName}</p>
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
                             {note.supplierPhone && (
-                              <span className="text-xs text-slate-400 font-mono">{note.supplierPhone}</span>
+                              <span className="text-sub text-subtle doc-no">{note.supplierPhone}</span>
                             )}
-                            <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md whitespace-nowrap">
+                            <span className="text-sub font-semibold text-muted-foreground bg-slate-100 px-2 py-0.5 rounded-md whitespace-nowrap">
                               รวม {note.items?.length ?? note.totalQuantity ?? 0} รายการ
                             </span>
                           </div>
@@ -429,28 +429,28 @@ export default function SupplierReturnsPage() {
 
                         <td data-narrow="hide" className="text-center whitespace-nowrap">
                           {note.linkedPoNumber ? (
-                            <span className="font-mono font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-xs">
+                            <span className="doc-no font-medium text-warn bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-sub">
                               {note.linkedPoNumber}
                             </span>
                           ) : (
-                            <span className="text-slate-400 text-xs">ถือเป็นเครดิต</span>
+                            <span className="text-subtle text-sub">ถือเป็นเครดิต</span>
                           )}
                         </td>
 
-                        <td className="text-right font-mono whitespace-nowrap">
-                          <span className="font-black text-slate-900 text-sm block">
+                        <td className="text-right doc-no whitespace-nowrap">
+                          <span className="font-semibold text-fg block">
                             {formatCurrency(note.totalCreditAmount)}
                           </span>
                           {note.status === 'DEDUCTED' ? (
-                            <span className="text-xs text-emerald-600 font-semibold block mt-0.5">
+                            <span className="text-sub text-ok font-semibold block mt-0.5">
                               ✓ หักลดหนี้ครบแล้ว
                             </span>
                           ) : note.remainingCreditAmount < note.totalCreditAmount && note.remainingCreditAmount > 0 ? (
-                            <span className="text-xs text-sky-600 font-semibold block mt-0.5">
+                            <span className="text-sub text-sky-600 font-semibold block mt-0.5">
                               คงเหลือ {formatCurrency(note.remainingCreditAmount)}
                             </span>
                           ) : (
-                            <span className="text-xs text-amber-700 font-semibold block mt-0.5">
+                            <span className="text-sub text-warn font-semibold block mt-0.5">
                               รอประกบหัก
                             </span>
                           )}
@@ -458,11 +458,11 @@ export default function SupplierReturnsPage() {
 
                         <td className="text-center">
                           {note.status === 'DEDUCTED' ? (
-                            <Badge className="bg-emerald-600 text-white font-bold text-xs px-2 py-0.5 whitespace-nowrap">หักลดหนี้แล้ว</Badge>
+                            <Badge className="bg-emerald-600 text-white font-medium text-sub px-2 py-0.5 whitespace-nowrap">หักลดหนี้แล้ว</Badge>
                           ) : note.status === 'PARTIALLY_DEDUCTED' ? (
-                            <Badge className="bg-sky-600 text-white font-bold text-xs px-2 py-0.5 whitespace-nowrap">หักหนี้บางส่วน</Badge>
+                            <Badge className="bg-sky-600 text-white font-medium text-sub px-2 py-0.5 whitespace-nowrap">หักหนี้บางส่วน</Badge>
                           ) : (
-                            <Badge variant="outline" className="border-amber-400 text-amber-800 bg-amber-50 font-bold text-xs px-2 py-0.5 whitespace-nowrap">
+                            <Badge variant="outline" className="border-amber-400 text-warn bg-amber-50 font-medium text-sub px-2 py-0.5 whitespace-nowrap">
                               รอหักลดหนี้
                             </Badge>
                           )}
@@ -474,7 +474,7 @@ export default function SupplierReturnsPage() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleViewPdf(note)}
-                                className="h-8 px-2.5 rounded-xl border-slate-200 hover:border-indigo-300 hover:text-indigo-600 font-bold text-xs gap-1 shrink-0"
+                                className="h-8 px-2.5 rounded-xl border-slate-200 hover:border-indigo-300 hover:text-indigo-600 font-medium text-sub gap-1 shrink-0"
                                 title="ดูเอกสาร / พิมพ์"
                                 aria-label="ดู"
                               >
@@ -487,7 +487,7 @@ export default function SupplierReturnsPage() {
                                   size="sm"
                                   variant="outline"
                                   onClick={() => handleEditNote(note)}
-                                  className="h-8 px-2 rounded-xl border-slate-200 hover:border-amber-400 hover:text-amber-700 font-bold text-xs gap-1 shrink-0"
+                                  className="h-8 px-2 rounded-xl border-slate-200 hover:border-amber-400 hover:text-warn font-medium text-sub gap-1 shrink-0"
                                   title="แก้ไขเอกสารส่งคืน"
                                   aria-label="แก้ไข"
                                 >
@@ -500,7 +500,7 @@ export default function SupplierReturnsPage() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleOpenChangeStatus(note)}
-                                className="h-8 w-8 p-0 rounded-xl border-slate-200 hover:border-sky-400 hover:text-sky-700 font-bold text-xs shrink-0"
+                                className="h-8 w-8 p-0 rounded-xl border-slate-200 hover:border-sky-400 hover:text-sky-700 font-medium text-sub shrink-0"
                                 title="เปลี่ยน / ย้อนสถานะเอกสาร"
                               >
                                 <RotateCcw className="w-3.5 h-3.5" />
@@ -511,7 +511,7 @@ export default function SupplierReturnsPage() {
                                   size="sm"
                                   variant="ghost"
                                   onClick={() => handleCancelNote(note)}
-                                  className="h-8 w-8 p-0 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0"
+                                  className="h-8 w-8 p-0 rounded-xl text-subtle hover:text-danger hover:bg-rose-50 transition-colors shrink-0"
                                   title="ยกเลิกเอกสารนี้"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -631,7 +631,7 @@ export default function SupplierReturnsPage() {
             ) : (
               <div className="tbl-wrap overflow-x-auto">
                 <table className="tbl w-full text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold text-sm">
+                  <thead className="">
                     <tr>
                       <th className="text-center w-10">#</th>
                       <th className="text-left">เลขที่เอกสาร</th>
@@ -646,48 +646,48 @@ export default function SupplierReturnsPage() {
                   <tbody className="divide-y divide-slate-100">
                     {filteredCancelledNotes.map((note, idx) => (
                       <tr key={note.id} className="bg-slate-50/40 hover:bg-slate-100/50 transition-colors opacity-80 hover:opacity-100">
-                        <td className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
+                        <td className="text-center doc-no whitespace-nowrap font-medium text-muted-foreground">
                           {idx + 1}
                         </td>
 
-                        <td className="font-mono whitespace-nowrap">
-                          <span className="font-bold text-slate-600 line-through text-sm block">
+                        <td className="doc-no whitespace-nowrap">
+                          <span className="font-medium text-muted-foreground line-through block">
                             {note.id}
                           </span>
                         </td>
 
-                        <td className="text-center font-mono whitespace-nowrap text-xs text-slate-500">
+                        <td className="text-center doc-no whitespace-nowrap text-muted-foreground">
                           {formatListDate(note.returnDate)}
                         </td>
 
                         <td className="">
-                          <p className="font-bold text-slate-700 text-[13px] line-clamp-2 break-words" title={note.supplierName}>{note.supplierName}</p>
-                          <span className="text-xs font-semibold text-slate-500 bg-slate-200/60 px-2 py-0.5 rounded-md mt-0.5 inline-block">
+                          <p className="font-medium text-fg line-clamp-2 break-words" title={note.supplierName}>{note.supplierName}</p>
+                          <span className="text-sub font-semibold text-muted-foreground bg-slate-200/60 px-2 py-0.5 rounded-md mt-0.5 inline-block">
                             รวม {note.items?.length ?? note.totalQuantity ?? 0} รายการ
                           </span>
                         </td>
 
                         <td className="text-center">
                           {note.linkedPoNumber ? (
-                            <span className="font-mono text-slate-500 line-through text-sm">
+                            <span className="doc-no text-muted-foreground line-through">
                               {note.linkedPoNumber}
                             </span>
                           ) : (
-                            <span className="text-slate-400 text-xs">-</span>
+                            <span className="text-subtle text-sub">-</span>
                           )}
                         </td>
 
-                        <td className="text-right font-mono whitespace-nowrap">
-                          <span className="line-through text-slate-400 font-bold block text-sm">
+                        <td className="text-right doc-no whitespace-nowrap">
+                          <span className="line-through text-subtle font-medium block">
                             {formatCurrency(note.totalCreditAmount)}
                           </span>
-                          <span className="text-xs text-rose-600 font-semibold block mt-0.5">
+                          <span className="text-sub text-danger font-semibold block mt-0.5">
                             ยกเลิกแล้ว (ไม่มีเครดิต)
                           </span>
                         </td>
 
                         <td className="text-center">
-                          <Badge className="bg-rose-100 text-rose-800 border-rose-200 font-semibold text-xs px-2 py-0.5 whitespace-nowrap">
+                          <Badge className="bg-rose-100 text-danger border-rose-200 font-semibold text-sub px-2 py-0.5 whitespace-nowrap">
                             ❌ ยกเลิกเอกสารแล้ว
                           </Badge>
                         </td>
@@ -698,7 +698,7 @@ export default function SupplierReturnsPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => handleViewPdf(note)}
-                              className="h-8 px-2.5 rounded-xl border-slate-200 text-slate-700 hover:bg-slate-100 font-bold text-xs gap-1 shrink-0"
+                              className="h-8 px-2.5 rounded-xl border-slate-200 text-fg hover:bg-slate-100 font-medium text-sub gap-1 shrink-0"
                               title="ดูเอกสารฉบับนี้"
                             >
                               <Eye className="w-3.5 h-3.5" />
@@ -709,7 +709,7 @@ export default function SupplierReturnsPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => handleRestoreNote(note)}
-                              className="h-8 px-2.5 rounded-xl border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-bold text-xs gap-1 shrink-0"
+                              className="h-8 px-2.5 rounded-xl border-emerald-300 text-ok hover:bg-emerald-50 font-medium text-sub gap-1 shrink-0"
                               title="กู้คืนเอกสารนี้กลับมาใช้งาน"
                             >
                               <RotateCcw className="w-3.5 h-3.5" />

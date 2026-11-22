@@ -184,12 +184,12 @@ function ProductCard({ p, canViewCost, query }: { p: LookupProduct; canViewCost:
         </p>
       </div>
 
-      <table className="mt-2 w-full table-fixed text-[14px]">
+      <table className="tbl mt-2 w-full table-fixed text-[14px]">
         <thead>
-          <tr className="text-[12px] text-slate-500">
-            <th className="w-[30%] py-1 text-left font-medium">หน่วย</th>
+          <tr className="">
+            <th className="w-[30%] text-left">หน่วย</th>
             {levels.map((i) => (
-              <th key={i} className="py-1 text-right font-medium">
+              <th key={i} className="text-right">
                 {levels.length === 1 ? 'ราคาขาย' : `ราคา ${i + 1}`}
               </th>
             ))}
@@ -198,9 +198,9 @@ function ProductCard({ p, canViewCost, query }: { p: LookupProduct; canViewCost:
         <tbody>
           {units.map((u) => (
             <tr key={u.name + u.size} className="border-t border-slate-100">
-              <td className="py-1.5 pr-1 text-slate-700">
+              <td className="text-fg">
                 <span className="font-semibold">{u.name}</span>
-                {u.size > 1 && <span className="block text-[12px] text-slate-500">= {formatQty(u.size, { grouping: true })} {p.unit}</span>}
+                {u.size > 1 && <span className="block text-sub text-muted-foreground">= {formatQty(u.size, { grouping: true })} {p.unit}</span>}
               </td>
               {levels.map((i) => (
                 <td key={i} className={cn('py-1.5 text-right tabular-nums', i === 0 ? 'font-bold text-slate-900' : 'text-slate-700')}>

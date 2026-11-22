@@ -1183,43 +1183,43 @@ export function CreateSupplierReturnModal({
               </div>
             ) : (
               <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-bold">
+                <table className="tbl w-full text-xs">
+                  <thead className="">
                     <tr>
-                      <th className="p-2.5 text-center w-14">ประเภท</th>
-                      <th className="p-2.5 text-left">สินค้า / SKU</th>
-                      <th className="p-2.5 text-left">เหตุผลที่ส่งคืน</th>
-                      <th className="p-2.5 text-center w-24">จำนวน</th>
-                      <th className="p-2.5 text-right w-28">ราคาทุน</th>
-                      <th className="p-2.5 text-right w-28">รวมทุน (฿)</th>
-                      <th className="p-2.5 text-center w-10"></th>
+                      <th className="text-center w-14">ประเภท</th>
+                      <th className="text-left">สินค้า / SKU</th>
+                      <th className="text-left">เหตุผลที่ส่งคืน</th>
+                      <th className="text-center w-24">จำนวน</th>
+                      <th className="text-right w-28">ราคาทุน</th>
+                      <th className="text-right w-28">รวมทุน (฿)</th>
+                      <th className="text-center w-10"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {returnItems.map((item, idx) => (
                       <tr key={idx} className="hover:bg-slate-50/50">
-                        <td className="p-2.5 text-center">
+                        <td className="text-center">
                           {item.itemType === 'DEFECTIVE' ? (
-                            <Badge className="bg-rose-100 text-rose-800 hover:bg-rose-100 text-[10px] font-bold border-rose-300">
+                            <Badge className="bg-rose-100 text-danger hover:bg-rose-100 text-sub font-medium border-rose-300">
                               ชำรุด
                             </Badge>
                           ) : (
-                            <Badge className="bg-sky-100 text-sky-800 hover:bg-sky-100 text-[10px] font-bold border-sky-300">
+                            <Badge className="bg-sky-100 text-sky-800 hover:bg-sky-100 text-sub font-medium border-sky-300">
                               ปกติ
                             </Badge>
                           )}
                         </td>
-                        <td className="p-2.5">
-                          <p className="font-bold text-slate-800">{item.productName}</p>
-                          <p className="text-[10px] text-slate-400 font-mono">SKU: {item.sku}</p>
+                        <td className="">
+                          <p className="font-medium text-fg">{item.productName}</p>
+                          <p className="text-sub text-subtle doc-no">SKU: {item.sku}</p>
                           {item.claimId && (
-                            <p className="text-[10px] text-indigo-600 font-medium">ใบเคลม: #{item.claimId}</p>
+                            <p className="text-sub text-indigo-600 font-medium">ใบเคลม: #{item.claimId}</p>
                           )}
                         </td>
-                        <td className="p-2.5 text-slate-600 text-[11px]">
+                        <td className="text-muted-foreground">
                           {item.itemType === 'DEFECTIVE' ? item.defectReason : item.returnReason}
                         </td>
-                        <td className="p-2.5 text-center">
+                        <td className="text-center">
                           <Input
                             type="number"
                             min={qtyStep(allowDecimalQty)}
@@ -1227,26 +1227,26 @@ export function CreateSupplierReturnModal({
                             inputMode={qtyInputMode(allowDecimalQty)}
                             value={item.quantity}
                             onChange={(e) => handleUpdateItemQty(idx, parseQty(e.target.value, allowDecimalQty) || (allowDecimalQty ? 0.01 : 1))}
-                            className="h-7 w-16 text-center font-mono font-bold text-xs mx-auto"
+                            className="h-7 w-16 text-center doc-no font-medium text-sub mx-auto"
                           />
                         </td>
-                        <td className="p-2.5 text-right">
+                        <td className="text-right">
                           <Input
                             type="number"
                             step="any"
                             value={item.unitCost}
                             onChange={(e) => handleUpdateItemCost(idx, parseFloat(e.target.value) || 0)}
-                            className="h-7 w-20 text-right font-mono text-xs ml-auto"
+                            className="h-7 w-20 text-right doc-no text-sub ml-auto"
                           />
                         </td>
-                        <td className="p-2.5 text-right font-mono font-bold text-slate-900">
+                        <td className="text-right doc-no font-medium text-fg">
                           {formatCurrency(item.unitCost * item.quantity)}
                         </td>
-                        <td className="p-2.5 text-center">
+                        <td className="text-center">
                           <button
                             type="button"
                             onClick={() => handleRemoveItem(idx)}
-                            className="text-slate-400 hover:text-rose-600 transition-colors"
+                            className="text-subtle hover:text-danger transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>

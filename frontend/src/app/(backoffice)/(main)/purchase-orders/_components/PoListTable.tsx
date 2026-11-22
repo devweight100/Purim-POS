@@ -66,21 +66,21 @@ export function PoListTable({
 
       <div className="overflow-x-auto">
         <Table>
-          <TableHeader className="bg-slate-50 border-b border-slate-200">
-            <TableRow className="border-slate-200 hover:bg-transparent">
-              <TableHead data-narrow="hide" className="text-slate-700 font-bold text-sm text-center w-12">#</TableHead>
-              <TableHead className="text-slate-700 font-bold text-sm">เลข PO</TableHead>
-              <TableHead className="text-slate-700 font-bold text-sm">ผู้จำหน่าย</TableHead>
-              <TableHead className="text-slate-700 font-bold text-sm text-center">วันที่สร้าง</TableHead>
-              <TableHead className="text-slate-700 font-bold text-sm text-right">ยอดรวมสุทธิ</TableHead>
-              <TableHead className="text-slate-700 font-bold text-sm text-center">สถานะ</TableHead>
-              <TableHead className="text-slate-700 font-bold text-sm text-center">จัดการ</TableHead>
+          <TableHeader className="">
+            <TableRow className="hover:bg-transparent">
+              <TableHead data-narrow="hide" className="text-center w-12">#</TableHead>
+              <TableHead className="">เลข PO</TableHead>
+              <TableHead className="">ผู้จำหน่าย</TableHead>
+              <TableHead className="text-center">วันที่สร้าง</TableHead>
+              <TableHead className="text-right">ยอดรวมสุทธิ</TableHead>
+              <TableHead className="text-center">สถานะ</TableHead>
+              <TableHead className="text-center">จัดการ</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody {...poNav.bodyProps}>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center h-32 text-slate-500 text-sm">
+                <TableCell colSpan={7} className="text-center h-32 text-muted-foreground">
                   กำลังโหลดข้อมูล...
                 </TableCell>
               </TableRow>
@@ -92,27 +92,27 @@ export function PoListTable({
               </TableRow>
             ) : filteredPOs.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center h-32 text-slate-500 text-sm">
+                <TableCell colSpan={7} className="text-center h-32 text-muted-foreground">
                   ไม่พบข้อมูลใบสั่งซื้อ
                 </TableCell>
               </TableRow>
             ) : (
               filteredPOs.map((po, idx) => (
                 <TableRow key={po.id} className={`border-slate-100 hover:bg-slate-50 transition-colors ${ROW_NAV_CLASS}`} {...poNav.rowProps(idx)}>
-                  <TableCell data-narrow="hide" className="text-center font-mono whitespace-nowrap font-bold text-slate-500 text-sm">
+                  <TableCell data-narrow="hide" className="text-center doc-no whitespace-nowrap font-medium text-muted-foreground">
                     {idx + 1}
                   </TableCell>
-                  <TableCell className="font-bold text-slate-900 text-sm font-mono whitespace-nowrap">{po.poNumber}</TableCell>
-                  <TableCell className="text-slate-900 font-bold text-sm min-w-40 xl:min-w-48"><span className="line-clamp-2 break-words" title={po.supplier?.name || po.supplierName || ""}>{po.supplier?.name || po.supplierName || "-"}</span></TableCell>
-                  <TableCell data-narrow="wrap" className="text-slate-600 text-center font-mono whitespace-nowrap text-xs">{formatDate(po.createdAt)}</TableCell>
-                  <TableCell className="text-right text-slate-900 font-black text-sm font-mono whitespace-nowrap">
+                  <TableCell className="font-medium text-fg doc-no whitespace-nowrap">{po.poNumber}</TableCell>
+                  <TableCell className="text-fg font-medium min-w-40 xl:min-w-48"><span className="line-clamp-2 break-words" title={po.supplier?.name || po.supplierName || ""}>{po.supplier?.name || po.supplierName || "-"}</span></TableCell>
+                  <TableCell data-narrow="wrap" className="text-muted-foreground text-center doc-no whitespace-nowrap">{formatDate(po.createdAt)}</TableCell>
+                  <TableCell className="text-right text-fg font-semibold doc-no whitespace-nowrap">
                     <div>{formatCurrency(po.totalAmount)}</div>
                     {po.deductedReturns && po.deductedReturns.length > 0 && (
-                      <div className="text-[10.5px] text-emerald-700 font-normal mt-0.5">
-                        <span className="bg-emerald-50 border border-emerald-200 px-1 py-0.2 rounded font-bold">
+                      <div className="text-sub text-ok font-normal mt-0.5">
+                        <span className="bg-emerald-50 border border-emerald-200 px-1 py-0.2 rounded font-medium">
                           หักเคลม -{formatCurrency(po.deductedReturns.reduce((s: number, r) => s + Number(r.amount || 0), 0))}
                         </span>
-                        <span className="font-black block text-slate-900 font-mono mt-0.5">
+                        <span className="font-semibold block text-fg doc-no mt-0.5">
                           จ่ายจริง {formatCurrency(po.netAmountPayable ?? (po.totalAmount - po.deductedReturns.reduce((s: number, r) => s + Number(r.amount || 0), 0)))}
                         </span>
                       </div>
@@ -124,7 +124,7 @@ export function PoListTable({
                       <Button 
                         variant="ghost" 
                         size="icon" 
-                        className="h-8 w-8 text-slate-500 hover:text-sky-600 hover:bg-sky-50" 
+                        className="h-8 w-8 text-muted-foreground hover:text-sky-600 hover:bg-sky-50" 
                         title="ดู/พิมพ์ใบสั่งซื้อ PDF" 
                         onClick={(e) => { e.stopPropagation(); handleViewDetail(po.id, 'pdf'); }}
                       >
@@ -134,7 +134,7 @@ export function PoListTable({
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          className="h-8 w-8 text-slate-500 hover:text-amber-600 hover:bg-amber-50" 
+                          className="h-8 w-8 text-muted-foreground hover:text-warn hover:bg-amber-50" 
                           title="แก้ไขใบสั่งซื้อ" 
                           onClick={(e) => openEditDialog(po, e)}
                         >
@@ -145,7 +145,7 @@ export function PoListTable({
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          className="h-8 w-8 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50" 
+                          className="h-8 w-8 text-muted-foreground hover:text-ok hover:bg-emerald-50" 
                           title="ออกใบสั่งซื้อ (Issue)" 
                           onClick={(e) => openIssueConfirmDialog(po, e)}
                         >
@@ -156,7 +156,7 @@ export function PoListTable({
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          className="h-8 w-8 text-slate-500 hover:text-amber-600 hover:bg-amber-50" 
+                          className="h-8 w-8 text-muted-foreground hover:text-warn hover:bg-amber-50" 
                           title="รับสินค้าเข้าคลัง (GRN)" 
                           onClick={(e) => openReceiveDialog(po, e)}
                         >
@@ -167,7 +167,7 @@ export function PoListTable({
                       <Button 
                         variant="ghost" 
                         size="icon" 
-                        className="h-8 w-8 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50" 
+                        className="h-8 w-8 text-muted-foreground hover:text-indigo-600 hover:bg-indigo-50" 
                         title="เปลี่ยน / ย้อนสถานะใบสั่งซื้อ" 
                         onClick={(e) => openStatusChangeDialog(po, e)}
                       >
@@ -177,7 +177,7 @@ export function PoListTable({
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          className="h-8 w-8 text-slate-500 hover:text-rose-600 hover:bg-rose-50" 
+                          className="h-8 w-8 text-muted-foreground hover:text-danger hover:bg-rose-50" 
                           title="ยกเลิกใบสั่งซื้อ" 
                           onClick={(e) => openCancelDialog(po, e)}
                         >

@@ -9,7 +9,7 @@ export function baht(n: unknown): string {
   const v = Number(n) || 0;
   const a = Math.abs(v);
   // minus before the sign: -฿12 (refunds bigger than the day's transfers)
-  return (v < 0 ? '-฿' : '฿') + a.toLocaleString('th-TH', { minimumFractionDigits: a % 1 !== 0 ? 2 : 0, maximumFractionDigits: 2 });
+  return (v < 0 ? '-฿' : '฿') + a.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) // same rule as formatCurrency;
 }
 
 export function Card({ children, className, ...rest }: { children: ReactNode; className?: string } & React.HTMLAttributes<HTMLDivElement>) {

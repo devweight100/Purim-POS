@@ -41,10 +41,10 @@ export function ProductsHeader({ loadAll, onImportFile, onAdd }: {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
-        <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+        <h1 className="page-title">
           <Package className="w-6 h-6 text-sky-500" /> จัดการสินค้า (Products)
         </h1>
-        <p className="text-xs text-slate-500 mt-0.5">จัดการรายการสินค้า ราคาขาย ขนาดบรรจุ บาร์โค้ด และนำเข้าข้อมูลสินค้า</p>
+        <p className="page-subtitle">จัดการรายการสินค้า ราคาขาย ขนาดบรรจุ บาร์โค้ด และนำเข้าข้อมูลสินค้า</p>
       </div>
       <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
         {/* Hidden File Input for Excel / CSV */}

@@ -338,10 +338,10 @@ export default function CustomersPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl flex items-center gap-2">
+          <h1 className="page-title">
             <UserPlus className="w-6 h-6 text-sky-500" /> ลูกค้าสมาชิกและ CRM (Customers & Membership)
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="page-subtitle">
             จัดการข้อมูลสมาชิก วงเงินเครดิต ระดับราคาขาย อัตราสะสมแต้ม และข้อมูลนิติบุคคลออกใบกำกับภาษี
           </p>
         </div>
@@ -467,14 +467,14 @@ export default function CustomersPage() {
         {/* Customers Table */}
         <div className="w-full">
           <Table className="w-full table-fixed">
-            <TableHeader className="bg-slate-50/90 border-b border-slate-200">
+            <TableHeader className="">
               <TableRow>
-                <TableHead className="min-w-44 xl:min-w-64 text-slate-600 font-bold text-xs">รหัส / ชื่อสมาชิก & บริษัท</TableHead>
-                <TableHead className="text-slate-600 font-bold text-xs">ติดต่อ & เลขผู้เสียภาษี</TableHead>
-                <TableHead className="text-center text-slate-600 font-bold text-xs">ระดับราคา</TableHead>
-                <TableHead className="text-right text-slate-600 font-bold text-xs">วงเงินเครดิต / ยอดค้าง</TableHead>
-                <TableHead className="text-center text-slate-600 font-bold text-xs">แต้มสะสม</TableHead>
-                <TableHead className="text-right text-slate-600 font-bold text-xs">จัดการ</TableHead>
+                <TableHead className="min-w-44 xl:min-w-64">รหัส / ชื่อสมาชิก & บริษัท</TableHead>
+                <TableHead className="">ติดต่อ & เลขผู้เสียภาษี</TableHead>
+                <TableHead className="text-center">ระดับราคา</TableHead>
+                <TableHead className="text-right">วงเงินเครดิต / ยอดค้าง</TableHead>
+                <TableHead className="text-center">แต้มสะสม</TableHead>
+                <TableHead className="text-right">จัดการ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody {...customerNav.bodyProps}>
@@ -486,7 +486,7 @@ export default function CustomersPage() {
                 </TableRow>
               ) : filteredCustomers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center h-48 text-slate-400">
+                  <TableCell colSpan={6} className="text-center h-48 text-subtle">
                     {isLoading ? 'กำลังโหลด...' : 'ไม่พบข้อมูลลูกค้าที่ตรงกับเงื่อนไขการค้นหา'}
                   </TableCell>
                 </TableRow>
@@ -512,23 +512,23 @@ export default function CustomersPage() {
                           </div>
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-                              <span className="font-bold text-slate-900 text-[13px] line-clamp-2 break-words hover:text-sky-600" title={c.name}>
+                              <span className="font-medium text-fg line-clamp-2 break-words hover:text-sky-600" title={c.name}>
                                 {c.name}
                               </span>
                               {isCompany ? (
-                                <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold px-1.5 py-0">
+                                <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 text-sub font-medium px-1.5 py-0">
                                   🏢 นิติบุคคล
                                 </Badge>
                               ) : (
-                                <Badge className="bg-slate-100 text-slate-600 border-slate-200 text-[10px] font-medium px-1.5 py-0">
+                                <Badge className="bg-slate-100 text-muted-foreground border-slate-200 text-sub font-medium px-1.5 py-0">
                                   บุคคล
                                 </Badge>
                               )}
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-slate-400 font-mono mt-0.5">
+                            <div className="flex items-center gap-2 text-sub text-subtle doc-no mt-0.5">
                               <span>{c.code || '-'}</span>
                               {c.companyName && c.companyName !== c.name && (
-                                <span className="truncate max-w-[200px] text-slate-500">· {c.companyName}</span>
+                                <span className="truncate max-w-[200px] text-muted-foreground">· {c.companyName}</span>
                               )}
                             </div>
                           </div>
@@ -536,22 +536,22 @@ export default function CustomersPage() {
                       </TableCell>
 
                       {/* Contact & Tax Info */}
-                      <TableCell className="text-xs whitespace-nowrap">
+                      <TableCell className="whitespace-nowrap">
                         <div className="space-y-0.5">
-                          <div className="flex items-center gap-1.5 text-slate-800 font-mono font-semibold">
-                            <Phone className="w-3.5 h-3.5 text-slate-400" />
+                          <div className="flex items-center gap-1.5 text-fg doc-no font-semibold">
+                            <Phone className="w-3.5 h-3.5 text-subtle" />
                             <span>{c.phone}</span>
                           </div>
                           {c.taxId && (
-                            <div className="flex items-center gap-1 text-slate-500 font-mono text-[11px]">
+                            <div className="flex items-center gap-1 text-muted-foreground doc-no text-sub">
                               <Receipt className="w-3 h-3 text-indigo-500" />
                               <span>Tax ID: <b>{c.taxId}</b></span>
-                              <span className="text-[10px] text-slate-400">({c.branchType === 'HEAD_OFFICE' ? 'สนญ.' : `สาขา ${c.branchNumber}`})</span>
+                              <span className="text-sub text-subtle">({c.branchType === 'HEAD_OFFICE' ? 'สนญ.' : `สาขา ${c.branchNumber}`})</span>
                             </div>
                           )}
                           {c.contactPerson && (
-                            <div className="text-[11px] text-slate-400 truncate max-w-[220px]">
-                              ผู้ติดต่อ: <span className="text-slate-600 font-medium">{c.contactPerson}</span>
+                            <div className="text-sub text-subtle truncate max-w-[220px]">
+                              ผู้ติดต่อ: <span className="text-muted-foreground font-medium">{c.contactPerson}</span>
                             </div>
                           )}
                         </div>
@@ -563,30 +563,30 @@ export default function CustomersPage() {
                       </TableCell>
 
                       {/* Credit & Debt */}
-                      <TableCell className="text-right text-xs whitespace-nowrap">
+                      <TableCell className="text-right whitespace-nowrap">
                         {hasCredit ? (
                           <div className="space-y-0.5">
-                            <div className="text-slate-700">
-                              วงเงิน: <b className="font-bold text-slate-900">{formatCurrency(c.creditLimit)}</b> ({c.creditTerms || 30} วัน)
+                            <div className="text-fg">
+                              วงเงิน: <b className="font-medium text-fg">{formatCurrency(c.creditLimit)}</b> ({c.creditTerms || 30} วัน)
                             </div>
                             {hasDebt ? (
                               <Link
                                 href={`/debts?customerId=${c.id}&customerName=${encodeURIComponent(c.name)}`}
-                                className="font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded-lg border border-rose-200 inline-flex items-center gap-1 shadow-2xs transition-all group"
+                                className="font-medium text-danger bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded-lg border border-rose-200 inline-flex items-center gap-1 shadow-2xs transition-all group"
                                 title="คลิกเพื่อเปิดดูบิลค้างชำระและรับชำระเงิน"
                               >
                                 <span>ค้างชำระ: {formatCurrency(c.currentDebt)}</span>
-                                <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform text-rose-500" />
+                                <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform text-danger" />
                               </Link>
                             ) : (
-                              <span className="text-emerald-600 font-medium">ไม่มียอดค้าง</span>
+                              <span className="text-ok font-medium">ไม่มียอดค้าง</span>
                             )}
                             {c.isCreditBlocked && (
-                              <span className="block text-[10px] text-rose-600 font-bold">🚫 ระงับเครดิตชั่วคราว</span>
+                              <span className="block text-sub text-danger font-medium">🚫 ระงับเครดิตชั่วคราว</span>
                             )}
                           </div>
                         ) : (
-                          <span className="text-slate-400 font-medium">เงินสด (ไม่มีเครดิต)</span>
+                          <span className="text-subtle font-medium">เงินสด (ไม่มีเครดิต)</span>
                         )}
                       </TableCell>
 
@@ -594,10 +594,10 @@ export default function CustomersPage() {
                       <TableCell className="text-center">
                         {/* round 3: the member's earn / redeem rate is the badge tooltip (it is the same for most members) */}
                         <div
-                          className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-sub font-semibold bg-amber-50 text-warn border border-amber-200 whitespace-nowrap"
                           title={`สะสม ${c.pointEarnRateBaht || 500}฿ = ${c.pointEarnUnits || 10} แต้ม | แลก ${c.pointRedeemRatePoints || 100} แต้ม = ${c.pointRedeemDiscountBaht || 1}฿`}
                         >
-                          <Coins className="w-3.5 h-3.5 text-amber-600" />
+                          <Coins className="w-3.5 h-3.5 text-warn" />
                           <span>{(c.points || 0).toLocaleString()} แต้ม</span>
                         </div>
                       </TableCell>
@@ -609,7 +609,7 @@ export default function CustomersPage() {
                             size="sm"
                             variant="ghost"
                             onClick={() => handleOpenDetail(c)}
-                            className="h-8 w-8 p-0 text-slate-500 hover:text-sky-600 hover:bg-sky-50 rounded-lg"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-sky-600 hover:bg-sky-50 rounded-lg"
                             title="ดูข้อมูลละเอียด & ใบกำกับภาษี"
                             aria-label={`ดูข้อมูล ${c.name}`}
                           >
@@ -619,7 +619,7 @@ export default function CustomersPage() {
                             size="sm"
                             variant="ghost"
                             onClick={() => handleOpenEdit(c)}
-                            className="h-8 w-8 p-0 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
                             title="แก้ไขข้อมูลสมาชิก"
                             aria-label={`แก้ไข ${c.name}`}
                           >
