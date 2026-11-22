@@ -459,7 +459,7 @@ export default function SupplierReturnsPage() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleViewPdf(note)}
-                                className="border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-sub gap-1 shrink-0"
+                                className="border-slate-200 hover:border-indigo-300 hover:text-indigo-600 gap-1 shrink-0"
                                 title="ดูเอกสาร / พิมพ์"
                                 aria-label="ดู"
                               >
@@ -472,7 +472,7 @@ export default function SupplierReturnsPage() {
                                   size="sm"
                                   variant="outline"
                                   onClick={() => handleEditNote(note)}
-                                  className="border-slate-200 hover:border-amber-400 hover:text-warn text-sub gap-1 shrink-0"
+                                  className="border-slate-200 hover:border-amber-400 hover:text-warn gap-1 shrink-0"
                                   title="แก้ไขเอกสารส่งคืน"
                                   aria-label="แก้ไข"
                                 >
@@ -485,7 +485,7 @@ export default function SupplierReturnsPage() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleOpenChangeStatus(note)}
-                                className="h-8 w-8 p-0 border-slate-200 hover:border-sky-400 hover:text-sky-700 text-sub shrink-0"
+                                className="h-8 w-8 p-0 border-slate-200 hover:border-sky-400 hover:text-sky-700 shrink-0"
                                 title="เปลี่ยน / ย้อนสถานะเอกสาร"
                               >
                                 <RotateCcw className="w-3.5 h-3.5" />
@@ -683,7 +683,7 @@ export default function SupplierReturnsPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => handleViewPdf(note)}
-                              className="border-slate-200 text-fg hover:bg-slate-100 text-sub gap-1 shrink-0"
+                              className="border-slate-200 text-fg hover:bg-slate-100 gap-1 shrink-0"
                               title="ดูเอกสารฉบับนี้"
                             >
                               <Eye className="w-3.5 h-3.5" />
@@ -694,7 +694,7 @@ export default function SupplierReturnsPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => handleRestoreNote(note)}
-                              className="border-emerald-300 text-ok hover:bg-emerald-50 text-sub gap-1 shrink-0"
+                              className="border-emerald-300 text-ok hover:bg-emerald-50 gap-1 shrink-0"
                               title="กู้คืนเอกสารนี้กลับมาใช้งาน"
                             >
                               <RotateCcw className="w-3.5 h-3.5" />

@@ -199,7 +199,7 @@ export function OrdersTable({
                           <Button
                             size="sm"
                             onClick={(e) => handleOpenCreditHistory(order, e)}
-                            className="text-sub bg-amber-600 hover:bg-amber-700 text-white gap-1"
+                            variant="outline"
                             title="ดูประวัติการชำระเงินเชื่อ และพิมพ์ใบเสร็จตามจริง"
                                 aria-label="ประวัติชำระ"
                           >
@@ -211,7 +211,7 @@ export function OrdersTable({
                           <Button
                             size="sm"
                             onClick={(e) => handleOpenA4Receipt(order, e)}
-                            className="text-sub bg-indigo-600 hover:bg-indigo-700 text-white gap-1"
+                            variant="outline"
                             title="พิมพ์ใบเสร็จรับเงิน / ใบกำกับภาษีเต็มรูปแบบ (A4)"
                                 aria-label="พิมพ์ A4"
                           >
@@ -225,7 +225,7 @@ export function OrdersTable({
                           size="sm"
                           variant="outline"
                           onClick={(e) => handleOpenSlipReceipt(order, e)}
-                          className="text-sub text-fg border-slate-300 hover:bg-slate-100"
+                          className="text-fg border-slate-300 hover:bg-slate-100"
                           title="พิมพ์สลิป 80mm"
                                 aria-label="80mm"
                         >

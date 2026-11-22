@@ -579,7 +579,7 @@ export default function ClaimInventoryPage() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleOpenProductDetail(item)}
-                                className="border-slate-300 hover:bg-slate-50 text-fg text-sub gap-1"
+                                className="border-slate-300 hover:bg-slate-50 text-fg gap-1"
                                 title="ดูประวัติใบเคลมทั้งหมดของสินค้านี้"
                                 aria-label={`ใบเคลม (${item.claimCount})`}
                               >
@@ -590,7 +590,7 @@ export default function ClaimInventoryPage() {
                               <Link href="/supplier-returns">
                                 <Button
                                   size="sm"
-                                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-sub gap-1"
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1"
                                   title="ไปสร้างใบส่งคืนบริษัทผู้จำหน่าย"
                                   aria-label="ส่งคืน"
                                 >
@@ -760,7 +760,7 @@ export default function ClaimInventoryPage() {
                                   setSelectedSupplierId(supp.supplierId);
                                   setActiveTab('products');
                                 }}
-                                className="border-slate-300 hover:bg-slate-50 text-fg text-sub gap-1"
+                                className="border-slate-300 hover:bg-slate-50 text-fg gap-1"
                               >
                                 <span>ดู {supp.productCount} สินค้า</span>
                               </Button>
@@ -768,7 +768,7 @@ export default function ClaimInventoryPage() {
                               <Link href="/supplier-returns">
                                 <Button
                                   size="sm"
-                                  className="bg-indigo-600 hover:bg-indigo-700 text-white text-sub gap-1"
+                                  className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1"
                                 >
                                   <ArrowLeftRight className="w-3.5 h-3.5" />
                                   <span>สร้างใบส่งคืน</span>

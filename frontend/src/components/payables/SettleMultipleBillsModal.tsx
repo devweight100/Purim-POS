@@ -700,12 +700,12 @@ export function SettleMultipleBillsModal({
                                       value={tempInvoiceNo}
                                       onChange={(e) => setTempInvoiceNo(e.target.value)}
                                       placeholder="ระบุเลข Invoice"
-                                      className="h-7 text-sub doc-no w-36"
+                                      className="h-7 doc-no w-36"
                                       autoFocus
                                     />
                                     <Button
                                       size="sm"
-                                      className="text-sub bg-emerald-600 hover:bg-emerald-700"
+                                      className="bg-emerald-600 hover:bg-emerald-700"
                                       onClick={() => handleSaveInvoiceNo(b.poId)}
                                     >
                                       บันทึก

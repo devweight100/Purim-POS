@@ -698,7 +698,7 @@ export default function InventoryPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => openAdjustDialog(p)}
-                              className="text-sub border-indigo-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100"
+                              className="border-indigo-200 text-indigo-700 bg-indigo-50/50 hover:bg-indigo-100"
                               title="ปรับยอดสต็อก"
                             >
                               <SlidersHorizontal className="w-3.5 h-3.5 mr-1" /> ปรับยอด
@@ -707,7 +707,7 @@ export default function InventoryPage() {
                               size="sm"
                               variant="ghost"
                               onClick={() => openStockCardDialog(p)}
-                              className="text-sub text-muted-foreground hover:text-fg hover:bg-slate-100"
+                              className="text-muted-foreground hover:text-fg hover:bg-slate-100"
                               title="ดูประวัติสต็อกการ์ด"
                               aria-label={`ประวัติสต็อกการ์ด ${p.name}`}
                             >
@@ -1068,7 +1068,7 @@ export default function InventoryPage() {
                           <Link href="/purchase-orders">
                             <Button
                               size="sm"
-                              className="bg-sky-500 hover:bg-sky-600 text-white text-sub"
+                              className="bg-sky-500 hover:bg-sky-600 text-white"
                             >
                               <ShoppingCart className="w-3.5 h-3.5 mr-1" /> สั่งซื้อเพิ่ม (PO)
                             </Button>

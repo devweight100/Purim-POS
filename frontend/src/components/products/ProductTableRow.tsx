@@ -23,7 +23,7 @@ function StockQty({ value, unit, tone, unitClass = "text-muted-foreground" }: { 
   // plain number + unit (style pass 2026-11-22: no box around a quantity); colour only when it means something
   // (red = out / negative, amber = low). Number right-aligned in its slot, unit in a fixed slot -> straight columns.
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_2.75rem] items-center gap-1.5 whitespace-nowrap">
+    <div className="grid grid-cols-[minmax(0,1fr)_2.75rem] items-baseline gap-1.5 whitespace-nowrap">
       <span className={`text-right tabular-nums ${tone}`} data-testid="product-qty">{value}</span>
       <span className={`truncate text-left text-sub ${unitClass}`} title={unit} data-testid="product-unit">{unit}</span>
     </div>

@@ -1228,7 +1228,7 @@ export function CreateSupplierReturnModal({
                             inputMode={qtyInputMode(allowDecimalQty)}
                             value={item.quantity}
                             onChange={(e) => handleUpdateItemQty(idx, parseQty(e.target.value, allowDecimalQty) || (allowDecimalQty ? 0.01 : 1))}
-                            className="h-7 w-16 text-center doc-no text-sub mx-auto"
+                            className="h-7 w-16 text-center doc-no mx-auto"
                           />
                         </td>
                         <td className="text-right">
@@ -1237,7 +1237,7 @@ export function CreateSupplierReturnModal({
                             step="any"
                             value={item.unitCost}
                             onChange={(e) => handleUpdateItemCost(idx, parseFloat(e.target.value) || 0)}
-                            className="h-7 w-20 text-right tabular-nums text-sub ml-auto"
+                            className="h-7 w-20 text-right tabular-nums ml-auto"
                           />
                         </td>
                         <td className="text-right tabular-nums font-medium text-fg">

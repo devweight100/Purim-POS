@@ -330,7 +330,7 @@ export default function ClaimsPage() {
                       <Button
                         size="sm"
                         onClick={() => setIsClaimModalOpen(true)}
-                        className="bg-indigo-600 text-white text-sub mt-1"
+                        className="bg-indigo-600 text-white mt-1"
                       >
                         + รับเคลมสินค้าใหม่
                       </Button>
@@ -418,7 +418,7 @@ export default function ClaimsPage() {
                         size="sm"
                         variant="outline"
                         onClick={(e) => handlePrintPdf(claim, e)}
-                        className="text-sub text-indigo-700 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 gap-1.5 whitespace-nowrap"
+                        className="text-indigo-700 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 gap-1.5 whitespace-nowrap"
                         title="พิมพ์ใบรับเคลม / ดูรายละเอียด"
                         aria-label="พิมพ์"
                       >
