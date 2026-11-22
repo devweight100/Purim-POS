@@ -1313,15 +1313,11 @@ export default function InventoryPage() {
       <Dialog open={isStockCardOpen} onOpenChange={setIsStockCardOpen}>
         <DialogContent className="bg-white border-slate-200 text-slate-900 w-[95vw] sm:w-[1320px] max-w-[1320px] max-h-[92vh] flex flex-col p-0 overflow-hidden rounded-2xl shadow-2xl">
           <DialogHeader className="border-b border-slate-200 px-8 py-5 bg-slate-50/80 shrink-0">
-            <DialogTitle className="flex items-center justify-between text-xl font-semibold text-slate-900">
-              <div className="flex items-center gap-2.5">
-                <History className="w-6 h-6 text-indigo-600" />
-                <span>สต็อกการ์ด: {stockCardProduct?.name}</span>
-              </div>
-              <Badge variant="outline" className="tabular-nums font-bold text-sm bg-slate-100 px-3 py-1">
-                SKU: {stockCardProduct?.sku}
-              </Badge>
+            <DialogTitle className="flex items-center gap-2.5 pr-10 text-section font-semibold text-fg">
+              <History className="w-5 h-5 shrink-0 text-indigo-600" />
+              <span className="min-w-0 truncate">สต็อกการ์ด: {stockCardProduct?.name}</span>
             </DialogTitle>
+            <p className="mt-0.5 text-sub text-muted-foreground">SKU <span className="doc-no">{stockCardProduct?.sku}</span></p>
           </DialogHeader>
 
           <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">
