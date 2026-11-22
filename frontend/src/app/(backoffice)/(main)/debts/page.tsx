@@ -375,7 +375,7 @@ function DebtsContent() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="ค้นหาตามเลขที่บิล, ชื่อลูกค้า, บริษัท, เบอร์โทร, เลขผู้เสียภาษี..."
-              className="pl-9 h-8.5 bg-slate-50 border-slate-300 focus:bg-white sm:text-sm"
+              className="pl-9 bg-slate-50 border-slate-300 focus:bg-white sm:text-sm"
             />
             {search && (
               <button
@@ -398,7 +398,7 @@ function DebtsContent() {
               <TableRow className="hover:bg-transparent">
                 <TableHead className="hidden xl:table-cell text-center w-16">ลำดับ</TableHead>
                 <TableHead >เลขที่บิล</TableHead>
-                <TableHead className="text-center">วันที่บิล</TableHead>
+                <TableHead>วันที่บิล</TableHead>
                 <TableHead className="min-w-40 xl:min-w-48">ลูกค้า / ผู้ซื้อ</TableHead>
                 <TableHead data-narrow="hide" className="text-right">ยอดเต็มบิล</TableHead>
                 <TableHead className="text-right">ชำระแล้ว</TableHead>
@@ -445,7 +445,7 @@ function DebtsContent() {
                   return (
                     <TableRow key={debt.orderId} className={`hover:bg-slate-50/70 transition-colors ${ROW_NAV_CLASS}`} {...debtNav.rowProps(idx)}>
                       {/* 1. Index (ลำดับ) */}
-                      <TableCell className="hidden xl:table-cell text-center doc-no whitespace-nowrap font-medium text-muted-foreground">
+                      <TableCell className="hidden xl:table-cell text-center tabular-nums whitespace-nowrap text-muted-foreground">
                         {(currentPage - 1) * pageSize + idx + 1}
                       </TableCell>
 
@@ -455,34 +455,23 @@ function DebtsContent() {
                       </TableCell>
 
                       {/* 3. Date (แยก col. วันที่) */}
-                      <TableCell data-narrow="wrap" className="text-center doc-no whitespace-nowrap">
-                        <div className="text-sub text-muted-foreground font-medium">
-                          {formatListDate(debt.orderDate)}
-                        </div>
+                      <TableCell data-narrow="wrap" className="tabular-nums whitespace-nowrap">
+                        <div className="text-fg">{formatListDate(debt.orderDate)}</div>
                         {debt.dueDate && (
-                          <div className={`text-[11px] font-sans font-medium flex flex-wrap items-center justify-center gap-x-1 mt-0.5 ${isOverdue ? 'text-rose-600 font-bold' : 'text-amber-700'}`}>
-                            <span className="whitespace-nowrap">ครบ {formatListDate(debt.dueDate)}</span>
-                            {isOverdue && <span className="text-[9.5px] bg-rose-100 text-danger px-1 py-0.2 rounded font-medium whitespace-nowrap">เกินกำหนด</span>}
+                          <div className={`mt-0.5 text-sub ${isOverdue ? 'text-danger' : 'text-muted-foreground'}`} title={isOverdue ? 'เกินกำหนดชำระ' : undefined}>
+                            ครบ {formatListDate(debt.dueDate)}{isOverdue && ' · เกินกำหนด'}
                           </div>
                         )}
                       </TableCell>
 
                       {/* 4. Customer Name, Phone & Type */}
                       <TableCell >
-                        <div className="flex items-center gap-1.5 font-medium text-fg leading-snug min-w-44">
-                          {debt.customerType === 'COMPANY' ? (
-                            <span className="inline-flex items-center gap-1 text-sub text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 shrink-0 font-medium">
-                              <Building2 className="w-3 h-3" /> นิติบุคคล
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-sub text-sky-700 bg-sky-50 px-1.5 py-0.5 rounded border border-sky-200 shrink-0 font-medium">
-                              <User className="w-3 h-3" /> บุคคล
-                            </span>
-                          )}
+                        <div className="font-medium text-fg leading-snug min-w-40">
                           <span className="line-clamp-2 break-words" title={debt.customerName}>{debt.customerName}</span>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-1.5 text-sub text-muted-foreground doc-no">
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-sub text-muted-foreground">
+                          <span>{debt.customerType === 'COMPANY' ? 'นิติบุคคล' : 'บุคคล'}</span>
                           {debt.customerCode && <span className="text-muted-foreground">[{debt.customerCode}]</span>}
                           {debt.customerPhone && <span>โทร: {debt.customerPhone}</span>}
                           {debt.taxId && <span>Tax: {debt.taxId}</span>}
@@ -490,18 +479,18 @@ function DebtsContent() {
                       </TableCell>
 
                       {/* 3. Total Amount */}
-                      <TableCell data-narrow="hide" className="text-right font-medium text-fg tabular-nums whitespace-nowrap">
+                      <TableCell data-narrow="hide" className="text-right text-fg tabular-nums whitespace-nowrap">
                         {formatCurrency(debt.totalAmount)}
                       </TableCell>
 
                       {/* 4. Paid Amount */}
-                      <TableCell className="text-right font-medium text-ok tabular-nums whitespace-nowrap">
+                      <TableCell className="text-right text-fg tabular-nums whitespace-nowrap">
                         {formatCurrency(debt.paidAmount)}
                       </TableCell>
 
                       {/* 5. Remaining Balance */}
-                      <TableCell className="text-right font-semibold tabular-nums whitespace-nowrap">
-                        <span className={debt.remainingDebt > 0 ? 'text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-100 inline-block font-semibold text-sm' : 'text-slate-400 text-sm'}>
+                      <TableCell className="text-right tabular-nums whitespace-nowrap">
+                        <span className={debt.remainingDebt > 0 ? 'font-medium text-danger' : 'text-subtle'}>
                           {formatCurrency(debt.remainingDebt)}
                         </span>
                       </TableCell>
@@ -509,8 +498,8 @@ function DebtsContent() {
                       {/* 6. Pastel Progress Bar */}
                       <TableCell data-mid="hide" className="hidden xl:table-cell text-center">
                         <div className="space-y-0.5 max-w-[125px] mx-auto">
-                          <div className="flex items-center justify-between text-sub font-semibold">
-                            <span className={isPaid ? 'text-teal-700 font-bold' : isPartial ? 'text-indigo-700 font-bold' : 'text-slate-500'}>
+                          <div className="flex items-center justify-between text-sub">
+                            <span className={isPaid ? 'text-ok' : 'text-muted-foreground'}>
                               {isPaid ? '100%' : `${progressPct}%`}
                             </span>
                             <span className="text-sub text-subtle">
@@ -559,7 +548,7 @@ function DebtsContent() {
                             <Button
                               size="sm"
                               onClick={() => handleOpenPay(debt)}
-                              className="h-7.5 text-sub sm:text-sm bg-indigo-600 hover:bg-indigo-700 text-white gap-1"
+
                               title="รับชำระหนี้บิลนี้"
                                 aria-label="รับชำระ"
                             >
@@ -567,9 +556,7 @@ function DebtsContent() {
                               <span data-act-label>รับชำระ</span>
                             </Button>
                           ) : (
-                            <span className="text-sub text-ok font-medium bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                              เคลียร์แล้ว
-                            </span>
+                            null
                           )}
 
                           {/* History / Slip Button */}
@@ -577,7 +564,7 @@ function DebtsContent() {
                             size="sm"
                             variant="outline"
                             onClick={() => handleOpenHistory(debt)}
-                            className="h-7.5 text-sub sm:text-sm text-fg border-slate-300 hover:bg-slate-100"
+
                             title="ดูประวัติการชำระและพิมพ์สลิป"
                                 aria-label="ประวัติ"
                           >

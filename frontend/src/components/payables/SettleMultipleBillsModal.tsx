@@ -954,7 +954,7 @@ export function SettleMultipleBillsModal({
                         <Input
                           value={bankAccountLabel}
                           onChange={(e) => setBankAccountLabel(e.target.value)}
-                          className="h-8.5 bg-slate-50 border-slate-300"
+                          className="bg-slate-50 border-slate-300"
                         />
                       </div>
                       <div>
@@ -965,7 +965,7 @@ export function SettleMultipleBillsModal({
                           value={referenceNo}
                           onChange={(e) => setReferenceNo(e.target.value)}
                           placeholder="เช่น K-12398471"
-                          className="h-8.5 tabular-nums bg-slate-50 border-slate-300"
+                          className="tabular-nums bg-slate-50 border-slate-300"
                         />
                       </div>
                     </div>
@@ -979,7 +979,7 @@ export function SettleMultipleBillsModal({
                         value={paymentDate}
                         max={maxPaymentDate}
                         onChange={(e) => setPaymentDate(e.target.value)}
-                        className="h-8.5 bg-slate-50 border-slate-300"
+                        className="bg-slate-50 border-slate-300"
                       />
                     </div>
                     <div>
@@ -987,7 +987,7 @@ export function SettleMultipleBillsModal({
                       <Input
                         value={cashierName}
                         onChange={(e) => setCashierName(e.target.value)}
-                        className="h-8.5 bg-slate-50 border-slate-300"
+                        className="bg-slate-50 border-slate-300"
                       />
                     </div>
                   </div>
@@ -1037,7 +1037,7 @@ export function SettleMultipleBillsModal({
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
                         placeholder="เช่น จ่ายรอบบิลประจำสัปดาห์ / งวดที่ 1"
-                        className="h-8.5 bg-slate-50 border-slate-300 text-slate-800 placeholder:text-slate-400 focus:bg-white"
+                        className="bg-slate-50 border-slate-300 text-slate-800 placeholder:text-slate-400 focus:bg-white"
                       />
                     </div>
                   </div>

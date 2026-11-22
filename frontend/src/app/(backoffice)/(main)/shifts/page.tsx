@@ -526,13 +526,13 @@ export default function ShiftsHistoryPage() {
                       <th data-narrow="hide" className="text-center w-12">รอบ</th>
                       <th className="text-left">รหัสกะ / แคชเชียร์</th>
                       <th className="text-left">เวลาเปิด - ปิด</th>
-                      <th data-narrow="hide" className="text-right">เงินทอนเปิดกะ</th>
-                      <th className="text-right">ยอดขายในกะ</th>
-                      <th data-narrow="hide" className="text-right">เข้า/ออกลิ้นชัก</th>
+                      <th data-narrow="hide" className="text-right">เงินทอน</th>
+                      <th className="text-right">ยอดขาย</th>
+                      <th data-narrow="hide" className="text-right">เข้า / ออก</th>
                       <th className="text-right" title="เงินควรมี (Expected)">เงินควรมี</th>
                       <th className="text-right" title="เงินนับได้จริง (Actual)">นับได้จริง</th>
                       <th className="text-center">ผลการปิดกะ</th>
-                      <th className="text-right">พิมพ์ใบสรุป</th>
+                      <th className="text-right"><span className="sr-only">พิมพ์ใบสรุป</span></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -545,9 +545,7 @@ export default function ShiftsHistoryPage() {
                         <tr key={shift.shiftId} className="hover:bg-slate-50/70 transition-colors">
                           {/* Round Number */}
                           <td data-narrow="hide" className="text-center">
-                            <span className="inline-flex items-center justify-center w-8 h-8 rounded-xl bg-indigo-50 text-indigo-700 font-semibold">
-                              {roundNumber}
-                            </span>
+                            <span className="tabular-nums text-muted-foreground">{roundNumber}</span>
                           </td>
 
                           {/* Shift ID & Cashier */}
@@ -556,24 +554,20 @@ export default function ShiftsHistoryPage() {
                               {shift.shiftId}
                             </span>
                             <span className="text-sub text-muted-foreground flex items-center gap-1 mt-0.5">
-                              <User className="w-3.5 h-3.5 text-subtle" />
                               <span>{shift.userName}</span>
                             </span>
                           </td>
 
                           {/* Time & Duration */}
-                          <td className="min-w-36">
-                            <div className="font-medium text-fg flex items-center gap-1.5 whitespace-nowrap">
-                              <Clock className="w-3.5 h-3.5 text-subtle" />
-                              <span>{openTime} - {closeTime} น.</span>
-                            </div>
-                            <span className="text-sub text-muted-foreground doc-no block mt-0.5">
+                          <td className="min-w-32">
+                            <div className="text-fg tabular-nums whitespace-nowrap">{openTime} - {closeTime} น.</div>
+                            <span className="text-sub text-muted-foreground block mt-0.5">
                               ระยะเวลา: {duration} (ขาย {shift.orderCount || 0} บิล)
                             </span>
                           </td>
 
                           {/* Opening Cash */}
-                          <td data-narrow="hide" className="text-right tabular-nums whitespace-nowrap font-medium text-fg">
+                          <td data-narrow="hide" className="text-right tabular-nums whitespace-nowrap text-fg">
                             {formatCurrency(shift.openingCash)}
                           </td>
 
@@ -590,12 +584,12 @@ export default function ShiftsHistoryPage() {
                           {/* Cash In / Out */}
                           <td data-narrow="hide" className="text-right tabular-nums whitespace-nowrap">
                             {shift.cashIn > 0 && (
-                              <span className="text-ok block font-semibold">
+                              <span className="text-ok block">
                                 +{formatCurrency(shift.cashIn)}
                               </span>
                             )}
                             {shift.cashOut > 0 && (
-                              <span className="text-danger block font-semibold">
+                              <span className="text-danger block">
                                 -{formatCurrency(shift.cashOut)}
                               </span>
                             )}
@@ -605,12 +599,12 @@ export default function ShiftsHistoryPage() {
                           </td>
 
                           {/* Expected Cash */}
-                          <td className="text-right tabular-nums whitespace-nowrap font-medium text-fg">
+                          <td className="text-right tabular-nums whitespace-nowrap text-fg">
                             {formatCurrency(shift.expectedCash)}
                           </td>
 
                           {/* Actual Cash */}
-                          <td className="text-right tabular-nums whitespace-nowrap font-semibold text-fg">
+                          <td className="text-right tabular-nums whitespace-nowrap font-medium text-fg">
                             {formatCurrency(shift.actualCash)}
                           </td>
 
@@ -618,17 +612,14 @@ export default function ShiftsHistoryPage() {
                           <td className="text-center whitespace-nowrap">
                             {diff === 0 ? (
                               <StatusChip tone="success">
-                                <CheckCircle2 className="w-3 h-3 text-ok" />
                                 <span>ตรงพอดี</span>
                               </StatusChip>
                             ) : diff < 0 ? (
                               <StatusChip tone="danger">
-                                <ArrowDownRight className="w-3 h-3 text-danger" />
                                 <span>ขาด {formatCurrency(Math.abs(diff))}</span>
                               </StatusChip>
                             ) : (
                               <StatusChip tone="info">
-                                <ArrowUpRight className="w-3 h-3 text-sky-600" />
                                 <span>เกิน +{formatCurrency(diff)}</span>
                               </StatusChip>
                             )}
@@ -640,7 +631,7 @@ export default function ShiftsHistoryPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => handlePrintSlip(shift)}
-                              className="border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-sub gap-1.5"
+
                               title="พิมพ์ใบสรุปปิดกะ (Slip 80mm / A4)"
                               aria-label="พิมพ์สลิปซ้ำ"
                             >

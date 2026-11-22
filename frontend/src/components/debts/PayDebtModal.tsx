@@ -448,7 +448,7 @@ export function PayDebtModal({
               <Input
                 value={referenceNo}
                 onChange={(e) => setReferenceNo(e.target.value)}
-                className="h-8.5 bg-slate-50 border-slate-200"
+                className="bg-slate-50 border-slate-200"
                 placeholder="เช่น TXN12345"
               />
             </div>
@@ -457,7 +457,7 @@ export function PayDebtModal({
               <Input
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                className="h-8.5 bg-slate-50 border-slate-200"
+                className="bg-slate-50 border-slate-200"
                 placeholder="เช่น โอนงวด 2"
               />
             </div>

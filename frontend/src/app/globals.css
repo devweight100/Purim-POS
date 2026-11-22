@@ -99,7 +99,7 @@
   --tbl-head-bg: #f8fafc;
   --tbl-row-hover: #f8fafc;
   --tbl-row-selected: #eef2ff;
-  --tbl-cell-px: 0.75rem;   /* 12 px left = right */
+  --tbl-cell-px: 0.625rem;  /* 10 px left = right */
   --tbl-cell-py: 0.75rem;   /* 12 px -> ~44 px rows at 14 px text */
   --tbl-edge: 1rem;         /* first / last column = card edge padding (16 px) */
 

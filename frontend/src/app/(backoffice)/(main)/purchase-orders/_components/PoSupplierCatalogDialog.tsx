@@ -125,7 +125,7 @@ export function PoSupplierCatalogDialog({
                             <Button
                               key={ui}
                               size="sm"
-                              className={` ${
+                              className={`  ${
                                 existing
                                   ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                                   : "bg-sky-500 text-white hover:bg-sky-600 shadow-xs"

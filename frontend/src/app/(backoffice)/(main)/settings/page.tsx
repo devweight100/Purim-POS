@@ -1319,7 +1319,7 @@ export default function SettingsPage() {
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}
               placeholder="พิมพ์ RESET ตรงนี้..."
-              className="text-center tabular-nums   border-slate-300 focus-visible:ring-rose-500"
+              className="text-center tabular-nums border-slate-300 focus-visible:ring-rose-500"
               autoFocus
             />
           </div>
