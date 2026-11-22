@@ -555,7 +555,7 @@ export default function InventoryPage() {
               <select
                 value={activeCategory}
                 onChange={(e) => setActiveCategory(e.target.value)}
-                className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-sky-500 shadow-2xs"
+                className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-sky-500 shadow-2xs"
               >
                 <option value="all">หมวดหมู่ทั้งหมด</option>
                 {storeCategories.map((c) => (
@@ -844,7 +844,7 @@ export default function InventoryPage() {
               <select
                 value={movementTypeFilter}
                 onChange={(e) => setMovementTypeFilter(e.target.value)}
-                className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 shadow-2xs"
+                className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 shadow-2xs"
               >
                 <option value="all">ประเภทความเคลื่อนไหวทั้งหมด</option>
                 {Object.entries(MOVEMENT_TYPES).map(([id, t]) => (
@@ -855,7 +855,7 @@ export default function InventoryPage() {
               <select
                 value={movementDateFilter}
                 onChange={(e) => setMovementDateFilter(e.target.value as typeof movementDateFilter)}
-                className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500 shadow-2xs"
+                className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 shadow-2xs"
               >
                 <option value="all">ช่วงเวลาทั้งหมด</option>
                 <option value="today">วันนี้</option>
@@ -1125,7 +1125,7 @@ export default function InventoryPage() {
                   const found = products.find((p: InvProduct) => p.id === e.target.value);
                   setTargetProduct(found || null);
                 }}
-                className="w-full h-11 rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 shadow-2xs"
+                className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 shadow-2xs"
               >
                 {/* disabled products are left out of the list (one opened from its own row stays selectable) */}
                 {products.filter((p: InvProduct) => isSellable(p) || p.id === targetProduct?.id).map((p: InvProduct) => (

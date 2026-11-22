@@ -924,7 +924,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td className="text-center doc-no whitespace-nowrap font-medium text-muted-foreground">
                             {itemIndex}
                           </td>
-                          <td className="doc-no whitespace-nowrap text-indigo-700 font-medium">
+                          <td className="doc-no whitespace-nowrap text-muted-foreground">
                             {p.sku}
                           </td>
                           <td className="font-medium text-fg min-w-44 xl:min-w-56">
@@ -933,7 +933,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td data-narrow="hide" className="text-center">
                             <span className="block max-w-36 truncate text-muted-foreground" title={formatCategory(p.category)}>{formatCategory(p.category)}</span>
                           </td>
-                          <td className="text-right tabular-nums whitespace-nowrap font-medium text-indigo-700">
+                          <td className="text-right tabular-nums whitespace-nowrap font-medium">
                             {p.quantitySold} <span className="text-sub font-medium text-muted-foreground">{p.unitName}</span>
                           </td>
                           <td className="text-right tabular-nums whitespace-nowrap font-medium text-fg">
@@ -1091,7 +1091,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td className="text-center doc-no whitespace-nowrap font-medium text-muted-foreground">
                             {itemIndex}
                           </td>
-                          <td className="doc-no whitespace-nowrap text-indigo-700 font-medium">
+                          <td className="doc-no whitespace-nowrap text-muted-foreground">
                             {item.sku}
                           </td>
                           <td className="font-medium text-fg min-w-44 xl:min-w-56">
@@ -1109,7 +1109,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td className="text-right tabular-nums whitespace-nowrap font-medium text-fg">
                             {formatCurrency(item.totalCostValue)}
                           </td>
-                          <td data-narrow="hide" className="text-right tabular-nums whitespace-nowrap font-medium text-ok">
+                          <td data-narrow="hide" className="text-right tabular-nums whitespace-nowrap font-medium">
                             {formatCurrency(item.totalRetailValue)}
                           </td>
                           <td className="text-center">
@@ -1355,7 +1355,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td className="text-center doc-no whitespace-nowrap font-medium text-muted-foreground">
                             {itemIndex}
                           </td>
-                          <td className="doc-no whitespace-nowrap text-indigo-700 font-medium">
+                          <td className="doc-no whitespace-nowrap text-muted-foreground">
                             {c.code}
                           </td>
                           <td className="font-medium text-fg min-w-40 xl:min-w-48">
@@ -1377,7 +1377,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
                           <td data-narrow="hide" className="text-right tabular-nums whitespace-nowrap text-fg">
                             {formatCurrency(c.averageTicket)}
                           </td>
-                          <td className="text-right tabular-nums whitespace-nowrap font-medium text-indigo-700">
+                          <td className="text-right tabular-nums whitespace-nowrap font-medium">
                             {formatCurrency(c.totalSpent)}
                           </td>
                           <td className="text-right tabular-nums whitespace-nowrap font-medium text-warn">

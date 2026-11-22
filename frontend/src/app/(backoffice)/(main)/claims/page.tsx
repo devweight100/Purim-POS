@@ -273,7 +273,7 @@ export default function ClaimsPage() {
             <select
               value={resolutionFilter}
               onChange={(e) => setResolutionFilter(e.target.value)}
-              className="h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 w-full md:w-48"
+              className="h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-700 w-full md:w-48"
             >
               <option value="ALL">ทุกประเภทการรับเคลม</option>
               <option value="REPLACE_ITEM">เปลี่ยนชิ้นใหม่</option>
@@ -287,7 +287,7 @@ export default function ClaimsPage() {
               value={sort}
               onChange={(e) => setSort(e.target.value as typeof sort)}
               aria-label="เรียงลำดับ"
-              className="h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 w-full md:w-40"
+              className="h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-700 w-full md:w-40"
             >
               <option value="newest">ใหม่ล่าสุดก่อน</option>
               <option value="oldest">เก่าที่สุดก่อน</option>
@@ -372,7 +372,7 @@ export default function ClaimsPage() {
 
                     {/* 2. Claim ID */}
                     <TableCell className="doc-no whitespace-nowrap">
-                      <div className="font-medium text-indigo-600">{claim.id}</div>
+                      <div className="doc-no text-fg">{claim.id}</div>
                       {claim.returnDocId && (
                         <div className="mt-1">
                           <Link

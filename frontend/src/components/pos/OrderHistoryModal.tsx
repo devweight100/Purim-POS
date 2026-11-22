@@ -389,33 +389,23 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
     }
   };
 
+  // payment method = plain text (style pass: no chip around a plain value); split payments list their parts
   const getPaymentBadge = (methodStr?: string, payments?: HistoryPayment[]) => {
     if (payments && payments.length > 1) {
       const details = payments.map(p => {
         const name = p.method === 'CASH' ? 'เงินสด' : p.method === 'QR_PROMPTPAY' ? 'QR' : 'โอน';
         return `${name} ${formatCurrency(p.amount)}`;
       }).join(' + ');
-      return (
-        <Badge className="bg-indigo-100 text-indigo-900 border border-indigo-300 font-bold hover:bg-indigo-100" title={details}>
-          🔀 แบ่งชำระ ({payments.length} ช่องทาง)
-        </Badge>
-      );
+      return <span className="text-fg" title={details}>แบ่งชำระ ({payments.length} ช่องทาง)</span>;
     }
-
     const m = payments?.[0]?.method || methodStr || '';
-    if (m === 'CASH' || m === 'เงินสด') {
-      return <Badge className="bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold hover:bg-emerald-100">เงินสด</Badge>;
-    }
-    if (m === 'QR_PROMPTPAY' || m?.includes('คิวอาร์') || m?.includes('พร้อมเพย์')) {
-      return <Badge className="bg-sky-100 text-sky-800 border border-sky-300 font-bold hover:bg-sky-100">คิวอาร์ (พร้อมเพย์)</Badge>;
-    }
-    if (m === 'CREDIT_CARD' || m?.includes('บัตร')) {
-      return <Badge className="bg-purple-100 text-purple-800 border border-purple-300 font-bold hover:bg-purple-100">บัตรเครดิต</Badge>;
-    }
-    if (m === 'SPLIT' || m?.includes('แบ่ง')) {
-      return <Badge className="bg-indigo-100 text-indigo-900 border border-indigo-300 font-bold hover:bg-indigo-100">🔀 แบ่งชำระ</Badge>;
-    }
-    return <Badge className="bg-amber-100 text-amber-800 border border-amber-300 font-bold hover:bg-amber-100">โอนเงิน</Badge>;
+    const label =
+      m === 'CASH' || m === 'เงินสด' ? 'เงินสด'
+      : m === 'QR_PROMPTPAY' || m?.includes('คิวอาร์') || m?.includes('พร้อมเพย์') ? 'คิวอาร์ (พร้อมเพย์)'
+      : m === 'CREDIT_CARD' || m?.includes('บัตร') ? 'บัตรเครดิต'
+      : m === 'SPLIT' || m?.includes('แบ่ง') ? 'แบ่งชำระ'
+      : 'โอนเงิน';
+    return <span className="text-fg">{label}</span>;
   };
 
   return (
@@ -526,7 +516,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                         className={`hover:bg-slate-50/80 transition-colors ${isCancelled ? 'bg-rose-50/40 text-slate-400' : ''}`}
                       >
                         {/* Receipt # */}
-                        <td className="font-medium text-sky-700">
+                        <td className="doc-no text-fg">
                           <div className="flex flex-wrap items-center gap-1.5">
                             <span>#{order.orderNumber || order.id}</span>
                             {isCancelled && (
@@ -552,8 +542,8 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                           <button
                             type="button"
                             onClick={() => setViewItemsOrder(order)}
-                            className="font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
-                            title="คลิกเพื่อดูายการสินค้า"
+                            className="text-sky-700 hover:underline cursor-pointer tabular-nums"
+                            title="คลิกเพื่อดูรายการสินค้า"
                           >
                             {itemCount} รายการ
                           </button>

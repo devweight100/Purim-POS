@@ -184,7 +184,7 @@ test('enable / disable: the ⋯ menu and the bulk bar show only the action that 
   expect(inactive).toContain('เปิดใช้งาน');
   expect(inactive).not.toContain('ปิดการใช้งาน');
 
-  const check = (name: string) => rowOf(name).getByRole('checkbox').click();
+  const check = (name: string) => rowOf(name).getByRole('checkbox').click({ force: true }); // custom checkbox: visible box over an sr-only input
   const enable = page.getByTestId('bulk-enable');
   const disable = page.getByTestId('bulk-disable');
   // all active -> ปิด only

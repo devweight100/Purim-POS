@@ -979,7 +979,7 @@ export default function SettingsPage() {
                     <select
                       value={drawerConfig.selectedPrinter || ''}
                       onChange={(e) => handleUpdateDrawerConfig({ selectedPrinter: e.target.value })}
-                      className="flex-1 h-9 px-3 text-xs bg-white border border-sky-300 rounded-xl font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
+                      className="flex-1 h-10 px-3 text-sm bg-white border border-sky-300 rounded-lg font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
                     >
                       <option value="">-- ตรวจหาอัตโนมัติ (EPSON TM-T82 / Slip / Thermal Receipt) --</option>
                       {installedPrinters.map((p) => (
@@ -994,7 +994,7 @@ export default function SettingsPage() {
                     <select
                       value={drawerConfig.selectedA4Printer || ''}
                       onChange={(e) => handleUpdateDrawerConfig({ selectedA4Printer: e.target.value })}
-                      className="flex-1 h-9 px-3 text-xs bg-white border border-sky-300 rounded-xl font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
+                      className="flex-1 h-10 px-3 text-sm bg-white border border-sky-300 rounded-lg font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 cursor-pointer"
                     >
                       <option value="">-- ไม่ระบุ (แสดงหน้าต่างเลือกเครื่องพิมพ์ของ Windows) --</option>
                       {installedPrinters.map((p) => (

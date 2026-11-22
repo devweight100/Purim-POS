@@ -145,7 +145,7 @@ export function PoItemsTable({
                     <select
                       value={discountType}
                       onChange={(e) => updateProductDiscount(product, 'discountType', e.target.value as 'baht' | 'percent')}
-                      className="h-9 rounded-lg border border-slate-300 bg-white px-1.5 text-xs font-medium text-slate-700 outline-none focus:border-sky-500"
+                      className="h-10 rounded-lg border border-slate-300 bg-white px-1.5 text-sm font-medium text-slate-700 outline-none focus:border-sky-500"
                     >
                       <option value="baht">บาท</option>
                       <option value="percent">%</option>

@@ -418,7 +418,7 @@ export default function CustomersPage() {
             <select
               value={priceLevelFilter}
               onChange={(e) => setPriceLevelFilter(e.target.value)}
-              className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-sky-500 shadow-2xs"
+              className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-sky-500 shadow-2xs"
             >
               <option value="all">ระดับราคาทั้งหมด</option>
               <option value="1">ระดับ 1 (ทั่วไป)</option>
@@ -807,7 +807,7 @@ export default function CustomersPage() {
                     <select
                       value={formData.branchType || 'HEAD_OFFICE'}
                       onChange={(e) => setFormData({ ...formData, branchType: e.target.value as Customer['branchType'] })}
-                      className="w-full h-9 rounded-lg border border-slate-300 bg-white px-2.5 font-bold text-slate-800 outline-none"
+                      className="w-full h-10 rounded-lg border border-slate-300 bg-white px-2.5 font-medium text-slate-800 outline-none"
                     >
                       <option value="HEAD_OFFICE">สำนักงานใหญ่ (00000)</option>
                       <option value="BRANCH">สาขา (ระบุเลข)</option>

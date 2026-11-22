@@ -112,7 +112,7 @@ export function LinkRequests({ onChanged }: { onChanged: () => void }) {
                     </label>
                     <label className="text-xs font-semibold">
                       ระดับราคา
-                      <select className="block h-9 rounded-md border border-slate-300 bg-white px-2 text-sm" value={nm.level} onChange={(e) => setNewMember({ ...newMember, [r.id]: { ...nm, level: Number(e.target.value) } })}>
+                      <select className="block h-10 rounded-lg border border-slate-300 bg-white px-2 text-sm" value={nm.level} onChange={(e) => setNewMember({ ...newMember, [r.id]: { ...nm, level: Number(e.target.value) } })}>
                         {PRICE_LEVELS.map((l) => (
                           <option key={l} value={l}>{l} — {DEFAULT_LEVEL_NAMES[l]}</option>
                         ))}

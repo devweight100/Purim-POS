@@ -202,14 +202,11 @@ export default function UsersManagementPage() {
   return (
     <div className="page-shell">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100">
-              <Users className="w-6 h-6" />
-            </div>
             <div>
-              <h1 className="page-title">จัดการพนักงาน & กำหนดสิทธิ์ (Admin Panel)</h1>
+              <h1 className="page-title"><Users />จัดการพนักงาน & กำหนดสิทธิ์ (Admin Panel)</h1>
               <p className="page-subtitle">จัดการรายชื่อผู้ใช้งาน สิทธิ์การเข้าถึงเมนู และรหัส PIN แคชเชียร์</p>
             </div>
           </div>
@@ -436,7 +433,7 @@ export default function UsersManagementPage() {
                   <select
                     value={formRole}
                     onChange={(e) => setFormRole(e.target.value as typeof formRole)}
-                    className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    className="w-full px-3.5 py-2 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   >
                     <option value="CASHIER">CASHIER (แคชเชียร์หน้าร้าน)</option>
                     <option value="MANAGER">MANAGER (ผู้จัดการร้าน)</option>

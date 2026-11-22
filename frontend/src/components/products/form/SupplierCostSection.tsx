@@ -75,7 +75,7 @@ export function SupplierCostSection({ form, setForm, updateForm, suppliers, onCr
                 <div className="grid grid-cols-[minmax(0,1fr)_120px_auto] gap-2 items-end">
                   <div className="space-y-1 min-w-0">
                     <label className="text-xs font-medium text-slate-500">ผู้จำหน่าย</label>
-                    <select aria-label={`ผู้จำหน่าย ${i + 1}`} value={entry.supplierId} onChange={e => updateSupplierEntry(i, "supplierId", e.target.value)} className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary">
+                    <select aria-label={`ผู้จำหน่าย ${i + 1}`} value={entry.supplierId} onChange={e => updateSupplierEntry(i, "supplierId", e.target.value)} className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary">
                       <option value="">เลือกผู้จำหน่าย</option>
                       {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>

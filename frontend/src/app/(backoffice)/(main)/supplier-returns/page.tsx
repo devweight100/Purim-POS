@@ -351,7 +351,7 @@ export default function SupplierReturnsPage() {
               <select
                 value={selectedSupplierFilter}
                 onChange={(e) => setSelectedSupplierFilter(e.target.value)}
-                className="h-10 px-3 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 w-full md:w-56"
+                className="h-10 px-3 text-sm sm:text-sm bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-700 w-full md:w-56"
               >
                 <option value="ALL">ผู้จำหน่ายทั้งหมด</option>
                 {suppliers.map((s) => (
@@ -362,7 +362,7 @@ export default function SupplierReturnsPage() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="h-10 px-3 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 w-full md:w-40"
+                className="h-10 px-3 text-sm sm:text-sm bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-700 w-full md:w-40"
               >
                 <option value="ALL">ทุกสถานะที่ใช้งาน</option>
                 <option value="PENDING">รอหักลดหนี้</option>
@@ -405,7 +405,7 @@ export default function SupplierReturnsPage() {
                         </td>
 
                         <td className="doc-no whitespace-nowrap">
-                          <span className="font-medium text-indigo-700 block">
+                          <span className="doc-no text-fg block">
                             {note.id}
                           </span>
                         </td>

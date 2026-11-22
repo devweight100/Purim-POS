@@ -125,7 +125,7 @@ export function OrdersTable({
                     {/* 2. Order Number */}
                     <TableCell className="doc-no">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="doc-no text-indigo-700 whitespace-nowrap">{order.orderNumber}</span>
+                        <span className="doc-no whitespace-nowrap">{order.orderNumber}</span>
                         {order.hasClaims && (
                           <StatusChip tone="warning">เคลมแล้ว</StatusChip>
                         )}

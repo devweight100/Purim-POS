@@ -404,7 +404,7 @@ export default function ShiftsHistoryPage() {
           <select
             value={userFilter}
             onChange={(e) => setUserFilter(e.target.value)}
-            className="h-11 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:border-indigo-500"
+            className="h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-700 outline-none focus:border-indigo-500"
           >
             <option value="ALL">แคชเชียร์ทุกคน {uniqueCashiers.length > 0 ? `(${uniqueCashiers.length})` : ''}</option>
             {uniqueCashiers.map((c) => (
@@ -418,7 +418,7 @@ export default function ShiftsHistoryPage() {
           <select
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value as typeof dateFilter)}
-            className="h-11 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:border-indigo-500"
+            className="h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-700 outline-none focus:border-indigo-500"
           >
             <option value="ALL">ทุกช่วงวันที่</option>
             <option value="TODAY">วันนี้</option>
@@ -441,7 +441,7 @@ export default function ShiftsHistoryPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-            className="h-11 px-3 text-xs bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:border-indigo-500"
+            className="h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-700 outline-none focus:border-indigo-500"
           >
             <option value="ALL">ทุกผลการปิดกะ</option>
             <option value="BALANCED">✓ เงินตรงพอดี</option>

@@ -459,7 +459,8 @@ function DebtsContent() {
                         <div className="text-fg">{formatListDate(debt.orderDate)}</div>
                         {debt.dueDate && (
                           <div className={`mt-0.5 text-sub ${isOverdue ? 'text-danger' : 'text-muted-foreground'}`} title={isOverdue ? 'เกินกำหนดชำระ' : undefined}>
-                            ครบ {formatListDate(debt.dueDate)}{isOverdue && ' · เกินกำหนด'}
+                            ครบ {formatListDate(debt.dueDate)}
+                            {isOverdue && <span className="block">เกินกำหนด</span>}
                           </div>
                         )}
                       </TableCell>
@@ -527,15 +528,15 @@ function DebtsContent() {
                       <TableCell className="text-center">
                         {isPaid ? (
                           <StatusChip tone="success">
-                            <CheckCircle2 className="w-3 h-3 text-ok" /> ชำระครบแล้ว
+                            ชำระครบแล้ว
                           </StatusChip>
                         ) : isPartial ? (
                           <StatusChip tone="warning">
-                            <Clock className="w-3 h-3 text-warn" /> ชำระบางส่วน
+                            ชำระบางส่วน
                           </StatusChip>
                         ) : (
                           <StatusChip tone="danger">
-                            <AlertCircle className="w-3 h-3 text-danger" /> ยังไม่ชำระ
+                            ยังไม่ชำระ
                           </StatusChip>
                         )}
                       </TableCell>

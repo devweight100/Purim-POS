@@ -396,7 +396,7 @@ export function SettlePayableModal({
                 <select
                   value={selectedBankId}
                   onChange={(e) => setSelectedBankId(e.target.value)}
-                  className="w-full h-10 px-3 text-xs bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-800"
+                  className="w-full h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-800"
                 >
                   {bankAccounts.map((acc) => (
                     <option key={acc.id} value={acc.id}>

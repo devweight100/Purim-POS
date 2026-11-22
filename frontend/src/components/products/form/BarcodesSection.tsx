@@ -32,7 +32,7 @@ export function BarcodesSection({ form, setForm, suppliers }: { form: ProductFor
               <select
                 value={b.supplierId || ""}
                 onChange={e => updateBarcode(i, "supplierId", e.target.value)}
-                className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary"
+                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary"
               >
                 <option value="">เลือกผู้จำหน่าย (ถ้ามี)</option>
                 {suppliers.map(s => (

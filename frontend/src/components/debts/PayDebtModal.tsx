@@ -374,7 +374,7 @@ export function PayDebtModal({
                 aria-label="เข้าบัญชีธนาคาร"
                 value={selectedBankAccount ? bankLabel(selectedBankAccount) : ''}
                 onChange={(e) => setSelectedBank(e.target.value)}
-                className="w-full h-9 rounded-xl border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-800 outline-none focus:border-sky-500"
+                className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-sky-500"
               >
                 {bankAccounts.map((b) => (
                   <option key={b.id} value={`${b.bankName} (${b.accountNumber})`}>
@@ -414,7 +414,7 @@ export function PayDebtModal({
                 data-testid="pay-debt-shift"
                 value={shiftChoice}
                 onChange={(e) => setShiftChoice(e.target.value)}
-                className="w-full h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
+                className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200"
               >
                 <option value="" disabled>
                   {openShifts === null ? 'กำลังโหลดกะที่เปิดอยู่...' : '— เลือกกะที่รับเงิน —'}

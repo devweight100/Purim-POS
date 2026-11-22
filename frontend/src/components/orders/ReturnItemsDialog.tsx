@@ -118,7 +118,7 @@ export function ReturnItemsDialog({ orderId, onClose, onDone }: { orderId: strin
             </div>
             {method === 'CASH' && <p className="text-xs text-slate-500">{currentShift?.id ? 'จ่ายเงินสดจากลิ้นชักของกะที่เปิดอยู่' : 'ยังไม่ได้เปิดกะ — เปิดกะที่หน้าขายก่อนคืนเงินสด'}</p>}
             {method === 'TRANSFER' && (
-              <select className="w-full h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm" value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)}>
+              <select className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm" value={bankAccountId} onChange={(e) => setBankAccountId(e.target.value)}>
                 {banks.map((b) => <option key={b.id} value={b.id}>โอนจาก {b.bankName} {b.accountNumber}</option>)}
               </select>
             )}

@@ -330,7 +330,7 @@ export default function AccountsPage() {
                   const preset = BANK_PRESETS.find(p => p.name === e.target.value);
                   if (preset) setColor(preset.color);
                 }}
-                className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold outline-none focus:border-sky-500"
+                className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium outline-none focus:border-sky-500"
               >
                 {BANK_PRESETS.map(p => (
                   <option key={p.name} value={p.name}>{p.name}</option>
@@ -368,7 +368,7 @@ export default function AccountsPage() {
                 data-testid="promptpay-type"
                 value={promptpayType}
                 onChange={(e) => setPromptpayType(e.target.value as PromptPayIdType | '')}
-                className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold outline-none focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400"
+                className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium outline-none focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400"
               >
                 <option value="">ไม่ใช้ (แสดงรูป QR ที่อัปโหลด)</option>
                 {(Object.keys(PROMPTPAY_TYPE_LABELS) as PromptPayIdType[]).map((t) => (

@@ -109,7 +109,7 @@ export function PackagingUnitsSection({ form, setForm, updateForm }: { form: Pro
         <select
           value={form.defaultSellingUnitId || ""}
           onChange={e => updateForm("defaultSellingUnitId", e.target.value)}
-          className="h-10 w-full sm:w-80 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-primary"
+          className="h-10 w-full sm:w-80 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-primary"
         >
           <option value="">หน่วยย่อยสุด ({form.unit || "ชิ้น"}) — ค่าเริ่มต้นระบบ</option>
           {form.packagingUnits.map((u, i) => (

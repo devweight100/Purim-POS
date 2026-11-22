@@ -935,7 +935,7 @@ export function SettleMultipleBillsModal({
                       <select
                         value={moneyAccountId}
                         onChange={(e) => setMoneyAccountId(e.target.value)}
-                        className="w-full h-8.5 text-xs bg-slate-50 border border-slate-300 rounded-xl px-2"
+                        className="w-full h-8.5 text-sm bg-slate-50 border border-slate-300 rounded-lg px-2"
                       >
                         <option value="">อัตโนมัติ ({paymentMethod === 'CASH' ? 'เงินสดในเซฟ' : 'บัญชีธนาคารหลัก'})</option>
                         {accountChoices.map((a) => (

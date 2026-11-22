@@ -125,7 +125,7 @@ export function BundleItemsSection({ form, setForm, products, editingProductId }
                   <select
                     value={bi.childProductId}
                     onChange={(e) => updateBundleItem(idx, "childProductId", e.target.value)}
-                    className="h-9 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-purple-500 font-medium text-slate-800"
+                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-purple-500 font-medium text-slate-800"
                   >
                     <option value="">-- เลือกสินค้า --</option>
                     {products

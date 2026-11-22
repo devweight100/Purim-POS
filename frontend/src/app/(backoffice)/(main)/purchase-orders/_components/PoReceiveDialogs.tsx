@@ -157,9 +157,9 @@ export function PoReceiveDialog({
                         </div>
                       </TableCell>
                       <TableCell className="text-center">
-                        <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-sub font-semibold">
-                          {item.unitName} {mult > 1 ? `(×${mult})` : ''}
-                        </Badge>
+                        <span className="text-fg">
+                          {item.unitName} {mult > 1 && <span className="text-sub text-muted-foreground">(×{mult})</span>}
+                        </span>
                       </TableCell>
                       <TableCell className="text-center text-fg font-medium">{formatQty(item.orderedQty)}</TableCell>
                       <TableCell className="text-center text-ok font-medium">{formatQty(item.receivedQty)}</TableCell>

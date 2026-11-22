@@ -375,7 +375,7 @@ export default function PayablesPage() {
             className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5"
           >
             <Plus className="w-4 h-4" />
-            <span>+ สร้างใบชำระหนี้ (หลายบิล)</span>
+            <span>สร้างใบชำระหนี้ (หลายบิล)</span>
           </Button>
 
           <Link href="/supplier-returns">
@@ -509,7 +509,7 @@ export default function PayablesPage() {
               <select
                 value={supplierFilter}
                 onChange={(e) => setSupplierFilter(e.target.value)}
-                className="h-10 px-3 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 w-full md:w-56"
+                className="h-10 px-3 text-sm sm:text-sm bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-700 w-full md:w-56"
               >
                 <option value="ALL">ผู้จำหน่ายทั้งหมด</option>
                 {suppliers.map((s) => (
@@ -520,7 +520,7 @@ export default function PayablesPage() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as PayableBillStatusFilter)}
-                className="h-10 px-3 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 w-full md:w-40"
+                className="h-10 px-3 text-sm sm:text-sm bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-700 w-full md:w-40"
               >
                 <option value="ALL">ทุกสถานะการชำระ</option>
                 <option value="UNPAID">รอชำระ</option>
@@ -810,7 +810,7 @@ export default function PayablesPage() {
                             {voucher.discountAmount && voucher.discountAmount > 0 ? formatCurrency(voucher.discountAmount) : '-'}
                           </td>
 
-                          <td className="text-right tabular-nums whitespace-nowrap text-indigo-700 font-medium">
+                          <td className="text-right tabular-nums whitespace-nowrap font-medium">
                             {voucher.deductedCreditAmount > 0 ? formatCurrency(voucher.deductedCreditAmount) : '-'}
                           </td>
 

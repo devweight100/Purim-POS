@@ -382,7 +382,7 @@ export default function ClaimInventoryPage() {
               <select
                 value={selectedSupplierId}
                 onChange={(e) => setSelectedSupplierId(e.target.value)}
-                className="h-9 px-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800 max-w-[220px] truncate outline-none focus:border-indigo-500 shadow-2xs"
+                className="h-10 px-2.5 text-sm sm:text-sm bg-slate-50 border border-slate-300 rounded-lg font-medium text-slate-800 max-w-[220px] truncate outline-none focus:border-indigo-500 shadow-2xs"
               >
                 <option value="ALL">ทุกผู้จำหน่าย ({suppliersList.length} บริษัท)</option>
                 {suppliersList.map((supp) => (
@@ -399,7 +399,7 @@ export default function ClaimInventoryPage() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-                className="h-9 px-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800 outline-none focus:border-indigo-500 shadow-2xs"
+                className="h-10 px-2.5 text-sm sm:text-sm bg-slate-50 border border-slate-300 rounded-lg font-medium text-slate-800 outline-none focus:border-indigo-500 shadow-2xs"
               >
                 <option value="IN_STOCK">ของเคลมรอส่งคืน (ในสต็อก)</option>
                 <option value="RETURNED">ส่งคืนบริษัทแล้ว</option>
@@ -414,7 +414,7 @@ export default function ClaimInventoryPage() {
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="h-9 px-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800 outline-none focus:border-indigo-500 shadow-2xs"
+                  className="h-10 px-2.5 text-sm sm:text-sm bg-slate-50 border border-slate-300 rounded-lg font-medium text-slate-800 outline-none focus:border-indigo-500 shadow-2xs"
                 >
                   <option value="ALL">ทุกหมวดหมู่</option>
                   {categoryOptions.map((cat) => (
@@ -540,7 +540,7 @@ export default function ClaimInventoryPage() {
 
                           {/* 2. Barcode / SKU */}
                           <td className="doc-no whitespace-nowrap">
-                            <span className="font-medium text-indigo-700 block">
+                            <span className="doc-no text-fg block">
                               {item.sku || '-'}
                             </span>
                           </td>
@@ -864,7 +864,7 @@ export default function ClaimInventoryPage() {
 
                         {/* 2. Claim Ticket ID */}
                         <td className="doc-no whitespace-nowrap">
-                          <span className="font-medium text-indigo-700 block">
+                          <span className="doc-no text-fg block">
                             {claim.claimId}
                           </span>
                           {claim.orderNumber && (
@@ -1008,7 +1008,7 @@ export default function ClaimInventoryPage() {
                         <td className="text-center doc-no whitespace-nowrap text-muted-foreground font-medium">
                           {i + 1}
                         </td>
-                        <td className="doc-no whitespace-nowrap font-medium text-indigo-700">
+                        <td className="doc-no whitespace-nowrap font-medium">
                           {c.claimId}
                         </td>
                         <td className="text-center doc-no whitespace-nowrap text-muted-foreground">

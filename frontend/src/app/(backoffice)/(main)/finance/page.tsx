@@ -421,7 +421,7 @@ export default function FinancePage() {
             <Button key={k} size="sm" variant={tab === k ? 'default' : 'ghost'} onClick={() => setTab(k)}>{l}</Button>
           ))}
           {tab === 'ledger' && (
-            <select className="ml-auto h-9 rounded-lg border border-slate-300 px-2 text-sm" value={accountFilter} onChange={(e) => changeAccountFilter(e.target.value)}>
+            <select className="ml-auto h-10 rounded-lg border border-slate-300 px-2 text-sm" value={accountFilter} onChange={(e) => changeAccountFilter(e.target.value)}>
               <option value="">ทุกบัญชี</option>
               {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
