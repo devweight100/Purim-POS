@@ -242,6 +242,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 /* first and last columns line up with the card's 16 px edge padding */
 .tbl > * > tr > :first-child { padding-left: var(--tbl-edge); }
 .tbl > * > tr > :last-child { padding-right: var(--tbl-edge); }
+/* the first column can be hidden (a "#" column shown only on wide screens / wide tables): the next visible cell
+   takes the edge padding */
+@media (max-width: 1279.98px) {
+  .tbl > * > tr > .hidden:first-child + * { padding-left: var(--tbl-edge); }
+}
 /* deliberately tight cells (products price grid, checkbox / chevron columns): 8 px each side */
 .tbl > * > tr > .cell-tight { padding-left: 0.5rem; padding-right: 0.5rem; }
 .tbl > * > tr > .cell-tight:first-child { padding-left: var(--tbl-edge); }
@@ -313,6 +318,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .tbl [data-mid='hide'] {
     display: none !important;
   }
+  .tbl > * > tr > [data-mid='hide']:first-child + * { padding-left: var(--tbl-edge); }
 }
 @container tbl (max-width: 999.98px) {
   .tbl [data-narrow='hide'],
@@ -322,6 +328,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .tbl [data-narrow='wrap'] {
     white-space: normal !important;
   }
+  .tbl > * > tr > [data-narrow='hide']:first-child + * { padding-left: var(--tbl-edge); }
 }
 
 @layer components {
