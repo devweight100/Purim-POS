@@ -10,6 +10,8 @@ import { findProductByScannedCode, useGlobalBarcodeScanner } from '@/lib/use-sca
 import type { Product } from '@/lib/types';
 import { findDocumentCode, resolveScannedUnit } from './pos-scan';
 import type { PosVariant } from './pos-variant';
+import { usePosStart } from './pos-add';
+import { pendingAsks } from '@/lib/ask-dialog';
 import { addToCart } from '@/lib/pos/pos-add';
 
 interface PosScannerOptions {
@@ -76,9 +78,9 @@ export function usePosScanner({ variant, enabled, products, blocked, onProductAd
       }
     }
 
-    // Always reset scanner input and refocus
+    // Always reset scanner input and refocus (not while the start-of-bill dialog or a popup asks something)
     setScannerInputValue('');
-    focusScanner(10);
+    if (!usePosStart.getState().open && pendingAsks().length === 0) focusScanner(10);
   };
 
   // Scanner keys typed while nothing is focused (useGlobalBarcodeScanner always calls the latest callback)

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { ADMIN, CASHIER } from './env';
 import { api, apiLogin, scan, uiLogin } from './helpers';
+import { horizontalOverflow, SIZES } from './layout';
 
 /**
  * Owner bug 2026-11-23: POS prices did not follow the selected member's price level (docs/pos-price-level.md).
@@ -38,6 +39,8 @@ export const M = {
 };
 
 let adminToken = '';
+/** a cashier with POS_SELL only (no discount right): no manual price for an unpriced product */
+const SELLER = { username: `lvl${TAG}`, password: `Lvl#E2e${TAG}`, pin: String(3000 + (Number(TAG) % 6000)) };
 
 async function ensureShift(page: Page) {
   const shiftDlg = page.getByRole('dialog').filter({ hasText: 'ระบุเงินในลิ้นชัก' });
@@ -128,6 +131,7 @@ test.beforeAll(async () => {
   await mk(P.noprice);
   await mk(P.bundle, { isBundle: true, bundleItems: [{ childProductId: dish, quantity: 1 }, { childProductId: glue, quantity: 1 }] });
   for (const m of Object.values(M)) await api('POST', '/customers', adminToken, { name: m.name, phone: m.phone, priceLevel: m.level });
+  await api('POST', '/auth/register', adminToken, { username: SELLER.username, password: SELLER.password, fullName: 'แคชเชียร์ไม่มีสิทธิ์ลดราคา', role: 'CASHIER', pinCode: SELLER.pin, permissions: ['POS_SELL'] });
 });
 
 test('(a) member first, then scan: level 2 prices, fallback to ราคา 1, ราคา 3 when 1 / 2 are empty; paid bill at those prices', async ({ browser }) => {
@@ -145,7 +149,7 @@ test('(a) member first, then scan: level 2 prices, fallback to ราคา 1, �
     await expectPrice(page, P.tape.name, 30);
     // pay: the server stores the level-2 prices
     await page.keyboard.press('F12');
-    const pay = page.getByRole('dialog').filter({ hasText: 'ชำระเงิน' });
+    const pay = page.getByRole('dialog');
     await expect(pay).toContainText('฿98.00');
     await pay.getByRole('button', { name: /เงินสด \(Cash\)/ }).click();
     await pay.getByRole('button', { name: '฿100', exact: true }).click();
@@ -224,7 +228,7 @@ test('(f) held bill recall keeps the member level; clearing the member after rec
     await page.keyboard.press('F10'); // hold
     await expect.poll(async () => (await lines(page)).length).toBe(0);
     await page.keyboard.press('F10'); // held bills sheet
-    await page.getByRole('dialog').getByText(M.l2.name).first().click();
+    await page.getByRole('dialog').getByRole('button', { name: /เรียกคืนบิลนี้/ }).first().click();
     await expectPrice(page, P.dish.name, 18);
     await scan(page, P.dish.barcode);
     await expect.poll(async () => (await lines(page))[0]?.quantity).toBe(2);
@@ -299,6 +303,202 @@ test('(j) a manual price stays manual when the member changes', async ({ browser
     await pickMember(page, M.l3.name);
     await expectPrice(page, P.glue.name, 45);
     await expectPrice(page, P.dish.name, 16);
+  } finally {
+    await ctx.close();
+  }
+});
+
+// ───────────────────────── after the fix: what the cashier sees ─────────────────────────
+
+/** Wait until the POS mirrored the store settings (ClientDbSync) with this value. */
+async function waitSetting(page: Page, key: string, value: unknown) {
+  await expect.poll(() => page.evaluate((k) => JSON.parse(localStorage.getItem('pos_store_settings_v2') || '{}')[k], key), { timeout: 30_000 }).toEqual(value);
+}
+
+async function noOverflow(page: Page) {
+  for (const size of SIZES) {
+    await page.setViewportSize(size);
+    // the settings page's receipt preview box scrolls sideways by design (80 mm slip / A4 at 50 %), unchanged here
+    const issues = (await horizontalOverflow(page)).filter((x) => !x.startsWith('div.bg-slate-200/70'));
+    expect(issues, `${size.width}x${size.height}`).toEqual([]);
+  }
+  await page.setViewportSize(SIZES[0]);
+}
+
+test('level indicator: "ราคา: ส่ง" next to the member, per line when a product falls back to another level', async ({ browser }) => {
+  const { ctx, page } = await posPage(browser);
+  try {
+    await pickMember(page, M.l2.name);
+    await expect(page.getByTestId('pos-price-level')).toHaveText('ราคา: ส่ง');
+    await scan(page, P.dish.barcode);
+    await scan(page, P.glue.barcode);
+    await scan(page, P.tape.barcode);
+    await expectPrice(page, P.tape.name, 30);
+    const row = (name: string) => page.locator('[data-line-key]').filter({ hasText: name });
+    await expect(row(P.dish.name).getByTestId('pos-line-level')).toHaveCount(0);
+    await expect(row(P.glue.name).getByTestId('pos-line-level')).toHaveText('ราคา: ปลีก');
+    await expect(row(P.tape.name).getByTestId('pos-line-level')).toHaveText('ราคา: ส่งพิเศษ');
+    // the product cards show the member's price too
+    await page.getByPlaceholder(/ค้นหาชื่อสินค้า/).fill(P.dish.name.slice(-10));
+    await expect(page.getByTestId('pos-product-card').filter({ hasText: P.dish.name }).first()).toContainText('฿18.00');
+    await page.getByPlaceholder(/ค้นหาชื่อสินค้า/).fill('');
+    await page.waitForTimeout(400);
+    await shot(page, 'level-indicator');
+    await noOverflow(page);
+  } finally {
+    await ctx.close();
+  }
+});
+
+test('walk-in level from the customer area (no member): select on the cart, buttons in the member window (Ctrl+M)', async ({ browser }) => {
+  const { ctx, page } = await posPage(browser);
+  try {
+    await scan(page, P.dish.barcode);
+    await expectPrice(page, P.dish.name, 20);
+    const sel = page.getByTestId('pos-walkin-level');
+    await expect(sel).toHaveValue('1');
+    await sel.selectOption('2');
+    await expectPrice(page, P.dish.name, 18);
+    await shot(page, 'walkin-level-select');
+    await page.keyboard.press('Control+m');
+    const dlg = page.getByRole('dialog').filter({ hasText: 'เลือกลูกค้า' });
+    await expect(dlg.getByTestId('pos-walkin-btn-2')).toBeVisible();
+    await shot(page, 'walkin-level-member-window');
+    await dlg.getByTestId('pos-walkin-btn-3').click();
+    await expect(dlg).toBeHidden();
+    await expectPrice(page, P.dish.name, 16);
+    await expect(sel).toHaveValue('3');
+    // paid at level 3: stored on the bill
+    await page.keyboard.press('F12');
+    const pay = page.getByRole('dialog');
+    await pay.getByRole('button', { name: /เงินสด \(Cash\)/ }).click();
+    await pay.getByRole('button', { name: '฿20', exact: true }).click();
+    await pay.getByRole('button', { name: 'ยืนยันรับเงินสด' }).click();
+    await expect(pay).toContainText('ชำระเงินสำเร็จ!');
+    const orders = await api<{ data: { totalAmount: string | number; priceLevel?: number | null }[] }>('GET', '/orders?limit=3', adminToken);
+    expect(orders.data.some((o) => Number(o.totalAmount) === 16 && o.priceLevel === 3)).toBe(true);
+  } finally {
+    await ctx.close();
+  }
+});
+
+test('0-price product: popup "สินค้านี้ยังไม่ได้ตั้งราคา", not added; a manager may type a manual price', async ({ browser }) => {
+  const { ctx, page } = await posPage(browser, SELLER);
+  try {
+    await scan(page, P.noprice.barcode);
+    const dlg = page.getByTestId('no-price-dialog');
+    await expect(dlg).toBeVisible();
+    await expect(dlg).toContainText('สินค้านี้ยังไม่ได้ตั้งราคา');
+    await expect(dlg).toContainText(P.noprice.name);
+    await expect(dlg.getByRole('button', { name: 'ใส่ราคาเอง' })).toHaveCount(0); // cashier without the discount right
+    await shot(page, 'no-price-popup');
+    await page.keyboard.press('Enter');
+    await expect(dlg).toBeHidden();
+    expect(await lines(page)).toEqual([]);
+  } finally {
+    await ctx.close();
+  }
+  const admin = await posPage(browser, ADMIN);
+  try {
+    await scan(admin.page, P.noprice.barcode);
+    const dlg = admin.page.getByTestId('no-price-dialog');
+    await expect(dlg.getByRole('button', { name: 'ใส่ราคาเอง' })).toBeFocused();
+    await shot(admin.page, 'no-price-popup-manager');
+    await admin.page.keyboard.press('Enter');
+    await admin.page.locator('#manual-price-input').fill('25');
+    await admin.page.keyboard.press('Enter');
+    await expectPrice(admin.page, P.noprice.name, 25);
+    await expect(admin.page.getByTestId('pos-line-manual')).toBeVisible();
+  } finally {
+    await admin.ctx.close();
+  }
+});
+
+test('start-of-bill dialog (setting on): first scan waits; Enter / Escape = walk-in retail, Alt+2 = ราคาส่ง, member by search; off = no dialog', async ({ browser }) => {
+  await api('PATCH', '/settings', adminToken, { posAskCustomerAtStart: true });
+  const { ctx, page } = await posPage(browser);
+  try {
+    await waitSetting(page, 'posAskCustomerAtStart', true);
+    const dlg = page.getByTestId('pos-start-dialog');
+    // Enter on the empty search = ลูกค้าทั่วไป · ราคาปลีก; the scanned item goes in after the choice
+    await scan(page, P.dish.barcode);
+    await expect(dlg).toBeVisible();
+    await expect(dlg).toContainText(P.dish.name);
+    expect(await lines(page)).toEqual([]);
+    await expect(page.locator('#pos-start-search')).toBeFocused();
+    await expect(dlg.getByTestId('pos-start-level-1')).toContainText('ราคาปลีก');
+    await expect(dlg.getByTestId('pos-start-level-2')).toContainText('ราคาส่ง');
+    await expect(dlg.getByTestId('pos-start-level-3')).toContainText('ราคาส่งพิเศษ');
+    await shot(page, 'start-dialog');
+    await noOverflow(page);
+    await page.keyboard.press('Enter');
+    await expect(dlg).toBeHidden();
+    await expectPrice(page, P.dish.name, 20);
+    // the bill has started: no dialog for the next scans
+    await scan(page, P.glue.barcode);
+    await expect.poll(async () => (await lines(page)).length).toBe(2);
+    await expect(dlg).toBeHidden();
+
+    // new bill: Alt+2 = walk-in at ราคาส่ง
+    await page.keyboard.press('Control+e');
+    await expect.poll(async () => (await lines(page)).length).toBe(0);
+    await scan(page, P.dish.barcode);
+    await expect(dlg).toBeVisible();
+    await page.keyboard.press('Alt+2');
+    await expect(dlg).toBeHidden();
+    await expectPrice(page, P.dish.name, 18);
+    await expect(page.getByTestId('pos-walkin-level')).toHaveValue('2');
+
+    // new bill: member by search (type, Enter picks the first match)
+    await page.keyboard.press('Control+e');
+    await expect.poll(async () => (await lines(page)).length).toBe(0);
+    await scan(page, P.dish.barcode);
+    await expect(dlg).toBeVisible();
+    await page.keyboard.type(M.l3.name.slice(-12));
+    await expect(dlg.getByRole('option').first()).toContainText(M.l3.name);
+    await shot(page, 'start-dialog-member-search');
+    await page.keyboard.press('Enter');
+    await expect(dlg).toBeHidden();
+    await expectPrice(page, P.dish.name, 16);
+    await expect(page.getByTestId('pos-price-level')).toHaveText('ราคา: ส่งพิเศษ');
+
+    // new bill: Escape = walk-in retail too
+    await page.keyboard.press('Control+e');
+    await expect.poll(async () => (await lines(page)).length).toBe(0);
+    await scan(page, P.dish.barcode);
+    await expect(dlg).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dlg).toBeHidden();
+    await expectPrice(page, P.dish.name, 20);
+    expect((await page.evaluate(() => JSON.parse(localStorage.getItem('purim-pos-cart') || '{}').state)).customerId).toBeNull();
+
+    // setting off: the first scan goes straight in
+    await api('PATCH', '/settings', adminToken, { posAskCustomerAtStart: false });
+    await page.keyboard.press('Control+e');
+    await reloadPos(page);
+    await waitSetting(page, 'posAskCustomerAtStart', false);
+    await scan(page, P.dish.barcode);
+    await expectPrice(page, P.dish.name, 20);
+    await expect(dlg).toBeHidden();
+  } finally {
+    await api('PATCH', '/settings', adminToken, { posAskCustomerAtStart: false });
+    await ctx.close();
+  }
+});
+
+test('setting under ตั้งค่า > การขายและใบเสร็จ', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, locale: 'th-TH', timezoneId: 'Asia/Bangkok' });
+  const page = await ctx.newPage();
+  try {
+    await uiLogin(page, ADMIN.username, ADMIN.password);
+    await page.goto('/settings?tab=sales');
+    const box = page.getByTestId('pos-ask-customer-at-start');
+    await expect(box).not.toBeChecked();
+    await box.scrollIntoViewIfNeeded();
+    await expect(page.getByText('เลือกลูกค้าก่อนเริ่มบิลทุกครั้ง')).toBeVisible();
+    await expect(page.getByTestId('walk-in-level-needs-discount')).toBeVisible();
+    await shot(page, 'setting');
+    await noOverflow(page);
   } finally {
     await ctx.close();
   }
