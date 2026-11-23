@@ -26,3 +26,19 @@ Branch ccr-8f8b0741-si1a0o (base 421fea7 = origin/main).
 - [ ] start-of-bill dialog + walk-in level choice in the customer area, settings
 - [ ] receipts / orders show the level
 - [ ] tests (shared, backend e2e, vitest, Playwright before/after), screenshots, PROJECT_STATUS
+
+## Reproduction on the old code (421fea7 built, fresh DB, `e2e/29-pos-price-level.spec.ts`, log scratchpad pos-level/before-run.txt)
+10/10 paths fail, each on a price:
+| path | expected | old POS |
+|---|---|---|
+| (a) level-2 member first, then scan | dish 18, tape (only ราคา 3) 30, total 98 | 20, **0.00**, total 70 |
+| (b) items first, then member | 18 | 20 |
+| (c) member 2 -> 3 -> clear | 18 / 16 / 20 | 20 |
+| (d) pack barcode, level 2 / 3 | 100 / 96 (16 x 6) | 110 |
+| (e) 7 scans -> pack + piece | 100 + 18 | 110 + 20 |
+| (f) held bill recall | 18 | 20 |
+| (g) reload, customer list unreachable | 18 | 20 |
+| (h) quick-created level-3 member | 16 | 20 |
+| (i) bundle at level 2 | 90 | 100 |
+| (j) manual price + member change | manual 45 kept, dish 16 | (dish 20) |
+Screenshot: scratchpad `pos-level/before/cart-level2-member.png` (level-2 member, ฿0.00 line, total ฿70.00).
