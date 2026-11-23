@@ -31,9 +31,11 @@ describe('shopUnits', () => {
   it('level 3: own pack price; case from base level 3 x 24', () => {
     expect(shopUnits(product, packs, 3).map((u) => u.price)).toEqual([85, 480, 2040]);
   });
-  it('a level without prices = retail; a level above retail is capped', () => {
+  it('a level without prices = retail; a typed level price is used as typed (shared rule, docs/pos-price-level.md)', () => {
     expect(shopUnits(product, packs, 4).map((u) => u.price)).toEqual([100, 570, 2400]);
-    expect(shopUnits({ basePrice: 50, priceLevel1: 50, priceLevel2: 60 }, [], 2)).toEqual([{ id: null, name: 'ชิ้น', factor: 1, price: 50, atLevel: false }]);
+    expect(shopUnits({ basePrice: 50, priceLevel1: 50, priceLevel2: 60 }, [], 2)).toEqual([{ id: null, name: 'ชิ้น', factor: 1, price: 60, atLevel: true }]);
+    // no ราคา 1: a guest gets the first non-zero of ราคา 2 -> 5 (never 0)
+    expect(shopUnits({ basePrice: 0, priceLevel1: 0, priceLevel3: 80 }, [], 1)).toEqual([{ id: null, name: 'ชิ้น', factor: 1, price: 80, atLevel: true }]);
   });
   it('atLevel tells a member price from the retail fallback (prices unchanged)', () => {
     expect(shopUnits(product, packs, 2).map((u) => u.atLevel)).toEqual([true, true, true]);

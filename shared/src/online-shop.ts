@@ -3,41 +3,12 @@
  * (shop page, back-office online orders). Pure functions, no dependencies. docs/online-shop.md.
  */
 import { round2 } from './money';
+import { pickLevelPrice, productUnitPrices, type PriceLevel } from './price-level';
 
-export type PriceLevel = 1 | 2 | 3 | 4 | 5;
-export const PRICE_LEVELS: readonly PriceLevel[] = [1, 2, 3, 4, 5];
-
-/** Names the customer sees for each price level (configurable in the shop settings). */
-export const DEFAULT_LEVEL_NAMES: Record<PriceLevel, string> = {
-  1: 'ราคาปลีก',
-  2: 'ราคาส่ง',
-  3: 'ราคาส่งพิเศษ',
-  4: 'ราคาระดับ 4',
-  5: 'ราคาระดับ 5',
-};
-
-/** Customer price level from anything (profile JSON, query string); unknown -> 1 (retail). */
-export function normalizeLevel(raw: unknown): PriceLevel {
-  const n = Number(raw);
-  return (PRICE_LEVELS as readonly number[]).includes(n) ? (n as PriceLevel) : 1;
-}
-
-export function levelNames(raw: unknown): Record<PriceLevel, string> {
-  const out = { ...DEFAULT_LEVEL_NAMES };
-  if (raw && typeof raw === 'object') {
-    for (const l of PRICE_LEVELS) {
-      const v = (raw as Record<string, unknown>)[String(l)];
-      if (typeof v === 'string' && v.trim()) out[l] = v.trim().slice(0, 40);
-    }
-  }
-  return out;
-}
+export { PRICE_LEVELS, DEFAULT_LEVEL_NAMES, normalizeLevel, levelNames } from './price-level';
+export type { PriceLevel } from './price-level';
 
 type Money = number | string | null | undefined | { toString(): string };
-const pos = (v: Money): number => {
-  const n = Number(v === null || v === undefined ? NaN : String(v));
-  return Number.isFinite(n) && n > 0 ? n : 0;
-};
 
 export interface ShopProductPrices {
   basePrice: Money;
@@ -70,42 +41,24 @@ export interface ShopUnitOption {
   factor: number;
   price: number;
   /**
-   * true when `price` is the price of the requested level; false when the level has no price for this unit (or one
-   * above retail) and the retail price is used instead. Always true at level 1. Display only: the price rules do not
-   * depend on it (the shop says "ราคาปลีก · สินค้านี้ยังไม่มี<ชื่อระดับ>" to a member, docs/bugfix-member-price.md).
+   * true when `price` is the price of the requested level; false when the level has no price for this unit and
+   * another level's price is used (shared pickLevelPrice). Always true at level 1. Display only (the shop says
+   * "ราคาปลีก · สินค้านี้ยังไม่มี<ชื่อระดับ>" to a member, docs/bugfix-member-price.md).
    */
   atLevel: boolean;
 }
 
-const levelOf = (p: ShopProductPrices | ShopPackPrices, l: PriceLevel): number =>
-  pos((p as unknown as Record<string, Money>)[`priceLevel${l}`]);
-
 /**
- * Units a customer can order and their price at `level`.
- * - base unit: level price, else the retail price (level 1, else basePrice)
- * - pack: the pack's level price, else base level price x factor, else the pack's retail price
- *   (pack level-1 price, else retail x factor)
- * A member never pays more than retail for the same unit (a level price above retail is capped).
- * Units without any price (0) are left out. Factors multiply in sort order like the POS checkout.
+ * Units a customer can order and their price at `level`: the shared price-level rule (shared/src/price-level.ts,
+ * the same one the POS and the checkout use). Units without any price are left out. Packs of size 1 are skipped.
  */
 export function shopUnits(product: ShopProductPrices, packs: ShopPackPrices[], level: PriceLevel): ShopUnitOption[] {
-  const retailBase = levelOf(product, 1) || pos(product.basePrice);
   const out: ShopUnitOption[] = [];
-  const baseLevel = levelOf(product, level);
-  const basePrice = round2(Math.min(baseLevel || retailBase, retailBase));
-  const fromLevel = (levelPrice: number, retail: number) => level === 1 || (levelPrice > 0 && levelPrice <= retail);
-  if (basePrice > 0) out.push({ id: null, name: product.unit || 'ชิ้น', factor: 1, price: basePrice, atLevel: fromLevel(baseLevel, retailBase) });
-  let factor = 1;
-  for (const pack of packs) {
-    const step = Math.floor(Number(pack.qtyPerPrev));
-    if (!(step >= 1)) break; // a broken unit chain: later units cannot be priced
-    factor *= step;
-    if (factor === 1) continue; // same size as the base unit
-    const retailPack = levelOf(pack, 1) || retailBase * factor;
-    const levelPack = levelOf(pack, level) || (baseLevel ? baseLevel * factor : 0);
-    const candidate = levelPack || retailPack;
-    const price = round2(Math.min(candidate, retailPack));
-    if (price > 0) out.push({ id: pack.id, name: pack.name || 'หน่วย', factor, price, atLevel: fromLevel(levelPack, retailPack) });
+  for (const u of productUnitPrices(product, packs)) {
+    if (u.packIndex >= 0 && u.factor === 1) continue; // same size as the base unit
+    const pick = pickLevelPrice(u.candidates, level);
+    if (!pick) continue;
+    out.push({ id: u.id, name: u.packIndex < 0 ? product.unit || 'ชิ้น' : u.name || 'หน่วย', factor: u.factor, price: pick.price, atLevel: level === 1 || pick.level === level });
   }
   return out;
 }
