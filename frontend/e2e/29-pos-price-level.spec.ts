@@ -503,3 +503,33 @@ test('setting under ตั้งค่า > การขายและใบเ
     await ctx.close();
   }
 });
+
+test('list layout: member level and a walk-in level bar', async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, locale: 'th-TH', timezoneId: 'Asia/Bangkok' });
+  const page = await ctx.newPage();
+  await page.addInitScript(() => localStorage.setItem('pos_screen_mode', 'list_view'));
+  try {
+    await uiLogin(page, CASHIER.username, CASHIER.password);
+    await ensureShift(page);
+    await page.evaluate(() => localStorage.removeItem('purim-pos-cart'));
+    await reloadPos(page);
+    await pickMember(page, M.l2.name);
+    await scan(page, P.dish.barcode);
+    await scan(page, P.glue.barcode);
+    await expectPrice(page, P.dish.name, 18);
+    await expect(page.getByTestId('pos-price-level')).toHaveText('ราคา: ส่ง');
+    await expect(page.getByTestId('pos-line-level')).toHaveText('ราคา: ปลีก');
+    await page.waitForTimeout(400);
+    await shot(page, 'list-layout-member');
+    await noOverflow(page);
+    await page.keyboard.press('Control+m');
+    await page.getByRole('dialog').getByTestId('pos-walkin-btn-2').click();
+    await expect(page.getByTestId('pos-walkin-level')).toHaveValue('2');
+    await expectPrice(page, P.dish.name, 18);
+    await page.waitForTimeout(400);
+    await shot(page, 'list-layout-walkin-level');
+    await noOverflow(page);
+  } finally {
+    await ctx.close();
+  }
+});

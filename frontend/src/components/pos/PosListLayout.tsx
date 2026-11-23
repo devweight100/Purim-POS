@@ -391,7 +391,7 @@ export function PosListLayout({
           </div>
 
           <div className="flex items-center gap-2">
-            {currentCustomer?.currentDebt && currentCustomer.currentDebt > 0 && (
+            {(currentCustomer?.currentDebt ?? 0) > 0 && currentCustomer && (
               <button
                 type="button"
                 onClick={() => onOpenDebtPay?.(currentCustomer)}
