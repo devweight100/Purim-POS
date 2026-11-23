@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useCartStore } from '@/lib/store/cart-store';
 import type { CartItem, Product } from '@/lib/types';
 import type { Customer } from '@/lib/customer-service';
+import { usePosStart } from './pos-add';
 
 const EMPTY_CART_PAY_WARNING = 'ไม่มีสินค้าในตะกร้า ไม่สามารถชำระเงินได้';
 
@@ -35,9 +36,12 @@ export function usePosDialogs() {
   const scanBlocked =
     showPayment || showOpenShift || showCloseShift || !!editItem || showCustomerSelect || showHeldBills;
 
+  // start-of-bill dialog (pos-add.ts): scans still go through (they wait for the choice), keys and clicks do not
+  const startOpen = usePosStart((s) => s.open);
+
   /** A click on empty space re-focuses the hidden scanner input unless one of these is open. */
   const focusClickBlocked =
-    scanBlocked || !!qtyEditItem || showDebtCollectModal || showCashDrawerModal ||
+    scanBlocked || startOpen || !!qtyEditItem || showDebtCollectModal || showCashDrawerModal ||
     showUnitModal || showRedeemModal || showBarcodeScan;
 
   /** Page shortcuts are off while any of these is open (the dialog handles its own keys). */

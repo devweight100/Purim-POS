@@ -9,6 +9,7 @@ import { getProductPackagingUnits } from '@/lib/cart-pricing';
 import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
 import { toast } from 'sonner';
 import { useHasChanged } from '@/lib/pos/use-has-changed';
+import { addToCart } from '@/lib/pos/pos-add';
 
 interface BarcodeScanModalProps {
   open: boolean;
@@ -60,8 +61,8 @@ export function BarcodeScanModal({ open, onOpenChange }: BarcodeScanModalProps) 
           barcode: matchedPkg.barcode,
         };
       }
-      cart.addItem(product, unit);
-      toast.success(`เพิ่ม ${product.name} (${unit.unitName}) ลงตะกร้าแล้ว`);
+      const u = unit;
+      addToCart(product, u, { onAdded: () => toast.success(`เพิ่ม ${product.name} (${u.unitName}) ลงตะกร้าแล้ว`) });
       setBarcode('');
     } else {
       toast.error('ไม่พบสินค้าจากบาร์โค้ดนี้');

@@ -1,4 +1,6 @@
 import { round2 } from '@shared/money';
+import { levelNames, normalizeLevel } from '@shared/price-level';
+import { loadStoreSettings } from './store-settings-storage';
 /**
  * One mapping from an order (backend response or a locally kept POS order) to the data the
  * printed documents need. Every reprint entry point (orders page, POS order history, document
@@ -165,10 +167,15 @@ function mapCommon(order: ApiOrderLike | null | undefined, opts: ReceiptMapOptio
       ? order.customer.name || order.customerName || null
       : order?.customerName || (typeof order?.customer === 'string' ? order.customer : null);
 
+  // bill sold at another price level than retail: its name on the receipt ("ราคา: ราคาส่ง")
+  const level = order?.priceLevel ? normalizeLevel(order.priceLevel) : 1;
+  const priceLevelName = level > 1 ? levelNames(loadStoreSettings().levelNames)[level] : undefined;
+
   return {
     orderNumber: String(order?.orderNumber || order?.id || '-'),
     createdAt: String(order?.createdAt || new Date().toISOString()),
     customerName,
+    priceLevelName,
     userName: order?.user?.fullName || order?.userName || order?.user?.username || undefined,
     items,
     subtotal,
@@ -217,6 +224,7 @@ export function orderToA4Data(order: ApiOrderLike | null | undefined, opts: Rece
     orderNumber: c.orderNumber,
     createdAt: c.createdAt,
     customerName: c.customerName || undefined,
+    priceLevelName: c.priceLevelName,
     customerPhone: customer?.phone || order?.customerPhone || undefined,
     customerAddress: customer?.address || order?.customerAddress || undefined,
     customerTaxId: customer?.taxId || order?.customerTaxId || undefined,

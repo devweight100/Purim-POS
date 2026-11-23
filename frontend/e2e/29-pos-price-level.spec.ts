@@ -102,7 +102,7 @@ async function pickMember(page: Page, name: string) {
 async function clearMember(page: Page) {
   await page.keyboard.press('Control+m');
   const dlg = page.getByRole('dialog').filter({ hasText: 'เลือกลูกค้า' });
-  await dlg.getByRole('button', { name: /ล้างการเลือกลูกค้า/ }).click();
+  await dlg.getByTestId('pos-walkin-btn-1').click();
   await expect(dlg).toBeHidden();
 }
 

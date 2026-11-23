@@ -10,6 +10,7 @@ import { findProductByScannedCode, useGlobalBarcodeScanner } from '@/lib/use-sca
 import type { Product } from '@/lib/types';
 import { findDocumentCode, resolveScannedUnit } from './pos-scan';
 import type { PosVariant } from './pos-variant';
+import { addToCart } from '@/lib/pos/pos-add';
 
 interface PosScannerOptions {
   variant: PosVariant;
@@ -51,14 +52,16 @@ export function usePosScanner({ variant, enabled, products, blocked, onProductAd
       // Check if item is already in cart to provide clear feedback
       const existingItem = cart.items.find((i) => i.productId === product.id && i.unitId === unit.id);
 
-      cart.addItem(product, unit);
-      onProductAdded();
-
-      if (existingItem) {
-        toast.success(variant.scanRepeatToast(product.name, existingItem.quantity + 1, unit.unitName));
-      } else {
-        toast.success(variant.scanFirstToast(product.name, unit.unitName));
-      }
+      addToCart(product, unit, {
+        onAdded: () => {
+          onProductAdded();
+          if (existingItem) {
+            toast.success(variant.scanRepeatToast(product.name, existingItem.quantity + 1, unit.unitName));
+          } else {
+            toast.success(variant.scanFirstToast(product.name, unit.unitName));
+          }
+        },
+      });
     } else {
       const docCode = findDocumentCode(raw, convertedCode);
       const disabled = docCode ? null : findProductByScannedCode(useProductStore.getState().products.filter((p) => !isSellable(p)), raw);

@@ -30,6 +30,8 @@ import { formatQty, subQty } from '@/lib/qty';
 import { useLastTouchedRow } from '@/lib/pos/use-last-touched-row';
 import { cartLineKey } from '@/lib/store/cart-last-touched';
 import { LastAddedLine } from '@/components/pos/LastAddedLine';
+import { addToCart } from '@/lib/pos/pos-add';
+import { LineLevelNote, PosLevelControl } from '@/components/pos/PosLevelControl';
 
 interface PosListLayoutProps {
   viewMode: 'touch_screen' | 'list_view';
@@ -187,8 +189,7 @@ export function PosListLayout({
       return;
     }
 
-    cart.addItem(product, targetUnit);
-    toast.success(`เพิ่ม ${product.name} (${targetUnit.unitName}) ลงตะกร้าแล้ว`);
+    addToCart(product, targetUnit, { onAdded: () => toast.success(`เพิ่ม ${product.name} (${targetUnit.unitName}) ลงตะกร้าแล้ว`) });
     setSearchQuery('');
     setIsSearchOpen(false);
     setSelectedUnitIndex(0);
@@ -337,6 +338,14 @@ export function PosListLayout({
         </div>
       )}
 
+      {/* ─── WALK-IN BILL AT ANOTHER PRICE LEVEL (chosen at the start of the bill or with Ctrl+M) ─── */}
+      {!cart.customerId && cart.priceLevel > 1 && (
+        <div className="flex items-center gap-3 border-b-2 border-sky-500 bg-sky-50/90 px-4 py-2 sm:px-5">
+          <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700"><User className="w-4 h-4 text-sky-600" /> ลูกค้าทั่วไป</span>
+          <PosLevelControl />
+        </div>
+      )}
+
       {/* ─── CUSTOMER TOP BAR (Dynamic Customer Loyalty & Points) ─── */}
       {cart.customerId && (
         <div className="bg-sky-50/90 px-4 sm:px-5 py-2.5 flex flex-wrap items-center justify-between gap-2 border-b-2 border-sky-500 shadow-2xs">
@@ -352,11 +361,7 @@ export function PosListLayout({
                 🏢 บริษัท
               </span>
             )}
-            {currentCustomer?.priceLevel && currentCustomer.priceLevel > 1 && (
-              <span className="text-xs bg-sky-100 text-sky-800 font-bold px-2 py-0.5 rounded">
-                ราคา ระดับ {currentCustomer.priceLevel}
-              </span>
-            )}
+            <PosLevelControl />
             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 bg-white/90 px-2.5 py-0.5 rounded-lg border border-slate-200">
               <span>แต้มสะสม:</span>
               <b className="text-amber-700 font-black">{(currentCustomer?.points ?? 0).toLocaleString()} แต้ม</b>
@@ -752,6 +757,7 @@ export function PosListLayout({
                               {isSelected ? <span className="text-sky-600 text-lg">👉</span> : `${idx + 1}.`}
                             </span>
                             <span className="text-base sm:text-lg font-bold text-slate-900 leading-snug">{item.name}</span>
+                            {item.customPrice === null && !item.fixedPrice && <LineLevelNote lineLevel={item.priceLevel} />}
                           </div>
                           {item.claimQuantity !== undefined && item.claimQuantity > 0 && (
                             <span className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md font-bold mt-0.5 inline-flex items-center gap-1 w-fit ml-8">
@@ -1103,8 +1109,8 @@ export function PosListLayout({
         product={unitModalProduct}
         onSelectUnit={(unit) => {
           if (unitModalProduct) {
-            cart.addItem(unitModalProduct, unit);
-            toast.success(`เพิ่ม ${unitModalProduct.name} (${unit.unitName}) ลงตะกร้าแล้ว`);
+            const p = unitModalProduct;
+            addToCart(p, unit, { onAdded: () => toast.success(`เพิ่ม ${p.name} (${unit.unitName}) ลงตะกร้าแล้ว`) });
             setTimeout(() => scannerInputRef.current?.focus(), 20);
           }
         }}

@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { CreditCard, QrCode, Banknote, Edit3, CheckCircle2, SplitSquareHorizontal, UserCheck, Building2, ArrowRight, FileText, Printer, ShieldCheck } from 'lucide-react';
 import { NumpadPopup } from './NumpadPopup';
 import { ReceiptPdfModal, ReceiptData } from './ReceiptPdfModal';
+import { levelNames } from '@shared/price-level';
 import { orderToReceiptData, summarizePaymentMethods, isCreditMethod } from '@/lib/receipt-mapper';
 import { printThermalReceiptDirect } from './ThermalReceiptView';
 import { cartToPickingSlip } from '@/lib/picking-slip';
@@ -373,6 +374,8 @@ export function PaymentModal({
           pending: (cart.pendingClaims || []).filter((c) => c.resolutionType === 'STORE_DISCOUNT').map((c) => ({ orderId: c.orderId, productId: c.productId, quantity: c.quantity })),
         },
         customerId: cart.customerId,
+        // price level of the bill (member's level / walk-in level); the server checks the prices against it
+        priceLevel: cart.priceLevel,
         // online order opened from the held-bills sheet: the server marks it paid by this bill
         onlineOrderId: cart.onlineOrderId || undefined,
         shiftId: shiftStore.currentShift?.id,
@@ -578,6 +581,7 @@ export function PaymentModal({
         orderNumber: finalOrderNumber,
         createdAt: backendOrder?.createdAt ? new Date(backendOrder.createdAt).toISOString() : new Date().toISOString(),
         customerName: cart.customerName,
+        priceLevelName: cart.priceLevel > 1 ? levelNames(loadStoreSettings().levelNames)[cart.priceLevel] : undefined,
         userName: shiftStore.currentShift?.userName || 'พนักงาน POS',
         note: cart.note?.trim() || undefined,
         items: cart.items.map(i => {

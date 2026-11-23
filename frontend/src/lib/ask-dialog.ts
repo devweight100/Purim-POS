@@ -34,6 +34,10 @@ export interface AskConfirmOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   danger?: boolean;
+  /** one button only (a message, like alert()): resolves true when closed with it, false on Escape */
+  alertOnly?: boolean;
+  /** data-testid of the dialog (default confirm-dialog) */
+  testId?: string;
 }
 
 export type AskRequest =

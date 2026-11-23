@@ -931,6 +931,8 @@ export interface ApiOrderCustomer {
  */
 export interface ApiOrderLike {
   id?: string;
+  /** price level of the bill (orders.price_level; null on bills before levels were stored) */
+  priceLevel?: number | null;
   orderNumber?: string;
   status?: string;
   createdAt?: string;
@@ -971,6 +973,8 @@ export interface CheckoutRequest {
   terminalId?: string;
   orderNumber?: string;
   customerId?: string | null;
+  /** price level of the bill (1-5): member's level or the walk-in level chosen (docs/pos-price-level.md) */
+  priceLevel?: number;
   /** online order (LINE shop) paid by this bill */
   onlineOrderId?: string;
   shiftId?: string;
@@ -1443,6 +1447,12 @@ export interface ApiStoreSettings {
   receiptOptions?: { slip?: Record<string, boolean>; a4?: Record<string, boolean> } | null;
   /** SHOP | SUPPLIER: default product names on new supplier documents */
   supplierDocNameMode?: string;
+  posAskCustomerAtStart?: boolean;
+  walkInLevelNeedsDiscount?: boolean;
+  /** shop names of the price levels (online shop config), read-only */
+  levelNames?: Record<string, string>;
+  /** levels some active product has a price at (1 always) */
+  usedLevels?: number[];
 }
 
 /** store_settings.loyalty_config (see customer-service LoyaltySystemConfig) */

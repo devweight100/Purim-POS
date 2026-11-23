@@ -12,6 +12,8 @@ import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useHasChanged } from '@/lib/pos/use-has-changed';
+import { canUseWalkInLevel, usePosLevels } from '@/lib/pos/pos-add';
+import type { PriceLevel } from '@shared/price-level';
 
 interface CustomerSelectModalProps {
   open: boolean;
@@ -29,6 +31,7 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
   const [quickPriceLevel, setQuickPriceLevel] = useState<number>(1);
 
   const cart = useCartStore();
+  const levels = usePosLevels();
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const reloadData = async () => {
@@ -89,11 +92,17 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
       cart.setCustomer(null, '');
       toast.info('เปลี่ยนเป็นลูกค้าทั่วไป (Walk-in)');
     } else {
-      cart.setCustomer(customer.id, customer.name);
+      cart.setCustomer(customer.id, customer.name, customer.priceLevel);
       toast.success(
-        `เลือกลูกค้า: ${customer.name} (ระดับราคา ${customer.priceLevel || 1} • แต้มสะสม ${customer.points || 0})`
+        `เลือกลูกค้า: ${customer.name} (${levels.names[(customer.priceLevel || 1) as PriceLevel]} • แต้มสะสม ${customer.points || 0})`
       );
     }
+    onOpenChange(false);
+  };
+
+  const handleWalkIn = (level: number) => {
+    cart.setWalkInLevel(level);
+    toast.info(`ลูกค้าทั่วไป · ${levels.names[level as PriceLevel]}`);
     onOpenChange(false);
   };
 
@@ -213,7 +222,7 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
                           <span>{(c.points || 0).toLocaleString()} แต้ม</span>
                         </div>
                         <span className="text-xs text-sky-800 font-extrabold bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200">
-                          ราคา {c.priceLevel ? `ระดับ ${c.priceLevel}` : 'ปกติ'}
+                          {levels.names[(c.priceLevel || 1) as PriceLevel]}
                         </span>
                       </div>
                     </div>
@@ -231,14 +240,24 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
                 )}
               </div>
 
-              {/* Reset to Walk-in Customer */}
-              <Button
-                variant="ghost"
-                className="w-full text-slate-700 hover:text-slate-900 border border-slate-300 hover:bg-slate-100 h-11 text-sm font-bold rounded-xl"
-                onClick={() => handleSelect(null)}
-              >
-                ล้างการเลือกลูกค้า (เป็นลูกค้าทั่วไป Walk-in)
-              </Button>
+              {/* Walk-in customer at a price level (no member): also clears the member */}
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-slate-700">ลูกค้าทั่วไป (ไม่ระบุชื่อ) · ล้างการเลือกสมาชิก</div>
+                <div className="flex flex-wrap gap-btn">
+                  {levels.used.map((l) => (
+                    <Button
+                      key={l}
+                      variant={!cart.customerId && cart.priceLevel === l ? 'default' : 'outline'}
+                      data-testid={`pos-walkin-btn-${l}`}
+                      disabled={!canUseWalkInLevel(l)}
+                      title={canUseWalkInLevel(l) ? undefined : 'ต้องมีสิทธิ์ให้ส่วนลด'}
+                      onClick={() => handleWalkIn(l)}
+                    >
+                      ลูกค้าทั่วไป · {levels.names[l]}
+                    </Button>
+                  ))}
+                </div>
+              </div>
             </>
           ) : (
             /* Quick Add Customer Form */
@@ -320,11 +339,9 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
                   onChange={(e) => setQuickPriceLevel(Number(e.target.value))}
                   className="w-full h-11 rounded-xl border border-slate-300 bg-white px-3 font-bold text-slate-800 text-sm outline-none"
                 >
-                  <option value={1}>ระดับ 1 (ราคาปกติทั่วไป)</option>
-                  <option value={2}>ระดับ 2 (ราคาสมาชิก)</option>
-                  <option value={3}>ระดับ 3 (ช่าง / ขายส่ง)</option>
-                  <option value={4}>ระดับ 4 (ลูกค้า VIP)</option>
-                  <option value={5}>ระดับ 5 (ตัวแทน)</option>
+                  {([1, 2, 3, 4, 5] as PriceLevel[]).map((l) => (
+                    <option key={l} value={l}>ราคา {l} · {levels.names[l]}</option>
+                  ))}
                 </select>
               </div>
 

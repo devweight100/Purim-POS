@@ -39,19 +39,21 @@ export function AskDialogHost() {
 
 function ConfirmDialog({ options, onAnswer }: { options: AskConfirmOptions; onAnswer: (ok: boolean) => void }) {
   const okRef = useRef<HTMLButtonElement>(null);
-  const { title, description, confirmLabel = 'ตกลง', cancelLabel = 'ยกเลิก', danger = false } = options;
+  const { title, description, confirmLabel = 'ตกลง', cancelLabel = 'ยกเลิก', danger = false, alertOnly = false, testId = 'confirm-dialog' } = options;
   return (
     <Dialog open onOpenChange={(open) => !open && onAnswer(false)}>
       {/* Enter on the focused confirm button = OK (as the native confirm), Escape = cancel */}
-      <DialogContent className="max-w-md" data-testid="confirm-dialog" initialFocus={okRef}>
+      <DialogContent className="max-w-md" data-testid={testId} initialFocus={okRef}>
         <DialogHeader>
           <DialogTitle className="pr-8 text-lg font-bold leading-snug whitespace-pre-line">{title}</DialogTitle>
           {description && <DialogDescription className="whitespace-pre-line text-slate-700">{description}</DialogDescription>}
         </DialogHeader>
         <DialogFooter className="gap-btn">
-          <Button type="button" variant="outline" onClick={() => onAnswer(false)}>
-            {cancelLabel}
-          </Button>
+          {!alertOnly && (
+            <Button type="button" variant="outline" onClick={() => onAnswer(false)}>
+              {cancelLabel}
+            </Button>
+          )}
           <Button ref={okRef} type="button" onClick={() => onAnswer(true)} className={cn(danger && 'bg-rose-600 hover:bg-rose-700 text-white')}>
             {confirmLabel}
           </Button>

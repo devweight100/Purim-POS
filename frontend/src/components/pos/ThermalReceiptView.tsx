@@ -15,6 +15,8 @@ export interface ReceiptData {
   orderNumber: string;
   createdAt: string;
   customerName?: string | null;
+  /** price level name of the bill when it is not ราคา 1 ("ราคาส่ง") */
+  priceLevelName?: string;
   userName?: string;
   items: Array<{
     name: string;
@@ -169,6 +171,7 @@ export const ThermalReceiptView = React.forwardRef<HTMLDivElement, ThermalReceip
           {o.showCashier && <Row label="พนักงาน" value={data.userName || '-'} />}
           {data.terminalName && <Row label="เครื่อง" value={data.terminalName} />}
           {o.showCustomer && data.customerName && <Row label="ลูกค้า" value={<span className="break-words">{data.customerName}</span>} />}
+          {data.priceLevelName && <Row label="ราคา" value={data.priceLevelName} />}
         </div>
 
         <Rule />

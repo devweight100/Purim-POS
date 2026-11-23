@@ -2,6 +2,7 @@ import { api } from './api';
 import type { ApiStoreSettings } from './types';
 import { normalizeReceiptOptions, type ReceiptOptions } from '@shared/receipt-options';
 import { normDocNameMode, type DocNameMode } from '@shared/product-names';
+import { levelNames, normalizeLevel, type PriceLevel } from '@shared/price-level';
 
 export interface StoreSettings {
   storeName: string;
@@ -28,6 +29,14 @@ export interface StoreSettings {
   receiptOptions?: ReceiptOptions;
   /** default product names on new supplier documents (PO / receiving / supplier returns): SHOP = ชื่อร้าน */
   supplierDocNameMode?: DocNameMode;
+  /** POS: ask for the customer / price level when a new bill starts (ตั้งค่า > การขายและใบเสร็จ), default off */
+  posAskCustomerAtStart?: boolean;
+  /** POS: a walk-in bill at ราคา 2-5 needs the discount right (POS_DISCOUNT / manager), default off = every cashier */
+  walkInLevelNeedsDiscount?: boolean;
+  /** names of the price levels (shop settings), read-only here; mirrored for the POS offline */
+  levelNames?: Record<PriceLevel, string>;
+  /** price levels the shop uses (some product has a price at it); 1 always */
+  usedLevels?: PriceLevel[];
 }
 
 /**
@@ -54,6 +63,8 @@ export const DEFAULT_STORE_SETTINGS: StoreSettings = {
   allowDecimalQty: false,
   receiptOptions: normalizeReceiptOptions(null),
   supplierDocNameMode: 'SHOP',
+  posAskCustomerAtStart: false,
+  walkInLevelNeedsDiscount: false,
 };
 
 export function loadStoreSettings(): StoreSettings {
@@ -80,6 +91,12 @@ function normalizeStoreSettings(settings: Partial<StoreSettings> | ApiStoreSetti
     allowDecimalQty: settings?.allowDecimalQty === true,
     receiptOptions: normalizeReceiptOptions(settings?.receiptOptions),
     supplierDocNameMode: normDocNameMode(settings?.supplierDocNameMode),
+    posAskCustomerAtStart: settings?.posAskCustomerAtStart === true,
+    walkInLevelNeedsDiscount: settings?.walkInLevelNeedsDiscount === true,
+    levelNames: levelNames(settings?.levelNames),
+    usedLevels: Array.isArray(settings?.usedLevels)
+      ? [...new Set([1, ...settings.usedLevels.map((l: unknown) => normalizeLevel(l))])].sort() as PriceLevel[]
+      : [1, 2, 3],
     lowStockThreshold: Number.isFinite(Number(settings?.lowStockThreshold)) ? Number(settings?.lowStockThreshold) : 5,
   };
 }

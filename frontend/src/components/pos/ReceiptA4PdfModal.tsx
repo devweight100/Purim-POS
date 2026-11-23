@@ -47,6 +47,8 @@ export interface ReceiptA4Data {
   orderNumber: string;
   createdAt: string;
   customerName?: string;
+  /** price level name of the bill when it is not ราคา 1 */
+  priceLevelName?: string;
   customerPhone?: string;
   customerAddress?: string;
   customerTaxId?: string;
@@ -427,6 +429,7 @@ export const ReceiptA4Document = React.forwardRef<
           <div className="text-[11.5px] font-bold text-slate-900">
             {data.customerCompany || data.customerName || 'ลูกค้าทั่วไป (General Customer)'}
           </div>
+          {data.priceLevelName && <div className="text-[10.5px] text-slate-600">ราคา: {data.priceLevelName}</div>}
           {o.showCustomerDetails && data.customerAddress && (
             <div className="text-slate-600 leading-tight flex items-start gap-1 text-[10.5px]">
               <MapPin className="w-3 h-3 text-slate-400 mt-0.5 shrink-0" />

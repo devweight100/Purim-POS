@@ -18,6 +18,7 @@ import { useProductFilter } from './use-product-filter';
 import { useCartSelection } from './use-cart-selection';
 import { usePosScanner } from './use-pos-scanner';
 import { usePosKeyboard } from './use-pos-keyboard';
+import { addToCart } from '@/lib/pos/pos-add';
 
 /**
  * Everything a POS sales screen does apart from drawing itself: dialogs, product list and search,
@@ -38,6 +39,12 @@ export function usePosController(variant: PosVariant) {
   const { viewMode, changeViewMode } = usePosViewMode(variant);
   const filter = useProductFilter(products, variant.pageSize);
   const selection = useCartSelection(cart.items, variant);
+
+  // the selected member's level changed on the server (customers page): the open bill follows it
+  const memberLevel = activeCustomer && activeCustomer.id === cart.customerId ? activeCustomer.priceLevel : null;
+  useEffect(() => {
+    if (memberLevel) useCartStore.getState().setMemberLevel(memberLevel);
+  }, [memberLevel]);
 
   useProductAutoRefresh(fetchProducts);
   // POS session: the desktop app counts as a selling device from now on (pos-data-policy.ts)
@@ -83,16 +90,14 @@ export function usePosController(variant: PosVariant) {
       filter.setSearchQuery('');
     } else if (filter.filteredProducts.length > 0) {
       const matched = filter.filteredProducts[0];
-      cart.addItem(matched, matched.units[0]);
+      addToCart(matched, matched.units[0], { onAdded: () => toast.success(`เพิ่ม ${matched.name} ลงตะกร้าแล้ว`) });
       filter.setSearchQuery('');
-      toast.success(`เพิ่ม ${matched.name} ลงตะกร้าแล้ว`);
     }
   };
 
   /** A product card (or one of its unit buttons) was clicked. */
   const addProductFromCard = (product: Product, unit: ProductUnit) => {
-    cart.addItem(product, unit);
-    toast.success(variant.cardAddedToast(product.name, unit.unitName));
+    addToCart(product, unit, { onAdded: () => toast.success(variant.cardAddedToast(product.name, unit.unitName)) });
   };
 
   return {

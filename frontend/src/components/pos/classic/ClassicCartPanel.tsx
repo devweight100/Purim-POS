@@ -16,6 +16,7 @@ import { useRef } from 'react';
 import { useLastTouchedRow } from '@/lib/pos/use-last-touched-row';
 import { cartLineKey } from '@/lib/store/cart-last-touched';
 import { LastAddedLine } from '@/components/pos/LastAddedLine';
+import { LineLevelNote, PosLevelControl } from '@/components/pos/PosLevelControl';
 
 /** Right side of the classic touch screen: customer, cart rows, totals and the action buttons. */
 export function ClassicCartPanel({ pos }: { pos: PosController }) {
@@ -64,12 +65,12 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
           <div className="text-sm font-bold text-slate-800 truncate">
             {cart.customerName ? `👤 ${cart.customerName}` : '👤 ลูกค้าทั่วไป'}
           </div>
+          {!cart.customerId && <PosLevelControl className="mt-1" />}
+          {cart.customerId && !activeCustomer && <PosLevelControl className="mt-0.5" />}
           {activeCustomer && (
             <div className="text-xs text-slate-500 flex flex-wrap items-center gap-2 mt-0.5">
               <span className="text-amber-700 font-bold">🪙 {activeCustomer.points.toLocaleString()} แต้ม</span>
-              {activeCustomer.priceLevel > 1 && (
-                <span className="text-sky-700 font-semibold">• ระดับราคา {activeCustomer.priceLevel}</span>
-              )}
+              <PosLevelControl />
               {cart.getPointsDiscountAmount() > 0 && (
                 <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
                   ลดแต้ม -{formatCurrency(cart.getPointsDiscountAmount())}
@@ -212,6 +213,8 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
                         <span className="font-mono">{item.sku}</span>
                         <span>·</span>
                         <span className="font-semibold text-slate-700">{item.unitName}</span>
+                        {item.customPrice === null && !item.fixedPrice && <LineLevelNote lineLevel={item.priceLevel} />}
+                        {item.customPrice !== null && <span className="text-sub text-amber-700" data-testid="pos-line-manual">ราคาที่แก้เอง</span>}
                         {item.discountValue > 0 && (
                           <span className="text-xs text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded font-bold">
                             🏷️ ลด {item.discountValue}{item.discountType === 'percent' ? '%' : '฿'}

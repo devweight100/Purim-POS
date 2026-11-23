@@ -71,7 +71,8 @@ interface CartStore {
 
   // Actions
   /** false = not added (the product has no price at any level: "สินค้านี้ยังไม่ได้ตั้งราคา") */
-  addItem: (product: Product, unit?: ProductUnit) => boolean;
+  /** `manualPrice`: a product without any price, priced by a user allowed to override (sold at that manual price) */
+  addItem: (product: Product, unit?: ProductUnit, manualPrice?: number) => boolean;
   removeItem: (productId: string, unitId?: string) => void;
   updateQuantity: (productId: string, quantity: number, unitId?: string) => void;
   setCustomPrice: (productId: string, price: number | null, unitId?: string) => void;
@@ -251,12 +252,13 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
     set({ editingOrderId: id });
   },
 
-  addItem: (product: Product, unit?: ProductUnit) => {
+  addItem: (product: Product, unit?: ProductUnit, manualPrice?: number) => {
     const selectedUnit = unit || product.units[0];
     if (!selectedUnit) return false;
-    // price of this unit at the bill's level (shared rule); no price at any level -> not sold
+    // price of this unit at the bill's level (shared rule); no price at any level -> not sold (unless priced by hand)
     const levelPrices = unitCandidates(product, selectedUnit);
-    const pick = pickLevelPrice(levelPrices, get().priceLevel);
+    const manual = manualPrice !== undefined && Number.isFinite(manualPrice) && manualPrice >= 0 ? Math.round(manualPrice * 100) / 100 : null;
+    const pick = pickLevelPrice(levelPrices, get().priceLevel) ?? (manual !== null ? { price: 0, level: undefined } : null);
     if (!pick) return false;
 
     set((state) => {
@@ -296,7 +298,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
           name: product.name,
           sku: product.sku,
           originalPrice: pick.price,
-          customPrice: null,
+          customPrice: manual,
           quantity: 1,
           levelPrices,
           priceLevel: pick.level,

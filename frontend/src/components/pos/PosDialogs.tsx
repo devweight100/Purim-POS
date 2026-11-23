@@ -12,6 +12,7 @@ import { CloseShiftModal } from './CloseShiftModal';
 import { CashDrawerModal } from './CashDrawerModal';
 import { HeldBillsSheet } from './HeldBillsSheet';
 import { CustomerSelectModal } from './CustomerSelectModal';
+import { PosStartDialog } from './PosStartDialog';
 import { BarcodeScanModal } from './BarcodeScanModal';
 import { OrderHistoryModal } from './OrderHistoryModal';
 import { NumpadPopup } from './NumpadPopup';
@@ -20,6 +21,7 @@ import { RedeemPointsModal } from './RedeemPointsModal';
 import { PosDebtSelectModal } from './PosDebtSelectModal';
 import { ItemClaimModal } from './ItemClaimModal';
 import { CustomerClaimStockModal } from './CustomerClaimStockModal';
+import { addToCart } from '@/lib/pos/pos-add';
 
 /** Every dialog of a POS sales screen (/pos). */
 export function PosDialogs({ pos }: { pos: PosController }) {
@@ -49,6 +51,7 @@ export function PosDialogs({ pos }: { pos: PosController }) {
       />
       <HeldBillsSheet open={d.showHeldBills} onOpenChange={d.setShowHeldBills} />
       <CustomerSelectModal open={d.showCustomerSelect} onOpenChange={d.setShowCustomerSelect} />
+      <PosStartDialog />
       <BarcodeScanModal open={d.showBarcodeScan} onOpenChange={d.setShowBarcodeScan} />
       <OrderHistoryModal
         open={d.showOrderHistoryModal}
@@ -61,8 +64,8 @@ export function PosDialogs({ pos }: { pos: PosController }) {
         product={d.unitModalProduct}
         onSelectUnit={(unit) => {
           if (d.unitModalProduct) {
-            cart.addItem(d.unitModalProduct, unit);
-            toast.success(variant.unitAddedToast(d.unitModalProduct.name, unit.unitName));
+            const p = d.unitModalProduct;
+            addToCart(p, unit, { onAdded: () => toast.success(variant.unitAddedToast(p.name, unit.unitName)) });
           }
         }}
       />
