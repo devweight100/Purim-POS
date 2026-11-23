@@ -1,3 +1,4 @@
+import { baseCandidates, packCandidates, pickLevelPrice } from '@shared/price-level';
 import { getLowStockThreshold } from '@/lib/store-settings-storage';
 import { create } from 'zustand';
 import { api, apiFetch, getAuthToken, isRetryableError } from '../api';
@@ -258,13 +259,19 @@ export function toStoreProduct(p: ApiProduct | CachedProduct): Product {
   let unitsList: ProductUnit[] = [baseUnitItem];
   if (packagingUnits.length > 0) {
     let cumulativeFactor = 1;
+    // shown unit price = its ราคา 1 by the shared rule (pack without its own price = base x pack size, never 0
+    // when any level has a price); the cart prices every line at the bill's level (docs/pos-price-level.md)
+    const baseCands = baseCandidates({ basePrice, priceLevel1: p.priceLevel1, priceLevel2: p.priceLevel2, priceLevel3: p.priceLevel3, priceLevel4: p.priceLevel4, priceLevel5: p.priceLevel5 });
+    if (!(basePrice > 0)) baseUnitItem.price = pickLevelPrice(baseCands, 1)?.price ?? 0;
     const mappedPackaging = packagingUnits.map((u, idx: number) => {
       cumulativeFactor *= Number(u.qtyPerPrev || u.factor || 1);
+      const own = u.priceLevel1 != null || u.priceLevel2 != null ? u : { priceLevel1: u.price };
+      const unitPrice = pickLevelPrice(packCandidates(baseCands, own, cumulativeFactor), 1)?.price ?? 0;
       return {
         id: u.id || `u-${pId}-pkg-${idx}`,
         unitName: u.name || u.unitName || 'หน่วย',
         factor: cumulativeFactor,
-        price: Number(u.priceLevel1 || u.price || basePrice),
+        price: unitPrice,
         barcode: u.barcode || baseBarcode,
       };
     });

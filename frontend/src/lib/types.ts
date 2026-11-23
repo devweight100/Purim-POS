@@ -133,6 +133,12 @@ export interface CartItem {
     totalQuantity: number;
     unitPrice: number;
   }>;
+  /** this unit's price per level (ราคา 1-5, 0 = none), shared rule docs/pos-price-level.md; lets the cart re-price offline */
+  levelPrices?: number[];
+  /** level whose price the line is charged at (differs from the bill level when it fell back) */
+  priceLevel?: number;
+  /** agreed price (online order): never re-priced by the level rule */
+  fixedPrice?: boolean;
   // Claim replacement integration
   claimQuantity?: number; // จำนวนชิ้นในรายการนี้ที่เป็นสินค้าเคลม (ไม่คิดเงิน)
   claimDefectReason?: string; // สาเหตุการเคลม
@@ -174,6 +180,10 @@ export interface HeldBill {
   pendingClaims?: PendingClaimItem[];
   /** online order (LINE shop) this bill pays */
   onlineOrderId?: string | null;
+  /** bill price level (member level or the walk-in level chosen) */
+  priceLevel?: number;
+  /** the cashier chose the customer / level for this bill (start-of-bill dialog not asked again) */
+  levelChosen?: boolean;
   heldAt: string;
 }
 

@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { CartItem, HeldBill, Product, ProductUnit, ClaimRecord, PendingClaimItem } from '../types';
-import { calculateSmartRollupAndPricing } from '../cart-pricing';
+import { calculateSmartRollupAndPricing, findStoreProduct } from '../cart-pricing';
+import { getCustomerById } from '../customer-service';
+import { unitCandidates } from '../pos/price-level';
+import { normalizeLevel, pickLevelPrice, type PriceLevel } from '@shared/price-level';
 import { loadStoreSettings } from '../store-settings-storage';
 import { addQty, mulQty, roundQty } from '../qty';
 import { followTouchedLine, touchLine, type LastTouchedLine } from './cart-last-touched';
@@ -61,9 +64,14 @@ interface CartStore {
   onlineOrderId: string | null;
   /** line the cashier touched last (highlighted + scrolled to on the POS); not persisted */
   lastTouched: LastTouchedLine | null;
+  /** price level of this bill: the member's level, or the level chosen for a walk-in bill (docs/pos-price-level.md) */
+  priceLevel: PriceLevel;
+  /** the customer / level of this bill was chosen (member picked or walk-in level set): no start-of-bill dialog */
+  levelChosen: boolean;
 
   // Actions
-  addItem: (product: Product, unit?: ProductUnit) => void;
+  /** false = not added (the product has no price at any level: "สินค้านี้ยังไม่ได้ตั้งราคา") */
+  addItem: (product: Product, unit?: ProductUnit) => boolean;
   removeItem: (productId: string, unitId?: string) => void;
   updateQuantity: (productId: string, quantity: number, unitId?: string) => void;
   setCustomPrice: (productId: string, price: number | null, unitId?: string) => void;
@@ -81,7 +89,12 @@ interface CartStore {
   clearPendingClaims: () => void;
   setNote: (note: string) => void;
   setVatEnabled: (enabled: boolean) => void;
-  setCustomer: (id: string | null, name: string | null) => void;
+  /** member of the bill; `level` = the member's price level (looked up in the customer list when not given) */
+  setCustomer: (id: string | null, name: string | null, level?: number | null) => void;
+  /** walk-in bill (no member) at a price level; also marks the bill's customer / level as chosen */
+  setWalkInLevel: (level: number) => void;
+  /** the selected member's level changed on the server: follow it (re-prices the cart) */
+  setMemberLevel: (level: number) => void;
   setEditingOrderId: (id: string | null) => void;
   /** Replace the cart with an accepted online order (agreed prices, ค่าส่ง line, member). The current cart is held. */
   loadOnlineOrder: (o: { id: string; orderNo: string; customerId: string | null; customerName: string | null; note: string; items: CartItem[] }) => void;
@@ -127,7 +140,30 @@ const CART_STORAGE_VERSION = 1;
 
 type PersistedCart = Pick<CartStore,
   'items' | 'customerId' | 'customerName' | 'billDiscountType' | 'billDiscountValue' | 'pointsDiscountValue' |
-  'pointsUsed' | 'attachedClaim' | 'pendingClaims' | 'note' | 'heldBills' | 'editingOrderId' | 'onlineOrderId'>;
+  'pointsUsed' | 'attachedClaim' | 'pendingClaims' | 'note' | 'heldBills' | 'editingOrderId' | 'onlineOrderId' |
+  'priceLevel' | 'levelChosen'>;
+
+/** A member's level from the customer list in memory (1 when unknown). */
+const memberLevel = (id: string | null | undefined): PriceLevel => normalizeLevel(id ? getCustomerById(id)?.priceLevel : 1);
+
+/** Empty-bill fields (new bill after checkout / hold / clear). */
+const EMPTY_BILL = {
+  items: [] as CartItem[],
+  customerId: null,
+  customerName: null,
+  billDiscountType: 'none' as const,
+  billDiscountValue: 0,
+  pointsDiscountValue: 0,
+  pointsUsed: 0,
+  attachedClaim: null,
+  pendingClaims: [] as PendingClaimItem[],
+  note: '',
+  editingOrderId: null,
+  onlineOrderId: null,
+  lastTouched: null,
+  priceLevel: 1 as PriceLevel,
+  levelChosen: false,
+};
 
 const num = (v: unknown, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const discType = (v: unknown): 'none' | 'baht' | 'percent' => (v === 'baht' || v === 'percent' ? v : 'none');
@@ -161,6 +197,8 @@ export function sanitizePersistedCart(raw: unknown): Partial<PersistedCart> {
     heldBills,
     editingOrderId: typeof r.editingOrderId === 'string' ? r.editingOrderId : null,
     onlineOrderId: typeof r.onlineOrderId === 'string' ? r.onlineOrderId : null,
+    priceLevel: normalizeLevel(r.priceLevel),
+    levelChosen: r.levelChosen === true,
   };
 }
 
@@ -183,12 +221,17 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
   editingOrderId: null,
   onlineOrderId: null,
   lastTouched: null,
+  priceLevel: 1 as PriceLevel,
+  levelChosen: false,
 
   loadOnlineOrder: (o) => {
     const state = get();
     if (state.items.length > 0) get().holdBill();
     set({
-      items: o.items,
+      // agreed prices: the level rule never re-prices them
+      items: o.items.map((i) => ({ ...i, fixedPrice: true })),
+      priceLevel: memberLevel(o.customerId),
+      levelChosen: true,
       customerId: o.customerId,
       customerName: o.customerName,
       billDiscountType: 'none' as const,
@@ -210,7 +253,11 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
 
   addItem: (product: Product, unit?: ProductUnit) => {
     const selectedUnit = unit || product.units[0];
-    if (!selectedUnit) return;
+    if (!selectedUnit) return false;
+    // price of this unit at the bill's level (shared rule); no price at any level -> not sold
+    const levelPrices = unitCandidates(product, selectedUnit);
+    const pick = pickLevelPrice(levelPrices, get().priceLevel);
+    if (!pick) return false;
 
     set((state) => {
       const existing = state.items.find(
@@ -248,9 +295,11 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
           productId: product.id,
           name: product.name,
           sku: product.sku,
-          originalPrice: selectedUnit.price,
+          originalPrice: pick.price,
           customPrice: null,
           quantity: 1,
+          levelPrices,
+          priceLevel: pick.level,
           unitId: selectedUnit.id,
           unitName: selectedUnit.unitName,
           conversionFactor: selectedUnit.factor,
@@ -262,10 +311,11 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
         };
         rawUpdated = [...state.items, newItem];
       }
-      const items = calculateSmartRollupAndPricing(rawUpdated);
+      const items = calculateSmartRollupAndPricing(rawUpdated, state.priceLevel);
       const touchUnitId = existing ? existing.unitId : selectedUnit.id;
       return { items, lastTouched: touchLine(state.items, items, product.id, touchUnitId, selectedUnit.factor || 1) };
     });
+    return true;
   },
 
   removeItem: (productId: string, unitId?: string) => {
@@ -275,7 +325,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
           ? !(i.productId === productId && i.unitId === unitId)
           : i.productId !== productId
       );
-      const items = calculateSmartRollupAndPricing(rawUpdated);
+      const items = calculateSmartRollupAndPricing(rawUpdated, state.priceLevel);
       const lt = state.lastTouched;
       const removedTouched = !!lt && lt.productId === productId && (!unitId || lt.unitId === unitId);
       return { items, lastTouched: removedTouched ? null : followTouchedLine(lt, state.items, items) };
@@ -304,7 +354,7 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
         }
         return i;
       });
-      const items = calculateSmartRollupAndPricing(rawUpdated);
+      const items = calculateSmartRollupAndPricing(rawUpdated, state.priceLevel);
       const target = state.items.find((i) => (unitId ? i.productId === productId && i.unitId === unitId : i.productId === productId));
       if (!target) return { items, lastTouched: followTouchedLine(state.lastTouched, state.items, items) };
       return { items, lastTouched: touchLine(state.items, items, productId, target.unitId, target.conversionFactor || 1) };
@@ -359,7 +409,10 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
   },
 
   setItemUnit: (productId: string, unit: ProductUnit) => {
+    const product = findStoreProduct(productId);
+    const levelPrices = product ? unitCandidates(product, unit) : undefined;
     set((state) => {
+      const pick = levelPrices ? pickLevelPrice(levelPrices, state.priceLevel) : null;
       const rawUpdated = state.items.map((i) =>
         i.productId === productId
           ? {
@@ -367,14 +420,16 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
               unitId: unit.id,
               unitName: unit.unitName,
               conversionFactor: unit.factor,
-              originalPrice: unit.price,
+              originalPrice: pick ? pick.price : unit.price,
+              levelPrices,
+              priceLevel: pick?.level,
               customPrice: null,
               discountType: 'none' as const,
               discountValue: 0,
             }
           : i
       );
-      const items = calculateSmartRollupAndPricing(rawUpdated);
+      const items = calculateSmartRollupAndPricing(rawUpdated, state.priceLevel);
       const touched = touchLine(state.items, items, productId, unit.id, unit.factor || 1);
       return { items, lastTouched: touched ? { ...touched, delta: 0 } : followTouchedLine(state.lastTouched, state.items, items) };
     });
@@ -424,30 +479,40 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
     set({ isVatEnabled: enabled });
   },
 
-  setCustomer: (id: string | null, name: string | null) => {
-    if (!id) {
-      set({ customerId: null, customerName: null, pointsDiscountValue: 0, pointsUsed: 0 });
-    } else {
-      set({ customerId: id, customerName: name });
-    }
+  setCustomer: (id: string | null, name: string | null, level?: number | null) => {
+    // member: the member's level; clearing the member: back to retail (ราคา 1). Every line is re-priced.
+    const priceLevel = id ? normalizeLevel(level ?? memberLevel(id)) : (1 as PriceLevel);
+    set((state) => {
+      const items = calculateSmartRollupAndPricing(state.items, priceLevel);
+      const base = { items, priceLevel, levelChosen: true, lastTouched: followTouchedLine(state.lastTouched, state.items, items) };
+      return id
+        ? { ...base, customerId: id, customerName: name }
+        : { ...base, customerId: null, customerName: null, pointsDiscountValue: 0, pointsUsed: 0 };
+    });
+  },
+
+  setWalkInLevel: (level: number) => {
+    const priceLevel = normalizeLevel(level);
+    set((state) => {
+      const items = calculateSmartRollupAndPricing(state.items, priceLevel);
+      return {
+        items, priceLevel, levelChosen: true, customerId: null, customerName: null, pointsDiscountValue: 0, pointsUsed: 0,
+        lastTouched: followTouchedLine(state.lastTouched, state.items, items),
+      };
+    });
+  },
+
+  setMemberLevel: (level: number) => {
+    const priceLevel = normalizeLevel(level);
+    if (!get().customerId || get().priceLevel === priceLevel) return;
+    set((state) => {
+      const items = calculateSmartRollupAndPricing(state.items, priceLevel);
+      return { items, priceLevel, lastTouched: followTouchedLine(state.lastTouched, state.items, items) };
+    });
   },
 
   clearCart: () => {
-    set({
-      items: [],
-      customerId: null,
-      customerName: null,
-      billDiscountType: 'none' as const,
-      billDiscountValue: 0,
-      pointsDiscountValue: 0,
-      pointsUsed: 0,
-      attachedClaim: null,
-      pendingClaims: [],
-      note: '',
-      editingOrderId: null,
-      onlineOrderId: null,
-      lastTouched: null,
-    });
+    set({ ...EMPTY_BILL });
   },
 
   holdBill: (label?: string) => {
@@ -467,25 +532,12 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
       pendingClaims: [...state.pendingClaims],
       note: state.note,
       onlineOrderId: state.onlineOrderId,
+      priceLevel: state.priceLevel,
+      levelChosen: state.levelChosen,
       heldAt: new Date().toISOString(),
     };
 
-    set((s) => ({
-      heldBills: [...s.heldBills, bill],
-      items: [],
-      customerId: null,
-      customerName: null,
-      billDiscountType: 'none' as const,
-      billDiscountValue: 0,
-      pointsDiscountValue: 0,
-      pointsUsed: 0,
-      attachedClaim: null,
-      pendingClaims: [],
-      note: '',
-      editingOrderId: null,
-      onlineOrderId: null,
-      lastTouched: null,
-    }));
+    set((s) => ({ ...EMPTY_BILL, heldBills: [...s.heldBills, bill] }));
   },
 
   recallBill: (id: string) => {
@@ -509,6 +561,9 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
       pendingClaims: bill.pendingClaims || [],
       note: bill.note || '',
       onlineOrderId: bill.onlineOrderId || null,
+      // bills held before levels existed: the member's level (customer list), else retail
+      priceLevel: bill.priceLevel ? normalizeLevel(bill.priceLevel) : memberLevel(bill.customerId),
+      levelChosen: bill.levelChosen ?? !!bill.customerId,
       lastTouched: null,
       heldBills: s.heldBills.filter((b) => b.id !== id),
     }));
@@ -567,6 +622,8 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
     heldBills: s.heldBills,
     editingOrderId: s.editingOrderId,
     onlineOrderId: s.onlineOrderId,
+    priceLevel: s.priceLevel,
+    levelChosen: s.levelChosen,
   }),
   // Unknown/older versions: keep whatever still validates instead of throwing away parked bills
   migrate: (persisted) => sanitizePersistedCart(persisted) as unknown as CartStore,
