@@ -256,13 +256,14 @@ export function toStoreProduct(p: ApiProduct | CachedProduct): Product {
     barcode: baseBarcode,
   };
 
+  // no ราคา 1: the unit shows the first non-zero of ราคา 2..5 (shared rule; never a 0 when any level has a price)
+  const baseCands = baseCandidates({ basePrice, priceLevel1: p.priceLevel1, priceLevel2: p.priceLevel2, priceLevel3: p.priceLevel3, priceLevel4: p.priceLevel4, priceLevel5: p.priceLevel5 });
+  if (!(basePrice > 0)) baseUnitItem.price = pickLevelPrice(baseCands, 1)?.price ?? 0;
   let unitsList: ProductUnit[] = [baseUnitItem];
   if (packagingUnits.length > 0) {
     let cumulativeFactor = 1;
     // shown unit price = its ราคา 1 by the shared rule (pack without its own price = base x pack size, never 0
     // when any level has a price); the cart prices every line at the bill's level (docs/pos-price-level.md)
-    const baseCands = baseCandidates({ basePrice, priceLevel1: p.priceLevel1, priceLevel2: p.priceLevel2, priceLevel3: p.priceLevel3, priceLevel4: p.priceLevel4, priceLevel5: p.priceLevel5 });
-    if (!(basePrice > 0)) baseUnitItem.price = pickLevelPrice(baseCands, 1)?.price ?? 0;
     const mappedPackaging = packagingUnits.map((u, idx: number) => {
       cumulativeFactor *= Number(u.qtyPerPrev || u.factor || 1);
       const own = u.priceLevel1 != null || u.priceLevel2 != null ? u : { priceLevel1: u.price };

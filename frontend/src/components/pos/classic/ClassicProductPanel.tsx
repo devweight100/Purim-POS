@@ -17,6 +17,8 @@ import type { PosViewMode } from '@/lib/pos/pos-variant';
 import type { Product, ProductUnit } from '@/lib/types';
 import { PosLogoutButton } from '../PosLogoutButton';
 import { PosScannerInput } from '../PosDialogs';
+import { useCartStore } from '@/lib/store/cart-store';
+import { shownUnitPrice } from '@/lib/pos/price-level';
 
 /** Arrow keys between the product cards (the grid's column count is read from the layout). */
 function moveInGrid(card: HTMLElement, key: string) {
@@ -48,13 +50,16 @@ function ClassicProductCard({
   tabIndex: number;
 }) {
   const { units, activeUnit, isLowStock, pickUnit } = useProductCardUnit(product, searchQuery);
+  // prices at the bill's level (member / walk-in level), as the cart will charge them
+  const level = useCartStore((s) => s.priceLevel);
+  const priceOf = (u: ProductUnit) => shownUnitPrice(product, u, level);
 
   return (
     <div
       data-testid="pos-product-card"
       role="button"
       tabIndex={tabIndex}
-      aria-label={`${product.name} ${formatCurrency(activeUnit.price)} (Enter = เพิ่มลงตะกร้า)`}
+      aria-label={`${product.name} ${formatCurrency(priceOf(activeUnit))} (Enter = เพิ่มลงตะกร้า)`}
       onClick={() => onAddToCart(product, activeUnit)}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
@@ -127,7 +132,7 @@ function ClassicProductCard({
                 title={isOutOfStock ? `สต๊อกไม่พอ (ต้องใช้ ${u.factor} หน่วย)` : `เลือก ${u.unitName}`}
               >
                 <span>{u.unitName}</span>
-                <span className="font-mono text-xs opacity-90">{formatCurrency(u.price)}</span>
+                <span className="font-mono text-xs opacity-90">{formatCurrency(priceOf(u))}</span>
                 {isOutOfStock && <span className="text-[11px] text-red-500 font-bold ml-0.5">(หมด)</span>}
               </button>
             );
@@ -135,7 +140,7 @@ function ClassicProductCard({
         </div>
       ) : (
         <div className="mt-auto flex items-end justify-between pt-1">
-          <div className="text-base font-extrabold text-sky-700 sm:text-lg">{formatCurrency(activeUnit.price)}</div>
+          <div className="text-base font-extrabold text-sky-700 sm:text-lg">{formatCurrency(priceOf(activeUnit))}</div>
           <div className="text-xs text-slate-500 font-bold">/{activeUnit.unitName}</div>
         </div>
       )}

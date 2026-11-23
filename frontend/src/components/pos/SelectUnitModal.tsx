@@ -9,6 +9,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Package, Check, ArrowRight } from 'lucide-react';
+import { useCartStore } from '@/lib/store/cart-store';
+import { shownUnitPrice } from '@/lib/pos/price-level';
 
 interface SelectUnitModalProps {
   open: boolean;
@@ -18,6 +20,7 @@ interface SelectUnitModalProps {
 }
 
 export function SelectUnitModal({ open, onOpenChange, product, onSelectUnit }: SelectUnitModalProps) {
+  const level = useCartStore((s) => s.priceLevel);
   if (!product) return null;
 
   // Gather all available units (from product.units + packaging units)
@@ -97,7 +100,7 @@ export function SelectUnitModal({ open, onOpenChange, product, onSelectUnit }: S
 
                   <div className="text-right flex items-center gap-2 shrink-0">
                     <div className="text-lg font-black text-sky-600">
-                      {formatCurrency(u.price)}
+                      {formatCurrency(shownUnitPrice(product, u, level))}
                     </div>
                     <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-sky-600 group-hover:translate-x-0.5 transition-all" />
                   </div>

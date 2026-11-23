@@ -64,3 +64,9 @@ export function unitPriceAt(product: Product, unit: { id?: string | null; unitNa
 export function productHasNoPrice(product: Product): boolean {
   return posUnitTable(product).every((u) => pickLevelPrice(u.candidates, 1) === null);
 }
+
+/** Price a product unit shows on the POS at the bill's level (0 when the product has no price). */
+export function shownUnitPrice(product: Product, unit: { id?: string | null; unitName?: string; factor?: number; price?: number }, level: PriceLevel): number {
+  if (level === 1) return Number(unit.price) || 0;
+  return unitPriceAt(product, unit, level)?.price ?? (Number(unit.price) || 0);
+}

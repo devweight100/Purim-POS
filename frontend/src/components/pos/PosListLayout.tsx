@@ -32,6 +32,7 @@ import { cartLineKey } from '@/lib/store/cart-last-touched';
 import { LastAddedLine } from '@/components/pos/LastAddedLine';
 import { addToCart } from '@/lib/pos/pos-add';
 import { LineLevelNote, PosLevelControl } from '@/components/pos/PosLevelControl';
+import { shownUnitPrice } from '@/lib/pos/price-level';
 
 interface PosListLayoutProps {
   viewMode: 'touch_screen' | 'list_view';
@@ -566,7 +567,7 @@ export function PosListLayout({
                               }`}
                             >
                               <span>{u.unitName}</span>
-                              <span className="font-mono opacity-90">{formatCurrency(u.price)}</span>
+                              <span className="font-mono opacity-90">{formatCurrency(shownUnitPrice(p, u, cart.priceLevel))}</span>
                               {isOutOfStock && <span className="text-[9px] text-red-500 font-bold ml-0.5">(หมด)</span>}
                             </button>
                           );
