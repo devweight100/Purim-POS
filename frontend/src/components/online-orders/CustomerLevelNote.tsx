@@ -14,7 +14,7 @@ let cached: { at: number; data: Coverage } | null = null;
 
 /**
  * Customer form, price level: what a LINE customer linked to this member sees in the online shop, and that products
- * without a price at this level are sold at ราคาปลีก (shared shopUnits: empty / 0 -> retail; never above retail),
+ * without a price at this level are sold at ราคาปลีก (shared price-level rule, also in the POS: empty / 0 -> retail),
  * with how many products have no price at this level yet.
  */
 export function CustomerLevelNote({ level: raw }: { level: number | undefined }) {
