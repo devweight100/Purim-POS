@@ -10,6 +10,7 @@ import * as ledger from '../finance/ledger';
 import { validateCheckoutInput, lineAmounts, checkPointsDiscount, claimableBaseQty, paidPerBaseUnit, round2, MAX_ITEM_QTY } from './checkout-guards';
 import { linkOnlineOrder, unlinkOnlineOrder } from '../online-shop/online-order-payment';
 import { billTotals, earnedPoints, normVatRate, vatIncluded } from '../../../shared/src/pricing';
+import { lineUnitCandidates, normalizeLevel, pickLevelPrice, type PriceLevel } from '../../../shared/src/price-level';
 import { addQty, decimalQtyAllowed, hasMax2Decimals, mulQty, parseQty, qn, subQty } from '../common/qty';
 import { nextDocNumber } from '../common/doc-number';
 
@@ -102,6 +103,26 @@ export class OrdersService {
       }
       const cashierName = cashierUser?.fullName || cashierUser?.username || data.cashierName || 'พนักงานขาย';
 
+      // Price level of the bill (docs/pos-price-level.md): a member's own level (customers.profile.priceLevel), else
+      // the walk-in level the cashier chose (data.priceLevel). With "walk-in level needs the discount right" on, a user
+      // without it is checked against ราคา 1 (lower prices then need the discount right / an approval).
+      const customer = data.customerId ? await tx.customer.findUnique({ where: { id: data.customerId } }) : null;
+      if (data.customerId && !customer) throw new BadRequestException('ไม่พบลูกค้า');
+      const settings = await tx.storeSettings.findFirst();
+      const walkInLevel = normalizeLevel(data.priceLevel);
+      const billLevel: PriceLevel = customer
+        ? normalizeLevel((customer.profile as any)?.priceLevel)
+        : walkInLevel > 1 && (settings as any)?.walkInLevelNeedsDiscount && !canOverridePrice ? 1 : walkInLevel;
+      // agreed prices of the online order this bill pays (priced by the shop with the same rule when it was accepted)
+      const agreed = new Map<string, number>();
+      if (data.onlineOrderId) {
+        const lines = await tx.onlineOrderItem.findMany({ where: { onlineOrderId: String(data.onlineOrderId) }, select: { productId: true, factor: true, unitPrice: true } });
+        for (const l of lines) {
+          const k = `${l.productId}|${l.factor}`;
+          agreed.set(k, Math.min(agreed.get(k) ?? Infinity, Number(l.unitPrice)));
+        }
+      }
+
       // 3. Deduct FIFO Inventory
       for (const item of data.items) {
         if (!(item.quantity > 0) || !Number.isFinite(Number(item.unitPrice)) || Number(item.unitPrice) < 0) {
@@ -135,14 +156,18 @@ export class OrdersService {
           unitName = unit.name;
         }
         const baseQuantity = mulQty(item.quantity, factor);
-        // Price guard: the selling price may not go below the lowest price configured in the
-        // system (price levels, unit prices, wholesale steps) unless the user may give discounts.
-        if (!canOverridePrice) {
-          const minAllowed = this.lowestAllowedUnitPrice(product, factor, item.unitId, item.unitName, billBaseQty.get(item.productId) || baseQuantity);
-          if (minAllowed !== null && Number(item.unitPrice) + 0.01 < minAllowed) {
-            const message = `ราคาขาย "${product.name}" ฿${Number(item.unitPrice).toFixed(2)} ต่ำกว่าราคาในระบบ (ขั้นต่ำ ฿${minAllowed.toFixed(2)})`;
+        // Price guard: the price of this unit at the bill's level (shared rule, wholesale step / agreed online price
+        // when lower). Below it - or a product without any price - needs the discount right, else the existing
+        // approval rules (BELOW_PRICE_FLOOR). Service lines (ค่าส่ง) carry their own price.
+        if (!canOverridePrice && !product.isService) {
+          const expected = this.expectedUnitPrice(product, factor, item.unitId, item.unitName, billLevel, billBaseQty.get(item.productId) || baseQuantity, agreed.get(`${item.productId}|${factor}`));
+          const message = expected === null
+            ? `"${product.name}" ยังไม่ได้ตั้งราคา (ราคาที่ใส่เอง ฿${Number(item.unitPrice).toFixed(2)})`
+            : `ราคาขาย "${product.name}" ฿${Number(item.unitPrice).toFixed(2)} ต่ำกว่าราคาระดับ ${billLevel} ในระบบ (฿${expected.toFixed(2)})`;
+          if (expected === null || Number(item.unitPrice) + 0.005 < expected) {
             if (!rules) throw new BadRequestException(message + ' ต้องใช้สิทธิ์ให้ส่วนลด');
             if (rules.belowPriceFloorNeedsApproval) approvalReasons.push({ code: 'BELOW_PRICE_FLOOR', message });
+            else if (expected === null && !(Number(item.unitPrice) > 0)) throw new BadRequestException(message);
           }
         }
         const lineDiscount = Number(item.discountAmount || 0);
@@ -282,10 +307,7 @@ export class OrdersService {
       if (creditAmount && !data.customerId) throw new BadRequestException('ขายเชื่อต้องระบุลูกค้า');
       const pointsUsed = Number(data.pointsUsed || 0);
       if (!Number.isSafeInteger(pointsUsed) || pointsUsed < 0) throw new BadRequestException('จำนวนแต้มไม่ถูกต้อง');
-      const customer = data.customerId ? await tx.customer.findUnique({ where: { id: data.customerId } }) : null;
-      if (data.customerId && !customer) throw new BadRequestException('ไม่พบลูกค้า');
       if (pointsUsed > (customer?.points || 0)) throw new BadRequestException('แต้มคงเหลือไม่เพียงพอ');
-      const settings = await tx.storeSettings.findFirst();
       const config: any = settings?.loyaltyConfig || {};
       const profile: any = customer?.profile || {};
       const rate = Number(profile.pointEarnRateBaht || config.defaultPointEarnRateBaht || 500);
@@ -426,6 +448,7 @@ export class OrdersService {
           totalCogs,
           vatRate,
           vatAmount,
+          priceLevel: billLevel,
           pointsUsed,
           pointsEarned,
           note: data.note || null,
@@ -509,18 +532,20 @@ export class OrdersService {
     }
   }
 
-  /** Lowest unit price the system itself would charge for this unit, or null when no price is configured. */
-  private lowestAllowedUnitPrice(product: any, factor: number, unitId?: string, unitName?: string, totalBaseQty = 0): number | null {
-    const positive = (vals: any[]) => vals.map(Number).filter((v) => Number.isFinite(v) && v > 0);
-    const baseLevels = positive([product.basePrice, product.priceLevel1, product.priceLevel2, product.priceLevel3, product.priceLevel4, product.priceLevel5]);
-    const candidates: number[] = baseLevels.map((v) => v * factor);
-    if (factor !== 1) {
-      const unit = (product.packagingUnits || []).find((u: any) => u.id === unitId || u.name === unitName);
-      if (unit) candidates.push(...positive([unit.priceLevel1, unit.priceLevel2, unit.priceLevel3, unit.priceLevel4, unit.priceLevel5]));
+  /**
+   * Price the system itself charges for this unit at the bill's level (shared rule: level, else 1, else 2..5; packs
+   * own price else base x size), lowered by an applicable wholesale step or the agreed online-order price.
+   * null = the product has no price at any level.
+   */
+  private expectedUnitPrice(product: any, factor: number, unitId: string | undefined, unitName: string | undefined, level: PriceLevel, totalBaseQty = 0, agreedPrice?: number): number | null {
+    const pick = pickLevelPrice(lineUnitCandidates(product, product.packagingUnits || [], { factor, unitId, unitName }), level);
+    const candidates: number[] = pick ? [pick.price] : [];
+    if (pick) {
+      for (const step of product.wholesalePrices || []) {
+        if (totalBaseQty >= Number(step.minQuantity) && Number(step.unitPrice) > 0) candidates.push(Number(step.unitPrice) * factor);
+      }
     }
-    for (const step of product.wholesalePrices || []) {
-      if (totalBaseQty >= Number(step.minQuantity) && Number(step.unitPrice) > 0) candidates.push(Number(step.unitPrice) * factor);
-    }
+    if (agreedPrice !== undefined && Number.isFinite(agreedPrice)) candidates.push(agreedPrice);
     if (!candidates.length) return null;
     return Math.round(Math.min(...candidates) * 100) / 100;
   }

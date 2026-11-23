@@ -91,6 +91,16 @@ export class UpdateSettingsDto {
   @IsIn(['SHOP', 'SUPPLIER'], { message: 'ชื่อสินค้าบนเอกสารถึงผู้ขายต้องเป็น "ใช้ชื่อร้าน" หรือ "ใช้ชื่อผู้ผลิต"' })
   supplierDocNameMode?: 'SHOP' | 'SUPPLIER';
 
+  /** POS: the start-of-bill customer / price level dialog (เลือกลูกค้าก่อนเริ่มบิลทุกครั้ง). */
+  @ValidateIf((o) => o.posAskCustomerAtStart !== undefined)
+  @IsBoolean({ message: 'การเปิด/ปิดการเลือกลูกค้าก่อนเริ่มบิลไม่ถูกต้อง' })
+  posAskCustomerAtStart?: boolean;
+
+  /** POS: a walk-in bill at ราคา 2-5 needs the discount right (POS_DISCOUNT / manager). */
+  @ValidateIf((o) => o.walkInLevelNeedsDiscount !== undefined)
+  @IsBoolean({ message: 'การตั้งสิทธิ์ราคาลูกค้าทั่วไปไม่ถูกต้อง' })
+  walkInLevelNeedsDiscount?: boolean;
+
   /** What slips / A4 documents show ({ slip: { showAddress: false, ... }, a4: {...} }); null = defaults. */
   @ValidateIf((o) => o.receiptOptions !== undefined)
   @ValidateBy({
@@ -112,5 +122,5 @@ export const SETTINGS_FIELDS = [
   'storeName', 'branchName', 'storePhone', 'storeAddress', 'storeEmail', 'logoUrl', 'qrImageUrl', 'qrLabel',
   'taxId', 'receiptHeader', 'receiptFooter', 'vatRate', 'vatEnabled', 'pointsPerBaht', 'pointValue',
   'lowStockThreshold', 'allowDecimalQty', 'cashMovementApprovalLimit', 'loyaltyConfig',
-  'receiptOptions', 'supplierDocNameMode',
+  'receiptOptions', 'supplierDocNameMode', 'posAskCustomerAtStart', 'walkInLevelNeedsDiscount',
 ] as const;

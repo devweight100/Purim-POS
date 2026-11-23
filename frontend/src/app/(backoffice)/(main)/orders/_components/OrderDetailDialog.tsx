@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/dialog";
 import { Ban, CreditCard, User, Printer, FileText, Edit3, RotateCcw, History, ClipboardList } from "lucide-react";
 import { printOrderPickingSlip } from "@/lib/pos/picking";
+import { usePosLevels } from "@/lib/pos/pos-add";
+import type { PriceLevel } from "@shared/price-level";
 import { isCreditOrderFullyPaid, isOrderCredit, type OrderAction, type OrderRow } from "./order-shared";
 
 interface Props {
@@ -30,6 +32,7 @@ export function OrderDetailDialog({
   isDetailOpen, setIsDetailOpen, currentOrder, handleOpenCreditHistory, handleOpenA4Receipt, handleOpenSlipReceipt,
   handleStartEditPayment, handleStartEditItems, handleStartVoid, setReturnOrderId,
 }: Props) {
+  const levels = usePosLevels();
   return (
     <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
       <DialogContent className="bg-white border-slate-200 text-slate-900 w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto p-5 sm:p-7 rounded-3xl shadow-2xl">
@@ -74,6 +77,9 @@ export function OrderDetailDialog({
                   <User className="w-3.5 h-3.5 text-sky-600" />
                   {currentOrder.customerName || (typeof currentOrder.customer === "object" ? currentOrder.customer?.name : currentOrder.customer) || "ลูกค้าทั่วไป"}
                 </span>
+                {(currentOrder.priceLevel ?? 1) > 1 && (
+                  <span className="block text-sub text-muted-foreground mt-0.5" data-testid="order-price-level">ราคา: {levels.names[currentOrder.priceLevel as PriceLevel]}</span>
+                )}
               </div>
               {currentOrder.voidReason && (
                 <div className="col-span-1 sm:col-span-2 pt-2 border-t border-slate-200">

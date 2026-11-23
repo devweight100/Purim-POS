@@ -9,6 +9,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { UpdateSettingsDto, SETTINGS_FIELDS } from './update-settings.dto';
+import { levelNames } from '../../../shared/src/price-level';
 
 /** Images only: checked by MIME type AND extension, 5 MB max (served same-origin from /uploads). */
 export const IMAGE_TYPES: Record<string, string[]> = {
@@ -77,7 +78,7 @@ export class SettingsController {
       if (!settings) {
         settings = await this.prisma.storeSettings.create({ data: {} });
       }
-      return publicSettings(settings);
+      return { ...publicSettings(settings), ...(await this.levelInfo()) };
     } catch (err) {
       return {
         storeName: 'ร้านปุริม POS',
@@ -105,6 +106,31 @@ export class SettingsController {
     return this.applySettings(body);
   }
 
+  /**
+   * Price level names (online shop config, also used by the POS offline) and the levels some active product has a
+   * price at (the POS offers those for a walk-in bill). Not secret: the shop shows the names to every visitor.
+   */
+  private async levelInfo() {
+    const [cfg, used] = await Promise.all([
+      this.prisma.onlineShopConfig.findUnique({ where: { id: 1 }, select: { levelNames: true } }).catch(() => null),
+      this.prisma.$queryRaw<{ l2: boolean; l3: boolean; l4: boolean; l5: boolean }[]>`
+        SELECT bool_or(COALESCE(p.price_level_2, 0) > 0 OR COALESCE(u.l2, false)) AS l2,
+               bool_or(COALESCE(p.price_level_3, 0) > 0 OR COALESCE(u.l3, false)) AS l3,
+               bool_or(COALESCE(p.price_level_4, 0) > 0 OR COALESCE(u.l4, false)) AS l4,
+               bool_or(COALESCE(p.price_level_5, 0) > 0 OR COALESCE(u.l5, false)) AS l5
+        FROM products p
+        LEFT JOIN (SELECT product_id, bool_or(price_level_2 > 0) AS l2, bool_or(price_level_3 > 0) AS l3,
+                          bool_or(price_level_4 > 0) AS l4, bool_or(price_level_5 > 0) AS l5
+                   FROM product_packaging_units GROUP BY product_id) u ON u.product_id = p.id
+        WHERE p.is_active AND NOT p.is_service`.catch(() => []),
+    ]);
+    const u = used[0];
+    // ราคา 1 + every level some product has a price at; a shop without any yet gets 1-3 (retail / wholesale / special)
+    const levels = [2, 3, 4, 5].filter((l) => (u as Record<string, boolean> | undefined)?.[`l${l}`]);
+    const usedLevels = [1, ...(levels.length ? levels : [2, 3])];
+    return { levelNames: levelNames(cfg?.levelNames), usedLevels };
+  }
+
   /** Only whitelisted, validated fields reach the database (no id/createdAt/approvalRules/backupOffsiteDir). */
   private async applySettings(body: Partial<UpdateSettingsDto>) {
     const data: Record<string, any> = {};
@@ -117,7 +143,7 @@ export class SettingsController {
     const saved = settings
       ? await this.prisma.storeSettings.update({ where: { id: settings.id }, data })
       : await this.prisma.storeSettings.create({ data });
-    return publicSettings(saved);
+    return { ...publicSettings(saved), ...(await this.levelInfo()) };
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

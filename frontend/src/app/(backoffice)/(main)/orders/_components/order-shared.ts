@@ -34,6 +34,8 @@ export interface OrderRow {
   customerId?: string | null;
   customerName?: string | null;
   customer?: string | { name?: string } | null;
+  /** price level of the bill (null = before levels were stored) */
+  priceLevel?: number | null;
   items?: OrderRowItem[];
   itemCount?: number;
   totalAmount?: number;

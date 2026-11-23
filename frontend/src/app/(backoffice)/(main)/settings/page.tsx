@@ -704,7 +704,7 @@ export default function SettingsPage() {
       {activeTab === "sales" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start" role="tabpanel">
           <div className="lg:col-span-7 space-y-5">
-            <SectionCard icon={Coins} title="การขาย" text="ภาษีขายและการขายเป็นจำนวนทศนิยม ใช้กับทุกเครื่อง">
+            <SectionCard icon={Coins} title="การขาย" text="ภาษีขาย จำนวนทศนิยม และการเลือกลูกค้า / ระดับราคาที่หน้าขาย ใช้กับทุกเครื่อง">
               {/* VAT on sales (store-wide). Purchases are separate and not affected. */}
               <div className={`rounded-xl border p-3.5 space-y-2.5 ${settings.vatEnabled ? 'border-emerald-300 bg-emerald-50/60' : 'border-slate-200 bg-slate-50'}`}>
                 <label className="flex items-start gap-3 cursor-pointer">
@@ -760,6 +760,46 @@ export default function SettingsPage() {
                   </span>
                 </label>
                 <p className="text-[11px] text-slate-500 pl-8">มีผลกับทุกเครื่องหลังกดบันทึก · รายการเดิมที่มีทศนิยมยังคงอยู่แม้จะปิดภายหลัง</p>
+              </div>
+              {/* Start-of-bill customer / price level dialog (docs/pos-price-level.md) */}
+              <div className={`rounded-xl border p-3.5 space-y-1.5 ${settings.posAskCustomerAtStart ? 'border-sky-300 bg-sky-50/60' : 'border-slate-200 bg-slate-50'}`}>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    data-testid="pos-ask-customer-at-start"
+                    checked={settings.posAskCustomerAtStart === true}
+                    onChange={(e) => setSettings({ ...settings, posAskCustomerAtStart: e.target.checked })}
+                    className="mt-0.5 w-5 h-5 rounded text-sky-600 focus:ring-sky-500"
+                  />
+                  <span className="space-y-0.5">
+                    <span className="block text-sm font-semibold text-slate-900">เลือกลูกค้าก่อนเริ่มบิลทุกครั้ง</span>
+                    <span className="block text-xs text-slate-600 leading-relaxed">
+                      {settings.posAskCustomerAtStart
+                        ? 'เปิดอยู่: สแกน/เลือกสินค้าชิ้นแรกของบิลใหม่ จะถามก่อนว่าเป็นสมาชิกคนไหน หรือลูกค้าทั่วไปราคาไหน (Enter / Esc = ลูกค้าทั่วไป ราคาปลีก) สินค้าชิ้นแรกรอใส่ตะกร้าหลังเลือก'
+                        : 'ปิดอยู่: เริ่มขายได้ทันที เลือกสมาชิกหรือระดับราคาลูกค้าทั่วไปได้ที่ช่องลูกค้าในหน้าขาย (Ctrl+M)'}
+                    </span>
+                  </span>
+                </label>
+              </div>
+              {/* Who may sell a walk-in bill at ราคา 2-5 */}
+              <div className={`rounded-xl border p-3.5 space-y-1.5 ${settings.walkInLevelNeedsDiscount ? 'border-amber-300 bg-amber-50/60' : 'border-slate-200 bg-slate-50'}`}>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    data-testid="walk-in-level-needs-discount"
+                    checked={settings.walkInLevelNeedsDiscount === true}
+                    onChange={(e) => setSettings({ ...settings, walkInLevelNeedsDiscount: e.target.checked })}
+                    className="mt-0.5 w-5 h-5 rounded text-amber-600 focus:ring-amber-500"
+                  />
+                  <span className="space-y-0.5">
+                    <span className="block text-sm font-semibold text-slate-900">ขายราคาส่ง (ราคา 2-5) ให้ลูกค้าทั่วไป ต้องมีสิทธิ์ให้ส่วนลด</span>
+                    <span className="block text-xs text-slate-600 leading-relaxed">
+                      {settings.walkInLevelNeedsDiscount
+                        ? 'เปิดอยู่: แคชเชียร์ที่ไม่มีสิทธิ์ให้ส่วนลด เลือกได้แค่ราคาปลีกให้ลูกค้าทั่วไป และตั้งระดับราคา 2-5 ให้สมาชิกใหม่ไม่ได้'
+                        : 'ปิดอยู่: แคชเชียร์ทุกคนเลือกระดับราคาให้ลูกค้าทั่วไปได้ (บิลบันทึกระดับราคาไว้ ดูได้ในใบเสร็จและรายการบิล)'}
+                    </span>
+                  </span>
+                </label>
               </div>
               <SaveBar onSave={() => void handleSaveStore()} />
             </SectionCard>

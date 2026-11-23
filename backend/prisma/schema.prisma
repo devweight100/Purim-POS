@@ -798,6 +798,7 @@ model Order {
   vatAmount      Decimal       @default(0) @map("vat_amount") @db.Decimal(12, 2) // VAT included in totalAmount
   returnedAmount Decimal       @default(0) @map("returned_amount") @db.Decimal(12, 2) // refunded through partial returns
   approvalId     String?       @map("approval_id") // manager approval used for discounts / below-cost prices
+  priceLevel     Int?          @map("price_level") // price level of the bill (member / walk-in level, docs/pos-price-level.md); null = before levels were stored
   pointsUsed     Int           @default(0) @map("points_used")
   pointsEarned   Int           @default(0) @map("points_earned")
   note           String?
@@ -987,6 +988,8 @@ model StoreSettings {
   allowDecimalQty   Boolean @default(false) @map("allow_decimal_qty") // quantities may have up to 2 decimals (sell by metre / kg)
   cashMovementApprovalLimit Decimal @default(1000) @map("cash_movement_approval_limit") @db.Decimal(12, 2) // drawer cash in/out above this needs a manager PIN (0 = always)
   supplierDocNameMode String @default("SHOP") @map("supplier_doc_name_mode") @db.VarChar(10) // default product names on new supplier documents (SHOP | SUPPLIER)
+  posAskCustomerAtStart   Boolean @default(false) @map("pos_ask_customer_at_start") // POS: start-of-bill customer / price level dialog
+  walkInLevelNeedsDiscount Boolean @default(false) @map("walk_in_level_needs_discount") // POS: walk-in bill at ราคา 2-5 needs POS_DISCOUNT / manager
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 

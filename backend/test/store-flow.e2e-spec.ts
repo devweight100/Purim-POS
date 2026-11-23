@@ -3443,4 +3443,100 @@ d('store flow (e2e)', () => {
       await api('get', '/inventory/movements/page', C).expect(403);
     });
   });
+
+  describe('POS price level: checkout validates the level price (owner bug 2026-11-23, docs/pos-price-level.md)', () => {
+    const lv: Record<string, any> = {};
+    const sell = (token: string, items: any[], extra: any = {}) => {
+      const total = Math.round(items.reduce((t, i) => t + i.quantity * i.unitPrice, 0) * 100) / 100;
+      return api('post', '/orders/checkout', token, {
+        clientOrderId: randomUUID(), shiftId: token === A ? lv.shiftA.id : lv.shift.id, items, payments: [{ method: 'CASH', amount: total }], ...extra,
+      });
+    };
+    beforeAll(async () => {
+      await api('post', '/auth/register', A, { username: 'levelseller', password: 'Level@test99', fullName: 'แคชเชียร์ไม่มีสิทธิ์ลด', role: 'CASHIER', pinCode: '5813', permissions: ['POS_SELL'] }).expect(201);
+      lv.S = (await api('post', '/auth/login', undefined, { username: 'levelseller', password: 'Level@test99' }).expect(201)).body.access_token;
+      lv.shift = (await api('post', '/shifts/open', lv.S, { startingCash: 0, terminalId: 'e2e-level' }).expect(201)).body.shift;
+      lv.shiftA = (await api('get', '/shifts/current?terminalId=e2e-term-admin', A).expect(200)).body.shift
+        || (await api('post', '/shifts/open', A, { startingCash: 0, terminalId: 'e2e-level-admin' }).expect(201)).body.shift;
+      const mk = async (body: any) => {
+        const p = (await api('post', '/products', A, { unit: 'ชิ้น', costPrice: 5, ...body }).expect(201)).body;
+        await api('post', '/inventory/adjust', A, { productId: p.id, type: 'ADD', amount: 200, reason: 'ปรับยอดเริ่มต้น' }).expect(201);
+        return (await api('get', `/products/${p.id}`, A).expect(200)).body;
+      };
+      lv.dish = await mk({
+        name: 'น้ำยาล้างจานระดับราคา e2e', basePrice: 20, priceLevel1: 20, priceLevel2: 18, priceLevel3: 16,
+        packagingUnits: [{ name: 'แพ็ค', qtyPerPrev: 6, priceLevel1: 110, priceLevel2: 100 }],
+      });
+      lv.pack = lv.dish.packagingUnits[0];
+      lv.tape = await mk({ name: 'เทปมีแต่ราคา 3 e2e', basePrice: 0, priceLevel1: 0, priceLevel3: 30 });
+      lv.zero = await mk({ name: 'สินค้ายังไม่ตั้งราคา e2e', basePrice: 0, priceLevel1: 0 });
+      lv.m2 = (await api('post', '/customers', A, { name: 'สมาชิกราคาส่ง e2e', phone: '0899990002', priceLevel: 2 }).expect(201)).body;
+      lv.m3 = (await api('post', '/customers', A, { name: 'สมาชิกส่งพิเศษ e2e', phone: '0899990003', priceLevel: 3 }).expect(201)).body;
+    });
+    const base = (unitPrice: number, quantity = 1) => ({ productId: lv.dish.id, quantity, unitPrice });
+    const pack = (unitPrice: number) => ({ productId: lv.dish.id, quantity: 1, unitPrice, unitId: lv.pack.id, unitName: 'แพ็ค', conversionFactor: 6 });
+
+    it('member level 2: ราคา 2 accepted and stored on the order; ราคา 3 needs approval', async () => {
+      const o = (await sell(lv.S, [base(18, 2), pack(100)], { customerId: lv.m2.id, priceLevel: 2 }).expect(201)).body;
+      expect(o.priceLevel).toBe(2);
+      expect(Number(o.totalAmount)).toBe(136);
+      // the client claims level 3 for a level-2 member: the server uses the member's own level
+      const r = await sell(lv.S, [base(16)], { customerId: lv.m2.id, priceLevel: 3 }).expect(409);
+      expect(r.body.code).toBe('APPROVAL_REQUIRED');
+      expect(r.body.reasons.map((x: any) => x.code)).toEqual(['BELOW_PRICE_FLOOR']);
+      expect(r.body.message).toContain('ราคาระดับ 2');
+      await sell(lv.S, [pack(96)], { customerId: lv.m2.id }).expect(409);
+      // a level-3 member: pack without its own ราคา 3 = 16 x 6
+      expect((await sell(lv.S, [base(16), pack(96)], { customerId: lv.m3.id }).expect(201)).body.priceLevel).toBe(3);
+    });
+    it('walk-in level: accepted at the chosen level, stored; level 1 (or an old client without a level) rejects lower prices', async () => {
+      const o = (await sell(lv.S, [base(16)], { priceLevel: 3 }).expect(201)).body;
+      expect(o.priceLevel).toBe(3);
+      expect((await api('get', `/orders/${o.id}`, A).expect(200)).body.priceLevel).toBe(3);
+      await sell(lv.S, [base(16)], { priceLevel: 1 }).expect(409);
+      await sell(lv.S, [base(16)]).expect(409);
+      expect((await sell(lv.S, [base(20)]).expect(201)).body.priceLevel).toBe(1);
+      // missing price at the level: ราคา 1; only ราคา 3: everyone pays 30 (never 0)
+      await sell(lv.S, [{ productId: lv.tape.id, quantity: 1, unitPrice: 30 }], { priceLevel: 2 }).expect(201);
+      await sell(lv.S, [{ productId: lv.tape.id, quantity: 1, unitPrice: 0 }], { priceLevel: 1 }).expect(409);
+      // a higher price than the level is not a discount
+      await sell(lv.S, [base(20)], { customerId: lv.m3.id }).expect(201);
+    });
+    it('setting "walk-in ราคา 2-5 needs the discount right": a seller without it is checked at ราคา 1; members too', async () => {
+      await api('patch', '/settings', A, { walkInLevelNeedsDiscount: true }).expect(200);
+      expect((await api('get', '/settings').expect(200)).body).toMatchObject({ walkInLevelNeedsDiscount: true });
+      await sell(lv.S, [base(16)], { priceLevel: 3 }).expect(409);
+      expect((await sell(A, [base(16)], { priceLevel: 3 }).expect(201)).body.priceLevel).toBe(3);
+      await api('post', '/customers', lv.S, { name: 'สมาชิกใหม่ระดับ 3', phone: '0899990004', priceLevel: 3 }).expect(403);
+      await api('post', '/customers', lv.S, { name: 'สมาชิกใหม่ระดับ 1', phone: '0899990005', priceLevel: 1 }).expect(201);
+      await api('patch', '/settings', A, { walkInLevelNeedsDiscount: false }).expect(200);
+      const q = (await api('post', '/customers', lv.S, { name: 'สมาชิกด่วนระดับ 3', phone: '0899990006', priceLevel: '3' }).expect(201)).body;
+      expect(q.priceLevel).toBe(3);
+      expect((await sell(lv.S, [base(16)], { customerId: q.id }).expect(201)).body.priceLevel).toBe(3);
+    });
+    it('a product without any price: 0 rejected; a manual price needs the right or an approval (then accepted)', async () => {
+      const r0 = await sell(lv.S, [{ productId: lv.zero.id, quantity: 1, unitPrice: 0 }]).expect(409);
+      expect(r0.body.message).toContain('ยังไม่ได้ตั้งราคา');
+      const r = await sell(lv.S, [{ productId: lv.zero.id, quantity: 1, unitPrice: 25 }]).expect(409);
+      expect(r.body.reasons.map((x: any) => x.code)).toEqual(['BELOW_PRICE_FLOOR']);
+      const ok = await api('post', '/approvals/pin', lv.S, { ticket: r.body.ticket, pin: '7391' }).expect(201);
+      const o = (await sell(lv.S, [{ productId: lv.zero.id, quantity: 1, unitPrice: 25 }], { approvalId: ok.body.approvalId }).expect(201)).body;
+      expect((await api('get', `/orders/${o.id}`, A).expect(200)).body.approvalId).toBe(ok.body.approvalId);
+      // the owner / a user with POS_DISCOUNT may type the price
+      await sell(A, [{ productId: lv.zero.id, quantity: 1, unitPrice: 25 }]).expect(201);
+      // with the approval rule off, a 0 for an unpriced product is still refused
+      await api('put', '/approvals/rules/current', A, { belowPriceFloorNeedsApproval: false }).expect((res: any) => expect([200, 201]).toContain(res.status));
+      await sell(lv.S, [{ productId: lv.zero.id, quantity: 1, unitPrice: 0 }]).expect(400);
+      await api('put', '/approvals/rules/current', A, { belowPriceFloorNeedsApproval: true }).expect((res: any) => expect([200, 201]).toContain(res.status));
+    });
+    it('settings: start-of-bill dialog flag, level names and the levels in use (offline mirror for the POS)', async () => {
+      await api('patch', '/settings', A, { posAskCustomerAtStart: true }).expect(200);
+      const st = (await api('get', '/settings').expect(200)).body;
+      expect(st.posAskCustomerAtStart).toBe(true);
+      expect(st.levelNames[2]).toBeTruthy();
+      expect(st.usedLevels).toEqual(expect.arrayContaining([1, 2, 3]));
+      await api('patch', '/settings', lv.S, { posAskCustomerAtStart: false }).expect(403);
+      await api('patch', '/settings', A, { posAskCustomerAtStart: false }).expect(200);
+    });
+  });
 });

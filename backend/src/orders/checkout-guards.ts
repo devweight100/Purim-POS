@@ -65,6 +65,9 @@ export function validateCheckoutInput(data: any): void {
   if (data.pointsUsed !== undefined && data.pointsUsed !== null && (!Number.isSafeInteger(Number(data.pointsUsed)) || Number(data.pointsUsed) < 0)) {
     throw new BadRequestException('จำนวนแต้มไม่ถูกต้อง');
   }
+  if (data.priceLevel !== undefined && data.priceLevel !== null && ![1, 2, 3, 4, 5].includes(Number(data.priceLevel))) {
+    throw new BadRequestException('ระดับราคาของบิลไม่ถูกต้อง');
+  }
   for (const k of ['customerId', 'shiftId', 'approvalId', 'terminalId']) {
     if (!optString(data[k])) throw new BadRequestException('ข้อมูลบิลไม่ถูกต้อง');
   }

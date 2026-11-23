@@ -6,6 +6,8 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
 import { customerPageIds, parseCustomerPageQuery } from './customer-list';
 import { parseDeliveryFee } from '../../../shared/src/online-shop';
+import { normalizeLevel } from '../../../shared/src/price-level';
+import { userHasPermission } from '../auth/permissions';
 import { CHANGE_LOG_KEEP_MS, cursorUsable, decodeCursor, encodeCursor } from '../products/product-catalog';
 
 /** Profile fields that control store credit: only debt managers may change them. */
@@ -101,12 +103,28 @@ function rethrowCustomerError(e: any): never {
 export class CustomersController {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * priceLevel 1-5 (stored as a number). With the setting "a walk-in bill at ราคา 2-5 needs the discount right" on,
+   * giving a member a higher level needs the same right (else a new member would be the way around it).
+   */
+  private async checkLevel(details: Record<string, any>, currentLevel: unknown, user: any) {
+    if (details.priceLevel === undefined) return;
+    const level = normalizeLevel(details.priceLevel);
+    details.priceLevel = level;
+    if (level <= 1 || level === normalizeLevel(currentLevel)) return;
+    const s = await this.prisma.storeSettings.findFirst({ select: { walkInLevelNeedsDiscount: true } });
+    if (s?.walkInLevelNeedsDiscount && !userHasPermission(user, 'POS_DISCOUNT')) {
+      throw new ForbiddenException('ตั้งระดับราคา 2-5 ให้สมาชิกต้องมีสิทธิ์ให้ส่วนลด (ตั้งค่า > การขายและใบเสร็จ)');
+    }
+  }
+
   @Post()
   async create(@Body() data: any, @Request() req: any) {
     if (!data || typeof data !== 'object') throw new BadRequestException('ข้อมูลลูกค้าไม่ถูกต้อง');
     const { name, phone, email, address, note, id, points, createdAt, updatedAt, currentDebt, profile: ignoredProfile, ...profile } = data;
     Object.assign(profile, checkCreditFields(profile, CREDIT_DEFAULTS, req?.user));
     checkDeliveryFee(profile);
+    await this.checkLevel(profile, 1, req?.user);
     const cleanPhoneValue = cleanPhone(phone);
     if (cleanPhoneValue && (await this.prisma.customer.findUnique({ where: { phone: cleanPhoneValue } }))) {
       throw new ConflictException('เบอร์โทรศัพท์นี้มีลูกค้าใช้อยู่แล้ว');
@@ -240,6 +258,7 @@ export class CustomersController {
     const current = (existing.profile as any) || {};
     Object.assign(details, checkCreditFields(details, current, req?.user));
     checkDeliveryFee(details);
+    await this.checkLevel(details, current.priceLevel, req?.user);
     const profile = { ...current, ...details };
     const cleanPhoneValue = cleanPhone(phone);
     if (cleanPhoneValue && (await this.prisma.customer.findFirst({ where: { phone: cleanPhoneValue, id: { not: id } } }))) {

@@ -26,6 +26,8 @@ describe('validateCheckoutInput', () => {
     bad((d) => (d.payments = [null]));
     bad((d) => (d.orderNumber = { x: 1 }));
     bad((d) => (d.items[0].claimQuantity = 5));
+    bad((d) => (d.priceLevel = 7));
+    bad((d) => (d.priceLevel = 'x'));
     expect(() => validateCheckoutInput(null)).toThrow(BadRequestException);
   });
   it('accepts quantities with up to 2 decimals (the store setting is checked in the transaction)', () => {
