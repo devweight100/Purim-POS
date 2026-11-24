@@ -10,7 +10,7 @@ Branch `ccr-8f8b0741-si1a0o`. Spec: owner list "Round B". Item 9 (price fallback
 | 4 SKU editable (create + edit, blank = generated) | done (code + tests; full-suite run at the end) |
 | 6 Export filter dialog + PIN on every export | done (code + tests) |
 | 8 Dashboard debtors / creditors / upcoming expenses | done (code + tests) |
-| 9 Quotes use the shared price rule (check only) | todo |
+| 9 Quotes use the shared price rule (check only) | checked |
 | 10 LINE staff group notification + reminders | done (code + tests) |
 | Leftovers: PO status chips Thai, stock-card "-:", stat tiles | done |
 | Release v1.5.11 notes (no tag) | todo |
@@ -124,3 +124,11 @@ set Webhook URL `https://shop.purimtoy.com/api/public/line/webhook`, turn on "Us
 group chats", paste the secret in settings, Verify, invite the bot to the staff group and type a message, pick the
 group, "ส่งข้อความทดสอบ". The Cloudflare tunnel itself needs no change (same hostname -> localhost:3080); the server
 must run v1.5.11 so the gateway lets the webhook path through.
+
+## 9. Price fallback in quotes (check only)
+
+The app has no separate quotation document; the "quote" is the online shop cart check `POST /api/public/shop/quote`.
+It prices through `priceLines()` -> `shopUnits()` (`shared/src/online-shop.ts`) -> `pickLevelPrice` /
+`productUnitPrices` of `shared/src/price-level.ts`, the same rule as the POS and checkout (shared tests
+`shared/test/online-shop.spec.ts` "a level without prices = retail ... first non-zero of ราคา 2 -> 5"; backend e2e
+"quote" calls). No change needed.

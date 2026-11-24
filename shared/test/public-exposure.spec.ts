@@ -22,4 +22,9 @@ describe('public exposure', () => {
     expect(publicApiAllowed('/shop')).toBe(false);
     expect(cleanPath('/a%ZZ')).toBe('');
   });
+  it('the LINE webhook (Round B): exactly /api/public/line/webhook, nothing next to it', () => {
+    expect(publicApiAllowed('/api/public/line/webhook')).toBe(true);
+    expect(publicPathAllowed('/api/public/line/webhook')).toBe(true);
+    expect(['/api/public/line', '/api/public/line/webhook/', '/api/public/line/webhook2', '/api/public/line/x', '/api/public/line/%2E%2E/webhook'].some(publicPathAllowed)).toBe(false);
+  });
 });
