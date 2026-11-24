@@ -21,7 +21,7 @@ Owner round 2026-11-19/20. Branch `ccr-8f8b0741-si1a0o`.
     the cached POS shell. A non-selling device shows the chooser with a "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้" banner.
   - **Device setting:** pre-selects (focus + ring + label) the matching button: "ไม่ใช้ขาย" -> หลังบ้าน,
     otherwise หน้าขาย (the first button). It never skips the chooser.
-  - `?go=pos|backoffice` (used by the desktop F2) opens that option directly when allowed.
+  - `?go=pos|backoffice` (used by the desktop Ctrl+Shift+2; was F2 until docs/pos-keys-refresh.md) opens that option directly when allowed.
 - Desktop (`desktop/start-url.js`, tested by `start-url.test.js`, run in CI): after auto-connect and after
   "เชื่อมต่อ" on the server screen -> `/start`; F1 / menu "หน้าขาย" -> `/pos`; F2 / menu "หลังบ้าน" ->
   `/start?go=backoffice` (first allowed back-office page, not a forced /dashboard); new menu item

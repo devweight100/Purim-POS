@@ -181,6 +181,7 @@ test('a cart line follows a price change with a notice; not while the payment di
     await page.keyboard.type('48');
     await page.keyboard.press('Enter');
     await expect.poll(() => priceOf(page, P.glue.name)).toBe(48);
+    await page.waitForTimeout(2500); // toasts of the price edit gone
 
     await edit(bo.page, 'PATCH', `/products/${ids.dish}`, { basePrice: 25, priceLevel1: 25 });
     await edit(bo.page, 'PATCH', `/products/${ids.glue}`, { basePrice: 55, priceLevel1: 55 });
@@ -189,6 +190,7 @@ test('a cart line follows a price change with a notice; not while the payment di
     await expect(notice).toHaveCount(1);
     expect(await priceOf(page, P.glue.name)).toBe(48);
     await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'ราคาอัปเดต:' }).first()).toBeVisible();
+    await notice.scrollIntoViewIfNeeded();
     await shot(page, 'pos-price-updated-notice');
 
     // payment dialog open: the bill does not change under it; it follows once the dialog closes
