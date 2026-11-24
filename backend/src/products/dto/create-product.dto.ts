@@ -125,8 +125,8 @@ export class CreateProductDto {
   description?: string;
 
   /**
-   * Product code = permanent system ID. Ignored on create (the server generates it); on PATCH it may
-   * only be sent unchanged (another value = 400). Kept in the DTO so a change is rejected, not silently stripped.
+   * Product code (owner, Round B): typed by the user on create / edit, blank = the server generates one on create
+   * (and keeps the stored one on edit). Unique against every product SKU and barcode.
    */
   @IsString()
   @IsOptional()

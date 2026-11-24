@@ -1,10 +1,9 @@
 import { randomInt } from 'crypto';
 
 /**
- * Product code (SKU) = the product's permanent system ID (owner, 2026-11-18). Only the server makes
- * one: an internal EAN-13 starting with "200" (GS1 in-store range, never a real manufacturer
- * barcode), the same format the product form used to generate in the browser. It never changes after
- * the product is created (PATCH with another SKU = 400, imports never rename).
+ * Generated product codes (SKU). The user may type their own code on create and edit (owner, Round B, replaces the
+ * 2026-11-18 "permanent system ID" rule); when the field is left blank the server makes one: an internal EAN-13
+ * starting with "200" (GS1 in-store range, never a real manufacturer barcode).
  */
 export const SKU_PREFIX = '200';
 

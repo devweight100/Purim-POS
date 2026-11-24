@@ -154,8 +154,11 @@ export function buildImportPreview(rawJson: RawImportRow[], products: ProductRec
         if (manufacturerName && manufacturerName !== (existing.manufacturerName || "")) {
           diffs.push(`ชื่อผู้ผลิต: "${existing.manufacturerName || "-"}" ➔ "${manufacturerName}"`);
         }
-        // the product code never changes (permanent system ID): a different SKU in the file is ignored
-        const skuNote = sku && sku !== existing.sku ? `SKU ในไฟล์ "${sku}" ไม่ถูกใช้ (คงรหัสเดิม ${existing.sku})` : null;
+        // a row matched by its system id renames the code (Round B); one matched by barcode keeps the stored code
+        const skuDiffers = !!sku && sku !== existing.sku;
+        const renamesSku = skuDiffers && !!id && existing.id === id;
+        if (renamesSku) diffs.push(`รหัสสินค้า: ${existing.sku} ➔ ${sku}`);
+        const skuNote = skuDiffers && !renamesSku ? `SKU ในไฟล์ "${sku}" ไม่ถูกใช้ (คงรหัสเดิม ${existing.sku})` : null;
         if (costPrice !== undefined && costPrice !== existingCost) {
           diffs.push(`ทุน: ${existingCost} ➔ ${costPrice}`);
         }

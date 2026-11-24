@@ -860,7 +860,8 @@ export interface BulkUpsertResponse {
   created: number;
   updated: number;
   skipped: number;
-  /** rows that matched a product but carried another SKU (the product code never changes; kept as is) */
+  /** rows matched by barcode that carried another SKU (kept as is); a row matched by its system id renames (skuRenamed) */
+  skuRenamed?: number;
   skuKept?: number;
   total: number;
 }

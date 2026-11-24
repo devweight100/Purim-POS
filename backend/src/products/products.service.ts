@@ -32,8 +32,8 @@ const PRICE_LABELS: Record<string, string> = {
   priceLevel5: 'ราคาระดับ 5',
 };
 
-/** 400 for any attempt to change a product's SKU (PATCH). */
-export const SKU_LOCKED_MESSAGE = 'รหัสสินค้า (ระบบ) เปลี่ยนไม่ได้ ระบบสร้างให้ครั้งเดียวตอนเพิ่มสินค้า';
+/** Longest product code (SKU) a user may type. */
+export const SKU_MAX_LENGTH = 64;
 
 /** Trimmed name field (blank = null, undefined = unchanged) or a Thai 400 when too long. */
 export function nameField(value: unknown, field: NameField, prefix = ''): string | null | undefined {
@@ -75,10 +75,14 @@ export class ProductsService {
       data.name = name;
     }
     if (data.manufacturerName !== undefined) data.manufacturerName = nameField(data.manufacturerName, 'manufacturerName');
-    // SKU = permanent system ID: never taken from the client on create (generated in the transaction);
-    // on update it may only be sent unchanged (checked against the stored one in update()).
-    if (!partial) delete data.sku;
-    else if (typeof data.sku === 'string') data.sku = data.sku.trim();
+    // SKU (owner, Round B): the user may type their own code on create and edit; blank = the system generates one on
+    // create (create()) and keeps the stored one on edit. Uniqueness against every SKU / barcode: assertIdentifiersFree.
+    if (data.sku !== undefined) {
+      const sku = typeof data.sku === 'string' ? data.sku.replace(/\s+/g, ' ').trim() : '';
+      if (sku.length > SKU_MAX_LENGTH) throw new BadRequestException(`รหัสสินค้ายาวเกิน ${SKU_MAX_LENGTH} ตัวอักษร`);
+      if (sku) data.sku = sku;
+      else delete data.sku;
+    }
     for (const key of Object.keys(PRICE_LABELS)) {
       if (data[key] === undefined) continue;
       if (data[key] === null && key.startsWith('priceLevel')) continue;
@@ -96,6 +100,8 @@ export class ProductsService {
       if (other && other.id !== productId) throw new ConflictException(`รหัสสินค้า (SKU) "${sku}" ซ้ำกับสินค้า "${other.name}"`);
       const bc = await tx.productBarcode.findUnique({ where: { barcode: sku }, include: { product: { select: { id: true, name: true } } } });
       if (bc && bc.productId !== productId) throw new ConflictException(`รหัสสินค้า (SKU) "${sku}" ซ้ำกับบาร์โค้ดของสินค้า "${bc.product?.name || ''}"`);
+      const pack = await tx.productPackagingUnit.findFirst({ where: { barcode: sku }, include: { product: { select: { id: true, name: true } } } });
+      if (pack && pack.productId !== productId) throw new ConflictException(`รหัสสินค้า (SKU) "${sku}" ซ้ำกับบาร์โค้ดหน่วย "${pack.name}" ของสินค้า "${pack.product?.name || ''}"`);
     }
     for (const code of barcodes || []) {
       const bc = await tx.productBarcode.findUnique({ where: { barcode: code }, include: { product: { select: { id: true, name: true } } } });
@@ -445,7 +451,9 @@ export class ProductsService {
 
     const product = await businessTransaction(this.prisma, async (tx) => {
       const requestCodes = [...(this.barcodeCodes(barcodes) || []), ...(Array.isArray(packagingUnits) ? packagingUnits.map((u: any) => String(u?.barcode || '').trim()).filter(Boolean) : [])];
-      data.sku = await generateProductSku(tx, new Set(requestCodes));
+      // typed code kept (checked below); blank -> generated, never one of this request's own barcodes
+      if (!data.sku) data.sku = await generateProductSku(tx, new Set(requestCodes));
+      else if (requestCodes.includes(data.sku)) throw new ConflictException(`รหัสสินค้า (SKU) "${data.sku}" ซ้ำกับบาร์โค้ดของสินค้านี้ กรุณาใช้รหัสอื่น`);
       await this.assertIdentifiersFree(tx, null, data.sku, this.barcodeCodes(barcodes));
       await this.assertCategory(tx, data.categoryId);
       await this.assertBundleChildren(tx, null, bundleItems);
@@ -943,11 +951,13 @@ export class ProductsService {
     const product = await businessTransaction(this.prisma, async (tx) => {
       const current = await tx.product.findUnique({ where: { id }, select: { id: true, sku: true } });
       if (!current) throw new NotFoundException('ไม่พบสินค้านี้');
+      // a typed SKU renames the product (unique against every SKU / barcode); unchanged = nothing to write
+      if (data.sku !== undefined && data.sku === current.sku) delete data.sku;
       if (data.sku !== undefined) {
-        if (data.sku !== current.sku) throw new BadRequestException(SKU_LOCKED_MESSAGE);
-        delete data.sku; // unchanged: nothing to write
+        const ownCodes = [...(this.barcodeCodes(barcodes) || []), ...(Array.isArray(packagingUnits) ? packagingUnits.map((u: any) => String(u?.barcode || '').trim()).filter(Boolean) : [])];
+        if (ownCodes.includes(data.sku)) throw new ConflictException(`รหัสสินค้า (SKU) "${data.sku}" ซ้ำกับบาร์โค้ดของสินค้านี้ กรุณาใช้รหัสอื่น`);
       }
-      await this.assertIdentifiersFree(tx, id, undefined, this.barcodeCodes(barcodes));
+      await this.assertIdentifiersFree(tx, id, data.sku, this.barcodeCodes(barcodes));
       await this.assertCategory(tx, data.categoryId);
       await this.assertBundleChildren(tx, id, bundleItems);
 
@@ -1256,8 +1266,9 @@ export class ProductsService {
     let created = 0;
     let updated = 0;
     let skipped = 0;
-    // rows that matched an existing product but carried another SKU: the SKU is never renamed (kept as is)
+    // rows matched by barcode (no id) that carried another SKU: kept as is (only a row matched by its system id renames)
     let skuKept = 0;
+    let skuRenamed = 0;
     // codes named anywhere in the file: a generated SKU must not take one of them
     const fileCodes = new Set<string>();
     for (const r of rows) {
@@ -1316,9 +1327,18 @@ export class ProductsService {
 
               if (existing) {
                 productId = existing.id;
-                // SKU is the matching key and the permanent system ID: a different SKU in the file never renames
-                if (row.sku && row.sku !== existing.sku) skuKept++;
-                await this.assertIdentifiersFree(tx, productId, undefined, row.barcode && barcodeOwner !== productId ? [row.barcode] : undefined);
+                // match order id -> SKU -> barcode. A row matched by its system id may rename the SKU (the user edited
+                // it in the exported file); a row matched by barcode keeps the stored SKU (the file's may be a typo).
+                let newSku: string | undefined;
+                if (row.sku && row.sku !== existing.sku) {
+                  if (row.id && existing.id === row.id) newSku = row.sku;
+                  else skuKept++;
+                }
+                await this.assertIdentifiersFree(tx, productId, newSku, row.barcode && barcodeOwner !== productId ? [row.barcode] : undefined);
+                if (newSku) {
+                  data.sku = newSku;
+                  skuRenamed++;
+                }
                 if (Object.keys(data).length > 0) await tx.product.update({ where: { id: productId }, data });
                 updated++;
               } else {
@@ -1394,6 +1414,6 @@ export class ProductsService {
       )
       .catch((err) => rethrowPrismaError(err, { conflict: 'รหัสสินค้าหรือบาร์โค้ดในไฟล์ซ้ำกับสินค้าที่มีอยู่แล้ว', badRef: 'ข้อมูลอ้างอิงในไฟล์ไม่ถูกต้อง' }));
 
-    return { success: true, created, updated, skipped, skuKept, total: created + updated };
+    return { success: true, created, updated, skipped, skuKept, skuRenamed, total: created + updated };
   }
 }

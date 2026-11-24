@@ -92,7 +92,7 @@ export function useProductImport(loadAll: () => Promise<ProductRecord[]>, reload
         `✅ นำเข้าสำเร็จ: แก้ไข ${totalUpdated} รายการ, เพิ่มใหม่ ${totalCreated} รายการ (ข้ามที่ไม่เปลี่ยน ${unchangedCount} รายการ)`
       );
       if (totalSkuKept > 0) {
-        toast.info(`${totalSkuKept} รายการในไฟล์มีรหัสสินค้า (SKU) ไม่ตรงกับในระบบ: ใช้รหัสเดิม (รหัสสินค้าเปลี่ยนไม่ได้)`);
+        toast.info(`${totalSkuKept} รายการจับคู่ด้วยบาร์โค้ดแต่รหัสสินค้า (SKU) ในไฟล์ไม่ตรง: ใช้รหัสเดิม (เปลี่ยนรหัสได้เมื่อไฟล์มีคอลัมน์รหัสระบบ)`);
       }
       setIsImportPreviewOpen(false);
       setImportPreviewData([]);

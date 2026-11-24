@@ -10,8 +10,8 @@ import { horizontalOverflow, SIZES } from './layout';
  * - the name column is narrower and shows only the name and the barcodes (no product code); "N ขนาดบรรจุ" stays;
  *   round 4: no photo / icon and no barcodes either; category a narrow column; quantity + unit on one line;
  *   no sideways scroll at 1366x768, 1920x1080, 1093x614; searching by the product code still finds the product;
- * - the product code (SKU) is the permanent system ID: generated on create, read only in the edit form
- *   ("รหัสสินค้า (ระบบ)" + copy), never changed by a save.
+ * - Round B (owner): the product code (SKU) is typed by the user on create and edit ("รหัสสินค้า", hint
+ *   "เว้นว่างให้ระบบสร้าง"); blank = the server generates one; unique against every SKU / barcode.
  */
 test.describe.configure({ mode: 'serial' });
 
@@ -29,7 +29,7 @@ test.beforeAll(async () => {
   adminToken = await apiLogin(ADMIN);
   const cat = await api<{ id: string }>('POST', '/categories', adminToken, { name: `ประปา ${TAG}` });
   made.long = await api<{ id: string; sku: string }>('POST', '/products', adminToken, {
-    name: LONG, sku: 'TYPED-BY-USER', unit: 'เส้น', categoryId: cat.id, costPrice: 1234.5,
+    name: LONG, sku: `TYPED-${TAG}`, unit: 'เส้น', categoryId: cat.id, costPrice: 1234.5,
     basePrice: 1599, priceLevel1: 1599, priceLevel2: 1550, priceLevel3: 1500, priceLevel4: 1450, priceLevel5: 1400,
     barcodes: BARCODES, packagingUnits: [{ name: 'มัด', qtyPerPrev: 10, barcode: `88578${TAG}0`, priceLevel1: 15000 }],
   });
@@ -47,9 +47,9 @@ async function openProducts(page: Page, q: string) {
   await page.getByLabel(/^ค้นหาสินค้า/).fill(q);
 }
 
-test('create generates the code (EAN-13 "200…"); a typed code is ignored', async () => {
-  for (const p of [made.long!, made.short!]) expect(p.sku).toMatch(/^200\d{10}$/);
-  expect(made.long!.sku).not.toBe('TYPED-BY-USER');
+test('create keeps a typed code; blank -> generated (EAN-13 "200…")', async () => {
+  expect(made.long!.sku).toBe(`TYPED-${TAG}`);
+  expect(made.short!.sku).toMatch(/^200\d{10}$/);
 });
 
 test('table: name only (no photo, no barcodes, no code), pack link, narrow category, quantity + unit aligned, no sideways scroll at 3 sizes in both sidebar states', async ({ page }) => {
@@ -161,7 +161,7 @@ test('table: name only (no photo, no barcodes, no code), pack link, narrow categ
   await expect(rows.first()).toContainText(LONG);
 });
 
-test('edit form: "รหัสสินค้า (ระบบ)" read only with copy, skipped by Tab, unchanged after save', async ({ page }) => {
+test('edit form: "รหัสสินค้า" is a normal field (Tab reaches it), a typed code is saved, a taken one is refused', async ({ page }) => {
   await openProducts(page, TAG);
   const search = page.getByLabel(/^ค้นหาสินค้า/);
   const row = page.locator('[data-row-nav]').filter({ hasText: SHORT });
@@ -176,53 +176,54 @@ test('edit form: "รหัสสินค้า (ระบบ)" read only with 
   const form = page.getByRole('dialog').filter({ hasText: 'แก้ไขสินค้า' });
   await expect(form.getByLabel('ชื่อสินค้า *')).toHaveValue(SHORT);
 
-  const sku = form.getByLabel('รหัสสินค้า (ระบบ)');
+  const sku = form.getByLabel('รหัสสินค้า', { exact: true });
   await expect(sku).toHaveValue(made.short!.sku);
-  await expect(sku).toHaveAttribute('readonly', '');
-  await expect(sku).not.toBeEditable();
-  await expect(sku).toHaveAttribute('tabindex', '-1');
-  expect(await sku.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe('rgb(255, 255, 255)');
-  // typing into it changes nothing
-  await sku.click();
-  await page.keyboard.type('999');
-  await expect(sku).toHaveValue(made.short!.sku);
-  // Tab from the low-stock field goes to the copy button, never into the code field
+  await expect(sku).toBeEditable();
+  await expect(form.getByText('เว้นว่างให้ระบบสร้าง', { exact: false }).first()).toBeVisible();
+  // Tab from the low-stock field goes into the code field
   await form.locator('label:has-text("จำนวนสต๊อกเตือนใกล้หมด") + input').focus();
   await page.keyboard.press('Tab');
-  await expect(sku).not.toBeFocused();
-  await expect(form.getByRole('button', { name: 'คัดลอกรหัสสินค้า' })).toBeFocused();
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
-  await form.getByRole('button', { name: 'คัดลอกรหัสสินค้า' }).click();
-  await expect(page.getByText(`คัดลอกรหัสสินค้า ${made.short!.sku} แล้ว`)).toBeVisible();
-  if (SHOTS) await form.locator('section', { hasText: 'รายละเอียดสินค้า' }).first().screenshot({ path: path.join(SHOTS, 'product-sku-readonly.png') });
+  await expect(sku).toBeFocused();
+  if (SHOTS) await form.locator('section', { hasText: 'รายละเอียดสินค้า' }).first().screenshot({ path: path.join(SHOTS, 'product-sku-field.png') });
 
-  // save an edit: the code stays
+  // a code that belongs to another product (its SKU) is refused; the form stays open
+  await sku.fill(`TYPED-${TAG}`);
+  await form.getByRole('button', { name: 'บันทึกการแก้ไข' }).click();
+  await expect(page.getByText(/ซ้ำกับสินค้า/).first()).toBeVisible();
+  await expect(form).toBeVisible();
+  // a free code is saved
+  await sku.fill(`MY-CODE-${TAG}`);
   await form.getByLabel('ชื่อสินค้า *').fill(`${SHORT} (แก้)`);
   await form.getByRole('button', { name: 'บันทึกการแก้ไข' }).click();
   await expect(form).toBeHidden();
   const saved = await api<{ name: string; sku: string }>('GET', `/products/${made.short!.id}`, adminToken);
-  expect(saved).toMatchObject({ name: `${SHORT} (แก้)`, sku: made.short!.sku });
+  expect(saved).toMatchObject({ name: `${SHORT} (แก้)`, sku: `MY-CODE-${TAG}` });
+  made.short!.sku = saved.sku;
 });
 
-test('add form: no code to type ("ระบบสร้างให้อัตโนมัติเมื่อบันทึก"); the saved product gets a generated code', async ({ page }) => {
+test('add form: blank code -> generated on save; a typed code is kept', async ({ page }) => {
   await openProducts(page, TAG);
-  await page.getByRole('button', { name: 'เพิ่มสินค้าใหม่' }).click();
-  const form = page.getByRole('dialog').filter({ hasText: 'เพิ่มสินค้าใหม่' });
-  await expect(form.getByTestId('product-sku-auto')).toHaveText('ระบบสร้างให้อัตโนมัติเมื่อบันทึก');
-  await expect(form.getByLabel('รหัสสินค้า (ระบบ)')).toHaveCount(0); // a div, not a field
-  await expect(form.locator('[data-testid="product-sku-readonly"]')).toHaveCount(0);
-  const name = `ข้องอ 90 องศา ${TAG}`;
-  await form.getByLabel('ชื่อสินค้า *', { exact: true }).fill(name);
-  await form.getByLabel('ราคา 1', { exact: true }).fill('12');
-  await form.getByRole('button', { name: 'บันทึกสินค้า' }).click();
-  await expect(form).toBeHidden();
-  const list = await api<{ data: { name: string; sku: string }[] }>('GET', `/products/page?page=1&limit=5&q=${encodeURIComponent(name)}`, adminToken);
-  expect(list.data).toHaveLength(1);
-  expect(list.data[0].sku).toMatch(/^200\d{10}$/);
-  // a code change through the API is refused
+  for (const typed of ['', `NEW-${TAG}`]) {
+    await page.getByRole('button', { name: 'เพิ่มสินค้าใหม่' }).click();
+    const form = page.getByRole('dialog').filter({ hasText: 'เพิ่มสินค้าใหม่' });
+    const sku = form.getByLabel('รหัสสินค้า', { exact: true });
+    await expect(sku).toHaveValue('');
+    await expect(sku).toHaveAttribute('placeholder', 'เว้นว่างให้ระบบสร้าง');
+    const name = `ข้องอ 90 องศา ${typed || 'auto'} ${TAG}`;
+    await form.getByLabel('ชื่อสินค้า *', { exact: true }).fill(name);
+    await form.getByLabel('ราคา 1', { exact: true }).fill('12');
+    if (typed) await sku.fill(typed);
+    await form.getByRole('button', { name: 'บันทึกสินค้า' }).click();
+    await expect(form).toBeHidden();
+    const list = await api<{ data: { name: string; sku: string }[] }>('GET', `/products/page?page=1&limit=5&q=${encodeURIComponent(name)}`, adminToken);
+    expect(list.data).toHaveLength(1);
+    if (typed) expect(list.data[0].sku).toBe(typed);
+    else expect(list.data[0].sku).toMatch(/^200\d{10}$/);
+  }
+  // a code change through the API is accepted when free
   const r = await fetch(`${BACKEND_URL}/api/products/${made.long!.id}`, {
-    method: 'PATCH', headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ sku: 'NEW-CODE' }),
+    method: 'PATCH', headers: { 'content-type': 'application/json', authorization: `Bearer ${adminToken}` }, body: JSON.stringify({ sku: `API-${TAG}` }),
   });
-  expect(r.status).toBe(400);
-  expect((await api<{ sku: string }>('GET', `/products/${made.long!.id}`, adminToken)).sku).toBe(made.long!.sku);
+  expect(r.status).toBe(200);
+  expect((await api<{ sku: string }>('GET', `/products/${made.long!.id}`, adminToken)).sku).toBe(`API-${TAG}`);
 });

@@ -2740,62 +2740,77 @@ d('store flow (e2e)', () => {
     });
   });
 
-  describe('product code (SKU) = permanent system ID (owner 2026-11-18)', () => {
+  describe('product code (SKU): typed by the user on create / edit, blank = generated (owner, Round B)', () => {
     const EAN = /^200\d{10}$/;
     const get = async (id: string) => (await api('get', `/products/${id}`, A).expect(200)).body;
 
-    it('create always generates the SKU (a client SKU is ignored), unique, internal EAN-13', async () => {
-      const a = (await api('post', '/products', A, { name: 'SKU ระบบ ก', sku: 'MY-OWN-CODE', basePrice: 10, priceLevel1: 10, unit: 'ชิ้น' }).expect(201)).body;
-      const b = (await api('post', '/products', A, { name: 'SKU ระบบ ข', basePrice: 10, priceLevel1: 10, unit: 'ชิ้น' }).expect(201)).body;
-      for (const p of [a, b]) expect(p.sku).toMatch(EAN);
-      expect(a.sku).not.toBe(b.sku);
-      expect(a.sku).not.toBe('MY-OWN-CODE');
-      const digits = a.sku.split('').map(Number);
+    it('create keeps a typed SKU (trimmed); blank / missing -> generated internal EAN-13; duplicates of any SKU / barcode = 409', async () => {
+      const a = (await api('post', '/products', A, { name: 'SKU ระบบ ก', sku: '  MY-OWN-CODE  ', basePrice: 10, priceLevel1: 10, unit: 'ชิ้น' }).expect(201)).body;
+      expect(a.sku).toBe('MY-OWN-CODE');
+      const b = (await api('post', '/products', A, { name: 'SKU ระบบ ข', basePrice: 10, priceLevel1: 10, unit: 'ชิ้น', barcodes: ['8859999000035'], packagingUnits: [{ name: 'แพ็ค', qtyPerPrev: 6, barcode: 'PACK-SKU-B' }] }).expect(201)).body;
+      const c = (await api('post', '/products', A, { name: 'SKU ระบบ ค', sku: '   ', basePrice: 1 }).expect(201)).body;
+      for (const p of [b, c]) expect(p.sku).toMatch(EAN);
+      expect(b.sku).not.toBe(c.sku);
+      const digits = b.sku.split('').map(Number);
       const sum = digits.slice(0, 12).reduce((t: number, d: number, i: number) => t + d * (i % 2 === 0 ? 1 : 3), 0);
       expect((10 - (sum % 10)) % 10).toBe(digits[12]);
-      // a blank / missing SKU is no longer an error
-      const c = (await api('post', '/products', A, { name: 'SKU ระบบ ค', sku: '', basePrice: 1 }).expect(201)).body;
-      expect(c.sku).toMatch(EAN);
+      // unique against another product's SKU, barcode and pack barcode
+      for (const sku of ['MY-OWN-CODE', '8859999000035', 'PACK-SKU-B']) {
+        const r = await api('post', '/products', A, { name: 'SKU ซ้ำ', sku, basePrice: 1 }).expect(409);
+        expect(String(r.body.message)).toContain(sku);
+      }
+      // nor one of its own barcodes
+      await api('post', '/products', A, { name: 'SKU ซ้ำตัวเอง', sku: '8859999000042', basePrice: 1, barcodes: ['8859999000042'] }).expect(409);
+      await api('post', '/products', A, { name: 'SKU ยาว', sku: 'X'.repeat(65), basePrice: 1 }).expect(400);
       state.skuA = a;
+      state.skuB = b;
     });
 
-    it('PATCH with another SKU is rejected (400) and the SKU stays; unchanged / absent SKU is fine', async () => {
+    it('PATCH renames to a free SKU; blank keeps the stored one; a taken one = 409 and nothing is saved', async () => {
       const a = state.skuA;
-      for (const sku of ['CHANGED-1', '', '  ', a.sku + '0']) {
-        const r = await api('patch', `/products/${a.id}`, A, { name: 'SKU ระบบ ก (แก้)', sku }).expect(400);
-        expect(String(r.body.message)).toContain('รหัสสินค้า (ระบบ) เปลี่ยนไม่ได้');
+      const b = state.skuB;
+      for (const sku of [b.sku, '8859999000035', 'PACK-SKU-B']) {
+        await api('patch', `/products/${a.id}`, A, { name: 'SKU ระบบ ก (แก้)', sku }).expect(409);
       }
-      expect((await get(a.id))).toMatchObject({ sku: a.sku, name: 'SKU ระบบ ก' }); // nothing of the refused request was saved
-      await api('patch', `/products/${a.id}`, A, { name: 'SKU ระบบ ก (แก้)', sku: a.sku }).expect(200);
+      expect(await get(a.id)).toMatchObject({ sku: 'MY-OWN-CODE', name: 'SKU ระบบ ก' }); // refused request saved nothing
+      await api('patch', `/products/${a.id}`, A, { name: 'SKU ระบบ ก (แก้)', sku: '' }).expect(200);
+      expect(await get(a.id)).toMatchObject({ sku: 'MY-OWN-CODE', name: 'SKU ระบบ ก (แก้)' });
+      await api('patch', `/products/${a.id}`, A, { sku: ' NEW-CODE-A ' }).expect(200);
       await api('patch', `/products/${a.id}`, A, { priceLevel1: 12 }).expect(200);
-      expect(await get(a.id)).toMatchObject({ sku: a.sku, name: 'SKU ระบบ ก (แก้)', priceLevel1: '12' });
+      expect(await get(a.id)).toMatchObject({ sku: 'NEW-CODE-A', priceLevel1: '12' });
+      // the old code is free again; the scan lookup follows the new code
+      expect((await api('get', '/products/barcode/NEW-CODE-A', A).expect(200)).body.id).toBe(a.id);
       // a cashier cannot edit products at all
       await api('patch', `/products/${a.id}`, C, { sku: 'X' }).expect(403);
+      state.skuA = await get(a.id);
     });
 
-    it('import: SKU is the matching key, a different SKU never renames; new rows keep the file SKU or get a generated one', async () => {
+    it('import: match id -> SKU -> barcode; a row matched by id renames the SKU, one matched by barcode keeps it', async () => {
       const a = state.skuA;
       const withBc = (await api('post', '/products', A, { name: 'SKU นำเข้า บาร์โค้ด', basePrice: 5, priceLevel1: 5, unit: 'ชิ้น', barcodes: ['8859999000011'] }).expect(201)).body;
       const before = (await api('get', '/products', A).expect(200)).body.length;
       const res = (await api('post', '/products/bulk-upsert', A, { products: [
-        { id: a.id, sku: 'RENAMED-BY-ID', name: 'SKU ระบบ ก (ไฟล์)', priceLevel1: 13 }, // matched by id, other SKU
-        { sku: 'RENAMED-BY-BC', barcode: '8859999000011', priceLevel1: 6 }, // matched by barcode, other SKU
-        { sku: a.sku, priceLevel2: 11 }, // matched by SKU
+        { id: a.id, sku: 'RENAMED-BY-ID', name: 'SKU ระบบ ก (ไฟล์)', priceLevel1: 13 }, // matched by id, other SKU -> renamed
+        { sku: 'RENAMED-BY-BC', barcode: '8859999000011', priceLevel1: 6 }, // matched by barcode, other SKU -> kept
+        { sku: 'RENAMED-BY-ID', priceLevel2: 11 }, // matched by the (new) SKU
         { sku: 'FILE-NEW-1', name: 'SKU ใหม่จากไฟล์', priceLevel1: 20 }, // new, file SKU kept
         { barcode: '8859999000028', name: 'SKU ใหม่ไม่มีรหัส', priceLevel1: 30 }, // new, no SKU -> generated
       ] }).expect(201)).body;
-      expect(res).toMatchObject({ created: 2, updated: 3, skuKept: 2 });
-      expect(await get(a.id)).toMatchObject({ sku: a.sku, name: 'SKU ระบบ ก (ไฟล์)', priceLevel1: '13', priceLevel2: '11' });
+      expect(res).toMatchObject({ created: 2, updated: 3, skuKept: 1, skuRenamed: 1 });
+      expect(await get(a.id)).toMatchObject({ sku: 'RENAMED-BY-ID', name: 'SKU ระบบ ก (ไฟล์)', priceLevel1: '13', priceLevel2: '11' });
       expect(await get(withBc.id)).toMatchObject({ sku: withBc.sku, priceLevel1: '6' });
       const list = (await api('get', '/products', A).expect(200)).body as any[];
       expect(list).toHaveLength(before + 2);
-      expect(list.some((p) => ['RENAMED-BY-ID', 'RENAMED-BY-BC'].includes(p.sku))).toBe(false);
+      expect(list.some((p) => p.sku === 'RENAMED-BY-BC')).toBe(false);
       expect(list.find((p) => p.name === 'SKU ใหม่จากไฟล์').sku).toBe('FILE-NEW-1');
       expect(list.find((p) => p.name === 'SKU ใหม่ไม่มีรหัส').sku).toMatch(EAN);
+      // a rename by id onto another product's code is refused (whole file, nothing saved)
+      await api('post', '/products/bulk-upsert', A, { products: [{ id: a.id, sku: 'FILE-NEW-1', priceLevel1: 99 }] }).expect(409);
+      expect((await get(a.id)).priceLevel1).toBe('13');
       // round trip: the exported rows (id + SKU) import back as updates, nothing new
       const exported = list.filter((p) => p.name.startsWith('SKU ')).map((p) => ({ id: p.id, sku: p.sku, name: p.name, priceLevel1: p.priceLevel1 }));
       const again = (await api('post', '/products/bulk-upsert', A, { products: exported }).expect(201)).body;
-      expect(again).toMatchObject({ created: 0, updated: exported.length, skuKept: 0 });
+      expect(again).toMatchObject({ created: 0, updated: exported.length, skuKept: 0, skuRenamed: 0 });
       // the same file without the id column matches by SKU
       const bySku = (await api('post', '/products/bulk-upsert', A, { products: exported.map(({ id: _id, ...r }) => r) }).expect(201)).body;
       expect(bySku).toMatchObject({ created: 0, updated: exported.length });
@@ -2808,7 +2823,7 @@ d('store flow (e2e)', () => {
       expect(page.data.map((p: any) => p.id)).toEqual([a.id]);
       const part = (await api('get', `/products/page?page=1&limit=5&q=${a.sku.slice(3, 10)}`, A).expect(200)).body;
       expect(part.data.map((p: any) => p.id)).toContain(a.id);
-      const lk = (await api('get', `/products/lookup?q=${a.sku}`, A).expect(200)).body;
+      const lk = (await api('get', `/products/lookup?q=${encodeURIComponent(a.sku)}`, A).expect(200)).body;
       expect(lk.data[0].id).toBe(a.id);
     });
   });

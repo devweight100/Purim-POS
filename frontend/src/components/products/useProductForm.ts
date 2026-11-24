@@ -75,7 +75,7 @@ export function useProductForm(data: ProductsData, setExpandedRows: Dispatch<Set
       name: form.name.trim(),
       // blank = none (null clears a stored one)
       manufacturerName: form.manufacturerName.replace(/\s+/g, " ").trim() || null,
-      sku: form.sku, // display only: the server generates it on create and never changes it
+      sku: form.sku.trim(), // typed code; blank = generated on create / kept on edit (Round B)
       unit: form.unit.trim(),
       size: form.size.trim(),
       color: form.color.trim(),
