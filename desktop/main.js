@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, globalShortcut, net, Menu, dialog, nativeImage, session } = require('electron');
 const path = require('path');
 const { startUrl, posUrl, appUrl, backOfficeUrl } = require('./start-url');
+const { DESKTOP_SHORTCUTS } = require('./menu-shortcuts');
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
@@ -208,7 +209,7 @@ function createWindow() {
     minHeight: 700,
     title: 'ร้านปุริม POS',
     backgroundColor: '#0f172a',
-    // No menu bar on screen; its shortcuts (F11, Ctrl+R, Ctrl+Shift+S ...) still work, Alt shows it
+    // No menu bar on screen; its shortcuts (F11, Ctrl+R, Ctrl+Shift+1/2/H/S ...) still work, Alt shows it
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -436,7 +437,7 @@ function loadStartScreen(customUrl) {
   openServerUrl(startUrl(customUrl || loadConfig().serverUrl));
 }
 
-/** F1 / menu "หน้าขาย": the POS directly. */
+/** Ctrl+Shift+1 / menu "หน้าขาย": the POS directly. */
 function loadPosScreen(customUrl) {
   if (!mainWindow) return;
   openServerUrl(posUrl(customUrl || loadConfig().serverUrl));
@@ -447,7 +448,7 @@ function loadRouteScreen(route) {
   openServerUrl(appUrl(loadConfig().serverUrl, route));
 }
 
-/** F2 / menu: the user's first back-office page (dashboard, or the first page they may open). */
+/** Ctrl+Shift+2 / menu: the user's first back-office page (dashboard, or the first page they may open). */
 function loadDashboardScreen() {
   if (!mainWindow) return;
   openServerUrl(backOfficeUrl(loadConfig().serverUrl));
@@ -465,33 +466,33 @@ function setupAppMenu() {
       submenu: [
         {
           label: '🏠 หน้าเริ่มต้น (เลือก หน้าขาย / หลังบ้าน)',
-          accelerator: 'CmdOrCtrl+Shift+H',
+          accelerator: DESKTOP_SHORTCUTS.start,
           click: () => loadStartScreen()
         },
         {
           label: '🛒 หน้าขายหน้าร้าน (POS)',
-          accelerator: 'F1',
+          accelerator: DESKTOP_SHORTCUTS.pos,
           click: () => loadPosScreen()
         },
         {
           label: '📊 หลังบ้าน (แดชบอร์ด หรือหน้าแรกที่มีสิทธิ์)',
-          accelerator: 'F2',
+          accelerator: DESKTOP_SHORTCUTS.backOffice,
           click: () => loadDashboardScreen()
         },
         { type: 'separator' },
         {
           label: '📦 จัดการสินค้า & ราคา (Products)',
-          accelerator: 'CmdOrCtrl+Shift+P',
+          accelerator: DESKTOP_SHORTCUTS.products,
           click: () => loadRouteScreen('/products')
         },
         {
           label: '🏢 คลังสินค้า & สต็อก (Inventory)',
-          accelerator: 'CmdOrCtrl+Shift+I',
+          accelerator: DESKTOP_SHORTCUTS.inventory,
           click: () => loadRouteScreen('/inventory')
         },
         {
           label: '📋 รายงานยอดขาย & ธุรกิจ (Reports)',
-          accelerator: 'CmdOrCtrl+Shift+R',
+          accelerator: DESKTOP_SHORTCUTS.reports,
           click: () => loadRouteScreen('/reports')
         },
         {
@@ -513,13 +514,13 @@ function setupAppMenu() {
       label: 'การแสดงผล & เมนู',
       submenu: [
         {
-          label: '🔄 รีโหลดหน้าจอ (Reload)',
-          accelerator: 'CmdOrCtrl+R',
+          label: '🔄 โหลดหน้าจอใหม่ (Reload; F5 ในหน้าขาย = รีเฟรชข้อมูล)',
+          accelerator: DESKTOP_SHORTCUTS.reload,
           click: () => { if (mainWindow) mainWindow.reload(); }
         },
         {
           label: '🖥️ สลับเต็มจอ (Toggle Fullscreen)',
-          accelerator: 'F11',
+          accelerator: DESKTOP_SHORTCUTS.fullscreen,
           click: () => {
             if (mainWindow) mainWindow.setFullScreen(!mainWindow.isFullScreen());
           }
@@ -527,7 +528,7 @@ function setupAppMenu() {
         { type: 'separator' },
         {
           label: '🌐 ตั้งค่าเชื่อมต่อเซิร์ฟเวอร์ (Server Setup)',
-          accelerator: 'CmdOrCtrl+Shift+S',
+          accelerator: DESKTOP_SHORTCUTS.serverSetup,
           click: () => loadConnectScreen()
         }
       ]
@@ -1271,28 +1272,9 @@ app.whenReady().then(() => {
       .catch(() => warmUpPrinting({}));
   }, 3000);
 
-  // Register Global Shortcuts:
-  // F1 -> Go to POS screen
-  globalShortcut.register('F1', () => {
-    loadPosScreen();
-  });
-
-  // F2 -> Back office (dashboard, or the first back-office page the user may open)
-  globalShortcut.register('F2', () => {
-    loadDashboardScreen();
-  });
-
-  // F11 -> Fullscreen toggle
-  globalShortcut.register('F11', () => {
-    if (mainWindow) {
-      mainWindow.setFullScreen(!mainWindow.isFullScreen());
-    }
-  });
-
-  // Ctrl+Shift+S -> Server Connection Setup Dialog
-  globalShortcut.register('CommandOrControl+Shift+S', () => {
-    loadConnectScreen();
-  });
+  // No globalShortcut: a global F1 / F2 took the key from the POS page (F2 = quantity) and from every other
+  // program on the computer. The menu accelerators (desktop/menu-shortcuts.js, Ctrl+Shift+... and F11) work
+  // while the app has focus; F1-F10 and F12 belong to the page, F5 included (docs/pos-keys-refresh.md).
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

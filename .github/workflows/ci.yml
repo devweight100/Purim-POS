@@ -67,7 +67,7 @@ jobs:
       - name: Unit tests (vitest)
         run: npm run test
       - name: Desktop print routing (slips never go to the driver as text) + start URL
-        run: node --test ../desktop/print-route.test.js ../desktop/start-url.test.js
+        run: node --test ../desktop/print-route.test.js ../desktop/start-url.test.js ../desktop/menu-shortcuts.test.js
       - run: npm run build
 
   e2e:

@@ -10,7 +10,7 @@ test('the app starts on the start screen of the chosen server', () => {
   assert.strictEqual(startUrl(undefined), 'http://localhost:3000/start');
 });
 
-test('F1 opens the POS directly, F2 the back office through the start screen', () => {
+test('Ctrl+Shift+1 opens the POS directly, Ctrl+Shift+2 the back office through the start screen', () => {
   assert.strictEqual(posUrl('http://pos.local:3000/'), 'http://pos.local:3000/pos');
   assert.strictEqual(backOfficeUrl('http://pos.local:3000'), 'http://pos.local:3000/start?go=backoffice');
 });

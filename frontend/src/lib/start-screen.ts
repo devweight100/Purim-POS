@@ -55,7 +55,7 @@ export interface StartContext {
   sellingSetting: boolean | null;
   /** the server cannot be reached (browser offline or the server did not answer) */
   offline: boolean;
-  /** ?go=pos | ?go=backoffice (desktop F2, links) */
+  /** ?go=pos | ?go=backoffice (desktop Ctrl+Shift+2, links) */
   go?: string | null;
 }
 
