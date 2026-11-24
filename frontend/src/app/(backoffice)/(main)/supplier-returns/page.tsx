@@ -226,7 +226,7 @@ export default function SupplierReturnsPage() {
       </div>
 
       {/* Metrics Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
         {/* Metric 1: Pending Claims */}
         <div className="stat-tile">
           <div className="flex items-center gap-2">

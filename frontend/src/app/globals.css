@@ -384,8 +384,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
    the value is primary text, `is-danger` for negative / voided / overdue figures. */
 .stat-tile {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
   gap: 0.5rem;
   min-height: 3rem;
   padding: 0.5rem 1rem;
@@ -404,11 +406,13 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   color: var(--muted-foreground);
 }
 .stat-tile-label {
+  white-space: nowrap;
   font-size: var(--text-th);
   font-weight: 500;
   color: var(--muted-foreground);
 }
 .stat-tile-value {
+  white-space: nowrap;
   font-size: 1.125rem;
   line-height: 1.4;
   font-weight: 600;

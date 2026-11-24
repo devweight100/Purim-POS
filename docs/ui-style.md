@@ -65,6 +65,7 @@ use the classes in `globals.css` (outside any layer, like `.tbl`): `.stat-tile` 
 radius, 8 x 16 px padding, >= 48 px high), `.stat-tile-icon` (muted 16 px icon on slate-50), `.stat-tile-label`
 (13 px medium muted), `.stat-tile-value` (18 px semibold primary text, tabular digits; `is-danger` = red for
 negative / voided / overdue / owed figures only), `.stat-tile-unit` (12.5 px muted). No per-tile colours (Round B).
+Label and value never wrap; the grid is 4 tiles per row from a 1280 px window (`xl:grid-cols-4`), 2 below (1093 px).
 
 ## Tables
 

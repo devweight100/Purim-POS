@@ -260,7 +260,7 @@ export default function ClaimInventoryPage() {
       </div>
 
       {/* ─── TOP STATS OVERVIEW CARDS (Compact Single-line Layout matching orders page) ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
         {/* Card 1: Unique Claim Products */}
         <div className="stat-tile">
           <div className="flex items-center gap-2">

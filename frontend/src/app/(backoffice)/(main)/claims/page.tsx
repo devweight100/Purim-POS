@@ -168,7 +168,7 @@ export default function ClaimsPage() {
       </div>
 
       {/* ─── TOP KPI STATS CARDS ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
         {/* 1. Total Claims */}
         <div className="stat-tile">
           <div className="flex items-center gap-2">

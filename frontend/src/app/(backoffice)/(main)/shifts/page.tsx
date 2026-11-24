@@ -298,7 +298,7 @@ export default function ShiftsHistoryPage() {
       </div>
 
       {/* ─── TOP KPI STATS ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
         {/* Card 1: Total Closed Shifts */}
         <div className="stat-tile">
           <div className="flex items-center gap-2">
@@ -530,10 +530,11 @@ export default function ShiftsHistoryPage() {
                           </td>
 
                           {/* Shift ID & Cashier */}
-                          <td className="whitespace-nowrap">
-                            <span className="doc-no font-medium text-fg block">
+                          <td className="min-w-36">
+                            <span className="doc-no font-medium text-fg block whitespace-nowrap">
                               {shift.shiftId}
                             </span>
+                            {/* long names wrap (Round B: no sideways scroll at 1093 px) */}
                             <span className="text-sub text-muted-foreground flex items-center gap-1 mt-0.5">
                               <span>{shift.userName}</span>
                             </span>
@@ -557,9 +558,8 @@ export default function ShiftsHistoryPage() {
                             <span className="font-medium text-fg block">
                               {formatCurrency(shift.totalSales)}
                             </span>
-                            <span className="text-sub text-muted-foreground block">
-                              สด {formatCurrency(shift.cashSales)} | อื่นๆ {formatCurrency(shift.totalSales - shift.cashSales)}
-                            </span>
+                            <span className="text-sub text-muted-foreground block">สด {formatCurrency(shift.cashSales)}</span>
+                            <span className="text-sub text-muted-foreground block">อื่นๆ {formatCurrency(shift.totalSales - shift.cashSales)}</span>
                           </td>
 
                           {/* Cash In / Out */}

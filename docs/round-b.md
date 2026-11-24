@@ -44,7 +44,10 @@ Replaces the 2026-11-18 rule "SKU = permanent system ID".
   before the reason. Now the prefix is shown only for a real document number.
 - Stat tiles: one style from tokens (`.stat-tile*` in `globals.css`, docs/ui-style.md "Stat tiles") on orders, debts,
   payables, claims, claim inventory, supplier returns, shifts and the 6 report tabs (46 tiles). Decision: values are
-  primary text; red only for owed / overdue / voided / negative figures (colour = meaning rule).
+  primary text; red only for owed / overdue / voided / negative figures (colour = meaning rule). 4 tiles per row
+  from a 1280 px window, 2 below (labels no longer wrap word by word at 1093x614).
+- Shifts history (found by the screenshots at 1093x614, also before this round): long cashier names and the
+  "สด | อื่นๆ" line pushed the table 38 px past the window; the name now wraps and the line is two lines.
 
 ## 6. Exports: filter dialog + manager PIN on every export
 

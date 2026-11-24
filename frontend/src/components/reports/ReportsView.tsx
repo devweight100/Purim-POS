@@ -606,7 +606,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       {activeTab === 'sales' && (
         <div className="space-y-3">
           {/* KPI Summary Boxes (Orders style compact inline) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
             <div className="stat-tile">
               <div className="flex items-center gap-2">
                 <div className="stat-tile-icon">
@@ -808,7 +808,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       ══════════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'bestsellers' && (
         <div className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
             <div className="stat-tile">
               <div className="flex items-center gap-2">
                 <div className="stat-tile-icon">
@@ -946,7 +946,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       ══════════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'inventory' && (
         <div className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
             <div className="stat-tile">
               <div className="flex items-center gap-2">
                 <div className="stat-tile-icon">
@@ -1123,7 +1123,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       ══════════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'payments' && (
         <div className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
             <div className="stat-tile">
               <div className="flex items-center gap-2">
                 <div className="stat-tile-icon">
@@ -1225,7 +1225,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       ══════════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'customers' && (
         <div className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
             <div className="stat-tile">
               <div className="flex items-center gap-2">
                 <div className="stat-tile-icon">
@@ -1427,7 +1427,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       ══════════════════════════════════════════════════════════════════════════ */}
       {activeTab === 'purchases' && (
         <div className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2">
             <div className="stat-tile">
               <div className="flex items-center gap-2">
                 <div className="stat-tile-icon">
