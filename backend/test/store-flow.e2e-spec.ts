@@ -23,6 +23,7 @@ import { valueStock } from '../src/reports/reports.service';
 import { ServerControlService } from '../src/server-control/server-control.service';
 import { ProductsService } from '../src/products/products.service';
 import { docPeriod, nextDocNumber } from '../src/common/doc-number';
+import { realtimeBus, RealtimeEvent } from '../src/events/events.service';
 
 const dbName = (() => { try { return new URL(process.env.DATABASE_URL || '').pathname.slice(1); } catch { return ''; } })();
 const enabled = /test/i.test(dbName);
@@ -3537,6 +3538,119 @@ d('store flow (e2e)', () => {
       expect(st.usedLevels).toEqual(expect.arrayContaining([1, 2, 3]));
       await api('patch', '/settings', lv.S, { posAskCustomerAtStart: false }).expect(403);
       await api('patch', '/settings', A, { posAskCustomerAtStart: false }).expect(200);
+    });
+  });
+  describe('POS live data: every back-office edit reaches the delta syncs (docs/pos-keys-refresh.md)', () => {
+    const db = new PrismaClient();
+    afterAll(async () => { await db.$disconnect(); });
+    const events: RealtimeEvent[] = [];
+    const sub = realtimeBus.subscribe((e) => events.push(e));
+    afterAll(() => sub.unsubscribe());
+    let pCursor = '';
+    let cCursor = '';
+    const pull = async () => {
+      const b = (await api('get', `/products/sync${pCursor ? `?since=${encodeURIComponent(pCursor)}` : ''}`, C).expect(200)).body;
+      pCursor = b.cursor;
+      return b;
+    };
+    const pullCustomers = async () => {
+      const b = (await api('get', `/customers/sync${cCursor ? `?since=${encodeURIComponent(cCursor)}` : ''}`, C).expect(200)).body;
+      cCursor = b.cursor;
+      return b;
+    };
+    const logRows = async (table: 'product_changes' | 'customer_changes', col: string, id: string) =>
+      Number((await db.$queryRawUnsafe<{ n: number }[]>(`SELECT COUNT(*)::int AS n FROM ${table} WHERE ${col} = $1`, id))[0].n);
+    /** one edit: a new change-log row for the product and the product (as the POS reads it) in the next delta */
+    const productEdit = async (id: string, edit: () => Promise<unknown>, check: (row: any) => void) => {
+      const before = await logRows('product_changes', 'product_id', id);
+      await edit();
+      expect(await logRows('product_changes', 'product_id', id)).toBeGreaterThan(before);
+      const d = await pull();
+      expect(d.full).toBe(false);
+      const row = d.products.find((p: any) => p.id === id);
+      expect(row).toBeDefined();
+      check(row);
+    };
+    const tag = String(Date.now()).slice(-6);
+    const ids = { p: '', cat: '', cust: '' };
+
+    it('setup: a product with ราคา 1-5, a pack, barcode, stock; a member; first full loads', async () => {
+      ids.cat = (await api('post', '/categories', A, { name: `LIVE หมวด ${tag}` }).expect(201)).body.id;
+      ids.p = (await api('post', '/products', A, {
+        name: `LIVE น้ำยาล้างจาน ${tag}`, unit: 'ขวด', barcodes: [`LIVE${tag}1`], basePrice: 20, priceLevel1: 20, priceLevel2: 18, priceLevel3: 16, costPrice: 8,
+        packagingUnits: [{ name: 'แพ็ค', qtyPerPrev: 6, barcode: `LIVE${tag}6`, priceLevel1: 110, priceLevel2: 100 }],
+      }).expect(201)).body.id;
+      ids.cust = (await api('post', '/customers', A, { name: `LIVE ร้านส่ง ${tag}`, phone: `07${tag}12`, priceLevel: 1 }).expect(201)).body.id;
+      expect((await pull()).full).toBe(true);
+      expect((await pullCustomers()).full).toBe(true);
+      expect(await pull()).toMatchObject({ full: false, products: [], deleted: [] });
+    });
+
+    it('ราคา 1-5 and pack prices', async () => {
+      await productEdit(ids.p, () => api('patch', `/products/${ids.p}`, A, { basePrice: 25, priceLevel1: 25, priceLevel2: 22, priceLevel3: 19, priceLevel4: 17, priceLevel5: 15 }).expect(200),
+        (r) => expect([r.priceLevel1, r.priceLevel2, r.priceLevel3, r.priceLevel4, r.priceLevel5].map(Number)).toEqual([25, 22, 19, 17, 15]));
+      await productEdit(ids.p, () => api('patch', `/products/${ids.p}`, A, { packagingUnits: [{ name: 'แพ็ค', qtyPerPrev: 6, barcode: `LIVE${tag}6`, priceLevel1: 125, priceLevel2: 105 }] }).expect(200),
+        (r) => expect([Number(r.packagingUnits[0].priceLevel1), Number(r.packagingUnits[0].priceLevel2)]).toEqual([125, 105]));
+    });
+
+    it('name, manufacturer name, barcode added / changed', async () => {
+      await productEdit(ids.p, () => api('patch', `/products/${ids.p}`, A, { name: `LIVE ชื่อใหม่ ${tag}`, manufacturerName: 'ผู้ผลิต LIVE' }).expect(200),
+        (r) => expect([r.name, r.manufacturerName]).toEqual([`LIVE ชื่อใหม่ ${tag}`, 'ผู้ผลิต LIVE']));
+      await productEdit(ids.p, () => api('patch', `/products/${ids.p}`, A, { barcodes: [`LIVE${tag}1`, `LIVE${tag}2`] }).expect(200),
+        (r) => expect(r.barcodes.map((b: any) => b.barcode).sort()).toEqual([`LIVE${tag}1`, `LIVE${tag}2`]));
+      await productEdit(ids.p, () => api('patch', `/products/${ids.p}`, A, { barcodes: [`LIVE${tag}3`] }).expect(200),
+        (r) => expect(r.barcodes.map((b: any) => b.barcode)).toEqual([`LIVE${tag}3`]));
+    });
+
+    it('category, active / inactive, stock adjustment', async () => {
+      await productEdit(ids.p, () => api('patch', `/products/${ids.p}`, A, { categoryId: ids.cat }).expect(200), (r) => expect(r.categoryId).toBe(ids.cat));
+      await productEdit(ids.p, () => api('patch', `/products/${ids.p}`, A, { isActive: false }).expect(200), (r) => expect(r.isActive).toBe(false));
+      await productEdit(ids.p, () => api('patch', `/products/${ids.p}`, A, { isActive: true }).expect(200), (r) => expect(r.isActive).toBe(true));
+      await productEdit(ids.p, () => api('post', '/inventory/adjust', A, { productId: ids.p, type: 'SET', amount: 42, reason: 'นับสต็อก' }).expect(201), (r) => expect(Number(r.stock)).toBe(42));
+    });
+
+    it('new product and deleted product', async () => {
+      const id = (await api('post', '/products', A, { name: `LIVE ใหม่ ${tag}`, unit: 'ชิ้น', basePrice: 9, priceLevel1: 9 }).expect(201)).body.id;
+      expect(await logRows('product_changes', 'product_id', id)).toBeGreaterThan(0);
+      expect((await pull()).products.map((p: any) => p.id)).toEqual([id]);
+      await api('delete', `/products/${id}`, A).expect(200);
+      expect(await pull()).toMatchObject({ full: false, products: [], deleted: [id] });
+    });
+
+    it('member price level and customer edits: customer_changes + the customer delta', async () => {
+      const edit = async (body: any, check: (row: any) => void) => {
+        const before = await logRows('customer_changes', 'customer_id', ids.cust);
+        await api('patch', `/customers/${ids.cust}`, A, body).expect(200);
+        expect(await logRows('customer_changes', 'customer_id', ids.cust)).toBeGreaterThan(before);
+        const d = await pullCustomers();
+        expect(d.full).toBe(false);
+        const row = d.customers.find((c: any) => c.id === ids.cust);
+        expect(row).toBeDefined();
+        check(row);
+      };
+      await edit({ priceLevel: 3 }, (r) => expect(Number(r.priceLevel ?? r.profile?.priceLevel)).toBe(3));
+      await edit({ name: `LIVE ร้านส่ง แก้ชื่อ ${tag}`, phone: `07${tag}13` }, (r) => expect([r.name, r.phone]).toEqual([`LIVE ร้านส่ง แก้ชื่อ ${tag}`, `07${tag}13`]));
+    });
+
+    it('settings (VAT, receipt options, price level names): settingsVersion changes and a realtime "settings" event is sent', async () => {
+      const version = async () => (await api('get', '/settings', C).expect(200)).body;
+      const settingsEvent = async (edit: () => Promise<unknown>) => {
+        const before = (await version()).settingsVersion;
+        expect(typeof before).toBe('string');
+        events.length = 0;
+        await new Promise((r) => setTimeout(r, 5)); // updated_at has millisecond precision
+        await edit();
+        await new Promise((r) => setTimeout(r, 400)); // debounce of the announcement
+        expect(events.some((e) => e.entity === 'settings')).toBe(true);
+        const after = await version();
+        expect(after.settingsVersion).not.toBe(before);
+        return after;
+      };
+      expect((await settingsEvent(() => api('patch', '/settings', A, { vatEnabled: true }).expect(200))).vatEnabled).toBe(true);
+      expect((await settingsEvent(() => api('patch', '/settings', A, { receiptOptions: { slip: { showAddress: false } } }).expect(200))).receiptOptions.slip.showAddress).toBe(false);
+      const names = { 1: 'ปลีก LIVE', 2: 'ส่ง LIVE', 3: 'ส่งพิเศษ LIVE', 4: 'ราคา 4', 5: 'ราคา 5' };
+      expect((await settingsEvent(() => api('put', '/online-shop/config', A, { levelNames: names }).expect(200))).levelNames[2]).toBe('ส่ง LIVE');
+      await api('patch', '/settings', A, { vatEnabled: false, receiptOptions: null }).expect(200);
     });
   });
 });
