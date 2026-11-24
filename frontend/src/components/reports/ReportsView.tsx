@@ -7,7 +7,6 @@ import {
   ReportTimeRange,
   ReportTabsResponse,
   fetchReportTabs,
-  fetchAllReportRows,
   type ReportTabsParams,
   EMPTY_SALES,
   EMPTY_CLAIMS_AND_VAT,
@@ -18,6 +17,7 @@ import {
   EMPTY_PURCHASES,
 } from '@/lib/reports-service';
 import { downloadReport, ExportColumn } from './report-export';
+import { approvedExport } from '@/lib/export-approval';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -336,7 +336,20 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
     const base = `report_${activeTab}_${timeRange === 'custom' ? `${customStartDate || 'start'}_${customEndDate || 'end'}` : timeRange}`;
     const no = { header: 'ลำดับ', value: (_r: unknown, i: number) => i + 1 };
     let file = '';
+    // every export: manager PIN, then the server sends every row of the tab (Round B, backend/src/exports)
+    const filters = { tab: activeTab, params: periodParams };
+    const tabName: Record<string, string> = { sales: 'ยอดขาย', bestsellers: 'สินค้าขายดี', inventory: 'มูลค่าคลัง', payments: 'ช่องทางชำระ', customers: 'ลูกค้า', purchases: 'จัดซื้อ' };
     try {
+      const res = await approvedExport<{ data: Record<string, unknown> }>({
+        kind: 'report', filters, path: '/exports/report', body: filters,
+        what: `รายงาน${tabName[activeTab] || ''} (${format === 'xlsx' ? 'Excel' : 'CSV'}) ช่วง ${base.replace(/^report_[a-z]+_/, '')}`,
+      });
+      if (!res) return;
+      const d = res.data as never as {
+        dailyBreakdown: typeof salesProfitReport.dailyBreakdown; allProducts: typeof bestSellersReport.allProducts; items: typeof inventoryReport.items;
+        channels: typeof paymentsShiftsReport.channels; totalCollected: number; shifts: typeof paymentsShiftsReport.shifts;
+        allCustomers: typeof customerDebtsReport.allCustomers; supplierBreakdown: typeof purchasesClaimsReport.supplierBreakdown;
+      };
       if (activeTab === 'sales') {
         const cols: ExportColumn<(typeof salesProfitReport.dailyBreakdown)[number]>[] = [
           no,
@@ -349,7 +362,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           { header: 'กำไรขั้นต้น', value: (r) => r.grossProfit },
           { header: '% กำไร', value: (r) => r.profitMarginPercent },
         ];
-        file = await downloadReport(format, base, 'ยอดขาย', salesProfitReport.dailyBreakdown, cols);
+        file = await downloadReport(format, base, 'ยอดขาย', d.dailyBreakdown || [], cols);
       } else if (activeTab === 'bestsellers') {
         const cols: ExportColumn<(typeof bestSellersReport.allProducts)[number]>[] = [
           no,
@@ -362,8 +375,8 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           { header: 'กำไร', value: (r) => r.totalProfit },
           { header: '% กำไร', value: (r) => r.profitMarginPercent },
         ];
-        // every page from the server (same period), not just the page on screen
-        file = await downloadReport(format, base, 'สินค้าขายดี', await fetchAllReportRows('bestsellers', periodParams), cols);
+        // every row from the server (same period), not just the page on screen
+        file = await downloadReport(format, base, 'สินค้าขายดี', d.allProducts || [], cols);
       } else if (activeTab === 'inventory') {
         const cols: ExportColumn<(typeof inventoryReport.items)[number]>[] = [
           no,
@@ -378,12 +391,12 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           { header: 'มูลค่าขายรวม', value: (r) => r.totalRetailValue },
           { header: 'สถานะ', value: (r) => (r.isDeadstock ? 'ขายช้า(Deadstock)' : r.isLowStock ? 'สต็อกต่ำ' : 'ปกติ') },
         ];
-        file = await downloadReport(format, base, 'มูลค่าคลัง', await fetchAllReportRows('inventory', periodParams), cols);
+        file = await downloadReport(format, base, 'มูลค่าคลัง', d.items || [], cols);
       } else if (activeTab === 'payments') {
         const rows = [
-          ...paymentsShiftsReport.channels.map((c) => ({ label: c.label, count: c.orderCount, amount: c.totalAmount, pct: c.percentage })),
-          { label: 'เงินรับจริง (รวมรับชำระหนี้ ไม่รวมขายเชื่อ)', count: null, amount: paymentsShiftsReport.totalCollected, pct: null },
-          { label: `ผลต่างปิดกะสะสม (${paymentsShiftsReport.shifts.totalShiftsCount} กะ)`, count: paymentsShiftsReport.shifts.totalShiftsCount, amount: paymentsShiftsReport.shifts.totalCashDiscrepancy, pct: null },
+          ...(d.channels || []).map((c) => ({ label: c.label, count: c.orderCount as number | null, amount: c.totalAmount, pct: c.percentage as number | null })),
+          { label: 'เงินรับจริง (รวมรับชำระหนี้ ไม่รวมขายเชื่อ)', count: null, amount: d.totalCollected, pct: null },
+          { label: `ผลต่างปิดกะสะสม (${d.shifts.totalShiftsCount} กะ)`, count: d.shifts.totalShiftsCount, amount: d.shifts.totalCashDiscrepancy, pct: null },
         ];
         const cols: ExportColumn<(typeof rows)[number]>[] = [
           no,
@@ -406,7 +419,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           { header: 'หนี้คงค้าง', value: (r) => r.outstandingDebt },
           { header: 'วันที่ซื้อล่าสุด', value: (r) => r.lastOrderDate },
         ];
-        file = await downloadReport(format, base, 'ลูกค้า', await fetchAllReportRows('customers', periodParams), cols);
+        file = await downloadReport(format, base, 'ลูกค้า', d.allCustomers || [], cols);
       } else if (activeTab === 'purchases') {
         const cols: ExportColumn<(typeof purchasesClaimsReport.supplierBreakdown)[number]>[] = [
           no,
@@ -419,12 +432,12 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
           { header: 'ชิ้นที่เคลม', value: (r) => r.claimPieces },
           { header: 'มูลค่าเคลมรวม', value: (r) => r.claimCostTotal },
         ];
-        file = await downloadReport(format, base, 'จัดซื้อ', purchasesClaimsReport.supplierBreakdown, cols);
+        file = await downloadReport(format, base, 'จัดซื้อ', d.supplierBreakdown || [], cols);
       }
       toast.success(`ส่งออกไฟล์ ${file} เรียบร้อยแล้ว`);
     } catch (err) {
       console.error('export failed', err);
-      toast.error('ส่งออกไฟล์ไม่สำเร็จ');
+      toast.error(`ส่งออกไฟล์ไม่สำเร็จ${err instanceof Error && err.message ? `: ${err.message}` : ''}`);
     }
   };
 

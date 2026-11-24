@@ -549,6 +549,8 @@ export class ProductsService {
    */
   async page(opts: {
     page: number; limit: number; q?: string; categoryId?: string; supplierId?: string; stock?: string; sort?: string; dir?: string;
+    /** any of these categories (exports: categories multi-select); '' / 'none' = products without a category */
+    categoryIds?: string[];
     /** active (ใช้งาน) | inactive (ปิดใช้งาน) | all (default) */
     status?: string;
     /** inventory page cards over every product; cost only counts for users who may see it */
@@ -557,7 +559,8 @@ export class ProductsService {
     const page = Math.max(1, Math.min(1_000_000, Math.floor(opts.page || 1)));
     const limit = Math.max(1, Math.min(500, Math.floor(opts.limit || 50)));
     const stock = opts.stock || 'all';
-    if (!['all', 'low', 'out', 'normal', 'negative', 'reorder'].includes(stock)) throw new BadRequestException('ตัวกรองสต็อกไม่ถูกต้อง');
+    // instock = stock > 0, nostock = 0 or below (export filter "หมด")
+    if (!['all', 'low', 'out', 'normal', 'negative', 'reorder', 'instock', 'nostock'].includes(stock)) throw new BadRequestException('ตัวกรองสต็อกไม่ถูกต้อง');
     const status = opts.status || 'all';
     if (!['all', 'active', 'inactive'].includes(status)) throw new BadRequestException('ตัวกรองสถานะไม่ถูกต้อง');
     const dir = opts.dir === 'desc' ? 'DESC' : 'ASC';
@@ -588,6 +591,13 @@ export class ProductsService {
                      AND (ps.supplier_product_name ILIKE ${p} OR ps.supplier_sku ILIKE ${p})))`);
     }
     if (opts.categoryId) conds.push(Prisma.sql`x.category_id = ${opts.categoryId}`);
+    if (opts.categoryIds && opts.categoryIds.length) {
+      const ids = opts.categoryIds.filter((c) => c && c !== 'none');
+      const none = opts.categoryIds.some((c) => !c || c === 'none');
+      conds.push(none
+        ? Prisma.sql`(x.category_id IS NULL OR x.category_id = ANY(${ids}::text[]))`
+        : Prisma.sql`x.category_id = ANY(${ids}::text[])`);
+    }
     if (status === 'active') conds.push(Prisma.sql`x.is_active`);
     if (status === 'inactive') conds.push(Prisma.sql`NOT x.is_active`);
     if (opts.supplierId) conds.push(Prisma.sql`EXISTS (SELECT 1 FROM product_suppliers ps WHERE ps.product_id = x.id AND ps.supplier_id = ${opts.supplierId})`);
@@ -601,6 +611,8 @@ export class ProductsService {
     if (stock === 'normal') conds.push(Prisma.sql`x.stock > ${threshold}`);
     if (stock === 'negative') conds.push(Prisma.sql`x.stock < 0`);
     if (stock === 'reorder') conds.push(Prisma.sql`x.stock <= ${threshold}`);
+    if (stock === 'instock') conds.push(Prisma.sql`x.stock > 0`);
+    if (stock === 'nostock') conds.push(Prisma.sql`x.stock <= 0`);
     const where = conds.length ? Prisma.sql`WHERE ${Prisma.join(conds, ' AND ')}` : Prisma.empty;
     // stock as catalogStock computes it: batch sum, or complete sets of a bundle's children
     const offset = (page - 1) * limit;

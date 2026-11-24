@@ -11,5 +11,6 @@ import { ClaimsModule } from '../claims/claims.module';
   imports: [PrismaModule, ProductsModule, ShiftsModule, DebtsModule, ClaimsModule],
   controllers: [ReportsController],
   providers: [ReportsService],
+  exports: [ReportsService],
 })
 export class ReportsModule {}

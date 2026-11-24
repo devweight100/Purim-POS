@@ -8,7 +8,7 @@ Branch `ccr-8f8b0741-si1a0o`. Spec: owner list "Round B". Item 9 (price fallback
 | Item | State |
 |------|-------|
 | 4 SKU editable (create + edit, blank = generated) | done (code + tests; full-suite run at the end) |
-| 6 Export filter dialog + PIN on every export | todo |
+| 6 Export filter dialog + PIN on every export | done (code + tests) |
 | 8 Dashboard debtors / creditors / upcoming expenses | todo |
 | 9 Quotes use the shared price rule (check only) | todo |
 | 10 LINE staff group notification + reminders | todo |
@@ -45,3 +45,26 @@ Replaces the 2026-11-18 rule "SKU = permanent system ID".
 - Stat tiles: one style from tokens (`.stat-tile*` in `globals.css`, docs/ui-style.md "Stat tiles") on orders, debts,
   payables, claims, claim inventory, supplier returns, shifts and the 6 report tabs (46 tiles). Decision: values are
   primary text; red only for owed / overdue / voided / negative figures (colour = meaning rule).
+
+## 6. Exports: filter dialog + manager PIN on every export
+
+- Server (`backend/src/exports`): `POST /exports/approve { kind, filters, pin }` checks the PIN against active
+  ADMIN / MANAGER users (bcrypt; throttled like the POS approval PIN, key `export-pin:<ip>`, 5 failures = 15 min),
+  and that the requester may export that kind. It writes an `approval_requests` row (type `DATA_EXPORT`, APPROVED,
+  channel PIN) bound to requester + kind + exact filters (sha256), valid **2 minutes**, single use.
+  `POST /exports/products | report | profit-loss` need header `x-export-approval`; without a valid approval ->
+  403 `EXPORT_APPROVAL_REQUIRED`. The approval becomes USED and `audit_logs` gets `DATA_EXPORT` (user, approver,
+  kind, filters, row count). The approvals page lists these rows too ("ส่งออกข้อมูล: ...").
+- Products: "ส่งออก Excel (.xlsx)" opens a filter dialog (categories multi-select incl. "ไม่มีหมวดหมู่" with search,
+  stock ทั้งหมด / มีสต็อก / ใกล้หมด / หมด, status ทั้งหมด / ใช้งาน / ปิดใช้งาน, supplier). Filters are applied by the
+  server (`products.service.ts page()` gained `categoryIds`, `stock=instock|nostock`). Same file format as before.
+- Reports (6 tabs, Excel / CSV): the rows now come from `/exports/report` (every row of the tab in one answer).
+- Finance P&L CSV: figures from `/exports/profit-loss`.
+- PIN dialog (`components/common/ExportPinHost.tsx`, `lib/export-approval.ts`): keyboard-first (PIN field focused,
+  Enter = approve, Esc = cancel), shows what is exported, error inline.
+- Decisions: (a) "manager / admin PIN" = role ADMIN or MANAGER (not the APPROVE_OVERRIDES permission); a manager
+  exporting types their own PIN (re-confirmation), a cashier needs a manager's. (b) The app has no other data
+  exports today (customers / suppliers / orders / debts / payables / inventory lists have no export button; the
+  inventory figures export through the report tab). A future export must use `approvedExport()` + an
+  `/exports/<kind>` endpoint. (c) Printing / PDF is not an export (unchanged). (d) The import template download has
+  no data, no PIN.

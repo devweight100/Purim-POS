@@ -1,15 +1,16 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { Download, FileSpreadsheet, Package, Plus, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildExportWorkbook, buildTemplateWorkbook } from "@/lib/product-import";
 import { pickProductCost } from "./product-helpers";
-import type { ProductRecord } from "./types";
+import { ProductExportDialog } from "./ProductExportDialog";
+import type { CategoryOption, ProductRecord, SupplierOption } from "./types";
 
-// Export current products to .xlsx
+// Export products (rows from POST /exports/products, after the manager PIN) to .xlsx
 export function exportProductsExcel(products: ProductRecord[]) {
   if (products.length === 0) {
     toast.warning("ไม่มีรายการสินค้าให้ส่งออก");
@@ -30,13 +31,15 @@ export function downloadImportTemplate() {
 }
 
 /** Page title + export / import / template / categories / add buttons. */
-export function ProductsHeader({ loadAll, onImportFile, onAdd }: {
-  /** every product (the table only holds one page) */
-  loadAll: () => Promise<ProductRecord[]>;
+export function ProductsHeader({ categories, suppliers, onImportFile, onAdd }: {
+  categories: CategoryOption[];
+  suppliers: SupplierOption[];
   onImportFile: (file: File) => void;
   onAdd: () => void;
 }) {
   const excelInputRef = useRef<HTMLInputElement>(null);
+  // export: filter dialog -> manager PIN -> server rows -> file (Round B)
+  const [exportOpen, setExportOpen] = useState(false);
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -63,13 +66,9 @@ export function ProductsHeader({ loadAll, onImportFile, onAdd }: {
         {/* Export Excel Button */}
         <Button
           variant="outline"
-          onClick={() => {
-            void loadAll()
-              .then(exportProductsExcel)
-              .catch((err: unknown) => toast.error(`ส่งออกไม่สำเร็จ: ${(err as Error | undefined)?.message || "ติดต่อเซิร์ฟเวอร์ไม่ได้"}`));
-          }}
+          onClick={() => setExportOpen(true)}
           className="border-emerald-300 bg-emerald-50/60 text-emerald-800 hover:bg-emerald-100 hover:border-emerald-400 cursor-pointer"
-          title="ส่งออกรายการสินค้าทั้งหมดเป็นไฟล์ Excel (.xlsx) เพื่อแก้ไขราคา บาร์โค้ด ชื่อ หรือสต็อก"
+          title="ส่งออกรายการสินค้าเป็นไฟล์ Excel (.xlsx) เลือกหมวด / สต็อก / สถานะ / ผู้จำหน่ายได้ (ต้องใส่ PIN ผู้จัดการ)"
         >
           <Download className="w-4 h-4 mr-1.5 text-emerald-700" /> ส่งออก Excel (.xlsx)
         </Button>
@@ -93,6 +92,8 @@ export function ProductsHeader({ loadAll, onImportFile, onAdd }: {
         >
           <FileSpreadsheet className="w-4 h-4 mr-1.5 text-sky-600" /> โหลด Template
         </Button>
+
+        <ProductExportDialog open={exportOpen} onOpenChange={setExportOpen} categories={categories} suppliers={suppliers} onRows={exportProductsExcel} />
 
         <Button className="w-full bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer sm:w-auto" onClick={onAdd}>
           <Plus className="w-4 h-4 mr-1.5" /> เพิ่มสินค้าใหม่

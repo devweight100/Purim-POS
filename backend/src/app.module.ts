@@ -28,6 +28,7 @@ import { VersionModule } from './version/version.module';
 import { FinanceModule } from './finance/finance.module';
 import { ApprovalsModule } from './approvals/approvals.module';
 import { OnlineShopModule } from './online-shop/online-shop.module';
+import { ExportsModule } from './exports/exports.module';
 import { publicExposureMiddleware } from './online-shop/public-exposure';
 
 @Module({
@@ -57,6 +58,7 @@ import { publicExposureMiddleware } from './online-shop/public-exposure';
     FinanceModule,
     ApprovalsModule,
     OnlineShopModule,
+    ExportsModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_INTERCEPTOR, useClass: QtyResponseInterceptor }],

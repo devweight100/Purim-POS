@@ -3668,4 +3668,90 @@ d('store flow (e2e)', () => {
       await api('patch', '/settings', A, { vatEnabled: false, receiptOptions: null }).expect(200);
     });
   });
+  describe('data exports: manager PIN every time, server-enforced, audited (Round B item 6)', () => {
+    const db = new PrismaClient();
+    afterAll(() => db.$disconnect());
+    const approve = (tok: string, kind: string, filters: unknown, pin: string) => api('post', '/exports/approve', tok, { kind, filters, pin });
+    const exp = (tok: string, path: string, body: unknown, approval?: string) => {
+      const r = request(app.getHttpServer()).post(`/api${path}`).set('Authorization', `Bearer ${tok}`).send(body as object);
+      return approval ? r.set('x-export-approval', approval) : r;
+    };
+
+    it('products: no / wrong / reused / other-filter approval = 403; filters applied by the server; audit row', async () => {
+      const tag = String(Date.now()).slice(-6);
+      const cat1 = (await api('post', '/categories', A, { name: `EXP หมวด1 ${tag}` }).expect(201)).body;
+      const cat2 = (await api('post', '/categories', A, { name: `EXP หมวด2 ${tag}` }).expect(201)).body;
+      const mk = async (name: string, categoryId: string, stock: number, isActive = true) => {
+        const p = (await api('post', '/products', A, { name: `EXP ${name} ${tag}`, categoryId, basePrice: 10, priceLevel1: 10, unit: 'ชิ้น' }).expect(201)).body;
+        if (stock) await api('post', '/inventory/adjust', A, { productId: p.id, type: 'ADD', amount: stock, reason: 'e2e export' }).expect(201);
+        if (!isActive) await api('post', '/products/set-active', A, { ids: [p.id], isActive: false }).expect(201);
+        return p;
+      };
+      const a = await mk('มีของ', cat1.id, 50);
+      const b = await mk('ใกล้หมด', cat1.id, 2);
+      const c = await mk('หมด', cat2.id, 0);
+      const d2 = await mk('ปิดใช้', cat2.id, 30, false);
+      const filters = { categoryIds: [cat1.id, cat2.id].sort(), stock: 'all', status: 'all' };
+
+      await exp(A, '/exports/products', { filters }).expect(403);
+      await exp(A, '/exports/products', { filters }, randomUUID()).expect(403);
+      await approve(A, 'products', filters, '0000').expect(403);
+      await approve(C, 'products', filters, '7391').expect(403); // cashier: no MANAGE_INVENTORY
+      await approve(A, 'nope', filters, '7391').expect(400);
+      // the cashier's PIN is not a manager PIN
+      await approve(A, 'products', filters, '8264').expect(403);
+      const ok = (await approve(A, 'products', filters, '7391').expect(201)).body;
+      expect(ok).toMatchObject({ approvedBy: expect.any(String), approvalId: expect.any(String) });
+      // another filter set with this approval: refused, and it is not used up by that
+      await exp(A, '/exports/products', { filters: { ...filters, stock: 'low' } }, ok.approvalId).expect(403);
+      const all = (await exp(A, '/exports/products', { filters }, ok.approvalId).expect(201)).body;
+      expect(all.data.map((p: any) => p.id).sort()).toEqual([a.id, b.id, c.id, d2.id].sort());
+      expect(all.data.find((p: any) => p.id === a.id)).toMatchObject({ sku: a.sku, name: a.name });
+      await exp(A, '/exports/products', { filters }, ok.approvalId).expect(403); // single use
+
+      const run = async (f: any) => {
+        const t = (await approve(A, 'products', f, '7391').expect(201)).body.approvalId;
+        return ((await exp(A, '/exports/products', { filters: f }, t).expect(201)).body.data as any[]).map((p) => p.id).sort();
+      };
+      expect(await run({ categoryIds: [cat1.id], stock: 'all', status: 'all' })).toEqual([a.id, b.id].sort());
+      expect(await run({ ...filters, stock: 'instock' })).toEqual([a.id, b.id, d2.id].sort());
+      expect(await run({ ...filters, stock: 'low' })).toEqual([b.id]);
+      expect(await run({ ...filters, stock: 'nostock' })).toEqual([c.id]);
+      expect(await run({ ...filters, status: 'inactive' })).toEqual([d2.id]);
+      expect(await run({ ...filters, status: 'active', stock: 'instock' })).toEqual([a.id, b.id].sort());
+
+      const log = await db.auditLog.findFirst({ where: { action: 'DATA_EXPORT', entityId: ok.approvalId } });
+      expect(log?.details).toMatchObject({ kind: 'products', rowCount: 4, filters, approvedBy: ok.approvedBy });
+      const reqRow = await db.approvalRequest.findUnique({ where: { id: ok.approvalId } });
+      expect(reqRow).toMatchObject({ type: 'DATA_EXPORT', status: 'USED', channel: 'PIN' });
+    });
+
+    it('an expired approval is refused', async () => {
+      const f = { categoryIds: [], stock: 'all', status: 'all' };
+      const ok = (await approve(A, 'products', f, '7391').expect(201)).body;
+      await db.approvalRequest.update({ where: { id: ok.approvalId }, data: { expiresAt: new Date(Date.now() - 1000) } });
+      await exp(A, '/exports/products', { filters: f }, ok.approvalId).expect(403);
+    });
+
+    it('reports: every row of a list tab in one export (not one page), equal to the paged report; P&L', async () => {
+      const params = { range: 'all', start: '', end: '' };
+      for (const tab of ['bestsellers', 'inventory', 'customers', 'sales', 'payments', 'purchases']) {
+        const filters = { tab, params };
+        await exp(A, '/exports/report', filters).expect(403);
+        const t = (await approve(A, 'report', filters, '7391').expect(201)).body.approvalId;
+        const r = (await exp(A, '/exports/report', filters, t).expect(201)).body;
+        const key = ({ bestsellers: 'allProducts', inventory: 'items', customers: 'allCustomers' } as Record<string, string>)[tab];
+        if (key) {
+          const one = (await api('get', `/reports/tabs?range=all&tab=${tab}&page=1&limit=500`, A).expect(200)).body[tab];
+          expect(r.data[key]).toHaveLength(one.total);
+          expect(r.rowCount).toBe(one.total);
+        }
+      }
+      const filters = { from: '2020-01-01', to: '2099-12-31' };
+      const t = (await approve(A, 'profit-loss', filters, '7391').expect(201)).body.approvalId;
+      const pl = (await exp(A, '/exports/profit-loss', filters, t).expect(201)).body.data;
+      const direct = (await api('get', '/finance/profit-loss?from=2020-01-01&to=2099-12-31', A).expect(200)).body;
+      expect(pl.netProfit).toBe(direct.netProfit);
+    });
+  });
 });

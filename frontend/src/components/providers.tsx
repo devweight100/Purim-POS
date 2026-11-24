@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { AskDialogHost } from '@/components/common/AskDialogHost';
+import { ExportPinHost } from '@/components/common/ExportPinHost';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -36,6 +37,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         {children}
         {/* askReason() / askConfirm(): in-page prompt / confirm (lib/ask-dialog.ts) */}
         <AskDialogHost />
+        {/* manager PIN of every data export (lib/export-approval.ts) */}
+        <ExportPinHost />
         <Toaster theme="light" position="bottom-right" duration={2000} />
       </TooltipProvider>
     </QueryClientProvider>

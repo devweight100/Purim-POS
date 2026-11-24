@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
+import { approvedExport } from '@/lib/export-approval';
 import { bangkokDate, bangkokDayKey, bangkokParts } from '@shared/bangkok-date';
 import { formatCurrency, formatListDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -46,8 +47,18 @@ export function ProfitLossPanel() {
     if (kind === 'last') { setFrom(at(year, month - 1, 1)); setTo(at(year, month, 0)); }
     if (kind === 'year') { setFrom(at(year, 0, 1)); setTo(iso(n)); }
   };
-  const exportCsv = () => {
-    if (!data) return;
+  const exportCsv = async () => {
+    // every export: manager PIN, the figures come from the export endpoint (Round B, backend/src/exports)
+    const filters = { from, to };
+    let res: { data: PL } | null;
+    try {
+      res = await approvedExport<{ data: PL }>({ kind: 'profit-loss', filters, path: '/exports/profit-loss', body: filters, what: `งบกำไรขาดทุน (CSV) ${from} ถึง ${to}` });
+    } catch (err) {
+      toast.error(`ส่งออกไม่สำเร็จ: ${(err as Error | undefined)?.message || 'ติดต่อเซิร์ฟเวอร์ไม่ได้'}`);
+      return;
+    }
+    if (!res) return;
+    const data = res.data;
     const lines = [
       ['รายการ', 'จำนวนเงิน'], ['รายได้จากการขาย (ไม่รวม VAT)', data.revenue], ['ต้นทุนขาย', -data.cogs], ['กำไรขั้นต้น', data.grossProfit],
       ['ต้นทุนจากเคลม (สุทธิ)', -data.claims.net], ['สินค้าเสียหาย/ตัดจำหน่าย', -data.stockWriteOff],
@@ -74,7 +85,7 @@ export function ProfitLossPanel() {
           <Button size="sm" variant="outline" onClick={() => preset('year')}>ปีนี้</Button>
           <Input type="date" className="w-40" value={from} onChange={(e) => setFrom(e.target.value)} />
           <Input type="date" className="w-40" value={to} onChange={(e) => setTo(e.target.value)} />
-          <Button size="sm" variant="outline" className="gap-1" onClick={exportCsv}><FileSpreadsheet className="w-4 h-4" /> CSV</Button>
+          <Button size="sm" variant="outline" className="gap-1" onClick={() => void exportCsv()}><FileSpreadsheet className="w-4 h-4" /> CSV</Button>
           <Button size="sm" variant="outline" className="gap-1" onClick={() => window.print()}><Printer className="w-4 h-4" /> พิมพ์</Button>
         </div>
       </div>
