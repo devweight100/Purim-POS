@@ -166,12 +166,15 @@ test('a cart line follows a price change with a notice; not while the payment di
   const { page } = pos;
   try {
     await edit(bo.page, 'PATCH', `/products/${ids.dish}`, { basePrice: 20, priceLevel1: 20 });
+    await search(page).fill(`-${TAG}`);
+    await expect(card(page, 'สูตรใหม่ กลิ่นมะกรูด')).toHaveAttribute('aria-label', /฿20\.00/, { timeout: LIVE_MS });
+    await search(page).fill('');
     await scan(page, P.dish.barcode);
     await scan(page, P.glue.barcode);
     await expect.poll(() => priceOf(page, P.glue.name)).toBe(50);
     await expect.poll(async () => (await lines(page)).find((l) => l.unitName === 'ขวด')?.price).toBe(20);
     // manual price (F4) on the glue: never re-priced
-    await page.getByText(P.glue.name).first().click();
+    await page.locator('[data-line-key]').filter({ hasText: P.glue.name }).first().click();
     await page.keyboard.press('F4');
     const priceDlg = page.getByRole('dialog').filter({ hasText: 'แก้ไขราคาขาย' });
     await expect(priceDlg).toBeVisible();
@@ -185,7 +188,7 @@ test('a cart line follows a price change with a notice; not while the payment di
     await expect(notice).toHaveText('ราคาอัปเดต ฿20.00 → ฿25.00', { timeout: LIVE_MS });
     await expect(notice).toHaveCount(1);
     expect(await priceOf(page, P.glue.name)).toBe(48);
-    await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'ราคาอัปเดต:' })).toBeVisible();
+    await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'ราคาอัปเดต:' }).first()).toBeVisible();
     await shot(page, 'pos-price-updated-notice');
 
     // payment dialog open: the bill does not change under it; it follows once the dialog closes
@@ -223,6 +226,7 @@ test('F5 รีเฟรชข้อมูล: full resync keeps the cart and he
     await expect.poll(async () => (await lines(page)).length).toBe(0);
     await scan(page, P.dish.barcode);
     await expect.poll(async () => (await lines(page)).length).toBe(1);
+    const inCart = (await lines(page)).map((l) => l.name);
     const before = await page.getByTestId('pos-last-sync').textContent();
     await page.waitForTimeout(1100);
 
@@ -232,18 +236,18 @@ test('F5 รีเฟรชข้อมูล: full resync keeps the cart and he
     await page.keyboard.press('F5');
     await Promise.all([full, customers, settings]);
     const toast = page.locator('[data-sonner-toast]').filter({ hasText: /รีเฟรชข้อมูลแล้ว \d\d:\d\d:\d\d/ });
-    await expect(toast).toBeVisible();
+    await expect(toast.first()).toBeVisible();
     await expect(page.getByTestId('pos-last-sync')).not.toHaveText(before || '');
     expect(await notReloaded(page)).toBe(true);
-    expect((await lines(page)).map((l) => l.name)).toEqual([P.dish.name]);
+    expect((await lines(page)).map((l) => l.name)).toEqual(inCart);
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('purim-pos-cart') || '{}').state.heldBills.length)).toBe(1);
 
     // offline: says so, nothing replaced
     await ctx.setOffline(true);
     await page.keyboard.press('F5');
-    await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'ออฟไลน์อยู่' })).toBeVisible();
+    await expect(page.locator('[data-sonner-toast]').filter({ hasText: 'ออฟไลน์อยู่' }).first()).toBeVisible();
     await ctx.setOffline(false);
-    expect((await lines(page)).map((l) => l.name)).toEqual([P.dish.name]);
+    expect((await lines(page)).map((l) => l.name)).toEqual(inCart);
     await search(page).fill(`-${TAG}`);
     await expect(card(page, P.glue.name.slice(0, 20))).toHaveCount(1);
     expect(await notReloaded(page)).toBe(true);
