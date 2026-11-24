@@ -9,7 +9,7 @@ Branch `ccr-8f8b0741-si1a0o`. Spec: owner list "Round B". Item 9 (price fallback
 |------|-------|
 | 4 SKU editable (create + edit, blank = generated) | done (code + tests; full-suite run at the end) |
 | 6 Export filter dialog + PIN on every export | done (code + tests) |
-| 8 Dashboard debtors / creditors / upcoming expenses | todo |
+| 8 Dashboard debtors / creditors / upcoming expenses | done (code + tests) |
 | 9 Quotes use the shared price rule (check only) | todo |
 | 10 LINE staff group notification + reminders | todo |
 | Leftovers: PO status chips Thai, stock-card "-:", stat tiles | done |
@@ -68,3 +68,22 @@ Replaces the 2026-11-18 rule "SKU = permanent system ID".
   inventory figures export through the report tab). A future export must use `approvedExport()` + an
   `/exports/<kind>` endpoint. (c) Printing / PDF is not an export (unchanged). (d) The import template download has
   no data, no PIN.
+
+## 8. Dashboard: debtors, creditors, expenses due soon
+
+- Server `GET /dashboard/obligations?days=` (VIEW_REPORTS, `backend/src/finance/obligations.service.ts`), one source:
+  - creditors: supplier bills payable now = the payables page rule (received value - paid, capped by the PO's
+    remaining; e2e checks the total equals `/payables/bills` summary.totalOutstanding). Due = PO due date, else bill
+    date + supplier credit terms (30) - the cash forecast rule. Overdue = due day before today (Bangkok). Per
+    supplier: bills, owed, overdue amount, oldest due.
+  - upcoming: recurring expenses due up to today + N days (overdue ones included) and supplier bills due in that
+    window or overdue; each item has a link (`/finance?view=recurring`, `/payables?search=<PO no.>`).
+  - N = new setting `store_settings.dashboard_due_days` (default 7, 1-90; ตั้งค่า > การเงิน > "แดชบอร์ด:
+    ค่าใช้จ่ายใกล้ถึงกำหนด").
+- Dashboard: new row of 3 panels under the KPI cards ("ลูกหนี้เกินกำหนด" from `/debts/owing-customers?overdue=1`,
+  "เจ้าหนี้ (ค้างจ่ายผู้จำหน่าย)", "ค่าใช้จ่ายใกล้ถึงกำหนด"); rows are links (Tab / Enter) to the customer's debts, the
+  payables page filtered by supplier, the payables page searched by PO number, the finance recurring tab.
+  "ดูทั้งหมด" of the debtors panel opens the existing credit-customers dialog with "เฉพาะที่เกินกำหนด" on.
+- Payables page reads `?search=` / `?supplierId=`; finance page reads `?view=`.
+- Decision: supplier bills appear in both the creditors panel (what is owed) and the upcoming panel (what falls due
+  in N days / is overdue), because the owner asked for "unpaid bills due within N days" there.

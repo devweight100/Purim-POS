@@ -43,10 +43,16 @@ export function customerDebtsHref(c: { customerId: string; name: string }) {
  * Customers who still owe (dashboard credit card): amount owed, bills, oldest unpaid bill, overdue, phone.
  * ↑/↓ move, Enter opens the customer's debts; search box ↓ goes into the list.
  */
-export function CreditCustomersDialog({ open, onOpenChange, summary }: { open: boolean; onOpenChange: (v: boolean) => void; summary: CreditSummary | null }) {
+export function CreditCustomersDialog({ open, onOpenChange, summary, initialOverdueOnly = false }: { open: boolean; onOpenChange: (v: boolean) => void; summary: CreditSummary | null; initialOverdueOnly?: boolean }) {
   const router = useRouter();
   const [search, setSearch] = useState('');
-  const [overdueOnly, setOverdueOnly] = useState(false);
+  const [overdueOnly, setOverdueOnly] = useState(initialOverdueOnly);
+  // each opening starts from the caller's choice (the card = everyone, "ดูลูกหนี้ทั้งหมด" of the overdue panel = overdue)
+  const [seenOpen, setSeenOpen] = useState(open);
+  if (seenOpen !== open) {
+    setSeenOpen(open);
+    if (open) setOverdueOnly(initialOverdueOnly);
+  }
   const [rows, setRows] = useState<OwingCustomer[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);

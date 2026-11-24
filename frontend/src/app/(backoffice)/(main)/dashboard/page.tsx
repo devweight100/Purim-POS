@@ -11,6 +11,7 @@ import { AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, Tooltip, Responsive
 import { DollarSign, ShoppingCart, Users, Package, LayoutDashboard, TrendingUp, CreditCard, AlertTriangle, ChevronRight, Clock, Sparkles, RefreshCw, Info, Smartphone } from "lucide-react";
 import { fetchClaimRefundSummary } from "@/lib/claim-service";
 import { CreditCustomersDialog, type CreditSummary } from "@/components/dashboard/CreditCustomersDialog";
+import { ObligationPanels, type Obligations, type OverdueDebtor } from "@/components/dashboard/ObligationPanels";
 import { bangkokDate, bangkokParts, bangkokStartOfDay, DAY_MS } from "@shared/bangkok-date";
 
 // Palette colors for charts
@@ -82,17 +83,26 @@ export default function DashboardPage() {
   // customers with unpaid credit (GET /debts/credit-summary: the debts page rule) and the list dialog
   const [credit, setCredit] = useState<CreditSummary | null>(null);
   const [creditOpen, setCreditOpen] = useState(false);
+  const [creditOverdueOnly, setCreditOverdueOnly] = useState(false);
+  // Round B: creditors / expenses due soon (GET /dashboard/obligations) and overdue debtors
+  const [obligations, setObligations] = useState<Obligations | null>(null);
+  const [overdueDebtors, setOverdueDebtors] = useState<OverdueDebtor[] | null>(null);
 
   // All figures come from the server aggregate (/reports/dashboard): no row cap for "all",
   // returns netted like the P&L, Bangkok days, one low-stock threshold (StoreSettings).
   /** Loads the figures; state is only updated after the requests. */
   const fetchDashboard = async (range: DashboardRange) => {
     try {
-      const [dashRes, claimsRes, creditRes] = await Promise.allSettled([
+      const [dashRes, claimsRes, creditRes, oblRes, debtorsRes] = await Promise.allSettled([
         apiFetch(`/reports/dashboard?range=${range}`),
         fetchClaimRefundSummary(claimPeriodStart(range, Date.now())),
         apiFetch<CreditSummary>("/debts/credit-summary"),
+        apiFetch<Obligations>("/dashboard/obligations"),
+        apiFetch<{ data: OverdueDebtor[] }>("/debts/owing-customers?overdue=1&limit=20"),
       ]);
+      if (oblRes.status === "fulfilled") setObligations(oblRes.value);
+      if (debtorsRes.status === "fulfilled") setOverdueDebtors(debtorsRes.value.data || []);
+      else setOverdueDebtors([]);
       if (dashRes.status === "fulfilled") setDash(dashRes.value);
       else setDash(null);
       if (claimsRes.status === "fulfilled") setClaimRefunds(claimsRes.value);
@@ -369,7 +379,7 @@ export default function DashboardPage() {
         <button
           type="button"
           data-testid="credit-card"
-          onClick={() => setCreditOpen(true)}
+          onClick={() => { setCreditOverdueOnly(false); setCreditOpen(true); }}
           className={`bg-white px-3.5 py-2.5 rounded-xl border shadow-2xs flex items-center justify-between gap-2 text-left transition-colors group cursor-pointer outline-none focus-visible:ring-4 focus-visible:ring-amber-200 ${
             (credit?.overdueBillCount ?? 0) > 0 ? "border-rose-300 hover:border-rose-500" : "border-amber-200/80 hover:border-amber-400"
           }`}
@@ -401,6 +411,9 @@ export default function DashboardPage() {
           </div>
         </button>
       </div>
+
+      {/* ─── ภาระการเงิน: overdue debtors / creditors / expenses due soon (Round B) ─── */}
+      <ObligationPanels ob={obligations} debtors={overdueDebtors} onOpenDebtors={() => { setCreditOverdueOnly(true); setCreditOpen(true); }} />
 
       {/* ─── SECONDARY MINI-METRICS BAR ─── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs">
@@ -783,7 +796,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <CreditCustomersDialog open={creditOpen} onOpenChange={setCreditOpen} summary={credit} />
+      <CreditCustomersDialog open={creditOpen} onOpenChange={setCreditOpen} summary={credit} initialOverdueOnly={creditOverdueOnly} />
     </div>
   );
 }

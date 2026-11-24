@@ -987,6 +987,7 @@ model StoreSettings {
   lowStockThreshold Decimal @default(5) @map("low_stock_threshold") @db.Decimal(12, 2) // one "low stock" level for every page/report
   allowDecimalQty   Boolean @default(false) @map("allow_decimal_qty") // quantities may have up to 2 decimals (sell by metre / kg)
   cashMovementApprovalLimit Decimal @default(1000) @map("cash_movement_approval_limit") @db.Decimal(12, 2) // drawer cash in/out above this needs a manager PIN (0 = always)
+  dashboardDueDays Int @default(7) @map("dashboard_due_days") // dashboard: expenses / supplier bills due within N days
   supplierDocNameMode String @default("SHOP") @map("supplier_doc_name_mode") @db.VarChar(10) // default product names on new supplier documents (SHOP | SUPPLIER)
   posAskCustomerAtStart   Boolean @default(false) @map("pos_ask_customer_at_start") // POS: start-of-bill customer / price level dialog
   walkInLevelNeedsDiscount Boolean @default(false) @map("walk_in_level_needs_discount") // POS: walk-in bill at ราคา 2-5 needs POS_DISCOUNT / manager
@@ -1260,9 +1261,42 @@ model OnlineShopConfig {
   allowDelivery    Boolean  @default(true) @map("allow_delivery")
   notice           String?
   levelNames       Json?    @map("level_names") // { "1": "ราคาปลีก", "2": "ราคาส่ง", ... }
+  /// Messaging API channel secret (webhook X-Line-Signature check). Write-only like the token
+  channelSecret    String?  @map("channel_secret")
+  /// LINE group of the staff that gets new-order alerts + reminders (docs/round-b.md item 10)
+  staffGroupId     String?  @map("staff_group_id")
+  /// back-office address put in the staff alert (LAN), e.g. http://192.168.1.10:3000
+  backOfficeUrl    String?  @map("back_office_url")
   updatedAt        DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@map("online_shop_config")
+}
+
+/// A LINE group the bot was invited to (from webhook events); the staff group is chosen in settings.
+model LineGroup {
+  groupId     String    @id @map("group_id")
+  name        String?
+  joinedAt    DateTime  @default(now()) @map("joined_at")
+  leftAt      DateTime? @map("left_at")
+  lastEventAt DateTime  @default(now()) @map("last_event_at")
+
+  @@map("line_groups")
+}
+
+/// One LINE send to the staff group about an online order (new-order alert, reminder).
+model OnlineOrderLineLog {
+  id            String      @id @default(uuid())
+  onlineOrderId String      @map("online_order_id")
+  kind          String // NEW | REMINDER
+  target        String?
+  ok            Boolean
+  result        String
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  onlineOrder   OnlineOrder @relation(fields: [onlineOrderId], references: [id], onDelete: Cascade)
+
+  @@index([onlineOrderId, createdAt])
+  @@map("online_order_line_logs")
 }
 
 /// A LINE user (or a test profile) who opened the shop; remembers contact details and the linked member.
@@ -1337,6 +1371,9 @@ model OnlineOrder {
   /// "จัดของเสร็จ": who picked the goods and when (kept for audit / display; the claim ends there)
   pickedById     String?           @map("picked_by_id")
   pickedAt       DateTime?         @map("picked_at")
+  /// staff-group alert schedule (DB-based, survives restarts): next send time (null = done), sends so far
+  staffAlertNextAt DateTime?       @map("staff_alert_next_at")
+  staffAlertCount  Int             @default(0) @map("staff_alert_count")
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @default(now()) @updatedAt @map("updated_at")
 
@@ -1344,8 +1381,10 @@ model OnlineOrder {
   claimedBy      User?             @relation("OnlineOrderClaimedBy", fields: [claimedById], references: [id], onDelete: SetNull)
   pickedBy       User?             @relation("OnlineOrderPickedBy", fields: [pickedById], references: [id], onDelete: SetNull)
   items          OnlineOrderItem[]
+  lineLogs       OnlineOrderLineLog[]
 
   @@index([status, createdAt])
+  @@index([staffAlertNextAt])
   @@index([lineUserId, createdAt])
   @@index([customerId])
   @@index([claimedById])

@@ -153,7 +153,7 @@ export class PlanningService {
   }
 
   /** Occurrences of active recurring expenses due up to `until` (overdue ones included). */
-  private async recurringOccurrences(until: Date) {
+  async recurringOccurrences(until: Date) {
     const rows = await this.prisma.recurringExpense.findMany({ where: { isActive: true }, include: { category: { select: { name: true } } } });
     const out: { id: string; name: string; category: string; amount: number; dueDate: Date }[] = [];
     for (const r of rows) {

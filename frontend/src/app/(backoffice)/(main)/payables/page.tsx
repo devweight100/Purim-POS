@@ -1,7 +1,8 @@
 'use client';
 
 import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Building2, Receipt, DollarSign, Plus, Search, ShieldAlert, CheckCircle2, ArrowLeftRight, FileText, Printer, Eye, RefreshCw, RotateCcw, XCircle, Edit3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -94,7 +95,9 @@ function PaidProgress({ bill }: { bill: SupplierPayableBill }) {
   );
 }
 
-export default function PayablesPage() {
+function PayablesContent() {
+  // ?search=<PO no.> / ?supplierId= (dashboard creditors / upcoming bills, Round B)
+  const searchParams = useSearchParams();
   // Bills are computed and paged on the server (GET /payables/bills): one page here, cards over every bill.
   const [bills, setBills] = useState<SupplierPayableBill[]>([]);
   const [billTotal, setBillTotal] = useState(0);
@@ -108,8 +111,8 @@ export default function PayablesPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // Filters
-  const [search, setSearch] = useState('');
-  const [supplierFilter, setSupplierFilter] = useState('ALL');
+  const [search, setSearch] = useState(() => searchParams.get('search') || '');
+  const [supplierFilter, setSupplierFilter] = useState(() => searchParams.get('supplierId') || 'ALL');
   const [statusFilter, setStatusFilter] = useState<PayableBillStatusFilter>('ALL');
   const debouncedSearch = useDebouncedValue(search.trim(), 300);
 
@@ -942,5 +945,13 @@ export default function PayablesPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export default function PayablesPage() {
+  return (
+    <Suspense fallback={null}>
+      <PayablesContent />
+    </Suspense>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { apiFetch } from '@/lib/api';
 import { bangkokDate, bangkokDayKey, bangkokDayStart, bangkokParts, bangkokStartOfDay, DAY_MS } from '@shared/bangkok-date';
 import { formatCurrency, formatListDate } from '@/lib/utils';
@@ -83,10 +84,15 @@ function rangeDates(r: Range) {
 
 const fieldCls = 'w-full h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm';
 
-export default function FinancePage() {
+type FinanceView = 'overview' | 'recurring' | 'forecast' | 'pl' | 'reconcile';
+const FINANCE_VIEWS: FinanceView[] = ['overview', 'recurring', 'forecast', 'pl', 'reconcile'];
+
+function FinanceContent() {
+  // ?view=recurring (dashboard "ค่าใช้จ่ายใกล้ถึงกำหนด", Round B)
+  const viewParam = useSearchParams().get('view') as FinanceView | null;
   const [summary, setSummary] = useState<Summary | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [view, setView] = useState<'overview' | 'recurring' | 'forecast' | 'pl' | 'reconcile'>('overview');
+  const [view, setView] = useState<FinanceView>(() => (viewParam && FINANCE_VIEWS.includes(viewParam) ? viewParam : 'overview'));
   const [rows, setRows] = useState<LedgerRow[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRow[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -810,5 +816,13 @@ function CategoryManager({ categories, onChanged }: { categories: Category[]; on
         ))}
       </div>
     </div>
+  );
+}
+
+export default function FinancePage() {
+  return (
+    <Suspense fallback={null}>
+      <FinanceContent />
+    </Suspense>
   );
 }

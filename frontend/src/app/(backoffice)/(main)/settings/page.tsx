@@ -467,11 +467,14 @@ export default function SettingsPage() {
   };
 
   // Store-wide operational limits stored on StoreSettings (not part of the receipt-header type)
-  const opSettings = settings as StoreSettings & { lowStockThreshold?: number | string | null; cashMovementApprovalLimit?: number | string | null };
+  const opSettings = settings as StoreSettings & { lowStockThreshold?: number | string | null; cashMovementApprovalLimit?: number | string | null; dashboardDueDays?: number | string | null };
   const lowStockInput = opSettings.lowStockThreshold ?? 5;
   const cashLimitInput = opSettings.cashMovementApprovalLimit ?? 1000;
+  const dueDaysInput = opSettings.dashboardDueDays ?? 7;
   const storeFieldErrors = (() => {
-    const errors: { storeName?: string; lowStockThreshold?: string; cashMovementApprovalLimit?: string } = {};
+    const errors: { storeName?: string; lowStockThreshold?: string; cashMovementApprovalLimit?: string; dashboardDueDays?: string } = {};
+    const days = Number(String(dueDaysInput).trim());
+    if (!Number.isInteger(days) || days < 1 || days > 90) errors.dashboardDueDays = 'ต้องเป็นจำนวนวัน 1-90';
     if (!String(settings.storeName ?? '').trim()) errors.storeName = 'กรุณาระบุชื่อร้านค้า (จะพิมพ์บนหัวใบเสร็จ)';
     const lowStr = String(lowStockInput).trim();
     const low = Number(lowStr);
@@ -485,7 +488,7 @@ export default function SettingsPage() {
   })();
 
   const handleSaveStore = async () => {
-    const firstError = storeFieldErrors.storeName || storeFieldErrors.lowStockThreshold || storeFieldErrors.cashMovementApprovalLimit;
+    const firstError = storeFieldErrors.storeName || storeFieldErrors.lowStockThreshold || storeFieldErrors.cashMovementApprovalLimit || storeFieldErrors.dashboardDueDays;
     if (firstError) {
       toast.error('ยังบันทึกไม่ได้: ' + firstError);
       return;
@@ -501,6 +504,7 @@ export default function SettingsPage() {
         storeName: settings.storeName.trim(),
         lowStockThreshold: Number(lowStockInput),
         cashMovementApprovalLimit: Number(cashLimitInput),
+        dashboardDueDays: Number(dueDaysInput),
       } as StoreSettings);
       setSettings(saved);
       toast.success("บันทึกข้อมูลร้านค้าและข้อความใบเสร็จลงฐานข้อมูลแล้ว");
@@ -957,6 +961,29 @@ export default function SettingsPage() {
                     ? <p role="alert" className="text-[11px] font-bold text-rose-600">{storeFieldErrors.cashMovementApprovalLimit}</p>
                     : <p className="text-[11px] text-slate-500">นำเงินเข้า/ออกเกินยอดนี้ (บาท) ต้องใช้ PIN ผู้จัดการ</p>}
                 </div>
+            </div>
+            <SaveBar onSave={() => void handleSaveStore()} />
+          </SectionCard>
+          <SectionCard icon={Wallet} title="แดชบอร์ด: ค่าใช้จ่ายใกล้ถึงกำหนด" text="รายการค่าใช้จ่ายประจำและบิลผู้จำหน่ายที่จะครบกำหนดในกี่วันข้างหน้า (แสดงรายการเกินกำหนดเสมอ)">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label htmlFor="dashboard-due-days" className="text-xs font-bold text-slate-700">แจ้งล่วงหน้า (วัน)</label>
+                <Input
+                  id="dashboard-due-days"
+                  type="number"
+                  min={1}
+                  max={90}
+                  step={1}
+                  inputMode="numeric"
+                  value={String(dueDaysInput)}
+                  onChange={e => setSettings({ ...settings, dashboardDueDays: e.target.value } as unknown as StoreSettings)}
+                  aria-invalid={!!storeFieldErrors.dashboardDueDays}
+                  className={`bg-white tabular-nums text-slate-900 ${storeFieldErrors.dashboardDueDays ? 'border-rose-400' : 'border-slate-300'}`}
+                />
+                {storeFieldErrors.dashboardDueDays
+                  ? <p role="alert" className="text-[11px] font-bold text-rose-600">{storeFieldErrors.dashboardDueDays}</p>
+                  : <p className="text-[11px] text-slate-500">ค่าเริ่มต้น 7 วัน</p>}
+              </div>
             </div>
             <SaveBar onSave={() => void handleSaveStore()} />
           </SectionCard>

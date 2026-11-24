@@ -2,6 +2,7 @@ import { Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsObject,
@@ -86,6 +87,14 @@ export class UpdateSettingsDto {
   @Max(9999999999, { message: 'วงเงินเงินสดเข้า/ออกมากเกินไป' })
   cashMovementApprovalLimit?: number;
 
+  /** Dashboard: expenses / supplier bills due within this many days are listed (Round B, default 7). */
+  @ValidateIf((o) => o.dashboardDueDays !== undefined)
+  @Transform(toNumber)
+  @IsInt({ message: 'จำนวนวันแจ้งเตือนค่าใช้จ่ายต้องเป็นจำนวนเต็ม' })
+  @Min(1, { message: 'จำนวนวันแจ้งเตือนค่าใช้จ่ายต้องอยู่ระหว่าง 1-90 วัน' })
+  @Max(90, { message: 'จำนวนวันแจ้งเตือนค่าใช้จ่ายต้องอยู่ระหว่าง 1-90 วัน' })
+  dashboardDueDays?: number;
+
   /** Default product names on new supplier documents (PO, receiving, supplier returns): SHOP | SUPPLIER */
   @ValidateIf((o) => o.supplierDocNameMode !== undefined)
   @IsIn(['SHOP', 'SUPPLIER'], { message: 'ชื่อสินค้าบนเอกสารถึงผู้ขายต้องเป็น "ใช้ชื่อร้าน" หรือ "ใช้ชื่อผู้ผลิต"' })
@@ -122,5 +131,5 @@ export const SETTINGS_FIELDS = [
   'storeName', 'branchName', 'storePhone', 'storeAddress', 'storeEmail', 'logoUrl', 'qrImageUrl', 'qrLabel',
   'taxId', 'receiptHeader', 'receiptFooter', 'vatRate', 'vatEnabled', 'pointsPerBaht', 'pointValue',
   'lowStockThreshold', 'allowDecimalQty', 'cashMovementApprovalLimit', 'loyaltyConfig',
-  'receiptOptions', 'supplierDocNameMode', 'posAskCustomerAtStart', 'walkInLevelNeedsDiscount',
+  'receiptOptions', 'supplierDocNameMode', 'posAskCustomerAtStart', 'walkInLevelNeedsDiscount', 'dashboardDueDays',
 ] as const;

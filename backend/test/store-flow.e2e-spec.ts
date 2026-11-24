@@ -2818,7 +2818,7 @@ d('store flow (e2e)', () => {
     });
 
     it('search by SKU still finds the product (list page, lookup)', async () => {
-      const a = state.skuA;
+      const a = state.skuB; // generated EAN-13 (skuA was renamed above)
       const page = (await api('get', `/products/page?page=1&limit=5&q=${a.sku}`, A).expect(200)).body;
       expect(page.data.map((p: any) => p.id)).toEqual([a.id]);
       const part = (await api('get', `/products/page?page=1&limit=5&q=${a.sku.slice(3, 10)}`, A).expect(200)).body;
@@ -3752,6 +3752,51 @@ d('store flow (e2e)', () => {
       const pl = (await exp(A, '/exports/profit-loss', filters, t).expect(201)).body.data;
       const direct = (await api('get', '/finance/profit-loss?from=2020-01-01&to=2099-12-31', A).expect(200)).body;
       expect(pl.netProfit).toBe(direct.netProfit);
+    });
+  });
+  describe('dashboard creditors / upcoming expenses (Round B item 8): server numbers equal the payables page', () => {
+    it('creditors total = payables card; overdue / due soon by the due date; window from the setting or ?days', async () => {
+      const tag = String(Date.now()).slice(-6);
+      const sup = (await api('post', '/suppliers', A, { name: `เจ้าหนี้แดชบอร์ด ${tag}`, creditTerms: 30 }).expect(201)).body;
+      const prod = (await api('post', '/products', A, { name: `OBL สินค้า ${tag}`, basePrice: 20, priceLevel1: 20, unit: 'ชิ้น' }).expect(201)).body;
+      const day = 86400000;
+      const ymd = (t: number) => new Date(t).toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+      const mkPo = async (qty: number, cost: number, dueDate: string) => {
+        const po = (await api('post', '/purchase-orders', A, { supplierId: sup.id, status: 'ISSUED', dueDate, items: [{ productId: prod.id, quantity: qty, unitCost: cost }] }).expect(201)).body;
+        await api('post', `/purchase-orders/${po.id}/receive`, A, { clientReceiptId: randomUUID(), items: [{ purchaseOrderItemId: po.items[0].id, receivedQty: qty, unitCost: cost }] }).expect(201);
+        return po;
+      };
+      const late = await mkPo(2, 100, ymd(Date.now() - 3 * day)); // overdue 200
+      const soon = await mkPo(3, 50, ymd(Date.now() + 2 * day)); // due in 2 days 150
+      const later = await mkPo(1, 70, ymd(Date.now() + 20 * day)); // outside 7 days 70
+      const cats = (await api('get', '/finance/expense-categories', A).expect(200)).body;
+      await api('post', '/finance/recurring', A, { name: `ค่าเช่า ${tag}`, categoryId: cats[0].id, amount: 5000, frequency: 'MONTHLY', dayOfMonth: 1, firstDueDate: ymd(Date.now() + 3 * day) }).expect(201);
+      await api('post', '/finance/recurring', A, { name: `ค่าเน็ต ${tag}`, categoryId: cats[0].id, amount: 600, frequency: 'MONTHLY', dayOfMonth: 1, firstDueDate: ymd(Date.now() - 1 * day) }).expect(201);
+
+      const o = (await api('get', '/dashboard/obligations', A).expect(200)).body;
+      const pay = (await api('get', '/payables/bills?limit=1', A).expect(200)).body;
+      expect(o.days).toBe(7);
+      expect(o.creditors.total).toBeCloseTo(pay.summary.totalOutstanding, 2);
+      const mine = o.creditors.suppliers.find((r: any) => r.supplierId === sup.id);
+      expect(mine).toMatchObject({ billCount: 3, owed: 420, overdueCount: 1, overdueAmount: 200 });
+      expect(o.creditors.overdueAmount).toBeGreaterThanOrEqual(200);
+      const ids = o.upcoming.items.map((i: any) => i.id);
+      expect(ids).toContain(late.id);
+      expect(ids).toContain(soon.id);
+      expect(ids).not.toContain(later.id);
+      expect(o.upcoming.items.find((i: any) => i.id === late.id)).toMatchObject({ overdue: true, amount: 200, link: `/payables?search=${encodeURIComponent(late.poNumber)}` });
+      const rent = o.upcoming.items.find((i: any) => i.label === `ค่าเช่า ${tag}`);
+      expect(rent).toMatchObject({ kind: 'RECURRING', overdue: false, amount: 5000, link: '/finance?view=recurring' });
+      expect(o.upcoming.items.find((i: any) => i.label === `ค่าเน็ต ${tag}`)).toMatchObject({ overdue: true, amount: 600 });
+      expect(o.upcoming.overdueAmount).toBeCloseTo(o.upcoming.items.filter((i: any) => i.overdue).reduce((t: number, i: any) => t + i.amount, 0), 2);
+      // a wider window from ?days and from the setting
+      expect((await api('get', '/dashboard/obligations?days=30', A).expect(200)).body.upcoming.items.map((i: any) => i.id)).toContain(later.id);
+      await api('patch', '/settings', A, { dashboardDueDays: 30 }).expect(200);
+      expect((await api('get', '/dashboard/obligations', A).expect(200)).body.days).toBe(30);
+      await api('patch', '/settings', A, { dashboardDueDays: 0 }).expect(400);
+      await api('patch', '/settings', A, { dashboardDueDays: 7 }).expect(200);
+      // the dashboard right (VIEW_REPORTS); a plain cashier is refused
+      await api('get', '/dashboard/obligations', C).expect(403);
     });
   });
 });

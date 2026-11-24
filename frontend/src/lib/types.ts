@@ -1444,6 +1444,7 @@ export interface ApiStoreSettings {
   vatEnabled?: boolean;
   lowStockThreshold?: number | string;
   cashMovementApprovalLimit?: number | string;
+  dashboardDueDays?: number;
   allowDecimalQty?: boolean;
   loyaltyConfig?: LoyaltyConfigJson | null;
   /** what slips / A4 documents show (shared/src/receipt-options.ts); null = defaults */

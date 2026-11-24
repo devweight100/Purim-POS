@@ -23,6 +23,8 @@ export interface StoreSettings {
   lowStockThreshold?: number;
   /** drawer cash in/out above this needs a manager PIN (0 = always) */
   cashMovementApprovalLimit?: number | string; // Decimal column: the server sends it as a string
+  /** dashboard: expenses / supplier bills due within this many days (1-90, default 7) */
+  dashboardDueDays?: number;
   /** quantities may have up to 2 decimals (sell by metre / kg); off = whole units only */
   allowDecimalQty?: boolean;
   /** what slips / A4 documents show, every key filled (read it through lib/receipt-options getReceiptOptions) */
