@@ -143,7 +143,14 @@ jobs:
             Write-Host "Release $env:TAG exists: replacing its files"
             gh release upload $env:TAG @files --clobber --repo $env:GITHUB_REPOSITORY
           } else {
-            gh release create $env:TAG @files --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA `
-              --title "Purim POS $env:TAG" --generate-notes --latest
+            # Thai release notes from docs/release-notes/<tag>.md when the repo has them, else GitHub's generated notes
+            $notes = "docs/release-notes/$env:TAG.md"
+            if (Test-Path $notes) {
+              gh release create $env:TAG @files --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA `
+                --title "Purim POS $env:TAG" --notes-file $notes --latest
+            } else {
+              gh release create $env:TAG @files --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA `
+                --title "Purim POS $env:TAG" --generate-notes --latest
+            }
           }
           if ($LASTEXITCODE) { exit $LASTEXITCODE }

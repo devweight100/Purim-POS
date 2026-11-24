@@ -13,7 +13,7 @@ Branch `ccr-8f8b0741-si1a0o`. Spec: owner list "Round B". Item 9 (price fallback
 | 9 Quotes use the shared price rule (check only) | checked |
 | 10 LINE staff group notification + reminders | done (code + tests) |
 | Leftovers: PO status chips Thai, stock-card "-:", stat tiles | done |
-| Release v1.5.11 notes (no tag) | todo |
+| Release v1.5.11 notes (no tag) | prepared |
 
 ## Decisions (safest option, owner may change)
 
@@ -132,3 +132,12 @@ It prices through `priceLines()` -> `shopUnits()` (`shared/src/online-shop.ts`) 
 `productUnitPrices` of `shared/src/price-level.ts`, the same rule as the POS and checkout (shared tests
 `shared/test/online-shop.spec.ts` "a level without prices = retail ... first non-zero of ราคา 2 -> 5"; backend e2e
 "quote" calls). No change needed.
+
+## Release v1.5.11 (prepared, not tagged)
+
+- Versions: the release version comes from the git tag (`release.yml`: tag v1.5.11 -> app version 1.5.11); the
+  only version kept in the repo is `desktop/package.json` (default of local `Installer/build-installers.*`), bumped
+  1.4.2 -> 1.5.11. Backend / frontend package.json versions are not used for releases (unchanged).
+- Thai release notes: `docs/release-notes/v1.5.11.md`; `release.yml` now publishes `docs/release-notes/<tag>.md`
+  as the release text when it exists (else GitHub's generated notes as before).
+- To ship: `git tag v1.5.11 && git push origin v1.5.11` from main after the merge (coordinator / owner).
