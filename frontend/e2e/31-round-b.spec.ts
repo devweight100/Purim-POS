@@ -83,7 +83,7 @@ test.afterAll(async () => {
 test('product export: filter dialog -> PIN (wrong, cancel, right) -> Excel with the filtered rows', async ({ page }) => {
   await uiLogin(page, ADMIN.username, ADMIN.password);
   await page.goto('/products');
-  await page.getByRole('button', { name: /ส่งออก Excel/ }).click();
+  await page.getByRole('button', { name: 'ส่งออก Excel (.xlsx)' }).click();
   const dlg = page.getByTestId('product-export-dialog');
   await expect(dlg).toBeVisible();
   // keyboard: the category search is focused; type and tick the category
@@ -107,8 +107,9 @@ test('product export: filter dialog -> PIN (wrong, cancel, right) -> Excel with 
   // Escape = cancel, nothing downloaded
   await page.keyboard.press('Escape');
   await expect(pin).toBeHidden();
+  await expect(dlg).toBeHidden();
   // again with the right PIN
-  await page.getByRole('button', { name: /ส่งออก Excel/ }).click();
+  await page.getByRole('button', { name: 'ส่งออก Excel (.xlsx)' }).click();
   await expect(dlg.getByTestId('export-categories').getByLabel(`ส่งออก ${TAG}`)).toBeChecked(); // filters kept
   await dlg.getByRole('button', { name: 'ส่งออก Excel' }).click();
   const download = page.waitForEvent('download');
@@ -172,7 +173,7 @@ test('LINE staff group: signed webhook through the public path, pick the group, 
   await expect(card).toBeVisible();
   const g = card.getByTestId('line-group-row').filter({ hasText: `กลุ่มพนักงานร้าน ${TAG}` });
   await expect(g).toBeVisible();
-  await g.getByRole('radio').check();
+  await g.getByRole('radio').click(); // saved at once; checked after the server answers
   await expect(page.getByText(/สำหรับแจ้งเตือนแล้ว/).first()).toBeVisible();
   await expect(g.getByRole('radio')).toBeChecked();
   pushes.length = 0;
