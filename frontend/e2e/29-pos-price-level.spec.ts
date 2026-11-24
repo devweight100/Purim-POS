@@ -94,8 +94,8 @@ async function expectPrice(page: Page, name: string, price: number, unit?: strin
 }
 
 /** Pick a member in the member window (Ctrl+M, search, click the row). */
-async function pickMember(page: Page, name: string) {
-  await page.keyboard.press('Control+m');
+async function pickMember(page: Page, name: string, open: () => Promise<void> = () => page.keyboard.press('Control+m')) {
+  await open();
   const dlg = page.getByRole('dialog').filter({ hasText: 'เลือกลูกค้า' });
   await expect(dlg).toBeVisible();
   await dlg.getByPlaceholder(/ค้นหาชื่อ/).fill(name.slice(-12));
@@ -513,7 +513,8 @@ test('list layout: member level and a walk-in level bar', async ({ browser }) =>
     await ensureShift(page);
     await page.evaluate(() => localStorage.removeItem('purim-pos-cart'));
     await reloadPos(page);
-    await pickMember(page, M.l2.name);
+    const openCustomers = () => page.getByTitle('เลือกลูกค้า / สมาชิก (Ctrl+M)').click();
+    await pickMember(page, M.l2.name, openCustomers);
     await scan(page, P.dish.barcode);
     await scan(page, P.glue.barcode);
     await expectPrice(page, P.dish.name, 18);
@@ -522,7 +523,7 @@ test('list layout: member level and a walk-in level bar', async ({ browser }) =>
     await page.waitForTimeout(400);
     await shot(page, 'list-layout-member');
     await noOverflow(page);
-    await page.keyboard.press('Control+m');
+    await openCustomers();
     await page.getByRole('dialog').getByTestId('pos-walkin-btn-2').click();
     await expect(page.getByTestId('pos-walkin-level')).toHaveValue('2');
     await expectPrice(page, P.dish.name, 18);
