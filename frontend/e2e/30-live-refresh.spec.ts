@@ -291,7 +291,11 @@ test('F2 / F4 on a cart line open the POS dialogs (web), F5 hint fits the 3 size
         expect(await horizontalOverflow(page), `${mode} ${size.width}x${size.height}`).toEqual([]);
       }
       await page.setViewportSize(SIZES[0]);
-      if (mode === 'touch_screen') expect(await spacingIssues(page, '[data-testid="pos-top-bar"]')).toEqual([]);
+      if (mode === 'touch_screen') {
+        expect(await spacingIssues(page, '[data-testid="pos-top-bar"]')).toEqual([]);
+        // the F5 button sits in the status line: the top bar stays one row at 1366 x 768
+        expect((await page.getByTestId('pos-top-bar').boundingBox())!.height).toBeLessThan(80);
+      }
       else await shot(page, 'pos-list-f5-hint');
     }
     await page.locator('select').filter({ has: page.locator('option[value="touch_screen"]') }).first().selectOption('touch_screen');

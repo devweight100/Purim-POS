@@ -9,7 +9,7 @@ import { syncClock, useSyncStatus } from '@/lib/sync-status';
  * Changes made in the back office arrive by themselves within seconds; F5 forces a full reload of the catalogue,
  * customers and settings (cart, held bills and unsent bills are kept).
  */
-export function PosRefreshButton({ className = '' }: { className?: string }) {
+export function PosRefreshButton({ className = '', size = 'bar' }: { className?: string; size?: 'bar' | 'inline' }) {
   const lastSyncAt = useSyncStatus((s) => s.lastSyncAt);
   const refreshing = useSyncStatus((s) => s.refreshing);
   const clock = syncClock(lastSyncAt);
@@ -21,11 +21,12 @@ export function PosRefreshButton({ className = '' }: { className?: string }) {
       disabled={refreshing}
       title={`รีเฟรชข้อมูลสินค้า ลูกค้า และการตั้งค่าจากเซิร์ฟเวอร์ (F5) — ซิงค์ล่าสุด ${clock}; ตะกร้าและบิลพักไม่หาย`}
       aria-label={`รีเฟรชข้อมูล (F5) ซิงค์ล่าสุด ${clock}`}
-      className={`flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-2.5 text-xs font-bold text-slate-700 shadow-2xs transition-colors hover:bg-slate-50 disabled:opacity-60 ${className}`}
+      className={`flex shrink-0 items-center gap-1.5 border border-slate-300 bg-white text-xs font-bold text-slate-700 shadow-2xs transition-colors hover:bg-slate-50 disabled:opacity-60 ${size === 'inline' ? 'h-7 rounded-md px-2' : 'h-11 rounded-xl px-2.5'} ${className}`}
     >
       <RefreshCw className={`h-3.5 w-3.5 text-slate-500 ${refreshing ? 'animate-spin motion-reduce:animate-none' : ''}`} />
       <span className="hidden 2xl:inline">รีเฟรชข้อมูล</span>
       <span className="rounded border border-slate-300 bg-slate-50 px-1 py-0.5 font-mono text-[10px] text-slate-700">F5</span>
+      <span className="font-normal text-slate-500">ซิงค์</span>
       <span data-testid="pos-last-sync" className="font-normal tabular-nums text-slate-500">{clock}</span>
     </button>
   );

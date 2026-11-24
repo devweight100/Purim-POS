@@ -240,9 +240,6 @@ export function ClassicProductPanel({ pos }: { pos: PosController }) {
           <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-white text-indigo-700 border border-indigo-200 font-bold">F3</span>
         </Button>
 
-        {/* F5 รีเฟรชข้อมูล + last sync time */}
-        <PosRefreshButton />
-
         {/* Screen View Mode Selector */}
         <select
           value={pos.viewMode}
@@ -310,9 +307,13 @@ export function ClassicProductPanel({ pos }: { pos: PosController }) {
       {/* Status info bar */}
       <div className="flex flex-wrap items-center justify-between gap-btn px-edge py-2 bg-slate-100 border-b border-slate-200 text-xs text-slate-600 font-medium">
         <span>แสดง {filter.visibleProducts.length} จากทั้งหมด {filter.filteredProducts.length} รายการ · ↓ จากช่องค้นหา = เลือกด้วยลูกศร + Enter</span>
-        <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded flex items-center gap-1 font-semibold">
-          ⚡ สแกนเนอร์บาร์โค้ดทำงานอัตโนมัติ ไม่ต้องคลิกช่องค้นหา
-        </span>
+        <div className="flex flex-wrap items-center gap-btn">
+          <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded flex items-center gap-1 font-semibold">
+            ⚡ สแกนเนอร์บาร์โค้ดทำงานอัตโนมัติ ไม่ต้องคลิกช่องค้นหา
+          </span>
+          {/* F5 รีเฟรชข้อมูล + last sync time (docs/pos-keys-refresh.md) */}
+          <PosRefreshButton size="inline" />
+        </div>
       </div>
 
       {/* Product Grid */}
