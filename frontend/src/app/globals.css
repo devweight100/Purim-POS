@@ -378,3 +378,47 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     .pos-qty-bump { animation: none; opacity: 1; }
   }
 }
+
+/* Stat tiles above back-office tables (docs/ui-style.md "Stat tiles"). Outside any @layer like .tbl, so per-page
+   colour utilities left on the markup cannot make one page's tiles differ from the next. Colour = meaning only:
+   the value is primary text, `is-danger` for negative / voided / overdue figures. */
+.stat-tile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 3rem;
+  padding: 0.5rem 1rem;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04);
+}
+.stat-tile-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 0.25rem;
+  border-radius: 0.375rem;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  color: var(--muted-foreground);
+}
+.stat-tile-label {
+  font-size: var(--text-th);
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+.stat-tile-value {
+  font-size: 1.125rem;
+  line-height: 1.4;
+  font-weight: 600;
+  color: var(--fg);
+  letter-spacing: normal;
+  font-variant-numeric: tabular-nums;
+}
+.stat-tile-value.is-danger { color: var(--danger-fg); }
+.stat-tile-unit {
+  font-size: var(--text-sub);
+  font-weight: 400;
+  color: var(--muted-foreground);
+}

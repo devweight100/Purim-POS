@@ -594,60 +594,60 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
         <div className="space-y-3">
           {/* KPI Summary Boxes (Orders style compact inline) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-sky-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-sky-50 text-sky-600 rounded-md border border-sky-100 shrink-0">
+                <div className="stat-tile-icon">
                   <TrendingUp className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-sky-950">ยอดขายสุทธิ (Net):</span>
+                <span className="stat-tile-label">ยอดขายสุทธิ (Net):</span>
               </div>
               <div className="flex items-baseline gap-1.5 tabular-nums">
-                <span className="text-lg sm:text-xl font-semibold text-sky-700 tracking-tight">
+                <span className="stat-tile-value">
                   {formatCurrency(salesProfitReport.totalNetSales)}
                 </span>
               </div>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-amber-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-amber-50 text-amber-600 rounded-md border border-amber-100 shrink-0">
+                <div className="stat-tile-icon">
                   <Tag className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-amber-950">ต้นทุนสินค้า (COGS):</span>
+                <span className="stat-tile-label">ต้นทุนสินค้า (COGS):</span>
               </div>
               <div className="flex items-baseline gap-1.5 tabular-nums">
-                <span className="text-lg sm:text-xl font-semibold text-amber-700 tracking-tight">
+                <span className="stat-tile-value">
                   {formatCurrency(salesProfitReport.totalCogs)}
                 </span>
               </div>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
+                <div className="stat-tile-icon">
                   <Coins className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-emerald-950">กำไรขั้นต้น (Profit):</span>
+                <span className="stat-tile-label">กำไรขั้นต้น (Profit):</span>
               </div>
               <div className="flex items-baseline gap-1.5 tabular-nums">
-                <span className="text-lg sm:text-xl font-semibold text-emerald-700 tracking-tight">
+                <span className="stat-tile-value">
                   {formatCurrency(salesProfitReport.totalGrossProfit)}
                 </span>
               </div>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+                <div className="stat-tile-icon">
                   <BarChart3 className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-indigo-950">อัตรากำไร (Margin):</span>
+                <span className="stat-tile-label">อัตรากำไร (Margin):</span>
               </div>
               <div className="flex items-baseline gap-1.5 tabular-nums">
-                <span className="text-lg sm:text-xl font-semibold text-indigo-700 tracking-tight">
+                <span className="stat-tile-value">
                   {salesProfitReport.overallMargin}%
                 </span>
-                <span className="text-xs text-slate-500 font-sans font-bold">
+                <span className="stat-tile-unit">
                   ({salesProfitReport.totalOrders} ออเดอร์)
                 </span>
               </div>
@@ -796,53 +796,53 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       {activeTab === 'bestsellers' && (
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+                <div className="stat-tile-icon">
                   <Boxes className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-indigo-950">สินค้าที่มีการขาย:</span>
+                <span className="stat-tile-label">สินค้าที่มีการขาย:</span>
               </div>
               <div className="flex items-baseline gap-1.5 tabular-nums">
-                <span className="text-lg sm:text-xl font-semibold text-indigo-700 tracking-tight">
+                <span className="stat-tile-value">
                   {bestSellersReport.productCount}
                 </span>
-                <span className="text-xs text-slate-600 font-sans font-bold">รายการ</span>
+                <span className="stat-tile-unit">รายการ</span>
               </div>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
+                <div className="stat-tile-icon">
                   <Sparkles className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-emerald-950">ขายดีอันดับ 1:</span>
+                <span className="stat-tile-label">ขายดีอันดับ 1:</span>
               </div>
               <span className="text-xs sm:text-sm font-semibold text-emerald-700 truncate max-w-[170px]">
                 {bestSellersReport.topByQuantity[0]?.name || '-'}
               </span>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-sky-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-sky-50 text-sky-600 rounded-md border border-sky-100 shrink-0">
+                <div className="stat-tile-icon">
                   <Coins className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-sky-950">กำไรสูงสุดอันดับ 1:</span>
+                <span className="stat-tile-label">กำไรสูงสุดอันดับ 1:</span>
               </div>
               <span className="text-xs sm:text-sm font-semibold text-sky-700 truncate max-w-[170px]">
                 {bestSellersReport.topByProfit[0]?.name || '-'}
               </span>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-slate-200/80 shadow-2xs flex items-center justify-between bg-slate-50/50">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-slate-100 text-slate-700 rounded-md border border-slate-200 shrink-0">
+                <div className="stat-tile-icon">
                   <Tag className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-slate-800">กำไรรวม Top 15:</span>
+                <span className="stat-tile-label">กำไรรวม Top 15:</span>
               </div>
-              <span className="text-lg sm:text-xl font-semibold text-slate-800 tabular-nums tracking-tight">
+              <span className="stat-tile-value">
                 {formatCurrency(bestSellersReport.topByProfit.reduce((s, p) => s + p.totalProfit, 0))}
               </span>
             </div>
@@ -934,50 +934,50 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       {activeTab === 'inventory' && (
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+                <div className="stat-tile-icon">
                   <Boxes className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-indigo-950">มูลค่าทุนคลังรวม:</span>
+                <span className="stat-tile-label">มูลค่าทุนคลังรวม:</span>
               </div>
-              <span className="text-lg sm:text-xl font-semibold text-indigo-700 tabular-nums tracking-tight">
+              <span className="stat-tile-value">
                 {formatCurrency(inventoryReport.totalCostVal)}
               </span>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
+                <div className="stat-tile-icon">
                   <TrendingUp className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-emerald-950">มูลค่าขายปลีกรวม:</span>
+                <span className="stat-tile-label">มูลค่าขายปลีกรวม:</span>
               </div>
-              <span className="text-lg sm:text-xl font-semibold text-emerald-700 tabular-nums tracking-tight">
+              <span className="stat-tile-value">
                 {formatCurrency(inventoryReport.totalRetailVal)}
               </span>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-rose-50 text-rose-600 rounded-md border border-rose-100 shrink-0">
+                <div className="stat-tile-icon">
                   <AlertTriangle className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-rose-950">ทุนจมของขายช้า:</span>
+                <span className="stat-tile-label">ทุนจมของขายช้า:</span>
               </div>
-              <span className="text-lg sm:text-xl font-semibold text-rose-600 tabular-nums tracking-tight">
+              <span className="stat-tile-value is-danger">
                 {formatCurrency(inventoryReport.deadstockCostVal)}
               </span>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-amber-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-amber-50 text-amber-600 rounded-md border border-amber-100 shrink-0">
+                <div className="stat-tile-icon">
                   <AlertTriangle className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-amber-950">สินค้าสต็อกต่ำ (≤ {inventoryReport.lowStockThreshold}):</span>
+                <span className="stat-tile-label">สินค้าสต็อกต่ำ (≤ {inventoryReport.lowStockThreshold}):</span>
               </div>
-              <span className="text-lg sm:text-xl font-semibold text-amber-700 tabular-nums tracking-tight">
+              <span className="stat-tile-value">
                 {inventoryReport.lowStockCount} <span className="text-xs font-sans">รายการ</span>
               </span>
             </div>
@@ -1111,58 +1111,52 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       {activeTab === 'payments' && (
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-sky-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-sky-50 text-sky-600 rounded-md border border-sky-100 shrink-0">
+                <div className="stat-tile-icon">
                   <Coins className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-sky-950" title="เงินที่ได้รับจริง: เงินสด + QR/โอน + บัตร หักคืนเงิน รวมรับชำระหนี้ (ไม่รวมขายเชื่อที่ยังไม่ได้รับเงิน)">
+                <span className="stat-tile-label" title="เงินที่ได้รับจริง: เงินสด + QR/โอน + บัตร หักคืนเงิน รวมรับชำระหนี้ (ไม่รวมขายเชื่อที่ยังไม่ได้รับเงิน)">
                   เงินรับจริง (รวมรับชำระหนี้):
                 </span>
               </div>
-              <span className="text-lg sm:text-xl font-semibold text-sky-700 tabular-nums tracking-tight">
+              <span className="stat-tile-value">
                 {formatCurrency(paymentsShiftsReport.totalCollected)}
               </span>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
+                <div className="stat-tile-icon">
                   <Coins className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-emerald-950">เงินสด (Cash):</span>
+                <span className="stat-tile-label">เงินสด (Cash):</span>
               </div>
-              <span className="text-lg sm:text-xl font-semibold text-emerald-700 tabular-nums tracking-tight">
+              <span className="stat-tile-value">
                 {formatCurrency(paymentsShiftsReport.channels.find((c) => c.method === 'CASH')?.totalAmount || 0)}
               </span>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+                <div className="stat-tile-icon">
                   <Coins className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-indigo-950">QR / โอนเงิน:</span>
+                <span className="stat-tile-label">QR / โอนเงิน:</span>
               </div>
-              <span className="text-lg sm:text-xl font-semibold text-indigo-700 tabular-nums tracking-tight">
+              <span className="stat-tile-value">
                 {formatCurrency(paymentsShiftsReport.channels.find((c) => c.method === 'QR_PROMPTPAY')?.totalAmount || 0)}
               </span>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-slate-100 text-slate-700 rounded-md border border-slate-200 shrink-0">
+                <div className="stat-tile-icon">
                   <AlertTriangle className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-slate-800">ผลต่างปิดกะสะสม:</span>
+                <span className="stat-tile-label">ผลต่างปิดกะสะสม:</span>
               </div>
-              <span className={`text-lg sm:text-xl font-semibold tabular-nums tracking-tight ${
-                paymentsShiftsReport.shifts.totalCashDiscrepancy === 0
-                  ? 'text-slate-800'
-                  : paymentsShiftsReport.shifts.totalCashDiscrepancy > 0
-                  ? 'text-sky-700'
-                  : 'text-rose-600'
-              }`}>
+              <span className={`stat-tile-value${paymentsShiftsReport.shifts.totalCashDiscrepancy < 0 ? ' is-danger' : ''}`}>
                 {paymentsShiftsReport.shifts.totalCashDiscrepancy > 0
                   ? `+${formatCurrency(paymentsShiftsReport.shifts.totalCashDiscrepancy)}`
                   : formatCurrency(paymentsShiftsReport.shifts.totalCashDiscrepancy)}
@@ -1219,26 +1213,26 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       {activeTab === 'customers' && (
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+                <div className="stat-tile-icon">
                   <Users className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-indigo-950">ลูกค้าทั้งหมด:</span>
+                <span className="stat-tile-label">ลูกค้าทั้งหมด:</span>
               </div>
-              <span className="text-lg sm:text-xl font-semibold text-indigo-700 tabular-nums tracking-tight">
+              <span className="stat-tile-value">
                 {customerDebtsReport.customerCount} <span className="text-xs font-sans">คน</span>
               </span>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
+                <div className="stat-tile-icon">
                   <TrendingUp className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-emerald-950">ยอดซื้อเฉลี่ย/คน:</span>
+                <span className="stat-tile-label">ยอดซื้อเฉลี่ย/คน:</span>
               </div>
-              <span className="text-lg sm:text-xl font-semibold text-emerald-700 tabular-nums tracking-tight">
+              <span className="stat-tile-value">
                 {formatCurrency(
                   customerDebtsReport.customerCount > 0
                     ? Math.round(customerDebtsReport.totalSpentAll / customerDebtsReport.customerCount)
@@ -1247,26 +1241,26 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               </span>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-amber-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-amber-50 text-amber-600 rounded-md border border-amber-100 shrink-0">
+                <div className="stat-tile-icon">
                   <Sparkles className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-amber-950">ลูกค้ายอดซื้อสูงสุด:</span>
+                <span className="stat-tile-label">ลูกค้ายอดซื้อสูงสุด:</span>
               </div>
               <span className="text-xs sm:text-sm font-semibold text-amber-700 truncate max-w-[170px]">
                 {customerDebtsReport.topCustomers[0]?.name || '-'}
               </span>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-rose-50 text-rose-600 rounded-md border border-rose-100 shrink-0">
+                <div className="stat-tile-icon">
                   <Receipt className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-rose-950">หนี้เงินเชื่อคงค้าง:</span>
+                <span className="stat-tile-label">หนี้เงินเชื่อคงค้าง:</span>
               </div>
-              <span className="text-lg sm:text-xl font-semibold text-rose-600 tabular-nums tracking-tight">
+              <span className="stat-tile-value is-danger">
                 {formatCurrency(customerDebtsReport.totalOutstandingDebt)}
               </span>
             </div>
@@ -1421,24 +1415,24 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
       {activeTab === 'purchases' && (
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+                <div className="stat-tile-icon">
                   <Truck className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-indigo-950" title="มูลค่าสินค้าที่รับเข้าแล้วในช่วงเวลาที่เลือก (ตามวันที่รับของ)">ยอดซื้อ (รับของแล้วในช่วงนี้):</span>
+                <span className="stat-tile-label" title="มูลค่าสินค้าที่รับเข้าแล้วในช่วงเวลาที่เลือก (ตามวันที่รับของ)">ยอดซื้อ (รับของแล้วในช่วงนี้):</span>
               </div>
-              <span className="text-lg sm:text-xl font-semibold text-indigo-700 tabular-nums tracking-tight">
+              <span className="stat-tile-value">
                 {formatCurrency(purchasesClaimsReport.totalPurchasesOverall)}
               </span>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
+                <div className="stat-tile-icon">
                   <Building2 className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-emerald-950" title="ยอดค้างจ่ายสำหรับสินค้าที่รับแล้ว (ตรงกับหน้าการเงิน) / สั่งแล้วยังไม่ได้รับของ">ค้างจ่าย / สั่งแล้วยังไม่รับ:</span>
+                <span className="stat-tile-label" title="ยอดค้างจ่ายสำหรับสินค้าที่รับแล้ว (ตรงกับหน้าการเงิน) / สั่งแล้วยังไม่ได้รับของ">ค้างจ่าย / สั่งแล้วยังไม่รับ:</span>
               </div>
               <span className="text-sm sm:text-base font-medium text-emerald-700 tabular-nums tracking-tight text-right">
                 {formatCurrency(purchasesClaimsReport.totalRemainingPayable)}
@@ -1446,26 +1440,26 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               </span>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-rose-50 text-rose-600 rounded-md border border-rose-100 shrink-0">
+                <div className="stat-tile-icon">
                   <PackageX className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-rose-950">มูลค่าของเคลมสะสม:</span>
+                <span className="stat-tile-label">มูลค่าของเคลมสะสม:</span>
               </div>
-              <span className="text-lg sm:text-xl font-semibold text-rose-600 tabular-nums tracking-tight">
+              <span className="stat-tile-value is-danger">
                 {formatCurrency(purchasesClaimsReport.totalClaimsCostOverall)}
               </span>
             </div>
 
-            <div className="bg-white px-3.5 py-2 rounded-xl border border-amber-200/80 shadow-2xs flex items-center justify-between">
+            <div className="stat-tile">
               <div className="flex items-center gap-2">
-                <div className="p-1 bg-amber-50 text-amber-600 rounded-md border border-amber-100 shrink-0">
+                <div className="stat-tile-icon">
                   <Layers className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-bold text-amber-950">จำนวนชิ้นที่ส่งเคลม:</span>
+                <span className="stat-tile-label">จำนวนชิ้นที่ส่งเคลม:</span>
               </div>
-              <span className="text-lg sm:text-xl font-semibold text-amber-700 tabular-nums tracking-tight">
+              <span className="stat-tile-value">
                 {purchasesClaimsReport.supplierBreakdown.reduce((s, i) => s + i.claimPieces, 0)} <span className="text-xs font-sans">ชิ้น</span>
               </span>
             </div>

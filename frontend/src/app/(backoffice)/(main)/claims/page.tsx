@@ -170,65 +170,65 @@ export default function ClaimsPage() {
       {/* ─── TOP KPI STATS CARDS ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
         {/* 1. Total Claims */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+            <div className="stat-tile-icon">
               <ShieldAlert className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-indigo-950">รายการเคลมทั้งหมด:</span>
+            <span className="stat-tile-label">รายการเคลมทั้งหมด:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-indigo-700 tracking-tight">
+            <span className="stat-tile-value">
               {summary.totalClaims}
             </span>
-            <span className="text-xs text-slate-600 font-sans font-bold">รายการ</span>
+            <span className="stat-tile-unit">รายการ</span>
           </div>
         </div>
 
         {/* 2. Total Claim Value */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-rose-50 text-rose-600 rounded-md border border-rose-100 shrink-0">
+            <div className="stat-tile-icon">
               <Banknote className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-rose-950">มูลค่าเคลมรวม:</span>
+            <span className="stat-tile-label">มูลค่าเคลมรวม:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-rose-600 tracking-tight">
+            <span className="stat-tile-value is-danger">
               {formatCurrency(summary.totalClaimValue)}
             </span>
           </div>
         </div>
 
         {/* 3. Replacement Count */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+            <div className="stat-tile-icon">
               <RotateCcw className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-indigo-950">เปลี่ยนชิ้นใหม่:</span>
+            <span className="stat-tile-label">เปลี่ยนชิ้นใหม่:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-indigo-600 tracking-tight">
+            <span className="stat-tile-value">
               {summary.replacedItemCount}
             </span>
-            <span className="text-xs text-slate-600 font-sans font-bold">รายการ</span>
+            <span className="stat-tile-unit">รายการ</span>
           </div>
         </div>
 
         {/* 4. Cash / Transfer Refunds */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
+            <div className="stat-tile-icon">
               <Banknote className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-emerald-950">คืนเงินสด/โอน:</span>
+            <span className="stat-tile-label">คืนเงินสด/โอน:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-emerald-700 tracking-tight">
+            <span className="stat-tile-value">
               {summary.refundedCount}
             </span>
-            <span className="text-xs text-slate-600 font-sans font-bold">รายการ</span>
+            <span className="stat-tile-unit">รายการ</span>
           </div>
         </div>
       </div>

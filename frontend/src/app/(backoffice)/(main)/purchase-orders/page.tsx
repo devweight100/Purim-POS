@@ -327,7 +327,7 @@ export default function PurchaseOrdersPage() {
     }
     void fetchPOs();
 
-    toast.success(`ออกใบสั่งซื้อ ${targetIssuePo.poNumber} สำเร็จ สถานะเปลี่ยนเป็น ISSUED`);
+    toast.success(`ออกใบสั่งซื้อ ${targetIssuePo.poNumber} สำเร็จ สถานะเปลี่ยนเป็น ออกแล้ว`);
     if (isDetailOpen && currentPo?.id === id) {
       setCurrentPo({ ...currentPo, status: "ISSUED", issuedAt: new Date().toISOString() });
     }

@@ -262,65 +262,65 @@ export default function ClaimInventoryPage() {
       {/* ─── TOP STATS OVERVIEW CARDS (Compact Single-line Layout matching orders page) ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
         {/* Card 1: Unique Claim Products */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-rose-50 text-rose-600 rounded-md border border-rose-100 shrink-0">
+            <div className="stat-tile-icon">
               <Boxes className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-rose-950">สินค้าเคลมในคลัง:</span>
+            <span className="stat-tile-label">สินค้าเคลมในคลัง:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-rose-600 tracking-tight">
+            <span className="stat-tile-value is-danger">
               {stats.uniqueProducts}
             </span>
-            <span className="text-xs text-rose-700 font-sans font-bold">รายการ</span>
+            <span className="stat-tile-unit">รายการ</span>
           </div>
         </div>
 
         {/* Card 2: Total Claim Pieces */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-amber-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-amber-50 text-amber-600 rounded-md border border-amber-100 shrink-0">
+            <div className="stat-tile-icon">
               <PackageX className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-amber-950">จำนวนชิ้นรอเคลม:</span>
+            <span className="stat-tile-label">จำนวนชิ้นรอเคลม:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-amber-700 tracking-tight">
+            <span className="stat-tile-value">
               {stats.pieces}
             </span>
-            <span className="text-xs text-slate-600 font-sans font-bold">ชิ้น</span>
+            <span className="stat-tile-unit">ชิ้น</span>
           </div>
         </div>
 
         {/* Card 3: Total Claim Cost Value */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+            <div className="stat-tile-icon">
               <ShieldAlert className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-indigo-950">มูลค่าต้นทุนรวม:</span>
+            <span className="stat-tile-label">มูลค่าต้นทุนรวม:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-indigo-700 tracking-tight">
+            <span className="stat-tile-value">
               {formatCurrency(stats.costValue)}
             </span>
           </div>
         </div>
 
         {/* Card 4: Distinct Suppliers */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-slate-200/80 shadow-2xs flex items-center justify-between bg-slate-50/50">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-slate-100 text-slate-700 rounded-md border border-slate-200 shrink-0">
+            <div className="stat-tile-icon">
               <Truck className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-slate-800">ผู้จำหน่ายที่มีของเคลม:</span>
+            <span className="stat-tile-label">ผู้จำหน่ายที่มีของเคลม:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-slate-800 tracking-tight">
+            <span className="stat-tile-value">
               {stats.suppliersCount}
             </span>
-            <span className="text-xs text-slate-500 font-sans font-bold">บริษัท</span>
+            <span className="stat-tile-unit">บริษัท</span>
           </div>
         </div>
       </div>

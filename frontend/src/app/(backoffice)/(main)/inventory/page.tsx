@@ -1377,7 +1377,8 @@ export default function InventoryPage() {
                             </TableCell>
                             <TableCell className="text-right font-medium text-fg">{m.currentStock} {stockCardProduct?.unit || 'ชิ้น'}</TableCell>
                             <TableCell className="text-fg">
-                              {m.referenceNo && <b className="doc-no text-fg mr-1.5">{m.referenceNo}:</b>}
+                              {/* the server sends "-" when a movement has no document number: no "-:" prefix then */}
+                              {m.referenceNo && m.referenceNo !== '-' && <b className="doc-no text-fg mr-1.5">{m.referenceNo}:</b>}
                               {m.reason || '-'}
                             </TableCell>
                           </TableRow>

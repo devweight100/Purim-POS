@@ -228,54 +228,54 @@ export default function SupplierReturnsPage() {
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
         {/* Metric 1: Pending Claims */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-rose-50 text-rose-600 rounded-md border border-rose-100 shrink-0">
+            <div className="stat-tile-icon">
               <ShieldAlert className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-rose-950">รอส่งเคลมบริษัท:</span>
+            <span className="stat-tile-label">รอส่งเคลมบริษัท:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-rose-600 tracking-tight">
+            <span className="stat-tile-value is-danger">
               {pending.total}
             </span>
-            <span className="text-xs text-rose-700 font-sans font-bold">รายการ</span>
+            <span className="stat-tile-unit">รายการ</span>
           </div>
         </div>
 
         {/* Metric 2: Available Credit */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+            <div className="stat-tile-icon">
               <Receipt className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-indigo-950">เครดิตลดหนี้คงเหลือ:</span>
+            <span className="stat-tile-label">เครดิตลดหนี้คงเหลือ:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-indigo-700 tracking-tight">
+            <span className="stat-tile-value">
               {formatCurrency(totalAvailableCredit)}
             </span>
           </div>
         </div>
 
         {/* Metric 3: Total Return Notes */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
+            <div className="stat-tile-icon">
               <FileText className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-emerald-950">เอกสารส่งคืนทั้งหมด:</span>
+            <span className="stat-tile-label">เอกสารส่งคืนทั้งหมด:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-emerald-700 tracking-tight">
+            <span className="stat-tile-value">
               {returnNotes.filter((n) => n.status !== 'CANCELLED').length}
             </span>
-            <span className="text-xs text-slate-600 font-sans font-bold">ฉบับ</span>
+            <span className="stat-tile-unit">ฉบับ</span>
           </div>
         </div>
 
         {/* Metric 4: Cancelled Notes in Trash */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-slate-200/80 shadow-2xs flex items-center justify-between bg-slate-50/50">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
             <div className="p-1 bg-slate-100 text-slate-600 rounded-md border border-slate-200 shrink-0">
               <Trash2 className="w-4 h-4" />
@@ -283,10 +283,10 @@ export default function SupplierReturnsPage() {
             <span className="text-sm font-bold text-slate-700">เอกสารในถังขยะ:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-slate-700 tracking-tight">
+            <span className="stat-tile-value">
               {cancelledNotes.length}
             </span>
-            <span className="text-xs text-slate-500 font-sans font-bold">ฉบับ</span>
+            <span className="stat-tile-unit">ฉบับ</span>
           </div>
         </div>
       </div>

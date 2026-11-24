@@ -12,7 +12,7 @@ Branch `ccr-8f8b0741-si1a0o`. Spec: owner list "Round B". Item 9 (price fallback
 | 8 Dashboard debtors / creditors / upcoming expenses | todo |
 | 9 Quotes use the shared price rule (check only) | todo |
 | 10 LINE staff group notification + reminders | todo |
-| Leftovers: PO status chips Thai, stock-card "-:", stat tiles | todo |
+| Leftovers: PO status chips Thai, stock-card "-:", stat tiles | done |
 | Release v1.5.11 notes (no tag) | todo |
 
 ## Decisions (safest option, owner may change)
@@ -35,3 +35,13 @@ Replaces the 2026-11-18 rule "SKU = permanent system ID".
   rename a product); only the id column (exported files have it) renames.
 - Tests: backend e2e block "product code (SKU): typed by the user ..."; vitest `product-sku.test.ts`; Playwright
   `20-product-sku`.
+
+## Leftovers from the style pass
+
+- PO status in Thai everywhere on the PO page: chips / tabs / status dialog / toasts ร่าง, ออกแล้ว, รับบางส่วน,
+  รับครบ, ยกเลิก (`PoStatusBadge.tsx` `PO_STATUS_TH`).
+- Stock card dialog: the server sends `referenceNo: "-"` for movements without a document; the dialog showed "-:"
+  before the reason. Now the prefix is shown only for a real document number.
+- Stat tiles: one style from tokens (`.stat-tile*` in `globals.css`, docs/ui-style.md "Stat tiles") on orders, debts,
+  payables, claims, claim inventory, supplier returns, shifts and the 6 report tabs (46 tiles). Decision: values are
+  primary text; red only for owed / overdue / voided / negative figures (colour = meaning rule).

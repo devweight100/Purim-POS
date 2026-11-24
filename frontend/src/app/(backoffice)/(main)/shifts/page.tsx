@@ -300,49 +300,49 @@ export default function ShiftsHistoryPage() {
       {/* ─── TOP KPI STATS ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
         {/* Card 1: Total Closed Shifts */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+            <div className="stat-tile-icon">
               <History className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-indigo-950">รอบการปิดกะ:</span>
+            <span className="stat-tile-label">รอบการปิดกะ:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-indigo-700 tracking-tight">
+            <span className="stat-tile-value">
               {totalRoundsCount}
             </span>
-            <span className="text-xs text-slate-600 font-sans font-bold">รอบ</span>
+            <span className="stat-tile-unit">รอบ</span>
           </div>
         </div>
 
         {/* Card 2: Total Sales Across Shifts */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
+            <div className="stat-tile-icon">
               <Coins className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-emerald-950">ยอดขายรวม:</span>
+            <span className="stat-tile-label">ยอดขายรวม:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-emerald-700 tracking-tight">
+            <span className="stat-tile-value">
               {formatCurrency(totalSalesOverall)}
             </span>
           </div>
         </div>
 
         {/* Card 3: Accuracy Breakdown */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-sky-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-sky-50 text-sky-600 rounded-md border border-sky-100 shrink-0">
+            <div className="stat-tile-icon">
               <CheckCircle2 className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-sky-950">ความถูกต้อง:</span>
+            <span className="stat-tile-label">ความถูกต้อง:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-emerald-600 tracking-tight">
+            <span className="stat-tile-value">
               {balancedCount}
             </span>
-            <span className="text-xs text-slate-600 font-sans font-bold">รอบตรง</span>
+            <span className="stat-tile-unit">รอบตรง</span>
             {(shortCount > 0 || overCount > 0) && (
               <span className="text-xs font-bold text-rose-600 font-sans ml-1">
                 ({shortCount > 0 && `ขาด ${shortCount}`}{overCount > 0 && ` เกิน ${overCount}`})
@@ -352,27 +352,15 @@ export default function ShiftsHistoryPage() {
         </div>
 
         {/* Card 4: Net Cash Discrepancy */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className={`p-1 rounded-md shrink-0 border ${
-              totalDiffOverall === 0 
-                ? 'bg-slate-100 text-slate-600 border-slate-200' 
-                : totalDiffOverall > 0 
-                ? 'bg-sky-50 text-sky-700 border-sky-200' 
-                : 'bg-rose-50 text-rose-700 border-rose-200'
-            }`}>
+            <div className="stat-tile-icon">
               <AlertTriangle className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-slate-900">เงินขาด/เกินสุทธิ:</span>
+            <span className="stat-tile-label">เงินขาด/เกินสุทธิ:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className={`text-lg sm:text-xl font-semibold tracking-tight ${
-              totalDiffOverall === 0 
-                ? 'text-slate-800' 
-                : totalDiffOverall > 0 
-                ? 'text-sky-700' 
-                : 'text-rose-600'
-            }`}>
+            <span className={`stat-tile-value${totalDiffOverall < 0 ? ' is-danger' : ''}`}>
               {totalDiffOverall > 0 ? `+${formatCurrency(totalDiffOverall)}` : formatCurrency(totalDiffOverall)}
             </span>
           </div>

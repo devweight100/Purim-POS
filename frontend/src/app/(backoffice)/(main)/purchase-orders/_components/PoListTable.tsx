@@ -46,19 +46,19 @@ export function PoListTable({
           <TabsList className="bg-slate-100 border border-slate-200">
             <TabsTrigger value="ALL" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">ทั้งหมด ({statusCounts.ALL || 0})</TabsTrigger>
             <TabsTrigger value="DRAFT" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-              DRAFT ({statusCounts.DRAFT || 0})
+              ร่าง ({statusCounts.DRAFT || 0})
             </TabsTrigger>
             <TabsTrigger value="ISSUED" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-              ISSUED ({statusCounts.ISSUED || 0})
+              ออกแล้ว ({statusCounts.ISSUED || 0})
             </TabsTrigger>
             <TabsTrigger value="PARTIALLY_RECEIVED" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-              PARTIAL ({statusCounts.PARTIALLY_RECEIVED || 0})
+              รับบางส่วน ({statusCounts.PARTIALLY_RECEIVED || 0})
             </TabsTrigger>
             <TabsTrigger value="COMPLETED" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-              COMPLETED ({statusCounts.COMPLETED || 0})
+              รับครบ ({statusCounts.COMPLETED || 0})
             </TabsTrigger>
             <TabsTrigger value="CANCELLED" className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-              CANCELLED ({statusCounts.CANCELLED || 0})
+              ยกเลิก ({statusCounts.CANCELLED || 0})
             </TabsTrigger>
           </TabsList>
         </Tabs>

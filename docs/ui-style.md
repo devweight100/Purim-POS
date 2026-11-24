@@ -58,6 +58,14 @@ status**: paid / unpaid, active / inactive, order / claim / PO status, stock-mov
 Tones: success, warning, danger, info, neutral, primary. Category, quantity, unit, payment method, price and other
 plain values are **plain text**, never a chip or a bordered box.
 
+## Stat tiles
+
+Figures above a table (orders, debts, payables, claims, claim inventory, supplier returns, shifts, the 6 report tabs)
+use the classes in `globals.css` (outside any layer, like `.tbl`): `.stat-tile` (white, slate-200 border, 12 px
+radius, 8 x 16 px padding, >= 48 px high), `.stat-tile-icon` (muted 16 px icon on slate-50), `.stat-tile-label`
+(13 px medium muted), `.stat-tile-value` (18 px semibold primary text, tabular digits; `is-danger` = red for
+negative / voided / overdue / owed figures only), `.stat-tile-unit` (12.5 px muted). No per-tile colours (Round B).
+
 ## Tables
 
 - Header row 40 px, 13 px medium muted on slate-50, bottom border.

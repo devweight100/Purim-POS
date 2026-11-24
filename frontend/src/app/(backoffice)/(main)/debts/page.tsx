@@ -216,52 +216,52 @@ function DebtsContent() {
       {/* ─── TOP STATS OVERVIEW CARDS (3 Cards, Single-line Inline Layout) ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         {/* Card 1: Total Outstanding Debt (Inline) */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-rose-50 text-rose-600 rounded-md border border-rose-100 shrink-0">
+            <div className="stat-tile-icon">
               <AlertCircle className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-rose-900">ยอดหนี้ทั้งหมด:</span>
+            <span className="stat-tile-label">ยอดหนี้ทั้งหมด:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-rose-600 tracking-tight">
+            <span className="stat-tile-value is-danger">
               {formatCurrency(stats.totalOutstanding)}
             </span>
-            <span className="text-xs text-slate-500 font-sans font-medium">
+            <span className="stat-tile-unit">
               ({stats.unpaidCount} บิล)
             </span>
           </div>
         </div>
 
         {/* Card 2: Pending / Partial Bills Count (Inline) */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-amber-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-amber-50 text-amber-600 rounded-md border border-amber-100 shrink-0">
+            <div className="stat-tile-icon">
               <Clock className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-amber-950">ยังชำระไม่ครบ:</span>
+            <span className="stat-tile-label">ยังชำระไม่ครบ:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-amber-700 tracking-tight">
+            <span className="stat-tile-value">
               {stats.unpaidCount}
             </span>
-            <span className="text-xs text-slate-600 font-sans font-bold">บิล</span>
+            <span className="stat-tile-unit">บิล</span>
           </div>
         </div>
 
         {/* Card 3: Overdue Bills Count (Inline) */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-red-200 shadow-2xs flex items-center justify-between bg-red-50/20">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-red-100 text-red-700 rounded-md border border-red-200 shrink-0">
+            <div className="stat-tile-icon">
               <AlertTriangle className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-red-950">เกินกำหนดชำระ:</span>
+            <span className="stat-tile-label">เกินกำหนดชำระ:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-red-600 tracking-tight">
+            <span className="stat-tile-value is-danger">
               {stats.overdueCount}
             </span>
-            <span className="text-xs text-red-700 font-sans font-bold">บิล</span>
+            <span className="stat-tile-unit">บิล</span>
           </div>
         </div>
       </div>

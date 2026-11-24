@@ -398,61 +398,61 @@ export default function PayablesPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
         {/* Card 1: Total Outstanding AP Debt */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-amber-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-amber-50 text-amber-600 rounded-md border border-amber-100 shrink-0">
+            <div className="stat-tile-icon">
               <DollarSign className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-amber-950">หนี้ค้างจ่ายรวม:</span>
+            <span className="stat-tile-label">หนี้ค้างจ่ายรวม:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-amber-700 tracking-tight">
+            <span className="stat-tile-value">
               {formatCurrency(totalOutstandingDebt)}
             </span>
           </div>
         </div>
 
         {/* Card 2: Unpaid Bills Count */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-rose-50 text-rose-600 rounded-md border border-rose-100 shrink-0">
+            <div className="stat-tile-icon">
               <Receipt className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-rose-950">บิลค้างชำระ:</span>
+            <span className="stat-tile-label">บิลค้างชำระ:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-rose-600 tracking-tight">
+            <span className="stat-tile-value is-danger">
               {unpaidBillsCount}
             </span>
-            <span className="text-xs text-rose-700 font-sans font-bold">บิล</span>
+            <span className="stat-tile-unit">บิล</span>
           </div>
         </div>
 
         {/* Card 3: Available Debit Notes */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-indigo-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-indigo-50 text-indigo-600 rounded-md border border-indigo-100 shrink-0">
+            <div className="stat-tile-icon">
               <ShieldAlert className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-indigo-950">ใบลดหนี้พร้อมหัก:</span>
+            <span className="stat-tile-label">ใบลดหนี้พร้อมหัก:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-indigo-700 tracking-tight">
+            <span className="stat-tile-value">
               {formatCurrency(totalAvailableDebitCredit)}
             </span>
           </div>
         </div>
 
         {/* Card 4: Total Paid to Date */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
+            <div className="stat-tile-icon">
               <CheckCircle2 className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-emerald-950">ชำระแล้วทั้งหมด:</span>
+            <span className="stat-tile-label">ชำระแล้วทั้งหมด:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-emerald-700 tracking-tight">
+            <span className="stat-tile-value">
               {formatCurrency(totalPaidAmount)}
             </span>
           </div>

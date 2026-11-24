@@ -25,49 +25,49 @@ export function OrdersToolbar({
       {/* ─── TOP STATS CARDS (Compact Height, Larger Header Font matching debts page) ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         {/* Card 1: Total Completed Orders (Inline) */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-sky-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-sky-50 text-sky-600 rounded-md border border-sky-100 shrink-0">
+            <div className="stat-tile-icon">
               <ShoppingCart className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-sky-950">ออเดอร์สำเร็จทั้งหมด:</span>
+            <span className="stat-tile-label">ออเดอร์สำเร็จทั้งหมด:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-sky-700 tracking-tight">
+            <span className="stat-tile-value">
               {stats.totalOrders}
             </span>
-            <span className="text-xs text-slate-600 font-sans font-bold">บิล</span>
+            <span className="stat-tile-unit">บิล</span>
           </div>
         </div>
 
         {/* Card 2: Total Net Revenue (Inline) */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-emerald-200/80 shadow-2xs flex items-center justify-between">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-emerald-50 text-emerald-600 rounded-md border border-emerald-100 shrink-0">
+            <div className="stat-tile-icon">
               <DollarSign className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-emerald-950">ยอดขายรวมสุทธิ:</span>
+            <span className="stat-tile-label">ยอดขายรวมสุทธิ:</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-emerald-600 tracking-tight">
+            <span className="stat-tile-value">
               {formatCurrency(stats.totalRevenue)}
             </span>
           </div>
         </div>
 
         {/* Card 3: Voided Orders (Inline) */}
-        <div className="bg-white px-3.5 py-2 rounded-xl border border-rose-200/80 shadow-2xs flex items-center justify-between bg-rose-50/20">
+        <div className="stat-tile">
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-rose-50 text-rose-600 rounded-md border border-rose-100 shrink-0">
+            <div className="stat-tile-icon">
               <Ban className="w-4 h-4" />
             </div>
-            <span className="text-sm font-bold text-rose-950">บิลที่ยกเลิก (Void):</span>
+            <span className="stat-tile-label">บิลที่ยกเลิก (Void):</span>
           </div>
           <div className="flex items-baseline gap-1.5 tabular-nums">
-            <span className="text-lg sm:text-xl font-semibold text-rose-600 tracking-tight">
+            <span className="stat-tile-value is-danger">
               {stats.voidedOrders}
             </span>
-            <span className="text-xs text-rose-700 font-sans font-bold">บิล</span>
+            <span className="stat-tile-unit">บิล</span>
           </div>
         </div>
       </div>

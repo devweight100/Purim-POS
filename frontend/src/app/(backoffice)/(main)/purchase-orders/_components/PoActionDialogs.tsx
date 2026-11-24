@@ -40,7 +40,7 @@ export function PoIssueDialog({ isIssueModalOpen, setIsIssueModalOpen, targetIss
             </div>
           </div>
           <p className="text-xs text-slate-600">
-            เมื่อออกใบสั่งซื้อแล้ว สถานะจะเปลี่ยนจาก <b>DRAFT</b> เป็น <b>ISSUED</b> เพื่อเตรียมพร้อมส่งเอกสารให้ผู้จำหน่ายและตรวจรับสินค้าเข้าคลัง
+            เมื่อออกใบสั่งซื้อแล้ว สถานะจะเปลี่ยนจาก <b>ร่าง</b> เป็น <b>ออกแล้ว</b> เพื่อเตรียมพร้อมส่งเอกสารให้ผู้จำหน่ายและตรวจรับสินค้าเข้าคลัง
           </p>
         </div>
         <DialogFooter className="flex justify-between items-center gap-2 border-t border-slate-100 pt-3">
@@ -96,31 +96,31 @@ export function PoStatusChangeDialog({
               {[
                 {
                   value: 'DRAFT',
-                  label: 'DRAFT (ฉบับร่าง)',
+                  label: 'ร่าง',
                   desc: 'ดึงกลับมาเป็นฉบับร่างเพื่อแก้ไขรายการสินค้าและราคาใหม่',
                   color: 'text-slate-700',
                 },
                 {
                   value: 'ISSUED',
-                  label: 'ISSUED (ออกเอกสารแล้ว)',
+                  label: 'ออกแล้ว',
                   desc: 'ส่งเอกสารให้ผู้จำหน่ายแล้ว อยู่ในขั้นตอนรอรับสินค้า',
                   color: 'text-sky-700',
                 },
                 {
                   value: 'PARTIALLY_RECEIVED',
-                  label: 'PARTIALLY_RECEIVED (รับบางส่วน)',
+                  label: 'รับบางส่วน',
                   desc: 'สินค้ามาส่งแล้วบางรายการ/บางจำนวน ยังรับไม่ครบ',
                   color: 'text-amber-700',
                 },
                 {
                   value: 'COMPLETED',
-                  label: 'COMPLETED (รับครบถ้วนสมบูรณ์)',
+                  label: 'รับครบ',
                   desc: 'สินค้าตรวจรับครบทุกรายการแล้ว และเสร็จสิ้นกระบวนการสั่งซื้อ',
                   color: 'text-emerald-700',
                 },
                 {
                   value: 'CANCELLED',
-                  label: 'CANCELLED (ยกเลิกเอกสาร)',
+                  label: 'ยกเลิก',
                   desc: 'ยกเลิกใบสั่งซื้อนี้ ไม่สามารถรับของเข้าคลังได้',
                   color: 'text-rose-700',
                 },
@@ -218,7 +218,7 @@ export function PoCancelDialog({
             <div className="font-bold flex items-center gap-1.5 text-rose-900">
               <AlertTriangle className="w-4 h-4 text-rose-600" /> คำเตือนการยกเลิกเอกสาร
             </div>
-            <p>เมื่อยกเลิกแล้ว สถานะเอกสารจะเปลี่ยนเป็น <b>CANCELLED</b> และไม่สามารถนำไปรับสินค้าเข้าคลังได้อีก</p>
+            <p>เมื่อยกเลิกแล้ว สถานะเอกสารจะเปลี่ยนเป็น <b>ยกเลิก</b> และไม่สามารถนำไปรับสินค้าเข้าคลังได้อีก</p>
           </div>
 
           <div className="space-y-2">

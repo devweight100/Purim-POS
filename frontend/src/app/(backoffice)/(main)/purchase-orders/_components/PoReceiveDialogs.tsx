@@ -214,7 +214,7 @@ export function PoReceiveDialog({
                   <div>
                     {isAllReceived ? (
                       <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs font-bold px-2.5 py-1">
-                        สถานะ PO จะเปลี่ยนเป็น: COMPLETED (รับครบถ้วน)
+                        สถานะ PO จะเปลี่ยนเป็น: รับครบ
                       </Badge>
                     ) : (
                       <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold px-2.5 py-1">
@@ -330,7 +330,7 @@ export function PoUnderReceiveDialog({
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-emerald-900 text-sm">
-                      ปรับยอดในใบ PO ให้เท่ากับจำนวนที่รับจริง & ปิดเอกสารสมบูรณ์ (COMPLETED)
+                      ปรับยอดในใบ PO ให้เท่ากับจำนวนที่รับจริง & ปิดเอกสารสมบูรณ์ (รับครบ)
                     </span>
                     <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300">
                       แนะนำ
