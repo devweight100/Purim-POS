@@ -144,3 +144,23 @@ It prices through `priceLines()` -> `shopUnits()` (`shared/src/online-shop.ts`) 
 - Thai release notes: `docs/release-notes/v1.5.11.md`; `release.yml` now publishes `docs/release-notes/<tag>.md`
   as the release text when it exists (else GitHub's generated notes as before).
 - To ship: `git tag v1.5.11 && git push origin v1.5.11` from main after the merge (coordinator / owner).
+
+## Verification (final)
+
+| Check | Result |
+|---|---|
+| backend `tsc --noEmit` | ok |
+| backend jest | 187 passed |
+| backend e2e (fresh DB) | 133/133 |
+| fresh-DB migrate deploy + migrate diff | empty diff |
+| migration on an older DB with data (copy) | applied, defaults set |
+| frontend tsc / eslint | ok / 0 errors (99 warnings, unchanged) |
+| frontend vitest | 321 passed |
+| next build | ok |
+| Playwright full suite (fresh DB) | 123/123 |
+| desktop npm test / node --check | 13 passed / ok |
+
+Screenshots (before = d46dc72, after = this branch; 1366x768, 1920x1080, 1093x614; deviceScaleFactor 2):
+session scratchpad `round-b-final/<before|after>-<screen>-<size>.png` (dashboard, products, product form add / edit,
+export click / PIN, purchase orders, orders, debts, payables, claims, claim inventory, supplier returns, shifts,
+reports sales / inventory, settings online / finance, stock card). No horizontal scroll on any after screen.
