@@ -11,7 +11,7 @@ Branch `ccr-8f8b0741-si1a0o`. Spec: owner list "Round B". Item 9 (price fallback
 | 6 Export filter dialog + PIN on every export | done (code + tests) |
 | 8 Dashboard debtors / creditors / upcoming expenses | done (code + tests) |
 | 9 Quotes use the shared price rule (check only) | todo |
-| 10 LINE staff group notification + reminders | todo |
+| 10 LINE staff group notification + reminders | done (code + tests) |
 | Leftovers: PO status chips Thai, stock-card "-:", stat tiles | done |
 | Release v1.5.11 notes (no tag) | todo |
 
@@ -87,3 +87,40 @@ Replaces the 2026-11-18 rule "SKU = permanent system ID".
 - Payables page reads `?search=` / `?supplierId=`; finance page reads `?view=`.
 - Decision: supplier bills appear in both the creditors panel (what is owed) and the upcoming panel (what falls due
   in N days / is overdue), because the owner asked for "unpaid bills due within N days" there.
+
+## 10. LINE staff group: new online order alert + reminders
+
+- Migration `20261208000000_round_b` (additive): `online_shop_config.channel_secret / staff_group_id /
+  back_office_url`, table `line_groups`, `online_orders.staff_alert_next_at / staff_alert_count` (+ index), table
+  `online_order_line_logs`.
+- Webhook `POST /api/public/line/webhook` (`line-webhook.controller.ts`, `line-staff.service.ts`): the raw body is
+  kept (`captureLineRawBody` in main.ts) and `X-Line-Signature` = base64 HMAC-SHA256(channel secret) is checked
+  (timing-safe); no secret / bad signature -> 401. Group events (join, message, member joined ...) record the group
+  (name from `GET /v2/bot/group/{id}/summary`); `leave` marks it left. LINE's "Verify" (empty events) -> 200.
+- Exposure: `shared/src/public-exposure.ts` allows exactly `/api/public/line/webhook` besides the shop (gateway 3080,
+  Next proxy, backend middleware all use it; unit test checks neighbours like `/api/public/line/other` stay 404).
+- Settings (ADMIN): ตั้งค่า > ร้านออนไลน์ > card "แจ้งเตือนกลุ่มพนักงานใน LINE": channel secret (write-only),
+  back-office address for the link (default: this server's LAN IP + port 3000), detected groups with a radio
+  "ใช้แจ้งเตือน" and "ส่งข้อความทดสอบ", "ปิดการแจ้งเตือนกลุ่ม". APIs `GET /online-shop/line/groups`,
+  `POST /online-shop/line/groups/:groupId/test`, `PUT /online-shop/config { channelSecret, staffGroupId, backOfficeUrl }`.
+- Alerts: `placeOrder` sets `staff_alert_next_at = now`; `runDue()` (timer every 60 s + once 5 s after start, so a
+  restart continues) sends the new-order message (order no., customer + phone, item count, total, pickup /
+  delivery, back-office link `/online-orders?id=`), then while the order is still NEW and unclaimed a reminder every
+  10 minutes, at most 6 ("เตือนครั้งที่ n/6 ... รอมา m นาที"). Claimed / accepted / cancelled -> the next run clears
+  the schedule without sending. Each send is taken with a conditional update (never twice). Every result goes to
+  `online_order_line_logs` and shows in the order detail ("แจ้งกลุ่มพนักงาน n ครั้ง").
+- Quota: the month's quota (`/v2/bot/message/quota` + `/consumption`, cached 10 min) is checked before a send; when
+  used up nothing is sent and the log says so. At most 7 pushes per order.
+- Tests: e2e block "LINE staff group ..." with a local mock of api.line.me (never the real API): signature,
+  tunnel path, group pick, test message, alert + 6 reminders with a fake clock and a fresh service instance
+  (restart), stop on claim, quota full, no group chosen.
+- Decisions: "accepted/claimed" = status no longer NEW or a staff member claimed it (claim lock). If no group / no
+  token is set, the order logs "ไม่ได้แจ้งกลุ่มพนักงาน (...)" and no reminders are scheduled (choosing a group later
+  does not alert old orders). The link points at the LAN back office (the back office is never exposed).
+
+### Owner steps (LINE)
+In `Installer/Server/คู่มือร้านออนไลน์ LINE (Cloudflare Tunnel).txt` "ขั้นที่ 7" (Thai): copy the Channel secret,
+set Webhook URL `https://shop.purimtoy.com/api/public/line/webhook`, turn on "Use webhook", enable "Allow bot to join
+group chats", paste the secret in settings, Verify, invite the bot to the staff group and type a message, pick the
+group, "ส่งข้อความทดสอบ". The Cloudflare tunnel itself needs no change (same hostname -> localhost:3080); the server
+must run v1.5.11 so the gateway lets the webhook path through.

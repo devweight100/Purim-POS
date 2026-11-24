@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Globe, ExternalLink } from 'lucide-react';
+import { LineStaffGroupCard } from './LineStaffGroupCard';
 import { apiFetch } from '@/lib/api';
 import { PRICE_LEVELS, type PriceLevel } from '@shared/online-shop';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,9 @@ interface AdminConfig {
   messagingTokenHint: string | null;
   gatewayPort: number | null;
   publicHost: string | null;
+  hasChannelSecret: boolean;
+  staffGroupId: string | null;
+  backOfficeUrl: string | null;
 }
 
 /**
@@ -144,6 +148,7 @@ export function OnlineShopSettings() {
           </div>
         </CardContent>
       </Card>
+      <LineStaffGroupCard hasMessagingToken={c.hasMessagingToken} />
     </div>
   );
 }

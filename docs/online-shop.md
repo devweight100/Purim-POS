@@ -20,9 +20,9 @@ Branch `ccr-8f8b0741-si1a0o`. Owner request 2026-11-16. A later agent: read this
 - LINE push (if a token is configured): order received, accepted (total + PromptPay QR PNG with amount locked when the default bank account has a PromptPay ID, served at `/api/public/shop/qr/...png` signed link, + link to the order page), rejected (reason), delivering, done. Not configured -> skipped; the order shows "ไม่ได้ส่ง LINE (ยังไม่ตั้งค่า)".
 
 ## Tunnel isolation (3 layers)
-1. Gateway port: backend starts a second HTTP listener on `127.0.0.1:${SHOP_GATEWAY_PORT:-3080}` that forwards only allow-listed paths (`/shop`, `/shop/*`, `/api/public/shop/*`, `/_next/static/*`, `/favicon.ico`, `/icon.svg`) to the Next server (`FRONTEND_INTERNAL_URL`, default http://127.0.0.1:3000) and marks them `x-purim-public: 1` (client copies stripped). cloudflared points at this port. Everything else 404.
+1. Gateway port: backend starts a second HTTP listener on `127.0.0.1:${SHOP_GATEWAY_PORT:-3080}` that forwards only allow-listed paths (`/shop`, `/shop/*`, `/api/public/shop/*`, the exact LINE webhook `/api/public/line/webhook` (Round B), `/_next/static/*`, `/favicon.ico`, `/icon.svg`) to the Next server (`FRONTEND_INTERNAL_URL`, default http://127.0.0.1:3000) and marks them `x-purim-public: 1` (client copies stripped). cloudflared points at this port. Everything else 404.
 2. Next `proxy.ts`: a request is public when it carries `x-purim-public`, any Cloudflare header (`cf-ray`, `cf-connecting-ip`, `cf-visitor`, `cdn-loop: cloudflare`) or its Host is the configured `SHOP_PUBLIC_HOST`; public requests may only reach the allow list, else 404.
-3. Backend middleware (AppModule + first `app.use` in main.ts): public requests may only reach `/api/public/shop/*`; CORS is off for public routes.
+3. Backend middleware (AppModule + first `app.use` in main.ts): public requests may only reach `/api/public/shop/*` and `/api/public/line/webhook` (X-Line-Signature checked with the channel secret, else 401); CORS is off for public routes.
 Detection is fail-closed: anything that looks like it came through Cloudflare is public. A LAN request that spoofs those headers only restricts itself.
 
 ## Plan / done

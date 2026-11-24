@@ -6,7 +6,8 @@
 
   The tunnel itself is created in the Cloudflare Zero Trust dashboard (Networks > Tunnels) with ONE public
   hostname whose service is http://localhost:3080 - the backend's online-shop gateway, which serves only /shop,
-  /api/public/shop/* and the page's static files (everything else 404). This script:
+  /api/public/shop/*, the LINE webhook /api/public/line/webhook (signed by LINE) and the page's static files
+  (everything else 404). This script:
     1. installs cloudflared (winget) when missing
     2. installs it as a Windows service with the token (starts with Windows)
     3. writes SHOP_PUBLIC_HOST=<hostname> to backend\.env (requests for that host name are treated as internet

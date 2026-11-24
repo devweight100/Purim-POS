@@ -51,6 +51,8 @@ interface Detail {
   paidAt: string | null;
   createdAt: string;
   lineNotice: string | null;
+  /** staff LINE group alerts of this order (Round B): sends so far, next reminder, log newest first */
+  staffAlerts?: { count: number; nextAt: string | null; log: { kind: string; ok: boolean; result: string; createdAt: string }[] };
   lineName: string | null;
   testProfile: boolean;
   customer: { id: string; name: string; phone: string | null; priceLevel: number; deliveryFee: number | null } | null;
@@ -472,6 +474,18 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
       {d.picked && !isOpen && <p data-testid="picked-note" className="rounded-lg bg-emerald-50 p-2 text-sm font-semibold text-emerald-900">✓ {pickedLabel(d.picked)}</p>}
       {d.posOrder && <p className="rounded-lg bg-emerald-50 p-2 text-sm text-emerald-900">รับเงินแล้ว บิล {d.posOrder.orderNumber} ({formatCurrency(d.posOrder.totalAmount)})</p>}
       <p className="text-xs text-slate-500">LINE: {d.lineNotice || 'ยังไม่มีการแจ้ง'}</p>
+      {d.staffAlerts && d.staffAlerts.log.length > 0 && (
+        <details className="text-xs text-slate-500" data-testid="staff-alert-log">
+          <summary className="cursor-pointer">
+            แจ้งกลุ่มพนักงาน {d.staffAlerts.log.length} ครั้ง{d.staffAlerts.nextAt ? ` · เตือนครั้งถัดไป ${formatListDateTime(d.staffAlerts.nextAt)}` : ''}
+          </summary>
+          <ul className="mt-1 space-y-0.5 pl-4">
+            {d.staffAlerts.log.map((l, i) => (
+              <li key={i} className={l.ok ? '' : 'text-danger'}>{formatListDateTime(l.createdAt)} · {l.result}</li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       <div className="flex flex-wrap gap-btn border-t border-slate-100 pt-3">
         {d.status === 'NEW' && (
