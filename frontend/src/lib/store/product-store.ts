@@ -8,6 +8,7 @@ import { cacheServerCategories, readCachedCategories } from '../category-storage
 import { addQty } from '../qty';
 import { applyCachedProductDelta, cacheProducts, getCachedProducts, type CachedProduct } from '../offline-db';
 import { mergeProductDelta, syncSince } from '../product-delta';
+import { noteCatalogueSynced } from '../sync-status';
 
 interface ProductStore {
   products: Product[];
@@ -18,9 +19,10 @@ interface ProductStore {
   fromOfflineCache: boolean;
   /**
    * Load products + categories from the server. `offlineCache` (default: on POS screens only)
-   * allows falling back to the read-only offline cache so selling keeps working offline.
+   * allows falling back to the read-only offline cache so selling keeps working offline. `full`: ask for the whole
+   * catalogue instead of a delta (POS F5 รีเฟรชข้อมูล).
    */
-  fetchProducts: (opts?: { offlineCache?: boolean }) => Promise<void>;
+  fetchProducts: (opts?: { offlineCache?: boolean; full?: boolean }) => Promise<void>;
   /** delta-sync cursor of `products` (GET /products/sync) and the login it belongs to (cost fields differ per user) */
   syncCursor: string | null;
   syncCursorKey: string | null;
@@ -50,6 +52,8 @@ export const useProductStore = create<ProductStore>((set, get) => ({
     // A refresh asked while a load runs (stock changed, a sale was just saved) is not dropped: it runs once more
     // right after, so the screen always ends with the server's latest stock.
     if (inflight) {
+      // a full reload (F5) is never folded into a queued delta
+      if (opts?.full) return inflight.catch(() => undefined).then(() => get().fetchProducts(opts));
       queued ||= inflight.then(() => {
         queued = null;
         return get().fetchProducts(opts);
@@ -78,7 +82,7 @@ let epoch = 0;
 let inflight: Promise<void> | null = null;
 let queued: Promise<void> | null = null;
 
-async function loadProducts(opts?: { offlineCache?: boolean }): Promise<void> {
+async function loadProducts(opts?: { offlineCache?: boolean; full?: boolean }): Promise<void> {
   const started = epoch;
   const set = (partial: Partial<ProductStore>) => {
     if (started === epoch) useProductStore.setState(partial);
@@ -92,7 +96,7 @@ async function loadProducts(opts?: { offlineCache?: boolean }): Promise<void> {
       //    (GET /products/sync). The offline cache (IndexedDB) follows the same full load / delta.
       const key = getAuthToken();
       const threshold = getLowStockThreshold();
-      const since = threshold !== get().syncThreshold ? undefined : syncSince(
+      const since = opts?.full || threshold !== get().syncThreshold ? undefined : syncSince(
         { cursor: get().syncCursor, cursorKey: get().syncCursorKey, count: get().products.length, fromOfflineCache: get().fromOfflineCache },
         key,
       );
@@ -107,6 +111,7 @@ async function loadProducts(opts?: { offlineCache?: boolean }): Promise<void> {
         if (!cached.length) throw err;
       }
       const fromOfflineCache = cached !== null;
+      if (sync && started === epoch) noteCatalogueSynced();
       let rawCatalog: Array<ApiProduct | CachedProduct> = cached || [];
       if (sync && !sync.full) {
         // delta: only the changed rows are re-mapped; nothing changed = no state change at all

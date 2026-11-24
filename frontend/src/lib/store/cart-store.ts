@@ -4,6 +4,7 @@ import { CartItem, HeldBill, Product, ProductUnit, ClaimRecord, PendingClaimItem
 import { calculateSmartRollupAndPricing, findStoreProduct } from '../cart-pricing';
 import { getCustomerById } from '../customer-service';
 import { unitCandidates } from '../pos/price-level';
+import { repriceCartFromCatalog, type CartPriceChange } from '../pos/cart-catalogue-refresh';
 import { normalizeLevel, pickLevelPrice, type PriceLevel } from '@shared/price-level';
 import { loadStoreSettings } from '../store-settings-storage';
 import { addQty, mulQty, roundQty } from '../qty';
@@ -96,6 +97,13 @@ interface CartStore {
   setWalkInLevel: (level: number) => void;
   /** the selected member's level changed on the server: follow it (re-prices the cart) */
   setMemberLevel: (level: number) => void;
+  /**
+   * The catalogue changed (back-office edit, F5): re-price the lines priced by the catalogue and return what changed
+   * (docs/pos-keys-refresh.md). Not for a bill being edited (its prices are the original sale's).
+   */
+  applyCatalogPrices: () => CartPriceChange[];
+  /** the selected member was renamed on the server */
+  syncCustomerName: (id: string, name: string) => void;
   setEditingOrderId: (id: string | null) => void;
   /** Replace the cart with an accepted online order (agreed prices, ค่าส่ง line, member). The current cart is held. */
   loadOnlineOrder: (o: { id: string; orderNo: string; customerId: string | null; customerName: string | null; note: string; items: CartItem[] }) => void;
@@ -511,6 +519,19 @@ export const useCartStore = create<CartStore>()(persist((set, get) => ({
       const items = calculateSmartRollupAndPricing(state.items, priceLevel);
       return { items, priceLevel, lastTouched: followTouchedLine(state.lastTouched, state.items, items) };
     });
+  },
+
+  applyCatalogPrices: () => {
+    const state = get();
+    if (state.editingOrderId || !state.items.length) return [];
+    const res = repriceCartFromCatalog(state.items, state.priceLevel, findStoreProduct);
+    if (!res) return [];
+    set({ items: res.items, lastTouched: followTouchedLine(state.lastTouched, state.items, res.items) });
+    return res.changes;
+  },
+
+  syncCustomerName: (id: string, name: string) => {
+    if (get().customerId === id && name && get().customerName !== name) set({ customerName: name });
   },
 
   clearCart: () => {

@@ -33,6 +33,8 @@ const TABLE_ENTITY: Record<string, RealtimeEntity> = {
   claim_inventory: 'claim',
   bank_accounts: 'bankAccount',
   store_settings: 'settings',
+  // price level names (shown by the POS, docs/pos-keys-refresh.md)
+  online_shop_config: 'settings',
   online_orders: 'onlineOrder',
   online_order_items: 'onlineOrder',
   line_link_requests: 'onlineOrder',

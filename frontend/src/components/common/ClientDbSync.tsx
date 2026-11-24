@@ -23,6 +23,7 @@ import { api, apiFetch, getAuthToken, ApiError } from '@/lib/api';
 import { getTerminalId } from '@/lib/terminal-id';
 import { startRealtime, RealtimeEvent } from '@/lib/realtime';
 import { clearLegacyLocalData } from '@/lib/local-data-reset';
+import { getElectronAPI } from '@/lib/electron-api';
 
 /** What this screen keeps in memory now (see pos-data-policy.ts). */
 function currentPlan() {
@@ -303,6 +304,9 @@ export function ClientDbSync() {
         soon('products', () => (currentPlan().products ? useProductStore.getState().fetchProducts() : useProductStore.getState().refreshIfLoaded()));
       } else if (e.entity === 'customer' || e.entity === 'debt') {
         soon('customers', () => (currentPlan().customers ? fetchCustomers() : refreshCustomersIfLoaded()));
+      } else if (e.entity === 'settings') {
+        // VAT, receipt options, price level names ...: at once, not only with the 15 s poll (docs/pos-keys-refresh.md)
+        soon('settings', () => loadStoreSettingsFromBackend());
       }
     });
     return () => {
@@ -310,6 +314,19 @@ export function ClientDbSync() {
       timers.forEach((t) => clearTimeout(t));
     };
   }, [userId]);
+
+  // F5 in the desktop app does what it does in a browser: the POS handles it itself (รีเฟรชข้อมูล, preventDefault);
+  // any other page reloads. The app menu has no F5 (desktop/menu-shortcuts.js), so without this nothing happens.
+  useEffect(() => {
+    if (!getElectronAPI()?.isDesktop) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'F5' || e.defaultPrevented || e.altKey || e.metaKey || e.repeat) return;
+      e.preventDefault();
+      window.location.reload();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   if (!status.unavailable && !status.pending && !status.error && !receipts.length) return null;
   return (

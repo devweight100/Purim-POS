@@ -16,6 +16,7 @@ import type { PosController } from '@/lib/pos/use-pos-controller';
 import type { PosViewMode } from '@/lib/pos/pos-variant';
 import type { Product, ProductUnit } from '@/lib/types';
 import { PosLogoutButton } from '../PosLogoutButton';
+import { PosRefreshButton } from '../PosRefreshButton';
 import { PosScannerInput } from '../PosDialogs';
 import { useCartStore } from '@/lib/store/cart-store';
 import { shownUnitPrice } from '@/lib/pos/price-level';
@@ -238,6 +239,9 @@ export function ClassicProductPanel({ pos }: { pos: PosController }) {
           <span className="hidden md:inline">ค้นหาเอกสาร</span>
           <span className="text-[10px] font-mono px-1 py-0.5 rounded bg-white text-indigo-700 border border-indigo-200 font-bold">F3</span>
         </Button>
+
+        {/* F5 รีเฟรชข้อมูล + last sync time */}
+        <PosRefreshButton />
 
         {/* Screen View Mode Selector */}
         <select

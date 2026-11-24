@@ -10,6 +10,7 @@ import type { CartItem } from '@/lib/types';
 import type { PosDialogs } from './use-pos-dialogs';
 import type { CartSelection } from './use-cart-selection';
 import { printCartPickingSlip } from './picking';
+import { refreshPosData } from './pos-refresh';
 
 const EMPTY_CART_WARNING = 'ยังไม่มีสินค้าในตะกร้า';
 
@@ -39,7 +40,8 @@ function keyIs(e: KeyboardEvent, code: string, key: string) {
  * F2 quantity, F3 item discount (empty cart: left to the global document search), F4 price,
  * arrows select a row, Delete removes it, +/- change its quantity, F9 cash drawer,
  * F8 picking slip (ใบจัดของ) of the cart, F10 / Ctrl+P / Ctrl+Shift+P hold bill or held bills, F12 payment, Ctrl+H history,
- * Ctrl+M member, Ctrl+E clear cart.
+ * Ctrl+M member, Ctrl+E clear cart, F5 รีเฟรชข้อมูล (catalogue, customers, settings; cart / held bills / outbox kept;
+ * also while a dialog is open, so F5 never reloads the POS page).
  *
  * The listener is registered once; useEffectEvent gives it the current dialogs and selection on every
  * key press, so it can never act on a stale cart row or a stale "dialog open" flag.
@@ -63,6 +65,12 @@ export function usePosKeyboard({ dialogs, selection, scannerInputRef }: PosKeybo
     const isSearching = isRealTextInput &&
       (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement) &&
       activeEl.value.trim().length > 0;
+
+    if (keyIs(e, 'F5', 'f5') && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      e.preventDefault();
+      if (!e.repeat) void refreshPosData();
+      return;
+    }
 
     // A dialog is open: let it handle its own keys
     if (dialogs.keyboardBlocked || useDocumentSearchStore.getState().isOpen) return;

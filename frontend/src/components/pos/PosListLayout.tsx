@@ -24,6 +24,7 @@ import { Customer, useCustomerById, calculateEarnedPoints } from '@/lib/customer
 import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
 import { toast } from 'sonner';
 import { PosLogoutButton } from '@/components/pos/PosLogoutButton';
+import { PosRefreshButton } from '@/components/pos/PosRefreshButton';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { backOfficeHomeFor } from '@/lib/permissions';
 import { formatQty, subQty } from '@/lib/qty';
@@ -766,6 +767,11 @@ export function PosListLayout({
                               <span>เคลมฟรี {formatQty(item.claimQuantity)} {item.unitName} (คิดเงิน {formatQty(Math.max(0, subQty(item.quantity, item.claimQuantity)))} {item.unitName})</span>
                             </span>
                           )}
+                          {item.priceNotice && (
+                            <span data-testid="pos-line-price-notice" className="text-xs text-sky-800 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded-md font-medium mt-0.5 inline-block w-fit ml-8">
+                              {item.priceNotice}
+                            </span>
+                          )}
                           {item.itemNote && (
                             <span className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md font-medium mt-0.5 inline-block w-fit ml-8">
                               📝 โน้ต: {item.itemNote}
@@ -986,6 +992,8 @@ export function PosListLayout({
             <span>เปิดลิ้นชัก</span>
             <span className="hidden 2xl:inline text-xs opacity-80 font-normal">(F9)</span>
           </button>
+
+          <PosRefreshButton className="min-h-[44px] rounded-lg" />
 
           {shiftOpen === false && onOpenShift && (
             <button

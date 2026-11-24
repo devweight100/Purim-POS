@@ -78,7 +78,7 @@ export class SettingsController {
       if (!settings) {
         settings = await this.prisma.storeSettings.create({ data: {} });
       }
-      return { ...publicSettings(settings), ...(await this.levelInfo()) };
+      return this.withLevels(settings);
     } catch (err) {
       return {
         storeName: 'ร้านปุริม POS',
@@ -106,13 +106,20 @@ export class SettingsController {
     return this.applySettings(body);
   }
 
+  /** Public settings + level names / used levels + `settingsVersion` (changes whenever any of it was saved). */
+  private async withLevels(settings: { updatedAt: Date } & Record<string, any>) {
+    const { updatedAt: levelNamesAt, ...levels } = await this.levelInfo();
+    const settingsVersion = `${new Date(settings.updatedAt).getTime()}-${levelNamesAt ? new Date(levelNamesAt).getTime() : 0}`;
+    return { ...publicSettings(settings), ...levels, settingsVersion };
+  }
+
   /**
    * Price level names (online shop config, also used by the POS offline) and the levels some active product has a
    * price at (the POS offers those for a walk-in bill). Not secret: the shop shows the names to every visitor.
    */
   private async levelInfo() {
     const [cfg, used] = await Promise.all([
-      this.prisma.onlineShopConfig.findUnique({ where: { id: 1 }, select: { levelNames: true } }).catch(() => null),
+      this.prisma.onlineShopConfig.findUnique({ where: { id: 1 }, select: { levelNames: true, updatedAt: true } }).catch(() => null),
       this.prisma.$queryRaw<{ l2: boolean; l3: boolean; l4: boolean; l5: boolean }[]>`
         SELECT bool_or(COALESCE(p.price_level_2, 0) > 0 OR COALESCE(u.l2, false)) AS l2,
                bool_or(COALESCE(p.price_level_3, 0) > 0 OR COALESCE(u.l3, false)) AS l3,
@@ -128,7 +135,7 @@ export class SettingsController {
     // ราคา 1 + every level some product has a price at; a shop without any yet gets 1-3 (retail / wholesale / special)
     const levels = [2, 3, 4, 5].filter((l) => (u as Record<string, boolean> | undefined)?.[`l${l}`]);
     const usedLevels = [1, ...(levels.length ? levels : [2, 3])];
-    return { levelNames: levelNames(cfg?.levelNames), usedLevels };
+    return { levelNames: levelNames(cfg?.levelNames), usedLevels, updatedAt: cfg?.updatedAt ?? null };
   }
 
   /** Only whitelisted, validated fields reach the database (no id/createdAt/approvalRules/backupOffsiteDir). */
@@ -143,7 +150,7 @@ export class SettingsController {
     const saved = settings
       ? await this.prisma.storeSettings.update({ where: { id: settings.id }, data })
       : await this.prisma.storeSettings.create({ data });
-    return { ...publicSettings(saved), ...(await this.levelInfo()) };
+    return this.withLevels(saved);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

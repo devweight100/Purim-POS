@@ -169,7 +169,15 @@ function setIndexed(list: IndexedCustomer[]) {
  * (GET /customers/sync; the screens used to download the whole list every 15 s). Throws when the server cannot be
  * reached. Concurrent calls share one request.
  */
-export function fetchCustomers(): Promise<Customer[]> {
+export function fetchCustomers(opts?: { full?: boolean }): Promise<Customer[]> {
+  // F5 รีเฟรชข้อมูล: the whole list again, after a delta that may be running
+  if (opts?.full) {
+    const after = customersInflight ? customersInflight.catch(() => undefined) : Promise.resolve();
+    return after.then(() => {
+      customersCursor = null;
+      return fetchCustomers();
+    });
+  }
   if (customersInflight) return customersInflight;
   const started = customersEpoch;
   customersInflight = (async () => {

@@ -19,6 +19,7 @@ import { useCartSelection } from './use-cart-selection';
 import { usePosScanner } from './use-pos-scanner';
 import { usePosKeyboard } from './use-pos-keyboard';
 import { addToCart } from '@/lib/pos/pos-add';
+import { priceChangeToast } from './cart-catalogue-refresh';
 
 /**
  * Everything a POS sales screen does apart from drawing itself: dialogs, product list and search,
@@ -45,6 +46,21 @@ export function usePosController(variant: PosVariant) {
   useEffect(() => {
     if (memberLevel) useCartStore.getState().setMemberLevel(memberLevel);
   }, [memberLevel]);
+
+  // the selected member was renamed on the server: the bill shows the new name
+  const memberName = activeCustomer && activeCustomer.id === cart.customerId ? activeCustomer.name : null;
+  useEffect(() => {
+    if (memberName && activeCustomer) useCartStore.getState().syncCustomerName(activeCustomer.id, memberName);
+  }, [memberName, activeCustomer]);
+
+  // a catalogue price changed (back office, another terminal, F5): lines priced by the catalogue follow it with a
+  // notice; never while the payment dialog is open (runs when it closes), docs/pos-keys-refresh.md
+  const paymentOpen = dialogs.showPayment;
+  useEffect(() => {
+    if (paymentOpen) return;
+    const changes = useCartStore.getState().applyCatalogPrices();
+    if (changes.length) toast.info(priceChangeToast(changes), { duration: 6000 });
+  }, [allProducts, paymentOpen]);
 
   useProductAutoRefresh(fetchProducts);
   // POS session: the desktop app counts as a selling device from now on (pos-data-policy.ts)

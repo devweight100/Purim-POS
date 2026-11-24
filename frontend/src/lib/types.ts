@@ -139,6 +139,8 @@ export interface CartItem {
   priceLevel?: number;
   /** agreed price (online order): never re-priced by the level rule */
   fixedPrice?: boolean;
+  /** "ราคาอัปเดต ฿20.00 → ฿25.00": the catalogue price changed while the line was in the cart (shown until the next cart change) */
+  priceNotice?: string;
   // Claim replacement integration
   claimQuantity?: number; // จำนวนชิ้นในรายการนี้ที่เป็นสินค้าเคลม (ไม่คิดเงิน)
   claimDefectReason?: string; // สาเหตุการเคลม

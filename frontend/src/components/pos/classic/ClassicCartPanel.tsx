@@ -221,6 +221,11 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
                           </span>
                         )}
                       </div>
+                      {item.priceNotice && (
+                        <div data-testid="pos-line-price-notice" className="mt-1 w-fit rounded border border-sky-200 bg-sky-50 px-2 py-0.5 text-sub font-medium text-sky-800">
+                          {item.priceNotice}
+                        </div>
+                      )}
                       {item.bundleData && item.bundleData.length > 0 && (
                         <div className="mt-1 text-[11px] text-purple-800 bg-purple-50/80 rounded px-2 py-0.5 border border-purple-100">
                           <span className="font-semibold">ในชุด: </span>
