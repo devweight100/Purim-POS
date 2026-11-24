@@ -1,6 +1,6 @@
 import { expect, test, type Request } from '@playwright/test';
 import { ADMIN } from './env';
-import { api, apiLogin, uiLogin } from './helpers';
+import { api, apiLogin, approveExportPin, uiLogin } from './helpers';
 
 /**
  * The management lists are paged, searched and sorted by the server: the products table asks GET /products/page,
@@ -37,6 +37,9 @@ test('products, customers and orders pages ask the server for one page at a time
   await expect(page.locator('tbody tr', { hasText: tag })).toHaveCount(5);
   // export = every product, not the page
   await page.getByRole('button', { name: /ส่งออก Excel/ }).click();
+  // Round B: filter dialog (defaults = everything), then the manager PIN
+  await page.getByTestId('product-export-dialog').getByRole('button', { name: 'ส่งออก Excel' }).click();
+  await approveExportPin(page, ADMIN.pin);
   await expect(page.getByText(`ส่งออกข้อมูลสินค้า ${allProducts.length} รายการ`)).toBeVisible();
 
   // customers: server search

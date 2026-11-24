@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { expect, test, type Response } from '@playwright/test';
 import { ADMIN } from './env';
-import { uiLogin } from './helpers';
+import { approveExportPin, uiLogin } from './helpers';
 
 /**
  * Reports page: figures come from the server (GET /api/reports/tabs) for the tab on screen; the
@@ -31,6 +31,7 @@ test('reports show the server figures and export them', async ({ page }) => {
   // CSV export of the server rows
   const download = page.waitForEvent('download');
   await page.getByTitle('ส่งออกไฟล์ CSV (UTF-8)').click();
+  await approveExportPin(page, ADMIN.pin); // every export needs a manager PIN (Round B)
   const file = test.info().outputPath('sales.csv');
   await (await download).saveAs(file);
   const csv = fs.readFileSync(file, 'utf8');
@@ -45,17 +46,18 @@ test('reports show the server figures and export them', async ({ page }) => {
   expect(pay.payments.shifts.totalShiftsCount).toBeGreaterThan(0);
   expect(pay.sales).toBeUndefined();
 
-  // best sellers: one page from the server; the export asks for every page (limit=500)
+  // best sellers: one page from the server; the export gets every row from /exports/report
   const best = page.waitForResponse((r) => isTabs('bestsellers', 'all')(r) && r.url().includes('page=1') && r.url().includes('limit=15'));
   await page.goto('/reports/bestsellers');
   await page.getByRole('button', { name: 'ทั้งหมด', exact: true }).click();
   const bs = await (await best).json();
   expect(bs.bestsellers.productCount).toBeGreaterThan(0);
   expect(bs.bestsellers.allProducts.length).toBe(Math.min(15, bs.bestsellers.total));
-  const exportPage = page.waitForResponse((r) => isTabs('bestsellers', 'all')(r) && r.url().includes('limit=500'));
+  const exportPage = page.waitForResponse((r) => r.url().includes('/api/exports/report') && r.request().method() === 'POST');
   const download2 = page.waitForEvent('download');
   await page.getByTitle('ส่งออกไฟล์ CSV (UTF-8)').click();
-  await exportPage;
+  await approveExportPin(page, ADMIN.pin);
+  expect((await exportPage).status()).toBe(201);
   const file2 = test.info().outputPath('bestsellers.csv');
   await (await download2).saveAs(file2);
   expect(fs.readFileSync(file2, 'utf8').trim().split('\n').length).toBe(bs.bestsellers.productCount + 1);

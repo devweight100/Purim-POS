@@ -11,6 +11,7 @@ import {
   FRONTEND_DIR,
   FRONTEND_PORT,
   FRONTEND_URL,
+  LINE_MOCK_PORT,
 } from './env';
 
 /**
@@ -61,6 +62,8 @@ export default async function globalSetup() {
         JWT_SECRET: process.env.JWT_SECRET || 'e2e-only-secret-that-is-long-enough-for-the-check',
         BACKUP_AUTO: 'false',
         TZ: 'Asia/Bangkok',
+        // never the real LINE API: a local mock (e2e 31 starts it on this port; unreachable otherwise)
+        LINE_API_BASE: `http://127.0.0.1:${LINE_MOCK_PORT}`,
       }),
     );
     await waitFor(`${BACKEND_URL}/api/auth/default-pin`, 'backend');

@@ -118,3 +118,13 @@ export async function expectCartQty(page: Page, sku: string, qty: number) {
 
 /** "1,234.50" / "฿1,234.50" -> 1234.5 */
 export const money = (s: string) => Number(s.replace(/[^\d.-]/g, ''));
+
+/** Every data export asks for a manager / owner PIN (Round B): type it in the export PIN dialog and press Enter. */
+export async function approveExportPin(page: import('@playwright/test').Page, pin: string) {
+  const dlg = page.getByTestId('export-pin-dialog');
+  await dlg.waitFor({ state: 'visible' });
+  const input = dlg.getByLabel('PIN ผู้อนุมัติ');
+  await input.fill(pin);
+  await input.press('Enter');
+  await dlg.waitFor({ state: 'hidden' });
+}

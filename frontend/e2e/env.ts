@@ -23,3 +23,6 @@ export const BACKEND_MAIN = process.env.E2E_BACKEND_MAIN || path.join(BACKEND_DI
  *  so the forced password change can be tested in the browser. */
 export const ADMIN = { username: 'admin', defaultPassword: 'admin123', password: 'Admin#E2e2026', pin: '7391' };
 export const CASHIER = { username: 'cashier1', defaultPassword: 'cashier123', password: 'Cashier#E2e2026', pin: '8264' };
+
+/** Local mock of api.line.me (the backend's LINE_API_BASE in e2e; spec 31 listens on it). */
+export const LINE_MOCK_PORT = Number(process.env.E2E_LINE_MOCK_PORT || 4799);
