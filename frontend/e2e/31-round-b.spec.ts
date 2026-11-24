@@ -132,7 +132,8 @@ test('dashboard: overdue debtors / creditors / expenses due soon panels with lin
   const row = cred.getByTestId('creditor-row').filter({ hasText: `บริษัทเจ้าหนี้แดชบอร์ด ${TAG}` });
   await expect(row).toContainText('฿500.00');
   const up = page.getByTestId('panel-upcoming');
-  await expect(up.getByTestId('upcoming-row').filter({ hasText: `ค่าเช่าร้าน ${TAG}` })).toContainText('฿15,000.00');
+  // a monthly expense can fall due twice in the window (e.g. the 26th and the 1st): every occurrence is listed
+  await expect(up.getByTestId('upcoming-row').filter({ hasText: `ค่าเช่าร้าน ${TAG}` }).first()).toContainText('฿15,000.00');
   await expect(up.getByTestId('upcoming-row').filter({ hasText: ids.po })).toContainText('เกินกำหนด');
   await layoutOk(page, 'dashboard');
   for (const size of SIZES) {
@@ -149,7 +150,7 @@ test('dashboard: overdue debtors / creditors / expenses due soon panels with lin
   await expect(page.locator('tbody tr', { hasText: ids.po })).toBeVisible();
   // the recurring item opens the finance recurring tab
   await page.goto('/dashboard');
-  await page.getByTestId('panel-upcoming').getByTestId('upcoming-row').filter({ hasText: `ค่าเช่าร้าน ${TAG}` }).click();
+  await page.getByTestId('panel-upcoming').getByTestId('upcoming-row').filter({ hasText: `ค่าเช่าร้าน ${TAG}` }).first().click();
   await expect(page).toHaveURL(/\/finance\?view=recurring/);
   await expect(page.getByText(`ค่าเช่าร้าน ${TAG}`).first()).toBeVisible();
 });

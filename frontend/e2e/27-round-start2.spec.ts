@@ -208,14 +208,17 @@ test('sidebar stays in the window, full height, while a long page scrolls (open 
   const side = page.locator('#backoffice-sidebar');
   const panel = page.getByTestId('sidebar-panel');
   await expect(side.getByRole('button', { name: 'ภาพรวม & รายงาน' })).toBeVisible();
+  // Round B panels load after the page: wait so the page height no longer changes under the measurement
+  await expect(page.getByTestId('creditors-summary')).not.toContainText('กำลังโหลด');
+  await expect(page.getByTestId('upcoming-summary')).not.toContainText('กำลังโหลด');
   for (const collapsed of [false, true]) {
     const pageHeight = await page.evaluate(() => document.documentElement.scrollHeight);
     expect(pageHeight).toBeGreaterThan(768 + 200); // a long page
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(200);
     const box = (await panel.boundingBox())!;
-    expect(box.y).toBe(0);
-    expect(box.height).toBe(768);
+    expect(Math.abs(box.y)).toBeLessThan(0.5); // sub-pixel offsets (page height with fractions) are not a gap
+    expect(Math.abs(box.height - 768)).toBeLessThan(0.5);
     // the column (background + border) runs down the whole page: nothing empty beside the content
     // (measured together: the charts may still grow the page)
     await expect.poll(() => side.evaluate((el) => Math.abs(el.getBoundingClientRect().height - document.documentElement.scrollHeight))).toBeLessThanOrEqual(2);

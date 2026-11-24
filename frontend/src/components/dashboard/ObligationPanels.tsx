@@ -45,7 +45,7 @@ export function ObligationPanels({ ob, debtors, onOpenDebtors }: { ob: Obligatio
           <h2 className="section-title flex items-center gap-2"><Users className="h-4 w-4 text-muted-foreground" /> ลูกหนี้เกินกำหนด</h2>
           <button type="button" onClick={onOpenDebtors} className="inline-flex shrink-0 items-center gap-0.5 text-sub font-medium text-info hover:underline">ดูทั้งหมด <ChevronRight className="h-3.5 w-3.5" /></button>
         </div>
-        <div className="max-h-64 overflow-y-auto p-2">
+        <div className="flex max-h-64 flex-col gap-2 overflow-y-auto p-2">
           {debtors === null ? <p className={empty}>กำลังโหลด...</p> : debtors.length === 0 ? <p className={empty}>ไม่มีลูกหนี้เกินกำหนด</p> : debtors.map((d) => (
             <Link key={d.customerId} href={customerDebtsHref(d)} className={rowCls} data-testid="debtor-row">
               <span className="min-w-0">
@@ -74,7 +74,7 @@ export function ObligationPanels({ ob, debtors, onOpenDebtors }: { ob: Obligatio
             </>
           ) : 'กำลังโหลด...'}
         </div>
-        <div className="max-h-64 overflow-y-auto p-2">
+        <div className="flex max-h-64 flex-col gap-2 overflow-y-auto p-2">
           {c && c.suppliers.length === 0 && <p className={empty}>ไม่มีบิลค้างจ่าย</p>}
           {c?.suppliers.slice(0, 20).map((s) => (
             <Link key={s.supplierId || s.name} href={s.supplierId ? `/payables?supplierId=${encodeURIComponent(s.supplierId)}` : '/payables'} className={rowCls} data-testid="creditor-row">
@@ -104,7 +104,7 @@ export function ObligationPanels({ ob, debtors, onOpenDebtors }: { ob: Obligatio
             </>
           ) : 'กำลังโหลด...'}
         </div>
-        <div className="max-h-64 overflow-y-auto p-2">
+        <div className="flex max-h-64 flex-col gap-2 overflow-y-auto p-2">
           {u && u.items.length === 0 && <p className={empty}>ไม่มีค่าใช้จ่ายถึงกำหนดใน {u.days} วัน</p>}
           {u?.items.map((i) => (
             <Link key={`${i.kind}-${i.id}`} href={i.link} className={rowCls} data-testid="upcoming-row">

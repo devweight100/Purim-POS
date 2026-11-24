@@ -191,10 +191,10 @@ test('edit form: "รหัสสินค้า" is a normal field (Tab reaches
   await form.getByRole('button', { name: 'บันทึกการแก้ไข' }).click();
   await expect(page.getByText(/ซ้ำกับสินค้า/).first()).toBeVisible();
   await expect(form).toBeVisible();
-  // a free code is saved
+  // a free code is saved (keyboard: Ctrl+Enter; the error toast may sit over the save button)
   await sku.fill(`MY-CODE-${TAG}`);
   await form.getByLabel('ชื่อสินค้า *').fill(`${SHORT} (แก้)`);
-  await form.getByRole('button', { name: 'บันทึกการแก้ไข' }).click();
+  await page.keyboard.press('Control+Enter');
   await expect(form).toBeHidden();
   const saved = await api<{ name: string; sku: string }>('GET', `/products/${made.short!.id}`, adminToken);
   expect(saved).toMatchObject({ name: `${SHORT} (แก้)`, sku: `MY-CODE-${TAG}` });
