@@ -10,6 +10,8 @@
 export const PUBLIC_MARK = 'x-purim-public';
 export const CF_HEADERS = ['cf-ray', 'cf-connecting-ip', 'cf-visitor', 'cf-ipcountry', 'cf-worker', 'cf-access-jwt-assertion'];
 export const PUBLIC_API_PREFIX = '/api/public/shop/';
+/** LINE Messaging API webhook (staff-group alerts, docs/round-b.md): the one public API path outside the shop. */
+export const LINE_WEBHOOK_PATH = '/api/public/line/webhook';
 
 /** Reads a header (lower-case name); '' when missing. */
 export type HeaderGet = (name: string) => string | null | undefined;
@@ -48,10 +50,10 @@ export function cleanPath(url: string): string {
   }
 }
 
-/** Backend: the only API paths a public request may call. */
+/** Backend: the only API paths a public request may call (the shop API and the exact LINE webhook path). */
 export function publicApiAllowed(path: string): boolean {
   const p = cleanPath(path);
-  return p.startsWith(PUBLIC_API_PREFIX) && p.length > PUBLIC_API_PREFIX.length;
+  return (p.startsWith(PUBLIC_API_PREFIX) && p.length > PUBLIC_API_PREFIX.length) || p === LINE_WEBHOOK_PATH;
 }
 
 /** Gateway / Next: every path the shop page needs (page, its API, static build files, icon). */

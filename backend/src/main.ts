@@ -7,6 +7,7 @@ import { join } from 'path';
 import { json, urlencoded } from 'express';
 import compression from 'compression';
 import { isPublicRequest, publicApiAllowed, publicExposureMiddleware, startShopGateway } from './online-shop/public-exposure';
+import { captureLineRawBody } from './online-shop/line-staff.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -29,7 +30,8 @@ async function bootstrap() {
   );
 
   // Set larger payload limits for bulk Excel product imports
-  app.use(json({ limit: '50mb' }));
+  // (the LINE webhook keeps its raw bytes for the X-Line-Signature check)
+  app.use(json({ limit: '50mb', verify: captureLineRawBody }));
   app.use(urlencoded({ limit: '50mb', extended: true }));
 
   // Enable CORS for localhost and all LAN network clients

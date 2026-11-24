@@ -30,6 +30,12 @@ describe('public exposure rules', () => {
       expect([bad, publicPathAllowed(bad)]).toEqual([bad, false]);
     }
     expect(publicApiAllowed('/shop')).toBe(false);
+    // Round B: the LINE webhook, this exact path only
+    expect(publicPathAllowed('/api/public/line/webhook')).toBe(true);
+    expect(publicApiAllowed('/api/public/line/webhook')).toBe(true);
+    for (const bad of ['/api/public/line', '/api/public/line/', '/api/public/line/webhook/x', '/api/public/line/webhookx', '/api/public/line/other', '/api/public/line/%2e%2e/webhook']) {
+      expect([bad, publicPathAllowed(bad)]).toEqual([bad, false]);
+    }
     expect(cleanPath('/a%2F..%2Fb')).toBe('');
   });
 });

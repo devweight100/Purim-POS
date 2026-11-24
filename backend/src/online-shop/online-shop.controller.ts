@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { RequirePermissions, Roles } from '../auth/roles.decorator';
 import { OnlineShopService, PublicCtx } from './online-shop.service';
+import { LineStaffService } from './line-staff.service';
 import { isPublicRequest } from './public-exposure';
 import { readSession } from './shop-session';
 
@@ -132,7 +133,7 @@ export class OnlineShopPublicController {
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('online-shop')
 export class OnlineShopAdminController {
-  constructor(private readonly shop: OnlineShopService) {}
+  constructor(private readonly shop: OnlineShopService, private readonly lineStaff: LineStaffService) {}
 
   @RequirePermissions('POS_SELL')
   @Get('counts')
@@ -257,5 +258,19 @@ export class OnlineShopAdminController {
   @Post('config/test-line')
   testLine() {
     return this.shop.testLine();
+  }
+
+  /** LINE groups the bot is in (from the webhook) + the chosen staff group */
+  @Roles('ADMIN')
+  @Get('line/groups')
+  lineGroups() {
+    return this.lineStaff.groups();
+  }
+
+  /** "ส่งข้อความทดสอบ" to a group */
+  @Roles('ADMIN')
+  @Post('line/groups/:groupId/test')
+  testGroup(@Param('groupId') groupId: string) {
+    return this.lineStaff.testGroup(groupId);
   }
 }

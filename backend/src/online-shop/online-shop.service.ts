@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ProductsService } from '../products/products.service';
 import { userHasPermission } from '../auth/permissions';
 import { LineMessage, LineService, ShopConfigRow } from './line.service';
+import { LineStaffService } from './line-staff.service';
 import { issueSession, RateLimiter, readSession, safeEqual, ShopSession, signValue } from './shop-session';
 import { onlineOrderPaid$ } from './online-order-payment';
 import { qrPng } from './qr-png';
@@ -66,6 +67,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly line: LineService,
     private readonly products: ProductsService,
+    private readonly staffAlerts: LineStaffService,
   ) {}
 
   onModuleInit() {
@@ -408,6 +410,8 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
     // remember the contact for next time
     await this.prisma.shopVisitor.update({ where: { lineUserId: s.sub }, data: { contactName, contactPhone, address: address || undefined } }).catch(() => undefined);
     void this.notify(order.id, 'NEW');
+    // staff LINE group: alert now, reminders every 10 min while nobody accepts / claims it (line-staff.service.ts)
+    await this.staffAlerts.orderPlaced(order.id).catch((e) => this.log.warn(`staff alert: ${e?.message || e}`));
     return this.customerView(order);
   }
 
@@ -607,6 +611,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
       visitorLinkedTo: visitor?.customerId || null,
       posOrder: pos ? { id: pos.id, orderNumber: pos.orderNumber, totalAmount: money(pos.totalAmount), status: pos.status } : null,
       nextStatuses: nextStatuses(o.status as OnlineOrderStatus, o.fulfillment as Fulfillment),
+      staffAlerts: { count: o.staffAlertCount, nextAt: o.staffAlertNextAt, log: await this.staffAlerts.logs(o.id) },
       claim: claimOf(o), picked: pickedOf(o), posTerminalId: o.posTerminalId, posOpenedAt: o.posOpenedAt, pickingPrintCount: o.pickingPrintCount, pickingPrintedAt: o.pickingPrintedAt,
       items: o.items.map((i) => ({ id: i.id, productId: i.productId, sku: i.product.sku, name: i.productName, unitId: i.unitId, unitName: i.unitName, factor: i.factor, quantity: Number(i.quantity), unitPrice: money(i.unitPrice), total: money(i.total), active: i.product.isActive })),
     };
@@ -1031,6 +1036,7 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
       enabled: c.enabled, liffId: c.liffId, loginChannelId: c.loginChannelId, publicBaseUrl: c.publicBaseUrl,
       allowPickup: c.allowPickup, allowDelivery: c.allowDelivery, notice: c.notice, levelNames: levelNames(c.levelNames),
       hasMessagingToken: !!t, messagingTokenHint: t ? `••••${t.slice(-4)}` : null,
+      hasChannelSecret: !!c.channelSecret, staffGroupId: c.staffGroupId, backOfficeUrl: c.backOfficeUrl,
       gatewayPort: Number(process.env.SHOP_GATEWAY_PORT || 3080) || null,
       publicHost: process.env.SHOP_PUBLIC_HOST || null,
     };
@@ -1063,6 +1069,21 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
       const v = typeof b.messagingToken === 'string' ? b.messagingToken.trim() : '';
       if (v && (v.length < 20 || v.length > 1000 || /\s/.test(v))) throw new BadRequestException('Channel access token ไม่ถูกต้อง');
       data.messagingToken = v || null;
+    }
+    if (b.channelSecret !== undefined) {
+      const v = typeof b.channelSecret === 'string' ? b.channelSecret.trim() : '';
+      if (v && !/^[0-9a-f]{32}$/i.test(v)) throw new BadRequestException('Channel secret ไม่ถูกต้อง (ตัวอักษร 0-9 a-f 32 ตัว จาก LINE Developers › Messaging API channel › Basic settings)');
+      data.channelSecret = v || null;
+    }
+    if (b.staffGroupId !== undefined) {
+      const v = LineStaffService.validateGroupId(b.staffGroupId);
+      if (v && !(await this.prisma.lineGroup.findUnique({ where: { groupId: v } }))) throw new BadRequestException('ไม่พบกลุ่ม LINE นี้ (ให้เชิญบอทเข้ากลุ่มก่อน)');
+      data.staffGroupId = v;
+    }
+    if (b.backOfficeUrl !== undefined) {
+      const v = text(b.backOfficeUrl, 200).replace(/\/+$/, '');
+      if (v && !/^https?:\/\/[a-z0-9.-]+(:\d+)?$/i.test(v)) throw new BadRequestException('ที่อยู่หลังบ้านต้องเป็น http://ที่อยู่เครื่องแม่:พอร์ต เช่น http://192.168.1.10:3000');
+      data.backOfficeUrl = v || null;
     }
     const { id: _id, ...update } = data;
     await this.prisma.onlineShopConfig.upsert({ where: { id: 1 }, create: data, update });

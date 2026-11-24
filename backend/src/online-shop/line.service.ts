@@ -14,6 +14,12 @@ export interface ShopConfigRow {
   allowDelivery: boolean;
   notice: string | null;
   levelNames: unknown;
+  /** Messaging API channel secret (webhook signature) */
+  channelSecret: string | null;
+  /** LINE group of the staff (new-order alerts) */
+  staffGroupId: string | null;
+  /** back-office address for links in staff alerts (LAN) */
+  backOfficeUrl: string | null;
 }
 
 export type LineMessage =
@@ -41,6 +47,9 @@ export class LineService {
       allowDelivery: row?.allowDelivery ?? true,
       notice: row?.notice || null,
       levelNames: row?.levelNames ?? null,
+      channelSecret: row?.channelSecret || null,
+      staffGroupId: row?.staffGroupId || null,
+      backOfficeUrl: row?.backOfficeUrl || null,
     };
   }
 
@@ -69,9 +78,14 @@ export class LineService {
 
   /** Push messages to one LINE user. Returns the note staff see on the order. */
   async push(to: string, messages: LineMessage[]): Promise<string> {
-    if (to.startsWith('dev-')) return 'ไม่ได้ส่ง LINE (โปรไฟล์ทดสอบ)';
+    return (await this.pushResult(to, messages)).text;
+  }
+
+  /** Push to a user or a group; `ok` = LINE accepted it, `status` = HTTP status (429 = rate / monthly quota). */
+  async pushResult(to: string, messages: LineMessage[]): Promise<{ ok: boolean; text: string; status?: number }> {
+    if (to.startsWith('dev-')) return { ok: false, text: 'ไม่ได้ส่ง LINE (โปรไฟล์ทดสอบ)' };
     const c = await this.config();
-    if (!c.messagingToken) return 'ไม่ได้ส่ง LINE (ยังไม่ได้ตั้งค่า Messaging API)';
+    if (!c.messagingToken) return { ok: false, text: 'ไม่ได้ส่ง LINE (ยังไม่ได้ตั้งค่า Messaging API)' };
     try {
       const res = await fetch(`${lineBase()}/v2/bot/message/push`, {
         method: 'POST',
@@ -79,12 +93,46 @@ export class LineService {
         body: JSON.stringify({ to, messages: messages.slice(0, 5) }),
         signal: AbortSignal.timeout(10000),
       });
-      if (res.ok) return 'ส่ง LINE แล้ว';
+      if (res.ok) return { ok: true, text: 'ส่ง LINE แล้ว', status: res.status };
       const body: any = await res.json().catch(() => ({}));
       this.log.warn(`LINE push failed ${res.status}: ${String(body?.message || '').slice(0, 200)}`);
-      return `ส่ง LINE ไม่สำเร็จ (${res.status}${body?.message ? ': ' + String(body.message).slice(0, 80) : ''})`;
+      return { ok: false, status: res.status, text: `ส่ง LINE ไม่สำเร็จ (${res.status}${body?.message ? ': ' + String(body.message).slice(0, 80) : ''})` };
     } catch (e: any) {
-      return `ส่ง LINE ไม่สำเร็จ (${String(e?.message || e).slice(0, 80)})`;
+      return { ok: false, text: `ส่ง LINE ไม่สำเร็จ (${String(e?.message || e).slice(0, 80)})` };
+    }
+  }
+
+  /** This month's push quota: { limited, limit, used }; null when LINE cannot be asked. */
+  async quota(): Promise<{ limited: boolean; limit: number | null; used: number } | null> {
+    const c = await this.config();
+    if (!c.messagingToken) return null;
+    try {
+      const h = { authorization: `Bearer ${c.messagingToken}` };
+      const [q, u] = await Promise.all([
+        fetch(`${lineBase()}/v2/bot/message/quota`, { headers: h, signal: AbortSignal.timeout(8000) }),
+        fetch(`${lineBase()}/v2/bot/message/quota/consumption`, { headers: h, signal: AbortSignal.timeout(8000) }),
+      ]);
+      if (!q.ok || !u.ok) return null;
+      const qb: any = await q.json().catch(() => ({}));
+      const ub: any = await u.json().catch(() => ({}));
+      const limited = qb?.type === 'limited';
+      return { limited, limit: limited ? Number(qb.value) || 0 : null, used: Number(ub?.totalUsage) || 0 };
+    } catch {
+      return null;
+    }
+  }
+
+  /** A group's name (GET /v2/bot/group/{id}/summary); null when unknown. */
+  async groupName(groupId: string): Promise<string | null> {
+    const c = await this.config();
+    if (!c.messagingToken) return null;
+    try {
+      const res = await fetch(`${lineBase()}/v2/bot/group/${encodeURIComponent(groupId)}/summary`, { headers: { authorization: `Bearer ${c.messagingToken}` }, signal: AbortSignal.timeout(8000) });
+      if (!res.ok) return null;
+      const b: any = await res.json().catch(() => ({}));
+      return typeof b?.groupName === 'string' ? b.groupName.slice(0, 100) : null;
+    } catch {
+      return null;
     }
   }
 

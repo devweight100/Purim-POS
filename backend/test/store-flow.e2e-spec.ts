@@ -24,7 +24,13 @@ import { ServerControlService } from '../src/server-control/server-control.servi
 import { ProductsService } from '../src/products/products.service';
 import { docPeriod, nextDocNumber } from '../src/common/doc-number';
 import { realtimeBus, RealtimeEvent } from '../src/events/events.service';
+import { LineStaffService, lineSignatureOk } from '../src/online-shop/line-staff.service';
+import { LineService } from '../src/online-shop/line.service';
+import { PrismaService } from '../src/prisma/prisma.service';
+import { createHmac } from 'crypto';
 
+// staff-alert timer off: the LINE group tests drive LineStaffService.runDue with their own clock
+process.env.LINE_ALERT_TICK_MS = '0';
 const dbName = (() => { try { return new URL(process.env.DATABASE_URL || '').pathname.slice(1); } catch { return ''; } })();
 const enabled = /test/i.test(dbName);
 const d = enabled ? describe : describe.skip;
@@ -50,7 +56,7 @@ d('store flow (e2e)', () => {
     if (existing > 0) throw new Error(`Test database "${dbName}" already has data — create a fresh empty database for e2e tests`);
     execSync('npx prisma db seed', { stdio: 'ignore', env: process.env });
     const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
-    app = mod.createNestApplication();
+    app = mod.createNestApplication({ rawBody: true }); // raw bytes for the LINE webhook signature (main.ts: captureLineRawBody)
     app.setGlobalPrefix('api');
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     await app.init();
@@ -3771,7 +3777,7 @@ d('store flow (e2e)', () => {
       const later = await mkPo(1, 70, ymd(Date.now() + 20 * day)); // outside 7 days 70
       const cats = (await api('get', '/finance/expense-categories', A).expect(200)).body;
       await api('post', '/finance/recurring', A, { name: `ค่าเช่า ${tag}`, categoryId: cats[0].id, amount: 5000, frequency: 'MONTHLY', dayOfMonth: 1, firstDueDate: ymd(Date.now() + 3 * day) }).expect(201);
-      await api('post', '/finance/recurring', A, { name: `ค่าเน็ต ${tag}`, categoryId: cats[0].id, amount: 600, frequency: 'MONTHLY', dayOfMonth: 1, firstDueDate: ymd(Date.now() - 1 * day) }).expect(201);
+      await api('post', '/finance/recurring', A, { name: `ค่าเน็ต ${tag}`, categoryId: cats[0].id, amount: 600, frequency: 'MONTHLY', dayOfMonth: 1, firstDueDate: ymd(Date.now() - 3 * day) }).expect(201);
 
       const o = (await api('get', '/dashboard/obligations', A).expect(200)).body;
       const pay = (await api('get', '/payables/bills?limit=1', A).expect(200)).body;
@@ -3797,6 +3803,160 @@ d('store flow (e2e)', () => {
       await api('patch', '/settings', A, { dashboardDueDays: 7 }).expect(200);
       // the dashboard right (VIEW_REPORTS); a plain cashier is refused
       await api('get', '/dashboard/obligations', C).expect(403);
+    });
+  });
+  describe('LINE staff group: webhook (signature), group pick, test message, new-order alert + reminders (Round B item 10)', () => {
+    const db = new PrismaClient();
+    const SECRET = '0123456789abcdef0123456789abcdef';
+    const GROUP = 'C' + 'a1'.repeat(16);
+    const pushes: { to: string; text: string }[] = [];
+    const quota = { type: 'limited', value: 200, used: 10 };
+    let lineServer: httpModule.Server;
+    let staff: LineStaffService;
+    const sign = (raw: string) => createHmac('sha256', SECRET).update(raw).digest('base64');
+    const hook = (raw: string, sig?: string, headers: Record<string, string> = {}) => {
+      const r = request(app.getHttpServer()).post('/api/public/line/webhook').set('content-type', 'application/json');
+      if (sig !== undefined) r.set('x-line-signature', sig);
+      for (const [k, v] of Object.entries(headers)) r.set(k, v);
+      return r.send(raw);
+    };
+    const mkOrder = async (n: number) => db.onlineOrder.create({
+      data: {
+        orderNo: `WBTEST-${Date.now()}-${n}`, lineUserId: 'U' + 'b2'.repeat(16), fulfillment: 'PICKUP', contactName: `ลูกค้ากลุ่ม ${n}`, contactPhone: '0812345678',
+        subtotal: 300, deliveryFee: 0, totalAmount: 300,
+      },
+    });
+
+    beforeAll(async () => {
+      lineServer = httpModule.createServer((req, res) => {
+        let body = '';
+        req.on('data', (c) => (body += c));
+        req.on('end', () => {
+          res.setHeader('content-type', 'application/json');
+          if (req.url === '/v2/bot/message/push') {
+            const b = JSON.parse(body);
+            pushes.push({ to: b.to, text: b.messages?.[0]?.text || '' });
+            res.end('{}');
+          } else if (req.url === `/v2/bot/group/${GROUP}/summary`) {
+            res.end(JSON.stringify({ groupId: GROUP, groupName: 'พนักงานร้าน ทดสอบ' }));
+          } else if (req.url === '/v2/bot/message/quota') {
+            res.end(JSON.stringify({ type: quota.type, value: quota.value }));
+          } else if (req.url === '/v2/bot/message/quota/consumption') {
+            res.end(JSON.stringify({ totalUsage: quota.used }));
+          } else {
+            res.statusCode = 404;
+            res.end('{}');
+          }
+        });
+      });
+      await new Promise<void>((r) => lineServer.listen(0, '127.0.0.1', () => r()));
+      process.env.LINE_API_BASE = `http://127.0.0.1:${(lineServer.address() as any).port}`;
+      staff = app.get(LineStaffService);
+    });
+    afterAll(async () => {
+      delete process.env.LINE_API_BASE;
+      await new Promise((r) => lineServer?.close(r));
+      await db.$disconnect();
+    });
+
+    it('webhook: no secret / bad signature = 401; a signed join records the group (also through the tunnel); other paths stay closed', async () => {
+      const raw = JSON.stringify({ destination: 'Uxx', events: [{ type: 'join', source: { type: 'group', groupId: GROUP }, timestamp: Date.now() }] });
+      await api('put', '/online-shop/config', A, { channelSecret: '' }).expect(200);
+      await hook(raw, sign(raw)).expect(401); // no secret configured yet
+      await api('put', '/online-shop/config', A, { channelSecret: 'not-a-secret' }).expect(400);
+      await api('put', '/online-shop/config', A, { channelSecret: SECRET, messagingToken: 'x'.repeat(40) }).expect(200);
+      await hook(raw).expect(401);
+      await hook(raw, 'AAAA').expect(401);
+      await hook(raw, sign(raw + ' ')).expect(401);
+      expect(await db.lineGroup.count()).toBe(0);
+      // LINE's "Verify" button: empty events, signed
+      const verify = JSON.stringify({ destination: 'Uxx', events: [] });
+      expect((await hook(verify, sign(verify)).expect(200)).body).toEqual({ ok: true });
+      // through the Cloudflare tunnel (cf-ray): this exact path is open
+      await hook(raw, sign(raw), { 'cf-ray': '8f00aa-SIN' }).expect(200);
+      expect(await db.lineGroup.findUnique({ where: { groupId: GROUP } })).toMatchObject({ name: 'พนักงานร้าน ทดสอบ', leftAt: null });
+      expect(lineSignatureOk(raw, sign(raw), SECRET)).toBe(true);
+      // the rest of the API stays closed to the tunnel
+      await request(app.getHttpServer()).post('/api/public/line/other').set('cf-ray', 'x').send({}).expect(404);
+      await request(app.getHttpServer()).get('/api/online-shop/line/groups').set('cf-ray', 'x').set('Authorization', `Bearer ${A}`).expect(404);
+      // the admin sees the group; the secret is never sent back
+      const g = (await api('get', '/online-shop/line/groups', A).expect(200)).body;
+      expect(g).toMatchObject({ hasChannelSecret: true, staffGroupId: null, webhookPath: '/api/public/line/webhook' });
+      expect(g.groups).toEqual([expect.objectContaining({ groupId: GROUP, name: 'พนักงานร้าน ทดสอบ', left: false, selected: false })]);
+      const cfg = (await api('get', '/online-shop/config', A).expect(200)).body;
+      expect(cfg.hasChannelSecret).toBe(true);
+      expect(JSON.stringify(cfg)).not.toContain(SECRET);
+      await api('get', '/online-shop/line/groups', C).expect(403);
+    });
+
+    it('pick the group (only a known one), send a test message', async () => {
+      await api('put', '/online-shop/config', A, { staffGroupId: 'C' + 'ff'.repeat(16) }).expect(400);
+      await api('put', '/online-shop/config', A, { staffGroupId: 'bad' }).expect(400);
+      await api('put', '/online-shop/config', A, { staffGroupId: GROUP, backOfficeUrl: 'http://192.168.1.10:3000' }).expect(200);
+      expect((await api('get', '/online-shop/line/groups', A).expect(200)).body).toMatchObject({ staffGroupId: GROUP, backOfficeUrl: 'http://192.168.1.10:3000' });
+      pushes.length = 0;
+      const r = (await api('post', `/online-shop/line/groups/${GROUP}/test`, A).expect(201)).body;
+      expect(r.ok).toBe(true);
+      expect(pushes).toEqual([expect.objectContaining({ to: GROUP, text: expect.stringContaining('ทดสอบ') })]);
+    });
+
+    it('new order: alert at once, then a reminder every 10 min while NEW and unclaimed, max 6; logged on the order; survives a restart', async () => {
+      pushes.length = 0;
+      const o = await mkOrder(1);
+      await staff.orderPlaced(o.id);
+      await staff.runDue(new Date());
+      expect(pushes).toHaveLength(1);
+      expect(pushes[0]).toMatchObject({ to: GROUP });
+      expect(pushes[0].text).toContain(`ออเดอร์ออนไลน์ใหม่ ${o.orderNo}`);
+      expect(pushes[0].text).toContain('ลูกค้ากลุ่ม 1');
+      expect(pushes[0].text).toContain('฿300.00');
+      expect(pushes[0].text).toContain('รับเองที่ร้าน');
+      expect(pushes[0].text).toContain(`http://192.168.1.10:3000/online-orders?id=${o.id}`);
+      const t0 = Date.now();
+      await staff.runDue(new Date(t0 + 5 * 60_000));
+      expect(pushes).toHaveLength(1); // not yet
+      // a "restart": a fresh service instance reads the schedule from the database
+      const fresh = new LineStaffService(app.get(PrismaService), app.get(LineService));
+      for (let i = 1; i <= 8; i++) await fresh.runDue(new Date(t0 + i * 10 * 60_000 + 1000));
+      expect(pushes).toHaveLength(7); // 1 alert + 6 reminders, then it stops
+      expect(pushes[1].text).toContain('เตือนครั้งที่ 1/6');
+      expect(pushes[6].text).toContain('เตือนครั้งที่ 6/6');
+      const row = await db.onlineOrder.findUniqueOrThrow({ where: { id: o.id } });
+      expect(row).toMatchObject({ staffAlertCount: 7, staffAlertNextAt: null });
+      const d = (await api('get', `/online-shop/orders/${o.id}`, A).expect(200)).body;
+      expect(d.staffAlerts.log).toHaveLength(7);
+      expect(d.staffAlerts.log.every((l: any) => l.ok)).toBe(true);
+      expect(d.staffAlerts.log[0].result).toContain('เตือนครั้งที่ 6');
+    });
+
+    it('claimed or accepted: no more reminders; quota used up: nothing sent, logged', async () => {
+      pushes.length = 0;
+      const o = await mkOrder(2);
+      await staff.orderPlaced(o.id);
+      await staff.runDue(new Date());
+      expect(pushes).toHaveLength(1);
+      await api('post', `/online-shop/orders/${o.id}/claim`, A, {}).expect(201);
+      await staff.runDue(new Date(Date.now() + 11 * 60_000));
+      expect(pushes).toHaveLength(1);
+      expect((await db.onlineOrder.findUniqueOrThrow({ where: { id: o.id } })).staffAlertNextAt).toBeNull();
+
+      quota.used = 200; // this month's quota is used up
+      const q = await mkOrder(3);
+      const fresh = new LineStaffService(app.get(PrismaService), app.get(LineService)); // no cached quota
+      await fresh.orderPlaced(q.id);
+      await fresh.runDue(new Date());
+      expect(pushes).toHaveLength(1);
+      const logs = await db.onlineOrderLineLog.findMany({ where: { onlineOrderId: q.id } });
+      expect(logs).toEqual([expect.objectContaining({ ok: false, result: expect.stringContaining('โควตา') })]);
+      quota.used = 10;
+      // no group chosen: nothing sent, logged, schedule stopped
+      await api('put', '/online-shop/config', A, { staffGroupId: '' }).expect(200);
+      const r = await mkOrder(4);
+      await staff.orderPlaced(r.id);
+      await staff.runDue(new Date());
+      expect(pushes).toHaveLength(1);
+      expect((await db.onlineOrderLineLog.findFirstOrThrow({ where: { onlineOrderId: r.id } })).result).toContain('ยังไม่ได้เลือกกลุ่ม');
+      await api('put', '/online-shop/config', A, { messagingToken: '', channelSecret: '' }).expect(200);
     });
   });
 });
