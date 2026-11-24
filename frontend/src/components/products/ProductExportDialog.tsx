@@ -80,13 +80,13 @@ export function ProductExportDialog({ open, onOpenChange, categories, suppliers,
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl" data-testid="product-export-dialog" initialFocus={firstRef}>
+      <DialogContent className="max-w-xl gap-3" data-testid="product-export-dialog" initialFocus={firstRef}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 pr-8"><Download className="h-5 w-5 text-emerald-700" /> ส่งออกสินค้าเป็น Excel</DialogTitle>
           <DialogDescription>เลือกเงื่อนไข (ไม่เลือกหมวด = ทุกหมวด) แล้วกด ส่งออก ระบบจะขอ PIN ผู้จัดการก่อนสร้างไฟล์</DialogDescription>
         </DialogHeader>
         <form
-          className="space-y-4"
+          className="space-y-3"
           onSubmit={(e) => {
             e.preventDefault();
             void run();
@@ -98,7 +98,7 @@ export function ProductExportDialog({ open, onOpenChange, categories, suppliers,
               <Input ref={firstRef} value={catSearch} onChange={(e) => setCatSearch(e.target.value)} placeholder="ค้นหาหมวด" aria-label="ค้นหาหมวดหมู่" className="flex-1" />
               <Button type="button" variant="outline" disabled={filters.categoryIds.length === 0} onClick={() => setFilters((f) => ({ ...f, categoryIds: [] }))}>ทุกหมวด</Button>
             </div>
-            <div className="grid max-h-44 grid-cols-1 gap-x-4 gap-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2 sm:grid-cols-2" data-testid="export-categories">
+            <div className="grid max-h-44 [@media(max-height:700px)]:max-h-28 grid-cols-1 gap-x-4 gap-y-1 overflow-y-auto rounded-lg border border-slate-200 p-2 sm:grid-cols-2" data-testid="export-categories">
               {shownCats.map((c) => (
                 <label key={c.id} className="flex min-w-0 items-center gap-2 rounded px-1 py-1 text-sm hover:bg-slate-50">
                   <input type="checkbox" checked={filters.categoryIds.includes(c.id)} onChange={() => toggleCat(c.id)} />
