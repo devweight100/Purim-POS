@@ -42,7 +42,7 @@ export function usePosDialogs() {
   /** A click on empty space re-focuses the hidden scanner input unless one of these is open. */
   const focusClickBlocked =
     scanBlocked || startOpen || !!qtyEditItem || showDebtCollectModal || showCashDrawerModal ||
-    showUnitModal || showRedeemModal || showBarcodeScan;
+    showUnitModal || showRedeemModal || showBarcodeScan || showBillDiscount;
 
   /** Page shortcuts are off while any of these is open (the dialog handles its own keys). */
   const keyboardBlocked =

@@ -74,7 +74,7 @@ export const PinPad = forwardRef<HTMLInputElement, PinPadProps>(function PinPad(
   };
 
   return (
-    <div className="space-y-3" data-testid="pin-pad">
+    <div className="space-y-2" data-testid="pin-pad">
       <input
         ref={setRefs}
         id={id}
@@ -89,7 +89,7 @@ export const PinPad = forwardRef<HTMLInputElement, PinPadProps>(function PinPad(
         onChange={(e) => onChange(cleanPin(e.target.value, maxLength))}
         onKeyDown={onKeyDown}
         placeholder={`PIN 4-${maxLength} หลัก`}
-        className="h-12 w-full rounded-xl border border-slate-300 bg-white text-center text-2xl tracking-[0.5em] text-slate-900 outline-none placeholder:text-sm placeholder:tracking-normal placeholder:text-slate-400 focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/30"
+        className="h-11 [@media(max-height:700px)]:h-9 w-full rounded-xl border border-slate-300 bg-white text-center text-2xl tracking-[0.5em] text-slate-900 outline-none placeholder:text-sm placeholder:tracking-normal placeholder:text-slate-400 focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-primary/30"
       />
       <div className="grid grid-cols-3 gap-2" role="group" aria-label="แป้นตัวเลข">
         {KEYS.map((k) => (
@@ -103,7 +103,7 @@ export const PinPad = forwardRef<HTMLInputElement, PinPadProps>(function PinPad(
             onClick={() => press(k)}
             aria-label={k === 'back' ? 'ลบตัวท้าย' : k === 'clear' ? 'ล้าง PIN' : k}
             className={cn(
-              'h-11 rounded-xl border text-lg font-semibold transition-colors disabled:opacity-50',
+              'h-10 [@media(max-height:700px)]:h-8 rounded-xl border text-lg font-semibold transition-colors disabled:opacity-50',
               k === 'back' || k === 'clear'
                 ? 'border-slate-200 bg-slate-50 text-sm text-slate-600 hover:bg-slate-100'
                 : 'border-slate-200 bg-white text-slate-900 hover:bg-slate-100',

@@ -65,13 +65,13 @@ export function ApprovalDialog({ request, onApproved, onCancel }: { request: App
         <DialogHeader><DialogTitle className="flex items-center gap-2 pr-8"><ShieldCheck className="w-5 h-5 text-amber-600" /> ต้องให้ผู้จัดการอนุมัติ</DialogTitle></DialogHeader>
         {request && (
           <form
-            className="space-y-3 text-sm"
+            className="space-y-2.5 text-sm"
             onSubmit={(e) => {
               e.preventDefault();
               void submit();
             }}
           >
-            <ul className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-1 text-amber-900">
+            <ul className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 space-y-1 text-amber-900">
               {request.reasons.map((r, i) => <li key={i}>• {r.message}</li>)}
             </ul>
             {request.total != null && <div className="text-right text-slate-600">ยอดบิล <b>{formatCurrency(request.total)}</b></div>}

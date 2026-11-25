@@ -36,10 +36,12 @@ function usePaymentClosedStandby(paymentOpen: boolean) {
     }
     if (!wasOpen.current) return;
     wasOpen.current = false;
-    const timers = [0, 120, 400].map((ms) =>
+    const timers = [0, 120, 400, 1500, 3000].map((ms) =>
       setTimeout(() => {
         if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
         const a = document.activeElement as HTMLElement | null;
+        // later checks only rescue a lost focus (nothing / the hidden receipt print frame)
+        if (ms > 1000 && a && a !== document.body && a.tagName !== 'IFRAME') return;
         const inField = !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT') && a.getAttribute('tabindex') !== '-1';
         if (ms > 200 && inField) return; // the cashier already clicked into a field
         focusScanBox();

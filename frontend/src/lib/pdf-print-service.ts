@@ -286,11 +286,21 @@ function loadIntoIframe(html: string, widthCss: string): Promise<HTMLIFrameEleme
 }
 
 function printIframeOnce(iframe: HTMLIFrameElement) {
+  // print() needs the frame focused; afterwards the focus goes back where it was (the POS scan box after a sale):
+  // it used to stay in the hidden frame, so the keyboard / scanner typed into nothing (docs/pos-keyboard-scan.md)
+  const before = document.activeElement as HTMLElement | null;
   try {
     iframe.contentWindow?.focus();
     iframe.contentWindow?.print();
   } catch (e) {
     console.warn('Iframe print error', e);
+  }
+  try {
+    window.focus();
+    if (before && before !== document.body && before.isConnected) before.focus({ preventScroll: true });
+    else if (document.activeElement === iframe) iframe.blur();
+  } catch {
+    /* focus is best effort */
   }
   setTimeout(() => iframe.remove(), 3000);
 }
