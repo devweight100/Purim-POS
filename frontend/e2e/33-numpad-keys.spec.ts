@@ -84,7 +84,19 @@ test('open shift, close shift and the banknote count take keyboard digits withou
 
 test('POS numpads: F2 qty, F4 price, F3 item, F9 cash drawer, claim qty, cash received, split by keyboard only', async ({ page }) => {
   await uiLogin(page, CASHIER.username, CASHIER.password);
-  await expect(page.getByRole('button', { name: 'ปิดกะ', exact: true })).toBeVisible();
+  // a new browser = a new terminal: continue the shift opened by the first test
+  const reopen = dialog(page, 'ระบุเงินในลิ้นชัก');
+  const closeBtn = page.getByRole('button', { name: 'ปิดกะ', exact: true });
+  await reopen.or(closeBtn).first().waitFor();
+  if (await reopen.isVisible()) {
+    const cont = reopen.getByRole('button', { name: 'ใช้กะนี้ต่อที่เครื่องนี้' });
+    if (await cont.isVisible()) await cont.click();
+    else {
+      await reopen.getByLabel('ยอดเงินรวมในลิ้นชัก', { exact: true }).fill('500');
+      await reopen.getByLabel('ยอดเงินรวมในลิ้นชัก', { exact: true }).press('Enter');
+    }
+  }
+  await expect(closeBtn).toBeVisible();
   await page.evaluate(() => localStorage.removeItem('purim-pos-cart'));
   await page.reload();
   await page.waitForTimeout(1500);
@@ -137,6 +149,23 @@ test('POS numpads: F2 qty, F4 price, F3 item, F9 cash drawer, claim qty, cash re
   await page.keyboard.press('Escape');
   await expect(claim).toBeHidden();
 
+  // redeem points (member picked with Ctrl+M first)
+  await page.keyboard.press('Control+m');
+  const pick = page.getByRole('dialog').filter({ has: page.getByRole('textbox') }).last();
+  await expect(pick).toBeVisible();
+  for (const ch of MEMBER.phone) { await page.keyboard.type(ch); await page.waitForTimeout(60); }
+  await expect(pick).toContainText(MEMBER.name);
+  await page.keyboard.press('Enter');
+  await expect(pick).toBeHidden();
+  await page.getByRole('button', { name: /ใช้แต้ม/ }).first().click();
+  const redeem = page.getByRole('dialog').filter({ has: page.getByLabel('จำนวนแต้มที่ใช้') });
+  await expect(redeem).toBeVisible();
+  await page.waitForTimeout(300);
+  await typeDigits(page, '40');
+  await expect(redeem.getByLabel('จำนวนแต้มที่ใช้')).toHaveValue('40');
+  await page.keyboard.press('Escape');
+  await expect(redeem).toBeHidden();
+
   // payment: cash received, typed right after choosing เงินสด
   await page.keyboard.press('F12');
   const pay = dialog(page, 'ยอดรวมสุทธิที่ต้องชำระ');
@@ -144,18 +173,25 @@ test('POS numpads: F2 qty, F4 price, F3 item, F9 cash drawer, claim qty, cash re
   await page.keyboard.press('Enter');
   await typeDigits(page, '6000');
   await expect(page.locator('#pos-cash-received')).toHaveValue('6000');
-  // a banknote button takes the focus; the next digits still go to the amount
-  await pay.getByRole('button', { name: /^(฿)?1,?000/ }).first().click();
+  // the focus on a banknote button (Tab / touch): the next digits still go to the amount
+  await page.getByRole('button', { name: '฿500', exact: true }).focus();
   await typeDigits(page, '5800');
   await expect(page.locator('#pos-cash-received')).toHaveValue('5800');
-  await pay.getByRole('button', { name: 'ย้อนกลับ' }).first().click();
-  // split: the transfer part takes the digits
-  await pay.getByRole('button', { name: /แบ่งจ่าย/ }).first().click();
+  // a barcode scanner burst from a button: its digits do not stay in the amount, its Enter confirms nothing
+  await page.getByRole('button', { name: '฿500', exact: true }).focus();
+  await page.keyboard.type(PRODUCT.barcode, { delay: 5 });
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#pos-cash-received')).toHaveValue('5800');
+  expect((await cartItems(page))[0]?.quantity).toBe(3);
+  await page.getByRole('button', { name: 'ย้อนกลับ' }).first().click();
+  // split: the transfer part takes the digits (a click right after "ย้อนกลับ" is ignored on purpose)
+  await page.waitForTimeout(800);
+  await page.getByRole('button', { name: /แบ่งชำระ \(Split\)/ }).first().click();
   await page.waitForTimeout(300);
   await typeDigits(page, '1000');
-  await expect(pay.getByLabel('ยอดโอนเงิน (แบ่งจ่าย)')).toHaveValue('1000');
+  await expect(page.getByLabel('ยอดโอนเงิน (แบ่งจ่าย)')).toHaveValue('1000');
   await page.keyboard.press('Escape');
-  await expect(pay).toBeHidden();
+  await expect(page.locator('#pos-cash-received, [aria-label="ยอดโอนเงิน (แบ่งจ่าย)"]')).toHaveCount(0);
 });
 
 test('back office debt payment: the amount takes keyboard digits without a click', async ({ page }) => {

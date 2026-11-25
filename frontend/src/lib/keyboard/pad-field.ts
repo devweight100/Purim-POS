@@ -12,7 +12,8 @@
  *
  * The fix has two parts, both central:
  * 1. `dialogInitialFocus` (used by components/ui/dialog.tsx for every dialog without its own `initialFocus`):
- *    the dialog's pad field (`data-pad-field`), else the field React already auto-focused, else Base UI's default.
+ *    the dialog's pad field (`data-pad-field`, its value selected so the first digit replaces it), else the field
+ *    React already auto-focused, else Base UI's default.
  * 2. `handlePadFieldKey` (one document-level listener, components/common/PadFieldKeys.tsx): a digit / "." /
  *    Backspace typed while the focus is NOT in a field of the topmost dialog (a button inside it, the page behind,
  *    the POS scan box in the moment before the dialog took the focus) goes into that dialog's pad field and moves the
@@ -58,7 +59,11 @@ export function padFieldOf(dialog: ParentNode | null | undefined): HTMLInputElem
 export function dialogInitialFocus(popup: HTMLElement | null): HTMLElement | true {
   if (!popup) return true;
   const pad = padFieldOf(popup);
-  if (pad) return pad;
+  if (pad) {
+    // the shown amount is a suggestion: the first digit replaces it (like the on-screen numpads)
+    if (pad.value) pad.addEventListener('focus', () => pad.select(), { once: true });
+    return pad;
+  }
   const active = popup.ownerDocument.activeElement as HTMLElement | null;
   if (active && popup.contains(active) && (editableField(active) || active.tagName === 'SELECT')) return active;
   const marked = popup.querySelector<HTMLElement>('[data-autofocus]');
