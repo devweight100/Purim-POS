@@ -3,7 +3,7 @@
 import { matchesOtherNames } from '@shared/product-names';
 import { SearchMatchHint } from '@/components/common/SearchMatchHint';
 import { useOnlineCounts } from '@/lib/online-orders';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useEffectEvent } from 'react';
 import Link from 'next/link';
 import { useCartStore, validateDiscount } from '@/lib/store/cart-store';
 import { sellableProducts, useProductStore } from '@/lib/store/product-store';
@@ -34,6 +34,7 @@ import { LastAddedLine } from '@/components/pos/LastAddedLine';
 import { addToCart } from '@/lib/pos/pos-add';
 import { LineLevelNote, PosLevelControl } from '@/components/pos/PosLevelControl';
 import { shownUnitPrice } from '@/lib/pos/price-level';
+import { registerScanBox, registerScanHandler } from '@/lib/pos/scan-burst';
 
 interface PosListLayoutProps {
   viewMode: 'touch_screen' | 'list_view';
@@ -116,11 +117,12 @@ export function PosListLayout({
     }
   };
 
-  // Auto focus hidden scanner input on mount
+  // Auto focus hidden scanner input on mount; it is this layout's scan box (standby focus after a sale)
   useEffect(() => {
     if (scannerInputRef.current) {
       scannerInputRef.current.focus();
     }
+    return registerScanBox(scannerInputRef.current);
   }, []);
 
   const findProductByExactCode = (code: string): Product | undefined => {
@@ -136,7 +138,7 @@ export function PosListLayout({
   };
 
   // Process barcode scan for PosListLayout (converts Thai Kedmanee to English/Numeric)
-  const processBarcodeScan = (scannedBarcode: string) => {
+  const processBarcodeScan = (scannedBarcode: string, opts: { refocus?: boolean } = {}) => {
     const raw = scannedBarcode.trim();
     if (!raw) return;
 
@@ -161,8 +163,16 @@ export function PosListLayout({
     }
 
     setScannerInputValue('');
-    setTimeout(() => scannerInputRef.current?.focus(), 10);
+    if (opts.refocus !== false) setTimeout(() => scannerInputRef.current?.focus(), 10);
   };
+
+  // scanner bursts caught by the POS page's global detector (another field / a dialog) use this layout's add flow;
+  // the focus stays where the cashier is (docs/pos-keyboard-scan.md)
+  const detectedScan = useEffectEvent((code: string) => {
+    const active = document.activeElement;
+    processBarcodeScan(code, { refocus: !active || active === document.body || !active.closest('[role="dialog"], [role="alertdialog"], input, textarea, select') });
+  });
+  useEffect(() => registerScanHandler((code) => detectedScan(code)), []);
 
   // Scroll to (and flash) the line touched last; other cart changes show the end of the list as before
   const cartListRef = useRef<HTMLDivElement>(null);
@@ -458,6 +468,7 @@ export function PosListLayout({
           {/* Hidden input dedicated for Barcode Scanner (Invisible to user, captures scanner input & converts Thai to English) */}
           <input
             ref={scannerInputRef}
+            data-barcode-input=""
             type="text"
             value={scannerInputValue}
             onChange={(e) => setScannerInputValue(e.target.value)}

@@ -32,6 +32,7 @@ import { updateClaimStatus, processClaim } from '@/lib/claim-service';
 import { kickCashDrawer, getCashDrawerConfig } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
 import { ApprovalDialog, ApprovalNeeded } from '@/components/approvals/ApprovalDialog';
+import { markPaymentOpen } from '@/lib/pos/scan-burst';
 import { getTerminalId } from '@/lib/terminal-id';
 import type { OrderPayment } from '@/lib/types';
 
@@ -68,6 +69,8 @@ interface PaymentModalProps {
   initialMethod?: Method | null;
   orderToEditPayment?: EditablePaymentOrder | null;
   onPaymentEditSuccess?: () => void;
+  /** where the focus goes when the dialog closes (the POS: its scan box = standby, docs/pos-keyboard-scan.md) */
+  finalFocus?: () => HTMLElement | boolean | null;
 }
 
 export function PaymentModal({ 
@@ -75,8 +78,11 @@ export function PaymentModal({
   onOpenChange, 
   initialMethod = null,
   orderToEditPayment = null,
-  onPaymentEditSuccess
+  onPaymentEditSuccess,
+  finalFocus,
 }: PaymentModalProps) {
+  // while open, a scanner burst on the POS page adds nothing (notice "ปิดหน้ารับเงินก่อนสแกนสินค้า")
+  useEffect(() => (open ? markPaymentOpen() : undefined), [open]);
   const cart = useCartStore();
   const shiftStore = useShiftStore();
 
@@ -738,7 +744,7 @@ export function PaymentModal({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent aria-busy={isSubmitting} className="w-[calc(100vw-1rem)] sm:w-[90vw] max-w-6xl h-[90dvh] max-h-[850px] flex flex-col p-3 pb-0 sm:p-8 sm:pb-0 overflow-y-auto bg-white border-slate-200 text-slate-900 shadow-2xl rounded-3xl">
+        <DialogContent finalFocus={finalFocus} aria-busy={isSubmitting} className="w-[calc(100vw-1rem)] sm:w-[90vw] max-w-6xl h-[90dvh] max-h-[850px] flex flex-col p-3 pb-0 sm:p-8 sm:pb-0 overflow-y-auto bg-white border-slate-200 text-slate-900 shadow-2xl rounded-3xl">
           <DialogHeader className="shrink-0 pb-3 border-b border-slate-100 mb-4">
             <DialogTitle className="text-2xl font-bold flex items-center gap-3">
               <CreditCard className="w-8 h-8 text-sky-500" />

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useShiftStore } from '@/lib/store/shift-store';
@@ -18,8 +18,36 @@ import { useProductFilter } from './use-product-filter';
 import { useCartSelection } from './use-cart-selection';
 import { usePosScanner } from './use-pos-scanner';
 import { usePosKeyboard } from './use-pos-keyboard';
+import { usePosScanBurst } from './use-pos-scan-burst';
+import { currentScanHandler, focusScanBox } from './scan-burst';
 import { addToCart } from '@/lib/pos/pos-add';
 import { priceChangeToast } from './cart-catalogue-refresh';
+
+/**
+ * After the payment dialog closed: back to standby (focus on the scan box) once the dialog's own focus return is
+ * done (also after a focus return to the button / field that opened it), unless another dialog opened meanwhile.
+ */
+function usePaymentClosedStandby(paymentOpen: boolean) {
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (paymentOpen) {
+      wasOpen.current = true;
+      return;
+    }
+    if (!wasOpen.current) return;
+    wasOpen.current = false;
+    const timers = [0, 120, 400].map((ms) =>
+      setTimeout(() => {
+        if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+        const a = document.activeElement as HTMLElement | null;
+        const inField = !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT') && a.getAttribute('tabindex') !== '-1';
+        if (ms > 200 && inField) return; // the cashier already clicked into a field
+        focusScanBox();
+      }, ms),
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [paymentOpen]);
+}
 
 /**
  * Everything a POS sales screen does apart from drawing itself: dialogs, product list and search,
@@ -79,13 +107,22 @@ export function usePosController(variant: PosVariant) {
 
   const scanner = usePosScanner({
     variant,
-    enabled: mounted,
     products,
     blocked: dialogs.scanBlocked,
     onProductAdded: () => filter.setSearchQuery(''),
   });
 
   usePosKeyboard({ dialogs, selection, scannerInputRef: scanner.scannerInputRef });
+
+  // a scanner burst anywhere on the page (another field, a dialog, a numpad) -> add-to-cart flow
+  // (docs/pos-keyboard-scan.md); the list layout routes it through its own add flow
+  usePosScanBurst({
+    enabled: mounted,
+    onScan: (code) => (currentScanHandler() ?? scanner.processDetectedScan)(code),
+  });
+
+  // standby: when the payment dialog closes (sale done or cancelled) the focus goes back to the scan box
+  usePaymentClosedStandby(dialogs.showPayment);
 
   /** Click on empty page space puts the focus back on the hidden scanner input. */
   const handleEmptySpaceClick = (e: React.MouseEvent) => {

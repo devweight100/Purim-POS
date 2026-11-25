@@ -6,7 +6,7 @@ import { useCartStore } from '@/lib/store/cart-store';
 import { useDocumentSearchStore } from '@/lib/store/document-search-store';
 import { isSellable, useProductStore } from '@/lib/store/product-store';
 import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
-import { findProductByScannedCode, useGlobalBarcodeScanner } from '@/lib/use-scanner';
+import { findProductByScannedCode } from '@/lib/use-scanner';
 import type { Product } from '@/lib/types';
 import { findDocumentCode, resolveScannedUnit } from './pos-scan';
 import type { PosVariant } from './pos-variant';
@@ -16,8 +16,6 @@ import { addToCart } from '@/lib/pos/pos-add';
 
 interface PosScannerOptions {
   variant: PosVariant;
-  /** listen for the hardware scanner once the page is mounted */
-  enabled: boolean;
   products: Product[];
   /** scans are ignored while a blocking dialog is open */
   blocked: boolean;
@@ -29,7 +27,7 @@ interface PosScannerOptions {
  * Barcode handling of a POS screen: the hidden scanner input, the global scanner listener and the
  * scan processor (product -> cart, document number -> document search, else an error toast).
  */
-export function usePosScanner({ variant, enabled, products, blocked, onProductAdded }: PosScannerOptions) {
+export function usePosScanner({ variant, products, blocked, onProductAdded }: PosScannerOptions) {
   const scannerInputRef = useRef<HTMLInputElement>(null);
   const [scannerInputValue, setScannerInputValue] = useState('');
 
@@ -37,9 +35,11 @@ export function usePosScanner({ variant, enabled, products, blocked, onProductAd
     setTimeout(() => scannerInputRef.current?.focus(), delayMs);
   };
 
-  const processBarcodeScan = (scannedBarcode: string) => {
-    if (blocked) return;
-
+  /**
+   * A scanned code -> cart / document search / error toast. `refocus` (the scan box path) puts the focus back on
+   * the scan box; a burst caught by the global detector in another field leaves the focus where the user is.
+   */
+  const handleScan = (scannedBarcode: string, refocus: boolean) => {
     const raw = scannedBarcode.trim();
     if (!raw) return;
 
@@ -80,11 +80,25 @@ export function usePosScanner({ variant, enabled, products, blocked, onProductAd
 
     // Always reset scanner input and refocus (not while the start-of-bill dialog or a popup asks something)
     setScannerInputValue('');
-    if (!usePosStart.getState().open && pendingAsks().length === 0) focusScanner(10);
+    if (refocus && !usePosStart.getState().open && pendingAsks().length === 0) focusScanner(10);
   };
 
-  // Scanner keys typed while nothing is focused (useGlobalBarcodeScanner always calls the latest callback)
-  useGlobalBarcodeScanner(processBarcodeScan, enabled);
+  /** the scan box (hidden scanner input) and the search box: ignored while a blocking dialog is open */
+  const processBarcodeScan = (scannedBarcode: string) => {
+    if (blocked) return;
+    handleScan(scannedBarcode, true);
+  };
+
+  /**
+   * A burst found by the global detector (use-pos-scan-burst.ts) in any other field or dialog: always goes to the
+   * add-to-cart flow (the payment dialog case is handled by the detector); focus stays where it was, or goes
+   * back to the scan box when nothing in particular had it.
+   */
+  const processDetectedScan = (code: string) => {
+    const active = document.activeElement;
+    const keepFocus = !!active && active !== document.body && !!active.closest('[role="dialog"], [role="alertdialog"], input, textarea, select');
+    handleScan(code, !keepFocus);
+  };
 
   /** props for the hidden <input> that receives scanner keystrokes */
   const scannerInputProps = {
@@ -101,7 +115,7 @@ export function usePosScanner({ variant, enabled, products, blocked, onProductAd
     },
   };
 
-  return { scannerInputRef, scannerInputProps, processBarcodeScan, focusScanner };
+  return { scannerInputRef, scannerInputProps, processBarcodeScan, processDetectedScan, focusScanner };
 }
 
 export type PosScanner = ReturnType<typeof usePosScanner>;
