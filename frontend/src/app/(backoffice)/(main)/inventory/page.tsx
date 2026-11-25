@@ -584,7 +584,7 @@ export default function InventoryPage() {
             <Table className="w-full">
               <TableHeader >
                 <TableRow>
-                  <TableHead className="min-w-44 xl:min-w-64">ชื่อสินค้า / รหัส (SKU)</TableHead>
+                  <TableHead className="min-w-36 xl:min-w-64">ชื่อสินค้า / รหัส (SKU)</TableHead>
                   <TableHead >หมวดหมู่</TableHead>
                   <TableHead className="text-right">ต้นทุน / หน่วย</TableHead>
                   <TableHead className="text-right">คงเหลือ (หน่วยฐาน)</TableHead>
@@ -617,7 +617,7 @@ export default function InventoryPage() {
                     return (
                       <TableRow key={p.id} className={`hover:bg-slate-50/80 border-slate-100 transition-colors ${ROW_NAV_CLASS}`} {...stockNav.rowProps(pi)}>
                         {/* Product Info */}
-                        <TableCell className="min-w-44 xl:min-w-64">
+                        <TableCell className="min-w-36 xl:min-w-64">
                           <div className="space-y-0.5">
                             <span className="font-medium text-fg line-clamp-2 break-words hover:text-sky-600 transition-colors" title={p.name}>
                               {p.name}
@@ -643,7 +643,7 @@ export default function InventoryPage() {
                         <TableCell className="text-right font-medium text-fg whitespace-nowrap tabular-nums" data-testid="inventory-cost">
                           <span className="block">{displayUnitCost(p) !== undefined ? formatCurrency(displayUnitCost(p)!) : '-'}</span>
                           {stockOnHandCost(p) !== undefined && (
-                            <span className="block text-xs font-normal text-subtle" title="ต้นทุนเฉลี่ยของสต็อกที่มีอยู่ (ใช้คิดกำไรตอนขาย)" data-testid="inventory-stock-cost">สต็อก {formatCurrency(stockOnHandCost(p)!)}</span>
+                            <span className="block whitespace-normal text-xs font-normal text-subtle" title="ต้นทุนเฉลี่ยของสต็อกที่มีอยู่ (ใช้คิดกำไรตอนขาย)" data-testid="inventory-stock-cost">สต็อก {formatCurrency(stockOnHandCost(p)!)}</span>
                           )}
                         </TableCell>
 
