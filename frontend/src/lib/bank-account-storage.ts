@@ -12,6 +12,10 @@ export interface BankAccount {
   /** PromptPay ID: when set, payment screens generate a QR with the amount locked instead of the image. */
   promptpayType?: string | null;
   promptpayId?: string | null;
+  /** bank of the account (shared/src/thai-banks.ts); null = older account (the badge infers it from bankName) */
+  bankCode?: string | null;
+  /** owner's own logo image (data URL); shown instead of the built-in badge */
+  logoUrl?: string | null;
   color?: string;
   isDefault?: boolean;
 }
@@ -35,6 +39,8 @@ export function normalizeBankAccount(a: ApiBankAccount | null | undefined, idx =
     qrCodeUrl: qr,
     promptpayType: a?.promptpayType ?? null,
     promptpayId: a?.promptpayId ?? null,
+    bankCode: a?.bankCode ?? null,
+    logoUrl: a?.logoUrl ?? null,
     color: a?.color || '#3b82f6',
     isDefault: Boolean(a?.isDefault),
   };

@@ -89,7 +89,7 @@ test('POS numpads: F2 qty, F4 price, F3 item, F9 cash drawer, claim qty, cash re
   const closeBtn = page.getByRole('button', { name: 'ปิดกะ', exact: true });
   await reopen.or(closeBtn).first().waitFor();
   if (await reopen.isVisible()) {
-    const cont = reopen.getByRole('button', { name: 'ใช้กะนี้ต่อที่เครื่องนี้' });
+    const cont = reopen.getByRole('button', { name: 'ใช้กะนี้ต่อที่เครื่องนี้' }).first();
     if (await cont.isVisible()) await cont.click();
     else {
       await reopen.getByLabel('ยอดเงินรวมในลิ้นชัก', { exact: true }).fill('500');

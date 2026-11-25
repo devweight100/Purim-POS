@@ -13,6 +13,7 @@ import { printOrderPickingSlip } from "@/lib/pos/picking";
 import { usePosLevels } from "@/lib/pos/pos-add";
 import type { PriceLevel } from "@shared/price-level";
 import { isCreditOrderFullyPaid, isOrderCredit, type OrderAction, type OrderRow } from "./order-shared";
+import { OrderPaymentsList } from "./OrderPaymentsList";
 
 interface Props {
   isDetailOpen: boolean;
@@ -147,6 +148,7 @@ export function OrderDetailDialog({
                   {formatCurrency(currentOrder.totalAmount || currentOrder.total || 0)}
                 </span>
               </div>
+              <OrderPaymentsList payments={currentOrder.payments} />
             </div>
 
             {/* Action Buttons inside Modal */}

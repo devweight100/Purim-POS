@@ -12,12 +12,14 @@ import {
   Dialog, DialogContent, DialogHeader,
   DialogTitle, DialogFooter
 } from '@/components/ui/dialog';
-import { Building2, Plus, QrCode, Edit, Star, Upload, CreditCard } from 'lucide-react';
+import { Building2, Plus, QrCode, Edit, Star, Upload, ImagePlus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PromptPayQr } from '@/components/common/PromptPayQr';
 import { promptPayOf } from '@/lib/promptpay-qr';
 import { maskPromptPayId, normalizePromptPayId, PROMPTPAY_TYPE_LABELS, type PromptPayIdType } from '@shared/promptpay';
 import { askConfirm } from '@/lib/ask-dialog';
+import { BankLogo } from '@/components/common/BankLogo';
+import { accountBankCode, bankByCode, bankLogoError, BANK_LOGO_MAX_BYTES, THAI_BANKS, type ThaiBankCode } from '@shared/thai-banks';
 
 const PROMPTPAY_PLACEHOLDER: Record<PromptPayIdType, string> = {
   MOBILE: 'เช่น 081-234-5678',
@@ -25,15 +27,47 @@ const PROMPTPAY_PLACEHOLDER: Record<PromptPayIdType, string> = {
   EWALLET: 'เลข 15 หลัก',
 };
 
-const BANK_PRESETS = [
-  { name: 'ธนาคารกสิกรไทย (KBank)', color: '#10b981' },
-  { name: 'ธนาคารไทยพาณิชย์ (SCB)', color: '#8b5cf6' },
-  { name: 'ธนาคารกรุงเทพ (BBL)', color: '#1e40af' },
-  { name: 'ธนาคารกรุงไทย (KTB)', color: '#0284c7' },
-  { name: 'ธนาคารกรุงศรีอยุธยา (BAY)', color: '#eab308' },
-  { name: 'พร้อมเพย์ (PromptPay)', color: '#3b82f6' },
-  { name: 'ธนาคารออมสิน (GSB)', color: '#ec4899' },
-];
+/** Logo upload: what the file picker offers (SVG is never accepted: it can carry scripts). */
+const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+const LOGO_PX = 128;
+
+/**
+ * The owner's logo file -> a 128 px PNG data URL drawn through a canvas (only the pixels survive: any metadata or
+ * script in the file is dropped), else a JPEG if the PNG is too big. Rejects SVG / other types.
+ */
+async function logoFileToDataUrl(file: File): Promise<string> {
+  if (file.type === 'image/svg+xml' || /\.svg$/i.test(file.name)) throw new Error('ไม่รับไฟล์ SVG กรุณาใช้รูป PNG, JPG หรือ WebP');
+  if (!LOGO_TYPES.includes(file.type)) throw new Error('กรุณาเลือกรูป PNG, JPG หรือ WebP');
+  if (file.size > 5 * 1024 * 1024) throw new Error('ไฟล์ใหญ่เกินไป (สูงสุด 5 MB)');
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('เปิดไฟล์รูปไม่ได้'));
+      el.src = url;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = LOGO_PX;
+    canvas.height = LOGO_PX;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('เปิดไฟล์รูปไม่ได้');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, LOGO_PX, LOGO_PX);
+    const scale = Math.min(LOGO_PX / img.width, LOGO_PX / img.height);
+    const w = img.width * scale;
+    const h = img.height * scale;
+    ctx.drawImage(img, (LOGO_PX - w) / 2, (LOGO_PX - h) / 2, w, h);
+    let out = canvas.toDataURL('image/png');
+    if (out.length * 0.75 > BANK_LOGO_MAX_BYTES) out = canvas.toDataURL('image/jpeg', 0.85);
+    const err = bankLogoError(out);
+    if (err) throw new Error(err);
+    return out;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 
 /** Card preview of a generated PromptPay QR (a ฿1.00 sample). */
 function AccountPromptPayPreview({ acc }: { acc: BankAccount }) {
@@ -53,11 +87,14 @@ export default function AccountsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   // Form state
-  const [bankName, setBankName] = useState('');
+  const [bankCode, setBankCode] = useState<ThaiBankCode>('KBANK');
+  /** bank name typed for "อื่น ๆ" */
+  const [otherBankName, setOtherBankName] = useState('');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const [accountName, setAccountName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
-  const [color, setColor] = useState('#3b82f6');
   const [isDefault, setIsDefault] = useState(false);
   const [promptpayType, setPromptpayType] = useState<PromptPayIdType | ''>('');
   const [promptpayId, setPromptpayId] = useState('');
@@ -93,11 +130,12 @@ export default function AccountsPage() {
 
   const handleOpenAdd = () => {
     setEditingAccount(null);
-    setBankName(BANK_PRESETS[0].name);
+    setBankCode('KBANK');
+    setOtherBankName('');
+    setLogoUrl(null);
     setAccountName('');
     setAccountNumber('');
     setQrImageUrl(null);
-    setColor(BANK_PRESETS[0].color);
     setIsDefault(accounts.length === 0);
     setPromptpayType('');
     setPromptpayId('');
@@ -106,11 +144,13 @@ export default function AccountsPage() {
 
   const handleOpenEdit = (acc: BankAccount) => {
     setEditingAccount(acc);
-    setBankName(acc.bankName);
+    const code = accountBankCode(acc);
+    setBankCode(code);
+    setOtherBankName(code === 'OTHER' ? acc.bankName : '');
+    setLogoUrl(acc.logoUrl || null);
     setAccountName(acc.accountName);
     setAccountNumber(acc.accountNumber);
     setQrImageUrl(acc.qrImageUrl || null);
-    setColor(acc.color || '#3b82f6');
     setIsDefault(!!acc.isDefault);
     const pp = promptPayOf(acc);
     setPromptpayType(pp?.type ?? '');
@@ -149,7 +189,17 @@ export default function AccountsPage() {
   // PromptPay ID typed in the form: checked as the user types (the server checks again)
   const promptpayCheck = promptpayType && promptpayId.trim() ? normalizePromptPayId(promptpayType, promptpayId) : null;
 
+  const handleLogoFile = async (file: File) => {
+    try {
+      setLogoUrl(await logoFileToDataUrl(file));
+      toast.success('ใส่โลโก้แล้ว (บันทึกบัญชีเพื่อใช้งาน)');
+    } catch (err) {
+      toast.error(errorMessage(err, 'ใส่โลโก้ไม่สำเร็จ'));
+    }
+  };
+
   const handleSave = async () => {
+    if (bankCode === 'OTHER' && !otherBankName.trim()) { toast.error('กรุณาระบุชื่อธนาคาร'); return; }
     if (!accountName.trim()) { toast.error('กรุณาระบุชื่อบัญชี'); return; }
     if (!accountNumber.trim()) { toast.error('กรุณาระบุเลขที่บัญชี / เบอร์พร้อมเพย์'); return; }
     if (promptpayType && !promptpayId.trim()) { toast.error('กรุณาระบุหมายเลขพร้อมเพย์ หรือเลือก "ไม่ใช้"'); return; }
@@ -157,7 +207,9 @@ export default function AccountsPage() {
     if (saving) return;
 
     const body = {
-      bankName: bankName.trim(),
+      bankName: bankCode === 'OTHER' ? otherBankName.trim() : bankByCode(bankCode).name,
+      bankCode,
+      logoUrl: logoUrl || null,
       accountName: accountName.trim(),
       accountNumber: accountNumber.trim(),
       qrCodeUrl: qrImageUrl || null,
@@ -171,7 +223,7 @@ export default function AccountsPage() {
     setSaving(true);
     try {
       if (editingAccount) await api.bankAccounts.update(editingAccount.id, body);
-      else await api.bankAccounts.create({ ...body, qrCodeUrl: body.qrCodeUrl || undefined, promptpayType: body.promptpayType || undefined, promptpayId: body.promptpayId || undefined });
+      else await api.bankAccounts.create({ ...body, logoUrl: body.logoUrl || undefined, qrCodeUrl: body.qrCodeUrl || undefined, promptpayType: body.promptpayType || undefined, promptpayId: body.promptpayId || undefined });
       toast.success(`${editingAccount ? 'แก้ไข' : 'เพิ่ม'}บัญชีการเงินสำเร็จ`);
       setIsDialogOpen(false);
       await reload();
@@ -247,12 +299,7 @@ export default function AccountsPage() {
 
             <div className="space-y-4">
               <div className="flex items-center gap-3">
-                <div 
-                  className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-sm"
-                  style={{ backgroundColor: acc.color || '#3b82f6' }}
-                >
-                  <CreditCard className="w-6 h-6" />
-                </div>
+                <BankLogo account={acc} size={48} />
                 <div className="min-w-0 flex-1">
                   <h3 className="font-bold text-slate-900 text-base truncate">{acc.bankName}</h3>
                   <p className="text-xs text-slate-500 truncate">{acc.accountName}</p>
@@ -319,20 +366,54 @@ export default function AccountsPage() {
 
           <div className="space-y-4 py-2">
             <div>
-              <label className="text-sm font-semibold text-slate-700 block mb-1.5">ธนาคาร / ช่องทาง *</label>
-              <select
-                value={bankName}
-                onChange={(e) => {
-                  setBankName(e.target.value);
-                  const preset = BANK_PRESETS.find(p => p.name === e.target.value);
-                  if (preset) setColor(preset.color);
-                }}
-                className="w-full h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium outline-none focus:border-sky-500"
-              >
-                {BANK_PRESETS.map(p => (
-                  <option key={p.name} value={p.name}>{p.name}</option>
-                ))}
-              </select>
+              <label htmlFor="account-bank" className="text-sm font-semibold text-slate-700 block mb-1.5">ธนาคาร / ช่องทาง *</label>
+              <div className="flex items-center gap-3">
+                <BankLogo account={{ bankCode, logoUrl }} size={40} />
+                <select
+                  id="account-bank"
+                  data-testid="account-bank"
+                  value={bankCode}
+                  onChange={(e) => setBankCode(e.target.value as ThaiBankCode)}
+                  className="min-w-0 flex-1 h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium outline-none focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400"
+                >
+                  {THAI_BANKS.map((b) => (
+                    <option key={b.code} value={b.code}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+              {bankCode === 'OTHER' && (
+                <Input
+                  aria-label="ชื่อธนาคาร"
+                  placeholder="ชื่อธนาคาร / ช่องทาง"
+                  value={otherBankName}
+                  onChange={(e) => setOtherBankName(e.target.value)}
+                  className="mt-2 border-slate-300"
+                />
+              )}
+              {/* owner's own logo (optional): shown instead of the built-in badge */}
+              <div className="mt-2 flex flex-wrap items-center gap-btn">
+                <Button type="button" variant="outline" size="sm" onClick={() => logoInputRef.current?.click()}>
+                  <ImagePlus className="w-3.5 h-3.5 mr-1" /> {logoUrl ? 'เปลี่ยนโลโก้' : 'ใช้โลโก้ของร้านเอง'}
+                </Button>
+                {logoUrl && (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setLogoUrl(null)}>
+                    <Trash2 className="w-3.5 h-3.5 mr-1" /> ใช้สัญลักษณ์ธนาคาร
+                  </Button>
+                )}
+                <span className="text-xs text-slate-500">PNG / JPG / WebP (ไม่รับ SVG) ย่อเป็น 128 px</span>
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  data-testid="account-logo-file"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void handleLogoFile(f);
+                    e.target.value = '';
+                  }}
+                />
+              </div>
             </div>
 
             <div>

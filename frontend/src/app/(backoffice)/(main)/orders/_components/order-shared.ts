@@ -24,6 +24,8 @@ export interface OrderRowPayment {
   method: string;
   amount?: number;
   referenceNo?: string;
+  /** QR / transfer: the shop account that received the money */
+  bankAccountId?: string | null;
 }
 
 export interface OrderRow {

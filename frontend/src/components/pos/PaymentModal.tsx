@@ -16,6 +16,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { CreditCard, QrCode, Banknote, Edit3, CheckCircle2, SplitSquareHorizontal, UserCheck, Building2, ArrowRight, FileText, Printer, ShieldCheck } from 'lucide-react';
 import { NumpadPopup } from './NumpadPopup';
 import { padField } from '@/lib/keyboard/pad-field';
+import { readPadKey } from '@/lib/keyboard/pad-keys';
+import { BankLogo } from '@/components/common/BankLogo';
 import { ReceiptPdfModal, ReceiptData } from './ReceiptPdfModal';
 import { levelNames } from '@shared/price-level';
 import { orderToReceiptData, summarizePaymentMethods, isCreditMethod } from '@/lib/receipt-mapper';
@@ -293,6 +295,16 @@ export function PaymentModal({
       return;
     }
     
+    // transfer / QR: the account that received the money is recorded on the payment; with several accounts the
+    // cashier must choose it (docs/product-form-bank-logos.md)
+    const transferPart = total > 0 && (method === 'QR' || (method === 'SPLIT' && qrReceived > 0));
+    if (transferPart && bankAccounts.length > 1 && !selectedBank) {
+      const msg = `เลือกบัญชีที่รับเงินโอนก่อน (กดเลข 1-${Math.min(9, bankAccounts.length)} หรือลูกศร)`;
+      setPayError(msg);
+      toast.error(msg);
+      return;
+    }
+
     if (total === 0) {
       payments.push({ method: 'CASH' as const, amount: 0 });
       recordedCashReceived = 0;
@@ -670,7 +682,7 @@ export function PaymentModal({
     setPendingReceipt(false);
     const accs = loadBankAccounts();
     setBankAccounts(accs);
-    setSelectedBank(accs.find(a => a.isDefault) || accs[0] || null);
+    setSelectedBank(accs.length === 1 ? accs[0] : null); // several accounts: the cashier picks the one that received it
 
     setCashReceived(0);
     setCashText('');
@@ -702,7 +714,9 @@ export function PaymentModal({
     }
     void api.bankAccounts.getAll().then(accs => {
       setBankAccounts(accs);
-      setSelectedBank(accs.find((a: BankAccount) => a.isDefault) || accs[0] || null);
+      // one account: preselected; several: the cashier must pick the one that received the money (keeps a pick made
+      // before the refresh when that account still exists)
+      setSelectedBank((prev) => (accs.length === 1 ? accs[0] : accs.find((a: BankAccount) => a.id === prev?.id) || null));
     }).catch(() => toast.warning('โหลดบัญชีธนาคารจากเซิร์ฟเวอร์ไม่ได้'));
   }, [open, initialMethod, total, orderToEditPayment]);
 
@@ -743,6 +757,61 @@ export function PaymentModal({
     return total;
   };
 
+  /** Pick the receiving account (number keys 1-9, arrows, click) and keep the keyboard on that choice. */
+  const bankChoiceRef = useRef<HTMLDivElement | null>(null);
+  const chooseBank = (idx: number, focus = true) => {
+    const acc = bankAccounts[idx];
+    if (!acc) return;
+    setSelectedBank(acc);
+    setPayError(null);
+    if (focus) setTimeout(() => bankChoiceRef.current?.querySelector<HTMLElement>(`[data-bank-index="${idx}"]`)?.focus({ preventScroll: true }), 0);
+  };
+  const bankChoiceActive = open && step === 'PROCESS' && method === 'QR' && bankAccounts.length > 1;
+  // the QR screen with several accounts opens with the keyboard on the account list (the method card that had the
+  // focus is gone)
+  useEffect(() => {
+    if (!bankChoiceActive) return;
+    const t = setTimeout(() => {
+      const list = bankChoiceRef.current;
+      const el = list?.querySelector<HTMLElement>('[aria-checked="true"]') || list?.querySelector<HTMLElement>('[data-bank-index="0"]');
+      el?.focus({ preventScroll: true });
+    }, 30);
+    return () => clearTimeout(t);
+  }, [bankChoiceActive]);
+  /** number keys pick an account on the QR screen (not while typing in a field or a numpad is open) */
+  const onBankKey = (e: React.KeyboardEvent) => {
+    if (!bankChoiceActive || numpadTarget !== 'NONE' || approvalNeeded) return;
+    if (!(e.currentTarget as HTMLElement).contains(e.target as Node)) return;
+    const t = e.target as HTMLElement;
+    if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return;
+    const k = readPadKey(e);
+    if (k?.kind === 'digit' && k.digit !== '0' && Number(k.digit) <= bankAccounts.length) {
+      e.preventDefault();
+      chooseBank(Number(k.digit) - 1);
+    }
+  };
+  const onBankListKey = (e: React.KeyboardEvent) => {
+    const i = Math.max(0, bankAccounts.findIndex((a) => a.id === selectedBank?.id));
+    const focused = Number((e.target as HTMLElement).getAttribute('data-bank-index'));
+    if (['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'].includes(e.key)) {
+      e.preventDefault();
+      const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1;
+      const from = selectedBank ? i : Number.isFinite(focused) ? focused : 0;
+      chooseBank(selectedBank ? (from + step + bankAccounts.length) % bankAccounts.length : from);
+    } else if (e.key === ' ') {
+      e.preventDefault();
+      if (Number.isFinite(focused)) chooseBank(focused);
+    } else if (e.key === 'Enter' && !e.nativeEvent.isComposing && !e.repeat) {
+      // Enter on the list: nothing chosen yet -> choose the focused one; chosen -> confirm the payment
+      e.preventDefault();
+      if (!selectedBank) {
+        if (Number.isFinite(focused)) chooseBank(focused);
+        return;
+      }
+      if (!isSubmitting) void handleConfirmPayment();
+    }
+  };
+
   /**
    * Enter = the primary action of the current screen (docs/pos-keyboard-scan.md): ฿0 bill / QR / split / credit
    * -> confirm, success screen -> close (new bill). The cash screen has its own Enter (onKeyDownCapture), the method
@@ -763,7 +832,7 @@ export function PaymentModal({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent finalFocus={finalFocus} onKeyDown={onEnter} aria-busy={isSubmitting} className="w-[calc(100vw-1rem)] sm:w-[90vw] max-w-6xl h-[90dvh] max-h-[850px] flex flex-col p-3 pb-0 sm:p-8 sm:pb-0 overflow-y-auto bg-white border-slate-200 text-slate-900 shadow-2xl rounded-3xl">
+        <DialogContent finalFocus={finalFocus} onKeyDown={(e) => { onBankKey(e); onEnter(e); }} aria-busy={isSubmitting} className="w-[calc(100vw-1rem)] sm:w-[90vw] max-w-6xl h-[90dvh] max-h-[850px] flex flex-col p-3 pb-0 sm:p-8 sm:pb-0 overflow-y-auto bg-white border-slate-200 text-slate-900 shadow-2xl rounded-3xl">
           <DialogHeader className="shrink-0 pb-3 border-b border-slate-100 mb-4">
             <DialogTitle className="text-2xl font-bold flex items-center gap-3">
               <CreditCard className="w-8 h-8 text-sky-500" />
@@ -1011,36 +1080,65 @@ export function PaymentModal({
           {/* STEP 2: PROCESS (QR PromptPay / Bank Transfer) */}
           {step === 'PROCESS' && method === 'QR' && (
             <div className="py-2 flex-1 flex flex-col justify-between space-y-6">
-              {/* Account selection tabs if multiple exist */}
+              {/* Receiving account: preselected when there is one; several = the cashier picks it (1-9 / arrows) */}
               {bankAccounts.length > 1 && (
-                <div className="flex gap-3 overflow-x-auto pb-2 border-b border-slate-200 no-scrollbar shrink-0">
-                  {bankAccounts.map((acc) => (
-                    <button
-                      key={acc.id}
-                      type="button"
-                      onClick={() => setSelectedBank(acc)}
-                      className={`px-5 py-3 rounded-2xl text-base font-bold transition-all border flex items-center gap-2.5 ${
-                        selectedBank?.id === acc.id
-                          ? "bg-sky-500 text-white border-sky-500 shadow-md"
-                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                      }`}
-                    >
-                      <Building2 className="w-5 h-5" />
-                      {acc.bankName}
-                    </button>
-                  ))}
+                <div className="shrink-0 space-y-2">
+                  <p id="pay-bank-choice-label" className="text-sm font-bold text-slate-700">
+                    เลือกบัญชีที่รับเงินโอน <span className="font-normal text-slate-500">(กดเลข 1-{Math.min(9, bankAccounts.length)} หรือลูกศร แล้ว Enter)</span>
+                  </p>
+                  <div
+                    ref={bankChoiceRef}
+                    role="radiogroup"
+                    aria-labelledby="pay-bank-choice-label"
+                    data-testid="pay-bank-choice"
+                    data-own-digits
+                    onKeyDown={onBankListKey}
+                    className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3"
+                  >
+                    {bankAccounts.map((acc, idx) => {
+                      const checked = selectedBank?.id === acc.id;
+                      return (
+                        <div
+                          key={acc.id}
+                          role="radio"
+                          aria-checked={checked}
+                          aria-label={`${idx + 1}. ${acc.bankName} ${acc.accountNumber}`}
+                          data-bank-index={idx}
+                          tabIndex={checked || (!selectedBank && idx === 0) ? 0 : -1}
+                          onClick={() => chooseBank(idx)}
+                          className={`flex min-w-0 cursor-pointer items-center gap-3 rounded-2xl border-2 px-3 py-2.5 outline-none transition-colors focus-visible:ring-3 focus-visible:ring-sky-400/50 ${
+                            checked ? 'border-sky-500 bg-sky-50' : 'border-slate-200 bg-white hover:bg-slate-50'
+                          }`}
+                        >
+                          <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-bold ${checked ? 'bg-sky-500 text-white' : 'bg-slate-100 text-slate-600'}`}>{idx + 1}</span>
+                          <BankLogo account={acc} size={36} />
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-bold text-slate-900">{acc.bankName}</span>
+                            <span className="block truncate text-xs text-slate-500 tabular-nums">{acc.accountNumber} · {acc.accountName}</span>
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {payError && <p role="alert" className="text-sm font-semibold text-red-600">{payError}</p>}
                 </div>
               )}
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center flex-1">
                 {/* Left: Large QR Code & Details */}
                 <div className="flex flex-col items-center text-center p-6 bg-slate-50 border-2 border-slate-200 rounded-3xl shadow-inner">
-                  <Badge className="mb-4 bg-sky-100 text-sky-900 border-sky-300 text-sm px-4 py-1 font-bold">
-                    {selectedBank?.bankName || 'QR PromptPay'}
-                  </Badge>
+                  <div className="mb-4 flex items-center gap-2" data-testid="pay-bank-selected">
+                    {selectedBank && <BankLogo account={selectedBank} size={32} />}
+                    <span className="text-base font-bold text-slate-900">{selectedBank?.bankName || (bankAccounts.length > 1 ? 'ยังไม่ได้เลือกบัญชี' : 'QR PromptPay')}</span>
+                  </div>
 
                   {/* XL QR: generated PromptPay QR for the amount (follows the numpad), else the uploaded image */}
-                  {selectedPromptPay && selectedBank ? (
+                  {!selectedBank && bankAccounts.length > 1 ? (
+                    <div className="w-full max-w-72 aspect-square border-2 border-dashed border-slate-300 rounded-3xl bg-white p-4 flex flex-col items-center justify-center gap-2 text-slate-500">
+                      <QrCode className="w-20 h-20 text-slate-300" />
+                      <span className="text-sm font-semibold">เลือกบัญชีที่รับเงินด้านบนก่อน แล้ว QR จะแสดงที่นี่</span>
+                    </div>
+                  ) : selectedPromptPay && selectedBank ? (
                     <div className="w-full max-w-80 border-2 border-slate-200 rounded-3xl bg-white p-3 shadow-md">
                       <PromptPayQr
                         type={selectedPromptPay.type}
@@ -1063,7 +1161,7 @@ export function PaymentModal({
                   </div>
                   )}
 
-                  {!selectedPromptPay && (
+                  {!selectedPromptPay && selectedBank && (
                   <div className="space-y-1">
                     <p className="text-sm text-slate-600">ชื่อบัญชี: <b className="text-slate-900 text-base">{selectedBank?.accountName || 'ร้านปุริม'}</b></p>
                     <p className="text-sm text-slate-600">เลขที่บัญชี / พร้อมเพย์: <b className="font-mono text-slate-900 text-xl font-bold">{selectedBank?.accountNumber || '081-234-5678'}</b></p>
@@ -1160,20 +1258,27 @@ export function PaymentModal({
                       {bankAccounts.length > 0 && (
                         <div className="space-y-1 pt-1">
                           <label className="text-xs font-bold text-slate-600 block">เลือกบัญชีธนาคารที่รับเงินโอน:</label>
+                          <div className="flex items-center gap-2">
+                          {selectedBank && <BankLogo account={selectedBank} size={32} />}
                           <select
+                            aria-label="บัญชีที่รับเงินโอน (แบ่งจ่าย)"
+                            data-testid="split-bank-select"
                             value={selectedBank?.id || ''}
                             onChange={(e) => {
                               const acc = bankAccounts.find(a => a.id === e.target.value);
-                              if (acc) setSelectedBank(acc);
+                              setSelectedBank(acc || null);
+                              setPayError(null);
                             }}
                             className="w-full h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-sky-500 shadow-sm"
                           >
+                            {bankAccounts.length > 1 && <option value="">— เลือกบัญชีที่รับเงิน —</option>}
                             {bankAccounts.map(a => (
                               <option key={a.id} value={a.id}>
                                 {a.bankName} - {a.accountName} ({a.accountNumber})
                               </option>
                             ))}
                           </select>
+                          </div>
                         </div>
                       )}
                     </div>

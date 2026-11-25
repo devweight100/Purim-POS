@@ -1415,6 +1415,10 @@ export interface ApiBankAccount {
   /** PromptPay ID for a generated QR (MOBILE / NATIONAL_ID / EWALLET, digits only). */
   promptpayType?: string | null;
   promptpayId?: string | null;
+  /** bank of the account (shared/src/thai-banks.ts), null = older account */
+  bankCode?: string | null;
+  /** owner's own logo (data URL, PNG / JPEG / WebP) */
+  logoUrl?: string | null;
   color?: string | null;
   isDefault?: boolean;
 }
@@ -1427,6 +1431,8 @@ export interface BankAccountWriteRequest {
   qrCodeUrl?: string | null;
   promptpayType?: string | null;
   promptpayId?: string | null;
+  bankCode?: string | null;
+  logoUrl?: string | null;
   color?: string;
   isDefault?: boolean;
 }
