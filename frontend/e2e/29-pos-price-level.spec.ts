@@ -454,7 +454,8 @@ test('start-of-bill dialog (setting on): first scan waits; Enter / Escape = walk
     await expect.poll(async () => (await lines(page)).length).toBe(0);
     await scan(page, P.dish.barcode);
     await expect(dlg).toBeVisible();
-    await page.keyboard.type(M.l3.name.slice(-12));
+    // typed at a person's speed: 12 keys at 0 ms + Enter is a barcode scanner burst on the POS (docs/pos-keyboard-scan.md)
+    await page.keyboard.type(M.l3.name.slice(-12), { delay: 60 });
     await expect(dlg.getByRole('option').first()).toContainText(M.l3.name);
     await shot(page, 'start-dialog-member-search');
     await page.keyboard.press('Enter');

@@ -51,6 +51,30 @@ export const PinPad = forwardRef<HTMLInputElement, PinPadProps>(function PinPad(
     });
   }, []);
 
+  // Digits typed the moment the dialog appears (before the field got the focus, e.g. still in the cash field of
+  // the payment screen behind it) go to the PIN too, instead of being lost or typed into the other field.
+  const applyKey = useEffectEvent((k: ReturnType<typeof readPadKey>) => {
+    if (!disabled) onChange(applyPinKey(value, k, maxLength));
+  });
+  useEffect(() => {
+    const onWindowKey = (e: KeyboardEvent) => {
+      const input = innerRef.current;
+      if (!input || e.defaultPrevented) return;
+      const target = e.target as HTMLElement | null;
+      if (target === input) return; // the field handles its own keys
+      const myDialog = input.closest('[role="dialog"]');
+      // other fields of the same dialog (approval note) keep their keys
+      if (target && myDialog && myDialog.contains(target) && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      const k = readPadKey(e);
+      if (!k || (k.kind !== 'digit' && k.kind !== 'back' && k.kind !== 'clear')) return;
+      e.preventDefault();
+      applyKey(k);
+      input.focus({ preventScroll: true });
+    };
+    window.addEventListener('keydown', onWindowKey, true);
+    return () => window.removeEventListener('keydown', onWindowKey, true);
+  }, []);
+
   const onKeyDown = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     const k = readPadKey(e);
     if (!k || k.kind === 'escape') return; // Escape: the dialog closes (cancel)
