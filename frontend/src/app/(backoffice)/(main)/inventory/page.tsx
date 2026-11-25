@@ -640,10 +640,10 @@ export default function InventoryPage() {
                         </TableCell>
 
                         {/* Cost */}
-                        <TableCell className="text-right font-medium text-fg whitespace-nowrap tabular-nums">
+                        <TableCell className="text-right font-medium text-fg whitespace-nowrap tabular-nums" data-testid="inventory-cost">
                           <span className="block">{displayUnitCost(p) !== undefined ? formatCurrency(displayUnitCost(p)!) : '-'}</span>
                           {stockOnHandCost(p) !== undefined && (
-                            <span className="block text-xs font-normal text-subtle" title="ต้นทุนเฉลี่ยของสต็อกที่มีอยู่ (ใช้คิดกำไรตอนขาย)">สต็อก {formatCurrency(stockOnHandCost(p)!)}</span>
+                            <span className="block text-xs font-normal text-subtle" title="ต้นทุนเฉลี่ยของสต็อกที่มีอยู่ (ใช้คิดกำไรตอนขาย)" data-testid="inventory-stock-cost">สต็อก {formatCurrency(stockOnHandCost(p)!)}</span>
                           )}
                         </TableCell>
 
@@ -1134,6 +1134,9 @@ export default function InventoryPage() {
                 <div className="text-right">
                   <span className="text-slate-500 block">ต้นทุน / หน่วย:</span>
                   <b className="text-slate-700 font-bold">{displayUnitCost(targetProduct) !== undefined ? formatCurrency(displayUnitCost(targetProduct)!) : '-'}</b>
+                  {stockOnHandCost(targetProduct) !== undefined && (
+                    <span className="block text-subtle" title="ต้นทุนเฉลี่ยของสต็อกที่มีอยู่ (ใช้คิดกำไรตอนขาย)" data-testid="adjust-stock-cost">สต็อก {formatCurrency(stockOnHandCost(targetProduct)!)}</span>
+                  )}
                 </div>
               </div>
             )}

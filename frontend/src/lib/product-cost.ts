@@ -2,7 +2,7 @@
  * Cost per unit shown in the products / inventory tables.
  *
  * - displayUnitCost: the cost the owner typed in the product form (`costPrice`, the reference cost used for new
- *   stock), else the cost of the stock on hand (FIFO pool sent with the server's table rows). Editing ต้นทุน in the
+ *   stock) when entered (> 0), else the cost of the stock on hand (FIFO pool sent with the server's table rows). Editing ต้นทุน in the
  *   form shows up in the tables at once (owner request, v1.5.14).
  * - stockOnHandCost: the FIFO average of the stock on hand; the tables show it as a small second line when it
  *   differs from the typed cost (profit of sales is still booked from the real stock cost).
@@ -19,8 +19,14 @@ function num(raw: CostNumber): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/** a typed cost of 0 means "not entered" (the form's default; the server treats it the same way for oversold stock) */
+function typed(raw: CostNumber): number | undefined {
+  const n = num(raw);
+  return n !== undefined && n > 0 ? n : undefined;
+}
+
 export function displayUnitCost(p: CostFields): number | undefined {
-  return num(p.costPrice) ?? num(p.cost) ?? num(p.stockUnitCost);
+  return typed(p.costPrice) ?? typed(p.cost) ?? num(p.stockUnitCost) ?? num(p.costPrice) ?? num(p.cost);
 }
 
 /** FIFO cost of the stock on hand when it differs from the displayed (typed) cost by at least 1 satang, else undefined */

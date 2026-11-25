@@ -13,6 +13,11 @@ describe('product cost shown in tables', () => {
     expect(displayUnitCost({ stockUnitCost: 40 })).toBe(40);
     expect(stockOnHandCost({ stockUnitCost: 40 })).toBeUndefined();
   });
+  it('a typed cost of 0 (never entered) falls back to the stock cost, no second line', () => {
+    expect(displayUnitCost({ costPrice: 0, stockUnitCost: 59.5 })).toBe(59.5);
+    expect(stockOnHandCost({ costPrice: 0, stockUnitCost: 59.5 })).toBeUndefined();
+    expect(displayUnitCost({ costPrice: 0 })).toBe(0);
+  });
   it('unknown cost (no permission) stays undefined', () => {
     expect(displayUnitCost({})).toBeUndefined();
   });
