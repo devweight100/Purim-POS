@@ -98,5 +98,25 @@ product's transaction by `InventoryService.adjustStock(type SET)` - the one stoc
 - Shift summary: it has no per-bank place (only QR / transfer totals); not changed. The bill detail shows the account.
 - Desktop client: no change needed (it loads the pages from the server; no keyboard / form code of its own).
 
-## Verification
-(see the end of the round; filled in below)
+## Verification (2026-11-25)
+| Check | Result |
+| --- | --- |
+| backend `tsc --noEmit` | ok |
+| backend jest | 190 / 190 (shared thai-banks spec included) |
+| backend e2e (fresh DB) | 139 / 139 (new: product form stock 4, bank logos + receiving account 2) |
+| fresh-DB `migrate deploy` + `migrate diff` to schema.prisma | empty diff |
+| frontend `tsc --noEmit` | ok |
+| frontend eslint | 0 errors (98 warnings, was 99) |
+| frontend vitest | 346 / 346 (new: thai-banks 3) |
+| frontend `next build` | ok |
+| Playwright full suite (fresh DB) | 137 / 137 (new: 33 numpads 3, 34 product form 3, 35 bank logos 2); after the last two layout fixes 14 / 15 / 32 / 33 / 35 re-run on a fresh DB: all pass |
+| desktop `npm test` + `node --check *.js` | 13 / 13, ok (desktop untouched) |
+| no horizontal scroll 1366x768 / 1920x1080 / 1093x614 | product form, accounts page + dialog, POS transfer screen: none (specs 34 / 35 + screenshot script) |
+
+Reproduced on 2044860 (spec 33, before the fix): open-shift dialog, digits typed without a click left
+"ยอดเงินรวมในลิ้นชัก" empty (focus on the "เปิด Numpad" button); item editor focus on "คืนค่าเดิม".
+
+Screenshots (deviceScaleFactor 2, long Thai names, several barcodes, prices 1-5, 3 bank accounts) in the session
+scratchpad `form-bank/`: before / after of product add + edit, accounts page + edit dialog, POS transfer screen;
+after only: filled add form, "ข้อมูลเพิ่มเติม", transfer with an account chosen, bill detail (before = no payment
+lines).
