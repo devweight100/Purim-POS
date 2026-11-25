@@ -41,7 +41,7 @@ export class ProductsController {
       ...(rawBody.supplierEntries !== undefined ? { supplierEntries: rawBody.supplierEntries } : {}),
       ...(rawBody.suppliers !== undefined ? { suppliers: rawBody.suppliers } : {}),
       ...(rawBody.supplierId !== undefined ? { supplierId: rawBody.supplierId } : {}),
-    } as any);
+    } as any, req?.user);
     return costFilterFor(req?.user)(product);
   }
 
@@ -127,7 +127,7 @@ export class ProductsController {
         ...(rawBody.suppliers !== undefined ? { suppliers: rawBody.suppliers } : {}),
         ...(rawBody.supplierId !== undefined ? { supplierId: rawBody.supplierId } : {}),
       } as any,
-      { canViewCost: canViewCost(req?.user) },
+      { canViewCost: canViewCost(req?.user), actor: req?.user },
     );
     return costFilterFor(req?.user)(product);
   }

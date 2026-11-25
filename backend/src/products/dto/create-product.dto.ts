@@ -180,6 +180,20 @@ export class CreateProductDto {
   @IsOptional()
   isActive?: boolean;
 
+  /**
+   * Stock in the base unit, from the product form (docs/product-form-bank-logos.md): on create the opening stock
+   * (an opening stock movement), on update the new count (an adjustment movement through InventoryService, reason
+   * "ปรับจากหน้าแก้ไขสินค้า"). Needs the stock adjustment permission (MANAGE_INVENTORY). Omitted = stock untouched.
+   */
+  @IsNumber()
+  @IsOptional()
+  stockQuantity?: number;
+
+  /** Update with stockQuantity: the stock the user saw in the form (409 STOCK_CHANGED when it changed meanwhile). */
+  @IsNumber()
+  @IsOptional()
+  expectedStock?: number;
+
   @IsArray()
   @IsString({ each: true })
   @IsOptional()

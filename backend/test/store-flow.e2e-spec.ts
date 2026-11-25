@@ -3959,4 +3959,58 @@ d('store flow (e2e)', () => {
       await api('put', '/online-shop/config', A, { messagingToken: '', channelSecret: '' }).expect(200);
     });
   });
+  describe('product form stock field: opening stock on create, adjustment on edit (docs/product-form-bank-logos.md)', () => {
+    const sp: Record<string, any> = {};
+    const movesOf = async (id: string) => (await api('get', `/inventory/movements?productId=${id}`, A).expect(200)).body;
+    const stockOf = async (id: string) => Number((await api('get', `/products/${id}/stock`, A).expect(200)).body.computedStock);
+    it('create with stockQuantity = one opening movement (cost = the form cost, user recorded)', async () => {
+      const tag = randomUUID().slice(0, 6);
+      sp.p = (await api('post', '/products', A, { name: `สต็อกจากฟอร์ม ${tag}`, basePrice: 50, priceLevel1: 50, costPrice: 30, unit: 'ชิ้น', stockQuantity: 24 }).expect(201)).body;
+      expect(await stockOf(sp.p.id)).toBe(24);
+      const moves = await movesOf(sp.p.id);
+      expect(moves).toHaveLength(1);
+      expect(moves[0]).toMatchObject({ type: 'ADJUST_ADD', quantityChange: 24, reason: 'สต็อกเริ่มต้น (เพิ่มสินค้าใหม่)' });
+      expect(moves[0].userName).toBeTruthy();
+      // no stock field = no movement
+      const plain = (await api('post', '/products', A, { name: `ไม่มีสต็อก ${tag}`, basePrice: 5, unit: 'ชิ้น' }).expect(201)).body;
+      expect(await movesOf(plain.id)).toHaveLength(0);
+      sp.tag = tag;
+    });
+    it('edit: a changed stock goes through the adjustment service (difference, reason, stock card); unchanged = nothing', async () => {
+      await api('patch', `/products/${sp.p.id}`, A, { name: `สต็อกจากฟอร์ม ${sp.tag} แก้`, stockQuantity: 20, expectedStock: 24 }).expect(200);
+      expect(await stockOf(sp.p.id)).toBe(20);
+      const moves = await movesOf(sp.p.id);
+      expect(moves[0]).toMatchObject({ type: 'ADJUST_SUB', quantityChange: -4, previousStock: 24, currentStock: 20, reason: 'ปรับจากหน้าแก้ไขสินค้า' });
+      // same value: no new movement; no stock field: none either
+      await api('patch', `/products/${sp.p.id}`, A, { stockQuantity: 20, expectedStock: 20 }).expect(200);
+      await api('patch', `/products/${sp.p.id}`, A, { name: `สต็อกจากฟอร์ม ${sp.tag} แก้ 2` }).expect(200);
+      expect(await movesOf(sp.p.id)).toHaveLength(2);
+      // the paged stock card shows it too
+      const card = (await api('get', `/inventory/movements/page?productId=${sp.p.id}`, A).expect(200)).body;
+      expect(card.data[0].reason).toBe('ปรับจากหน้าแก้ไขสินค้า');
+    });
+    it('concurrency: stock changed after the form opened -> 409 STOCK_CHANGED, nothing of the form saved', async () => {
+      // a sale happened meanwhile (another terminal): 20 -> 19
+      await api('post', '/inventory/adjust', A, { productId: sp.p.id, type: 'SUB', amount: 1, reason: 'ขายจากอีกเครื่อง' }).expect(201);
+      const r = await api('patch', `/products/${sp.p.id}`, A, { name: 'ชื่อที่ไม่ควรถูกบันทึก', stockQuantity: 30, expectedStock: 20 }).expect(409);
+      expect(r.body).toMatchObject({ code: 'STOCK_CHANGED', currentStock: 19, expectedStock: 20 });
+      expect(await stockOf(sp.p.id)).toBe(19);
+      expect((await api('get', `/products/${sp.p.id}`, A)).body.name).toBe(`สต็อกจากฟอร์ม ${sp.tag} แก้ 2`);
+      // without the value the user saw: refused (never overwrite blindly)
+      await api('patch', `/products/${sp.p.id}`, A, { stockQuantity: 30 }).expect(400);
+      // with the new value: applied
+      await api('patch', `/products/${sp.p.id}`, A, { stockQuantity: 30, expectedStock: 19 }).expect(200);
+      expect(await stockOf(sp.p.id)).toBe(30);
+    });
+    it('permission (same as stock adjustment), validation, bundles', async () => {
+      await api('patch', `/products/${sp.p.id}`, C, { stockQuantity: 1, expectedStock: 30 }).expect(403);
+      await api('post', '/products', C, { name: 'x', basePrice: 1, stockQuantity: 5 }).expect(403);
+      await api('patch', `/products/${sp.p.id}`, A, { stockQuantity: -1, expectedStock: 30 }).expect(400);
+      await api('patch', `/products/${sp.p.id}`, A, { stockQuantity: 1.234, expectedStock: 30 }).expect(400);
+      await api('patch', `/products/${sp.p.id}`, A, { stockQuantity: '5', expectedStock: 30 }).expect(400);
+      const bundle = await api('post', '/products', A, { name: `ชุด ${sp.tag}`, basePrice: 99, isBundle: true, bundleItems: [{ childProductId: sp.p.id, quantity: 2 }], stockQuantity: 3 });
+      expect(bundle.status).toBe(400);
+      expect(await stockOf(sp.p.id)).toBe(30);
+    });
+  });
 });

@@ -1,5 +1,5 @@
 import { businessTransaction } from '../prisma/business-transaction';
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { InventoryService } from '../inventory/inventory.service';
@@ -10,7 +10,7 @@ import { generateProductSku } from './product-sku';
 import { deleteCheck, inUseMessage, stockWarning, type DeleteBlocker, type DeleteCheckRow } from './product-delete';
 import { cleanNameField, type NameField } from '../../../shared/src/product-names';
 import { LOOKUP_FILTERS, type LookupFilter, packChain, priceLevels, rankCandidates, searchTokens, stockLevel } from './product-lookup';
-import { addQty, assertQtyAllowed, decimalQtyAllowed, hasMax2Decimals, qn, roundQty } from '../common/qty';
+import { addQty, assertQtyAllowed, decimalQtyAllowed, fromHund, hasMax2Decimals, qn, roundQty, toHund } from '../common/qty';
 import {
   CHANGE_LOG_KEEP_MS, cleanThumb, cursorUsable, decodeCursor, decodeImageDataUrl, encodeCursor, toCatalogRow,
   type CatalogProduct, type CatalogRow,
@@ -62,6 +62,27 @@ export function parseQtyPerPrev(value: unknown, unitName: string): number {
   }
   return n;
 }
+
+/** Who saves a product form (the stock field needs the stock adjustment permission). */
+export interface ProductActor {
+  id?: string;
+  fullName?: string;
+  username?: string;
+  role?: string;
+  permissions?: unknown;
+}
+
+/** Same rule as POST /inventory/adjust (@RequirePermissions('MANAGE_INVENTORY'); ADMIN always). */
+export function canAdjustStock(user: ProductActor | null | undefined): boolean {
+  if (!user) return false;
+  if (user.role === 'ADMIN') return true;
+  const perms: string[] = Array.isArray(user.permissions) ? user.permissions.map((p) => String(p)) : [];
+  return perms.includes('MANAGE_INVENTORY') || perms.includes('ALL');
+}
+
+/** Reason on the stock card of a stock change made in the product form. */
+export const PRODUCT_FORM_STOCK_REASON = 'ปรับจากหน้าแก้ไขสินค้า';
+export const PRODUCT_FORM_OPENING_REASON = 'สต็อกเริ่มต้น (เพิ่มสินค้าใหม่)';
 
 @Injectable()
 export class ProductsService {
@@ -435,8 +456,10 @@ export class ProductsService {
     }
   }
 
-  async create(createProductDto: CreateProductDto) {
+  async create(createProductDto: CreateProductDto, actor?: ProductActor | null) {
     const {
+      stockQuantity,
+      expectedStock: _ignoredExpected,
       barcodes,
       packagingUnits,
       images,
@@ -495,6 +518,15 @@ export class ProductsService {
         barcodes,
         costPrice: data.costPrice,
       });
+
+      // opening stock typed in the form: one audited movement (same path as /inventory/adjust), in this transaction
+      if (stockQuantity !== undefined && stockQuantity !== null && Number(stockQuantity) !== 0) {
+        this.assertFormStock(actor, created.isBundle);
+        await this.inventoryService.adjustStock(
+          { productId: created.id, type: 'SET', amount: Number(stockQuantity), reason: PRODUCT_FORM_OPENING_REASON, userId: actor?.id, userName: actor?.fullName || actor?.username },
+          tx,
+        );
+      }
 
       return tx.product.findUnique({
         where: { id: created.id },
@@ -944,8 +976,10 @@ export class ProductsService {
   }
 
   /** `opts.canViewCost=false`: the caller never saw the costs, so cost fields it sends are ignored. */
-  async update(id: string, updateProductDto: UpdateProductDto, opts: { canViewCost?: boolean } = {}) {
+  async update(id: string, updateProductDto: UpdateProductDto, opts: { canViewCost?: boolean; actor?: ProductActor | null } = {}) {
     const {
+      stockQuantity,
+      expectedStock,
       barcodes,
       packagingUnits,
       images,
@@ -961,8 +995,12 @@ export class ProductsService {
     this.normalizeProductInput(data, true);
 
     const product = await businessTransaction(this.prisma, async (tx) => {
-      const current = await tx.product.findUnique({ where: { id }, select: { id: true, sku: true } });
+      const current = await tx.product.findUnique({ where: { id }, select: { id: true, sku: true, isBundle: true } });
       if (!current) throw new NotFoundException('ไม่พบสินค้านี้');
+      // stock typed in the form: checked first, so a refused change saves nothing of the form
+      const stockChange = stockQuantity !== undefined && stockQuantity !== null
+        ? await this.formStockChange(tx, id, Number(stockQuantity), expectedStock, opts.actor, data.isBundle ?? current.isBundle)
+        : null;
       // a typed SKU renames the product (unique against every SKU / barcode); unchanged = nothing to write
       if (data.sku !== undefined && data.sku === current.sku) delete data.sku;
       if (data.sku !== undefined) {
@@ -997,6 +1035,14 @@ export class ProductsService {
         costPrice: data.costPrice,
       }, preserveCosts);
 
+      if (stockChange) {
+        // the adjustment service owns stock (FIFO batches + movement log): one source for the stock card
+        await this.inventoryService.adjustStock(
+          { productId: id, type: 'SET', amount: stockChange.target, reason: PRODUCT_FORM_STOCK_REASON, userId: opts.actor?.id, userName: opts.actor?.fullName || opts.actor?.username },
+          tx,
+        );
+      }
+
       return tx.product.update({
         where: { id },
         data: {
@@ -1014,6 +1060,38 @@ export class ProductsService {
       });
     }).catch((err) => rethrowPrismaError(err, { conflict: 'รหัสสินค้าหรือบาร์โค้ดซ้ำกับสินค้าที่มีอยู่แล้ว', notFound: 'ไม่พบสินค้านี้', badRef: 'หมวดหมู่หรือสินค้าที่อ้างอิงไม่ถูกต้อง' }));
     return this.mapProductWithStock(product);
+  }
+
+  /** The stock field may be used: stock adjustment permission, and not on a bundle (its stock = its children's). */
+  private assertFormStock(actor: ProductActor | null | undefined, isBundle: boolean) {
+    if (!canAdjustStock(actor)) throw new ForbiddenException('ไม่มีสิทธิ์ปรับสต็อก (ต้องมีสิทธิ์จัดการคลังสินค้า)');
+    if (isBundle) throw new BadRequestException('สินค้าจัดเซ็ตไม่มีสต็อกของตัวเอง (สต็อกคิดจากสินค้าในชุด)');
+  }
+
+  /**
+   * Product form edit with a stock value: null = nothing to change (same as now), else the target. The user must have
+   * seen the current stock (`expectedStock`); when another sale / receipt / adjustment changed it meanwhile the save
+   * is refused (409 STOCK_CHANGED with the current stock) instead of overwriting it blindly.
+   */
+  private async formStockChange(tx: any, id: string, target: number, expectedStock: number | undefined, actor: ProductActor | null | undefined, isBundle: boolean): Promise<{ target: number } | null> {
+    this.assertFormStock(actor, isBundle);
+    if (!Number.isFinite(target)) throw new BadRequestException('จำนวนสต็อกไม่ถูกต้อง');
+    if (expectedStock === undefined || expectedStock === null || !Number.isFinite(Number(expectedStock))) {
+      throw new BadRequestException('กรุณาส่งยอดสต็อกที่เห็นตอนเปิดฟอร์ม (expectedStock)');
+    }
+    const rows: { qty: string | null }[] = await tx.$queryRaw`SELECT SUM(quantity_remaining)::text AS qty FROM stock_batches WHERE product_id = ${id}`;
+    const currentH = toHund(Number(rows[0]?.qty || 0));
+    if (currentH !== toHund(Number(expectedStock))) {
+      const currentStock = fromHund(currentH);
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'STOCK_CHANGED',
+        message: `สต็อกของสินค้านี้เปลี่ยนเป็น ${currentStock} ระหว่างที่แก้ไข (ตอนเปิดฟอร์ม ${Number(expectedStock)}) กรุณาตรวจสอบแล้วบันทึกอีกครั้ง`,
+        currentStock,
+        expectedStock: Number(expectedStock),
+      });
+    }
+    return toHund(target) === currentH ? null : { target };
   }
 
   /** Delete check of products (GET /products/:id/delete-check, POST /products/delete-check). */
