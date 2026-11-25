@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { ADMIN } from './env';
 import { api, apiLogin, uiLogin } from './helpers';
-import { horizontalOverflow, SIZES } from './layout';
+import { SIZES } from './layout';
 
 /**
  * Owner 2026-11-25 (docs/product-form-bank-logos.md parts 2 + 3): the product form puts ชื่อสินค้า, ต้นทุน,
@@ -20,6 +20,21 @@ let productId = '';
 type Move = { type: string; quantityChange: number; reason: string; userName: string; previousStock: number; currentStock: number };
 const moves = (id: string) => api<Move[]>('GET', `/inventory/movements?productId=${id}`, token);
 const stockOf = async (id: string) => Number((await api<{ computedStock: number }>('GET', `/products/${id}/stock`, token)).computedStock);
+
+/** Sideways scroll inside the open dialog (the dialog box or any scrolling element in it). */
+const dialogOverflow = (page: Page) =>
+  page.evaluate(() => {
+    const out: string[] = [];
+    const dlg = document.querySelector<HTMLElement>('[role="dialog"]');
+    if (!dlg) return ['no dialog'];
+    if (dlg.getBoundingClientRect().right > document.documentElement.clientWidth + 1) out.push('dialog wider than the window');
+    for (const el of [dlg, ...Array.from(dlg.querySelectorAll<HTMLElement>('*'))]) {
+      if (el.scrollWidth <= el.clientWidth + 1) continue;
+      if (!/(auto|scroll)/.test(getComputedStyle(el).overflowX)) continue;
+      out.push(`${el.tagName.toLowerCase()}.${String(el.className).slice(0, 40)} ${el.scrollWidth} > ${el.clientWidth}`);
+    }
+    return out;
+  });
 
 async function openList(page: Page) {
   await uiLogin(page, ADMIN.username, ADMIN.password);
@@ -68,7 +83,8 @@ test('add form: the name has the focus, Tab order of the top fields, Enter saves
   await expect(form.getByTestId('product-stock-hint')).toContainText('ยอดยกมา');
   for (const size of SIZES) {
     await page.setViewportSize(size);
-    expect(await horizontalOverflow(page), `${size.width}`).toEqual([]);
+    // the form itself (the products table behind it is checked by spec 20)
+    expect(await dialogOverflow(page), `${size.width}`).toEqual([]);
   }
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.keyboard.press('Enter');

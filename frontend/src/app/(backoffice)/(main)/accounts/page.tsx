@@ -470,7 +470,7 @@ export default function AccountsPage() {
                   )}
                   {promptpayCheck?.ok && (
                     <div className="flex items-center gap-3">
-                      <PromptPayQr type={promptpayType} id={promptpayCheck.id} amount={1} accountName={accountName.trim() || undefined} size={120} compact />
+                      <PromptPayQr type={promptpayType} id={promptpayCheck.id} amount={1} accountName={accountName.trim() || undefined} size={120} compact className="w-[120px] shrink-0" />
                       <p className="text-xs text-slate-600">
                         ตัวอย่าง QR ฿1.00 ลองสแกนด้วยแอปธนาคารได้ (ไม่ต้องโอน) ตอนรับเงินระบบจะสร้าง QR ตามยอดจริง
                         <br />แสดงหมายเลขแบบซ่อน: <b className="tabular-nums">{maskPromptPayId(promptpayType, promptpayCheck.id)}</b>
