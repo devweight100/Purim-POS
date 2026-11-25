@@ -145,7 +145,7 @@ export function ProductTableRow({
           <TableCell className={`cell-tight text-right text-muted-foreground whitespace-nowrap tabular-nums ${numCls}`} data-testid="product-cost">
             <span className="block">{unitCostOf !== undefined ? formatCurrency(unitCostOf) : "-"}</span>
             {stockCostOf !== undefined && (
-              <span className="block text-xs text-subtle" title="ต้นทุนเฉลี่ยของสต็อกที่มีอยู่ (ใช้คิดกำไรตอนขาย)" data-testid="product-stock-cost">สต็อก {formatCurrency(stockCostOf)}</span>
+              <span className="block whitespace-normal text-xs text-subtle" title="ต้นทุนเฉลี่ยของสต็อกที่มีอยู่ (ใช้คิดกำไรตอนขาย)" data-testid="product-stock-cost">สต็อก {formatCurrency(stockCostOf)}</span>
             )}
           </TableCell>
         )}
