@@ -231,6 +231,7 @@ test('scan while typing in the customer search adds to the cart; the search keep
   const numpad = page.getByRole('dialog').filter({ hasText: 'ระบุจำนวน' });
   await expect(numpad).toBeVisible();
   await page.keyboard.press('Digit3');
+  await page.waitForTimeout(300); // a person, then the scanner
   await scannerBurst(page, P.cement.barcode);
   await expect.poll(() => qtyOf(page, P.cement.name)).toBe(2);
   await expect(numpad).toBeVisible();

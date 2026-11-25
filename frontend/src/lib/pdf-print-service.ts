@@ -286,11 +286,11 @@ function loadIntoIframe(html: string, widthCss: string): Promise<HTMLIFrameEleme
 }
 
 function printIframeOnce(iframe: HTMLIFrameElement) {
-  // print() needs the frame focused; afterwards the focus goes back where it was (the POS scan box after a sale):
-  // it used to stay in the hidden frame, so the keyboard / scanner typed into nothing (docs/pos-keyboard-scan.md)
+  // The frame is NOT focused first (Chromium / Electron / Firefox print the frame's own document without it): the old
+  // contentWindow.focus() left the focus in the hidden frame after the receipt of a sale, so the keyboard / scanner
+  // typed into nothing until the cashier clicked (docs/pos-keyboard-scan.md). The focus is put back anyway.
   const before = document.activeElement as HTMLElement | null;
   try {
-    iframe.contentWindow?.focus();
     iframe.contentWindow?.print();
   } catch (e) {
     console.warn('Iframe print error', e);
