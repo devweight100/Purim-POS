@@ -955,6 +955,12 @@ model BankAccount {
   /// mobile as 10 digits starting with 0). Without it the POS shows the uploaded QR image.
   promptpayType PromptPayIdType? @map("promptpay_type")
   promptpayId   String?  @map("promptpay_id")
+  /// Bank of the account (shared/src/thai-banks.ts: KBANK, SCB ... PROMPTPAY, OTHER); null = older account, the
+  /// screens infer it from bank_name. Drives the built-in badge.
+  bankCode      String?  @map("bank_code")
+  /// Owner's own logo image (data:image/png|jpeg|webp;base64, max 150 KB, checked by type and bytes; never SVG).
+  /// Shown instead of the badge.
+  logoUrl       String?  @map("logo_url")
   isDefault     Boolean  @default(false) @map("is_default")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")

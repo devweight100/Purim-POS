@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { normalizePromptPayId, type PromptPayIdType } from '../../../shared/src/promptpay';
+import { bankLogoError, isThaiBankCode } from '../../../shared/src/thai-banks';
 
 type BankInput = {
   bankName?: string;
@@ -11,6 +12,8 @@ type BankInput = {
   qrCodeUrl?: string | null;
   promptpayType?: PromptPayIdType | null;
   promptpayId?: string | null;
+  bankCode?: string | null;
+  logoUrl?: string | null;
   isDefault?: boolean;
 };
 
@@ -53,6 +56,20 @@ export function cleanBankInput(body: any, partial: boolean): BankInput {
       if (!n.ok) throw new BadRequestException(n.error);
       out.promptpayType = rawType as PromptPayIdType;
       out.promptpayId = n.id;
+    }
+  }
+  // bank (badge) and the owner's own logo (docs/product-form-bank-logos.md); null / '' clears them
+  if (body.bankCode !== undefined) {
+    if (body.bankCode === null || body.bankCode === '') out.bankCode = null;
+    else if (!isThaiBankCode(body.bankCode)) throw new BadRequestException('ธนาคารไม่ถูกต้อง');
+    else out.bankCode = body.bankCode;
+  }
+  if (body.logoUrl !== undefined) {
+    if (body.logoUrl === null || body.logoUrl === '') out.logoUrl = null;
+    else {
+      const err = typeof body.logoUrl === 'string' ? bankLogoError(body.logoUrl) : 'โลโก้ไม่ถูกต้อง';
+      if (err) throw new BadRequestException(err);
+      out.logoUrl = body.logoUrl;
     }
   }
   if (body.isDefault !== undefined) {

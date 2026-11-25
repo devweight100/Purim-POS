@@ -4013,4 +4013,47 @@ d('store flow (e2e)', () => {
       expect(await stockOf(sp.p.id)).toBe(30);
     });
   });
+  describe('bank logos + receiving account on transfer payments (docs/product-form-bank-logos.md)', () => {
+    const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+    const bl: Record<string, any> = {};
+    it('bank field + own logo: validated (codes, PNG/JPEG/WebP by bytes, size), SVG refused, cleared with null', async () => {
+      const scb = (await api('post', '/bank-accounts', A, { bankName: 'ธนาคารไทยพาณิชย์ (SCB)', bankCode: 'SCB', accountName: 'ร้าน E2E โลโก้', accountNumber: '777-1-00001-1' }).expect(201)).body;
+      expect(scb).toMatchObject({ bankCode: 'SCB', logoUrl: null });
+      await api('patch', `/bank-accounts/${scb.id}`, A, { bankCode: 'XYZ' }).expect(400);
+      await api('patch', `/bank-accounts/${scb.id}`, A, { logoUrl: 'data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9ImFsZXJ0KDEpIi8+' }).expect(400);
+      await api('patch', `/bank-accounts/${scb.id}`, A, { logoUrl: 'data:image/png;base64,PHN2ZyBvbmxvYWQ9ImFsZXJ0KDEpIi8+' }).expect(400);
+      await api('patch', `/bank-accounts/${scb.id}`, A, { logoUrl: 'https://example.com/x.png' }).expect(400);
+      // too big: refused (400 by the check; the test app's 100 KB body limit may answer 413 first)
+      expect([400, 413]).toContain((await api('patch', `/bank-accounts/${scb.id}`, A, { logoUrl: `data:image/png;base64,iVBORw0KGgo${'A'.repeat(210000)}` })).status);
+      await api('patch', `/bank-accounts/${scb.id}`, C, { logoUrl: `data:image/png;base64,${PNG_1PX}` }).expect(403);
+      const withLogo = (await api('patch', `/bank-accounts/${scb.id}`, A, { logoUrl: `data:image/png;base64,${PNG_1PX}` }).expect(200)).body;
+      expect(withLogo.logoUrl).toBe(`data:image/png;base64,${PNG_1PX}`);
+      expect((await api('get', '/bank-accounts', C).expect(200)).body.find((b: any) => b.id === scb.id)).toMatchObject({ bankCode: 'SCB' });
+      expect((await api('patch', `/bank-accounts/${scb.id}`, A, { logoUrl: null }).expect(200)).body.logoUrl).toBeNull();
+      bl.scb = scb;
+      bl.kbank = (await api('post', '/bank-accounts', A, { bankName: 'ธนาคารกสิกรไทย (KBank)', bankCode: 'KBANK', accountName: 'ร้าน E2E โลโก้ 2', accountNumber: '777-1-00002-2' }).expect(201)).body;
+    });
+    it('a transfer / QR payment records the chosen account (order payment + that bank in the ledger)', async () => {
+      const shift = (await api('post', '/shifts/open', C, { startingCash: 0, terminalId: `e2e-bank-${randomUUID().slice(0, 6)}` }).expect(201)).body.shift;
+      const prod = (await api('post', '/products', A, { name: `โอนเข้าบัญชี ${randomUUID().slice(0, 6)}`, basePrice: 120, priceLevel1: 120, unit: 'ชิ้น', stockQuantity: 10 }).expect(201)).body;
+      const accounts = async () => (await api('get', '/finance/accounts', A).expect(200)).body;
+      const bankBal = async (bankId: string) => Number((await accounts()).find((a: any) => a.bankAccountId === bankId)?.balance || 0);
+      const before = { scb: await bankBal(bl.scb.id), kbank: await bankBal(bl.kbank.id) };
+      const order = (await api('post', '/orders/checkout', C, {
+        clientOrderId: randomUUID(), shiftId: shift.id, items: [{ productId: prod.id, quantity: 2, unitPrice: 120 }],
+        payments: [{ method: 'QR_PROMPTPAY', amount: 240, bankAccountId: bl.scb.id, referenceNo: 'ธนาคารไทยพาณิชย์ (SCB) (777-1-00001-1)' }],
+      }).expect(201)).body;
+      const full = (await api('get', `/orders/${order.id}`, A).expect(200)).body;
+      expect(full.payments).toHaveLength(1);
+      expect(full.payments[0]).toMatchObject({ method: 'QR_PROMPTPAY', bankAccountId: bl.scb.id });
+      expect(await bankBal(bl.scb.id)).toBeCloseTo(before.scb + 240, 2);
+      expect(await bankBal(bl.kbank.id)).toBeCloseTo(before.kbank, 2);
+      // an unknown account id is not recorded (the default bank takes the money)
+      const other = (await api('post', '/orders/checkout', C, {
+        clientOrderId: randomUUID(), shiftId: shift.id, items: [{ productId: prod.id, quantity: 1, unitPrice: 120 }],
+        payments: [{ method: 'QR_PROMPTPAY', amount: 120, bankAccountId: randomUUID() }],
+      }).expect(201)).body;
+      expect((await api('get', `/orders/${other.id}`, A)).body.payments[0].bankAccountId).toBeNull();
+    });
+  });
 });
