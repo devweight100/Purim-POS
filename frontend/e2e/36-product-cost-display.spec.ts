@@ -59,7 +59,7 @@ test('edited ต้นทุน shows in the products and inventory tables at on
   await expect(cost.getByTestId('product-stock-cost')).toHaveText('สต็อก ฿59.50');
   for (const size of SIZES) {
     await page.setViewportSize(size);
-    expect(await horizontalOverflow(page), `products ${size.width}x${size.height}`).toEqual([]);
+    await expect.poll(() => horizontalOverflow(page), { message: `products ${size.width}x${size.height}` }).toEqual([]);
   }
   await page.setViewportSize(SIZES[0]);
 
@@ -70,7 +70,7 @@ test('edited ต้นทุน shows in the products and inventory tables at on
   await expect(inv.getByTestId('inventory-stock-cost')).toHaveText('สต็อก ฿59.50');
   for (const size of SIZES) {
     await page.setViewportSize(size);
-    expect(await horizontalOverflow(page), `inventory ${size.width}x${size.height}`).toEqual([]);
+    await expect.poll(() => horizontalOverflow(page), { message: `inventory ${size.width}x${size.height}` }).toEqual([]);
   }
   await page.setViewportSize(SIZES[0]);
 
