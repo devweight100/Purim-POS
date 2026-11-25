@@ -26,6 +26,14 @@ Enter submits POS dialogs". Keyboard-first shop; USB barcode scanners act as key
    reason, ฿0 bill, QR / split / credit confirm, success screen, redeem points, debt payment ...); a few had it on
    one field only, without IME / auto-repeat guards.
 
+Found while testing (fixed too):
+- `NumpadPopup` handled digits on `window` but did not `preventDefault` them: a digit typed right after F2 / F4, before
+  the dialog had the focus, also landed in the hidden scan box and made the next scan "ไม่พบสินค้าบาร์โค้ด 1885…".
+  The numpad now consumes its keys, and both scan boxes drop leftover text when they lose the focus.
+- The PIN field gets the focus a frame after the dialog opens; a PIN typed at once lost its first digit. The PinPad
+  now also takes digit / Backspace / Delete keys that arrive while the focus is elsewhere (not in another field of
+  its own dialog) and moves the focus into the PIN field.
+
 ## What was built
 - `frontend/src/lib/keyboard/pad-keys.ts`: one key map for every number pad. Digits come from the physical key
   (`KeyboardEvent.code` Digit0-9 / Numpad0-9), so the main row works in the Thai layout too; Backspace, Delete
@@ -65,6 +73,8 @@ Enter submits POS dialogs". Keyboard-first shop; USB barcode scanners act as key
 - **Legacy rule kept** for "no field focused and no dialog open": up to 200 ms between keys, >= 2 characters (the
   old global listener's rule), so nothing that used to scan stops scanning. Inside a field or with a dialog open only
   the strict rule counts, so a person typing a code + Enter in a field is never treated as a scan.
+- Playwright `keyboard.type()` without a delay types like a scanner: spec 29 (start-of-bill member search, 12 keys at
+  0 ms then Enter) now types at a person's speed (60 ms per key).
 - A person who types and then scans within 35 ms of their last key joins the burst; the field then goes back to its
   value before that key (accepted: not humanly realistic).
 - Customer pick (Ctrl+M): ↑/↓ moves a highlight, Enter picks it once something was typed or the highlight was moved
