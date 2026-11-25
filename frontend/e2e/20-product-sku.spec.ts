@@ -180,11 +180,11 @@ test('edit form: "รหัสสินค้า" is a normal field (Tab reaches
   await expect(sku).toHaveValue(made.short!.sku);
   await expect(sku).toBeEditable();
   await expect(form.getByText('เว้นว่างให้ระบบสร้าง', { exact: false }).first()).toBeVisible();
-  // Tab from the low-stock field goes into the code field
-  await form.locator('label:has-text("จำนวนสต๊อกเตือนใกล้หมด") + input').focus();
+  // Tab from the barcode field goes into the code field (top of the form, docs/product-form-bank-logos.md)
+  await form.locator('#product-form-barcode').focus();
   await page.keyboard.press('Tab');
   await expect(sku).toBeFocused();
-  if (SHOTS) await form.locator('section', { hasText: 'รายละเอียดสินค้า' }).first().screenshot({ path: path.join(SHOTS, 'product-sku-field.png') });
+  if (SHOTS) await form.getByTestId('product-main-fields').screenshot({ path: path.join(SHOTS, 'product-sku-field.png') });
 
   // a code that belongs to another product (its SKU) is refused; the form stays open
   await sku.fill(`TYPED-${TAG}`);

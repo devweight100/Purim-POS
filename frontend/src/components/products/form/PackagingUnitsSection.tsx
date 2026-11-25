@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/utils";
 import { computeMultipliers, emptyPackagingUnit, generateEAN13 } from "../product-helpers";
 import { PRICE_LEVELS, priceLevelKey, type PackagingUnitForm, type ProductForm, type SetForm, type UpdateForm } from "../types";
+import { FormSection } from "./FormSection";
 
 /** Pack units (แพ็ค / ลัง ...) built on the smallest unit, each with barcode and prices 1-5, plus the default selling unit. */
 export function PackagingUnitsSection({ form, setForm, updateForm }: { form: ProductForm; setForm: SetForm; updateForm: UpdateForm }) {
@@ -18,17 +19,17 @@ export function PackagingUnitsSection({ form, setForm, updateForm }: { form: Pro
   const packagingMultipliers = useMemo(() => computeMultipliers(form.packagingUnits), [form.packagingUnits]);
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Layers className="h-4 w-4 text-primary" />
-          <h3 className="font-semibold text-slate-900">สินค้าสัมพันธ์ — หน่วยบรรจุ</h3>
-        </div>
-        <Button type="button" variant="outline" size="sm" className="border-primary text-primary hover:bg-primary/5" onClick={addPackagingUnit}>
+    <FormSection
+      id="packs"
+      icon={<Layers />}
+      title="หน่วยบรรจุ (แพ็ค / ลัง)"
+      note={form.packagingUnits.length ? `${form.packagingUnits.length} หน่วย` : "สต็อกนับเป็นหน่วยย่อยสุดเสมอ"}
+      actions={
+        <Button type="button" variant="outline" size="sm" onClick={addPackagingUnit}>
           <Plus className="w-3 h-3 mr-1" /> เพิ่มหน่วยบรรจุ
         </Button>
-      </div>
-
+      }
+    >
       {form.packagingUnits.length === 0 ? (
         <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 py-6 text-center text-sm text-slate-400">
           <Layers className="w-7 h-7 mx-auto text-slate-200 mb-1" />
@@ -119,6 +120,6 @@ export function PackagingUnitsSection({ form, setForm, updateForm }: { form: Pro
           ))}
         </select>
       </div>
-    </section>
+    </FormSection>
   );
 }

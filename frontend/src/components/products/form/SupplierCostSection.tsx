@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/utils";
 import { NAME_LIMITS } from "@shared/product-names";
 import type { ProductForm, ProductSupplierEntry, SetForm, SupplierOption, UpdateForm } from "../types";
+import { FormSection } from "./FormSection";
 
-/** Suppliers with their last cost, the average of those costs, and the reference cost field (form.basePrice). */
+/** Suppliers with their last cost and the average of those costs ("ใช้เป็นต้นทุน" fills the cost field at the top). */
 export function SupplierCostSection({ form, setForm, updateForm, suppliers, onCreateSupplier }: {
   form: ProductForm;
   setForm: SetForm;
@@ -30,24 +31,24 @@ export function SupplierCostSection({ form, setForm, updateForm, suppliers, onCr
   }, [form.supplierEntries]);
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-btn">
-        <div className="flex items-center gap-2">
-          <Building2 className="h-4 w-4 text-primary" />
-          <h3 className="font-semibold text-slate-900">ผู้จำหน่ายและต้นทุน</h3>
-        </div>
-        <div className="flex flex-wrap items-center gap-btn">
+    <FormSection
+      id="suppliers"
+      icon={<Building2 />}
+      title="ผู้จำหน่ายและต้นทุน"
+      note={form.supplierEntries.length ? `${form.supplierEntries.length} ราย` : "ชื่อ / รหัสสินค้าตามบิลผู้ขาย"}
+      actions={
+        <>
           {onCreateSupplier && (
             <Button type="button" variant="ghost" size="sm" className="text-primary hover:bg-primary/5" onClick={onCreateSupplier}>
               + เพิ่มผู้จำหน่าย
             </Button>
           )}
-          <Button type="button" variant="outline" size="sm" className="border-primary text-primary hover:bg-primary/5" onClick={addSupplierEntry}>
+          <Button type="button" variant="outline" size="sm" onClick={addSupplierEntry}>
             <Plus className="w-3 h-3 mr-1" /> เพิ่มแถวผู้จำหน่าย
           </Button>
-        </div>
-      </div>
-
+        </>
+      }
+    >
       {/* Cost strategy note */}
       <div className="mb-4 flex gap-2 rounded-lg bg-amber-50 border border-amber-100 px-4 py-3 text-xs text-amber-800">
         <Info className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
@@ -108,21 +109,14 @@ export function SupplierCostSection({ form, setForm, updateForm, suppliers, onCr
               <span className="text-emerald-700">ต้นทุนเฉลี่ยจากทุก supplier:</span>
               <span className="font-bold text-emerald-800">{formatCurrency(parseFloat(avgCostFromSuppliers))}</span>
               <Button type="button" variant="ghost" size="sm" className="ml-auto text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100" onClick={() => updateForm("basePrice", avgCostFromSuppliers)}>
-                ใช้เป็นต้นทุนอ้างอิง →
+                ใช้เป็นต้นทุน →
               </Button>
             </div>
           )}
         </div>
       )}
 
-      {/* Reference cost */}
-      <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-3">
-        <div className="flex-1 space-y-1.5">
-          <label className="text-sm font-medium text-slate-700">ต้นทุนอ้างอิง (สำหรับแสดงผล/ประมาณการ)</label>
-          <Input aria-label="ต้นทุนอ้างอิง (สำหรับแสดงผล/ประมาณการ)" type="number" min="0" step="0.01" value={form.basePrice} onChange={e => updateForm("basePrice", e.target.value)} className="border-slate-300 text-right max-w-[160px]" />
-        </div>
-        <p className="text-xs text-slate-400 flex-1">ต้นทุนจริงคำนวณจาก FIFO เมื่อมีการขาย ตัวเลขนี้ใช้แสดงในรายงานประมาณการเท่านั้น</p>
-      </div>
-    </section>
+      <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-400">ต้นทุนของสินค้าอยู่ด้านบนของฟอร์ม (ช่อง &quot;ต้นทุน&quot;) · ต้นทุนจริงคำนวณจาก FIFO เมื่อมีการขาย</p>
+    </FormSection>
   );
 }

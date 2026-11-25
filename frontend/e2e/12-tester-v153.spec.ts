@@ -73,7 +73,7 @@ test('setup + BUG-10: product made through the form, stock 0 -> 24 through the i
   await form.getByRole('button', { name: 'เพิ่มแถวผู้จำหน่าย' }).click();
   await form.getByLabel('ผู้จำหน่าย 1', { exact: true }).selectOption({ label: SUPPLIER });
   await form.getByLabel('ต้นทุน/ชิ้น ผู้จำหน่าย 1', { exact: true }).fill(String(COST));
-  await form.getByLabel('ต้นทุนอ้างอิง (สำหรับแสดงผล/ประมาณการ)', { exact: true }).fill(String(COST));
+  await form.getByLabel('ต้นทุน', { exact: true }).fill(String(COST));
   await form.getByLabel('ราคา 1', { exact: true }).fill(String(PRICE));
   await form.getByRole('button', { name: 'บันทึกสินค้า' }).click();
   await expect(form).toBeHidden();

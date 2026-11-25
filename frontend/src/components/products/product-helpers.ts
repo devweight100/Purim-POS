@@ -233,7 +233,7 @@ export const makeInitialForm = (): ProductForm => ({
   size: "",
   color: "",
   categoryId: "",
-  stock: "0",              // จำนวนสต๊อกคงเหลือปัจจุบัน
+  stock: "",               // จำนวนสต็อก (add: opening stock, blank = 0; edit: current stock)
   basePrice: "",           // ต้นทุนอ้างอิง (ถัวเฉลี่ยหรือค่าล่าสุด)
   minStockAlert: "",       // จำนวนสต๊อกเตือนใกล้หมด
   priceLevel1: "", priceLevel2: "", priceLevel3: "", priceLevel4: "", priceLevel5: "",

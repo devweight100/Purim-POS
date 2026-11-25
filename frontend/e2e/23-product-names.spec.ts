@@ -45,16 +45,18 @@ async function login(page: Page, collapsed = false) {
   await expect(page).toHaveURL(/\/pos/);
 }
 
-test('product form: ชื่อผู้ผลิต under the name, ชื่อ/รหัสสินค้าของผู้ขาย per supplier row; saved, shown again, keyboard order', async ({ page }) => {
+test('product form: ชื่อผู้ผลิต in ข้อมูลเพิ่มเติม, ชื่อ/รหัสสินค้าของผู้ขาย per supplier row; saved, shown again, keyboard order', async ({ page }) => {
   await login(page);
   await page.goto('/products');
   await page.getByRole('button', { name: 'เพิ่มสินค้าใหม่' }).click();
   const form = page.getByRole('dialog').filter({ hasText: 'เพิ่มสินค้าใหม่' });
   const name = `ข้องอ 90 องศา PVC ${TAG}`;
   await form.getByLabel('ชื่อสินค้า *', { exact: true }).fill(name);
-  // Tab from the name reaches the manufacturer name next
+  // Tab from the name reaches the cost next (owner's order, docs/product-form-bank-logos.md); the manufacturer name
+  // is in "ข้อมูลเพิ่มเติม" below
   await form.getByLabel('ชื่อสินค้า *', { exact: true }).press('Tab');
-  await expect(form.getByLabel('ชื่อผู้ผลิต (ไม่บังคับ)')).toBeFocused();
+  await expect(form.getByLabel('ต้นทุน', { exact: true })).toBeFocused();
+  await form.getByLabel('ชื่อผู้ผลิต (ไม่บังคับ)').focus();
   await page.keyboard.type(`  SCG Elbow 90 1in ${TAG}  `);
   await form.getByLabel('ราคา 1', { exact: true }).fill('25');
   await form.getByRole('button', { name: 'เพิ่มแถวผู้จำหน่าย' }).click();

@@ -853,6 +853,10 @@ export interface ProductWriteRequest {
   wholesalePrices?: Array<{ minQuantity?: number | string | null; unitPrice?: number | string | null }>;
   bundleItems?: Array<{ childProductId?: string; quantity?: number | string }>;
   supplierEntries?: Array<{ supplierId?: string; supplierSku?: string; supplierProductName?: string; unitCost?: number | string | null; lastCost?: number | string; isPreferred?: boolean; notes?: string }>;
+  /** product form stock (base unit): create = opening stock, update = new count (docs/product-form-bank-logos.md) */
+  stockQuantity?: number;
+  /** update with stockQuantity: the stock the user saw (409 STOCK_CHANGED when it changed meanwhile) */
+  expectedStock?: number;
 }
 
 export interface BulkUpsertResponse {

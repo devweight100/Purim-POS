@@ -1,5 +1,6 @@
 "use client";
 
+import { FormSection } from "./FormSection";
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Crown, ImagePlus, Info, Trash2, Upload } from "lucide-react";
@@ -42,13 +43,7 @@ export function ProductImagesSection({ images, setForm }: { images: ProductImage
     });
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5">
-      <div className="mb-4 flex items-center gap-2">
-        <ImagePlus className="h-4 w-4 text-primary" />
-        <h3 className="font-semibold text-slate-900">รูปภาพสินค้า</h3>
-        <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">สูงสุด 3 รูป</span>
-      </div>
-
+    <FormSection id="images" icon={<ImagePlus />} title="รูปภาพสินค้า" note={`${images.length} / 3 รูป`}>
       {/* Drop zone / image grid */}
       <div
         className={`grid grid-cols-3 gap-3 mb-3 transition-all rounded-xl ${
@@ -114,6 +109,6 @@ export function ProductImagesSection({ images, setForm }: { images: ProductImage
         <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
         <p>ลากวางรูปที่นี่ได้เลย · รูปถูกบีบอัดและบันทึกลงฐานข้อมูลเมื่อกดบันทึกสินค้า</p>
       </div>
-    </section>
+    </FormSection>
   );
 }
