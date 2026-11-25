@@ -773,6 +773,8 @@ export function PaymentModal({
     const t = setTimeout(() => {
       const list = bankChoiceRef.current;
       const el = list?.querySelector<HTMLElement>('[aria-checked="true"]') || list?.querySelector<HTMLElement>('[data-bank-index="0"]');
+      // the method screen may have left the dialog scrolled down (small windows): show the account list
+      list?.parentElement?.scrollIntoView({ block: 'nearest' });
       el?.focus({ preventScroll: true });
     }, 30);
     return () => clearTimeout(t);
