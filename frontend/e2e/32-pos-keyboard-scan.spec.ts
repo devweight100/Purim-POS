@@ -275,13 +275,14 @@ test('Enter submits each POS dialog (qty, price, item discount, bill discount, c
   await expect.poll(() => qtyOf(page, P.cement.name)).toBe(4);
   await expectStandby(page);
 
-  // F4 price numpad (cashier: manual price on the line)
+  // F4 price numpad (cashier: manual price on the line); typed at once: no stray digit may stay in the scan box
   await page.keyboard.press('F4');
   const priceDlg = page.getByRole('dialog').filter({ hasText: 'แก้ไขราคาขาย' });
-  await expect(priceDlg).toBeVisible();
   for (const k of ['Digit1', 'Digit7', 'Digit0']) await page.keyboard.press(k);
   await page.keyboard.press('NumpadEnter');
   await expect(priceDlg).toBeHidden();
+  await expectStandby(page);
+  await expect(scannerInput(page)).toHaveValue('');
   await expect.poll(async () => (await page.evaluate(() => JSON.parse(localStorage.getItem('purim-pos-cart') || '{}').state.items[0].customPrice))).toBe(170);
 
   // F3 item dialog: discount 5 baht + Enter in the field

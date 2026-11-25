@@ -158,7 +158,12 @@ export function registerScanBox(el: HTMLInputElement | null): () => void {
     if (scanBox === el) scanBox = null;
   };
 }
-export const currentScanBox = () => (scanBox && scanBox.isConnected ? scanBox : null);
+/** The registered scan box, else the page's hidden scanner input (marked data-barcode-input, tabindex -1). */
+export function currentScanBox(): HTMLInputElement | null {
+  if (scanBox && scanBox.isConnected) return scanBox;
+  if (typeof document === 'undefined') return null;
+  return document.querySelector<HTMLInputElement>(`input[${BARCODE_INPUT_ATTR}][tabindex="-1"]`);
+}
 
 /** Back to standby: focus the scan box (no-op when the POS is not on screen). */
 export function focusScanBox(): boolean {

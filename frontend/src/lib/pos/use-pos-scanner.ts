@@ -105,6 +105,8 @@ export function usePosScanner({ variant, products, blocked, onProductAdded }: Po
     ref: scannerInputRef,
     value: scannerInputValue,
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => setScannerInputValue(e.target.value),
+    // only a scanner types here: whatever is left when the focus moves away is a stray key, not part of the next code
+    onBlur: () => setScannerInputValue(''),
     onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();

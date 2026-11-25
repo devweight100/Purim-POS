@@ -135,13 +135,19 @@ export function NumpadPopup({
     const handleKeyDown = (e: KeyboardEvent) => {
       // one key map for every pad (lib/keyboard/pad-keys.ts): digits by physical key (main row + keypad, any layout)
       const k = readPadKey(e);
+      // a key the numpad takes must not also type into whatever has the focus (the POS scan box right after F2 /
+      // F4, before the dialog took the focus: a stray "1" there broke the next scan)
       if (k?.kind === 'digit') {
+        e.preventDefault();
         handleKey(k.digit);
       } else if (k?.kind === 'dot') {
+        e.preventDefault();
         if (allowDecimals) handleKey('.');
       } else if (k?.kind === 'back') {
+        e.preventDefault();
         handleKey('BACK');
       } else if (k?.kind === 'clear' || (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key?.toLowerCase() === 'c' || e.code === 'KeyC'))) {
+        e.preventDefault();
         setValue('0');
         setIsFirstKey(false);
       } else if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key?.toLowerCase() === 'f' || e.code === 'KeyF') && fullAmount !== undefined) {

@@ -22,8 +22,7 @@ import { PosDebtSelectModal } from './PosDebtSelectModal';
 import { ItemClaimModal } from './ItemClaimModal';
 import { CustomerClaimStockModal } from './CustomerClaimStockModal';
 import { addToCart } from '@/lib/pos/pos-add';
-import { BARCODE_INPUT_ATTR, currentScanBox, registerScanBox } from '@/lib/pos/scan-burst';
-import { useEffect } from 'react';
+import { currentScanBox } from '@/lib/pos/scan-burst';
 
 /** Every dialog of a POS sales screen (/pos). */
 export function PosDialogs({ pos }: { pos: PosController }) {
@@ -142,13 +141,11 @@ export function PosDialogs({ pos }: { pos: PosController }) {
 
 /** The invisible input that receives hardware-scanner keystrokes (Thai keyboard codes are converted). */
 export function PosScannerInput({ pos }: { pos: PosController }) {
-  const ref = pos.scanner.scannerInputRef;
-  // the scan box = standby focus (after a sale, lib/pos/scan-burst.ts)
-  useEffect(() => registerScanBox(ref.current), [ref]);
   return (
     <input
       {...pos.scanner.scannerInputProps}
-      {...{ [BARCODE_INPUT_ATTR]: '' }}
+      // the scan box (standby focus) and a barcode field the POS scanner detector leaves alone (lib/pos/scan-burst.ts)
+      data-barcode-input=""
       type="text"
       className="sr-only absolute -top-[9999px] -left-[9999px] opacity-0 pointer-events-none w-0 h-0"
       tabIndex={-1}

@@ -473,6 +473,8 @@ export function PosListLayout({
             type="text"
             value={scannerInputValue}
             onChange={(e) => setScannerInputValue(e.target.value)}
+            // only a scanner types here: a stray key left when the focus moved away is not part of the next code
+            onBlur={() => setScannerInputValue('')}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === 'Tab') {
                 e.preventDefault();
