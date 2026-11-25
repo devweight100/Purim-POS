@@ -117,7 +117,26 @@ in `focusClickBlocked`).
 - [x] Enter in POS dialogs
 - [x] vitest: `scan-burst.test.ts`, `pad-keys.test.ts` (key map, PIN editing, Enter rule), `pin-pad.test.tsx`
 - [x] Playwright `32-pos-keyboard-scan.spec.ts`
-- [ ] full verification (see below)
+- [x] full verification
+
+## Verification (2026-11-25)
+| Check | Result |
+| --- | --- |
+| backend `tsc --noEmit` | ok |
+| backend jest | 187 / 187 |
+| backend e2e (fresh DB) | 133 / 133 |
+| frontend `tsc --noEmit` | ok |
+| frontend eslint | 0 errors (99 warnings, as before) |
+| frontend vitest | 343 / 343 (new: scan-burst 10, pad-keys + Enter rule 10, pin-pad 2) |
+| frontend `next build` | ok |
+| Playwright full suite (fresh DB) | 129 / 129 (new `32-pos-keyboard-scan` 6; `29` types at human speed) |
+| desktop `npm test` + `node --check *.js` | 13 / 13, ok (desktop untouched) |
+| no horizontal scroll, PIN dialog 1366x768 / 1920x1080 / 1093x614 | 0 px (spec 32 + screenshots) |
+
+Reproduced on ea429f3 (screenshot script, keyboard only): PIN dialog focus on button "1", typing 7391 + Enter left the
+PIN empty; focus after the sale = BODY. After: focus in the PIN field, approved by keyboard, focus after the sale =
+the scan box, next scan added. Screenshots (deviceScaleFactor 2, before / after) in the session scratchpad
+`pos-kbd/`.
 
 ## Desktop client
 No desktop change needed: the POS pages are served by the server, the Electron client only loads them; it has no
