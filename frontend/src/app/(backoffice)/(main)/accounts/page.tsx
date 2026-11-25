@@ -364,17 +364,17 @@ export default function AccountsPage() {
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="min-w-0 space-y-4 py-2">
             <div>
               <label htmlFor="account-bank" className="text-sm font-semibold text-slate-700 block mb-1.5">ธนาคาร / ช่องทาง *</label>
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <BankLogo account={{ bankCode, logoUrl }} size={40} />
                 <select
                   id="account-bank"
                   data-testid="account-bank"
                   value={bankCode}
                   onChange={(e) => setBankCode(e.target.value as ThaiBankCode)}
-                  className="min-w-0 flex-1 h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium outline-none focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400"
+                  className="w-0 min-w-0 flex-1 h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium outline-none focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400"
                 >
                   {THAI_BANKS.map((b) => (
                     <option key={b.code} value={b.code}>{b.name}</option>
@@ -531,7 +531,7 @@ export default function AccountsPage() {
             </div>
           </div>
 
-          <DialogFooter className="gap-btn pt-3 border-t border-slate-100">
+          <DialogFooter className="mx-0 mb-0 gap-btn border-t border-slate-100 bg-transparent px-0 pt-3 pb-0">
             <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="border-slate-300 text-slate-600">
               ยกเลิก
             </Button>

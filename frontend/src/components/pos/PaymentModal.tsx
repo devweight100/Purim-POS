@@ -1268,7 +1268,7 @@ export function PaymentModal({
                               setSelectedBank(acc || null);
                               setPayError(null);
                             }}
-                            className="w-full h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-sky-500 shadow-sm"
+                            className="w-0 min-w-0 flex-1 h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-sky-500 shadow-sm"
                           >
                             {bankAccounts.length > 1 && <option value="">— เลือกบัญชีที่รับเงิน —</option>}
                             {bankAccounts.map(a => (
