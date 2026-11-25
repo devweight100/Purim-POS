@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { apiFetch } from '@/lib/api';
 import { formatCurrency, formatListDateTime } from '@/lib/utils';
@@ -30,6 +30,7 @@ import { Clock, Search, Calendar, ChevronDown, FileText, RotateCcw, Ban, AlertTr
 import { printOrderPickingSlip } from '@/lib/pos/picking';
 import { toast } from 'sonner';
 import { addQty } from '@/lib/qty';
+import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
 
 /** A bill line as the history shows it (server order item plus display name / SKU). */
 interface HistoryOrderItem {
@@ -402,6 +403,12 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
       : 'โอนเงิน';
     return <span className="text-fg">{label}</span>;
   };
+
+  // Enter = primary action (docs/pos-keyboard-scan.md): void reason -> confirm; the two confirm dialogs open with
+  // the focus on their primary button (Enter presses it, Esc = cancel)
+  const onVoidEnter = useEnterSubmit(handleConfirmVoid);
+  const repeatOkRef = useRef<HTMLButtonElement>(null);
+  const editOkRef = useRef<HTMLButtonElement>(null);
 
   return (
     <>
@@ -785,7 +792,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
 
       {/* 2. Repeat Order Confirmation Modal (Warning before clearing cart) */}
       <Dialog open={!!repeatConfirmOrder} onOpenChange={(open) => !open && setRepeatConfirmOrder(null)}>
-        <DialogContent className="w-[90vw] max-w-md bg-white border-slate-200 text-slate-900 rounded-2xl p-6 shadow-2xl">
+        <DialogContent initialFocus={repeatOkRef} className="w-[90vw] max-w-md bg-white border-slate-200 text-slate-900 rounded-2xl p-6 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-black text-amber-600 flex items-center gap-2">
               <AlertTriangle className="w-6 h-6 text-amber-500" />
@@ -810,6 +817,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                 ยกเลิก
               </Button>
               <Button
+                ref={repeatOkRef}
                 className="flex-1 h-11 bg-amber-500 hover:bg-amber-600 text-white font-bold text-base shadow-md"
                 onClick={handleConfirmRepeatOrder}
               >
@@ -835,7 +843,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
 
       {/* 4. Edit Order Confirmation Modal */}
       <Dialog open={!!editItemsTargetOrder} onOpenChange={(open) => !open && setEditItemsTargetOrder(null)}>
-        <DialogContent className="w-[90vw] max-w-md bg-white border-slate-200 text-slate-900 rounded-2xl p-6 shadow-2xl">
+        <DialogContent initialFocus={editOkRef} className="w-[90vw] max-w-md bg-white border-slate-200 text-slate-900 rounded-2xl p-6 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-black text-indigo-700 flex items-center gap-2">
               <Edit3 className="w-6 h-6 text-indigo-600" />
@@ -861,6 +869,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
                 ยกเลิก
               </Button>
               <Button
+                ref={editOkRef}
                 className="flex-1 h-11 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base shadow-md"
                 onClick={handleConfirmEditItems}
               >
@@ -873,7 +882,7 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
 
       {/* Void Order Confirmation Modal */}
       <Dialog open={!!voidTargetOrder} onOpenChange={(open) => !open && setVoidTargetOrder(null)}>
-        <DialogContent className="w-[90vw] max-w-md bg-white border-slate-200 text-slate-900 rounded-2xl p-6 shadow-2xl">
+        <DialogContent onKeyDown={onVoidEnter} className="w-[90vw] max-w-md bg-white border-slate-200 text-slate-900 rounded-2xl p-6 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-black text-rose-600 flex items-center gap-2">
               <AlertTriangle className="w-6 h-6 text-rose-600" />

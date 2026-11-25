@@ -33,6 +33,7 @@ import { kickCashDrawer, getCashDrawerConfig } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
 import { ApprovalDialog, ApprovalNeeded } from '@/components/approvals/ApprovalDialog';
 import { markPaymentOpen } from '@/lib/pos/scan-burst';
+import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
 import { getTerminalId } from '@/lib/terminal-id';
 import type { OrderPayment } from '@/lib/types';
 
@@ -741,10 +742,27 @@ export function PaymentModal({
     return total;
   };
 
+  /**
+   * Enter = the primary action of the current screen (docs/pos-keyboard-scan.md): ฿0 bill / QR / split / credit
+   * -> confirm, success screen -> close (new bill). The cash screen has its own Enter (onKeyDownCapture), the method
+   * cards are buttons (Enter picks the focused one). A scanner's Enter never gets here (POS scanner detector).
+   */
+  const enterAction = () => {
+    if (step === 'SUCCESS') return handleFinish();
+    if (step !== 'PROCESS' || isSubmitting) return;
+    if (total > 0 && method === 'CASH') return;
+    if (total > 0 && method === 'SPLIT' && !isSplitSufficient) {
+      setPayError(splitHint);
+      return;
+    }
+    return handleConfirmPayment();
+  };
+  const onEnter = useEnterSubmit(enterAction, { disabled: isSubmitting });
+
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent finalFocus={finalFocus} aria-busy={isSubmitting} className="w-[calc(100vw-1rem)] sm:w-[90vw] max-w-6xl h-[90dvh] max-h-[850px] flex flex-col p-3 pb-0 sm:p-8 sm:pb-0 overflow-y-auto bg-white border-slate-200 text-slate-900 shadow-2xl rounded-3xl">
+        <DialogContent finalFocus={finalFocus} onKeyDown={onEnter} aria-busy={isSubmitting} className="w-[calc(100vw-1rem)] sm:w-[90vw] max-w-6xl h-[90dvh] max-h-[850px] flex flex-col p-3 pb-0 sm:p-8 sm:pb-0 overflow-y-auto bg-white border-slate-200 text-slate-900 shadow-2xl rounded-3xl">
           <DialogHeader className="shrink-0 pb-3 border-b border-slate-100 mb-4">
             <DialogTitle className="text-2xl font-bold flex items-center gap-3">
               <CreditCard className="w-8 h-8 text-sky-500" />
@@ -888,6 +906,7 @@ export function PaymentModal({
                 if (e.key !== 'Enter' || (e.target as HTMLElement).closest('[data-own-enter]')) return;
                 e.preventDefault();
                 e.stopPropagation();
+                if (e.nativeEvent.isComposing || e.repeat) return;
                 confirmCashByKeyboard();
               }}
             >

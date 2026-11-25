@@ -11,6 +11,7 @@ import { Customer, calculateRedemptionDiscount } from '@/lib/customer-service';
 import { useCartStore } from '@/lib/store/cart-store';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
+import { enterSubmitHandler } from '@/lib/keyboard/enter-submit';
 
 interface RedeemPointsModalProps {
   open: boolean;
@@ -88,9 +89,12 @@ export function RedeemPointsModal({ open, onOpenChange, customer }: RedeemPoints
     .map(m => m * ratePoints)
     .filter(pts => pts <= availablePoints && pts <= maxRedeemablePoints);
 
+  // Enter = ใช้แต้ม (lib/keyboard/enter-submit.ts)
+  const onEnter = enterSubmitHandler(handleApplyRedeem, calculatedDiscount <= 0);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-white text-slate-900 border-slate-200 sm:max-w-md p-0 overflow-hidden rounded-2xl shadow-2xl">
+      <DialogContent onKeyDown={onEnter} className="bg-white text-slate-900 border-slate-200 sm:max-w-md p-0 overflow-hidden rounded-2xl shadow-2xl">
         <DialogHeader className="border-b border-slate-200 px-6 py-4 bg-slate-50">
           <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900">
             <Coins className="w-5 h-5 text-amber-600" />

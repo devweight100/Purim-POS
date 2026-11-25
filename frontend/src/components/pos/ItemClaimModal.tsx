@@ -11,6 +11,7 @@ import { formatCurrency } from '../../lib/utils';
 import { toast } from 'sonner';
 import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { addQty, parseQty, qtyInputMode, qtyStep, subQty, useAllowDecimalQty } from '@/lib/qty';
+import { enterSubmitHandler } from '@/lib/keyboard/enter-submit';
 
 interface ItemClaimModalProps {
   isOpen: boolean;
@@ -116,7 +117,8 @@ export const ItemClaimModal: React.FC<ItemClaimModalProps> = ({
 
   return (
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+      {/* Enter = บันทึก (lib/keyboard/enter-submit.ts) */}
+      <div onKeyDown={enterSubmitHandler(handleSave, loading)} className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -226,6 +228,9 @@ export const ItemClaimModal: React.FC<ItemClaimModalProps> = ({
                 inputMode={qtyInputMode(allowDecimalQty)}
                 max={maxClaim}
                 value={claimQty}
+                autoFocus
+                aria-label="จำนวนที่เคลม"
+                onFocus={(e) => e.currentTarget.select()}
                 onChange={(e) => {
                   const val = parseQty(e.target.value, allowDecimalQty) || 0;
                   setClaimQty(Math.max(0, Math.min(val, cartQty)));

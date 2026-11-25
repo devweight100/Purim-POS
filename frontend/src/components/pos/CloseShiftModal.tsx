@@ -20,6 +20,7 @@ import { api } from '@/lib/api';
 import { kickCashDrawer } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
 import type { ApiShiftLike } from '@/lib/types';
+import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
 
 interface CloseShiftModalProps {
   open: boolean;
@@ -152,11 +153,14 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
     setActualCash(null);
   };
 
+  // Enter = primary action (lib/keyboard/enter-submit.ts, docs/pos-keyboard-scan.md)
+  const onEnter = useEnterSubmit(handleCloseShift, { disabled: !actualCashValid });
+
   return (
     <>
       {currentShift && (
         <Dialog open={open} onOpenChange={onOpenChange}>
-          <DialogContent className="sm:max-w-[500px] bg-white border-slate-200 text-slate-900 rounded-3xl p-6 shadow-2xl">
+          <DialogContent onKeyDown={onEnter} className="sm:max-w-[500px] bg-white border-slate-200 text-slate-900 rounded-3xl p-6 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-black text-rose-600 flex items-center gap-2">
               <LogOut className="w-5 h-5 text-rose-600" />

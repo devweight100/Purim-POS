@@ -166,14 +166,6 @@ export function PosListLayout({
     if (opts.refocus !== false) setTimeout(() => scannerInputRef.current?.focus(), 10);
   };
 
-  // scanner bursts caught by the POS page's global detector (another field / a dialog) use this layout's add flow;
-  // the focus stays where the cashier is (docs/pos-keyboard-scan.md)
-  const detectedScan = useEffectEvent((code: string) => {
-    const active = document.activeElement;
-    processBarcodeScan(code, { refocus: !active || active === document.body || !active.closest('[role="dialog"], [role="alertdialog"], input, textarea, select') });
-  });
-  useEffect(() => registerScanHandler((code) => detectedScan(code)), []);
-
   // Scroll to (and flash) the line touched last; other cart changes show the end of the list as before
   const cartListRef = useRef<HTMLDivElement>(null);
   const lastTouched = useLastTouchedRow(cartListRef, cartBottomRef, cart.items);
@@ -206,6 +198,14 @@ export function PosListLayout({
     setIsSearchOpen(false);
     setSelectedUnitIndex(0);
   };
+
+  // scanner bursts caught by the POS page's global detector (another field / a dialog) use this layout's add flow;
+  // the focus stays where the cashier is (docs/pos-keyboard-scan.md)
+  const detectedScan = useEffectEvent((code: string) => {
+    const active = document.activeElement;
+    processBarcodeScan(code, { refocus: !active || active === document.body || !active.closest('[role="dialog"], [role="alertdialog"], input, textarea, select') });
+  });
+  useEffect(() => registerScanHandler((code) => detectedScan(code)), []);
 
   useEffect(() => {
     if (isSearchOpen && dropdownRef.current) {
@@ -253,6 +253,7 @@ export function PosListLayout({
       }
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      if (e.nativeEvent.isComposing || e.repeat) return;
       const raw = searchQuery.trim();
       if (!raw) return;
 

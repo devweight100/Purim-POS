@@ -80,6 +80,7 @@ export function PosStartDialog() {
       setActive((a) => Math.max(0, a - 1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
+      if (e.nativeEvent.isComposing || e.repeat) return;
       if (results.length) pickMember(results[Math.min(active, results.length - 1)]);
       else if (!search.trim()) pickWalkIn(1);
       else toast.error(`ไม่พบสมาชิก "${search.trim()}"`);

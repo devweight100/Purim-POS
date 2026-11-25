@@ -19,6 +19,7 @@ import { CreditCard, Banknote, QrCode, Building2, CheckCircle2, User, Clock } fr
 import { toast } from 'sonner';
 import { PromptPayQr } from '@/components/common/PromptPayQr';
 import { promptPayOf } from '@/lib/promptpay-qr';
+import { enterSubmitHandler } from '@/lib/keyboard/enter-submit';
 
 interface PayDebtModalProps {
   open: boolean;
@@ -217,9 +218,14 @@ export function PayDebtModal({
     }
   };
 
+  // Enter = ยืนยันรับชำระ (POS + back office; lib/keyboard/enter-submit.ts)
+  // (a plain handler: this runs after an early return; handleSubmit has its own double-submit guard)
+  const enterDisabled = isSubmitting || numAmount <= 0 || needsShift;
+  const onEnter = (e: React.KeyboardEvent) => enterSubmitHandler(() => void handleSubmit(), enterDisabled)(e);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] sm:max-w-lg max-h-[92vh] flex flex-col bg-white border-slate-200 text-slate-900 rounded-3xl p-5 sm:p-6 shadow-2xl overflow-hidden">
+      <DialogContent onKeyDown={onEnter} className="w-[95vw] sm:max-w-lg max-h-[92vh] flex flex-col bg-white border-slate-200 text-slate-900 rounded-3xl p-5 sm:p-6 shadow-2xl overflow-hidden">
         <DialogHeader className="pb-3 border-b border-slate-100">
           <DialogTitle className="text-xl font-bold flex items-center justify-between">
             <div className="flex items-center gap-2 text-slate-800">

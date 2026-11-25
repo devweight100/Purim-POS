@@ -201,6 +201,7 @@ export function ClassicProductPanel({ pos }: { pos: PosController }) {
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
+                if (e.nativeEvent.isComposing || e.repeat) return;
                 pos.handleSearchEnter();
               } else if (e.key === 'ArrowDown') {
                 const first = document.querySelector<HTMLElement>('[data-pos-grid] [data-testid="pos-product-card"]');

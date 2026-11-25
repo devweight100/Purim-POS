@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { StickyNote, Tag } from 'lucide-react';
+import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
 
 interface ItemNotePopupProps {
   open: boolean;
@@ -40,9 +41,12 @@ export function ItemNotePopup({
     onOpenChange(false);
   };
 
+  // Enter = บันทึกโน้ต (not during IME composition; lib/keyboard/enter-submit.ts)
+  const onEnter = useEnterSubmit(handleConfirm);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[90vw] sm:max-w-md bg-white border-slate-200 text-slate-900 rounded-2xl p-6 shadow-2xl">
+      <DialogContent onKeyDown={onEnter} className="w-[90vw] sm:max-w-md bg-white border-slate-200 text-slate-900 rounded-2xl p-6 shadow-2xl">
         <DialogHeader>
           <DialogTitle className="text-center text-xl font-bold flex items-center justify-center gap-2">
             <StickyNote className="w-5 h-5 text-amber-500" />
@@ -57,12 +61,6 @@ export function ItemNotePopup({
             placeholder="เช่น แถมฟรี 1 ชิ้น, เปลี่ยนสี, ส่งแยก..."
             className="h-12 bg-white text-base font-medium border-slate-300 focus:border-amber-500 rounded-xl"
             autoFocus
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                handleConfirm();
-              }
-            }}
           />
 
           {/* Quick Tags */}

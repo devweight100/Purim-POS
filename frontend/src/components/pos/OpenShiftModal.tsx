@@ -16,6 +16,7 @@ import { kickCashDrawer } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
 import { api, type ShiftElsewhere } from '@/lib/api';
 import { setTerminalId } from '@/lib/terminal-id';
+import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
 
 interface OpenShiftModalProps {
   open: boolean;
@@ -156,10 +157,13 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
     handleReset();
   };
 
+  // Enter = primary action (lib/keyboard/enter-submit.ts, docs/pos-keyboard-scan.md)
+  const onEnter = useEnterSubmit(handleConfirmOpen);
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[92vh] bg-white border-slate-200 text-slate-900 rounded-3xl p-5 pt-12 shadow-2xl flex flex-col overflow-hidden">
+        <DialogContent onKeyDown={onEnter} className="w-[95vw] sm:max-w-3xl max-h-[92vh] bg-white border-slate-200 text-slate-900 rounded-3xl p-5 pt-12 shadow-2xl flex flex-col overflow-hidden">
           
           {/* Top Header: POSPOS Style - Large Total Display */}
           <div className="bg-slate-100/90 border border-slate-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-btn-lg shrink-0 mb-3">
@@ -183,12 +187,6 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
                   <Calculator className="w-5 h-5 text-slate-400 group-hover:text-sky-600 transition-colors" />
                 </button>
                 <input
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      void handleConfirmOpen();
-                    }
-                  }}
                   type="number"
                   value={isDirectMode ? directTotal : (calculatedTotal > 0 ? calculatedTotal : '')}
                   onChange={(e) => handleDirectTotalChange(e.target.value)}
@@ -303,12 +301,6 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
                         aria-label={`จำนวน ${item.label}`}
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => handleQtyChange(item.key, e.target.value === '' ? 0 : Math.floor(Number(e.target.value)))}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            void handleConfirmOpen();
-                          }
-                        }}
                         placeholder="0"
                         className="h-11 text-center font-extrabold text-base bg-white border-slate-300 rounded-xl focus:border-sky-500 text-slate-900 shadow-inner cursor-text"
                       />

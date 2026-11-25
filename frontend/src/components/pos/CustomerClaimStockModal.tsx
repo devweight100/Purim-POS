@@ -396,7 +396,7 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && loadStock()}
+                onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && loadStock()}
                 placeholder="ค้นหาชื่อลูกค้า / เบอร์โทร / เลขบิล..."
                 className="w-full pl-9 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
@@ -760,6 +760,8 @@ export const CustomerClaimStockModal: React.FC<CustomerClaimStockModalProps> = (
                 <button
                   type="button"
                   disabled={isProcessing}
+                  // the refund confirmation opens with the focus here: Enter = ยืนยันคืนเงิน, Esc = back
+                  autoFocus
                   onClick={handleConfirmRefund}
                   className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-sm transition flex items-center gap-1.5 disabled:opacity-50"
                 >

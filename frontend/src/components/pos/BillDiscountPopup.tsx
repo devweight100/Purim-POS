@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Percent, Receipt, RefreshCcw } from 'lucide-react';
+import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
 
 interface BillDiscountPopupProps {
   open: boolean;
@@ -65,9 +66,12 @@ export function BillDiscountPopup({ open, onOpenChange }: BillDiscountPopupProps
     setDiscountValue('');
   };
 
+  // Enter = primary action (lib/keyboard/enter-submit.ts, docs/pos-keyboard-scan.md)
+  const onEnter = useEnterSubmit(handleConfirm, { disabled: !!validationError });
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[400px] bg-white border-slate-200 text-slate-900">
+      <DialogContent onKeyDown={onEnter} className="sm:max-w-[400px] bg-white border-slate-200 text-slate-900">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-primary flex items-center">
             <Receipt className="w-5 h-5 mr-2" />
@@ -124,7 +128,6 @@ export function BillDiscountPopup({ open, onOpenChange }: BillDiscountPopupProps
                 min={0}
                 max={discountType === 'percent' ? 100 : subtotal}
                 aria-invalid={!!validationError}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleConfirm(); } }}
               />
             )}
             {validationError && (

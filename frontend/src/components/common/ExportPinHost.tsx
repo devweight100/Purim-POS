@@ -3,7 +3,8 @@
 import { useRef, useState } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { PinPad } from '@/components/common/PinPad';
+import { isCompletePin } from '@/lib/keyboard/pad-keys';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { exportPost, settleExportPin, useExportPinRequest, type ExportPinRequest } from '@/lib/export-approval';
 
@@ -19,13 +20,16 @@ function ExportPinDialog({ req }: { req: ExportPinRequest }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const busyRef = useRef(false);
 
   const submit = async () => {
-    if (!/^\d{4,6}$/.test(pin)) {
+    if (busyRef.current) return;
+    if (!isCompletePin(pin)) {
       setError('กรุณาใส่ PIN 4-6 หลักของผู้จัดการ / เจ้าของร้าน');
       inputRef.current?.focus();
       return;
     }
+    busyRef.current = true;
     setBusy(true);
     setError('');
     try {
@@ -34,6 +38,7 @@ function ExportPinDialog({ req }: { req: ExportPinRequest }) {
     } catch (e) {
       setPin('');
       setError(e instanceof Error ? e.message : 'อนุมัติไม่สำเร็จ');
+      busyRef.current = false;
       setBusy(false);
       setTimeout(() => inputRef.current?.focus(), 0);
     }
@@ -60,21 +65,21 @@ function ExportPinDialog({ req }: { req: ExportPinRequest }) {
           }}
         >
           <label htmlFor="export-pin" className="text-sm font-semibold text-slate-700">PIN ผู้อนุมัติ</label>
-          <Input
-            id="export-pin"
+          <PinPad
             ref={inputRef}
-            type="password"
-            inputMode="numeric"
-            autoComplete="off"
-            maxLength={6}
+            id="export-pin"
+            label="PIN ผู้อนุมัติ"
             value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            placeholder="PIN 4-6 หลัก"
-            className="text-center text-lg tracking-[0.4em]"
+            onChange={(p) => {
+              setPin(p);
+              setError('');
+            }}
+            onSubmit={() => void submit()}
+            disabled={busy}
           />
           {error && <p role="alert" className="text-sm font-medium text-danger">{error}</p>}
           <DialogFooter className="gap-btn pt-2">
-            <Button type="button" variant="outline" disabled={busy} onClick={() => settleExportPin(req.id, null)}>ยกเลิก</Button>
+            <Button type="button" variant="outline" disabled={busy} onClick={() => settleExportPin(req.id, null)}>ยกเลิก (Esc)</Button>
             <Button type="submit" disabled={busy || pin.length < 4}>{busy ? 'กำลังตรวจสอบ...' : 'อนุมัติและส่งออก'}</Button>
           </DialogFooter>
         </form>

@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { canUseWalkInLevel, usePosLevels } from '@/lib/pos/pos-add';
 import type { PriceLevel } from '@shared/price-level';
+import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
 
 interface CustomerSelectModalProps {
   open: boolean;
@@ -29,6 +30,9 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
   const [quickType, setQuickType] = useState<'INDIVIDUAL' | 'COMPANY'>('INDIVIDUAL');
   const [quickTaxId, setQuickTaxId] = useState('');
   const [quickPriceLevel, setQuickPriceLevel] = useState<number>(1);
+  /** keyboard highlight in the member list */
+  const [hi, setHi] = useState(0);
+  const [hiMoved, setHiMoved] = useState(false);
 
   const cart = useCartStore();
   const levels = usePosLevels();
@@ -46,6 +50,8 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
 
   const resetForm = () => {
     setSearch('');
+    setHi(0);
+    setHiMoved(false);
     setIsQuickAddOpen(false);
     setQuickName('');
     setQuickPhone('');
@@ -106,6 +112,25 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
     onOpenChange(false);
   };
 
+  // keyboard: ↑/↓ in the search box moves the highlight, Enter picks it (docs/pos-keyboard-scan.md)
+  const hiIndex = Math.min(hi, Math.max(0, filtered.length - 1));
+  const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!filtered.length) return;
+      e.preventDefault();
+      const next = (hiIndex + (e.key === 'ArrowDown' ? 1 : -1) + filtered.length) % filtered.length;
+      setHi(next);
+      setHiMoved(true);
+      document.querySelector(`[data-customer-row="${next}"]`)?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (e.repeat) return;
+      // Enter picks the highlighted member once something was typed or the highlight was moved
+      if (filtered.length && (search.trim() || hiMoved)) handleSelect(filtered[hiIndex]);
+    }
+  };
+
   const handleQuickAdd = async () => {
     if (!quickName.trim()) {
       toast.error('กรุณากรอกชื่อลูกค้า / ชื่อบริษัท');
@@ -137,9 +162,12 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
     } catch (error) { toast.error('บันทึกลูกค้าไม่ได้: ' + (error instanceof Error ? error.message : String(error))); }
   };
 
+  // quick add form: Enter = บันทึก (the search box handles its own Enter)
+  const onEnter = useEnterSubmit(handleQuickAdd, { disabled: !isQuickAddOpen });
+
   return (
     <Dialog open={open} onOpenChange={handleModalClose}>
-      <DialogContent className="bg-white text-slate-900 border-slate-200 w-[95vw] sm:max-w-lg p-0 overflow-hidden rounded-2xl shadow-2xl">
+      <DialogContent onKeyDown={onEnter} className="bg-white text-slate-900 border-slate-200 w-[95vw] sm:max-w-lg p-0 overflow-hidden rounded-2xl shadow-2xl">
         <DialogHeader className="border-b border-slate-200 px-6 py-4.5 bg-slate-50 shrink-0">
           <DialogTitle className="text-xl font-black text-slate-900 flex items-center gap-2.5">
             <UserPlus className="w-6 h-6 text-sky-500" />
@@ -160,7 +188,12 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
                   <Input
                     placeholder="พิมพ์ค้นหาชื่อ, เบอร์โทร, เลขผู้เสียภาษี Tax ID..."
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setHi(0);
+                    }}
+                    onKeyDown={onSearchKeyDown}
+                    aria-label="ค้นหาลูกค้า (↑/↓ เลือก · Enter = เลือกลูกค้า)"
                     className="pl-11 bg-slate-50 border-slate-300 h-12 text-base font-semibold rounded-xl placeholder:font-normal"
                     autoFocus
                   />
@@ -177,14 +210,17 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
 
               {/* Customer List */}
               <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50 max-h-80 overflow-y-auto divide-y divide-slate-200/80">
-                {filtered.map((c) => {
+                {filtered.map((c, idx) => {
                   const isCompany = c.type === 'COMPANY';
                   const isSelected = cart.customerId === c.id;
+                  const isHi = idx === hiIndex && (!!search.trim() || hiMoved);
 
                   return (
                     <div
                       key={c.id}
-                      className={`p-3.5 sm:p-4 transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                      data-customer-row={idx}
+                      data-highlighted={isHi || undefined}
+                      className={`p-3.5 sm:p-4 transition-all cursor-pointer flex items-center justify-between gap-3 ${isHi ? 'ring-2 ring-inset ring-sky-500 ' : ''}${
                         isSelected
                           ? 'bg-sky-100/90 border-l-4 border-l-sky-600'
                           : 'hover:bg-slate-100/90'

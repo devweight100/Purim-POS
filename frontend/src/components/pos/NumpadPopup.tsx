@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useEffectEvent } from 'react';
 import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,6 +10,8 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import { Delete, Keyboard } from 'lucide-react';
 import { formatQty, roundQty } from '@/lib/qty';
+import { readPadKey } from '@/lib/keyboard/pad-keys';
+import { subscribeBurstAware } from '@/lib/pos/scan-burst';
 
 interface NumpadPopupProps {
   open: boolean;
@@ -48,6 +50,22 @@ export function NumpadPopup({
     setValue(initStr);
     setIsFirstKey(true); // First keypress after opening will REPLACE value instead of appending
   }
+
+  // a barcode scanner burst on the POS page must not leave its digits here (lib/pos/scan-burst.ts)
+  const currentState = useEffectEvent(() => ({ value, isFirstKey }));
+  useEffect(() => {
+    if (!open) return;
+    let saved = currentState();
+    return subscribeBurstAware({
+      snapshot: () => {
+        saved = currentState();
+      },
+      restore: () => {
+        setValue(saved.value);
+        setIsFirstKey(saved.isFirstKey);
+      },
+    });
+  }, [open]);
 
   const handleKey = (key: string) => {
     if (key === 'C') {
@@ -115,33 +133,31 @@ export function NumpadPopup({
     if (!open) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      const code = e.code;
-      const key = e.key;
-
-      const digitMatch = code.match(/^(Digit|Numpad)([0-9])$/);
-      if (digitMatch) {
-        handleKey(digitMatch[2]);
-      } else if ((key >= '0' && key <= '9')) {
-        handleKey(key);
-      } else if ((key === '.' || code === 'Period' || code === 'NumpadDecimal') && allowDecimals) {
-        handleKey('.');
-      } else if (key === 'Backspace' || code === 'Backspace') {
+      // one key map for every pad (lib/keyboard/pad-keys.ts): digits by physical key (main row + keypad, any layout)
+      const k = readPadKey(e);
+      if (k?.kind === 'digit') {
+        handleKey(k.digit);
+      } else if (k?.kind === 'dot') {
+        if (allowDecimals) handleKey('.');
+      } else if (k?.kind === 'back') {
         handleKey('BACK');
-      } else if (key === 'Delete' || code === 'Delete' || key?.toLowerCase() === 'c' || code === 'KeyC') {
+      } else if (k?.kind === 'clear' || (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key?.toLowerCase() === 'c' || e.code === 'KeyC'))) {
         setValue('0');
         setIsFirstKey(false);
-      } else if ((key?.toLowerCase() === 'f' || code === 'KeyF') && fullAmount !== undefined) {
+      } else if (!e.ctrlKey && !e.altKey && !e.metaKey && (e.key?.toLowerCase() === 'f' || e.code === 'KeyF') && fullAmount !== undefined) {
         e.preventDefault();
         handleFullAmount();
-      } else if (key === 'Enter' || code === 'Enter' || code === 'NumpadEnter') {
+      } else if (k?.kind === 'enter') {
         e.preventDefault();
+        // one confirm per press (a held Enter must not confirm the next numpad too)
+        if (e.repeat) return;
         const num = parseValue(value);
         if (!isNaN(num) && num >= 0) {
           onConfirm(num);
           onOpenChange(false);
           setValue('');
         }
-      } else if (key === 'Escape' || code === 'Escape') {
+      } else if (k?.kind === 'escape') {
         // only this numpad closes: the window under it (payment, shift count) must stay open (BUG-12 v1.5.3)
         e.preventDefault();
         e.stopImmediatePropagation();

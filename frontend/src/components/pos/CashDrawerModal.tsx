@@ -5,6 +5,7 @@ import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { useShiftStore, CashPurposeInput } from '@/lib/store/shift-store';
 import { apiFetch, api, ApiError } from '@/lib/api';
 import { ApprovalDialog, ApprovalNeeded } from '@/components/approvals/ApprovalDialog';
+import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
 import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -218,6 +219,9 @@ export function CashDrawerModal({
     }
   };
 
+  // Enter = primary action (lib/keyboard/enter-submit.ts, docs/pos-keyboard-scan.md)
+  const onEnter = useEnterSubmit(handleSubmit, { disabled: isSubmitting });
+
   return (
     <>
     <ApprovalDialog
@@ -229,7 +233,7 @@ export function CashDrawerModal({
       }}
     />
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] sm:w-[540px] max-w-[540px] bg-white border-slate-200 text-slate-900 rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col overflow-hidden">
+      <DialogContent onKeyDown={onEnter} className="w-[95vw] sm:w-[540px] max-w-[540px] bg-white border-slate-200 text-slate-900 rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <DialogHeader className="pb-3 border-b border-slate-100 shrink-0">
           <div className="flex items-center justify-between">

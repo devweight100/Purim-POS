@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Percent, DollarSign, Tag, RefreshCcw } from 'lucide-react';
 import { subQty } from '@/lib/qty';
+import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
 
 interface ItemEditPopupProps {
   item: CartItem | null;
@@ -99,11 +100,14 @@ export function ItemEditPopup({ item, open, onOpenChange }: ItemEditPopupProps) 
     setDiscountValue('');
   };
 
+  // Enter = primary action (lib/keyboard/enter-submit.ts, docs/pos-keyboard-scan.md)
+  const onEnter = useEnterSubmit(handleConfirm, { disabled: !!validationError });
+
   if (!item) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[400px] bg-white border-slate-200 text-slate-900">
+      <DialogContent onKeyDown={onEnter} className="sm:max-w-[400px] bg-white border-slate-200 text-slate-900">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-primary flex items-center">
             <Tag className="w-5 h-5 mr-2" />
@@ -182,7 +186,6 @@ export function ItemEditPopup({ item, open, onOpenChange }: ItemEditPopupProps) 
                 min={0}
                 max={discountType === 'percent' ? 100 : lineAmount}
                 aria-invalid={!!validationError}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleConfirm(); } }}
               />
             )}
             {validationError && (
