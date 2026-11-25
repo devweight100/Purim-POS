@@ -50,7 +50,7 @@ function ClassicProductCard({
   onAddToCart: (product: Product, unit: ProductUnit) => void;
   tabIndex: number;
 }) {
-  const { units, activeUnit, isLowStock, pickUnit } = useProductCardUnit(product, searchQuery);
+  const { units, activeUnit, isLowStock, pickUnit, resetUnit, unitStep } = useProductCardUnit(product, searchQuery);
   // prices at the bill's level (member / walk-in level), as the cart will charge them
   const level = useCartStore((s) => s.priceLevel);
   const priceOf = (u: ProductUnit) => shownUnitPrice(product, u, level);
@@ -60,7 +60,7 @@ function ClassicProductCard({
       data-testid="pos-product-card"
       role="button"
       tabIndex={tabIndex}
-      aria-label={`${product.name} ${formatCurrency(priceOf(activeUnit))} (Enter = เพิ่มลงตะกร้า)`}
+      aria-label={`${product.name}${units.length > 1 ? ` ${activeUnit.unitName}` : ''} ${formatCurrency(priceOf(activeUnit))} (Enter = เพิ่มลงตะกร้า${units.length > 1 ? ', ←/→ = เลือกหน่วย' : ''})`}
       onClick={() => onAddToCart(product, activeUnit)}
       onKeyDown={(e) => {
         if (e.target !== e.currentTarget) return;
@@ -71,6 +71,14 @@ function ClassicProductCard({
         } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
           e.preventDefault();
           e.stopPropagation();
+          // ← / → go through this card's units first (owner 2026-11-25: every pack reachable by arrows), then on
+          // to the neighbouring card; leaving the card by arrows drops a unit picked only by browsing
+          const next = e.key === 'ArrowRight' ? unitStep(1) : e.key === 'ArrowLeft' ? unitStep(-1) : null;
+          if (next) {
+            pickUnit(next);
+            return;
+          }
+          resetUnit();
           moveInGrid(e.currentTarget, e.key);
         }
       }}
@@ -116,6 +124,8 @@ function ClassicProductCard({
                 key={u.id || u.unitName}
                 type="button"
                 disabled={isOutOfStock}
+                aria-pressed={isActive}
+                data-testid="pos-card-unit"
                 onClick={(e) => {
                   e.stopPropagation();
                   if (!isOutOfStock) {

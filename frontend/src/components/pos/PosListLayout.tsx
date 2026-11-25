@@ -92,6 +92,15 @@ export function PosListLayout({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [selectedUnitIndex, setSelectedUnitIndex] = useState(0);
+  // the cashier moved the highlight with the arrow keys since the last change of the search text: Enter then adds
+  // exactly the highlighted row + unit (not the exact-code match / first result)
+  const [arrowPicked, setArrowPicked] = useState(false);
+  /** new search text / item added / dropdown closed: highlight back on the first row, its default unit */
+  const resetSearchSelection = () => {
+    setSelectedIndex(0);
+    setSelectedUnitIndex(0);
+    setArrowPicked(false);
+  };
   const [priceEditItem, setPriceEditItem] = useState<CartItem | null>(null);
   const [discountEditItem, setDiscountEditItem] = useState<CartItem | null>(null);
   const [noteEditItem, setNoteEditItem] = useState<CartItem | null>(null);
@@ -157,6 +166,7 @@ export function PosListLayout({
       handleSelectProduct(matchedProduct, targetUnit);
       setSearchQuery('');
       setIsSearchOpen(false);
+      resetSearchSelection();
     } else {
       const thaiHint = convertedCode !== raw ? ` (ลองแปลงจากแป้นไทยเป็น "${convertedCode}" แล้ว)` : '';
       toast.error(`❌ ไม่พบสินค้าบาร์โค้ด: "${raw}"${thaiHint}`);
@@ -196,7 +206,7 @@ export function PosListLayout({
     addToCart(product, targetUnit, { onAdded: () => toast.success(`เพิ่ม ${product.name} (${targetUnit.unitName}) ลงตะกร้าแล้ว`) });
     setSearchQuery('');
     setIsSearchOpen(false);
-    setSelectedUnitIndex(0);
+    resetSearchSelection();
   };
 
   // scanner bursts caught by the POS page's global detector (another field / a dialog) use this layout's add flow;
@@ -216,40 +226,30 @@ export function PosListLayout({
     }
   }, [selectedIndex, isSearchOpen]);
 
+  // the highlighted row (kept inside the current results) and its units
+  const rowIndex = Math.min(selectedIndex, Math.max(0, filteredProducts.length - 1));
+  const rowUnits = filteredProducts[rowIndex] ? getProductAvailableUnits(filteredProducts[rowIndex]) : [];
+  const unitIndex = Math.min(selectedUnitIndex, Math.max(0, rowUnits.length - 1));
+
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowDown') {
-      if (isSearchOpen && filteredProducts.length > 0) {
+    const open = isSearchOpen && filteredProducts.length > 0;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (open) {
         e.preventDefault();
         e.stopPropagation();
         e.nativeEvent?.stopImmediatePropagation?.();
-        setSelectedIndex(prev => {
-          const next = (prev + 1) % filteredProducts.length;
-          setSelectedUnitIndex(0);
-          return next;
-        });
+        const n = filteredProducts.length;
+        setSelectedIndex((rowIndex + (e.key === 'ArrowDown' ? 1 : -1) + n) % n);
+        setSelectedUnitIndex(0);
+        setArrowPicked(true);
       }
-    } else if (e.key === 'ArrowUp') {
-      if (isSearchOpen && filteredProducts.length > 0) {
+    } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      if (open) {
         e.preventDefault();
-        e.stopPropagation();
-        e.nativeEvent?.stopImmediatePropagation?.();
-        setSelectedIndex(prev => {
-          const next = (prev - 1 + filteredProducts.length) % filteredProducts.length;
-          setSelectedUnitIndex(0);
-          return next;
-        });
-      }
-    } else if (e.key === 'ArrowRight') {
-      if (filteredProducts.length > 0) {
-        e.preventDefault();
-        const p = filteredProducts[selectedIndex || 0];
-        const availableUnits = getProductAvailableUnits(p);
-        setSelectedUnitIndex(prev => Math.min(availableUnits.length - 1, prev + 1));
-      }
-    } else if (e.key === 'ArrowLeft') {
-      if (filteredProducts.length > 0) {
-        e.preventDefault();
-        setSelectedUnitIndex(prev => Math.max(0, prev - 1));
+        const next = e.key === 'ArrowRight' ? Math.min(rowUnits.length - 1, unitIndex + 1) : Math.max(0, unitIndex - 1);
+        setSelectedIndex(rowIndex);
+        setSelectedUnitIndex(next);
+        setArrowPicked(true);
       }
     } else if (e.key === 'Enter') {
       e.preventDefault();
@@ -257,21 +257,28 @@ export function PosListLayout({
       const raw = searchQuery.trim();
       if (!raw) return;
 
+      // an arrow-key choice always wins: exactly the highlighted row and unit (owner 2026-11-25)
+      const picked = arrowPicked && open ? filteredProducts[rowIndex] : undefined;
+      if (picked) {
+        handleSelectProduct(picked, rowUnits[unitIndex] || getDefaultSelectedUnit(picked, rowUnits, searchQuery));
+        return;
+      }
+
       const matchedBarcode = findProductByExactCode(raw.toLowerCase()) || findProductByExactCode(convertThaiToEnBarcode(raw).toLowerCase().trim());
 
       if (matchedBarcode) {
         processBarcodeScan(raw);
       } else if (filteredProducts.length > 0) {
-        const p = filteredProducts[selectedIndex || 0];
+        const p = filteredProducts[rowIndex];
         const availableUnits = getProductAvailableUnits(p);
-        const targetUnit = availableUnits[selectedUnitIndex] || getDefaultSelectedUnit(p, availableUnits, searchQuery);
+        const targetUnit = availableUnits[unitIndex] || getDefaultSelectedUnit(p, availableUnits, searchQuery);
         handleSelectProduct(p, targetUnit);
       } else {
         toast.error(`ไม่พบสินค้า: ${raw}`);
       }
     } else if (e.key === 'Escape') {
       setIsSearchOpen(false);
-      setSelectedUnitIndex(0);
+      resetSearchSelection();
     }
   };
 
@@ -505,7 +512,7 @@ export function PosListLayout({
                 type="text"
                 placeholder="ชื่อ / ซีเรียล / บาร์โค้ด"
                 value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setIsSearchOpen(true); }}
+                onChange={(e) => { setSearchQuery(e.target.value); setIsSearchOpen(true); resetSearchSelection(); }}
                 onKeyDown={handleSearchKeyDown}
                 onFocus={() => setIsSearchOpen(true)}
                 className="w-full text-base sm:text-lg font-bold outline-none bg-transparent px-3.5 text-slate-900 placeholder:text-slate-400"
@@ -525,14 +532,16 @@ export function PosListLayout({
               <div ref={dropdownRef} className="absolute left-0 top-full mt-1.5 w-full bg-white text-slate-900 rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden max-h-80 overflow-y-auto divide-y divide-slate-100">
                 {filteredProducts.map((p, idx) => {
                   const availableUnits = getProductAvailableUnits(p);
-                  const isCurrentRow = idx === selectedIndex;
+                  const isCurrentRow = idx === rowIndex;
                   const defaultUnit = getDefaultSelectedUnit(p, availableUnits, searchQuery);
 
                   return (
                     <div
                       key={p.id}
+                      data-testid="pos-search-row"
+                      data-current={isCurrentRow ? 'true' : undefined}
                       onClick={() => {
-                        const targetUnit = isCurrentRow && availableUnits[selectedUnitIndex] ? availableUnits[selectedUnitIndex] : defaultUnit;
+                        const targetUnit = isCurrentRow && availableUnits[unitIndex] ? availableUnits[unitIndex] : defaultUnit;
                         handleSelectProduct(p, targetUnit);
                       }}
                       className={`p-3.5 text-sm flex items-center justify-between cursor-pointer transition-all ${isCurrentRow ? 'bg-sky-100/90 text-sky-950 font-bold border-l-4 border-l-sky-600 shadow-xs' : 'hover:bg-slate-50'}`}
@@ -560,15 +569,19 @@ export function PosListLayout({
                       <div className="flex items-center gap-1.5 shrink-0">
                         {availableUnits.map((u, uIdx) => {
                           const isOutOfStock = p.stock < u.factor;
-                          const isActive = isCurrentRow 
-                            ? uIdx === selectedUnitIndex
-                            : defaultUnit.unitName === u.unitName;
+                          // the highlighted row's chosen unit is the strong pill (what Enter adds); other rows only
+                          // hint their default unit, so the eye never mistakes them for the choice
+                          const isChosen = isCurrentRow && uIdx === unitIndex;
+                          const isDefaultHint = !isCurrentRow && defaultUnit.unitName === u.unitName;
 
                           return (
                             <button
                               key={u.id || u.unitName}
                               type="button"
                               disabled={isOutOfStock}
+                              aria-pressed={isChosen}
+                              data-testid="pos-search-unit"
+                              data-chosen={isChosen ? 'true' : undefined}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleSelectProduct(p, u);
@@ -576,8 +589,10 @@ export function PosListLayout({
                               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border flex items-center gap-1 cursor-pointer ${
                                 isOutOfStock
                                   ? 'opacity-40 bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed line-through'
-                                  : isActive
+                                  : isChosen
                                   ? 'bg-sky-600 text-white border-sky-600 font-black shadow-md ring-2 ring-sky-400 scale-105'
+                                  : isDefaultHint
+                                  ? 'bg-sky-50 text-sky-800 border-sky-300'
                                   : 'bg-white hover:bg-sky-50 text-slate-700 border-slate-300'
                               }`}
                             >
