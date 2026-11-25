@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { AskDialogHost } from '@/components/common/AskDialogHost';
 import { ExportPinHost } from '@/components/common/ExportPinHost';
+import { PadFieldKeys } from '@/components/common/PadFieldKeys';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
@@ -39,6 +40,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         <AskDialogHost />
         {/* manager PIN of every data export (lib/export-approval.ts) */}
         <ExportPinHost />
+        {/* keyboard digits go to the number field of the topmost dialog (lib/keyboard/pad-field.ts) */}
+        <PadFieldKeys />
         <Toaster theme="light" position="bottom-right" duration={2000} />
       </TooltipProvider>
     </QueryClientProvider>

@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { CreditCard, QrCode, Banknote, Edit3, CheckCircle2, SplitSquareHorizontal, UserCheck, Building2, ArrowRight, FileText, Printer, ShieldCheck } from 'lucide-react';
 import { NumpadPopup } from './NumpadPopup';
+import { padField } from '@/lib/keyboard/pad-field';
 import { ReceiptPdfModal, ReceiptData } from './ReceiptPdfModal';
 import { levelNames } from '@shared/price-level';
 import { orderToReceiptData, summarizePaymentMethods, isCreditMethod } from '@/lib/receipt-mapper';
@@ -927,6 +928,7 @@ export function PaymentModal({
                         ref={cashInputRef}
                         data-testid="cash-received-input"
                         autoFocus
+                        {...padField}
                         inputMode="decimal"
                         autoComplete="off"
                         placeholder="0"
@@ -1139,6 +1141,8 @@ export function PaymentModal({
                           type="number"
                           placeholder="0.00"
                           className="bg-white border-slate-300 h-12 text-xl font-bold text-sky-600 flex-1"
+                          aria-label="ยอดโอนเงิน (แบ่งจ่าย)"
+                          {...padField}
                           value={qrReceived || ''}
                           onChange={(e) => setQrReceived(parseFloat(e.target.value) || 0)}
                           onClick={() => setNumpadTarget('SPLIT_QR')}
@@ -1182,6 +1186,7 @@ export function PaymentModal({
                           type="number"
                           placeholder="0.00"
                           className="bg-white border-slate-300 h-12 text-xl font-bold text-emerald-600 flex-1"
+                          aria-label="ยอดเงินสด (แบ่งจ่าย)"
                           value={cashReceived || ''}
                           onChange={(e) => setCashReceived(parseFloat(e.target.value) || 0)}
                           onClick={() => setNumpadTarget('SPLIT_CASH')}

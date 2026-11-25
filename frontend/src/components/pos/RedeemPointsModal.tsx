@@ -12,6 +12,7 @@ import { useCartStore } from '@/lib/store/cart-store';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
 import { enterSubmitHandler } from '@/lib/keyboard/enter-submit';
+import { padField } from '@/lib/keyboard/pad-field';
 
 interface RedeemPointsModalProps {
   open: boolean;
@@ -165,6 +166,8 @@ export function RedeemPointsModal({ open, onOpenChange, customer }: RedeemPoints
                 placeholder={`ระบุจำนวนแต้ม (เช่น ${ratePoints}, ${ratePoints * 2}, ${ratePoints * 5}...)`}
                 className="pl-9 h-11 text-base font-extrabold text-slate-900"
                 autoFocus
+                {...padField}
+                aria-label="จำนวนแต้มที่ใช้"
               />
             </div>
 

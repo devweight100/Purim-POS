@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Percent, Receipt, RefreshCcw } from 'lucide-react';
 import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
+import { padField } from '@/lib/keyboard/pad-field';
 
 interface BillDiscountPopupProps {
   open: boolean;
@@ -125,6 +126,8 @@ export function BillDiscountPopup({ open, onOpenChange }: BillDiscountPopupProps
                 className="bg-slate-50 border-slate-300 h-12 text-lg text-slate-900"
                 placeholder={discountType === 'baht' ? 'ระบุจำนวนเงิน (บาท)' : 'ระบุเปอร์เซ็นต์ (%)'}
                 autoFocus
+                {...padField}
+                aria-label="ส่วนลดท้ายบิล"
                 min={0}
                 max={discountType === 'percent' ? 100 : subtotal}
                 aria-invalid={!!validationError}

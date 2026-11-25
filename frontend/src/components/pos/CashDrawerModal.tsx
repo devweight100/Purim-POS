@@ -24,6 +24,7 @@ import {
 import { toast } from 'sonner';
 import { newOperationId } from '@/lib/order-sync-service';
 import { kickCashDrawer, getCashDrawerConfig } from '@/lib/cash-drawer-service';
+import { padField } from '@/lib/keyboard/pad-field';
 
 interface CashDrawerModalProps {
   open: boolean;
@@ -364,6 +365,8 @@ export function CashDrawerModal({
                     min="0"
                     step="any"
                     autoFocus
+                    {...padField}
+                    aria-label="จำนวนเงิน"
                     value={amountStr}
                     onChange={(e) => setAmountStr(e.target.value)}
                     className="h-12 text-2xl font-black text-slate-900 pr-12 font-mono text-right"

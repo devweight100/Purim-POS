@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { api, type ShiftElsewhere } from '@/lib/api';
 import { setTerminalId } from '@/lib/terminal-id';
 import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
+import { padField } from '@/lib/keyboard/pad-field';
 
 interface OpenShiftModalProps {
   open: boolean;
@@ -193,6 +194,7 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
                   placeholder="ยอดรวม"
                   className="text-3xl sm:text-4xl font-black text-right bg-transparent border-b-2 border-transparent focus:border-sky-500 outline-none w-40 sm:w-52 text-slate-900 font-mono tracking-tight cursor-text"
                   aria-label="ยอดเงินรวมในลิ้นชัก"
+                  {...padField}
                 />
               </div>
               <div className="text-2xl text-slate-400 font-sans font-bold">฿</div>

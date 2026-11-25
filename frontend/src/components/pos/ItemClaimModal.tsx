@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { addQty, parseQty, qtyInputMode, qtyStep, subQty, useAllowDecimalQty } from '@/lib/qty';
 import { enterSubmitHandler } from '@/lib/keyboard/enter-submit';
+import { padField } from '@/lib/keyboard/pad-field';
 
 interface ItemClaimModalProps {
   isOpen: boolean;
@@ -229,6 +230,7 @@ export const ItemClaimModal: React.FC<ItemClaimModalProps> = ({
                 max={maxClaim}
                 value={claimQty}
                 autoFocus
+                {...padField}
                 aria-label="จำนวนที่เคลม"
                 onFocus={(e) => e.currentTarget.select()}
                 onChange={(e) => {

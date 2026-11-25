@@ -21,6 +21,7 @@ import { kickCashDrawer } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
 import type { ApiShiftLike } from '@/lib/types';
 import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
+import { padField } from '@/lib/keyboard/pad-field';
 
 interface CloseShiftModalProps {
   open: boolean;
@@ -227,6 +228,8 @@ export function CloseShiftModal({ open, onOpenChange }: CloseShiftModalProps) {
                   min={0}
                   step="0.01"
                   onChange={(e) => setActualCash(e.target.value !== '' ? parseFloat(e.target.value) : null)}
+                  aria-label="ยอดเงินสดที่นับได้จริง"
+                  {...padField}
                   className="bg-slate-50 border-slate-300 h-13 text-xl font-black text-slate-900 rounded-xl focus:bg-white font-mono text-center flex-1 shadow-inner"
                   placeholder="0.00"
                 />

@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { PromptPayQr } from '@/components/common/PromptPayQr';
 import { promptPayOf } from '@/lib/promptpay-qr';
 import { enterSubmitHandler } from '@/lib/keyboard/enter-submit';
+import { padField } from '@/lib/keyboard/pad-field';
 
 interface PayDebtModalProps {
   open: boolean;
@@ -325,6 +326,8 @@ export function PayDebtModal({
                 step="any"
                 value={amountInput}
                 onChange={(e) => setAmountInput(e.target.value)}
+                aria-label="จำนวนเงินที่รับชำระ"
+                {...padField}
                 className="text-xl text-center text-slate-900 bg-white border-slate-300 focus:border-indigo-500 tabular-nums"
                 placeholder="0.00"
               />

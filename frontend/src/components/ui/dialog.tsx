@@ -5,6 +5,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/lib/utils"
 import { useDialogStack } from "@/lib/dialog-stack"
+import { dialogInitialFocus } from "@/lib/keyboard/pad-field"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
@@ -46,14 +47,28 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  initialFocus,
+  ref,
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
 }) {
+  // Without an initialFocus of its own a dialog focuses its number field (data-pad-field) or the field React already
+  // auto-focused; Base UI's default (first tabbable element, usually a button) left keyboard digits nowhere
+  // (lib/keyboard/pad-field.ts).
+  const popupRef = React.useRef<HTMLDivElement | null>(null)
+  const setRef = React.useCallback((el: HTMLDivElement | null) => {
+    popupRef.current = el
+    if (typeof ref === "function") ref(el)
+    else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = el
+  }, [ref])
+  const focusOnOpen = initialFocus ?? (() => dialogInitialFocus(popupRef.current))
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Popup
+        ref={setRef}
+        initialFocus={focusOnOpen}
         data-slot="dialog-content"
         className={cn(
           "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl bg-popover p-6 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",

@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Coins, Calculator, RotateCcw } from 'lucide-react';
 import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
+import { padField } from '@/lib/keyboard/pad-field';
 
 interface CountCashModalProps {
   open: boolean;
@@ -118,7 +119,7 @@ export function CountCashModal({ open, onOpenChange, onConfirm }: CountCashModal
           {/* POSPOS Grid Layout */}
           <div className="flex-1 overflow-y-auto pr-1 pb-2">
             <div data-testid="money-grid" className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {MONEY_ITEMS.map((item) => {
+              {MONEY_ITEMS.map((item, itemIdx) => {
                 const qty = counts[item.key] ?? '';
 
                 return (
@@ -170,6 +171,7 @@ export function CountCashModal({ open, onOpenChange, onConfirm }: CountCashModal
                         inputMode="numeric"
                         step="1"
                         aria-label={`จำนวน ${item.label}`}
+                        {...(itemIdx === 0 ? padField : {})}
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => handleQtyChange(item.key, e.target.value === '' ? 0 : Math.floor(Number(e.target.value)))}
                         placeholder="0"

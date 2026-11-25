@@ -14,6 +14,7 @@ import {
 import { Percent, DollarSign, Tag, RefreshCcw } from 'lucide-react';
 import { subQty } from '@/lib/qty';
 import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
+import { padField } from '@/lib/keyboard/pad-field';
 
 interface ItemEditPopupProps {
   item: CartItem | null;
@@ -131,6 +132,8 @@ export function ItemEditPopup({ item, open, onOpenChange }: ItemEditPopupProps) 
                 type="number"
                 value={customPrice}
                 onChange={(e) => setCustomPrice(e.target.value)}
+                aria-label="ราคาขายต่อหน่วย"
+                {...(discountType === 'none' ? padField : {})}
                 className="pl-9 bg-slate-50 border-slate-300 h-12 text-lg text-slate-900"
                 placeholder={item.originalPrice.toString()}
               />
@@ -183,6 +186,8 @@ export function ItemEditPopup({ item, open, onOpenChange }: ItemEditPopupProps) 
                 className="bg-slate-50 border-slate-300 h-12 text-lg text-slate-900"
                 placeholder={discountType === 'baht' ? 'ระบุจำนวนเงิน (บาท)' : 'ระบุเปอร์เซ็นต์ (%)'}
                 autoFocus
+                {...padField}
+                aria-label="ส่วนลดรายการ"
                 min={0}
                 max={discountType === 'percent' ? 100 : lineAmount}
                 aria-invalid={!!validationError}
