@@ -1,13 +1,32 @@
 /**
- * Cost per unit shown in the products / inventory tables: the cost of the stock on hand (FIFO pool, sent with the
- * server's table rows), else the product's reference cost. NEVER the selling price (`basePrice` of a store product
- * is the selling price - BUG-05 v1.5.3). undefined = not known / the user may not see costs.
+ * Cost per unit shown in the products / inventory tables.
+ *
+ * - displayUnitCost: the cost the owner typed in the product form (`costPrice`, the reference cost used for new
+ *   stock), else the cost of the stock on hand (FIFO pool sent with the server's table rows). Editing ต้นทุน in the
+ *   form shows up in the tables at once (owner request, v1.5.14).
+ * - stockOnHandCost: the FIFO average of the stock on hand; the tables show it as a small second line when it
+ *   differs from the typed cost (profit of sales is still booked from the real stock cost).
+ *
+ * NEVER the selling price (`basePrice` of a store product is the selling price - BUG-05 v1.5.3).
+ * undefined = not known / the user may not see costs.
  */
 type CostNumber = number | string | null | undefined;
+type CostFields = { stockUnitCost?: CostNumber; costPrice?: CostNumber; cost?: CostNumber };
 
-export function displayUnitCost(p: { stockUnitCost?: CostNumber; costPrice?: CostNumber; cost?: CostNumber }): number | undefined {
-  const raw = p.stockUnitCost ?? p.costPrice ?? p.cost;
-  if (raw === undefined || raw === null) return undefined;
+function num(raw: CostNumber): number | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined;
   const n = Number(raw);
   return Number.isFinite(n) ? n : undefined;
+}
+
+export function displayUnitCost(p: CostFields): number | undefined {
+  return num(p.costPrice) ?? num(p.cost) ?? num(p.stockUnitCost);
+}
+
+/** FIFO cost of the stock on hand when it differs from the displayed (typed) cost by at least 1 satang, else undefined */
+export function stockOnHandCost(p: CostFields): number | undefined {
+  const stock = num(p.stockUnitCost);
+  const shown = displayUnitCost(p);
+  if (stock === undefined || shown === undefined) return undefined;
+  return Math.abs(stock - shown) >= 0.005 ? stock : undefined;
 }

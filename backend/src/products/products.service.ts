@@ -606,9 +606,9 @@ export class ProductsService {
       priceLevel3: 'COALESCE(x.price_level_3, 0)',
       priceLevel4: 'COALESCE(x.price_level_4, 0)',
       priceLevel5: 'COALESCE(x.price_level_5, 0)',
-      // cost per unit as the table shows it (FIFO average of the stock on hand, else the reference cost);
+      // cost per unit as the table shows it (the typed reference cost, else the FIFO average of the stock on hand);
       // only for users who may see costs (others get the plain table order)
-      cost: opts.canViewCost ? 'COALESCE(x.avg_cost, x.cost_price, 0)' : 'x.pos',
+      cost: opts.canViewCost ? 'COALESCE(x.cost_price, x.avg_cost, 0)' : 'x.pos',
     };
     if (opts.sort && !sortSql[opts.sort]) throw new BadRequestException('ลำดับการเรียงไม่ถูกต้อง');
     const orderBy = opts.sort ? Prisma.raw(`${sortSql[opts.sort]} ${dir}, x.pos`) : Prisma.raw('x.pos');

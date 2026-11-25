@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { isSellable, toStoreProduct, useProductStore } from '@/lib/store/product-store';
 import { usePosDataDemand } from '@/lib/pos-data-policy';
 import type { ApiProduct, Product } from '@/lib/types';
-import { displayUnitCost } from '@/lib/product-cost';
+import { displayUnitCost, stockOnHandCost } from '@/lib/product-cost';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { StatusChip, type ChipTone } from '@/components/ui/status-chip';
@@ -641,7 +641,10 @@ export default function InventoryPage() {
 
                         {/* Cost */}
                         <TableCell className="text-right font-medium text-fg whitespace-nowrap tabular-nums">
-                          {displayUnitCost(p) !== undefined ? formatCurrency(displayUnitCost(p)!) : '-'}
+                          <span className="block">{displayUnitCost(p) !== undefined ? formatCurrency(displayUnitCost(p)!) : '-'}</span>
+                          {stockOnHandCost(p) !== undefined && (
+                            <span className="block text-xs font-normal text-subtle" title="ต้นทุนเฉลี่ยของสต็อกที่มีอยู่ (ใช้คิดกำไรตอนขาย)">สต็อก {formatCurrency(stockOnHandCost(p)!)}</span>
+                          )}
                         </TableCell>
 
                         {/* Stock Base Units */}

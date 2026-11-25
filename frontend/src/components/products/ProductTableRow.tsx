@@ -10,7 +10,7 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { StatusChip } from "@/components/ui/status-chip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatCurrency } from "@/lib/utils";
-import { displayUnitCost } from "@/lib/product-cost";
+import { displayUnitCost, stockOnHandCost } from "@/lib/product-cost";
 import { computeMultipliers, lowStockThreshold } from "./product-helpers";
 import type { ProductColumns } from "./product-columns";
 import { priceLevelKey, type CategoryOption, type PackagingUnitForm, type ProductRecord } from "./types";
@@ -54,8 +54,9 @@ export function ProductTableRow({
   rowNav: HTMLAttributes<HTMLTableRowElement>;
 }) {
   const stock = p.stock ?? 0;
-  // cost of the stock on hand, else the reference cost - never the selling price (BUG-05)
+  // the cost typed in the product form, else the cost of the stock on hand - never the selling price (BUG-05)
   const unitCostOf = displayUnitCost(p);
+  const stockCostOf = stockOnHandCost(p);
   const lowThreshold = lowStockThreshold(p);
   const isNegativeStock = stock < 0;
   const isLowStock = stock > 0 && stock <= lowThreshold;
@@ -141,7 +142,12 @@ export function ProductTableRow({
           />
         </TableCell>
         {showCost && (
-          <TableCell className={`cell-tight text-right text-muted-foreground whitespace-nowrap tabular-nums ${numCls}`} data-testid="product-cost">{unitCostOf !== undefined ? formatCurrency(unitCostOf) : "-"}</TableCell>
+          <TableCell className={`cell-tight text-right text-muted-foreground whitespace-nowrap tabular-nums ${numCls}`} data-testid="product-cost">
+            <span className="block">{unitCostOf !== undefined ? formatCurrency(unitCostOf) : "-"}</span>
+            {stockCostOf !== undefined && (
+              <span className="block text-xs text-subtle" title="ต้นทุนเฉลี่ยของสต็อกที่มีอยู่ (ใช้คิดกำไรตอนขาย)" data-testid="product-stock-cost">สต็อก {formatCurrency(stockCostOf)}</span>
+            )}
+          </TableCell>
         )}
         {layout.levels.map((n) => {
           const v = n === 1 ? (p.priceLevel1 ?? p.basePrice) : p[priceLevelKey(n)];
