@@ -127,6 +127,13 @@ Make the POS production-ready by using PostgreSQL/backend APIs as the source of 
 - **Delete a used product with a replacement**: `GET /products/:id/replace-check`, `POST /products/:id/replace` (ADMIN/MANAGER + MANAGE_INVENTORY); stock must be 0; lines keep original name/code (`snapshot_name`/`snapshot_sku`), history repointed in one transaction (sales, returns, online orders, POs, supplier returns, claims, claim stock, warranties, batches, stock-card movements, bundles, suppliers, barcodes optional); `product_replacements` maps late sales (held bills / outbox / online carts). Migration `20261210000000_product_replace`.
 - **Member points**: shop-wide rate is the single source (`shared/src/loyalty.ts`), member field used only when > 0, min points per use; POS preview now follows the shop rate (it used hard-coded 500/10/100/1). Migration `20261211000000_shop_point_rates` (data only). **Member Excel import** with preview, all-or-nothing commit, points history `CUSTOMER_POINTS_ADJUST` "นำเข้าคะแนน".
 
+## 2026-11-26 Online orders: full-screen window + step flow (docs/online-orders-flow.md)
+
+- Owner: the order detail made the page scroll long; too many status buttons, unclear what comes after รับงาน; show the steps one at a time, payment any time.
+- `frontend/src/lib/online-order-steps.ts` (pure, vitest): steps ใหม่ → รับงาน → จัดของ → จัดเสร็จ → (กำลังส่ง) → เสร็จ, ONE next action, hint, list text, รับเงิน slot state; used by the list, the order window and the POS held-bills sheet.
+- Order window is full screen (header, step indicator + "ตอนนี้: ...", items scroll on their own, right panel with total + the รับเงิน slot (disabled "รับงานก่อนจึงรับเงินได้" / open as POS bill / "ชำระแล้ว · บิล ..."), footer: next-step button (focused, Enter), พิมพ์ใบจัดของ from รับแล้ว; far right "แก้ไขรายการ" + "อื่นๆ" menu (claim, ปล่อยงาน, ปลดล็อก/โอน, ปิดออเดอร์เลย, ยกเลิกออเดอร์)). List rows show "→ รอรับงาน / รอจัดของ / รอส่ง / รอรับเงิน ...", ↑/↓ + Enter, Esc returns to the focused row. UI only: server rules, status machine and claim lock unchanged.
+- Verified: frontend tsc + eslint 0 errors + vitest 370 + next build; Playwright full suite on a fresh DB 146 passed, 1 failed + 1 not run = `37-pos-pack-arrows` (POS search order), which fails the same way on d584aa1 without these changes (pre-existing, not touched); new `43-online-orders-flow` 2, updated 15 / 16 / 18 pass. No backend change. Screenshots before / after (list, detail NEW / ACCEPTED / READY delivery / paid at 1366x768, 1920x1080, 1093x614) in the session scratchpad `online-orders-flow/`.
+
 ## Production Readiness Work In Progress
 
 ### Product Data
