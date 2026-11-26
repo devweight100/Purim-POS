@@ -2481,7 +2481,9 @@ d('store flow (e2e)', () => {
       expect(linkPush[0].to).toBe('U1234567890abcdef');
       expect(linkPush[0].messages[0].text).toContain('ช่างสมศักดิ์ ออนไลน์');
       expect(linkPush[0].messages[0].text).toContain('ส่งพิเศษช่าง');
-      expect(linkPush[0].messages[0].text).toContain('https://shop.example.com/shop');
+      // LINE login configured: message links open through LIFF (owner bug 2026-11-26, d584aa1), not the web address
+      expect(linkPush[0].messages[0].text).toContain('https://liff.line.me/1650000000-AbCdEfGh');
+      expect(linkPush[0].messages[0].text).not.toContain('https://shop.example.com/shop');
       expect((await pub('get', '/me', s.token, undefined, { 'cf-ray': 'abc' }).expect(200)).body.member).toMatchObject({ level: 3 });
       await api('delete', '/online-shop/line/U1234567890abcdef', A).expect(200);
       // put the shop back in test mode for the rest of the suite
