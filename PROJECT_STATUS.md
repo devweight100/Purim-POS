@@ -1,6 +1,6 @@
 # Purim POS Project Status
 
-Last updated: 2026-11-05
+Last updated: 2026-11-26
 
 ## Goal
 
@@ -118,6 +118,14 @@ Make the POS production-ready by using PostgreSQL/backend APIs as the source of 
 - Mode 2 (backend ready, no UI yet): `POST /approvals/requests` (PENDING), `GET /approvals/:id` (poll), `POST /approvals/:id/decide` (approver), realtime event `approval`; consumed the same way.
 - UI: PIN pad dialog in the payment screen; `/approvals` page (history + rules); permission `APPROVE_OVERRIDES`.
 - Verified: e2e 23/23 (8 approval cases), headless POS approval flow 3/3.
+
+## 2026-11-26 Round: shift hand-over, today by default, bundle picker, delete with replacement, member points (docs/round-shift-today-bundle-replace.md)
+
+- **Shift hand-over bug**: root cause = B's "ใช้กะนี้ต่อที่เครื่องนี้" (BUG-03 recovery for B's shift left on another terminal id) re-keyed the whole PC to B's old terminal id while the PC's own id still held A's open shift; when A logged back in `/shifts/current` found nothing (A's shift looked gone). Now `GET /shifts/terminal-status` + `mine-elsewhere.blockedBy` (continue refused while another user's shift is open on this PC), the open-shift dialog tells B whose shift holds the PC (no counting, logout button), open refusal names the shift / owner; the shift cache is bound to the logged-in user and any sign-out path forgets it; stale `/shifts/current` replies are dropped. Model kept: one open shift per terminal (drawer), shift = user + terminal. Offline outbox sales go to their owner's shift only.
+- **Today by default** (Bangkok): dashboard, all report tabs, bills list (+ presets วันนี้/เมื่อวาน/7 วัน/เดือนนี้/ทุกวันที่), shift history, stock card, P&L, mobile bills. `GET /orders?startDate=YYYY-MM-DD` now uses whole Bangkok days (was UTC midnight; one day showed nothing).
+- **Bundle items**: type-to-search server picker (`ProductSearchPicker`, keyboard, focuses the quantity); nested bundles / disabled children refused by the server (existing rows kept).
+- **Delete a used product with a replacement**: `GET /products/:id/replace-check`, `POST /products/:id/replace` (ADMIN/MANAGER + MANAGE_INVENTORY); stock must be 0; lines keep original name/code (`snapshot_name`/`snapshot_sku`), history repointed in one transaction (sales, returns, online orders, POs, supplier returns, claims, claim stock, warranties, batches, stock-card movements, bundles, suppliers, barcodes optional); `product_replacements` maps late sales (held bills / outbox / online carts). Migration `20261210000000_product_replace`.
+- **Member points**: shop-wide rate is the single source (`shared/src/loyalty.ts`), member field used only when > 0, min points per use; POS preview now follows the shop rate (it used hard-coded 500/10/100/1). Migration `20261211000000_shop_point_rates` (data only). **Member Excel import** with preview, all-or-nothing commit, points history `CUSTOMER_POINTS_ADJUST` "นำเข้าคะแนน".
 
 ## Production Readiness Work In Progress
 
