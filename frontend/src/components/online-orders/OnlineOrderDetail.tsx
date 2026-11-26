@@ -179,6 +179,7 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
   const ownStep = useRef(false);
   const menuOpen = useRef(false);
   const menuClosedAt = useRef(0);
+  const [moreOpen, setMoreOpen] = useState(false);
 
   const apply = useCallback((x: Detail) => {
     setD(x);
@@ -282,6 +283,12 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
         const fromMenu = !!t?.closest?.('[data-slot="dropdown-menu-content"]');
         if (details?.reason === 'escape-key' && (menuOpen.current || fromMenu || Date.now() - menuClosedAt.current < 300)) {
           details.cancel?.();
+          // the Escape can reach the window before the menu (menu just opened, focus not in it yet): close the menu
+          if (menuOpen.current) {
+            setMoreOpen(false);
+            menuClosedAt.current = Date.now();
+            setTimeout(() => (menuOpen.current = false), 0);
+          }
           return;
         }
         void close();
@@ -434,7 +441,18 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
   const hasMenu = claimable || (!!d.claim && !heldByOther) || (heldByOther && manager) || closeNow || actionable;
 
   return shell(
-    <div className="flex h-full min-h-0 flex-col" data-testid="online-order-detail">
+    <div
+      className="flex h-full min-h-0 flex-col"
+      data-testid="online-order-detail"
+      onKeyDownCapture={(e) => {
+        // Escape while the อื่นๆ menu is open closes the menu only, also when the focus has not moved into it yet
+        if (e.key !== 'Escape' || !moreOpen) return;
+        e.preventDefault();
+        e.stopPropagation();
+        menuClosedAt.current = Date.now();
+        setMoreOpen(false);
+      }}
+    >
       {/* header: order no, status, customer, pickup / delivery, close */}
       <header className="flex items-start justify-between gap-btn border-b border-slate-200 px-4 py-3 lg:px-6">
         <div className="min-w-0">
@@ -451,9 +469,76 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
             {d.testProfile ? ' (โปรไฟล์ทดสอบ)' : ''}
           </DialogDescription>
         </div>
-        <Button ref={closeRef} variant="outline" onClick={() => void close()} className="shrink-0 gap-1" aria-label="ปิด กลับไปรายการ (Esc)" title="กลับไปรายการ (Esc)">
-          <X className="h-4 w-4" /> ปิด <span className="text-xs text-muted-foreground">Esc</span>
-        </Button>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-btn" data-testid="order-secondary">
+          {editable && (
+            <Button variant="outline" aria-pressed={editing} onClick={() => setEditing((x) => !x)} className="gap-1">
+              <Pencil className="h-4 w-4" /> {editing ? 'เลิกแก้ไขรายการ' : 'แก้ไขรายการ'}
+            </Button>
+          )}
+          {hasMenu && (
+            <DropdownMenu
+              open={moreOpen}
+              onOpenChange={(o) => {
+                setMoreOpen(o);
+                if (o) menuOpen.current = true;
+                else {
+                  menuClosedAt.current = Date.now();
+                  setTimeout(() => (menuOpen.current = false), 0);
+                }
+              }}
+            >
+              <DropdownMenuTrigger
+                render={<Button variant="outline" className="gap-1" />}
+                data-testid="order-more"
+                onKeyDown={(e) => {
+                  // the menu is open but the focus is still on this button (it moves into the menu a moment later):
+                  // Escape closes the menu, never the window
+                  if (e.key !== 'Escape' || !moreOpen) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  menuClosedAt.current = Date.now();
+                  setMoreOpen(false);
+                }}
+              >
+                <MoreHorizontal className="h-4 w-4" /> อื่นๆ
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="bottom" className="w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                {claimable && (
+                  <DropdownMenuItem disabled={busy} onClick={() => void claim()} className="gap-2 py-2">
+                    <Hand className="h-4 w-4" /> รับจัดออเดอร์นี้
+                  </DropdownMenuItem>
+                )}
+                {d.claim && !heldByOther && (
+                  <DropdownMenuItem disabled={busy} onClick={() => void release()} className="gap-2 py-2">
+                    <Undo2 className="h-4 w-4" /> ปล่อยงาน
+                  </DropdownMenuItem>
+                )}
+                {heldByOther && manager && (
+                  <DropdownMenuItem disabled={busy} onClick={() => setTakeoverOpen(true)} className="gap-2 py-2">
+                    <LockOpen className="h-4 w-4" /> ปลดล็อก/โอนมาที่ฉัน
+                  </DropdownMenuItem>
+                )}
+                {closeNow && (
+                  <DropdownMenuItem disabled={busy} onClick={() => void setStatus('DONE')} className="gap-2 py-2">
+                    <CheckCheck className="h-4 w-4" /> ปิดออเดอร์เลย (ข้ามขั้นตอน)
+                  </DropdownMenuItem>
+                )}
+                {actionable && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem variant="destructive" disabled={busy || heldByOther} onClick={() => setRejectOpen(true)} className="gap-2 py-2" title={lockReason}>
+                      <Ban className="h-4 w-4" /> ยกเลิกออเดอร์
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {/* rare actions sit up here, away from the step button (and from the toasts at the bottom right) */}
+          <Button ref={closeRef} variant="outline" onClick={() => void close()} className="shrink-0 gap-1" aria-label="ปิด กลับไปรายการ (Esc)" title="กลับไปรายการ (Esc)">
+            <X className="h-4 w-4" /> ปิด <span className="text-xs text-muted-foreground">Esc</span>
+          </Button>
+        </div>
       </header>
 
       {/* where the order is and what to do now */}
@@ -646,7 +731,7 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
         </aside>
       </div>
 
-      {/* the next step (one button) on the left; rare actions on the far right */}
+      {/* the next step (one button) + the picking slip; rare actions are in the header */}
       <footer className="flex flex-wrap items-center justify-between gap-btn border-t border-slate-200 bg-white px-4 py-3 lg:px-6">
         <div className="flex flex-wrap items-center gap-btn" data-testid="step-actions">
           {primary && primary.action !== 'pay' && (
@@ -672,58 +757,6 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
             <Button disabled={busy} variant="outline" onClick={() => void save()} className="border-amber-500 text-amber-900">
               {d.status === 'NEW' ? 'บันทึก (ยังไม่รับ)' : 'บันทึกการแก้ไข'}
             </Button>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-btn">
-          {editable && (
-            <Button variant="outline" aria-pressed={editing} onClick={() => setEditing((x) => !x)} className="gap-1">
-              <Pencil className="h-4 w-4" /> {editing ? 'เลิกแก้ไขรายการ' : 'แก้ไขรายการ'}
-            </Button>
-          )}
-          {hasMenu && (
-            <DropdownMenu
-              onOpenChange={(o) => {
-                if (o) menuOpen.current = true;
-                else {
-                  menuClosedAt.current = Date.now();
-                  setTimeout(() => (menuOpen.current = false), 0);
-                }
-              }}
-            >
-              <DropdownMenuTrigger render={<Button variant="outline" className="gap-1" />} data-testid="order-more">
-                <MoreHorizontal className="h-4 w-4" /> อื่นๆ
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" side="top" className="w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
-                {claimable && (
-                  <DropdownMenuItem disabled={busy} onClick={() => void claim()} className="gap-2 py-2">
-                    <Hand className="h-4 w-4" /> รับจัดออเดอร์นี้
-                  </DropdownMenuItem>
-                )}
-                {d.claim && !heldByOther && (
-                  <DropdownMenuItem disabled={busy} onClick={() => void release()} className="gap-2 py-2">
-                    <Undo2 className="h-4 w-4" /> ปล่อยงาน
-                  </DropdownMenuItem>
-                )}
-                {heldByOther && manager && (
-                  <DropdownMenuItem disabled={busy} onClick={() => setTakeoverOpen(true)} className="gap-2 py-2">
-                    <LockOpen className="h-4 w-4" /> ปลดล็อก/โอนมาที่ฉัน
-                  </DropdownMenuItem>
-                )}
-                {closeNow && (
-                  <DropdownMenuItem disabled={busy} onClick={() => void setStatus('DONE')} className="gap-2 py-2">
-                    <CheckCheck className="h-4 w-4" /> ปิดออเดอร์เลย (ข้ามขั้นตอน)
-                  </DropdownMenuItem>
-                )}
-                {actionable && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem variant="destructive" disabled={busy || heldByOther} onClick={() => setRejectOpen(true)} className="gap-2 py-2" title={lockReason}>
-                      <Ban className="h-4 w-4" /> ยกเลิกออเดอร์
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
           )}
         </div>
       </footer>

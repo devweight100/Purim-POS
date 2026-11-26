@@ -40,6 +40,14 @@ async function openPos(page: Page, mode: 'list_view' | 'touch_screen') {
   await ensureShift(page);
 }
 
+/**
+ * Typing speed of a person. Not 30 ms: the POS scanner detector (lib/pos/scan-burst.ts) treats >= 4 keys at most
+ * 35 ms apart + Enter as a scanner burst, so 30 ms typing sat on that edge; on a loaded machine a few gaps went
+ * over 35 ms, the "burst" restarted in the middle of the code and Enter sent only its tail to the scanner path
+ * (nothing added). These steps are about typed text + arrows / Enter, not about scans.
+ */
+const HUMAN_KEY_MS = 90;
+
 /** keys one by one, at a person's pace */
 async function keys(page: Page, ...list: string[]) {
   for (const k of list) {
@@ -70,7 +78,7 @@ test('list layout: arrows to the ลัง of the 2nd result + Enter adds exactl
   const chosen = current.locator('[data-testid="pos-search-unit"][aria-pressed="true"]');
 
   await search.click();
-  await page.keyboard.type('ถังทราย', { delay: 30 });
+  await page.keyboard.type('ถังทราย', { delay: HUMAN_KEY_MS });
   await expect(rows).toHaveCount(3);
   await expect(rows.first()).toContainText(A); // B is not the first result
   await keys(page, 'ArrowDown', 'ArrowRight');
@@ -85,25 +93,25 @@ test('list layout: arrows to the ลัง of the 2nd result + Enter adds exactl
 
   // the very next search starts on row 1 again (it used to keep row 2, so ↓ landed on another item)
   await search.click();
-  await page.keyboard.type('ถังทราย', { delay: 30 });
+  await page.keyboard.type('ถังทราย', { delay: HUMAN_KEY_MS });
   await expect(current).toContainText(A);
   await keys(page, 'ArrowDown', 'ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'Enter');
   await expect.poll(() => lines(page)).toEqual([`${B} | ลัง | 2`]);
 
   // text that is also an exact code (A's barcode): the arrow choice wins ...
   await search.click();
-  await page.keyboard.type(A_CODE, { delay: 30 });
+  await page.keyboard.type(A_CODE, { delay: HUMAN_KEY_MS });
   await expect(rows).toHaveCount(2);
   await keys(page, 'ArrowDown', 'ArrowRight', 'Enter');
   await expect.poll(() => lines(page)).toEqual([`${B} | ลัง | 3`]);
   // ... and without arrows Enter is the scan of that code, as before
   await search.click();
-  await page.keyboard.type(A_CODE, { delay: 30 });
+  await page.keyboard.type(A_CODE, { delay: HUMAN_KEY_MS });
   await keys(page, 'Enter');
   await expect.poll(() => lines(page)).toEqual([`${B} | ลัง | 3`, `${A} | ถัง | 1`]);
   // no arrows, plain text: the first result, as before
   await search.click();
-  await page.keyboard.type('ถังทราย', { delay: 30 });
+  await page.keyboard.type('ถังทราย', { delay: HUMAN_KEY_MS });
   await keys(page, 'Enter');
   await expect.poll(() => lines(page)).toEqual([`${B} | ลัง | 3`, `${A} | ถัง | 2`]);
 });
@@ -116,7 +124,7 @@ test('card layout: ←/→ go through the packs of a card (highlighted), then to
   const active = (name: string) => card(name).locator('[data-testid="pos-card-unit"][aria-pressed="true"]');
 
   await search.click();
-  await page.keyboard.type('ถังทราย', { delay: 30 });
+  await page.keyboard.type('ถังทราย', { delay: HUMAN_KEY_MS });
   await expect(cards).toHaveCount(3);
   await expect(cards.first()).toContainText(A);
   await keys(page, 'ArrowDown');
@@ -145,7 +153,7 @@ test('card layout: ←/→ go through the packs of a card (highlighted), then to
   // no arrows: Enter in the search box adds the first result, as before
   await search.click();
   await search.fill('');
-  await page.keyboard.type('ถังทราย', { delay: 30 });
+  await page.keyboard.type('ถังทราย', { delay: HUMAN_KEY_MS });
   await keys(page, 'Enter');
   await expect.poll(() => lines(page)).toEqual([`${B} | ลัง | 1`, `${A} | ถัง | 1`]);
 });
