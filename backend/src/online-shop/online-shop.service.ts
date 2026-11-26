@@ -1,3 +1,4 @@
+import { replacementMap } from '../products/product-replace';
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type { Subscription } from 'rxjs';
@@ -316,6 +317,15 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
       if (typeof l?.productId !== 'string' || !Number.isInteger(qty) || qty < 1 || qty > ONLINE_LIMITS.maxQtyPerLine) throw new BadRequestException('จำนวนสินค้าไม่ถูกต้อง');
       return { productId: l.productId.slice(0, 64), unitId: typeof l?.unitId === 'string' && l.unitId ? l.unitId.slice(0, 64) : null, quantity: qty };
     });
+    // a cart line of a product deleted with a replacement is offered as the replacement (base unit)
+    const replaced = await replacementMap(db, wanted.map((w) => w.productId));
+    for (const w of wanted) {
+      const to = replaced.get(w.productId);
+      if (to) {
+        w.productId = to;
+        w.unitId = null;
+      }
+    }
     const ids = [...new Set(wanted.map((w) => w.productId))];
     const rows = await db.$queryRaw<any[]>`
       SELECT p.id, p.name, p.unit, p.base_price::text, p.price_level_1::text, p.price_level_2::text, p.price_level_3::text,

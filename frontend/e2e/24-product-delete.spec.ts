@@ -127,16 +127,17 @@ test('delete a never-sold product with stock: the confirmation names the stock, 
   await expect(api('GET', `/products/${made.never!.id}`, token)).rejects.toThrow();
 });
 
-test('a sold product: refused with the bill named, ปิดการใช้งาน offered in the dialog; status filter; greyed row', async ({ page }) => {
+test('a sold product: the bill named, ปิดการใช้งานแทน offered in the dialog; status filter; greyed row', async ({ page }) => {
   await login(page);
   await openProducts(page, TAG);
   const row = rowOf(page, SOLD);
   await row.getByRole('button', { name: `จัดการสินค้า ${SOLD}` }).click();
   await page.getByRole('menuitem', { name: 'ลบสินค้า' }).click();
-  const dialog = page.getByTestId('confirm-dialog');
-  await expect(dialog).toContainText(`ลบ "${SOLD}" ไม่ได้`);
-  await expect(dialog).toContainText('• บิลขาย 1 ใบ');
-  await dialog.getByRole('button', { name: 'ปิดการใช้งาน' }).click();
+  // round shift/today/bundle/replace: the dialog of a used product offers a replacement, or ปิดการใช้งานแทน
+  const dialog = page.getByTestId('replace-product-dialog');
+  await expect(dialog).toContainText(`ลบ "${SOLD}"`);
+  await expect(dialog).toContainText('บิลขาย 1 ใบ');
+  await dialog.getByRole('button', { name: 'ปิดการใช้งานแทน' }).click();
   await expect(dialog).toBeHidden();
   // default filter = ใช้งาน: it leaves the list
   await expect(row).toHaveCount(0);

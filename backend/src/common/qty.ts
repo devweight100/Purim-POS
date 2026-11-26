@@ -86,5 +86,24 @@ export function quantitiesToNumbers<T>(body: T, depth = 0): T {
       }
     }
   }
+  applyLineSnapshot(body as any);
   return body;
+}
+
+/**
+ * A document line whose product was deleted with a replacement keeps the name / code it was written with
+ * (snapshot_name / snapshot_sku, docs/round-shift-today-bundle-replace.md): its `product` (now the replacement) is
+ * shown with them, so every screen and slip that reads line.product.name shows the original. Lines without a
+ * snapshot are untouched. Runs in the same response walk as the quantities.
+ */
+export function applyLineSnapshot(line: Record<string, any>) {
+  const name = line.snapshotName;
+  if (typeof name !== 'string' || !name) return;
+  const sku = typeof line.snapshotSku === 'string' && line.snapshotSku ? line.snapshotSku : undefined;
+  const p = line.product;
+  if (p && typeof p === 'object' && !Array.isArray(p)) {
+    line.product = { ...p, name, ...(sku ? { sku } : {}), replacedBy: { id: p.id, name: p.name, sku: p.sku } };
+  }
+  if (typeof line.productName === 'string' || line.productName === undefined) line.productName = name;
+  if (sku && (typeof line.sku === 'string' || line.sku === undefined)) line.sku = sku;
 }

@@ -1,3 +1,4 @@
+import { mapReplacedLines } from '../products/product-replace';
 import { dateRangeFilter } from '../common/bangkok-date';
 import { businessTransaction } from '../prisma/business-transaction';
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
@@ -62,6 +63,9 @@ export class OrdersService {
         throw new BadRequestException('ต้องระบุรหัสธุรกรรมสำหรับป้องกันบิลซ้ำ');
       }
       if (!Array.isArray(data.items) || data.items.length === 0) throw new BadRequestException('บิลต้องมีสินค้า');
+      // a line of a product that was deleted with a replacement (held bill / offline outbox written before the
+      // delete) is sold as the replacement (docs/round-shift-today-bundle-replace.md)
+      data.items = await mapReplacedLines(tx, data.items);
       if (!Array.isArray(data.payments) || !data.payments.length) throw new BadRequestException('ต้องระบุการชำระเงิน');
       if (data.payments.some((p: any) => !Object.values(PaymentMethod).includes(p.method) || !Number.isFinite(Number(p.amount)) || Number(p.amount) < 0)) {
         throw new BadRequestException('วิธีชำระเงินหรือจำนวนเงินไม่ถูกต้อง');

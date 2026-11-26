@@ -16,7 +16,7 @@ Owner requests 2026-11-26. Progress file of this round (plan, done, next, decisi
 - [x] 1 fix + backend e2e + Playwright (`frontend/e2e/38-shift-handover.spec.ts`, store-flow 'shift hand-over on one PC')
 - [x] 2 audit + defaults (`frontend/e2e/39-today-default.spec.ts`)
 - [x] 3 bundle picker (`frontend/e2e/40-bundle-picker.spec.ts`)
-- [ ] 4 delete with replacement
+- [x] 4 delete with replacement (store-flow 'delete a used product with a replacement', `frontend/e2e/41-product-replace.spec.ts`)
 - [ ] full verification
 
 ## Decisions
@@ -102,3 +102,54 @@ catalogue when a bundle is edited.
 Server (`assertBundleChildren`): a NEWLY added child that is a bundle (no nesting, so no cycles) or a disabled product
 is refused (400); rows the bundle already had are kept as they are (old data never blocks an edit); self was
 already refused.
+
+## 4. Delete a used product with a replacement
+
+Before: a product named in any document was refused (`PRODUCT_IN_USE`), only "ปิดการใช้งาน" was offered.
+Now the delete dialog of such a product (`ReplaceProductDialog`) offers a REPLACEMENT; unused products delete as before.
+
+API (same rights as delete: ADMIN / MANAGER + MANAGE_INVENTORY):
+- `GET /products/:id/replace-check?replacementId=` -> counts (บิลขาย, รายการในบิล, ใบคืน, ออเดอร์ออนไลน์, ใบสั่งซื้อ,
+  ใบคืนผู้จำหน่าย, เคลม, คลังเคลม, ประกันทดแทน, ชุดสินค้า, ความเคลื่อนไหวสต็อก, ล็อตสต็อก), barcodes, problems.
+- `POST /products/:id/replace { replacementId, moveBarcodes = true }`.
+
+Refused (409 with the reason): stock != 0 (`STOCK_NOT_ZERO`: "ต้องปรับสต็อกให้เป็น 0 ก่อน", the dialog has
+"ไปปรับสต็อกเป็น 0" -> inventory adjust dialog of that product), same product, kind mismatch (a bundle only by a bundle,
+a normal product only by a normal one: no nested bundles, so no cycle), inactive replacement, bundle cycle, replacement
+not found.
+
+One transaction (`backend/src/products/product-replace.ts`; business advisory lock, both product rows locked, 120 s):
+1. Snapshot BEFORE repointing: `snapshot_name` / `snapshot_sku` (new nullable columns) = the old product's name / code on
+   order_items, order_return_items, online_order_items, purchase_order_items, customer_claims, claim_inventory (lines that
+   already have one keep it); supplier_return_note_items / replacement_warranties fill their own product_name / sku where
+   empty; claims get unit_price / unit_name from the old product where empty (claim_records fell back to the product).
+2. Repoint product_id to the replacement: order_items, order_return_items, online_order_items, purchase_order_items,
+   supplier_return_note_items, customer_claims (product_id and replacement_product_id), claim_inventory,
+   replacement_warranties, stock_batches (stock nets to 0: batches settled at 0 first so the replacement's stock and FIFO
+   cost do not change; the receipt history moves), audit_logs STOCK_* (stock card; details keep the old name / code and get
+   `replacedProductId`). Prices / amounts are never touched.
+3. Bundles containing the old product: the replacement takes its place; if the bundle already holds the replacement the
+   quantities are added (one row).
+4. Supplier links merged (`ON CONFLICT (product_id, supplier_id) DO NOTHING`: an existing link of the replacement wins).
+5. Barcodes: "ย้ายบาร์โค้ดไปสินค้าทดแทน" (default on) moves the base-unit barcodes (unique shop-wide, so no clash possible);
+   off = they are freed with the product. The old SKU is freed. Pack barcodes go with the old packs (decision: their
+   unit does not exist on the replacement).
+6. Tombstone `product_replacements` (old id PK -> replacement, old name / code, user, counts); earlier tombstones that
+   pointed at the old id are re-pointed (chains).
+7. Delete the product (packs, photos, wholesale prices, remaining supplier rows / barcodes, its own bundle rows by
+   cascade). Audit `PRODUCT_REPLACE` on both ids (counts, moved rows, user). `product_changes` trigger -> POS terminals
+   drop the old product on their next delta sync.
+
+Display: the response walk that already turns quantities into numbers (`common/qty.ts`) now also applies the snapshot:
+a line with `snapshotName` shows `product.name/sku` = the original (and `product.replacedBy`), so bills, slips, PO,
+returns, claims, online orders keep the original name without per-screen changes. Lines without a snapshot are
+untouched (renaming a product still shows the new name on old bills, as before). claim_records view: snapshot first.
+Reports by product / stock card: grouped by product_id -> counted under the replacement.
+
+Offline / late lines: `POST /orders/checkout` maps a line whose product id is in `product_replacements` to the
+replacement (chains followed, loop-safe; a pack id of the old product is dropped -> base unit), so held bills and the
+offline outbox written before the delete still sync. The online shop maps cart lines the same way (base unit).
+Unknown ids are still refused. Desktop client: no change needed (it loads the web app; the terminal-id bridge is unchanged).
+
+Migration `20261210000000_product_replace` (additive: nullable columns, new table, CREATE OR REPLACE VIEW claim_records with
+the same columns). Fresh-DB `migrate diff` empty.

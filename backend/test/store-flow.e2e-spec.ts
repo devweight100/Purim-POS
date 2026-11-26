@@ -4083,4 +4083,95 @@ d('store flow (e2e)', () => {
       expect((await api('get', `/orders/${other.id}`, A)).body.payments[0].bankAccountId).toBeNull();
     });
   });
+  describe('delete a used product with a replacement (owner 2026-11-26, docs/round-shift-today-bundle-replace.md)', () => {
+    const r: Record<string, any> = {};
+    const mk = async (name: string, extra: any = {}) =>
+      (await api('post', '/products', A, { name, basePrice: 50, priceLevel1: 50, costPrice: 30, unit: 'ชิ้น', ...extra }).expect(201)).body;
+    it('setup: an old product sold, in a bundle and with a supplier; a replacement', async () => {
+      const sup = (await api('post', '/suppliers', A, { name: 'ผู้ขายสินค้าทดแทน e2e' }).expect(201)).body;
+      r.sup = sup;
+      r.old = await mk('ท่อพีวีซี 1 นิ้ว รุ่นเก่า e2e', { sku: 'OLD-RPL-E2E', barcodes: ['8850000099001'], supplierEntries: [{ supplierId: sup.id, unitCost: 30 }] });
+      r.neo = await mk('ท่อพีวีซี 1 นิ้ว รุ่นใหม่ e2e', { sku: 'NEW-RPL-E2E', basePrice: 55, priceLevel1: 55 });
+      r.bundle = await mk('ชุดท่อ e2e แทนที่', { isBundle: true, bundleItems: [{ childProductId: r.old.id, quantity: 2 }, { childProductId: r.neo.id, quantity: 1 }] });
+      r.otherBundle = await mk('ชุดอื่น e2e แทนที่', { isBundle: true, bundleItems: [{ childProductId: r.neo.id, quantity: 1 }] });
+      await api('post', '/inventory/adjust', A, { productId: r.old.id, type: 'ADD', amount: 5, reason: 'ยอดยกมา' }).expect(201);
+      r.shift = (await api('post', '/shifts/open', A, { startingCash: 0, terminalId: 'e2e-term-replace' }).expect(201)).body.shift;
+      r.order = (await api('post', '/orders/checkout', A, {
+        clientOrderId: randomUUID(), shiftId: r.shift.id,
+        items: [{ productId: r.old.id, quantity: 2, unitPrice: 48 }], payments: [{ method: 'CASH', amount: 96 }],
+      }).expect(201)).body;
+    });
+    it('check: counts what moves; stock not 0 / same product / a bundle as replacement / cashier are refused', async () => {
+      const c = (await api('get', `/products/${r.old.id}/replace-check?replacementId=${r.neo.id}`, A).expect(200)).body;
+      expect(c.counts).toMatchObject({ SALE: 1, SALE_LINE: 1, BUNDLE: 1 });
+      expect(c.counts.MOVEMENT).toBeGreaterThanOrEqual(2);
+      expect(c.texts).toEqual(expect.arrayContaining(['บิลขาย 1 ใบ', 'ชุดสินค้าที่มีสินค้านี้ 1 ชุด']));
+      expect(c.problems.map((p: any) => p.code)).toEqual(['STOCK_NOT_ZERO']);
+      const refused = await api('post', `/products/${r.old.id}/replace`, A, { replacementId: r.neo.id }).expect(409);
+      expect(refused.body.code).toBe('STOCK_NOT_ZERO');
+      expect(refused.body.message).toContain('ยังมีสต็อก 3 ชิ้น');
+      await api('post', '/inventory/adjust', A, { productId: r.old.id, type: 'SET', amount: 0, reason: 'ปรับก่อนลบ' }).expect(201);
+      expect((await api('post', `/products/${r.old.id}/replace`, A, { replacementId: r.old.id }).expect(409)).body.code).toBe('SAME_PRODUCT');
+      expect((await api('post', `/products/${r.old.id}/replace`, A, { replacementId: r.otherBundle.id }).expect(409)).body.code).toBe('KIND_MISMATCH');
+      await api('post', `/products/${r.old.id}/replace`, C, { replacementId: r.neo.id }).expect(403);
+      const ok = (await api('get', `/products/${r.old.id}/replace-check?replacementId=${r.neo.id}`, A).expect(200)).body;
+      expect(ok.canReplace).toBe(true);
+    });
+    it('replace: one transaction moves the history; bills keep the original name / code / prices', async () => {
+      const done = (await api('post', `/products/${r.old.id}/replace`, A, { replacementId: r.neo.id, moveBarcodes: true }).expect(201)).body;
+      expect(done).toMatchObject({ replaced: true, id: r.old.id });
+      // the old bill: original name / code, amounts unchanged
+      const bill = (await api('get', `/orders/${r.order.id}`, A).expect(200)).body;
+      expect(bill.items[0].product.name).toBe('ท่อพีวีซี 1 นิ้ว รุ่นเก่า e2e');
+      expect(bill.items[0].product.sku).toBe('OLD-RPL-E2E');
+      expect(bill.items[0].product.id).toBe(r.neo.id);
+      expect(Number(bill.items[0].unitPrice)).toBe(48);
+      expect(Number(bill.totalAmount)).toBe(96);
+      const db = new PrismaClient();
+      try {
+        expect(await db.product.count({ where: { id: r.old.id } })).toBe(0);
+        expect(await db.orderItem.count({ where: { productId: r.neo.id, orderId: r.order.id } })).toBe(1);
+        // the bundle now holds the replacement once (2 + 1)
+        const rows = await db.productBundleItem.findMany({ where: { bundleProductId: r.bundle.id } });
+        expect(rows.map((x) => [x.childProductId, Number(x.quantity)])).toEqual([[r.neo.id, 3]]);
+        expect(await db.productSupplier.count({ where: { productId: r.neo.id, supplierId: r.sup.id } })).toBe(1);
+        expect((await db.productReplacement.findUnique({ where: { oldProductId: r.old.id } }))?.replacementProductId).toBe(r.neo.id);
+        expect(await db.auditLog.count({ where: { action: 'PRODUCT_REPLACE', entityId: r.old.id } })).toBe(1);
+        // replacement stock unchanged (0), its stock card has the old movements with their original names
+        const moves = (await api('get', `/inventory/movements?productId=${r.neo.id}`, A).expect(200)).body;
+        expect(moves.some((m: any) => m.productName === 'ท่อพีวีซี 1 นิ้ว รุ่นเก่า e2e')).toBe(true);
+        expect((await api('get', `/products/${r.neo.id}/stock`, A).expect(200)).body).toBeDefined();
+      } finally {
+        await db.$disconnect();
+      }
+      // barcode moved: scanning the old code finds the replacement
+      expect((await api('get', '/products/barcode/8850000099001', A).expect(200)).body.id).toBe(r.neo.id);
+      await api('get', `/products/${r.old.id}`, A).expect(404);
+      // sales by product count the history under the replacement
+      const best = (await api('get', `/reports/tabs?tab=bestsellers&range=today&q=${encodeURIComponent('รุ่นใหม่ e2e')}`, A).expect(200)).body;
+      expect(JSON.stringify(best)).toContain(r.neo.id);
+    });
+    it('a held bill / offline sale with the old id is sold as the replacement', async () => {
+      await api('post', '/inventory/adjust', A, { productId: r.neo.id, type: 'ADD', amount: 4, reason: 'รับเข้า' }).expect(201);
+      const late = (await api('post', '/orders/checkout', A, {
+        clientOrderId: randomUUID(), shiftId: r.shift.id,
+        items: [{ productId: r.old.id, quantity: 1, unitPrice: 55 }], payments: [{ method: 'CASH', amount: 55 }],
+      }).expect(201)).body;
+      expect(late.items[0].productId).toBe(r.neo.id);
+      // an unknown id is still refused
+      await api('post', '/orders/checkout', A, {
+        clientOrderId: randomUUID(), shiftId: r.shift.id,
+        items: [{ productId: 'no-such-product', quantity: 1, unitPrice: 55 }], payments: [{ method: 'CASH', amount: 55 }],
+      }).expect((res: any) => { if (res.status < 400) throw new Error('unknown product sold'); });
+      const sum = (await api('get', `/shifts/${r.shift.id}/summary`, A).expect(200)).body;
+      await api('post', `/shifts/${r.shift.id}/close`, A, { actualCash: sum.expectedCash }).expect(201);
+    });
+    it('bundle items: a bundle or a disabled product cannot be added to a bundle (server)', async () => {
+      const off = await mk('สินค้าปิดใช้งาน e2e ชุด');
+      await api('post', '/products/set-active', A, { ids: [off.id], isActive: false }).expect(201);
+      await api('patch', `/products/${r.bundle.id}`, A, { bundleItems: [{ childProductId: r.otherBundle.id, quantity: 1 }] }).expect(400);
+      await api('patch', `/products/${r.bundle.id}`, A, { bundleItems: [{ childProductId: off.id, quantity: 1 }] }).expect(400);
+      await api('patch', `/products/${r.bundle.id}`, A, { bundleItems: [{ childProductId: r.neo.id, quantity: 2 }] }).expect(200);
+    });
+  });
 });

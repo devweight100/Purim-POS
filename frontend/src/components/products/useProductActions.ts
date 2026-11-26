@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
@@ -81,6 +82,8 @@ async function refreshAll(data: ProductsData) {
  */
 export function useProductActions(data: ProductsData, opts: { onDuplicate: (p: ProductRecord) => void; onDeleted?: (id: string) => void }) {
   const router = useRouter();
+  // a used product: the "delete with a replacement" dialog (ReplaceProductDialog)
+  const [replaceTarget, setReplaceTarget] = useState<DeleteCheck | null>(null);
 
   const setActive = async (p: Pick<ProductRecord, "id" | "name">, isActive: boolean) => {
     try {
@@ -111,7 +114,8 @@ export function useProductActions(data: ProductsData, opts: { onDuplicate: (p: P
       return;
     }
     if (!c.canDelete) {
-      if (await askDisableInstead(c)) await setActive(p, false);
+      // named in documents: delete with a replacement (or disable instead) - docs/round-shift-today-bundle-replace.md
+      setReplaceTarget(c);
       return;
     }
     const stockLine = c.stock !== 0 ? `${stockWarning(c.stock, c.unit, c.stockValue)}\n\n` : "";
@@ -133,14 +137,33 @@ export function useProductActions(data: ProductsData, opts: { onDuplicate: (p: P
       const body = err instanceof ApiError ? err.data : null;
       if (body?.code === "PRODUCT_IN_USE") {
         // a document was saved meanwhile
-        if (await askDisableInstead({ name: c.name, blockers: body.blockers || [], isActive: body.isActive !== false })) await setActive(p, false);
+        setReplaceTarget({ ...c, blockers: body.blockers || [], isActive: body.isActive !== false, canDelete: false });
       } else {
         toast.error(`ลบสินค้าไม่สำเร็จ: ${errorMessage(err) || "เกิดข้อผิดพลาด"}`);
       }
     }
   };
 
+  const replaceDialog = {
+    target: replaceTarget,
+    onClose: () => setReplaceTarget(null),
+    onDone: (oldId: string) => {
+      setReplaceTarget(null);
+      opts.onDeleted?.(oldId);
+      void refreshAll(data);
+    },
+    onDisable: (t: DeleteCheck) => {
+      setReplaceTarget(null);
+      void setActive({ id: t.id, name: t.name }, false);
+    },
+    onAdjustStock: (id: string) => {
+      setReplaceTarget(null);
+      router.push(`/inventory?product=${encodeURIComponent(id)}&open=adjust`);
+    },
+  };
+
   return {
+    replaceDialog,
     toggleActive,
     remove,
     duplicate: opts.onDuplicate,

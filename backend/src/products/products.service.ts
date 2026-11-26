@@ -1,3 +1,4 @@
+import { replaceCheck, replaceProduct } from './product-replace';
 import { businessTransaction } from '../prisma/business-transaction';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -1171,6 +1172,28 @@ export class ProductsService {
     }).catch((err) => {
       // a document written between the check and the delete (foreign key) = in use
       if (err?.code === 'P2003') throw new ConflictException({ statusCode: 409, code: 'PRODUCT_IN_USE', message: 'สินค้านี้ถูกใช้ในเอกสารแล้ว จึงลบไม่ได้ ให้ปิดการใช้งานแทน', productId: id, blockers: [] });
+      rethrowPrismaError(err, { notFound: 'ไม่พบสินค้านี้' });
+    });
+  }
+
+  /** GET /products/:id/replace-check: what a delete with `replacementId` would move, and why it cannot be done. */
+  async replaceCheck(id: string, replacementId?: string) {
+    return replaceCheck(this.prisma, id, replacementId || null);
+  }
+
+  /**
+   * Delete a used product and move its history to a replacement (docs/round-shift-today-bundle-replace.md):
+   * one transaction, see product-replace.ts.
+   */
+  async replace(id: string, replacementId: string, opts: { moveBarcodes: boolean; actor?: { id?: string; fullName?: string; username?: string } }) {
+    if (typeof id !== 'string' || !id || id.length > 100) throw new NotFoundException('ไม่พบสินค้านี้');
+    if (typeof replacementId !== 'string' || !replacementId || replacementId.length > 100) throw new BadRequestException('กรุณาเลือกสินค้าทดแทน');
+    // the same business lock as every sale / stock write, with more time: a long-sold product moves many lines
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(742091, 1)`;
+      return replaceProduct(tx, id, replacementId, opts);
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, maxWait: 10000, timeout: 120000 }).catch((err) => {
+      if (err?.status) throw err;
       rethrowPrismaError(err, { notFound: 'ไม่พบสินค้านี้' });
     });
   }

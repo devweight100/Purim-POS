@@ -332,6 +332,21 @@ model ProductImage {
 /// 20261124000000_product_sync) on products, stock batches, barcodes, packaging units, images, wholesale
 /// prices, product suppliers, bundle items, categories and suppliers. GET /products/sync returns the
 /// products whose rows were committed after the client's snapshot (xid not visible in it).
+/// Deleted product -> the product that replaced it (docs/round-shift-today-bundle-replace.md). Lines that still carry
+/// the old id (held bills, offline outbox, online shop carts) are mapped to the replacement at checkout.
+model ProductReplacement {
+  oldProductId         String   @id @map("old_product_id")
+  replacementProductId String   @map("replacement_product_id")
+  oldName              String   @map("old_name")
+  oldSku               String   @map("old_sku")
+  userId               String?  @map("user_id")
+  details              Json?
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  @@index([replacementProductId])
+  @@map("product_replacements")
+}
+
 model ProductChange {
   id        BigInt                 @id @default(autoincrement())
   productId String                 @map("product_id")
@@ -538,6 +553,8 @@ model PurchaseOrderItem {
   netAmount       Decimal       @default(0) @map("net_amount") @db.Decimal(12, 2)
   vatAmount       Decimal       @default(0) @map("vat_amount") @db.Decimal(12, 2)
   total           Decimal       @default(0) @map("total") @db.Decimal(12, 2) // owed for this line (incl. VAT)
+  snapshotName String? @map("snapshot_name") // name / code when the line was written, set when its product was replaced
+  snapshotSku  String? @map("snapshot_sku")
 
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   product         Product       @relation(fields: [productId], references: [id])
@@ -835,6 +852,8 @@ model OrderItem {
   unitCost  Decimal @default(0) @map("unit_cost") @db.Decimal(10, 2)
   total     Decimal @db.Decimal(12, 2)
   bundleData Json?  @map("bundle_data")
+  snapshotName String? @map("snapshot_name") // name / code when the line was written, set when its product was replaced
+  snapshotSku  String? @map("snapshot_sku")
 
   order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product   Product @relation(fields: [productId], references: [id])
@@ -897,6 +916,8 @@ model CustomerClaim {
   replacementProductId    String?  @map("replacement_product_id")
   replacementBaseQuantity Decimal? @map("replacement_base_quantity") @db.Decimal(12, 2)
   metadata                Json?
+  snapshotName String? @map("snapshot_name") // name / code when the line was written, set when its product was replaced
+  snapshotSku  String? @map("snapshot_sku")
 
   order              Order?      @relation(fields: [orderId], references: [id])
   customer           Customer?   @relation(fields: [customerId], references: [id])
@@ -931,6 +952,8 @@ model ClaimInventory {
   supplierName  String?  @map("supplier_name")
   status        String?
   metadata      Json?
+  snapshotName String? @map("snapshot_name") // name / code when the line was written, set when its product was replaced
+  snapshotSku  String? @map("snapshot_sku")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -1195,6 +1218,8 @@ model OrderReturnItem {
   refundAmount Decimal @map("refund_amount") @db.Decimal(12, 2)
   unitCost     Decimal @map("unit_cost") @db.Decimal(10, 2) // per base unit
   restock      Boolean @default(true)
+  snapshotName String? @map("snapshot_name") // name / code when the line was written, set when its product was replaced
+  snapshotSku  String? @map("snapshot_sku")
 
   orderReturn OrderReturn @relation(fields: [returnId], references: [id], onDelete: Cascade)
 
@@ -1410,6 +1435,8 @@ model OnlineOrderItem {
   unitPrice     Decimal     @map("unit_price") @db.Decimal(10, 2)
   total         Decimal     @db.Decimal(12, 2)
   sortOrder     Int         @default(0) @map("sort_order")
+  snapshotName String? @map("snapshot_name") // name / code when the line was written, set when its product was replaced
+  snapshotSku  String? @map("snapshot_sku")
 
   onlineOrder   OnlineOrder @relation(fields: [onlineOrderId], references: [id], onDelete: Cascade)
   product       Product     @relation(fields: [productId], references: [id])

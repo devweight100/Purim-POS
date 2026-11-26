@@ -1,3 +1,4 @@
+import { assertMoveBarcodes } from './product-replace';
 import { BadRequestException, NotFoundException, Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Req } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -173,6 +174,27 @@ export class ProductsController {
   async remove(@Param('id') id: string, @Query('confirmStock') confirmStock?: string, @Req() req?: any) {
     const r = await this.productsService.remove(id, { confirmStock: confirmStock === '1' || confirmStock === 'true', actor: req?.user });
     return canViewCost(req?.user) ? r : { ...r, stockValue: undefined };
+  }
+
+  /**
+   * Delete a used product with a replacement (docs/round-shift-today-bundle-replace.md): counts of what moves and the
+   * problems (stock not 0, same product, kind, inactive, bundle cycle). ?replacementId= optional.
+   */
+  @Get(':id/replace-check')
+  @RequirePermissions('MANAGE_INVENTORY')
+  replaceCheck(@Param('id') id: string, @Query('replacementId') replacementId?: string) {
+    return this.productsService.replaceCheck(id, typeof replacementId === 'string' ? replacementId : undefined);
+  }
+
+  /** Delete + move history to the replacement: { replacementId, moveBarcodes (default true) }. Same rights as delete. */
+  @Post(':id/replace')
+  @Roles('ADMIN', 'MANAGER')
+  @RequirePermissions('MANAGE_INVENTORY')
+  replace(@Param('id') id: string, @Body() body: { replacementId?: unknown; moveBarcodes?: unknown }, @Req() req?: any) {
+    return this.productsService.replace(id, typeof body?.replacementId === 'string' ? body.replacementId : '', {
+      moveBarcodes: assertMoveBarcodes(body?.moveBarcodes),
+      actor: req?.user,
+    });
   }
 
   /** "ลบที่เลือก": deletes what may be deleted; reports `blocked` / `needsStockConfirm` / `notFound` per product. */
