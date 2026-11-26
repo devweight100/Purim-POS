@@ -162,7 +162,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
   const [currentPage, setCurrentPage] = useState<number>(1);
 
   // Time Filter
-  const [timeRange, setTimeRange] = useState<ReportTimeRange>('30days');
+  const [timeRange, setTimeRange] = useState<ReportTimeRange>('today') // opens on today, Bangkok (docs/round-shift-today-bundle-replace.md);
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
@@ -519,6 +519,7 @@ export function ReportsView({ initialTab = 'sales' }: ReportsViewProps) {
               <button
                 key={t.key}
                 type="button"
+                aria-pressed={timeRange === t.key}
                 onClick={() => setTimeRange(t.key as typeof timeRange)}
                 className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
                   timeRange === t.key

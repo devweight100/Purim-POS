@@ -1,4 +1,5 @@
 import { formatCurrency } from "@/lib/utils";
+import { DAY_PRESET_LABELS, presetOf, type DayPreset } from "@/lib/date-presets";
 import { Input } from "@/components/ui/input";
 import { Search, DollarSign, ShoppingCart, Ban, CheckCircle2, Layers } from "lucide-react";
 
@@ -12,14 +13,16 @@ interface Props {
   changeStartDate: (v: string) => void;
   endDate: string;
   changeEndDate: (v: string) => void;
+  changePreset: (p: DayPreset) => void;
   search: string;
   changeSearch: (v: string) => void;
 }
 
 /** Summary cards, status tabs, date range and search of the orders page. */
 export function OrdersToolbar({
-  stats, statusTab, changeStatusTab, startDate, changeStartDate, endDate, changeEndDate, search, changeSearch,
+  stats, statusTab, changeStatusTab, startDate, changeStartDate, endDate, changeEndDate, changePreset, search, changeSearch,
 }: Props) {
+  const preset = presetOf(startDate, endDate);
   return (
     <>
       {/* ─── TOP STATS CARDS (Compact Height, Larger Header Font matching debts page) ─── */}
@@ -117,11 +120,27 @@ export function OrdersToolbar({
             </button>
           </div>
 
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-xs">
             <span className="text-slate-500 font-bold">ช่วงวันที่:</span>
+            <div className="flex flex-wrap items-center gap-btn" role="group" aria-label="ช่วงวันที่ด่วน" data-testid="orders-date-presets">
+              {DAY_PRESET_LABELS.map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  aria-pressed={preset === key}
+                  onClick={() => changePreset(key)}
+                  className={`h-8 px-2.5 rounded-lg font-bold transition-all ${
+                    preset === key ? "bg-indigo-600 text-white shadow-2xs" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <input
               type="date"
               value={startDate}
+              aria-label="ตั้งแต่วันที่"
               onChange={(e) => changeStartDate(e.target.value)}
               onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
               className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none shadow-2xs cursor-pointer"
@@ -130,6 +149,7 @@ export function OrdersToolbar({
             <input
               type="date"
               value={endDate}
+              aria-label="ถึงวันที่"
               onChange={(e) => changeEndDate(e.target.value)}
               onClick={(e) => { try { e.currentTarget.showPicker?.(); } catch {} }}
               className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-xs font-bold text-slate-800 outline-none shadow-2xs cursor-pointer"

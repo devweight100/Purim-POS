@@ -14,7 +14,7 @@ Owner requests 2026-11-26. Progress file of this round (plan, done, next, decisi
 
 - [x] 1 reproduce + root cause (see Shift section)
 - [x] 1 fix + backend e2e + Playwright (`frontend/e2e/38-shift-handover.spec.ts`, store-flow 'shift hand-over on one PC')
-- [ ] 2 audit + defaults
+- [x] 2 audit + defaults (`frontend/e2e/39-today-default.spec.ts`)
 - [ ] 3 bundle picker
 - [ ] 4 delete with replacement
 - [ ] full verification
@@ -54,3 +54,31 @@ Fix:
   Closing a shift is refused while the outbox still has bills of that shift.
 - Already-broken devices (PC re-keyed by the old button): A's dialog lists A's shift under "คุณมีกะที่ยังเปิดอยู่";
   if B's shift sits on the PC's current id, B logs in there and closes it first, then A continues.
+
+## 2. Today by default (Asia/Bangkok)
+
+Audit of every page with a date range / date filter (fresh open -> today; nothing is remembered across visits,
+so a fresh open is always today; presets unchanged unless noted):
+
+| Page | Before | Now |
+| --- | --- | --- |
+| แดชบอร์ด `/dashboard` | 7 วันล่าสุด | วันนี้ (presets วันนี้/7 วัน/30 วัน/เดือนนี้/ทั้งหมด) |
+| รายงาน `/reports/*` (ยอดขาย & กำไร, สินค้าขายดี, มูลค่าคลัง, การชำระเงิน & กะ, ลูกค้า & หนี้, จัดซื้อ & เคลม) | 30 วันล่าสุด | วันนี้ (presets วันนี้/เมื่อวาน/7 วัน/30 วัน/เดือนนี้/เดือนที่แล้ว/ปีนี้/ทั้งหมด/กำหนดเอง) |
+| บิลขาย `/orders` | ทุกวันที่ (empty dates) | วันนี้ in both date boxes + NEW presets วันนี้/เมื่อวาน/7 วัน/เดือนนี้/ทุกวันที่ |
+| ประวัติกะ `/shifts` | ทุกช่วงวันที่ | วันนี้ (= closed today or still open) |
+| สต็อกการ์ด `/inventory` tab | ช่วงเวลาทั้งหมด | วันนี้ (Bangkok midnight, was the PC's local midnight) |
+| งบกำไรขาดทุน `/finance?view=pl` | 1st of month .. today | today .. today + NEW preset วันนี้ |
+| การเงิน `/finance` (ledger, expenses, summary) | วันนี้ | unchanged |
+| POS ประวัติบิล (OrderHistoryModal) | วันนี้ | unchanged |
+| Monitor `/monitor` | today figures | unchanged |
+| มือถือ `/m` บิล tab | every day | วันนี้ ("ทุกวัน" clears it) |
+| มือถือ `/m` ยอดขาย | วันนี้ | unchanged |
+
+Not changed (decision): เคลม `/claims` date filter stays empty = all - a claim is a workflow that stays open for days;
+hiding yesterday's open claims would lose work. Bank reconcile statement date already defaults to today.
+Pages without a date filter: payables, POs, debts, supplier returns, customers, online orders.
+
+Bug found and fixed on the way: `GET /orders?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD` used UTC midnight..UTC
+midnight (picking one day showed nothing, a range missed the last day and took 7 h of the day before). It now uses
+the shared Bangkok day filter (`dateRangeFilter`: whole Bangkok days, end inclusive); ISO timestamps unchanged.
+Shared helper: `frontend/src/lib/date-presets.ts`.

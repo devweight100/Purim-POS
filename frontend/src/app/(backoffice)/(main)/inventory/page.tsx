@@ -84,7 +84,7 @@ export default function InventoryPage() {
   const [movementsLoading, setMovementsLoading] = useState(false);
   const [movementSearch, setMovementSearch] = useState('');
   const [movementTypeFilter, setMovementTypeFilter] = useState<string>('all');
-  const [movementDateFilter, setMovementDateFilter] = useState<string>('all');
+  const [movementDateFilter, setMovementDateFilter] = useState<string>('today'); // opens on today (docs/round-shift-today-bundle-replace.md)
   // single product stock card (dialog): that product's own movements
   const [cardMovements, setCardMovements] = useState<StockMovement[] | null>(null);
   const [movementPage, setMovementPage] = useState(1);
@@ -840,6 +840,7 @@ export default function InventoryPage() {
 
               <select
                 value={movementDateFilter}
+                aria-label="ช่วงเวลาความเคลื่อนไหว"
                 onChange={(e) => setMovementDateFilter(e.target.value as typeof movementDateFilter)}
                 className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-indigo-500 shadow-2xs"
               >
@@ -857,14 +858,14 @@ export default function InventoryPage() {
               <TableHeader >
                 <TableRow>
                   <TableHead >วัน-เวลา</TableHead>
-                  <TableHead className="min-w-44 xl:min-w-56">สินค้า</TableHead>
+                  <TableHead className="min-w-36 xl:min-w-56">สินค้า</TableHead>
                   <TableHead >ประเภท</TableHead>
                   <TableHead className="text-right">เปลี่ยน</TableHead>
                   <TableHead className="text-right">
                     ก่อน ➔ คงเหลือ
                   </TableHead>
                   <TableHead >เอกสารอ้างอิง</TableHead>
-                  <TableHead className="min-w-40">หมายเหตุ / ผู้ทำ</TableHead>
+                  <TableHead className="min-w-32 xl:min-w-40">หมายเหตุ / ผู้ทำ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

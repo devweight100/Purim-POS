@@ -1,5 +1,6 @@
 "use client";
 
+import { todayKey, presetDays, type DayPreset } from "@/lib/date-presets";
 import { useEffect, useState } from "react";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { useRouter } from "next/navigation";
@@ -39,8 +40,9 @@ export default function OrdersPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusTab, setStatusTab] = useState<"all" | "completed" | "voided">("all");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  // opens on today (Bangkok); presets / dates change it (docs/round-shift-today-bundle-replace.md)
+  const [startDate, setStartDate] = useState(() => todayKey());
+  const [endDate, setEndDate] = useState(() => todayKey());
   const [isSyncingAll, setIsSyncingAll] = useState(false);
 
   // Pagination
@@ -159,6 +161,11 @@ export default function OrdersPage() {
   const changeEndDate = (v: string) => {
     if (v !== endDate) { setLoading(true); setCurrentPage(1); }
     setEndDate(v);
+  };
+  const changePreset = (p: DayPreset) => {
+    const [s, e] = presetDays(p);
+    changeStartDate(s);
+    changeEndDate(e);
   };
 
   useEffect(() => {
@@ -535,6 +542,7 @@ export default function OrdersPage() {
         startDate={startDate}
         changeStartDate={changeStartDate}
         endDate={endDate}
+        changePreset={changePreset}
         changeEndDate={changeEndDate}
         search={search}
         changeSearch={changeSearch}

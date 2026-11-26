@@ -1,3 +1,4 @@
+import { dateRangeFilter } from '../common/bangkok-date';
 import { businessTransaction } from '../prisma/business-transaction';
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -827,10 +828,9 @@ export class OrdersService {
     }
 
     if (query.startDate && query.endDate) {
-      const from = new Date(query.startDate);
-      const to = new Date(query.endDate);
-      if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) throw new BadRequestException('ช่วงวันที่ไม่ถูกต้อง');
-      where.createdAt = { gte: from, lte: to };
+      // date-only = whole Bangkok days (end inclusive); the orders page sent YYYY-MM-DD and used to get
+      // UTC 00:00 .. UTC 00:00 (one day showed nothing). Full timestamps are used as given.
+      where.createdAt = dateRangeFilter(String(query.startDate), String(query.endDate));
     }
 
     // date range only: the status cards / tab counts of the orders page (?counts=1) ignore search and tab

@@ -74,7 +74,7 @@ function claimPeriodStart(range: DashboardRange, now: number): number | undefine
 }
 
 export default function DashboardPage() {
-  const [timeFilter, setTimeFilter] = useState<DashboardRange>("7days");
+  const [timeFilter, setTimeFilter] = useState<DashboardRange>("today") // opens on today (docs/round-shift-today-bundle-replace.md);
   // starts as loading: the first load runs right after mount
   const [loading, setLoading] = useState(true);
   const [dash, setDash] = useState<DashboardReport | null>(null);
@@ -241,6 +241,7 @@ export default function DashboardPage() {
               <button
                 key={tab.id}
                 type="button"
+                aria-pressed={timeFilter === tab.id}
                 onClick={() => changeTimeFilter(tab.id as typeof timeFilter)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   timeFilter === tab.id

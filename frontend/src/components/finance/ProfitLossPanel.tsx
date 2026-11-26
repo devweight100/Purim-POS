@@ -29,8 +29,8 @@ const Row = ({ label, value, strong, indent, sign }: { label: string; value: num
 
 export function ProfitLossPanel() {
   const now = new Date();
-  const bk = bangkokParts(now);
-  const [from, setFrom] = useState(iso(new Date(bangkokDate(bk.year, bk.month, 1))));
+  // opens on today (docs/round-shift-today-bundle-replace.md); เดือนนี้ / เดือนก่อน / ปีนี้ one click away
+  const [from, setFrom] = useState(iso(now));
   const [to, setTo] = useState(iso(now));
   const [data, setData] = useState<PL | null>(null);
   useEffect(() => {
@@ -39,10 +39,11 @@ export function ProfitLossPanel() {
     const t = to;
     apiFetch(`/finance/profit-loss?from=${encodeURIComponent(f)}&to=${encodeURIComponent(t)}`).then(setData).catch((err: unknown) => toast.error((err as Error | undefined)?.message || 'โหลดไม่สำเร็จ'));
   }, [from, to]);
-  const preset = (kind: 'this' | 'last' | 'year') => {
+  const preset = (kind: 'today' | 'this' | 'last' | 'year') => {
     const n = new Date();
     const { year, month } = bangkokParts(n);
     const at = (y: number, m: number, d: number) => iso(new Date(bangkokDate(y, m, d)));
+    if (kind === 'today') { setFrom(iso(n)); setTo(iso(n)); }
     if (kind === 'this') { setFrom(at(year, month, 1)); setTo(iso(n)); }
     if (kind === 'last') { setFrom(at(year, month - 1, 1)); setTo(at(year, month, 0)); }
     if (kind === 'year') { setFrom(at(year, 0, 1)); setTo(iso(n)); }
@@ -80,11 +81,12 @@ export function ProfitLossPanel() {
           <p className="text-sm text-slate-500">ยอดขาย − ต้นทุนขาย − เคลม − สินค้าเสียหาย − ค่าใช้จ่ายร้าน = กำไรสุทธิจริง</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => preset('today')}>วันนี้</Button>
           <Button size="sm" variant="outline" onClick={() => preset('this')}>เดือนนี้</Button>
           <Button size="sm" variant="outline" onClick={() => preset('last')}>เดือนก่อน</Button>
           <Button size="sm" variant="outline" onClick={() => preset('year')}>ปีนี้</Button>
-          <Input type="date" className="w-40" value={from} onChange={(e) => setFrom(e.target.value)} />
-          <Input type="date" className="w-40" value={to} onChange={(e) => setTo(e.target.value)} />
+          <Input type="date" aria-label="ตั้งแต่วันที่" className="w-40" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <Input type="date" aria-label="ถึงวันที่" className="w-40" value={to} onChange={(e) => setTo(e.target.value)} />
           <Button size="sm" variant="outline" className="gap-1" onClick={() => void exportCsv()}><FileSpreadsheet className="w-4 h-4" /> CSV</Button>
           <Button size="sm" variant="outline" className="gap-1" onClick={() => window.print()}><Printer className="w-4 h-4" /> พิมพ์</Button>
         </div>

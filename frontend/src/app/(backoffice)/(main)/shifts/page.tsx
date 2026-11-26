@@ -22,7 +22,7 @@ export default function ShiftsHistoryPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [userFilter, setUserFilter] = useState('ALL');
-  const [dateFilter, setDateFilter] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | '7DAYS' | '30DAYS' | 'CUSTOM'>('ALL');
+  const [dateFilter, setDateFilter] = useState<'ALL' | 'TODAY' | 'YESTERDAY' | '7DAYS' | '30DAYS' | 'CUSTOM'>('TODAY'); // opens on today (docs/round-shift-today-bundle-replace.md)
   const [customDate, setCustomDate] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'BALANCED' | 'SHORT' | 'OVER'>('ALL');
 
@@ -133,7 +133,8 @@ export default function ShiftsHistoryPage() {
       // 2. Date Filter
       const shiftDate = bangkokDayKey(s.closedAt || s.openedAt);
 
-      if (dateFilter === 'TODAY' && shiftDate !== today) return false;
+      // today = closed today or still open (an open shift started yesterday is today's work)
+      if (dateFilter === 'TODAY' && shiftDate !== today && !(s.isOpen || !s.closedAt)) return false;
       if (dateFilter === 'YESTERDAY' && shiftDate !== yesterday) return false;
       if (dateFilter === '7DAYS' && shiftDate < sevenDaysAgo) return false;
       if (dateFilter === '30DAYS' && shiftDate < thirtyDaysAgo) return false;
@@ -400,6 +401,7 @@ export default function ShiftsHistoryPage() {
           {/* Quick Date Filters */}
           <select
             value={dateFilter}
+            aria-label="ช่วงวันที่"
             onChange={(e) => setDateFilter(e.target.value as typeof dateFilter)}
             className="h-10 px-3 text-sm bg-slate-50 border border-slate-200 rounded-lg font-medium text-slate-700 outline-none focus:border-indigo-500"
           >

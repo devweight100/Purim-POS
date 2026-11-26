@@ -1,3 +1,4 @@
+import { bangkokStartOfDay } from '@shared/bangkok-date';
 import { useProductStore } from './store/product-store';
 import { apiFetch } from './api';
 import { ApiError } from './api-error';
@@ -56,7 +57,7 @@ export async function fetchStockMovementsPage(qs: URLSearchParams): Promise<Stoc
 
 /** Start of the stock-card date filter ('today' = local midnight, '7days' / '30days' back from `now`) as ISO. */
 export function movementFrom(filter: string, now: number): string | null {
-  if (filter === 'today') return new Date(new Date(now).setHours(0, 0, 0, 0)).toISOString();
+  if (filter === 'today') return new Date(bangkokStartOfDay(now)).toISOString(); // Bangkok day, whatever the PC's time zone
   if (filter === '7days') return new Date(now - 7 * 86_400_000).toISOString();
   if (filter === '30days') return new Date(now - 30 * 86_400_000).toISOString();
   return null;

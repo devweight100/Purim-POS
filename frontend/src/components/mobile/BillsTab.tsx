@@ -1,5 +1,6 @@
 'use client';
 
+import { todayKey } from '@/lib/date-presets';
 import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { bangkokDayStart, DAY_MS } from '@shared/bangkok-date';
@@ -30,7 +31,8 @@ export function ordersUrl(search: string, day: string, page: number) {
 export function BillsTab({ onActiveUrl }: { onActiveUrl: (url: string) => void }) {
   const [text, setText] = useState('');
   const [search, setSearch] = useState('');
-  const [day, setDay] = useState('');
+  // opens on today (Bangkok); "ทุกวัน" shows every bill (docs/round-shift-today-bundle-replace.md)
+  const [day, setDay] = useState(() => todayKey());
   const [pages, setPages] = useState(1);
   const [openId, setOpenId] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
