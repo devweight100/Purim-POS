@@ -12,10 +12,14 @@ import { hasPermission } from '@/lib/permissions';
 import { onlineOrderCartItems } from '@/lib/online-order-cart';
 import { claimLabel, fetchPosPayload, pickedLabel, type OnlineClaim, type OnlinePicked } from '@/lib/online-order-actions';
 import { Button } from '@/components/ui/button';
+import { onlineOrderStep } from '@/lib/online-order-steps';
+import type { OnlineOrderStatus } from '@shared/online-shop';
 
 interface PayableRow {
   id: string;
   orderNo: string;
+  status: OnlineOrderStatus;
+  paid: boolean;
   contactName: string;
   fulfillment: 'PICKUP' | 'DELIVERY';
   totalAmount: number;
@@ -90,7 +94,10 @@ export function PosOnlineOrders({ onOpened }: { onOpened: () => void }) {
           <div key={r.id} data-testid="pos-online-order" className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white border border-emerald-200 p-3">
             <div className="min-w-0">
               <p className="font-semibold text-slate-900">{r.orderNo} · {r.customer?.name || r.contactName}</p>
-              <p className="text-xs font-semibold text-slate-600">{r.itemCount} รายการ · {r.fulfillment === 'PICKUP' ? 'รับที่ร้าน' : 'ส่งของ'}</p>
+              <p className="text-xs font-semibold text-slate-600">
+                {r.itemCount} รายการ · {r.fulfillment === 'PICKUP' ? 'รับที่ร้าน' : 'ส่งของ'}
+                {r.status && <span data-testid="pos-online-step"> · ขั้นตอน: {onlineOrderStep({ status: r.status, fulfillment: r.fulfillment, paid: !!r.paid }).todo}</span>}
+              </p>
               <p className="mt-1">
                 <PickingNote picked={r.picked} claim={r.claim} meId={user?.id} />
               </p>

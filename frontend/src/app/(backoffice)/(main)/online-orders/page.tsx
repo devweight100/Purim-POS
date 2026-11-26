@@ -7,12 +7,13 @@ import { apiFetch } from '@/lib/api';
 import { formatCurrency, formatListDateTime } from '@/lib/utils';
 import { useOnlineCounts } from '@/lib/online-orders';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
-import { ONLINE_STATUS_LABELS, type OnlineOrderStatus } from '@shared/online-shop';
+import type { OnlineOrderStatus } from '@shared/online-shop';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ClaimBadge, OnlineOrderDetail, StatusPill } from '@/components/online-orders/OnlineOrderDetail';
 import { useAuthStore } from '@/lib/store/auth-store';
 import type { OnlineClaim, OnlinePicked } from '@/lib/online-order-actions';
+import { onlineOrderStep } from '@/lib/online-order-steps';
 import { LinkRequests } from '@/components/online-orders/LinkRequests';
 import { cn } from '@/lib/utils';
 
@@ -93,6 +94,29 @@ function OnlineOrdersInner() {
   }, [load]);
 
   const setTab = (t: 'orders' | 'links') => router.replace(t === 'links' ? '/online-orders?tab=links' : '/online-orders');
+  const [last, setLast] = useState<string | null>(params.get('id'));
+  const openOrder = (id: string) => {
+    setLast(id);
+    setSelected(id);
+  };
+  // back to the list: the row keeps the focus / highlight and the list its scroll position
+  const closeOrder = () => {
+    const id = selected;
+    setSelected(null);
+    if (params.get('id')) router.replace('/online-orders', { scroll: false });
+    setTimeout(() => document.querySelector<HTMLElement>(`[data-testid="online-order-row"][data-id="${id}"]`)?.focus({ preventScroll: true }), 50);
+  };
+  // ↑ / ↓ move between rows (Enter opens: the row is a button)
+  const rowKeys = (e: React.KeyboardEvent) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const all = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="online-order-row"]'));
+    if (!all.length) return;
+    e.preventDefault();
+    const i = all.indexOf(document.activeElement as HTMLElement);
+    const next = i < 0 ? 0 : Math.max(0, Math.min(all.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)));
+    all[next].focus();
+    all[next].scrollIntoView({ block: 'nearest' });
+  };
   const changed = () => {
     void load();
     void refreshCounts();
@@ -105,7 +129,7 @@ function OnlineOrdersInner() {
           <h1 className="page-title">
             <ShoppingBag /> ออเดอร์ออนไลน์ (LINE)
           </h1>
-          <p className="page-subtitle">ลูกค้าสั่งจากหน้าร้านออนไลน์ใน LINE — ตรวจรายการ ใส่ค่าส่ง กดรับ แล้วไปรับเงินที่หน้าขาย (บิลพัก)</p>
+          <p className="page-subtitle">ลูกค้าสั่งจากหน้าร้านออนไลน์ใน LINE — กดออเดอร์เพื่อเปิดหน้าต่างเต็มจอ แล้วทำตามขั้นตอน: รับงาน → จัดของ → จัดเสร็จ → (ส่ง) → เสร็จ · รับเงินได้ทุกขั้นตอน</p>
         </div>
         <div className="flex gap-btn" role="tablist" aria-label="หัวข้อ">
           <Button role="tab" aria-selected={tab === 'orders'} variant={tab === 'orders' ? 'default' : 'outline'} onClick={() => setTab('orders')} className="gap-2">
@@ -120,75 +144,74 @@ function OnlineOrdersInner() {
       {tab === 'links' ? (
         <LinkRequests onChanged={() => void refreshCounts()} />
       ) : (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
-          <section aria-label="รายการออเดอร์" className={cn('space-y-3 min-w-0', selected && 'hidden xl:block')}>
-            <div className="flex flex-wrap gap-btn">
-              {FILTERS.map((f) => (
-                <Button key={f.value} variant={filter === f.value ? 'default' : 'outline'} aria-pressed={filter === f.value} onClick={() => setFilter(f.value)}>
-                  {f.label}
-                  {f.value === 'NEW' && counts?.new ? ` (${counts.new})` : ''}
-                  {f.value === 'payable' && counts?.payable ? ` (${counts.payable})` : ''}
-                  {f.value === 'READY' && counts?.statuses?.READY ? ` (${counts.statuses.READY})` : ''}
-                </Button>
-              ))}
-            </div>
-            <div className="flex gap-btn">
+        <section aria-label="รายการออเดอร์" className="space-y-3 min-w-0">
+          <div className="flex flex-wrap items-center gap-btn">
+            {FILTERS.map((f) => (
+              <Button key={f.value} variant={filter === f.value ? 'default' : 'outline'} aria-pressed={filter === f.value} onClick={() => setFilter(f.value)}>
+                {f.label}
+                {f.value === 'NEW' && counts?.new ? ` (${counts.new})` : ''}
+                {f.value === 'payable' && counts?.payable ? ` (${counts.payable})` : ''}
+                {f.value === 'READY' && counts?.statuses?.READY ? ` (${counts.statuses.READY})` : ''}
+              </Button>
+            ))}
+            <div className="flex min-w-[260px] flex-1 gap-btn">
               <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาเลขออเดอร์ / ชื่อ / เบอร์" aria-label="ค้นหาออเดอร์" />
               <Button variant="outline" onClick={() => changed()} aria-label="โหลดใหม่" title="โหลดใหม่">
                 <RefreshCw className="w-4 h-4" />
               </Button>
             </div>
-            {error && <p className="text-sm font-semibold text-rose-700">{error}</p>}
-            {rows?.length === 0 && <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-slate-500">ไม่มีออเดอร์ในหัวข้อนี้</p>}
-            <ul className="space-y-2">
-              {rows?.map((r) => {
-                // a new order nobody has taken yet stands out
-                const fresh = r.status === 'NEW' && !r.claim;
-                return (
+          </div>
+          {error && <p className="text-sm font-semibold text-rose-700">{error}</p>}
+          {rows?.length === 0 && <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-center text-slate-500">ไม่มีออเดอร์ในหัวข้อนี้</p>}
+          {!!rows?.length && <p className="text-sub text-muted-foreground">↑ ↓ เลือกออเดอร์ · Enter เปิด · ในหน้าต่างออเดอร์ Enter = ทำขั้นต่อไป · Esc กลับมาที่รายการ</p>}
+          <ul className="space-y-2" onKeyDown={rowKeys}>
+            {rows?.map((r) => {
+              // a new order nobody has taken yet stands out
+              const fresh = r.status === 'NEW' && !r.claim;
+              const step = onlineOrderStep({ status: r.status, fulfillment: r.fulfillment, paid: r.paid });
+              const open = r.status !== 'DONE' && r.status !== 'CANCELLED';
+              return (
                 <li key={r.id}>
                   <button
                     type="button"
                     data-testid="online-order-row"
-                    onClick={() => setSelected(r.id)}
-                    aria-current={selected === r.id}
+                    data-id={r.id}
+                    onClick={() => openOrder(r.id)}
+                    aria-current={last === r.id}
                     className={cn(
-                      'w-full rounded-xl border bg-white p-3 text-left shadow-xs transition hover:border-emerald-400 focus-visible:outline-2 focus-visible:outline-sky-500',
-                      selected === r.id ? 'border-emerald-600 ring-2 ring-emerald-200' : fresh ? 'border-amber-400 border-l-8 bg-amber-50' : 'border-slate-200',
+                      'w-full rounded-xl border bg-white px-4 py-3 text-left shadow-xs transition hover:border-indigo-400 focus-visible:outline-2 focus-visible:outline-sky-500 focus-visible:bg-sky-50',
+                      'grid gap-x-4 gap-y-1 grid-cols-[minmax(0,1fr)_auto] lg:grid-cols-[150px_minmax(0,1fr)_minmax(0,300px)_130px] lg:items-center',
+                      last === r.id ? 'border-indigo-500 ring-2 ring-indigo-100' : fresh ? 'border-amber-400 border-l-8 bg-amber-50' : 'border-slate-200',
                     )}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-semibold text-slate-900">{r.orderNo}</span>
-                      <StatusPill status={r.status} paid={r.paid} />
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-sm">
-                      <span className="text-slate-700 min-w-0 truncate">
+                    <span className="min-w-0">
+                      <span className="block font-semibold text-slate-900">{r.orderNo}</span>
+                      <span className="block text-xs text-slate-500">{when(r.createdAt)}</span>
+                    </span>
+                    <span className="min-w-0 lg:order-none order-3 col-span-2 lg:col-span-1">
+                      <span className="block truncate text-slate-700">
                         {r.customer?.name || r.contactName} · {r.fulfillment === 'PICKUP' ? 'รับที่ร้าน' : 'ส่งของ'} · {r.itemCount} รายการ
                       </span>
-                      <span className="tabular-nums font-bold">
-                        {formatCurrency(r.totalAmount)}
-                        {r.deliveryFee === null && r.fulfillment === 'DELIVERY' ? ' + ค่าส่ง?' : ''}
+                      <span className="mt-1 flex flex-wrap gap-1"><ClaimBadge claim={r.claim} meId={meId} status={r.status} picked={r.picked} /></span>
+                    </span>
+                    <span className="flex min-w-0 flex-wrap items-center gap-2 justify-end lg:justify-start order-2 lg:order-none col-span-2 lg:col-span-1">
+                      <StatusPill status={r.status} paid={r.paid} />
+                      <span data-testid="row-next-step" className={cn('text-sm font-semibold whitespace-nowrap', open ? 'text-indigo-700' : 'text-slate-500')}>
+                        {open ? `→ ${step.todo}` : step.todo}
                       </span>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-xs text-slate-500">{when(r.createdAt)}</span>
-                      <ClaimBadge claim={r.claim} meId={meId} status={r.status} picked={r.picked} />
-                    </div>
+                    </span>
+                    <span className="text-right tabular-nums font-bold whitespace-nowrap order-1 lg:order-none">
+                      {formatCurrency(r.totalAmount)}
+                      {r.deliveryFee === null && r.fulfillment === 'DELIVERY' ? ' + ค่าส่ง?' : ''}
+                    </span>
                   </button>
                 </li>
-                );
-              })}
-            </ul>
-          </section>
-          <section aria-label="รายละเอียดออเดอร์" className={cn('min-w-0', !selected && 'hidden xl:block')}>
-            {selected ? (
-              <OnlineOrderDetail id={selected} onBack={() => setSelected(null)} onChanged={changed} />
-            ) : (
-              <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">เลือกออเดอร์ทางซ้ายเพื่อดูรายละเอียด</div>
-            )}
-          </section>
-        </div>
+              );
+            })}
+          </ul>
+          {selected && <OnlineOrderDetail id={selected} onBack={closeOrder} onChanged={changed} />}
+        </section>
       )}
-      <p className="text-xs text-slate-500">สถานะ: {Object.values(ONLINE_STATUS_LABELS).join(' → ')}</p>
     </div>
   );
 }
