@@ -11,10 +11,12 @@ import {
   DialogContent,
   DialogHeader,
 } from '@/components/ui/dialog';
-import { LogIn, Coins, SkipForward, RotateCcw, Calculator } from 'lucide-react';
+import { LogIn, Coins, SkipForward, RotateCcw, Calculator, LogOut, Lock } from 'lucide-react';
 import { kickCashDrawer } from '@/lib/cash-drawer-service';
 import { toast } from 'sonner';
-import { api, type ShiftElsewhere } from '@/lib/api';
+import { api, type ShiftElsewhere, type TerminalOccupant } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { performLogout } from '@/lib/logout';
 import { setTerminalId } from '@/lib/terminal-id';
 import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
 import { padField } from '@/lib/keyboard/pad-field';
@@ -56,6 +58,8 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
   const { openShift, fetchCurrentShift } = useShiftStore();
   // BUG-03: the user's shift still open under this device's previous (lost) terminal id
   const [elsewhere, setElsewhere] = useState<ShiftElsewhere[]>([]);
+  // another user's shift still open on THIS device (one PC = one drawer = one open shift)
+  const [busy, setBusy] = useState<TerminalOccupant | null>(null);
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -63,10 +67,21 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
       .mineElsewhere()
       .then((rows) => { if (!cancelled) setElsewhere(Array.isArray(rows) ? rows : []); })
       .catch(() => { if (!cancelled) setElsewhere([]); });
+    api.shifts
+      .terminalStatus()
+      .then((r) => { if (!cancelled) setBusy(r?.busy ?? null); })
+      .catch(() => { if (!cancelled) setBusy(null); });
     return () => { cancelled = true; };
   }, [open]);
+  const router = useRouter();
+  const logoutHere = () => {
+    onOpenChange(false);
+    performLogout();
+    router.replace('/login');
+  };
 
   const continueShift = async (s: ShiftElsewhere) => {
+    if (!s.canContinueHere) return;
     setTerminalId(s.terminalId);
     const shift = await fetchCurrentShift();
     if (shift?.isOpen) {
@@ -130,6 +145,7 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
   if (openChanged) handleReset();
 
   const handleConfirmOpen = async () => {
+    if (busy) return;
     if (!(activeTotal >= 0)) {
       toast.error('กรุณาระบุจำนวนเงินตั้งต้นให้ถูกต้อง');
       return;
@@ -146,6 +162,7 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
   };
 
   const handleSkipOpenShift = async () => {
+    if (busy) return;
     try {
       const todayStr = new Date().toISOString().split('T')[0];
       localStorage.setItem('pos_shift_skipped_date', todayStr);
@@ -211,6 +228,25 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
             </div>
           </div>
 
+          {busy && (
+            <div data-testid="shift-terminal-busy" role="alert" className="mb-3 shrink-0 space-y-2 rounded-2xl border border-rose-300 bg-rose-50 p-3 text-sm text-rose-950">
+              <p className="flex items-center gap-2 font-bold">
+                <Lock className="h-4 w-4 shrink-0" />
+                เครื่องนี้มีกะ {busy.shiftNumber} ของ {busy.userName || 'พนักงานอื่น'} เปิดอยู่ (ตั้งแต่ {formatListDateTime(busy.openedAt)})
+              </p>
+              <p>
+                เครื่องหนึ่งเครื่องเปิดได้ทีละกะ (ลิ้นชักเดียว) กะนั้นยังอยู่ครบ ยอดขายและเงินสดไม่หาย
+                ให้ {busy.userName || 'เจ้าของกะ'} เข้าสู่ระบบที่เครื่องนี้แล้วกด &quot;ปิดกะ&quot; ก่อน คุณจึงจะเปิดกะของคุณที่เครื่องนี้ได้
+              </p>
+              <div className="flex justify-end">
+                <Button type="button" size="sm" variant="outline" onClick={logoutHere} className="border-rose-300 bg-white font-bold text-rose-700 hover:bg-rose-100">
+                  <LogOut className="mr-1.5 h-4 w-4" />
+                  ออกจากระบบ ให้เจ้าของกะเข้าใช้
+                </Button>
+              </div>
+            </div>
+          )}
+
           {elsewhere.length > 0 && (
             <div data-testid="shift-elsewhere" className="mb-3 shrink-0 space-y-2 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
               <p className="font-bold">คุณมีกะที่ยังเปิดอยู่ ไม่ต้องนับเงินใหม่ถ้าเป็นเครื่องนี้</p>
@@ -218,7 +254,9 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
                 <div key={s.id} className="flex flex-wrap items-center justify-between gap-2">
                   <span>
                     กะ {s.shiftNumber} · เปิดเมื่อ {formatListDateTime(s.openedAt)} · เงินตั้งต้น {formatCurrency(s.startingCash)}
-                    {!s.canContinueHere && ' · กำลังใช้งานอยู่ที่เครื่องอื่น'}
+                    {!s.canContinueHere && (s.blockedBy
+                      ? ` · ใช้ต่อที่เครื่องนี้ไม่ได้ เพราะเครื่องนี้มีกะของ ${s.blockedBy.userName || 'พนักงานอื่น'} เปิดอยู่`
+                      : ' · กำลังใช้งานอยู่ที่เครื่องอื่น')}
                   </span>
                   <Button
                     type="button"
@@ -234,6 +272,7 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
             </div>
           )}
 
+          {!busy && (<>
           {/* Section Title */}
           <div className="flex items-center justify-between text-xs font-black text-slate-700 px-1 mb-2 shrink-0">
             <div className="flex items-center gap-1.5">
@@ -313,12 +352,15 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
             </div>
           </div>
 
+          </>)}
+
           {/* Bottom Action Bar: POSPOS Large Blue Confirm Button & Skip Button */}
           <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row gap-btn-lg shrink-0">
             <Button
               type="button"
               variant="outline"
               onClick={handleSkipOpenShift}
+              disabled={!!busy}
               className="sm:w-1/3 h-13 border-slate-300 text-slate-600 hover:bg-slate-100 font-bold rounded-xl text-sm"
             >
               <SkipForward className="w-4 h-4 mr-1.5 text-slate-500" />
@@ -328,6 +370,7 @@ export function OpenShiftModal({ open, onOpenChange }: OpenShiftModalProps) {
             <Button
               type="button"
               onClick={handleConfirmOpen}
+              disabled={!!busy}
               className="flex-1 h-13 bg-sky-500 hover:bg-sky-600 active:bg-sky-700 text-white font-black text-lg rounded-xl shadow-lg shadow-sky-500/25 transition-all"
             >
               ตกลง

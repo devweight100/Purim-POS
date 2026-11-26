@@ -154,6 +154,9 @@ export class ShiftsService {
     lastPing: (terminalId: string) => { at: number; ip: string } | null,
     callerIp: string,
   ) {
+    // This device's own id holds another user's open shift: the id was not lost, and switching the device to the
+    // caller's other id would hide that user's shift from them (owner bug 2026-11-26, docs/round-shift-today-bundle-replace.md).
+    const busy = terminalId ? await this.terminalOccupant(terminalId, userId) : null;
     const rows = await this.prisma.shift.findMany({
       where: { userId, status: ShiftStatus.OPEN, terminalId: { not: null, ...(terminalId ? { notIn: [terminalId] } : {}) } },
       orderBy: { openedAt: 'desc' },
@@ -169,17 +172,37 @@ export class ShiftsService {
         ...r,
         startingCash: Number(r.startingCash),
         activeSecondsAgo,
-        canContinueHere: !liveElsewhere,
+        canContinueHere: !liveElsewhere && !busy,
+        ...(busy ? { blockedBy: busy } : {}),
       };
     });
+  }
+
+  /**
+   * The open shift of ANOTHER user on this terminal (null when there is none). A terminal (one PC, one cash drawer)
+   * holds at most one open shift; the next user waits until its owner closes it.
+   */
+  async terminalOccupant(terminalId: string, userId: string, db: any = this.prisma) {
+    if (!terminalId) return null;
+    const s = await db.shift.findFirst({
+      where: { terminalId, status: ShiftStatus.OPEN, userId: { not: userId } },
+      orderBy: { openedAt: 'desc' },
+      select: { id: true, shiftNumber: true, userId: true, openedAt: true, user: { select: { fullName: true, username: true } } },
+    });
+    if (!s) return null;
+    return { shiftId: s.id, shiftNumber: s.shiftNumber, userId: s.userId, userName: s.user?.fullName || s.user?.username || '', openedAt: s.openedAt };
   }
 
   async openShift(userId: string, startingCash: number, note?: string, terminalId?: string) {
     if (!terminalId || terminalId.length > 100) throw new BadRequestException('ไม่พบรหัสเครื่องขาย');
     if (!Number.isFinite(startingCash) || startingCash < 0) throw new BadRequestException('เงินตั้งต้นไม่ถูกต้อง');
     return businessTransaction(this.prisma, async tx => {
-    const other = await tx.shift.findFirst({ where: { terminalId, status: ShiftStatus.OPEN } });
-    if (other && other.userId !== userId) throw new BadRequestException('เครื่องนี้มีกะของพนักงานอื่นเปิดอยู่ กรุณาปิดกะก่อน');
+    const other = await this.terminalOccupant(terminalId, userId, tx);
+    if (other) {
+      throw new BadRequestException(
+        `เครื่องนี้มีกะ ${other.shiftNumber} ของ ${other.userName || 'พนักงานอื่น'} เปิดอยู่ ต้องให้เจ้าของกะเข้าสู่ระบบแล้วปิดกะก่อน จึงจะเปิดกะใหม่ที่เครื่องนี้ได้`,
+      );
+    }
 
     // 1. Check if there is an active open shift
     const current = await this.getCurrentShift(userId, terminalId, tx);

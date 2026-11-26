@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { api } from '../api';
+import { useAuthStore } from './auth-store';
 import { Shift, CashTransaction, Order, ApiCashMovement, ApiShiftRecord, ApiShiftSummary } from '../types';
 
 /** Why cash goes in/out of the drawer (posted to the finance ledger by the server). */
@@ -37,11 +38,28 @@ interface ShiftStore {
  */
 export const CURRENT_SHIFT_CACHE_KEY = 'purim-cache:current-shift';
 
+/** Id of the employee logged in on this device (null = nobody). */
+const loggedInUserId = (): string | null => {
+  try {
+    return useAuthStore.getState().user?.id ?? null;
+  } catch {
+    return null;
+  }
+};
+
+/** The cached shift, only when it belongs to the employee logged in now (never another employee's shift). */
 const loadCachedShift = (): Shift | null => {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(CURRENT_SHIFT_CACHE_KEY);
-    return raw ? JSON.parse(raw) : null;
+    const shift: Shift | null = raw ? JSON.parse(raw) : null;
+    if (!shift) return null;
+    let uid = loggedInUserId();
+    if (!uid) {
+      // the auth store may not be rehydrated yet when this module loads: read its persisted copy
+      uid = JSON.parse(localStorage.getItem('auth-storage') || '{}')?.state?.user?.id ?? null;
+    }
+    return uid && shift.userId === uid ? shift : null;
   } catch {
     return null;
   }
@@ -79,8 +97,13 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
 
 
   fetchCurrentShift: async () => {
+    // A reply that arrives after the employee changed (logout -> next login on this PC) belongs to the previous
+    // employee: it must neither show their shift to the next one nor wipe the next one's shift.
+    const askedFor = loggedInUserId();
+    const stale = () => loggedInUserId() !== askedFor;
     try {
       const res = await api.shifts.getCurrent();
+      if (stale()) return get().currentShift;
       const s = shiftRowOf(res);
       if (res && s && (s.status === 'OPEN' || res.status === 'OPEN')) {
         const cashMovements: CashTransaction[] = Array.isArray(s.cashMovements)
@@ -118,7 +141,7 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
       }
     } catch (err) {
       console.warn('[ShiftStore] Failed to fetch current shift from server:', err);
-      return get().currentShift;
+      return stale() ? null : get().currentShift;
     }
   },
 
@@ -279,3 +302,31 @@ export const useShiftStore = create<ShiftStore>((set, get) => ({
     return shift.cashSales + shift.qrSales + shift.cardSales + shift.transferSales + (shift.creditSales || 0);
   },
 }));
+
+/**
+ * Every way of signing out (logout button, 401, disabled account, "login as admin" on the no-access page) and every
+ * new login: forget the previous employee's shift on this device. The next employee's shift comes from the server.
+ */
+if (typeof window !== 'undefined') {
+  let lastUserId = loggedInUserId();
+  useAuthStore.subscribe((state) => {
+    const uid = state.user?.id ?? null;
+    if (uid === lastUserId) return;
+    const prev = lastUserId;
+    lastUserId = uid;
+    const shift = useShiftStore.getState().currentShift;
+    if (shift && shift.userId !== uid) {
+      try {
+        localStorage.removeItem(CURRENT_SHIFT_CACHE_KEY);
+      } catch {
+        /* storage unavailable */
+      }
+      useShiftStore.setState({ currentShift: null, cashTransactions: [] });
+    }
+    // rehydration of the same employee (prev null -> uid) keeps a matching cached shift
+    if (prev === null && uid && !useShiftStore.getState().currentShift) {
+      const cached = loadCachedShift();
+      if (cached) useShiftStore.setState({ currentShift: cached });
+    }
+  });
+}

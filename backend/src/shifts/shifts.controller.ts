@@ -40,6 +40,14 @@ export class ShiftsController {
     );
   }
 
+  /** Another user's open shift on this terminal (the caller cannot open one here until it is closed). */
+  @RequirePermissions('POS_SELL')
+  @Get('terminal-status')
+  async getTerminalStatus(@Request() req: any, @Query('terminalId') terminalId?: string) {
+    const busy = typeof terminalId === 'string' && terminalId ? await this.shiftsService.terminalOccupant(terminalId, req.user.id) : null;
+    return { busy };
+  }
+
   @RequirePermissions('POS_SELL', 'VIEW_REPORTS')
   @Get('history')
   getHistory(

@@ -184,6 +184,33 @@ d('store flow (e2e)', () => {
       expect(Number(cur.startingCash ?? cur.shift.startingCash)).toBe(500);
       await api('post', '/server-control/ping', C, { terminalId: 'e2e-term-2', terminalName: 'x' }).expect(201); // back to this address
     });
+    it('shift hand-over on one PC (owner 2026-11-26): another user is told whose shift holds it, cannot open there or re-key the PC; the owner gets the same shift back', async () => {
+      const T = 'e2e-term-handover';
+      const own = (await api('post', '/shifts/open', A, { startingCash: 0, terminalId: T }).expect(201)).body.shift;
+      // the cashier logs in on that PC: busy with the admin's shift
+      const st = (await api('get', `/shifts/terminal-status?terminalId=${T}`, C).expect(200)).body;
+      expect(st.busy).toMatchObject({ shiftId: own.id, shiftNumber: own.shiftNumber });
+      expect(st.busy.userName).toBeTruthy();
+      expect((await api('get', `/shifts/terminal-status?terminalId=${T}`, A).expect(200)).body.busy).toBeNull(); // own shift is not "busy"
+      expect((await api('get', '/shifts/current?terminalId=' + T, C).expect(200)).body).toEqual({});
+      const refused = await api('post', '/shifts/open', C, { startingCash: 100, terminalId: T }).expect(400);
+      expect(refused.body.message).toContain(own.shiftNumber);
+      // the cashier's own shift on another terminal is listed but cannot be continued on this PC
+      const row = (await api('get', `/shifts/mine-elsewhere?terminalId=${T}`, C).expect(200)).body.find((r: any) => r.id === state.shift2.id);
+      expect(row).toMatchObject({ canContinueHere: false, blockedBy: { shiftId: own.id } });
+      // the cashier cannot sell into or close the admin's shift
+      await api('post', '/orders/checkout', C, { clientOrderId: randomUUID(), shiftId: own.id, items: [{ productId: state.p.id, quantity: 1, unitPrice: state.price }], payments: [{ method: 'CASH', amount: state.price }] }).expect(400);
+      await api('post', `/shifts/${own.id}/close`, C, { actualCash: 0 }).expect(403);
+      // the owner comes back: the same shift, still one open shift on the PC
+      expect((await api('get', '/shifts/current?terminalId=' + T, A).expect(200)).body.shift.id).toBe(own.id);
+      expect((await api('post', '/shifts/open', A, { startingCash: 0, terminalId: T }).expect(201)).body.shift.id).toBe(own.id);
+      await api('post', `/shifts/${own.id}/close`, A, { actualCash: 0 }).expect(201);
+      // closed: the cashier may open here now (and closes it again for the next tests)
+      expect((await api('get', `/shifts/terminal-status?terminalId=${T}`, C).expect(200)).body.busy).toBeNull();
+      const mine = (await api('post', '/shifts/open', C, { startingCash: 0, terminalId: T }).expect(201)).body.shift;
+      expect(mine.id).not.toBe(own.id);
+      await api('post', `/shifts/${mine.id}/close`, C, { actualCash: 0 }).expect(201);
+    });
     it('a 20% bill discount by a cashier needs approval (limit 10%)', async () => {
       const r = await sale(C, state.price, { discountAmount: Math.round(state.price * 2 * 0.2 * 100) / 100 }).expect(409);
       expect(r.body.code).toBe('APPROVAL_REQUIRED');

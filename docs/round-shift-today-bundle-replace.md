@@ -13,7 +13,7 @@ Owner requests 2026-11-26. Progress file of this round (plan, done, next, decisi
 ## Progress
 
 - [x] 1 reproduce + root cause (see Shift section)
-- [ ] 1 fix + backend e2e + Playwright
+- [x] 1 fix + backend e2e + Playwright (`frontend/e2e/38-shift-handover.spec.ts`, store-flow 'shift hand-over on one PC')
 - [ ] 2 audit + defaults
 - [ ] 3 bundle picker
 - [ ] 4 delete with replacement
@@ -36,3 +36,21 @@ B's other terminal id (`setTerminalId`). When A logs back in, `/shifts/current?t
 A: A gets the "count the drawer" dialog, A's shift (with its sales and cash) looks gone, and opening again is refused
 because B's shift now sits on that id. Root cause: a per-user recovery action changes a per-device identity while the
 device's own id still holds another user's open shift (the id was not lost at all).
+
+Fix:
+- Server: `ShiftsService.terminalOccupant()` = another user's open shift on a terminal. `GET /shifts/terminal-status`
+  returns it (`{ busy }`); `GET /shifts/mine-elsewhere` sets `canContinueHere: false` + `blockedBy` when the caller's
+  current terminal holds another user's open shift (so "ใช้กะนี้ต่อที่เครื่องนี้" can no longer re-key a PC that is not
+  lost); `POST /shifts/open` refusal names the shift and its owner.
+- POS open-shift dialog: a red notice "เครื่องนี้มีกะ SH… ของ <name> เปิดอยู่ …" (the shift is intact, its owner must
+  log in here and close it), counting grid hidden, ตกลง / ข้ามการเปิดกะ disabled, button "ออกจากระบบ ให้เจ้าของกะเข้าใช้".
+  The continue button of the user's own shift elsewhere is disabled with the reason.
+- Shift store: the cached shift is only used when it belongs to the logged-in user; a `/shifts/current` reply that
+  arrives after the user changed is dropped; any sign-out path (not only the logout buttons: 401, disabled account,
+  change-password page, no-access page) forgets the previous user's shift (auth-store subscription).
+- Outbox / held bills (unchanged, verified): an offline sale carries its `shiftId` and `ownerId`; it is sent only while
+  its owner is logged in (B never sends A's sale) and lands in A's shift once A is back (Playwright checks it). Held
+  bills are carts kept on the device, without a shift; a resumed bill is sold into the shift of whoever checks it out.
+  Closing a shift is refused while the outbox still has bills of that shift.
+- Already-broken devices (PC re-keyed by the old button): A's dialog lists A's shift under "คุณมีกะที่ยังเปิดอยู่";
+  if B's shift sits on the PC's current id, B logs in there and closes it first, then A continues.

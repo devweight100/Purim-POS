@@ -166,6 +166,17 @@ export interface ShiftElsewhere {
   /** last heartbeat of that terminal (null = not seen since the server started) */
   activeSecondsAgo: number | null;
   canContinueHere: boolean;
+  /** this device's own terminal id holds another user's open shift: continuing here is refused */
+  blockedBy?: TerminalOccupant;
+}
+
+/** Another user's open shift on this terminal (GET /shifts/terminal-status). */
+export interface TerminalOccupant {
+  shiftId: string;
+  shiftNumber: string;
+  userId: string;
+  userName: string;
+  openedAt: string;
 }
 
 export const api = {
@@ -190,6 +201,9 @@ export const api = {
     /** the caller's open shifts left on other terminal ids (this device's id was lost) */
     mineElsewhere: () =>
       apiFetch<ShiftElsewhere[]>('/shifts/mine-elsewhere?terminalId=' + encodeURIComponent(getTerminalId())),
+    /** another user's open shift on this device (the caller cannot open one here until its owner closes it) */
+    terminalStatus: () =>
+      apiFetch<{ busy: TerminalOccupant | null }>('/shifts/terminal-status?terminalId=' + encodeURIComponent(getTerminalId())),
     addCashMovement: (shiftId: string, p1: CashMovementRequest | 'in' | 'out', p2?: number, p3?: string) => {
       const body = typeof p1 === 'object' ? p1 : { type: p1, amount: p2, reason: p3 };
       return apiFetch<ApiCashMovement>(`/shifts/${shiftId}/cash-movements`, { method: 'POST', body: JSON.stringify(body) });
