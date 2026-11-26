@@ -622,7 +622,8 @@ export class ProductsService {
       cost: opts.canViewCost ? 'COALESCE(NULLIF(x.cost_price, 0), x.avg_cost, 0)' : 'x.pos',
     };
     if (opts.sort && !sortSql[opts.sort]) throw new BadRequestException('ลำดับการเรียงไม่ถูกต้อง');
-    const orderBy = opts.sort ? Prisma.raw(`${sortSql[opts.sort]} ${dir}, x.pos`) : Prisma.raw('x.pos');
+    // ties / no sort: the catalogue order (oldest first, then id), the same as the POS catalogue (catalogRows)
+    const orderBy = opts.sort ? Prisma.raw(`${sortSql[opts.sort]} ${dir}, x.pos, x.id`) : Prisma.raw('x.pos, x.id');
     const conds: Prisma.Sql[] = [];
     const q = (opts.q || '').trim();
     if (q) {
@@ -669,7 +670,7 @@ export class ProductsService {
                MIN(floor(COALESCE(s.q, 0) / COALESCE(NULLIF(bi.quantity, 0), 1) + 0.000000001)) AS q
              FROM product_bundle_items bi LEFT JOIN s ON s.product_id = bi.child_product_id GROUP BY bi.bundle_product_id),
       x AS (SELECT p.id, p.name, p.sku, p.manufacturer_name, p.category_id, p.base_price, p.cost_price, p.price_level_1, p.price_level_2, p.price_level_3,
-              p.price_level_4, p.price_level_5, p.ctid AS pos, p.is_bundle, p.is_service, p.is_active, NULLIF(s.avg_cost, 0) AS avg_cost,
+              p.price_level_4, p.price_level_5, p.created_at AS pos, p.is_bundle, p.is_service, p.is_active, NULLIF(s.avg_cost, 0) AS avg_cost,
               CASE WHEN p.is_bundle AND bs.pid IS NOT NULL THEN bs.q ELSE COALESCE(s.q, 0) END AS stock
             FROM products p LEFT JOIN s ON s.product_id = p.id LEFT JOIN bs ON bs.pid = p.id)`;
     const rows = await this.prisma.$queryRaw<{ id: string; total: number; unit_cost: string | null }[]>`${withX}
@@ -785,7 +786,11 @@ export class ProductsService {
       LEFT JOIN bc ON bc.product_id = p.id LEFT JOIN pu ON pu.product_id = p.id LEFT JOIN im ON im.product_id = p.id
       LEFT JOIN wp ON wp.product_id = p.id LEFT JOIN su ON su.product_id = p.id LEFT JOIN bu ON bu.product_id = p.id
       ${only('p.id')}
-      ORDER BY p.ctid`; // table order, as the unordered Prisma findMany returned them (lists without a sort show it)
+      ORDER BY p.created_at, p.id`;
+    // A fixed order (oldest product first): the POS search lists matches in this order and the products page uses it
+    // for ties / no sort. It was the physical row order (ctid): an UPDATE or space reused after a VACUUM moved rows,
+    // so a full reload could put a newer product above an older one (and differ from a delta-synced list, which
+    // keeps positions and appends new products) - e2e 37 saw the 3rd product of a search come first.
     let stockOf: Map<string, number>;
     if (ids) {
       const need = new Set<string>();
