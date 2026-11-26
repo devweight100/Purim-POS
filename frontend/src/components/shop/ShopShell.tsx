@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo } from 'react';
 import { useHydrated } from '@/lib/shop/use-hydrated';
-import { useShopCart, useShopSession } from '@/lib/shop/shop-store';
+import { retryShop, useShopCart, useShopSession } from '@/lib/shop/shop-store';
 import { baht } from '@/lib/shop/shop-api';
 
 /** Big, plain button styles shared by the shop pages (>= 48 px tall, high contrast). */
@@ -103,7 +103,7 @@ export function ShopShell({ children }: { children: React.ReactNode }) {
         {status === 'error' && (
           <div className="py-16 text-center">
             <p className="text-2xl font-bold text-red-800">{error}</p>
-            <button type="button" className={`${btn.primary} mt-6`} onClick={() => window.location.reload()}>
+            <button type="button" className={`${btn.primary} mt-6`} onClick={retryShop}>
               ลองใหม่
             </button>
           </div>

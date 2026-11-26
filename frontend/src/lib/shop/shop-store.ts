@@ -80,6 +80,8 @@ type Liff = {
   isLoggedIn: () => boolean;
   login: (o?: { redirectUri?: string }) => void;
   getIDToken: () => string | null;
+  getDecodedIDToken: () => { exp?: number } | null;
+  logout: () => void;
   isInClient: () => boolean;
   closeWindow: () => void;
 };
@@ -108,6 +110,17 @@ interface SessionState {
 }
 
 let started = false;
+const RELOGIN_KEY = 'purim-shop-relogin';
+const relogged = {
+  get: () => { try { return !!sessionStorage.getItem(RELOGIN_KEY); } catch { return false; } },
+  set: (on: boolean) => { try { if (on) sessionStorage.setItem(RELOGIN_KEY, '1'); else sessionStorage.removeItem(RELOGIN_KEY); } catch { /* private mode */ } },
+};
+
+/** "ลองใหม่" on the error screen: allow one more automatic LINE sign-in, then reload. */
+export function retryShop() {
+  relogged.set(false);
+  window.location.reload();
+}
 let meInflight: Promise<void> | null = null;
 
 /** Member price level of a `me` answer (1 = guest / retail). */
@@ -159,9 +172,30 @@ export const useShopSession = create<SessionState>()((set, get) => ({
           liff.login({ redirectUri: window.location.href });
           return;
         }
+        // A link opened from a chat runs outside the LIFF app and LIFF can hand back a stored, expired ID token:
+        // sign in to LINE again (once per tab, so a real failure still shows its message instead of looping).
+        const relogin = () => {
+          if (relogged.get()) return false;
+          relogged.set(true);
+          liff.logout();
+          liff.login({ redirectUri: window.location.href });
+          return true;
+        };
+        const exp = liff.getDecodedIDToken()?.exp;
+        if (exp && exp * 1000 < Date.now() + 60_000 && relogin()) return;
         const idToken = liff.getIDToken();
-        if (!idToken) throw new ShopError('เปิดจาก LINE ไม่สำเร็จ กรุณาปิดแล้วเปิดใหม่', 401);
-        const s = await shopFetch<{ token: string; expiresAt: string } & ShopMe>('/session', { method: 'POST', body: { idToken } });
+        if (!idToken) {
+          if (relogin()) return;
+          throw new ShopError('เปิดจาก LINE ไม่สำเร็จ กรุณาปิดแล้วเปิดใหม่', 401);
+        }
+        let s: { token: string; expiresAt: string } & ShopMe;
+        try {
+          s = await shopFetch<{ token: string; expiresAt: string } & ShopMe>('/session', { method: 'POST', body: { idToken } });
+        } catch (e) {
+          if (e instanceof ShopError && e.status === 401 && relogin()) return;
+          throw e;
+        }
+        relogged.set(false);
         saveToken(s.token, s.expiresAt);
         set({ me: { profile: s.profile, member: s.member, contact: s.contact, linkRequest: s.linkRequest }, status: 'ready' });
         void repriceCart(); // the cart may hold prices of another level (linked / changed since it was filled)

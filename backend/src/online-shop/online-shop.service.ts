@@ -53,6 +53,17 @@ export interface PublicCtx {
   session: ShopSession | null;
 }
 
+/**
+ * Link to a shop page for LINE messages. With LIFF configured the link goes through `https://liff.line.me/<LIFF ID>`
+ * (LINE appends the path to the LIFF endpoint `https://<domain>/shop`), so LINE opens it as the LIFF app and signs the
+ * customer in. A plain web link opened from a chat runs outside LIFF and can carry an expired LINE login.
+ */
+export function shopLink(c: { liffId: string | null; loginChannelId: string | null; publicBaseUrl: string | null }, path: string): string | null {
+  if (c.liffId && c.loginChannelId) return `https://liff.line.me/${encodeURIComponent(c.liffId)}${path}`;
+  const base = c.publicBaseUrl && /^https:\/\//.test(c.publicBaseUrl) ? c.publicBaseUrl.replace(/\/+$/, '') : null;
+  return base ? `${base}/shop${path}` : null;
+}
+
 @Injectable()
 export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
   private readonly log = new Logger('OnlineShop');
@@ -520,8 +531,9 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
       if (kind === 'READY' && o.status !== 'READY') return; // changed again in between (edited -> re-pick)
       const c = await this.line.config();
       const store = (await this.prisma.storeSettings.findFirst({ select: { storeName: true } }))?.storeName || 'ร้าน';
-      const base = c.publicBaseUrl && /^https:\/\//.test(c.publicBaseUrl) ? c.publicBaseUrl.replace(/\/+$/, '') : null;
-      const link = base ? `\nดูออเดอร์: ${base}/shop/orders/${o.id}` : '';
+      const base = c.publicBaseUrl && /^https:\/\//.test(c.publicBaseUrl) ? c.publicBaseUrl.replace(/\/+$/, '') : null; // QR image host
+      const orderUrl = shopLink(c, `/orders/${o.id}`);
+      const link = orderUrl ? `\nดูออเดอร์: ${orderUrl}` : '';
       const fee = o.deliveryFee === null ? null : money(o.deliveryFee);
       const how = o.fulfillment === 'PICKUP' ? 'รับเองที่ร้าน' : 'ร้านไปส่ง';
       const msgs: LineMessage[] = [];
@@ -1018,8 +1030,8 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
       ]);
       if (!cu) return;
       const levelName = levelNames(c.levelNames)[normalizeLevel((cu.profile as any)?.priceLevel)];
-      const base = c.publicBaseUrl && /^https:\/\//.test(c.publicBaseUrl) ? c.publicBaseUrl.replace(/\/+$/, '') : null;
-      await this.line.push(lineUserId, [{ type: 'text', text: `${store?.storeName || 'ร้าน'} ผูกบัญชี LINE ของคุณกับสมาชิก ${cu.name} แล้ว\nราคาที่เห็นในร้านออนไลน์ตอนนี้เป็น ${levelName}${base ? `\nเปิดร้าน: ${base}/shop` : ''}` }]);
+      const shopUrl = shopLink(c, '');
+      await this.line.push(lineUserId, [{ type: 'text', text: `${store?.storeName || 'ร้าน'} ผูกบัญชี LINE ของคุณกับสมาชิก ${cu.name} แล้ว\nราคาที่เห็นในร้านออนไลน์ตอนนี้เป็น ${levelName}${shopUrl ? `\nเปิดร้าน: ${shopUrl}` : ''}` }]);
     } catch (e: any) {
       this.log.warn(`LINE link notice failed: ${e?.message || e}`);
     }

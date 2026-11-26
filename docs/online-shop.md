@@ -119,3 +119,7 @@ customer." Before, whoever claimed / accepted held the order until done and even
 
 ## Setup guide
 See `Installer/Server/คู่มือร้านออนไลน์ LINE (Cloudflare Tunnel).txt`.
+
+## Links in LINE messages (owner bug 2026-11-26)
+- Opening "ดูออเดอร์" from an accepted-order push showed "LINE ไม่ยืนยันตัวตน กรุณาเปิดจาก LINE ใหม่": the link was the plain web address, so LINE opened it in its in-app browser outside the LIFF app and LIFF handed back a stored, expired ID token that LINE's verify endpoint refused.
+- Fix: message links go through `https://liff.line.me/<LIFF ID>/<path>` (`shopLink`, LINE appends the path to the LIFF endpoint `https://<domain>/shop`) when LINE login is configured. The shop page also signs in to LINE again once per tab when the ID token is missing, expired, or refused (401); "ลองใหม่" allows one more attempt. Old messages already sent keep the web address and now recover through that re-login.
