@@ -77,8 +77,14 @@ test('online order: cancel with a typed reason (keyboard only, unclaimed), the c
   await page.getByTestId('online-order-row').filter({ hasText: o.orderNo }).click();
   const detail = page.getByTestId('online-order-detail');
   await expect(detail.getByTestId('claim-bar')).toContainText('ยังไม่มีใครรับจัด');
-  // keyboard: focus the button, Enter opens the dialog with the focus in the field
-  await detail.getByRole('button', { name: 'ยกเลิกออเดอร์' }).focus();
+  // keyboard: cancelling is in the "อื่นๆ" menu (rare action); the menu opens with Enter, the item is chosen
+  // with the arrow keys + Enter, the dialog opens with the focus in the field
+  await detail.getByTestId('order-more').focus();
+  await page.keyboard.press('Enter');
+  const item = page.getByRole('menuitem', { name: 'ยกเลิกออเดอร์' });
+  await expect(item).toBeVisible();
+  for (let i = 0; i < 5 && !(await item.evaluate((el) => el === document.activeElement)); i++) await page.keyboard.press('ArrowDown');
+  await expect(item).toBeFocused();
   await page.keyboard.press('Enter');
   const dlg = page.getByTestId('reason-dialog');
   await expect(dlg).toBeVisible();
@@ -113,15 +119,18 @@ test('online order claimed by me: after an in-page confirm (was native) the reas
   // accepting claimed it for admin
   await expect(page.getByTestId('claim-bar')).toContainText('คุณกำลังจัด');
 
-  // "เสร็จ" on an unpaid order used to ask with window.confirm (in the desktop app the keyboard was dead after it)
-  await detail.getByRole('button', { name: 'เสร็จแล้ว', exact: true }).click();
+  // closing an unpaid order (menu "ปิดออเดอร์เลย") used to ask with window.confirm (in the desktop app the keyboard
+  // was dead after it)
+  await detail.getByTestId('order-more').click();
+  await page.getByRole('menuitem', { name: /ปิดออเดอร์เลย/ }).click();
   const ask = page.getByTestId('confirm-dialog');
   await expect(ask).toContainText('ยังไม่ได้รับเงินในหน้าขาย');
   await expect(ask.getByRole('button', { name: 'ปิดออเดอร์' })).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(ask).toBeHidden();
 
-  await detail.getByRole('button', { name: 'ยกเลิกออเดอร์' }).click();
+  await detail.getByTestId('order-more').click();
+  await page.getByRole('menuitem', { name: 'ยกเลิกออเดอร์' }).click();
   const dlg = page.getByTestId('reason-dialog');
   await expect(dlg.locator('#reject-reason')).toBeFocused();
   await page.keyboard.type('ลูกค้าขอยกเลิก');
@@ -130,7 +139,8 @@ test('online order claimed by me: after an in-page confirm (was native) the reas
   await expect(dlg).toBeHidden();
   await expect(detail).toBeVisible();
   expect((await api<{ status: string }>('GET', `/online-shop/orders/${o.id}`, adminToken)).status).toBe('ACCEPTED');
-  await detail.getByRole('button', { name: 'ยกเลิกออเดอร์' }).click();
+  await detail.getByTestId('order-more').click();
+  await page.getByRole('menuitem', { name: 'ยกเลิกออเดอร์' }).click();
   await expect(dlg.locator('#reject-reason')).toBeFocused();
   await expect(dlg.locator('#reject-reason')).toHaveValue('');
   await page.keyboard.type('ลูกค้าขอยกเลิก โทรแจ้งแล้ว');

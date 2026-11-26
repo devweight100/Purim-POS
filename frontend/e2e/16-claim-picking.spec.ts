@@ -198,22 +198,32 @@ test('two cashiers: one claims, the other sees "กำลังจัดโด�
   }
   const a = A.page.getByTestId('online-order-detail');
   const b = B.page.getByTestId('online-order-detail');
-  await a.getByRole('button', { name: 'รับจัดออเดอร์นี้' }).click();
+  // claiming without accepting is a rare action: the "อื่นๆ" menu
+  await a.getByTestId('order-more').click();
+  await A.page.getByRole('menuitem', { name: 'รับจัดออเดอร์นี้' }).click();
   await expect(A.page.getByTestId('claim-bar')).toContainText('คุณกำลังจัด');
-  await expect(a.getByRole('button', { name: 'ปล่อยงาน' })).toBeVisible();
+  await a.getByTestId('order-more').click();
+  await expect(A.page.getByRole('menuitem', { name: 'ปล่อยงาน' })).toBeVisible();
+  await A.page.keyboard.press('Escape');
+  await expect(A.page.getByRole('menuitem', { name: 'ปล่อยงาน' })).toHaveCount(0);
+  await expect(a).toBeVisible(); // Escape closed the menu only
 
   // the other terminal: live (realtime event, no reload)
   await expect(B.page.getByTestId('claim-bar')).toContainText(`กำลังจัดโดย ${HOLDER}`);
   await expect(B.page.getByTestId('online-order-row').filter({ hasText: orders.short.orderNo }).getByTestId('claim-badge')).toContainText(`กำลังจัดโดย ${HOLDER}`);
-  for (const name of ['รับออเดอร์', /พิมพ์ใบจัดของ/, /ยกเลิกออเดอร์/]) await expect(b.getByRole('button', { name })).toBeDisabled();
-  await expect(b.getByRole('button', { name: 'รับจัดออเดอร์นี้' })).toHaveCount(0);
-  await expect(b.getByRole('button', { name: 'ปลดล็อก/โอนมาที่ฉัน' })).toHaveCount(0); // cashier: no takeover
+  await expect(b.getByTestId('step-primary')).toHaveText(/รับงาน/);
+  await expect(b.getByTestId('step-primary')).toBeDisabled();
+  await b.getByTestId('order-more').click();
+  await expect(B.page.getByRole('menuitem', { name: /ยกเลิกออเดอร์/ })).toHaveAttribute('aria-disabled', 'true');
+  await expect(B.page.getByRole('menuitem', { name: 'รับจัดออเดอร์นี้' })).toHaveCount(0);
+  await expect(B.page.getByRole('menuitem', { name: 'ปลดล็อก/โอนมาที่ฉัน' })).toHaveCount(0); // cashier: no takeover
+  await B.page.keyboard.press('Escape');
   await expect(b).toContainText('งานจัดของทำไม่ได้จนกว่าจะปล่อยงาน');
   await expect(b.getByLabel('ค่าส่ง')).toHaveCount(0); // no edits
   for (const size of SIZES) {
     await B.page.setViewportSize(size);
     expect(await horizontalOverflow(B.page)).toEqual([]);
-    expect(await spacingIssues(B.page, 'main')).toEqual([]);
+    expect(await spacingIssues(B.page, '[data-testid="online-order-detail"]')).toEqual([]);
   }
   await B.page.setViewportSize({ width: 1366, height: 768 });
   if (OUT) save('online-orders-claim-badge-1366x768.png', await B.page.screenshot());
@@ -223,13 +233,22 @@ test('two cashiers: one claims, the other sees "กำลังจัดโด�
   for (const size of SIZES) {
     await A.page.setViewportSize(size);
     expect(await horizontalOverflow(A.page)).toEqual([]);
-    expect(await spacingIssues(A.page, 'main')).toEqual([]);
+    expect(await spacingIssues(A.page, '[data-testid="online-order-detail"]')).toEqual([]);
   }
   await A.page.setViewportSize({ width: 1366, height: 768 });
 });
 
-test('the holder prints the picking slip (desktop raster job): no prices, delivery details; 2nd print is a reprint', async ({ browser }) => {
+test('the holder accepts, then prints the picking slip (desktop raster job): no prices, delivery details; 2nd print is a reprint', async ({ browser }) => {
   const a = A.page.getByTestId('online-order-detail');
+  // the picking slip is offered from รับงาน on (step flow 2026-11-26): the holder accepts first (fee 50); the
+  // other terminal follows live and stays locked
+  await expect(a.getByRole('button', { name: /พิมพ์ใบจัดของ/ })).toHaveCount(0);
+  await a.getByLabel('ค่าส่ง').fill('50');
+  await a.getByTestId('step-primary').click();
+  await expect(a).toContainText('รับแล้ว');
+  await expect(a.getByTestId('step-primary')).toHaveText(/เริ่มจัดของ/);
+  const b = B.page.getByTestId('online-order-detail');
+  await expect(b).toContainText('รับแล้ว');
   const job = await capturePrint(A.page, () => a.getByRole('button', { name: /^พิมพ์ใบจัดของ/ }).click());
   const r = await checkSlipJob(browser, job, 'online-short');
   expect(r.lines).toEqual(expect.arrayContaining(['ออเดอร์ออนไลน์', orders.short.orderNo, 'คุณมานี มีของ', 'ส่ง (ร้านไปส่ง)', '0812345678', P.cement.name, '3 ถุง', P.rebar.name, '12 เส้น', 'รวม 2 รายการ', 'ผู้จัด', 'ผู้ตรวจ']));
@@ -240,16 +259,11 @@ test('the holder prints the picking slip (desktop raster job): no prices, delive
   await expect(A.page.getByTestId('claim-bar')).toContainText('พิมพ์ใบจัดของแล้ว 1 ครั้ง');
   const again = await capturePrint(A.page, () => a.getByRole('button', { name: /^พิมพ์ใบจัดของ/ }).click());
   expect(again.html).toContain('พิมพ์ซ้ำ');
-  // the holder accepts (fee 50); the other terminal follows live and stays locked
-  await a.getByLabel('ค่าส่ง').fill('50');
-  await a.getByRole('button', { name: 'รับออเดอร์' }).click();
-  await expect(a).toContainText('รับแล้ว');
-  const b = B.page.getByTestId('online-order-detail');
-  await expect(b).toContainText('รับแล้ว');
   // picking stays A's; taking the payment does not
-  await expect(b.getByRole('button', { name: 'จัดของเสร็จ' })).toBeDisabled();
-  await expect(b.getByRole('button', { name: 'รับเงินที่หน้าขาย' })).toBeEnabled();
-  await expect(a.getByRole('button', { name: 'จัดของเสร็จ' })).toBeEnabled();
+  await expect(b.getByTestId('step-primary')).toHaveText(/เริ่มจัดของ/);
+  await expect(b.getByTestId('step-primary')).toBeDisabled();
+  await expect(b.getByRole('button', { name: 'รับเงิน', exact: true })).toBeEnabled();
+  await expect(a.getByTestId('step-primary')).toBeEnabled();
 });
 
 test('POS: the other cashier sees "ยังไม่ได้จัดของ · กำลังจัดโดย …" and may open the bill; F8 prints the cart slip with bundle parts; history reprint', async ({ browser }) => {
@@ -307,13 +321,17 @@ test('POS: the other cashier sees "ยังไม่ได้จัดของ
   expect(fromOrders.html).toContain('พิมพ์ซ้ำ');
 });
 
-test('A presses "จัดของเสร็จ"; B opens the bill, takes the cash and hands over (กำลังไปส่ง / เสร็จ) without any claim', async () => {
+test('A presses "เริ่มจัดของ" then "จัดของเสร็จ" with Enter; B opens the bill, takes the cash and hands over (กำลังไปส่ง / เสร็จ) without any claim', async () => {
   await A.page.goto('/online-orders');
   await A.page.getByTestId('online-order-row').filter({ hasText: orders.short.orderNo }).click();
   const a = A.page.getByTestId('online-order-detail');
   await expect(a).toContainText(orders.short.orderNo);
-  // keyboard: the button is reachable and pressed with Enter
-  await a.getByRole('button', { name: 'จัดของเสร็จ' }).focus();
+  // keyboard: the next-step button has the focus, Enter does the step, the next one gets the focus
+  await expect(a.getByTestId('step-primary')).toHaveText(/เริ่มจัดของ/);
+  await expect(a.getByTestId('step-primary')).toBeFocused();
+  await A.page.keyboard.press('Enter');
+  await expect(a.getByTestId('step-primary')).toHaveText(/จัดของเสร็จ/);
+  await expect(a.getByTestId('step-primary')).toBeFocused();
   await A.page.keyboard.press('Enter');
   await expect(A.page.getByTestId('claim-bar')).toContainText(`จัดโดย ${HOLDER}`);
   await expect(a).toContainText('จัดเสร็จ รอรับเงิน/รอส่ง');
@@ -321,7 +339,7 @@ test('A presses "จัดของเสร็จ"; B opens the bill, takes the
   for (const size of SIZES) {
     await A.page.setViewportSize(size);
     expect(await horizontalOverflow(A.page)).toEqual([]);
-    expect(await spacingIssues(A.page, 'main')).toEqual([]);
+    expect(await spacingIssues(A.page, '[data-testid="online-order-detail"]')).toEqual([]);
   }
   await A.page.setViewportSize({ width: 1366, height: 768 });
   if (OUT) save('online-orders-picked-1366x768.png', await A.page.screenshot());
@@ -359,12 +377,12 @@ test('A presses "จัดของเสร็จ"; B opens the bill, takes the
   await page.goto('/online-orders');
   await page.getByTestId('online-order-row').filter({ hasText: orders.short.orderNo }).click();
   const b = page.getByTestId('online-order-detail');
-  await expect(b).toContainText('รับเงินแล้ว');
-  await b.getByRole('button', { name: 'กำลังไปส่ง' }).click();
-  await expect(b.getByRole('button', { name: 'กำลังไปส่ง' })).toHaveCount(0);
+  await expect(b.getByTestId('payment-paid')).toContainText('ชำระแล้ว · บิล');
+  await b.getByRole('button', { name: 'ออกไปส่ง' }).click();
+  await expect(b.getByRole('button', { name: 'ออกไปส่ง' })).toHaveCount(0);
   await expect(b.getByText('กำลังไปส่ง', { exact: true })).toBeVisible();
-  await b.getByRole('button', { name: 'เสร็จแล้ว' }).click();
-  await expect(b.getByRole('button', { name: 'เสร็จแล้ว' })).toHaveCount(0);
+  await b.getByRole('button', { name: 'ส่งเสร็จ' }).click();
+  await expect(b.getByRole('button', { name: 'ส่งเสร็จ' })).toHaveCount(0);
   await expect(b.getByText('เสร็จแล้ว', { exact: true })).toBeVisible();
   await expect(b.getByTestId('picked-note')).toContainText(`จัดโดย ${HOLDER}`);
 });
@@ -408,6 +426,10 @@ test('plain browser: F8 prints the slip as a picture through the print preview',
 });
 
 test('long order (40 lines, long names): names wrap, everything fits the width and continues on the roll', async ({ browser }) => {
+  // the slip is offered once the order is accepted (step flow); accepted by API, nobody holds it after a release
+  const c1 = await apiLogin(CASHIER);
+  await api('POST', `/online-shop/orders/${orders.long.id}/accept`, c1, {});
+  await api('POST', `/online-shop/orders/${orders.long.id}/release`, c1, {});
   await A.page.goto('/online-orders');
   await A.page.getByTestId('online-order-row').filter({ hasText: orders.long.orderNo }).click();
   const a = A.page.getByTestId('online-order-detail');

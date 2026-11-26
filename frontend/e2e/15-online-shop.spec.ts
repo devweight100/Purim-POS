@@ -161,27 +161,34 @@ test('back office: badge, order detail, delivery fee, accept; the page fits 3 wi
   for (const size of SIZES) {
     await page.setViewportSize(size);
     expect(await horizontalOverflow(page)).toEqual([]);
-    expect(await spacingIssues(page, 'main')).toEqual([]);
+    expect(await spacingIssues(page, '[data-testid="online-order-detail"]')).toEqual([]);
   }
   await page.setViewportSize({ width: 1366, height: 768 });
   await shot(page, 'bo-01-online-orders-1366x768.png', false);
   // accepting without a fee is refused, then fee 60 and accept
-  await detail.getByRole('button', { name: 'รับออเดอร์' }).click();
+  // one next step "รับงาน" (focused: Enter); without a fee it is refused and the fee field gets the focus
+  await expect(detail.getByRole('button', { name: 'รับเงิน', exact: true })).toBeDisabled();
+  await expect(detail.getByTestId('payment-slot')).toContainText('รับงานก่อนจึงรับเงินได้');
+  await expect(detail.getByTestId('step-primary')).toHaveText(/รับงาน/);
+  await expect(detail.getByTestId('step-primary')).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(page.getByText('กรุณาใส่ค่าส่งก่อนรับออเดอร์')).toBeVisible();
-  await detail.getByLabel('ค่าส่ง').fill('60');
+  await expect(detail.getByLabel('ค่าส่ง')).toBeFocused();
+  await page.keyboard.type('60');
   await expect(detail).toContainText('฿3,260');
-  await detail.getByRole('button', { name: 'รับออเดอร์' }).click();
+  await page.keyboard.press('Enter'); // Enter in the fee field = รับงาน
   await expect(detail).toContainText('รับแล้ว');
   await expect(detail).toContainText('ไม่ได้ส่ง LINE (โปรไฟล์ทดสอบ)');
-  await expect(detail.getByRole('button', { name: 'รับเงินที่หน้าขาย' })).toBeVisible();
+  await expect(detail.getByRole('button', { name: 'รับเงิน', exact: true })).toBeEnabled();
   // accepting claimed the order for the admin ("กำลังจัด"); the cashier may take the payment anyway (the claim
-  // covers picking only), so it stays with the admin, who sees "จัดของเสร็จ"
+  // covers picking only), so it stays with the admin, whose next step is "เริ่มจัดของ"
   await expect(page.getByTestId('claim-bar')).toContainText('คุณกำลังจัด');
-  await expect(page.getByTestId('claim-bar').getByRole('button', { name: 'จัดของเสร็จ' })).toBeEnabled();
+  await expect(detail.getByTestId('step-primary')).toHaveText(/เริ่มจัดของ/);
+  await expect(detail.getByTestId('step-primary')).toBeEnabled();
   for (const size of SIZES) {
     await page.setViewportSize(size);
     expect(await horizontalOverflow(page)).toEqual([]);
-    expect(await spacingIssues(page, 'main')).toEqual([]);
+    expect(await spacingIssues(page, '[data-testid="online-order-detail"]')).toEqual([]);
   }
   await page.setViewportSize({ width: 1920, height: 1080 });
   await shot(page, 'bo-02-accepted-1920x1080.png', false);

@@ -180,7 +180,7 @@ function OnlineOrdersInner() {
                     aria-current={last === r.id}
                     className={cn(
                       'w-full rounded-xl border bg-white px-4 py-3 text-left shadow-xs transition hover:border-indigo-400 focus-visible:outline-2 focus-visible:outline-sky-500 focus-visible:bg-sky-50',
-                      'grid gap-x-4 gap-y-1 grid-cols-[minmax(0,1fr)_auto] lg:grid-cols-[150px_minmax(0,1fr)_minmax(0,300px)_130px] lg:items-center',
+                      'grid gap-x-4 gap-y-1 grid-cols-[minmax(0,1fr)_auto] lg:grid-cols-[150px_minmax(0,1fr)_minmax(0,300px)_minmax(130px,auto)] lg:items-center',
                       last === r.id ? 'border-indigo-500 ring-2 ring-indigo-100' : fresh ? 'border-amber-400 border-l-8 bg-amber-50' : 'border-slate-200',
                     )}
                   >

@@ -176,6 +176,7 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
   const payRef = useRef<HTMLButtonElement | null>(null);
   const feeRef = useRef<HTMLInputElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
+  const ownStep = useRef(false);
 
   const apply = useCallback((x: Detail) => {
     setD(x);
@@ -231,7 +232,11 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
     if (!d) return;
     const t = setTimeout(() => {
       const a = document.activeElement as HTMLElement | null;
-      if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+      // a change made here (a step done from the fee field with Enter) moves on; a live update from another
+      // terminal never takes the focus out of a field
+      const own = ownStep.current;
+      ownStep.current = false;
+      if (!own && a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
       if (document.querySelector('[data-slot="dialog-content"] [data-testid="reason-dialog"], [data-testid="confirm-dialog"]')) return;
       (stepAction === 'pay' ? payRef.current : primaryRef.current ?? payRef.current ?? closeRef.current)?.focus();
     }, 50);
@@ -289,7 +294,9 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
   const run = async (fn: () => Promise<Detail>, ok: string) => {
     setBusy(true);
     try {
-      apply(await fn());
+      const x = await fn();
+      ownStep.current = true;
+      apply(x);
       toast.success(ok);
       onChanged();
     } catch (e) {
@@ -555,7 +562,7 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
                   size="lg"
                   disabled={busy || step.payment.state === 'disabled'}
                   onClick={() => void openInPos()}
-                  className="w-full gap-2 bg-emerald-700 text-white hover:bg-emerald-800"
+                  className="w-full gap-2 bg-emerald-700 text-white hover:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-500"
                   title={step.payment.state === 'disabled' ? step.payment.reason : 'เปิดเป็นบิลที่หน้าขาย แล้วรับชำระ'}
                 >
                   <ShoppingCart className="h-4 w-4" /> รับเงิน
