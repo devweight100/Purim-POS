@@ -123,3 +123,8 @@ See `Installer/Server/คู่มือร้านออนไลน์ LINE (
 ## Links in LINE messages (owner bug 2026-11-26)
 - Opening "ดูออเดอร์" from an accepted-order push showed "LINE ไม่ยืนยันตัวตน กรุณาเปิดจาก LINE ใหม่": the link was the plain web address, so LINE opened it in its in-app browser outside the LIFF app and LIFF handed back a stored, expired ID token that LINE's verify endpoint refused.
 - Fix: message links go through `https://liff.line.me/<LIFF ID>/<path>` (`shopLink`, LINE appends the path to the LIFF endpoint `https://<domain>/shop`) when LINE login is configured. The shop page also signs in to LINE again once per tab when the ID token is missing, expired, or refused (401); "ลองใหม่" allows one more attempt. Old messages already sent keep the web address and now recover through that re-login.
+
+## Step flow + full-screen order window (owner 2026-11-26)
+Back office order window is full screen with a step indicator and ONE next-step button (รับงาน → เริ่มจัดของ →
+จัดของเสร็จ → ออกไปส่ง (delivery) → ส่งเสร็จ); รับเงิน always in the same place; rare actions in "อื่นๆ". UI only, server
+rules unchanged. See `docs/online-orders-flow.md`.
