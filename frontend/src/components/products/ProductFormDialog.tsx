@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { hasPermission } from "@/lib/permissions";
 import { useAuthStore } from "@/lib/store/auth-store";
@@ -26,11 +26,12 @@ import type { CategoryOption, ProductRecord, SupplierOption } from "./types";
  * unit / category / details, bundle items, pack units, all barcodes, suppliers, wholesale steps, photos (each section
  * folds). Enter = save (a textarea needs Ctrl+Enter; the barcode fields' Enter = next field, scanners send Enter).
  */
-export function ProductFormDialog({ state, products, onNeedCatalog, categories, suppliers, reloadCategories, reloadSuppliers }: {
+export function ProductFormDialog({ state, products, categories, suppliers, reloadCategories, reloadSuppliers }: {
   state: ProductFormState;
-  /** every product (bundle item picker); loaded with onNeedCatalog when a bundle is edited */
+  /** products the page already holds (bundle rows show them without a request); the bundle picker searches the server */
   products: ProductRecord[];
-  onNeedCatalog: () => Promise<unknown>;
+  /** no longer used: the bundle picker searches the server (kept so callers need not change) */
+  onNeedCatalog?: () => Promise<unknown>;
   categories: CategoryOption[];
   suppliers: SupplierOption[];
   reloadCategories: () => Promise<void>;
@@ -58,12 +59,8 @@ export function ProductFormDialog({ state, products, onNeedCatalog, categories, 
       return { ...prev, supplierEntries };
     });
   };
-  const needCatalog = dialogMode !== null && form.isBundle;
   // Enter anywhere in the form = save (not while the quick "new category / supplier" dialog is open)
   const onEnter = useEnterSubmit(() => handleSave(), { disabled: quick !== null });
-  useEffect(() => {
-    if (needCatalog) void onNeedCatalog().catch(() => undefined);
-  }, [needCatalog, onNeedCatalog]);
 
   return (
     <Dialog open={dialogMode !== null} onOpenChange={open => { if (!open) close(); }}>

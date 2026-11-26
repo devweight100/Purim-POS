@@ -160,10 +160,20 @@ export class ProductsService {
       if (productId && id === productId) throw new BadRequestException('ชุดสินค้าไม่สามารถมีตัวเองเป็นส่วนประกอบได้');
       ids.push(id);
     }
-    const found = await tx.product.findMany({ where: { id: { in: ids } }, select: { id: true } });
+    const found = await tx.product.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, isBundle: true, isActive: true } });
     const ok = new Set(found.map((p: any) => p.id));
     const missing = ids.filter((id) => !ok.has(id));
     if (missing.length) throw new BadRequestException(`ไม่พบสินค้าในชุดสินค้า (bundle): ${missing.join(', ')}`);
+    // a bundle inside a bundle (and so any cycle) or a newly added disabled product is refused; rows the bundle
+    // already had stay as they are (round shift/today/bundle, docs/round-shift-today-bundle-replace.md)
+    const had = new Set<string>(
+      productId ? (await tx.productBundleItem.findMany({ where: { bundleProductId: productId }, select: { childProductId: true } })).map((r: any) => r.childProductId) : [],
+    );
+    for (const p of found) {
+      if (had.has(p.id)) continue;
+      if (p.isBundle) throw new BadRequestException(`"${p.name}" เป็นสินค้าชุด ใส่ในชุดสินค้าอื่นไม่ได้`);
+      if (p.isActive === false) throw new BadRequestException(`"${p.name}" ปิดการใช้งานอยู่ เพิ่มเข้าชุดสินค้าไม่ได้`);
+    }
   }
 
   private barcodeCodes(barcodes: any[] | undefined): string[] | undefined {

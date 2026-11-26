@@ -1,13 +1,16 @@
 "use client";
 
-import { Gift, Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Gift, Trash2 } from "lucide-react";
+import { apiFetch } from "@/lib/api";
+import { ProductSearchPicker, type PickedProduct } from "../ProductSearchPicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/utils";
 import { qtyInputMode, qtyStep, useAllowDecimalQty } from "@/lib/qty";
 import type { BundleItemForm, ProductForm, ProductRecord, SetForm } from "../types";
 
-function BundleSummary({ bundleItems, products }: { bundleItems: BundleItemForm[]; products: ProductRecord[] }) {
+function BundleSummary({ bundleItems, products }: { bundleItems: BundleItemForm[]; products: Pick<ProductRecord, "id" | "priceLevel1" | "basePrice" | "costPrice" | "stock">[] }) {
   const totalComponentPrice = bundleItems.reduce((sum, bi) => {
     const child = products.find((p) => p.id === bi.childProductId);
     const pPrice = child ? Number(child.priceLevel1 ?? child.basePrice ?? 0) : 0;
@@ -58,12 +61,55 @@ export function BundleItemsSection({ form, setForm, products, editingProductId }
   editingProductId?: string;
 }) {
   const allowDecimalQty = useAllowDecimalQty();
+  // name / price / stock of the products in the bundle: the page's list when it has them, else the picker's row,
+  // else GET /products/:id (the back office does not keep thousands of products in memory)
+  const [picked, setPicked] = useState<Record<string, PickedProduct>>({});
+  const known = (id: string): PickedProduct | ProductRecord | undefined => picked[id] || products.find((p) => p.id === id);
+  const missing = form.bundleItems.map((bi) => bi.childProductId).filter((id) => id && !picked[id] && !products.some((p) => p.id === id));
+  const missingKey = missing.join(",");
+  useEffect(() => {
+    if (!missingKey) return;
+    let cancelled = false;
+    for (const id of missingKey.split(",")) {
+      apiFetch<PickedProduct>(`/products/${id}`)
+        .then((p) => { if (!cancelled && p?.id) setPicked((m) => ({ ...m, [p.id]: p })); })
+        .catch(() => undefined);
+    }
+    return () => { cancelled = true; };
+  }, [missingKey]);
 
-  const addBundleItem = () => {
-    setForm((f) => ({
-      ...f,
-      bundleItems: [...f.bundleItems, { childProductId: "", quantity: 1 }],
-    }));
+  const qtyRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [, setFocusTick] = useState(0);
+  // after a pick: focus that product's quantity once its row is on screen
+  const focusId = useRef<string | null>(null);
+  useEffect(() => {
+    const id = focusId.current;
+    if (!id) return;
+    const el = qtyRefs.current[id];
+    if (el) {
+      focusId.current = null;
+      el.focus();
+      el.select();
+    }
+  });
+
+  const inBundle = new Set(form.bundleItems.map((bi) => bi.childProductId));
+  /** why a product cannot go into this bundle (shown on its row in the search list) */
+  const blocked = (p: PickedProduct): string | null => {
+    if (p.id === editingProductId) return "สินค้าชุดนี้เอง";
+    if (p.isBundle) return "เป็นสินค้าชุด (ใส่ชุดซ้อนชุดไม่ได้)";
+    if (p.isActive === false) return "ปิดใช้งานอยู่";
+    return null;
+  };
+
+  const addProduct = (p: PickedProduct) => {
+    setPicked((m) => ({ ...m, [p.id]: p }));
+    // already in the bundle: go to its quantity instead of a second row
+    if (!inBundle.has(p.id)) {
+      setForm((f) => ({ ...f, bundleItems: [...f.bundleItems, { childProductId: p.id, quantity: 1 }] }));
+    }
+    focusId.current = p.id;
+    setFocusTick((n) => n + 1);
   };
 
   const removeBundleItem = (idx: number) => {
@@ -73,89 +119,89 @@ export function BundleItemsSection({ form, setForm, products, editingProductId }
     }));
   };
 
-  const updateBundleItem = <K extends keyof BundleItemForm>(idx: number, field: K, val: BundleItemForm[K]) => {
+  const updateQty = (idx: number, val: BundleItemForm["quantity"]) => {
     setForm((f) => ({
       ...f,
-      bundleItems: f.bundleItems.map((item, i) => (i === idx ? { ...item, [field]: val } : item)),
+      bundleItems: f.bundleItems.map((item, i) => (i === idx ? { ...item, quantity: val } : item)),
     }));
   };
 
+  const summaryRows = form.bundleItems
+    .map((bi) => known(bi.childProductId))
+    .filter(Boolean)
+    .map((p) => ({ id: p!.id, priceLevel1: p!.priceLevel1 ?? undefined, basePrice: p!.basePrice ?? undefined, costPrice: p!.costPrice ?? undefined, stock: Number(p!.stock ?? 0) }));
+
   return (
-    <section className="rounded-xl border-2 border-purple-200 bg-purple-50/20 p-5 space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 pb-3 border-b border-purple-100">
-        <div className="flex items-center gap-2">
-          <Gift className="h-5 w-5 text-purple-600 shrink-0" />
-          <div>
-            <h3 className="font-bold text-slate-900 text-base">รายการสินค้าในชุด (Bundle Items)</h3>
-            <p className="text-xs text-slate-500">เลือกสินค้าและจำนวนที่จะรวมอยู่ในชุดนี้ เมื่อขายจะตัดสต็อกและเคลมแยกชิ้นตามรายการนี้</p>
-          </div>
+    <section className="rounded-xl border-2 border-purple-200 bg-purple-50/20 p-5 space-y-4" data-testid="bundle-items">
+      <div className="flex items-center gap-2 pb-3 border-b border-purple-100">
+        <Gift className="h-5 w-5 text-purple-600 shrink-0" />
+        <div>
+          <h3 className="font-bold text-slate-900 text-base">รายการสินค้าในชุด (Bundle Items)</h3>
+          <p className="text-xs text-slate-500">เลือกสินค้าและจำนวนที่จะรวมอยู่ในชุดนี้ เมื่อขายจะตัดสต็อกและเคลมแยกชิ้นตามรายการนี้</p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="border-purple-400 bg-white text-purple-700 hover:bg-purple-50 cursor-pointer"
-          onClick={addBundleItem}
-        >
-          <Plus className="w-3.5 h-3.5 mr-1" /> เพิ่มสินค้าเข้าชุด
-        </Button>
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-xs font-semibold text-slate-600">เพิ่มสินค้าเข้าชุด</label>
+        <ProductSearchPicker
+          onPick={addProduct}
+          blocked={blocked}
+          label="ค้นหาสินค้าเพื่อเพิ่มเข้าชุด"
+          placeholder="พิมพ์ชื่อ / รหัส / บาร์โค้ด แล้วกด ↑↓ เลือก, Enter เพิ่ม"
+          testId="bundle-item-picker"
+        />
       </div>
 
       {form.bundleItems.length === 0 ? (
         <div className="rounded-xl border-2 border-dashed border-purple-200 bg-white/70 py-6 text-center text-sm text-slate-400">
           <Gift className="w-8 h-8 mx-auto text-purple-300 mb-2" />
           <p className="font-medium text-slate-600">ยังไม่มีรายการสินค้าในชุด</p>
-          <p className="text-xs text-slate-400 mt-0.5">คลิก &quot;เพิ่มสินค้าเข้าชุด&quot; เพื่อเลือกสินค้ามารวมเป็นเซ็ต</p>
+          <p className="text-xs text-slate-400 mt-0.5">พิมพ์ค้นหาสินค้าในช่องด้านบน แล้วกด Enter เพื่อเพิ่มเข้าชุด</p>
         </div>
       ) : (
         <div className="space-y-2.5">
           {form.bundleItems.map((bi, idx) => {
-            const child = products.find((p) => p.id === bi.childProductId);
+            const child = known(bi.childProductId);
             const childPrice = child ? Number(child.priceLevel1 ?? child.basePrice ?? 0) : 0;
             const childStock = child ? Number(child.stock ?? 0) : 0;
             const itemLineTotal = childPrice * (Number(bi.quantity) || 1);
+            const inactive = child?.isActive === false;
 
             return (
               <div
-                key={idx}
+                key={bi.childProductId || idx}
+                data-testid="bundle-item-row"
                 className="bg-white p-3 rounded-xl border border-purple-200/80 shadow-2xs flex flex-col sm:flex-row sm:items-center gap-3"
               >
-                <div className="flex-1 space-y-1 min-w-[200px]">
-                  <label className="text-xs font-semibold text-slate-600">สินค้าส่วนประกอบ #{idx + 1}</label>
-                  <select
-                    value={bi.childProductId}
-                    onChange={(e) => updateBundleItem(idx, "childProductId", e.target.value)}
-                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-purple-500 font-medium text-slate-800"
-                  >
-                    <option value="">-- เลือกสินค้า --</option>
-                    {products
-                      // disabled products are not offered (one already in the bundle stays listed)
-                      .filter((p) => p.id !== editingProductId && !p.isBundle && (p.isActive !== false || p.id === bi.childProductId))
-                      .map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} ({p.sku}) - สต็อก: {p.stock ?? 0} {p.unit || "ชิ้น"}
-                        </option>
-                      ))}
-                  </select>
+                <div className="flex-1 min-w-0 space-y-0.5">
+                  <div className="text-xs font-semibold text-slate-600">สินค้าส่วนประกอบ #{idx + 1}</div>
+                  <div className="font-semibold text-slate-900 break-words">{child?.name || "กำลังโหลด..."}</div>
+                  <div className="text-xs text-slate-500">
+                    {child?.sku}
+                    {inactive && <span className="ml-2 rounded bg-slate-200 px-1.5 font-bold text-slate-600">ปิดใช้งาน</span>}
+                  </div>
                 </div>
 
-                <div className="w-32 space-y-1">
-                  <label className="text-xs font-semibold text-slate-600">จำนวนใน 1 ชุด</label>
+                <div className="w-32 space-y-1 shrink-0">
+                  <label className="text-xs font-semibold text-slate-600" htmlFor={`bundle-qty-${bi.childProductId}`}>จำนวนใน 1 ชุด</label>
                   <div className="flex items-center gap-1.5">
                     <Input
+                      id={`bundle-qty-${bi.childProductId}`}
+                      ref={(el) => { qtyRefs.current[bi.childProductId] = el; }}
                       type="number"
                       min={qtyStep(allowDecimalQty)}
                       step={qtyStep(allowDecimalQty)}
                       inputMode={qtyInputMode(allowDecimalQty)}
                       value={bi.quantity}
-                      onChange={(e) => updateBundleItem(idx, "quantity", e.target.value)}
+                      aria-label={`จำนวน ${child?.name || ""} ใน 1 ชุด`}
+                      onChange={(e) => updateQty(idx, e.target.value)}
                       className="border-slate-300 text-center"
                     />
                     <span className="text-xs text-slate-500 shrink-0">{child?.unit || "ชิ้น"}</span>
                   </div>
                 </div>
 
-                <div className="text-right sm:w-36 space-y-0.5">
+                <div className="text-right sm:w-36 space-y-0.5 shrink-0">
                   <div className="text-[11px] text-slate-400">ราคาปกติ/ชิ้น: {formatCurrency(childPrice)}</div>
                   <div className="text-xs font-bold text-slate-700">
                     รวม {formatCurrency(itemLineTotal)}
@@ -167,6 +213,7 @@ export function BundleItemsSection({ form, setForm, products, editingProductId }
                   type="button"
                   variant="ghost"
                   size="icon"
+                  aria-label={`เอา ${child?.name || "สินค้า"} ออกจากชุด`}
                   className="h-8 w-8 text-rose-500 hover:bg-rose-50 self-end sm:self-center cursor-pointer"
                   onClick={() => removeBundleItem(idx)}
                 >
@@ -177,7 +224,7 @@ export function BundleItemsSection({ form, setForm, products, editingProductId }
           })}
 
           {/* Summary card for Bundle */}
-          <BundleSummary bundleItems={form.bundleItems} products={products} />
+          <BundleSummary bundleItems={form.bundleItems} products={summaryRows} />
         </div>
       )}
     </section>

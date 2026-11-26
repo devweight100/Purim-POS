@@ -15,7 +15,7 @@ Owner requests 2026-11-26. Progress file of this round (plan, done, next, decisi
 - [x] 1 reproduce + root cause (see Shift section)
 - [x] 1 fix + backend e2e + Playwright (`frontend/e2e/38-shift-handover.spec.ts`, store-flow 'shift hand-over on one PC')
 - [x] 2 audit + defaults (`frontend/e2e/39-today-default.spec.ts`)
-- [ ] 3 bundle picker
+- [x] 3 bundle picker (`frontend/e2e/40-bundle-picker.spec.ts`)
 - [ ] 4 delete with replacement
 - [ ] full verification
 
@@ -82,3 +82,23 @@ Bug found and fixed on the way: `GET /orders?startDate=YYYY-MM-DD&endDate=YYYY-M
 midnight (picking one day showed nothing, a range missed the last day and took 7 h of the day before). It now uses
 the shared Bangkok day filter (`dateRangeFilter`: whole Bangkok days, end inclusive); ISO timestamps unchanged.
 Shared helper: `frontend/src/lib/date-presets.ts`.
+
+## 3. Bundle items picker
+
+`frontend/src/components/products/ProductSearchPicker.tsx` (new, reusable combobox): server paging search
+`GET /products/page?q=&limit=20&status=all` (the products page search: name, SKU, ชื่อผู้ผลิต, barcodes, pack
+barcodes, supplier names/codes; ILIKE, Thai text as typed), 200 ms debounce, newest reply wins, rows of the previous
+text are dropped at once (an early Enter never picks a stale row). Keyboard: type, ↑/↓ (skips rows that cannot be
+picked), Enter picks (never submits the product form), Escape closes the list. Rows show name, SKU, two barcodes,
+price, stock; a row that cannot be picked is greyed with the reason: "สินค้าชุดนี้เอง", "เป็นสินค้าชุด (ใส่ชุดซ้อนชุด
+ไม่ได้)", "ปิดใช้งานอยู่".
+
+`BundleItemsSection`: the picker replaces the dropdown rows and the "เพิ่มสินค้าเข้าชุด" button; a pick adds a row
+(quantity 1) and focuses its quantity (selected, type the number); picking a product already in the bundle focuses its
+quantity instead of adding a second row. Rows show name / SKU / "ปิดใช้งาน" chip, quantity, unit price, line total,
+stock; names of rows the page does not hold come from GET /products/:id. The form no longer loads the whole
+catalogue when a bundle is edited.
+
+Server (`assertBundleChildren`): a NEWLY added child that is a bundle (no nesting, so no cycles) or a disabled product
+is refused (400); rows the bundle already had are kept as they are (old data never blocks an edit); self was
+already refused.
