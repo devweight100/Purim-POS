@@ -13,10 +13,12 @@ Back office "ออเดอร์ออนไลน์" (`/online-orders`). UI 
   เสร็จ), the current step, ONE next-step action + label, the one-line hint, the list text and the state of the
   รับเงิน slot. Used by the list rows, the order window and the POS held-bills sheet.
 - **Full-screen order window** (`components/online-orders/OnlineOrderDetail.tsx`, a Base UI dialog covering the
-  screen): header (order no, status chip, pickup / delivery, customer + phone, order time, ปิด Esc), step bar
+  screen): header (order no, status chip, pickup / delivery, customer + phone, order time; on the right the rare actions
+  "แก้ไขรายการ" + "อื่นๆ" and ปิด Esc), step bar
   (step indicator, "ตอนนี้: <hint>", claim badge "คุณกำลังจัด / กำลังจัดโดย X / ยังไม่มีใครรับจัด"), body = item table
   (scrolls on its own) + right panel (money, the รับเงิน slot, delivery address / note / member, LINE notice, staff
-  alerts), footer = next-step button on the left, rare actions on the right. The page itself no longer scrolls
+  alerts), footer = next-step button (+ พิมพ์ใบจัดของ). The rare actions sat at the footer's right first; moved to the
+  header because the toasts (bottom right) covered "อื่นๆ" for a few seconds after an action. The page itself no longer scrolls
   when an order is opened; the list keeps its scroll and the opened row stays highlighted and focused after Esc.
 - **Next step, one button** (focused, Enter does it; after each step the next one gets the focus):
 
@@ -36,7 +38,7 @@ Back office "ออเดอร์ออนไลน์" (`/online-orders`). UI 
 - **รับเงิน always in the same place** (right panel under the total): disabled with "รับงานก่อนจึงรับเงินได้" on a new
   order (prices / fee are agreed on accept), the open-as-POS-bill flow from รับแล้ว through กำลังไปส่ง, "ชำระแล้ว · บิล
   <no> (<amount>)" once paid. A paid delivery order still walks ออกไปส่ง → ส่งเสร็จ.
-- **Rare actions** away from the step button (footer, far right): "แก้ไขรายการ" toggle (quantity / price / delete /
+- **Rare actions** away from the step button (header, right, beside ปิด): "แก้ไขรายการ" toggle (quantity / price / delete /
   add product / member; the fee field is always editable while the order is editable), and the "อื่นๆ" menu:
   รับจัดออเดอร์นี้ (claim without accepting), ปล่อยงาน, ปลดล็อก/โอนมาที่ฉัน (managers, confirmation), ปิดออเดอร์เลย
   (ข้ามขั้นตอน) (the old "เสร็จแล้ว" shortcut the server allows from รับแล้ว / จัดเสร็จ; unpaid confirmation kept), and
@@ -52,8 +54,9 @@ Back office "ออเดอร์ออนไลน์" (`/online-orders`). UI 
   the only skip left is "ปิดออเดอร์เลย (ข้ามขั้นตอน)" in the อื่นๆ menu, for e.g. a customer who paid outside the
   POS. The picking slip is offered from รับแล้ว on (not on a new order).
 - Keyboard: the window opens with the focus on the next-step button (or รับเงิน when that is the next step); a
-  live update from another terminal never moves the focus out of a field; Esc that closes the อื่นๆ menu does not
-  also close the window.
+  live update from another terminal never moves the focus out of a field; Esc while the อื่นๆ menu is open closes
+  only the menu (also in the first ~20 ms after opening, when the focus is still on its button: the window's own
+  Escape handling then reached the window first and closed it).
 - Colours: step button = primary (indigo), รับเงิน = emerald (money), rare actions outline / menu.
 
 ## Tests
@@ -67,3 +70,21 @@ Back office "ออเดอร์ออนไลน์" (`/online-orders`). UI 
 ## Screenshots
 Session scratchpad `online-orders-flow/`: `before-*` (commit d584aa1) and `after-*` for list, detail-new,
 detail-accepted, detail-ready-delivery, detail-paid at 1366x768, 1920x1080, 1093x614 (deviceScaleFactor 2).
+
+## e2e 37 (POS pack arrows) failure found in this round (coordinator follow-up)
+- Root cause 1 (real, data order): the POS catalogue (`ProductsService.catalogRows`, GET /products/sync and
+  GET /products) and the products page's tie / no-sort order were the PHYSICAL row order (`ORDER BY p.ctid`). An
+  UPDATE (e.g. stock adjust touching the product) or space reused after (auto)vacuum moves a row, so a newer
+  product could be listed above an older one; a full reload and a delta-synced list could also differ. The POS
+  search lists matches in catalogue order, so "the first result" depended on the database's history: 37 got the
+  3rd product of its search first (fails alone on d584aa1 and on this branch; it passed in the cc5b5c1 run by luck
+  of the row layout). Fix: fixed order `created_at, id` (oldest first) in `catalogRows` and the page query
+  (`x.pos` = created_at, ties by id), the same in both so the products page test (page order = catalogue order)
+  still holds. Delta sync already keeps positions and appends new products, which matches this order.
+- Root cause 2 (test timing): 37 typed at 30 ms per key; the POS scanner detector treats >= 4 keys at most 35 ms apart
+  + Enter as a scanner burst, so on a loaded machine a gap over 35 ms restarted the "burst" mid-code and Enter sent
+  only the tail to the scanner path (nothing added). The spec now types at a person's pace (90 ms); what it checks
+  is unchanged.
+- Also: backend e2e still expected the plain web link in the LINE link push after d584aa1 made it a LIFF link; that
+  stale expectation failed it and the 6 online-shop tests after it (the shop stayed in LINE mode). Expectation
+  updated to the LIFF link (and not the web address).
