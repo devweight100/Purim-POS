@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Coins, Gift, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
 import { Customer, calculateRedemptionDiscount } from '@/lib/customer-service';
+import { memberRates } from '@/lib/loyalty-rates';
 import { useCartStore } from '@/lib/store/cart-store';
 import { formatCurrency } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -24,8 +25,11 @@ export function RedeemPointsModal({ open, onOpenChange, customer }: RedeemPoints
   const [pointsInput, setPointsInput] = useState<number>(0);
   const cart = useCartStore();
 
-  const ratePoints = customer?.pointRedeemRatePoints || 100;
-  const rateDiscount = customer?.pointRedeemDiscountBaht || 1;
+  // member's own rate when set, else the shop's (shared/src/loyalty.ts)
+  const rates = memberRates(customer);
+  const ratePoints = rates.redeemPoints;
+  const rateDiscount = rates.redeemBaht;
+  const minPoints = rates.minRedeemPoints;
   const availablePoints = customer?.points || 0;
 
   // Opening (or a change of the points used while open) starts from the points already used
@@ -63,6 +67,10 @@ export function RedeemPointsModal({ open, onOpenChange, customer }: RedeemPoints
     }
     if (pointsInput > availablePoints) {
       toast.error(`แต้มสะสมไม่เพียงพอ (ลูกค้ามี ${availablePoints.toLocaleString()} แต้ม)`);
+      return;
+    }
+    if (minPoints > 0 && validPoints < minPoints) {
+      toast.error(`ใช้แต้มได้ตั้งแต่ ${minPoints.toLocaleString()} แต้มขึ้นไป`);
       return;
     }
     if (calculatedDiscount <= 0) {

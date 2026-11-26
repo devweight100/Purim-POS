@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../auth/auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequirePermissions } from '../auth/roles.decorator';
 import { customerPageIds, parseCustomerPageQuery } from './customer-list';
+import { commitImport, planImport } from './member-import';
 import { parseDeliveryFee } from '../../../shared/src/online-shop';
 import { normalizeLevel } from '../../../shared/src/price-level';
 import { userHasPermission } from '../auth/permissions';
@@ -60,6 +61,19 @@ export function checkCreditFields(details: Record<string, any>, current: Record<
     out[field] = value;
   }
   return out;
+}
+
+/** Member point rate fields: a number > 0, or null / '' / 0 = the shop's rate (stored as null). */
+export const RATE_FIELDS = ['pointEarnRateBaht', 'pointEarnUnits', 'pointRedeemRatePoints', 'pointRedeemDiscountBaht'] as const;
+export function checkRateFields(details: Record<string, any>) {
+  for (const f of RATE_FIELDS) {
+    if (details[f] === undefined) continue;
+    const v = details[f];
+    if (v === null || v === '' || v === 0 || v === '0') { details[f] = null; continue; }
+    const n = typeof v === 'number' ? v : Number(v);
+    if (typeof v === 'boolean' || !Number.isFinite(n) || n < 0 || n > 1_000_000) throw new BadRequestException('อัตราคะแนนต้องเป็นตัวเลขมากกว่า 0 (เว้นว่าง = ใช้เรทกลางของร้าน)');
+    details[f] = n;
+  }
 }
 
 function cleanName(name: any, required: boolean): string | undefined {
@@ -118,12 +132,28 @@ export class CustomersController {
     }
   }
 
+  /**
+   * Member import (Excel / CSV, docs/round-shift-today-bundle-replace.md 5b): { rows: [{ rowNo, values: { code, name,
+   * phone, ... } }] } -> per row create / update / unchanged / error with the reasons and the counts. No writes.
+   */
+  @Post('import/preview')
+  importPreview(@Body() body: { rows?: unknown }, @Request() req: any) {
+    return planImport(this.prisma, body?.rows, req?.user);
+  }
+
+  /** Import for real: all rows or none (any row with an error -> 400 IMPORT_HAS_ERRORS); audited. */
+  @Post('import')
+  importCommit(@Body() body: { rows?: unknown; fileName?: unknown }, @Request() req: any) {
+    return commitImport(this.prisma, body?.rows, req?.user, typeof body?.fileName === 'string' ? body.fileName.slice(0, 200) : undefined);
+  }
+
   @Post()
   async create(@Body() data: any, @Request() req: any) {
     if (!data || typeof data !== 'object') throw new BadRequestException('ข้อมูลลูกค้าไม่ถูกต้อง');
     const { name, phone, email, address, note, id, points, createdAt, updatedAt, currentDebt, profile: ignoredProfile, ...profile } = data;
     Object.assign(profile, checkCreditFields(profile, CREDIT_DEFAULTS, req?.user));
     checkDeliveryFee(profile);
+    checkRateFields(profile);
     await this.checkLevel(profile, 1, req?.user);
     const cleanPhoneValue = cleanPhone(phone);
     if (cleanPhoneValue && (await this.prisma.customer.findUnique({ where: { phone: cleanPhoneValue } }))) {
@@ -258,6 +288,7 @@ export class CustomersController {
     const current = (existing.profile as any) || {};
     Object.assign(details, checkCreditFields(details, current, req?.user));
     checkDeliveryFee(details);
+    checkRateFields(details);
     await this.checkLevel(details, current.priceLevel, req?.user);
     const profile = { ...current, ...details };
     const cleanPhoneValue = cleanPhone(phone);

@@ -1,3 +1,4 @@
+import { effectivePointRates, pointsForSale, shopPointRates } from '../../../shared/src/loyalty';
 import { mapReplacedLines } from '../products/product-replace';
 import { dateRangeFilter } from '../common/bangkok-date';
 import { businessTransaction } from '../prisma/business-transaction';
@@ -11,7 +12,7 @@ import { ApprovalsService, ApprovalReason } from '../approvals/approvals.service
 import * as ledger from '../finance/ledger';
 import { validateCheckoutInput, lineAmounts, checkPointsDiscount, claimableBaseQty, paidPerBaseUnit, round2, MAX_ITEM_QTY } from './checkout-guards';
 import { linkOnlineOrder, unlinkOnlineOrder } from '../online-shop/online-order-payment';
-import { billTotals, earnedPoints, normVatRate, vatIncluded } from '../../../shared/src/pricing';
+import { billTotals, normVatRate, vatIncluded } from '../../../shared/src/pricing';
 import { lineUnitCandidates, normalizeLevel, pickLevelPrice, type PriceLevel } from '../../../shared/src/price-level';
 import { addQty, decimalQtyAllowed, hasMax2Decimals, mulQty, parseQty, qn, subQty } from '../common/qty';
 import { nextDocNumber } from '../common/doc-number';
@@ -315,13 +316,14 @@ export class OrdersService {
       if (pointsUsed > (customer?.points || 0)) throw new BadRequestException('แต้มคงเหลือไม่เพียงพอ');
       const config: any = settings?.loyaltyConfig || {};
       const profile: any = customer?.profile || {};
-      const rate = Number(profile.pointEarnRateBaht || config.defaultPointEarnRateBaht || 500);
-      const units = Number(profile.pointEarnUnits || config.defaultPointEarnUnits || 10);
-      const redeemRate = Number(profile.pointRedeemRatePoints || config.defaultPointRedeemRatePoints || 100);
-      const redeemBaht = Number(profile.pointRedeemDiscountBaht || config.defaultPointRedeemDiscountBaht || 1);
+      // member's own rate when set (> 0), else the shop's (shared/src/loyalty.ts: the same rule as the POS)
+      const pointRates = effectivePointRates(profile, shopPointRates(config));
+      const redeemRate = pointRates.redeemPoints;
+      const redeemBaht = pointRates.redeemBaht;
       const pointsDiscount = round2(Number(data.pointsDiscountAmount || 0));
       if (config.isLoyaltyEnabled === false && pointsUsed > 0) throw new BadRequestException('ร้านปิดระบบแต้มสะสม ใช้แต้มไม่ได้');
       if (pointsUsed > 0 && !customer) throw new BadRequestException('ใช้แต้มต้องระบุลูกค้า');
+      if (pointsUsed > 0 && pointsUsed < pointRates.minRedeemPoints) throw new BadRequestException(`ใช้แต้มได้ตั้งแต่ ${pointRates.minRedeemPoints.toLocaleString('en-US')} แต้มขึ้นไป`);
       checkPointsDiscount(pointsUsed, pointsDiscount, redeemRate, redeemBaht, totalAmount <= 0.01);
       if (pointsDiscount > discountAmount + 0.01) throw new BadRequestException('ส่วนลดคะแนนเกินส่วนลดบิล');
 
@@ -370,7 +372,7 @@ export class OrdersService {
           verifiedClaimDiscount = Math.min(requestedClaimDiscount, round2(allowance));
         }
       }
-      const pointsEarned = customer && config.isLoyaltyEnabled !== false ? earnedPoints(totalAmount, rate, units) : 0;
+      const pointsEarned = customer ? pointsForSale(totalAmount, pointRates) : 0;
       if (customer) await tx.customer.update({ where: { id: customer.id }, data: { points: { increment: pointsEarned - pointsUsed } } });
       if (creditAmount > 0 && profile.isCreditBlocked) throw new BadRequestException('ลูกค้าถูกระงับเครดิต');
       if (creditAmount > 0 && Number(profile.creditLimit) > 0) {

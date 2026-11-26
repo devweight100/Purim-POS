@@ -1,4 +1,6 @@
 'use client';
+import { discountForPoints, pointsForSale, rateValue } from '@shared/loyalty';
+import { memberRates, setShopLoyaltyConfig } from './loyalty-rates';
 import { useSyncExternalStore } from 'react';
 import { api, apiFetch, getAuthToken } from './api';
 import type { ApiCustomer } from './types';
@@ -30,10 +32,14 @@ export interface Customer {
   points: number; // แต้มสะสมคงเหลือปัจจุบัน
   totalPointsEarned: number; // แต้มที่เคยได้รับทั้งหมด
   totalPointsRedeemed: number; // แต้มที่เคยแลกไปแล้ว
-  pointEarnRateBaht: number; // ยอดซื้อทุกๆ กี่บาท (เช่น 500 บาท)
-  pointEarnUnits: number; // ได้รับกี่คะแนน (เช่น 10 คะแนน)
-  pointRedeemRatePoints: number; // ใช้กี่คะแนน (เช่น 100 คะแนน)
-  pointRedeemDiscountBaht: number; // ได้ส่วนลดกี่บาท (เช่น 1 บาท)
+  /** member's own rate; undefined / 0 = the shop's rate (shared/src/loyalty.ts) */
+  pointEarnRateBaht?: number; // ยอดซื้อทุกๆ กี่บาท (เช่น 500 บาท)
+  /** member's own rate; undefined / 0 = the shop's rate (shared/src/loyalty.ts) */
+  pointEarnUnits?: number; // ได้รับกี่คะแนน (เช่น 10 คะแนน)
+  /** member's own rate; undefined / 0 = the shop's rate (shared/src/loyalty.ts) */
+  pointRedeemRatePoints?: number; // ใช้กี่คะแนน (เช่น 100 คะแนน)
+  /** member's own rate; undefined / 0 = the shop's rate (shared/src/loyalty.ts) */
+  pointRedeemDiscountBaht?: number; // ได้ส่วนลดกี่บาท (เช่น 1 บาท)
 
   // 5. ข้อมูลสำหรับออกใบกำกับภาษี / ข้อมูลบริษัท
   companyName?: string; // ชื่อจดทะเบียนนิติบุคคล
@@ -50,6 +56,8 @@ export interface Customer {
 }
 
 export interface LoyaltySystemConfig {
+  /** ใช้แต้มขั้นต่ำต่อครั้ง (0 = ไม่มีขั้นต่ำ) */
+  minRedeemPoints?: number;
   defaultPointEarnRateBaht: number; // เช่น 500 บาท
   defaultPointEarnUnits: number; // ได้ 10 คะแนน
   defaultPointRedeemRatePoints: number; // ใช้ 100 คะแนน
@@ -100,10 +108,12 @@ export function normalizeCustomerRow(c: ApiCustomer | null | undefined, idx = 0)
     points: Number(merged.points ?? 0),
     totalPointsEarned: Number(merged.totalPointsEarned ?? merged.points ?? 0),
     totalPointsRedeemed: Number(merged.totalPointsRedeemed ?? 0),
-    pointEarnRateBaht: Number(merged.pointEarnRateBaht ?? DEFAULT_LOYALTY_CONFIG.defaultPointEarnRateBaht),
-    pointEarnUnits: Number(merged.pointEarnUnits ?? DEFAULT_LOYALTY_CONFIG.defaultPointEarnUnits),
-    pointRedeemRatePoints: Number(merged.pointRedeemRatePoints ?? DEFAULT_LOYALTY_CONFIG.defaultPointRedeemRatePoints),
-    pointRedeemDiscountBaht: Number(merged.pointRedeemDiscountBaht ?? DEFAULT_LOYALTY_CONFIG.defaultPointRedeemDiscountBaht),
+    // the member's own rates only when set (> 0); empty = the shop's rate (memberRates() in lib/loyalty-rates.ts).
+    // They used to be filled with 500 / 10 / 100 / 1 here, so the POS never followed the shop's setting.
+    pointEarnRateBaht: rateValue(merged.pointEarnRateBaht) ?? undefined,
+    pointEarnUnits: rateValue(merged.pointEarnUnits) ?? undefined,
+    pointRedeemRatePoints: rateValue(merged.pointRedeemRatePoints) ?? undefined,
+    pointRedeemDiscountBaht: rateValue(merged.pointRedeemDiscountBaht) ?? undefined,
     createdAt: merged.createdAt || new Date().toISOString(),
     updatedAt: merged.updatedAt || new Date().toISOString(),
   };
@@ -117,6 +127,7 @@ export function loadLoyaltyConfig(): LoyaltySystemConfig {
 export async function saveLoyaltyConfig(config: LoyaltySystemConfig): Promise<void> {
   await api.settings.update({ loyaltyConfig: config });
   lastServerLoyaltyConfig = config;
+  setShopLoyaltyConfig(config);
 }
 
 /** Last customer list the server returned in this session (empty until the first fetch). */
@@ -275,6 +286,7 @@ export async function fetchLoyaltyConfig(): Promise<LoyaltySystemConfig> {
   const settings = await api.settings.get();
   const config: LoyaltySystemConfig = { ...DEFAULT_LOYALTY_CONFIG, ...(settings?.loyaltyConfig || {}) };
   lastServerLoyaltyConfig = config;
+  setShopLoyaltyConfig(settings?.loyaltyConfig);
   return config;
 }
 
@@ -333,19 +345,12 @@ export async function deleteCustomer(id: string): Promise<boolean> {
 
 // Calculate points earned from a sale amount
 export function calculateEarnedPoints(customer: Customer, saleTotalBaht: number): number {
-  if (saleTotalBaht <= 0) return 0;
-  const rateBaht = customer.pointEarnRateBaht || 500;
-  const units = customer.pointEarnUnits || 10;
-  const times = Math.floor(saleTotalBaht / rateBaht);
-  return times * units;
+  // the same rule as the server checkout (shared/src/loyalty.ts)
+  return pointsForSale(saleTotalBaht, memberRates(customer));
 }
 
 // Calculate discount amount from redeemed points
 export function calculateRedemptionDiscount(customer: Customer, pointsToRedeem: number): number {
-  if (pointsToRedeem <= 0) return 0;
-  const ratePoints = customer.pointRedeemRatePoints || 100;
-  const discountBaht = customer.pointRedeemDiscountBaht || 1;
-  const times = Math.floor(pointsToRedeem / ratePoints);
-  return times * discountBaht;
+  return discountForPoints(pointsToRedeem, memberRates(customer));
 }
 

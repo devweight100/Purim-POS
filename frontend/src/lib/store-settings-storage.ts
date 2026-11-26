@@ -1,4 +1,5 @@
 import { api } from './api';
+import { setShopLoyaltyConfig } from './loyalty-rates';
 import type { ApiStoreSettings } from './types';
 import { normalizeReceiptOptions, type ReceiptOptions } from '@shared/receipt-options';
 import { normDocNameMode, type DocNameMode } from '@shared/product-names';
@@ -115,7 +116,10 @@ function mirrorStoreSettings(settings: StoreSettings) {
 
 /** Store settings from the server (refreshes the offline cache). Throws when unreachable. */
 export async function loadStoreSettingsFromBackend(): Promise<StoreSettings> {
-  const settings = normalizeStoreSettings(await api.settings.get());
+  const raw = await api.settings.get();
+  // shop-wide point rates for the POS points preview (lib/loyalty-rates.ts)
+  setShopLoyaltyConfig(raw?.loyaltyConfig);
+  const settings = normalizeStoreSettings(raw);
   mirrorStoreSettings(settings);
   return settings;
 }

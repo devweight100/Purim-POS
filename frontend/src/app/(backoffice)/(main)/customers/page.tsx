@@ -1,5 +1,8 @@
 'use client';
 
+import { MemberImport } from '@/components/customers/MemberImport';
+import { pointRatesText, rateValue, shopPointRates, type MemberPointFields } from '@shared/loyalty';
+import { memberRates, shopRates } from '@/lib/loyalty-rates';
 import { CustomerLevelNote } from '@/components/online-orders/CustomerLevelNote';
 import { CustomerOnlineFields } from '@/components/online-orders/CustomerOnlineFields';
 import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
@@ -26,6 +29,11 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
 import { askConfirm } from '@/lib/ask-dialog';
+
+/** The member has at least one rate of their own (else every rate is the shop's). */
+function hasOwnRate(c: MemberPointFields | null | undefined): boolean {
+  return !!c && [c.pointEarnRateBaht, c.pointEarnUnits, c.pointRedeemRatePoints, c.pointRedeemDiscountBaht].some((v) => rateValue(v) !== null);
+}
 
 export default function CustomersPage() {
   const authUser = useAuthStore((st) => st.user);
@@ -57,10 +65,11 @@ export default function CustomersPage() {
     isCreditBlocked: false,
     priceLevel: 1,
     points: 0,
-    pointEarnRateBaht: 500,
-    pointEarnUnits: 10,
-    pointRedeemRatePoints: 100,
-    pointRedeemDiscountBaht: 1,
+    // empty = the shop's rate (shared/src/loyalty.ts)
+    pointEarnRateBaht: undefined,
+    pointEarnUnits: undefined,
+    pointRedeemRatePoints: undefined,
+    pointRedeemDiscountBaht: undefined,
     companyName: '',
     taxId: '',
     branchType: 'HEAD_OFFICE',
@@ -143,10 +152,11 @@ export default function CustomersPage() {
       isCreditBlocked: false,
       priceLevel: 1,
       points: 0,
-      pointEarnRateBaht: loyaltyConfig.defaultPointEarnRateBaht,
-      pointEarnUnits: loyaltyConfig.defaultPointEarnUnits,
-      pointRedeemRatePoints: loyaltyConfig.defaultPointRedeemRatePoints,
-      pointRedeemDiscountBaht: loyaltyConfig.defaultPointRedeemDiscountBaht,
+      // a new member follows the shop's rate (it used to get a copy that never followed later changes)
+      pointEarnRateBaht: undefined,
+      pointEarnUnits: undefined,
+      pointRedeemRatePoints: undefined,
+      pointRedeemDiscountBaht: undefined,
       companyName: '',
       taxId: '',
       branchType: 'HEAD_OFFICE',
@@ -213,6 +223,8 @@ export default function CustomersPage() {
       const payload: Record<string, unknown> & { name: string } = {
         name: formData.name.trim(),
         phone: formData.phone.trim(),
+        // รหัสสมาชิก shown in the form is saved (it was not sent: rows without one got a code by list position)
+        ...(formData.code?.trim() ? { code: formData.code.trim() } : {}),
         email: formData.email?.trim() || null,
         address: formData.address?.trim() || null,
         type: formData.type || 'INDIVIDUAL',
@@ -229,6 +241,12 @@ export default function CustomersPage() {
         contactPerson: formData.contactPerson?.trim() || undefined,
         contactPhone: formData.contactPhone?.trim() || undefined,
         note: formData.note?.trim() || undefined,
+        // member's own point rates: a number > 0, or null = the shop's rate (they were not sent before: the form's
+        // values were never saved)
+        pointEarnRateBaht: rateValue(formData.pointEarnRateBaht),
+        pointEarnUnits: rateValue(formData.pointEarnUnits),
+        pointRedeemRatePoints: rateValue(formData.pointRedeemRatePoints),
+        pointRedeemDiscountBaht: rateValue(formData.pointRedeemDiscountBaht),
       };
 
       if (selectedCustomer?.id) {
@@ -311,6 +329,7 @@ export default function CustomersPage() {
           >
             <RefreshCw className="w-3.5 h-3.5 mr-1.5" /> รีเฟรช
           </Button>
+          <MemberImport onImported={() => void reloadData()} />
           <Button
             variant="outline"
             onClick={() => setIsSettingsOpen(true)}
@@ -359,7 +378,7 @@ export default function CustomersPage() {
         </div>
 
         <div className="text-[11px] text-slate-400 font-medium">
-          ⚙️ อัตราแต้มมาตรฐาน: ซื้อ {loyaltyConfig.defaultPointEarnRateBaht}฿ = {loyaltyConfig.defaultPointEarnUnits} แต้ม | แลก {loyaltyConfig.defaultPointRedeemRatePoints} แต้ม = {loyaltyConfig.defaultPointRedeemDiscountBaht}฿
+          ⚙️ เรทกลางของร้าน: {pointRatesText(shopPointRates(loyaltyConfig))}{(loyaltyConfig.minRedeemPoints ?? 0) > 0 ? ` · ใช้ขั้นต่ำ ${loyaltyConfig.minRedeemPoints} แต้ม` : ''}
         </div>
       </div>
 
@@ -532,7 +551,7 @@ export default function CustomersPage() {
                         {/* round 3: the member's earn / redeem rate is the badge tooltip (it is the same for most members) */}
                         <div
                           className="whitespace-nowrap tabular-nums text-fg"
-                          title={`สะสม ${c.pointEarnRateBaht || 500}฿ = ${c.pointEarnUnits || 10} แต้ม | แลก ${c.pointRedeemRatePoints || 100} แต้ม = ${c.pointRedeemDiscountBaht || 1}฿`}
+                          title={`${pointRatesText(memberRates(c))}${hasOwnRate(c) ? ' (เรทเฉพาะสมาชิก)' : ' (เรทกลางของร้าน)'}`}
                         >
                           {(c.points || 0).toLocaleString()} <span className="text-sub text-muted-foreground">แต้ม</span>
                         </div>
@@ -950,78 +969,50 @@ export default function CustomersPage() {
 
                 <div className="space-y-1">
                   <label className="font-bold text-slate-700">แต้มสะสมปัจจุบัน (Points Balance)</label>
-                  <Input
-                    type="number"
-                    value={formData.points ?? 0}
-                    onChange={(e) => setFormData({ ...formData, points: Number(e.target.value) })}
-                    className="text-amber-700"
-                  />
+                  <div className="h-10 flex items-center rounded-md border border-slate-200 bg-slate-50 px-3 font-bold text-amber-700" data-testid="member-points-balance">
+                    {(formData.points ?? 0).toLocaleString()} แต้ม
+                  </div>
+                  <p className="text-[11px] text-slate-500">แต้มเปลี่ยนจากการขาย / แลกแต้ม และการนำเข้าสมาชิก (บันทึกประวัติ &quot;นำเข้าคะแนน&quot;)</p>
                 </div>
 
-                {/* 3. Earn Rate */}
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                  <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                    <Gift className="w-4 h-4 text-emerald-600" />
-                    3. การให้คะแนนสะสม (Earning Rate)
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 items-center">
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-slate-500 font-semibold">ยอดซื้อสินค้าครบทุกๆ (บาท):</label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={formData.pointEarnRateBaht ?? 500}
-                        onChange={(e) => setFormData({ ...formData, pointEarnRateBaht: Number(e.target.value) })}
-                        className="text-slate-900"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-slate-500 font-semibold">จะได้รับคะแนนสะสม (แต้ม):</label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={formData.pointEarnUnits ?? 10}
-                        onChange={(e) => setFormData({ ...formData, pointEarnUnits: Number(e.target.value) })}
-                        className="text-emerald-600"
-                      />
-                    </div>
-                  </div>
-                  <div className="text-[11px] text-emerald-700 font-medium">
-                    สรุปกฎ: ซื้อของครบ <b>{formData.pointEarnRateBaht ?? 500} บาท</b> จะได้รับ <b>{formData.pointEarnUnits ?? 10} คะแนน</b>
-                  </div>
-                </div>
+                <p className="rounded-lg bg-sky-50 px-3 py-2 text-[11px] font-semibold text-sky-900" data-testid="member-rate-hint">
+                  เว้นว่าง = ใช้เรทกลางของร้าน ({pointRatesText(shopRates())}) · กรอกตัวเลขมากกว่า 0 = เรทเฉพาะสมาชิกคนนี้
+                </p>
 
-                {/* 4. Redeem Rate */}
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
-                  <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                    <Coins className="w-4 h-4 text-indigo-600" />
-                    4. การใช้คะแนนสะสมเป็นส่วนลด (Redemption Rate)
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 items-center">
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-slate-500 font-semibold">ใช้คะแนนสะสมทุกๆ (แต้ม):</label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={formData.pointRedeemRatePoints ?? 100}
-                        onChange={(e) => setFormData({ ...formData, pointRedeemRatePoints: Number(e.target.value) })}
-                        className="text-slate-900"
-                      />
+                {([
+                  { title: 'การให้คะแนนสะสม (Earning Rate)', icon: <Gift className="w-4 h-4 text-emerald-600" />, fields: [
+                    { key: 'pointEarnRateBaht', label: 'ยอดซื้อทุกๆ (บาท)', shop: shopRates().earnBaht },
+                    { key: 'pointEarnUnits', label: 'ได้คะแนน (แต้ม)', shop: shopRates().earnPoints },
+                  ] },
+                  { title: 'การใช้คะแนนเป็นส่วนลด (Redemption Rate)', icon: <Coins className="w-4 h-4 text-indigo-600" />, fields: [
+                    { key: 'pointRedeemRatePoints', label: 'ใช้คะแนนทุกๆ (แต้ม)', shop: shopRates().redeemPoints },
+                    { key: 'pointRedeemDiscountBaht', label: 'ลดได้ (บาท)', shop: shopRates().redeemBaht },
+                  ] },
+                ] as const).map((g) => (
+                  <div key={g.title} className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+                    <div className="font-bold text-slate-800 flex items-center gap-1.5">{g.icon}{g.title}</div>
+                    <div className="grid grid-cols-2 gap-3 items-start">
+                      {g.fields.map((f) => (
+                        <div key={f.key} className="space-y-1">
+                          <label htmlFor={`member-${f.key}`} className="text-[11px] text-slate-500 font-semibold">{f.label} · เว้นว่าง = ใช้เรทกลางของร้าน</label>
+                          <Input
+                            id={`member-${f.key}`}
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={formData[f.key] ?? ''}
+                            placeholder={`เรทกลาง ${f.shop.toLocaleString()}`}
+                            onChange={(e) => setFormData({ ...formData, [f.key]: e.target.value === '' ? undefined : Number(e.target.value) })}
+                            className="text-slate-900"
+                          />
+                        </div>
+                      ))}
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] text-slate-500 font-semibold">เท่ากับส่วนลดเงินสด (บาท):</label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={formData.pointRedeemDiscountBaht ?? 1}
-                        onChange={(e) => setFormData({ ...formData, pointRedeemDiscountBaht: Number(e.target.value) })}
-                        className="text-indigo-600"
-                      />
-                    </div>
                   </div>
-                  <div className="text-[11px] text-indigo-700 font-medium">
-                    สรุปกฎ: ใช้ <b>{formData.pointRedeemRatePoints ?? 100} คะแนน</b> จะได้ส่วนลดเงินสด <b>{formData.pointRedeemDiscountBaht ?? 1} บาท</b>
-                  </div>
+                ))}
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[12px] font-semibold text-emerald-900" data-testid="member-effective-rate">
+                  เรทที่ใช้จริงของสมาชิกคนนี้: {pointRatesText(memberRates(formData))}
+                  <span className="ml-1 font-normal text-emerald-800">({hasOwnRate(formData) ? 'มีเรทเฉพาะสมาชิก' : 'ใช้เรทกลางของร้านทั้งหมด'})</span>
                 </div>
               </div>
             )}
@@ -1149,11 +1140,12 @@ export default function CustomersPage() {
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <div>
                   <span className="text-slate-500 block text-xs font-bold">อัตราได้รับแต้ม:</span>
-                  <span className="text-emerald-700 font-bold text-sm">ซื้อครบ {selectedCustomer?.pointEarnRateBaht || 500}฿ ได้ {selectedCustomer?.pointEarnUnits || 10} แต้ม</span>
+                  <span className="text-emerald-700 font-bold text-sm">ซื้อครบ {memberRates(selectedCustomer).earnBaht.toLocaleString()}฿ ได้ {memberRates(selectedCustomer).earnPoints.toLocaleString()} แต้ม</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block text-xs font-bold">อัตราแลกส่วนลด:</span>
-                  <span className="text-indigo-700 font-bold text-sm">ใช้ {selectedCustomer?.pointRedeemRatePoints || 100} แต้ม = ส่วนลด {selectedCustomer?.pointRedeemDiscountBaht || 1}฿</span>
+                  <span className="text-indigo-700 font-bold text-sm">ใช้ {memberRates(selectedCustomer).redeemPoints.toLocaleString()} แต้ม = ส่วนลด {memberRates(selectedCustomer).redeemBaht.toLocaleString()}฿</span>
+                  <span className="block text-[11px] text-slate-500">{hasOwnRate(selectedCustomer) ? 'เรทเฉพาะสมาชิกคนนี้' : 'ใช้เรทกลางของร้าน'}</span>
                 </div>
               </div>
             </div>
@@ -1179,7 +1171,7 @@ export default function CustomersPage() {
 
           <div className="p-6 space-y-4 text-xs">
             <p className="text-slate-500 text-[11px]">
-              ค่าเหล่านี้จะถูกใช้เป็นค่าเริ่มต้นสำหรับสมาชิกทุกคนที่สมัครใหม่
+              เรทกลางของร้าน: ใช้กับสมาชิกทุกคนที่ไม่ได้กำหนดเรทเฉพาะตัว (ช่องเรทในข้อมูลสมาชิกเว้นว่าง) ทั้งหน้าขาย การบันทึกบิล และใบเสร็จ
             </p>
 
             <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
@@ -1258,6 +1250,17 @@ export default function CustomersPage() {
                   />
                 </div>
               </div>
+            </div>
+          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
+              <label htmlFor="loyalty-min-redeem" className="text-[11px] text-slate-500 font-semibold">ใช้แต้มขั้นต่ำต่อครั้ง (แต้ม) · 0 = ไม่มีขั้นต่ำ</label>
+              <Input
+                id="loyalty-min-redeem"
+                type="number"
+                min="0"
+                step="1"
+                value={loyaltyConfig.minRedeemPoints ?? 0}
+                onChange={(e) => setLoyaltyConfig({ ...loyaltyConfig, minRedeemPoints: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
+              />
             </div>
           </div>
 

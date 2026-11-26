@@ -59,6 +59,7 @@ d('store flow (e2e)', () => {
     app = mod.createNestApplication({ rawBody: true }); // raw bytes for the LINE webhook signature (main.ts: captureLineRawBody)
     app.setGlobalPrefix('api');
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    (app as any).useBodyParser('json', { limit: '50mb' }); // as main.ts (bulk imports)
     await app.init();
     http = request(app.getHttpServer());
   });
@@ -1487,7 +1488,7 @@ d('store flow (e2e)', () => {
       expect(first.customers).toEqual((await api('get', '/customers', A).expect(200)).body);
       expect(await pull()).toMatchObject({ full: false, customers: [], deleted: [] });
 
-      const created = (await api('post', '/customers', A, { name: 'SYNC ลูกค้า', phone: '0899990001' }).expect(201)).body;
+      const created = (await api('post', '/customers', A, { name: 'SYNC ลูกค้า', phone: '0877771001' }).expect(201)).body;
       let d = await pull();
       expect(d.full).toBe(false);
       expect(d.customers.map((c: any) => c.id)).toEqual([created.id]);
@@ -3519,8 +3520,8 @@ d('store flow (e2e)', () => {
       lv.pack = lv.dish.packagingUnits[0];
       lv.tape = await mk({ name: 'เทปมีแต่ราคา 3 e2e', basePrice: 0, priceLevel1: 0, priceLevel3: 30 });
       lv.zero = await mk({ name: 'สินค้ายังไม่ตั้งราคา e2e', basePrice: 0, priceLevel1: 0 });
-      lv.m2 = (await api('post', '/customers', A, { name: 'สมาชิกราคาส่ง e2e', phone: '0899990002', priceLevel: 2 }).expect(201)).body;
-      lv.m3 = (await api('post', '/customers', A, { name: 'สมาชิกส่งพิเศษ e2e', phone: '0899990003', priceLevel: 3 }).expect(201)).body;
+      lv.m2 = (await api('post', '/customers', A, { name: 'สมาชิกราคาส่ง e2e', phone: '0877771002', priceLevel: 2 }).expect(201)).body;
+      lv.m3 = (await api('post', '/customers', A, { name: 'สมาชิกส่งพิเศษ e2e', phone: '0877771003', priceLevel: 3 }).expect(201)).body;
     });
     const base = (unitPrice: number, quantity = 1) => ({ productId: lv.dish.id, quantity, unitPrice });
     const pack = (unitPrice: number) => ({ productId: lv.dish.id, quantity: 1, unitPrice, unitId: lv.pack.id, unitName: 'แพ็ค', conversionFactor: 6 });
@@ -4172,6 +4173,97 @@ d('store flow (e2e)', () => {
       await api('patch', `/products/${r.bundle.id}`, A, { bundleItems: [{ childProductId: r.otherBundle.id, quantity: 1 }] }).expect(400);
       await api('patch', `/products/${r.bundle.id}`, A, { bundleItems: [{ childProductId: off.id, quantity: 1 }] }).expect(400);
       await api('patch', `/products/${r.bundle.id}`, A, { bundleItems: [{ childProductId: r.neo.id, quantity: 2 }] }).expect(200);
+    });
+  });
+  describe('member points: shop-wide rate unless the member has their own; member import (docs/round-shift-today-bundle-replace.md 5)', () => {
+    const st: Record<string, any> = {};
+    const sell = (customerId: string, total: number, extra: any = {}) =>
+      api('post', '/orders/checkout', A, {
+        clientOrderId: randomUUID(), shiftId: st.shift.id, customerId,
+        items: [{ productId: st.p.id, quantity: 1, unitPrice: total }],
+        payments: [{ method: 'CASH', amount: total - (extra.discountAmount || 0) }], ...extra,
+      });
+    it('setup: shop rate 100 baht -> 5 points, 50 points -> 2 baht; one member with their own earn rate', async () => {
+      st.before = (await api('get', '/settings', A).expect(200)).body.loyaltyConfig;
+      await api('patch', '/settings', A, { loyaltyConfig: { ...(st.before || {}), defaultPointEarnRateBaht: 100, defaultPointEarnUnits: 5, defaultPointRedeemRatePoints: 50, defaultPointRedeemDiscountBaht: 2, minRedeemPoints: 0, isLoyaltyEnabled: true } }).expect(200);
+      st.p = (await api('post', '/products', A, { name: 'สินค้าแต้ม e2e', basePrice: 450, priceLevel1: 450, costPrice: 1, unit: 'ชิ้น' }).expect(201)).body;
+      await api('post', '/inventory/adjust', A, { productId: st.p.id, type: 'ADD', amount: 50, reason: 'ยอดยกมา' }).expect(201);
+      st.shop = (await api('post', '/customers', A, { name: 'สมาชิกเรทกลาง e2e', phone: '0877771001' }).expect(201)).body;
+      st.own = (await api('post', '/customers', A, { name: 'สมาชิกเรทเฉพาะ e2e', phone: '0877771002', pointEarnRateBaht: 200, pointEarnUnits: 1, pointRedeemRatePoints: '' }).expect(201)).body;
+      expect(st.own.pointRedeemRatePoints).toBeNull(); // '' = the shop's rate
+      await api('post', '/customers', A, { name: 'x', phone: '0877771003', pointEarnUnits: -1 }).expect(400);
+      st.shift = (await api('post', '/shifts/open', A, { startingCash: 0, terminalId: 'e2e-term-points' }).expect(201)).body.shift;
+    });
+    it('earning: the shop rate for a member without one, the member rate otherwise (same rule as the POS)', async () => {
+      expect((await sell(st.shop.id, 450).expect(201)).body.pointsEarned).toBe(20); // 4 x 5
+      expect((await sell(st.own.id, 450).expect(201)).body.pointsEarned).toBe(2); // 2 x 1
+    });
+    it('redeeming: the shop redeem rate (member field empty); the minimum points per use', async () => {
+      await sell(st.shop.id, 450, { pointsUsed: 10, pointsDiscountAmount: 0.4, discountAmount: 0.4 }).expect(400); // not a multiple of 50
+      await sell(st.shop.id, 450, { pointsUsed: 50, pointsDiscountAmount: 1, discountAmount: 1 }).expect(400); // 50 points = 2 baht
+      await api('patch', '/settings', A, { loyaltyConfig: { defaultPointEarnRateBaht: 100, defaultPointEarnUnits: 5, defaultPointRedeemRatePoints: 10, defaultPointRedeemDiscountBaht: 1, minRedeemPoints: 20, isLoyaltyEnabled: true } }).expect(200);
+      const low = await sell(st.shop.id, 450, { pointsUsed: 10, pointsDiscountAmount: 1, discountAmount: 1 }).expect(400);
+      expect(low.body.message).toContain('20 แต้ม');
+      await sell(st.shop.id, 450, { pointsUsed: 20, pointsDiscountAmount: 2, discountAmount: 2 }).expect(201);
+      await api('patch', '/settings', A, { loyaltyConfig: st.before || { isLoyaltyEnabled: true } }).expect(200);
+      const sum = (await api('get', `/shifts/${st.shift.id}/summary`, A).expect(200)).body;
+      await api('post', `/shifts/${st.shift.id}/close`, A, { actualCash: sum.expectedCash }).expect(201);
+    });
+    it('import preview: create / update by phone / update by code; Thai text, leading zeros, duplicates and bad cells are errors', async () => {
+      await api('patch', `/customers/${st.shop.id}`, A, { code: 'MEM-E2E-01' }).expect(200);
+      const rows = [
+        { rowNo: 2, values: { name: 'ร้านวัสดุก่อสร้าง สมหญิง ใหม่ e2e', phone: '877772233', points: '150', priceLevel: '2', address: 'ที่อยู่ไทย ๑๒๓' } },
+        { rowNo: 3, values: { name: 'สมาชิกเรทเฉพาะ e2e', phone: '0877771002', points: '7', creditLimit: '5000' } },
+        { rowNo: 4, values: { code: 'mem-e2e-01', name: 'สมาชิกเรทกลาง e2e', points: '0' } },
+        { rowNo: 5, values: { name: 'ซ้ำเบอร์', phone: '0877772233' } },
+        { rowNo: 6, values: { name: 'ระดับผิด', phone: '0877772200', priceLevel: '9' } },
+        { rowNo: 7, values: { phone: '0877772201' } },
+      ];
+      const plan = (await api('post', '/customers/import/preview', A, { rows }).expect(201)).body;
+      const by = (n: number) => plan.rows.find((r: any) => r.rowNo === n);
+      expect(by(2)).toMatchObject({ action: 'create', phone: '0877772233', pointsAfter: 150 });
+      expect(by(3)).toMatchObject({ action: 'update', matchedBy: 'phone', customerId: st.own.id, pointsAfter: 7 });
+      expect(by(4)).toMatchObject({ action: 'update', matchedBy: 'code', customerId: st.shop.id, pointsAfter: 0 });
+      expect(by(5).errors.join()).toContain('ซ้ำกับแถว 2');
+      expect(by(6).errors.join()).toContain('1-5');
+      expect(by(7).errors.join()).toContain('ไม่มีชื่อ');
+      expect(plan.counts).toEqual({ create: 1, update: 2, unchanged: 0, error: 3 });
+      // any error: nothing is saved
+      await api('post', '/customers/import', A, { rows }).expect(400);
+      expect((await api('get', '/customers?search=0877772233', A).expect(200)).body.length ?? 0).toBe(0);
+      st.rows = rows.slice(0, 3);
+    });
+    it('import: creates / updates, points set through the "นำเข้าคะแนน" history; re-import = unchanged; credit needs the right', async () => {
+      const before = (await api('get', `/customers/${st.shop.id}`, A).expect(200)).body.points;
+      const done = (await api('post', '/customers/import', A, { rows: st.rows, fileName: 'สมาชิก.xlsx' }).expect(201)).body;
+      expect(done).toMatchObject({ created: 1, updated: 2, pointsAdjusted: 3 });
+      const created = (await api('get', '/customers?search=0877772233', A).expect(200)).body[0];
+      expect(created).toMatchObject({ name: 'ร้านวัสดุก่อสร้าง สมหญิง ใหม่ e2e', phone: '0877772233', points: 150, priceLevel: 2 });
+      expect(created.code).toMatch(/^CUST-\d{4}$/);
+      expect((await api('get', `/customers/${st.own.id}`, A).expect(200)).body.points).toBe(7);
+      expect((await api('get', `/customers/${st.shop.id}`, A).expect(200)).body.points).toBe(0);
+      const db = new PrismaClient();
+      try {
+        const h = await db.auditLog.findMany({ where: { action: 'CUSTOMER_POINTS_ADJUST', entityId: st.shop.id } });
+        expect(h.map((x: any) => x.details)).toEqual([expect.objectContaining({ reason: 'นำเข้าคะแนน', before, after: 0, delta: -before, fileName: 'สมาชิก.xlsx' })]);
+        expect(await db.auditLog.count({ where: { action: 'CUSTOMER_IMPORT' } })).toBe(1);
+      } finally {
+        await db.$disconnect();
+      }
+      const again = (await api('post', '/customers/import/preview', A, { rows: st.rows }).expect(201)).body;
+      expect(again.counts).toMatchObject({ create: 0, update: 0, unchanged: 3, error: 0 });
+      // a cashier may import members, but not set credit
+      const r = (await api('post', '/customers/import/preview', C, { rows: [{ rowNo: 2, values: { name: 'x', phone: '0877771002', creditLimit: '9999' } }] }).expect(201)).body;
+      expect(r.rows[0].errors.join()).toContain('สิทธิ์');
+    });
+    it('import: a few thousand rows in one go', async () => {
+      const rows = Array.from({ length: 3000 }, (_, i) => ({ rowNo: i + 2, values: { name: `สมาชิกนำเข้าจำนวนมาก ${i}`, phone: `0655${String(i).padStart(6, '0')}`, points: String(i % 100) } }));
+      const t0 = Date.now();
+      const plan = (await api('post', '/customers/import/preview', A, { rows }).expect(201)).body;
+      expect(plan.counts.create).toBe(3000);
+      const done = (await api('post', '/customers/import', A, { rows }).expect(201)).body;
+      expect(done.created).toBe(3000);
+      expect(Date.now() - t0).toBeLessThan(90_000);
     });
   });
 });
