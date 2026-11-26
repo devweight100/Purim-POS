@@ -17,6 +17,7 @@ Owner requests 2026-11-26. Progress file of this round (plan, done, next, decisi
 - [x] 2 audit + defaults (`frontend/e2e/39-today-default.spec.ts`)
 - [x] 3 bundle picker (`frontend/e2e/40-bundle-picker.spec.ts`)
 - [x] 4 delete with replacement (store-flow 'delete a used product with a replacement', `frontend/e2e/41-product-replace.spec.ts`)
+- [x] 5a shop point rates, 5b member import
 - [ ] full verification
 
 ## Decisions
@@ -153,3 +154,53 @@ Unknown ids are still refused. Desktop client: no change needed (it loads the we
 
 Migration `20261210000000_product_replace` (additive: nullable columns, new table, CREATE OR REPLACE VIEW claim_records with
 the same columns). Fresh-DB `migrate diff` empty.
+
+## 5a. Shop-wide point rates (one rule)
+
+What existed before (owner was not sure):
+- A shop-wide setting already existed: customers page > "ตั้งค่าสะสมแต้ม" saved `store_settings.loyalty_config`
+  (defaultPointEarnRateBaht / Units, defaultPointRedeemRatePoints / DiscountBaht). The SERVER checkout used
+  member field || shop setting || 500/10/100/1.
+- But the browser never read it: `normalizeCustomerRow` filled every member with 500 / 10 / 100 / 1, so the POS
+  preview, the redeem dialog and the customer pages always showed the hard-coded rate (and differed from the server as
+  soon as the shop rate was changed). The add-member form pre-filled the shop rate, but the form never SENT the rate
+  fields (nor the member code) - per-member rates in the form were never saved.
+- `store_settings.points_per_baht` / `point_value`: only in the settings DTO and the default row; never used for points.
+  Left in place (unused); the migration reads them once (below).
+
+Now:
+- `shared/src/loyalty.ts`: `shopPointRates(config)`, `effectivePointRates(member, shop)` (a member field is used when it
+  is a number > 0, per field, else the shop's - the same per-field fallback the server already had), `pointsForSale`,
+  `discountForPoints`, `pointRatesText`. Used by the server checkout (earn + redeem validation + NEW minimum points per
+  use `minRedeemPoints`, 0 = none), the POS preview / redeem dialog (`lib/loyalty-rates.ts`: the shop rate read with the
+  store settings, cached for offline), the customer pages.
+- ตั้งค่าสะสมแต้ม (customers page, where it already lived): explained as "เรทกลางของร้าน", + ใช้แต้มขั้นต่ำต่อครั้ง.
+- Member form: rate fields empty by default, label "เว้นว่าง = ใช้เรทกลางของร้าน", placeholder = shop value, the
+  effective rate shown live; values are now saved (null = shop rate; server validates > 0). The member code shown in
+  the form is now saved too. The points balance in the form is read-only (the API always ignored edits of it).
+- Migration `20261211000000_shop_point_rates` (data only): writes the shop rates explicitly into loyalty_config, keeping
+  values already set; missing ones start at today's effective 500 -> 10 / 100 -> 1, unless points_per_baht / point_value
+  were changed from their defaults (0.01 / 1) - then 1 point per 1/points_per_baht baht and 1 point -> point_value baht
+  (decision). Member fields EQUAL to the shop rate are removed (copies from the old form): effective rates do not change,
+  and later shop changes reach those members. Different values stay as the member's own rate.
+
+## 5b. Member import
+
+No customer import / export existed. New, mirroring the product import (template, preview, confirm):
+- customers page: "โหลด Template สมาชิก" (แม่แบบนำเข้าสมาชิก.xlsx: columns รหัสสมาชิก, ชื่อ, เบอร์โทร, ระดับราคา,
+  คะแนนสะสม, วงเงินเครดิต, เครดิต (วัน), ที่อยู่, เลขผู้เสียภาษี, อีเมล, หมายเหตุ, ค่าส่ง and the 4 per-member rate
+  columns; code / phone / tax id columns formatted as text; sheet "วิธีกรอก"), "นำเข้าสมาชิก Excel" (.xlsx/.xls/.csv).
+- `POST /customers/import/preview` -> per row create / update / unchanged / error (reasons) + counts; `POST /customers/import`
+  -> all or nothing (any row with an error = 400, nothing saved; decision: no half imports), one transaction.
+  Same permission as the customers page (POS_SELL / MANAGE_DEBTS / VIEW_REPORTS); credit fields still need
+  MANAGE_DEBTS per row, price level 2-5 the discount right when that setting is on.
+- Matching: รหัสสมาชิก (profile.code, case-insensitive), else phone (digits compared). Code and phone pointing at two
+  different members = error. Blank cells keep the member's current value. New members without a code get the next CUST-####.
+- Points: the cell is the wanted balance; a change writes `audit_logs` CUSTOMER_POINTS_ADJUST {reason "นำเข้าคะแนน",
+  before, after, delta, rowNo, fileName, user} (no points ledger table existed: the audit log is the history). One
+  CUSTOMER_IMPORT audit entry per import (counts, file, user).
+- Thai text as is; phones kept as text (a 9-digit 06/08/09 number whose 0 Excel dropped gets it back); duplicate
+  phones / codes inside the file are errors on the later row; 3000 rows checked in the backend e2e (one request).
+
+Tests: shared `shared/test/loyalty.spec.ts` (vitest + jest), `frontend/src/lib/__tests__/loyalty-rates.test.ts`,
+backend e2e 'member points: shop-wide rate ...; member import', Playwright `42-member-points-import.spec.ts`.

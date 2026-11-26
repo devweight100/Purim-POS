@@ -105,6 +105,7 @@ export function MemberImport({ onImported }: { onImported: () => void }) {
   const [plan, setPlan] = useState<Plan | null>(null);
   const [filter, setFilter] = useState<"all" | PlanRow["action"]>("all");
   const [busy, setBusy] = useState(false);
+  const confirmRef = useRef<HTMLButtonElement>(null);
 
   const pick = async (file: File) => {
     try {
@@ -189,6 +190,8 @@ export function MemberImport({ onImported }: { onImported: () => void }) {
         <DialogContent
           data-testid="member-import-dialog"
           className="flex max-h-[92dvh] flex-col gap-0 overflow-hidden bg-white p-0 sm:max-w-4xl"
+          // keyboard: the import button has the focus (Enter = import); with rows to fix, the "ต้องแก้" filter
+          initialFocus={() => (confirmRef.current && !confirmRef.current.disabled ? confirmRef.current : true)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !(e.target instanceof HTMLButtonElement) && !e.nativeEvent.isComposing) {
               e.preventDefault();
@@ -259,6 +262,7 @@ export function MemberImport({ onImported }: { onImported: () => void }) {
           <DialogFooter className="flex flex-wrap justify-end gap-btn border-t border-slate-200 bg-slate-50 px-6 py-4">
             <Button type="button" variant="outline" onClick={close} disabled={busy}>ยกเลิก</Button>
             <Button
+              ref={confirmRef}
               type="button"
               data-testid="member-import-confirm"
               onClick={() => void confirm()}
