@@ -79,6 +79,7 @@ test('online order: cancel with a typed reason (keyboard only, unclaimed), the c
   await expect(detail.getByTestId('claim-bar')).toContainText('ยังไม่มีใครรับจัด');
   // keyboard: cancelling is in the "อื่นๆ" menu (rare action); the menu opens with Enter, the item is chosen
   // with the arrow keys + Enter, the dialog opens with the focus in the field
+  await expect(detail.getByTestId('step-primary')).toBeFocused(); // the window put the focus on "รับงาน"
   await detail.getByTestId('order-more').focus();
   await page.keyboard.press('Enter');
   const item = page.getByRole('menuitem', { name: 'ยกเลิกออเดอร์' });

@@ -177,6 +177,8 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
   const feeRef = useRef<HTMLInputElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const ownStep = useRef(false);
+  const menuOpen = useRef(false);
+  const menuClosedAt = useRef(0);
 
   const apply = useCallback((x: Detail) => {
     setD(x);
@@ -240,7 +242,16 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
       if (document.querySelector('[data-slot="dialog-content"] [data-testid="reason-dialog"], [data-testid="confirm-dialog"]')) return;
       (stepAction === 'pay' ? payRef.current : primaryRef.current ?? payRef.current ?? closeRef.current)?.focus();
     }, 50);
-    return () => clearTimeout(t);
+    // the window's own opening focus (close button) can land after a fast load: hand it to the step button
+    const t2 = setTimeout(() => {
+      const a = document.activeElement;
+      if (a && a !== closeRef.current && a !== document.body && a.getAttribute('data-slot') !== 'dialog-content') return;
+      (stepAction === 'pay' ? payRef.current : primaryRef.current ?? payRef.current)?.focus();
+    }, 350);
+    return () => {
+      clearTimeout(t);
+      clearTimeout(t2);
+    };
   }, [d?.id, d?.status, stepAction, paid]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const heldByOther = !!d?.claim && d.claim.userId !== me?.id;
@@ -262,12 +273,25 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
   };
 
   const shell = (children: React.ReactNode) => (
-    <Dialog open onOpenChange={(o) => !o && void close()}>
+    <Dialog
+      open
+      onOpenChange={(o, details) => {
+        if (o) return;
+        // Escape that closed the อื่นๆ menu must not also close the window
+        const t = (details as { event?: Event } | undefined)?.event?.target as Element | null | undefined;
+        const fromMenu = !!t?.closest?.('[data-slot="dropdown-menu-content"]');
+        if (details?.reason === 'escape-key' && (menuOpen.current || fromMenu || Date.now() - menuClosedAt.current < 300)) {
+          details.cancel?.();
+          return;
+        }
+        void close();
+      }}
+    >
       <DialogContent
         showCloseButton={false}
         initialFocus={closeRef}
         aria-label="รายละเอียดออเดอร์ออนไลน์"
-        className="inset-0 top-0 left-0 flex h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 text-sm ring-0 data-open:zoom-in-100 data-closed:zoom-out-100"
+        className="inset-0 top-0 left-0 flex h-dvh max-h-dvh w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 text-sm ring-0 transition-none data-open:zoom-in-100 data-closed:zoom-out-100"
       >
         {children}
       </DialogContent>
@@ -657,7 +681,15 @@ export function OnlineOrderDetail({ id, onBack, onChanged }: { id: string; onBac
             </Button>
           )}
           {hasMenu && (
-            <DropdownMenu>
+            <DropdownMenu
+              onOpenChange={(o) => {
+                if (o) menuOpen.current = true;
+                else {
+                  menuClosedAt.current = Date.now();
+                  setTimeout(() => (menuOpen.current = false), 0);
+                }
+              }}
+            >
               <DropdownMenuTrigger render={<Button variant="outline" className="gap-1" />} data-testid="order-more">
                 <MoreHorizontal className="h-4 w-4" /> อื่นๆ
               </DropdownMenuTrigger>

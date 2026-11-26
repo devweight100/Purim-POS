@@ -49,8 +49,7 @@ async function layoutOk(page: Page) {
     expect(await horizontalOverflow(page)).toEqual([]);
     expect(await spacingIssues(page, '[data-testid="online-order-detail"]')).toEqual([]);
     // the window covers the whole screen; only the item list / side panel scroll inside it
-    const box = await page.locator('[data-slot="dialog-content"]').boundingBox();
-    expect(box).toMatchObject({ x: 0, y: 0, width: size.width, height: size.height });
+    expect(await page.locator('[data-slot="dialog-content"]').boundingBox()).toMatchObject({ x: 0, y: 0, width: size.width, height: size.height });
   }
   await page.setViewportSize({ width: 1366, height: 768 });
 }
