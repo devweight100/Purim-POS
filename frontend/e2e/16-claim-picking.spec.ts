@@ -204,6 +204,7 @@ test('two cashiers: one claims, the other sees "กำลังจัดโด�
   await expect(A.page.getByTestId('claim-bar')).toContainText('คุณกำลังจัด');
   await a.getByTestId('order-more').click();
   await expect(A.page.getByRole('menuitem', { name: 'ปล่อยงาน' })).toBeVisible();
+  await expect(A.page.getByRole('menu')).toBeFocused(); // the open menu has the keyboard (a person's next key)
   await A.page.keyboard.press('Escape');
   await expect(A.page.getByRole('menuitem', { name: 'ปล่อยงาน' })).toHaveCount(0);
   await expect(a).toBeVisible(); // Escape closed the menu only
@@ -217,7 +218,10 @@ test('two cashiers: one claims, the other sees "กำลังจัดโด�
   await expect(B.page.getByRole('menuitem', { name: /ยกเลิกออเดอร์/ })).toHaveAttribute('aria-disabled', 'true');
   await expect(B.page.getByRole('menuitem', { name: 'รับจัดออเดอร์นี้' })).toHaveCount(0);
   await expect(B.page.getByRole('menuitem', { name: 'ปลดล็อก/โอนมาที่ฉัน' })).toHaveCount(0); // cashier: no takeover
+  await expect(B.page.getByRole('menu')).toBeFocused();
   await B.page.keyboard.press('Escape');
+  await expect(B.page.getByRole('menu')).toHaveCount(0);
+  await expect(b).toBeVisible();
   await expect(b).toContainText('งานจัดของทำไม่ได้จนกว่าจะปล่อยงาน');
   await expect(b.getByLabel('ค่าส่ง')).toHaveCount(0); // no edits
   for (const size of SIZES) {
