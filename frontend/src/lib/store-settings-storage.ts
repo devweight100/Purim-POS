@@ -36,6 +36,8 @@ export interface StoreSettings {
   posAskCustomerAtStart?: boolean;
   /** POS: a walk-in bill at ราคา 2-5 needs the discount right (POS_DISCOUNT / manager), default off = every cashier */
   walkInLevelNeedsDiscount?: boolean;
+  /** POS: open the member picker after every completed sale (docs/pos-member-picker.md), default off */
+  posPickMemberAfterSale?: boolean;
   /** names of the price levels (shop settings), read-only here; mirrored for the POS offline */
   levelNames?: Record<PriceLevel, string>;
   /** price levels the shop uses (some product has a price at it); 1 always */
@@ -68,6 +70,7 @@ export const DEFAULT_STORE_SETTINGS: StoreSettings = {
   supplierDocNameMode: 'SHOP',
   posAskCustomerAtStart: false,
   walkInLevelNeedsDiscount: false,
+  posPickMemberAfterSale: false,
 };
 
 export function loadStoreSettings(): StoreSettings {
@@ -96,6 +99,7 @@ function normalizeStoreSettings(settings: Partial<StoreSettings> | ApiStoreSetti
     supplierDocNameMode: normDocNameMode(settings?.supplierDocNameMode),
     posAskCustomerAtStart: settings?.posAskCustomerAtStart === true,
     walkInLevelNeedsDiscount: settings?.walkInLevelNeedsDiscount === true,
+    posPickMemberAfterSale: settings?.posPickMemberAfterSale === true,
     levelNames: levelNames(settings?.levelNames),
     usedLevels: Array.isArray(settings?.usedLevels)
       ? [...new Set([1, ...settings.usedLevels.map((l: unknown) => normalizeLevel(l))])].sort() as PriceLevel[]

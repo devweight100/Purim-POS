@@ -1463,6 +1463,7 @@ export interface ApiStoreSettings {
   supplierDocNameMode?: string;
   posAskCustomerAtStart?: boolean;
   walkInLevelNeedsDiscount?: boolean;
+  posPickMemberAfterSale?: boolean;
   /** shop names of the price levels (online shop config), read-only */
   levelNames?: Record<string, string>;
   /** levels some active product has a price at (1 always) */

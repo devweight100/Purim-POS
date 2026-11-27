@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useEffectEvent, useRef } from 'react';
 import { toast } from 'sonner';
 import { useCartStore } from '@/lib/store/cart-store';
 import { useShiftStore } from '@/lib/store/shift-store';
@@ -22,20 +22,36 @@ import { usePosScanBurst } from './use-pos-scan-burst';
 import { currentScanHandler, focusScanBox } from './scan-burst';
 import { addToCart } from '@/lib/pos/pos-add';
 import { priceChangeToast } from './cart-catalogue-refresh';
+import { loadStoreSettings } from '@/lib/store-settings-storage';
+import { loadCustomers } from '@/lib/customer-service';
+import { memberForCode } from './member-scan';
+import { startChooserEnabled } from './pos-add';
 
 /**
  * After the payment dialog closed: back to standby (focus on the scan box) once the dialog's own focus return is
  * done (also after a focus return to the button / field that opened it), unless another dialog opened meanwhile.
  */
-function usePaymentClosedStandby(paymentOpen: boolean) {
+function usePaymentClosedStandby(paymentOpen: boolean, openMemberPicker: () => void) {
   const wasOpen = useRef(false);
+  /** the payment dialog is closing from the success screen of a sale (PaymentModal onSaleClosed) */
+  const saleClosed = useRef(false);
+  const openPicker = useEffectEvent(openMemberPicker);
   useEffect(() => {
     if (paymentOpen) {
       wasOpen.current = true;
+      saleClosed.current = false;
       return;
     }
     if (!wasOpen.current) return;
     wasOpen.current = false;
+    const afterSale = saleClosed.current;
+    saleClosed.current = false;
+    // setting "เปิดหน้าเลือกสมาชิกรอไว้หลังรับชำระเงิน" (docs/pos-member-picker.md): the member picker waits instead
+    // of the scan box; the picker keeps the focus itself and a product scan closes it (scan not lost)
+    if (afterSale && loadStoreSettings().posPickMemberAfterSale === true) {
+      const t = setTimeout(() => openPicker(), 0);
+      return () => clearTimeout(t);
+    }
     const timers = [0, 120, 400, 1500, 3000].map((ms) =>
       setTimeout(() => {
         if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
@@ -49,6 +65,9 @@ function usePaymentClosedStandby(paymentOpen: boolean) {
     );
     return () => timers.forEach(clearTimeout);
   }, [paymentOpen]);
+  return () => {
+    saleClosed.current = true;
+  };
 }
 
 /**
@@ -120,11 +139,49 @@ export function usePosController(variant: PosVariant) {
   // (docs/pos-keyboard-scan.md); the list layout routes it through its own add flow
   usePosScanBurst({
     enabled: mounted,
-    onScan: (code) => (currentScanHandler() ?? scanner.processDetectedScan)(code),
+    onScan: (code) => {
+      if (dialogs.showCustomerSelect && memberPickerScan(code)) return;
+      (currentScanHandler() ?? scanner.processDetectedScan)(code);
+    },
   });
 
-  // standby: when the payment dialog closes (sale done or cancelled) the focus goes back to the scan box
-  usePaymentClosedStandby(dialogs.showPayment);
+  /**
+   * A scan while the member picker is open (docs/pos-member-picker.md). A member code / phone that is not a product
+   * code selects that member. In the picker opened after a sale, a product code closes the picker ("sell without
+   * a member") and goes on to the cart. The picker opened with Ctrl+M stays open (docs/pos-keyboard-scan.md).
+   * Returns true when the scan was used up here.
+   */
+  const memberPickerScan = (code: string): boolean => {
+    if (!isExactProductCode(products, code)) {
+      const member = memberForCode(loadCustomers(), code);
+      if (member) {
+        useCartStore.getState().setCustomer(member.id, member.name, member.priceLevel);
+        toast.success(`เลือกลูกค้า: ${member.name}`);
+        closeMemberPicker();
+        return true;
+      }
+    }
+    if (dialogs.customerSelectAuto) closeMemberPicker();
+    return false;
+  };
+
+  /** close the member picker and go back to standby (auto-opened picker: "no member" = the start-of-bill choice too) */
+  const closeMemberPicker = () => {
+    const auto = dialogs.customerSelectAuto;
+    dialogs.setShowCustomerSelect(false);
+    const c = useCartStore.getState();
+    // with "เลือกลูกค้าก่อนเริ่มบิลทุกครั้ง" on as well: leaving the picker after a sale without a member already is
+    // that choice (ลูกค้าทั่วไป ราคาปลีก, the start dialog's own Esc), the start dialog does not ask again
+    if (!auto) return; // Ctrl+M: the dialog gives the focus back to where it was (unchanged)
+    if (!c.levelChosen && c.items.length === 0 && startChooserEnabled()) c.setWalkInLevel(1);
+    [0, 120, 400].forEach((ms) => setTimeout(() => {
+      if (!document.querySelector('[role="dialog"], [role="alertdialog"]')) focusScanBox();
+    }, ms));
+  };
+
+  // standby: when the payment dialog closes (sale done or cancelled) the focus goes back to the scan box,
+  // or (setting, after a completed sale) the member picker opens and waits
+  const noteSaleClosed = usePaymentClosedStandby(dialogs.showPayment, dialogs.openCustomerSelectAuto);
 
   /** Click on empty page space puts the focus back on the hidden scanner input. */
   const handleEmptySpaceClick = (e: React.MouseEvent) => {
@@ -172,6 +229,10 @@ export function usePosController(variant: PosVariant) {
     scanner,
     handleEmptySpaceClick,
     handleSearchEnter,
+    /** PaymentModal: a completed sale's success screen is closing */
+    noteSaleClosed,
+    /** the member picker closed (Esc / ✕ / a member picked) */
+    closeMemberPicker,
     addProductFromCard,
   };
 }

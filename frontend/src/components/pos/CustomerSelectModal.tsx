@@ -3,9 +3,8 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { useState, useEffect, useMemo } from 'react';
-import { Search, UserPlus, Building2, User, Coins, CreditCard, Tag, CheckCircle2 } from 'lucide-react';
+import { Search, UserPlus, MapPin, CheckCircle2 } from 'lucide-react';
 import { useCartStore } from '@/lib/store/cart-store';
 import { Customer, fetchCustomers, upsertCustomer } from '@/lib/customer-service';
 import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState';
@@ -15,13 +14,19 @@ import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { canUseWalkInLevel, usePosLevels } from '@/lib/pos/pos-add';
 import type { PriceLevel } from '@shared/price-level';
 import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
+import { memberAddress, memberSearchText } from '@/lib/pos/member-scan';
 
 interface CustomerSelectModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** opened by the POS after a sale (setting posPickMemberAfterSale, docs/pos-member-picker.md) */
+  autoOpened?: boolean;
 }
 
-export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalProps) {
+/** search box of the picker (focus rescue after a sale) */
+const SEARCH_ID = 'pos-member-search';
+
+export function CustomerSelectModal({ open, onOpenChange, autoOpened = false }: CustomerSelectModalProps) {
   const [search, setSearch] = useState('');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
@@ -80,18 +85,36 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
     onOpenChange(isOpen);
   };
 
+  // name, phone, member code, tax id, company and address (the list is in memory: cheap)
+  const searchable = useMemo(() => customers.map((c) => ({ c, text: memberSearchText(c) })), [customers]);
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     if (!q) return customers;
-    return customers.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.phone.includes(q) ||
-        (c.taxId && c.taxId.includes(q)) ||
-        (c.companyName && c.companyName.toLowerCase().includes(q)) ||
-        (c.code && c.code.toLowerCase().includes(q))
-    );
-  }, [customers, search]);
+    return searchable.filter((r) => r.text.includes(q)).map((r) => r.c);
+  }, [customers, searchable, search]);
+
+  // opened after a sale: the search keeps the focus (the receipt print frame / the payment dialog's focus return
+  // may take it a moment later); only while nothing else in the picker has it
+  useEffect(() => {
+    if (!open || !autoOpened) return;
+    const rescue = () => {
+      const input = document.getElementById(SEARCH_ID) as HTMLInputElement | null;
+      if (!input) return;
+      const a = document.activeElement as HTMLElement | null;
+      const lost = !a || a === document.body || a.tagName === 'IFRAME' || a.hasAttribute('data-barcode-input') || !a.closest('[role="dialog"]');
+      if (lost) input.focus({ preventScroll: true });
+    };
+    const timers = [0, 60, 150, 400, 1000, 1800, 3000].map((ms) => setTimeout(rescue, ms));
+    const onFocusIn = (e: FocusEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.hasAttribute?.('data-barcode-input')) setTimeout(rescue, 0);
+    };
+    document.addEventListener('focusin', onFocusIn);
+    return () => {
+      timers.forEach(clearTimeout);
+      document.removeEventListener('focusin', onFocusIn);
+    };
+  }, [open, autoOpened]);
 
   const handleSelect = (customer: Customer | null) => {
     if (!customer) {
@@ -167,26 +190,33 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
 
   return (
     <Dialog open={open} onOpenChange={handleModalClose}>
-      <DialogContent onKeyDown={onEnter} className="bg-white text-slate-900 border-slate-200 w-[95vw] sm:max-w-lg p-0 overflow-hidden rounded-2xl shadow-2xl">
-        <DialogHeader className="border-b border-slate-200 px-6 py-4.5 bg-slate-50 shrink-0">
-          <DialogTitle className="text-xl font-black text-slate-900 flex items-center gap-2.5">
-            <UserPlus className="w-6 h-6 text-sky-500" />
-            เลือกลูกค้าสมาชิก (POS Member Select)
+      <DialogContent
+        onKeyDown={onEnter}
+        data-testid="pos-member-picker"
+        className="flex flex-col gap-0 bg-white text-slate-900 border-slate-200 w-[calc(100vw-2rem)] sm:max-w-[920px] h-[min(820px,calc(100dvh-2rem))] p-0 overflow-hidden rounded-2xl shadow-2xl"
+      >
+        <DialogHeader className="border-b border-slate-200 pl-6 pr-16 py-4 bg-slate-50 shrink-0">
+          <DialogTitle className="text-xl font-semibold text-slate-900 flex items-center gap-2.5">
+            <UserPlus className="w-6 h-6 text-sky-500 shrink-0" />
+            เลือกลูกค้าสมาชิก
           </DialogTitle>
-          <DialogDescription className="text-sm text-slate-500 font-medium mt-0.5">
-            เลือกลูกค้าสำหรับบิลนี้ เพื่อสะสมแต้ม ใช้วงเงินเครดิต และดึงระดับราคาขาย
+          <DialogDescription className="text-sm text-slate-500 mt-0.5">
+            {autoOpened
+              ? 'รับชำระเงินแล้ว · เลือกสมาชิกสำหรับบิลถัดไป (พิมพ์/สแกนรหัสสมาชิกหรือเบอร์โทร) · สแกนสินค้าได้เลย · Esc = ไม่ระบุสมาชิก'
+              : 'เลือกลูกค้าสำหรับบิลนี้ เพื่อสะสมแต้ม ใช้วงเงินเครดิต และดึงระดับราคาขาย'}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="p-5 space-y-4">
+        <div className="flex-1 min-h-0 flex flex-col gap-4 p-4 sm:p-5">
           {!isQuickAddOpen ? (
             <>
               {/* Search & Quick Add Toggle */}
               <div className="flex gap-2 shrink-0">
-                <div className="relative flex-1">
+                <div className="relative flex-1 min-w-0">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                   <Input
-                    placeholder="พิมพ์ค้นหาชื่อ, เบอร์โทร, เลขผู้เสียภาษี Tax ID..."
+                    id={SEARCH_ID}
+                    placeholder="พิมพ์ค้นหาชื่อ, เบอร์โทร, รหัสสมาชิก, ที่อยู่, เลขผู้เสียภาษี..."
                     value={search}
                     onChange={(e) => {
                       setSearch(e.target.value);
@@ -194,13 +224,14 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
                     }}
                     onKeyDown={onSearchKeyDown}
                     aria-label="ค้นหาลูกค้า (↑/↓ เลือก · Enter = เลือกลูกค้า)"
-                    className="pl-11 bg-slate-50 border-slate-300 h-12 text-base font-semibold rounded-xl placeholder:font-normal"
+                    className="pl-11 bg-slate-50 border-slate-300 h-12 text-base font-medium rounded-xl placeholder:font-normal"
                     autoFocus
                   />
                 </div>
                 <Button
                   onClick={() => setIsQuickAddOpen(true)}
-                  className="bg-sky-500 hover:bg-sky-600 text-white font-extrabold h-12 text-sm px-4 shadow-xs rounded-xl gap-1.5"
+                  size="lg"
+                  className="shrink-0 h-12 rounded-xl"
                   title="สมัครสมาชิกด่วนหน้าร้าน"
                 >
                   <UserPlus className="w-4 h-4" />
@@ -209,57 +240,53 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
               </div>
 
               {/* Customer List */}
-              <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-50 max-h-80 overflow-y-auto divide-y divide-slate-200/80">
+              <div
+                className="flex-1 min-h-0 border border-slate-200 rounded-xl overflow-y-auto overflow-x-hidden bg-white divide-y divide-slate-200/80"
+                data-testid="pos-member-list"
+              >
                 {filtered.map((c, idx) => {
                   const isCompany = c.type === 'COMPANY';
                   const isSelected = cart.customerId === c.id;
                   const isHi = idx === hiIndex && (!!search.trim() || hiMoved);
+                  const address = memberAddress(c);
 
                   return (
                     <div
                       key={c.id}
                       data-customer-row={idx}
                       data-highlighted={isHi || undefined}
-                      className={`p-3.5 sm:p-4 transition-all cursor-pointer flex items-center justify-between gap-3 ${isHi ? 'ring-2 ring-inset ring-sky-500 ' : ''}${
-                        isSelected
-                          ? 'bg-sky-100/90 border-l-4 border-l-sky-600'
-                          : 'hover:bg-slate-100/90'
+                      className={`px-4 py-3 cursor-pointer flex items-center gap-4 min-w-0 ${isHi ? 'ring-2 ring-inset ring-sky-500 ' : ''}${
+                        isSelected ? 'bg-sky-50 border-l-4 border-l-sky-600' : 'hover:bg-slate-50'
                       }`}
                       onClick={() => handleSelect(c)}
                     >
-                      <div className="min-w-0 flex-1 pr-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-black text-slate-900 text-base sm:text-lg truncate">{c.name}</span>
-                          {isCompany ? (
-                            <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200 text-xs px-2 py-0.5 font-bold shrink-0">
-                              🏢 บริษัท
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-slate-200 text-slate-700 border-slate-300 text-xs px-2 py-0.5 font-semibold shrink-0">
-                              บุคคล
-                            </Badge>
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <div className="flex items-baseline gap-2 min-w-0">
+                          <span className="font-semibold text-slate-900 text-base truncate" title={c.name}>{c.name}</span>
+                          <span className="text-sub text-muted-foreground shrink-0">{isCompany ? 'บริษัท' : 'บุคคล'}</span>
+                        </div>
+                        <div className="text-sm text-slate-600 flex items-center gap-x-3 gap-y-0.5 min-w-0 flex-wrap">
+                          <span className="tabular-nums font-medium text-slate-800">{c.phone || '-'}</span>
+                          {c.code && <span className="doc-no text-muted-foreground">{c.code}</span>}
+                          {c.taxId && <span className="text-muted-foreground">Tax ID {c.taxId}</span>}
+                          {c.creditLimit > 0 && (
+                            <span className="text-muted-foreground">วงเงินเครดิต {formatCurrency(c.creditLimit)}</span>
                           )}
                         </div>
-                        <div className="text-sm text-slate-600 font-medium mt-1 flex flex-wrap items-center gap-2.5">
-                          <span className="font-bold text-slate-800">📞 {c.phone}</span>
-                          {c.taxId && <span>• Tax ID: <b className="font-mono text-slate-700">{c.taxId}</b></span>}
-                          {c.creditLimit > 0 && (
-                            <span className="text-indigo-700 font-bold">
-                              • วงเงินเครดิต: {formatCurrency(c.creditLimit)}
-                            </span>
-                          )}
+                        <div
+                          className={`text-sm flex items-center gap-1.5 min-w-0 ${address ? 'text-slate-600' : 'text-subtle'}`}
+                          title={address || undefined}
+                          data-testid="pos-member-address"
+                        >
+                          <MapPin className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{address || 'ไม่มีที่อยู่'}</span>
                         </div>
                       </div>
 
-                      {/* Right Badges: Price Level & Points */}
-                      <div className="flex flex-col items-end gap-1.5 shrink-0">
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-black bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">
-                          <Coins className="w-4 h-4 text-amber-600" />
-                          <span>{(c.points || 0).toLocaleString()} แต้ม</span>
-                        </div>
-                        <span className="text-xs text-sky-800 font-extrabold bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200">
-                          {levels.names[(c.priceLevel || 1) as PriceLevel]}
-                        </span>
+                      {/* points and price level */}
+                      <div className="flex flex-col items-end gap-0.5 shrink-0 text-right">
+                        <span className="text-sm font-semibold text-slate-900 tabular-nums">{(c.points || 0).toLocaleString()} แต้ม</span>
+                        <span className="text-sub text-muted-foreground">{levels.names[(c.priceLevel || 1) as PriceLevel]}</span>
                       </div>
                     </div>
                   );
@@ -277,7 +304,7 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
               </div>
 
               {/* Walk-in customer at a price level (no member): also clears the member */}
-              <div className="space-y-2">
+              <div className="space-y-2 shrink-0">
                 <div className="text-sm font-medium text-slate-700">ลูกค้าทั่วไป (ไม่ระบุชื่อ) · ล้างการเลือกสมาชิก</div>
                 <div className="flex flex-wrap gap-btn">
                   {levels.used.map((l) => (
@@ -297,7 +324,7 @@ export function CustomerSelectModal({ open, onOpenChange }: CustomerSelectModalP
             </>
           ) : (
             /* Quick Add Customer Form */
-            <div className="space-y-3.5 text-sm">
+            <div className="space-y-3.5 text-sm overflow-y-auto min-h-0">
               <div className="font-black text-slate-900 text-base flex items-center justify-between">
                 <span>สมัครสมาชิกลูกค้าใหม่ (ด่วน)</span>
                 <button

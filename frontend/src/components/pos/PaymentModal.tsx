@@ -74,6 +74,8 @@ interface PaymentModalProps {
   onPaymentEditSuccess?: () => void;
   /** where the focus goes when the dialog closes (the POS: its scan box = standby, docs/pos-keyboard-scan.md) */
   finalFocus?: () => HTMLElement | boolean | null;
+  /** a completed sale's success screen is closing (not a payment edit): the POS may open the member picker next */
+  onSaleClosed?: () => void;
 }
 
 export function PaymentModal({ 
@@ -82,6 +84,7 @@ export function PaymentModal({
   initialMethod = null,
   orderToEditPayment = null,
   onPaymentEditSuccess,
+  onSaleClosed,
   finalFocus,
 }: PaymentModalProps) {
   // while open, a scanner burst on the POS page adds nothing (notice "ปิดหน้ารับเงินก่อนสแกนสินค้า")
@@ -98,6 +101,11 @@ export function PaymentModal({
   useEffect(() => {
     onOpenChangeRef.current = onOpenChange;
   }, [onOpenChange]);
+  const onSaleClosedRef = useRef(onSaleClosed);
+  useEffect(() => {
+    // payment edits (sales history) are not a new sale: no member picker after them
+    onSaleClosedRef.current = orderToEditPayment ? undefined : onSaleClosed;
+  }, [onSaleClosed, orderToEditPayment]);
   const [approvalNeeded, setApprovalNeeded] = useState<ApprovalNeeded | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pendingReceipt, setPendingReceipt] = useState(false);
@@ -183,6 +191,7 @@ export function PaymentModal({
       timer = setTimeout(() => {
         operationId.current = null;
         useCartStore.getState().clearCart();
+        onSaleClosedRef.current?.();
         onOpenChangeRef.current(false);
       }, 5000);
     }
@@ -200,6 +209,7 @@ export function PaymentModal({
         operationId.current = null;
         cart.clearCart();
       }
+      if (step === 'SUCCESS' && !orderToEditPayment) onSaleClosed?.();
     }
     onOpenChange(isOpen);
   };
@@ -722,6 +732,7 @@ export function PaymentModal({
   const handleFinish = () => {
     operationId.current = null;
     cart.clearCart();
+    if (!orderToEditPayment) onSaleClosed?.();
     onOpenChange(false);
   };
 

@@ -45,6 +45,7 @@ export function PosDialogs({ pos }: { pos: PosController }) {
         onOpenChange={d.setShowPayment}
         initialMethod={d.paymentInitialMethod}
         finalFocus={() => currentScanBox() ?? true}
+        onSaleClosed={pos.noteSaleClosed}
       />
       <ItemEditPopup open={!!d.editItem} onOpenChange={(open) => !open && d.setEditItem(null)} item={d.editItem} />
       <BillDiscountPopup open={d.showBillDiscount} onOpenChange={d.setShowBillDiscount} />
@@ -56,7 +57,11 @@ export function PosDialogs({ pos }: { pos: PosController }) {
         onOpenShiftRequired={() => d.setShowOpenShift(true)}
       />
       <HeldBillsSheet open={d.showHeldBills} onOpenChange={d.setShowHeldBills} />
-      <CustomerSelectModal open={d.showCustomerSelect} onOpenChange={d.setShowCustomerSelect} />
+      <CustomerSelectModal
+        open={d.showCustomerSelect}
+        onOpenChange={(open) => (open ? d.setShowCustomerSelect(true) : pos.closeMemberPicker())}
+        autoOpened={d.customerSelectAuto}
+      />
       <PosStartDialog />
       <BarcodeScanModal open={d.showBarcodeScan} onOpenChange={d.setShowBarcodeScan} />
       <OrderHistoryModal

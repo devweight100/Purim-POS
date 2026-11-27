@@ -785,6 +785,27 @@ export default function SettingsPage() {
                   </span>
                 </label>
               </div>
+              {/* Member picker waiting after every completed sale (docs/pos-member-picker.md) */}
+              <div className={`rounded-xl border p-3.5 space-y-1.5 ${settings.posPickMemberAfterSale ? 'border-sky-300 bg-sky-50/60' : 'border-slate-200 bg-slate-50'}`}>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    data-testid="pos-pick-member-after-payment"
+                    checked={settings.posPickMemberAfterSale === true}
+                    onChange={(e) => setSettings({ ...settings, posPickMemberAfterSale: e.target.checked })}
+                    className="mt-0.5 w-5 h-5 rounded text-sky-600 focus:ring-sky-500"
+                  />
+                  <span className="space-y-0.5">
+                    <span className="block text-sm font-semibold text-slate-900">เปิดหน้าเลือกสมาชิกรอไว้หลังรับชำระเงิน</span>
+                    <span className="block text-xs text-slate-600 leading-relaxed">
+                      {settings.posPickMemberAfterSale
+                        ? 'เปิดอยู่: รับชำระเงินเสร็จแล้ว หน้าเลือกสมาชิกจะเปิดรอไว้ พิมพ์/สแกนรหัสสมาชิกหรือเบอร์โทรได้ทันที · Esc = ขายโดยไม่ระบุสมาชิก · สแกนสินค้าได้เลย (ปิดหน้าเลือกสมาชิกแล้วใส่สินค้าลงตะกร้า)'
+                        : 'ปิดอยู่: รับชำระเงินเสร็จแล้วกลับไปพร้อมสแกนสินค้าทันที เลือกสมาชิกได้ที่ช่องลูกค้าในหน้าขาย (Ctrl+M)'}
+                    </span>
+                  </span>
+                </label>
+                <p className="text-[11px] text-slate-500 pl-8">มีผลกับทุกเครื่องหลังกดบันทึก</p>
+              </div>
               {/* Who may sell a walk-in bill at ราคา 2-5 */}
               <div className={`rounded-xl border p-3.5 space-y-1.5 ${settings.walkInLevelNeedsDiscount ? 'border-amber-300 bg-amber-50/60' : 'border-slate-200 bg-slate-50'}`}>
                 <label className="flex items-start gap-3 cursor-pointer">

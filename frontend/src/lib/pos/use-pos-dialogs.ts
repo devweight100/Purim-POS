@@ -20,7 +20,19 @@ export function usePosDialogs() {
   const [showOpenShift, setShowOpenShift] = useState(false);
   const [showCloseShift, setShowCloseShift] = useState(false);
   const [showHeldBills, setShowHeldBills] = useState(false);
-  const [showCustomerSelect, setShowCustomerSelect] = useState(false);
+  const [showCustomerSelect, setShowCustomerSelectState] = useState(false);
+  /** the member picker was opened by the POS after a sale (setting posPickMemberAfterSale), not by the cashier */
+  const [customerSelectAuto, setCustomerSelectAuto] = useState(false);
+  const setShowCustomerSelect = (next: boolean | ((prev: boolean) => boolean)) => {
+    const open = typeof next === 'function' ? next(showCustomerSelect) : next;
+    setShowCustomerSelectState(open);
+    if (!open) setCustomerSelectAuto(false);
+  };
+  /** after a completed sale: the member picker opens and waits (docs/pos-member-picker.md) */
+  const openCustomerSelectAuto = () => {
+    setCustomerSelectAuto(true);
+    setShowCustomerSelectState(true);
+  };
   const [showBarcodeScan, setShowBarcodeScan] = useState(false);
   const [showOrderHistoryModal, setShowOrderHistoryModal] = useState(false);
   const [unitModalProduct, setUnitModalProduct] = useState<Product | null>(null);
@@ -83,7 +95,7 @@ export function usePosDialogs() {
     showOpenShift, setShowOpenShift,
     showCloseShift, setShowCloseShift,
     showHeldBills, setShowHeldBills,
-    showCustomerSelect, setShowCustomerSelect,
+    showCustomerSelect, setShowCustomerSelect, customerSelectAuto, openCustomerSelectAuto,
     showBarcodeScan, setShowBarcodeScan,
     showOrderHistoryModal, setShowOrderHistoryModal,
     unitModalProduct, setUnitModalProduct,
