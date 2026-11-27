@@ -807,6 +807,61 @@ export class OnlineShopService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * บิลส่งของ (delivery note, docs/pos-member-picker.md): the order's agreed lines, prices, delivery fee and total,
+   * for delivering the goods / collecting the money before the payment. Read only: no claim, no status change, no
+   * document number; `printCount` = delivery notes printed so far (audit log PRINT_DELIVERY_NOTE).
+   */
+  async deliveryNote(id: string) {
+    const o = await this.prisma.onlineOrder.findUnique({
+      where: { id },
+      include: {
+        customer: { select: { name: true, phone: true, address: true } },
+        items: { orderBy: { sortOrder: 'asc' }, include: { product: { select: { isService: true } } } },
+      },
+    });
+    if (!o) throw new NotFoundException('ไม่พบออเดอร์ออนไลน์');
+    const printCount = await this.prisma.auditLog.count({ where: { entity: 'OnlineOrder', entityId: id, action: 'PRINT_DELIVERY_NOTE' } });
+    const fee = o.deliveryFee === null ? null : money(o.deliveryFee);
+    const lines = o.items.map((i) => ({
+      name: i.productName,
+      unitName: i.unitName,
+      quantity: Number(i.quantity),
+      unitPrice: money(i.unitPrice),
+      lineTotal: money(i.total),
+      isService: i.product.isService === true,
+    }));
+    return {
+      orderNo: o.orderNo,
+      createdAt: o.createdAt,
+      status: o.status,
+      paid: !!o.paidAt,
+      fulfillment: o.fulfillment,
+      customerName: o.customer?.name || o.contactName,
+      contactName: o.contactName,
+      phone: o.contactPhone || o.customer?.phone || null,
+      address: o.address || o.customer?.address || null,
+      note: o.note,
+      lines,
+      subtotal: money(o.subtotal),
+      deliveryFee: fee,
+      totalAmount: money(o.totalAmount),
+      printCount,
+    };
+  }
+
+  /** A delivery note of the order was printed: audit row (who, when, the total printed); returns the new count. */
+  async recordDeliveryNotePrint(id: string, user: StaffUser, body: any) {
+    const o = await this.prisma.onlineOrder.findUnique({ where: { id }, select: { orderNo: true, totalAmount: true } });
+    if (!o) throw new NotFoundException('ไม่พบออเดอร์ออนไลน์');
+    const format = body?.format === 'a4' ? 'a4' : '80mm';
+    await this.prisma.auditLog.create({
+      data: { userId: user.id, action: 'PRINT_DELIVERY_NOTE', entity: 'OnlineOrder', entityId: id, details: { orderNo: o.orderNo, totalAmount: money(o.totalAmount), format } },
+    });
+    const printCount = await this.prisma.auditLog.count({ where: { entity: 'OnlineOrder', entityId: id, action: 'PRINT_DELIVERY_NOTE' } });
+    return { printCount };
+  }
+
+  /**
    * "จัดของเสร็จ": a picking action (claims the order when nobody holds it, refused while someone else does).
    * Records who picked and when, ends the claim and moves the order to READY ("จัดเสร็จ รอรับเงิน/รอส่ง"); from
    * then on any cashier takes the payment / hands the goods over. Allowed paid or not (a delivery order may be

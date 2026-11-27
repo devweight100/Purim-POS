@@ -198,6 +198,20 @@ export class OnlineShopAdminController {
     return this.shop.pickingSlip(id, req.user);
   }
 
+  /** บิลส่งของ data (read only: no claim, no status change) */
+  @RequirePermissions('POS_SELL')
+  @Get('orders/:id/delivery-note')
+  deliveryNote(@Param('id') id: string) {
+    return this.shop.deliveryNote(id);
+  }
+
+  /** a delivery note was printed (audit log, print count) */
+  @RequirePermissions('POS_SELL')
+  @Post('orders/:id/delivery-note/print')
+  deliveryNotePrinted(@Param('id') id: string, @Body() body: any, @Request() req: any) {
+    return this.shop.recordDeliveryNotePrint(id, req.user, body);
+  }
+
   /** "จัดของเสร็จ": records the picker, ends the claim, status READY */
   @RequirePermissions('POS_SELL')
   @Post('orders/:id/picked')

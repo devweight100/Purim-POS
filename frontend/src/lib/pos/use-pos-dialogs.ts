@@ -6,6 +6,7 @@ import { useCartStore } from '@/lib/store/cart-store';
 import type { CartItem, Product } from '@/lib/types';
 import type { Customer } from '@/lib/customer-service';
 import { usePosStart } from './pos-add';
+import { useDeliveryNote } from './delivery-note-store';
 
 const EMPTY_CART_PAY_WARNING = 'ไม่มีสินค้าในตะกร้า ไม่สามารถชำระเงินได้';
 
@@ -50,10 +51,12 @@ export function usePosDialogs() {
 
   // start-of-bill dialog (pos-add.ts): scans still go through (they wait for the choice), keys and clicks do not
   const startOpen = usePosStart((s) => s.open);
+  // บิลส่งของ preview (lib/pos/delivery-note-store.ts)
+  const deliveryNoteOpen = useDeliveryNote((s) => !!s.data);
 
   /** A click on empty space re-focuses the hidden scanner input unless one of these is open. */
   const focusClickBlocked =
-    scanBlocked || startOpen || !!qtyEditItem || showDebtCollectModal || showCashDrawerModal ||
+    scanBlocked || startOpen || deliveryNoteOpen || !!qtyEditItem || showDebtCollectModal || showCashDrawerModal ||
     showUnitModal || showRedeemModal || showBarcodeScan || showBillDiscount;
 
   /** Page shortcuts are off while any of these is open (the dialog handles its own keys). */

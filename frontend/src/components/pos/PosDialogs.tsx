@@ -13,6 +13,7 @@ import { CashDrawerModal } from './CashDrawerModal';
 import { HeldBillsSheet } from './HeldBillsSheet';
 import { CustomerSelectModal } from './CustomerSelectModal';
 import { PosStartDialog } from './PosStartDialog';
+import { DeliveryNoteDialog } from './DeliveryNoteView';
 import { BarcodeScanModal } from './BarcodeScanModal';
 import { OrderHistoryModal } from './OrderHistoryModal';
 import { NumpadPopup } from './NumpadPopup';
@@ -63,6 +64,7 @@ export function PosDialogs({ pos }: { pos: PosController }) {
         autoOpened={d.customerSelectAuto}
       />
       <PosStartDialog />
+      <DeliveryNoteDialog />
       <BarcodeScanModal open={d.showBarcodeScan} onOpenChange={d.setShowBarcodeScan} />
       <OrderHistoryModal
         open={d.showOrderHistoryModal}

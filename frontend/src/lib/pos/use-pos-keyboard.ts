@@ -10,6 +10,7 @@ import type { CartItem } from '@/lib/types';
 import type { PosDialogs } from './use-pos-dialogs';
 import type { CartSelection } from './use-cart-selection';
 import { printCartPickingSlip } from './picking';
+import { openCartDeliveryNote } from './delivery-note-actions';
 import { refreshPosData } from './pos-refresh';
 
 const EMPTY_CART_WARNING = 'ยังไม่มีสินค้าในตะกร้า';
@@ -39,7 +40,7 @@ function keyIs(e: KeyboardEvent, code: string, key: string) {
  * Page shortcuts of the POS screens:
  * F2 quantity, F3 item discount (empty cart: left to the global document search), F4 price,
  * arrows select a row, Delete removes it, +/- change its quantity, F9 cash drawer,
- * F8 picking slip (ใบจัดของ) of the cart, F10 / Ctrl+P / Ctrl+Shift+P hold bill or held bills, F12 payment, Ctrl+H history,
+ * F8 picking slip (ใบจัดของ) of the cart, Shift+F8 delivery note (บิลส่งของ) of the cart, F10 / Ctrl+P / Ctrl+Shift+P hold bill or held bills, F12 payment, Ctrl+H history,
  * Ctrl+M member, Ctrl+E clear cart, F5 รีเฟรชข้อมูล (catalogue, customers, settings; cart / held bills / outbox kept;
  * also while a dialog is open, so F5 never reloads the POS page).
  *
@@ -127,6 +128,10 @@ export function usePosKeyboard({ dialogs, selection, scannerInputRef }: PosKeybo
         e.preventDefault();
         useCartStore.getState().updateQuantity(target.productId, subQty(target.quantity, 1), target.unitId);
       }
+    } else if (e.shiftKey && keyIs(e, 'F8', 'f8')) {
+      // Shift+F8: บิลส่งของ of the cart (prices, not paid yet), docs/pos-member-picker.md
+      e.preventDefault();
+      void openCartDeliveryNote();
     } else if (keyIs(e, 'F8', 'f8')) {
       e.preventDefault();
       void printCartPickingSlip();

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Globe, PlayCircle } from 'lucide-react';
+import { Globe, PlayCircle, Truck } from 'lucide-react';
+import { openOnlineDeliveryNote } from '@/lib/pos/delivery-note-actions';
 import { apiFetch } from '@/lib/api';
 import { formatCurrency } from '@/lib/utils';
 import { useCartStore } from '@/lib/store/cart-store';
@@ -104,6 +105,15 @@ export function PosOnlineOrders({ onOpened }: { onOpened: () => void }) {
             </div>
             <div className="flex items-center gap-3">
               <span className="font-semibold tabular-nums text-lg">{formatCurrency(r.totalAmount)}</span>
+              <Button
+                variant="outline"
+                data-testid="online-delivery-note"
+                className="gap-2"
+                title="พิมพ์บิลส่งของ (ราคาและค่าส่งที่ตกลง ยังไม่ได้ชำระ)"
+                onClick={() => void openOnlineDeliveryNote(r.id)}
+              >
+                <Truck className="w-4 h-4" /> บิลส่งของ
+              </Button>
               <Button
                 className="bg-emerald-700 hover:bg-emerald-800 text-white gap-2"
                 disabled={busy !== null || current === r.id}
