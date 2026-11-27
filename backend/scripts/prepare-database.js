@@ -19,6 +19,10 @@ const path = require('path');
 const fs = require('fs');
 const { spawnSync } = require('child_process');
 
+// Prisma's "Update available" box is advice for developers; the shop's server must not upgrade on its own
+// (a major Prisma version needs code changes), so hide it during installs and updates.
+process.env.PRISMA_HIDE_UPDATE_MESSAGE = '1';
+
 // `prisma db seed` runs "ts-node prisma/seed.ts" through the shell: make sure this backend's
 // node_modules/.bin is on PATH even when the script is started from another folder (e2e setup, installer).
 {

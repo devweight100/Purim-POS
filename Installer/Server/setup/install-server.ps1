@@ -260,6 +260,7 @@ Ok 'หยุดแล้ว'
 # ---------------------------------------------------------------- 6. Install packages + database migration
 Step '6/8' 'ติดตั้งแพ็กเกจ backend และอัปเดตโครงสร้างฐานข้อมูล (ครั้งแรกใช้เวลา 3-10 นาที)'
 $env:NODE_ENV = ''
+$env:PRISMA_HIDE_UPDATE_MESSAGE = '1'   # hide Prisma's 'Update available' notice (not for this install)
 Run 'npm.cmd' @('ci', '--no-audit', '--no-fund', '--loglevel=error') $Backend 'npm ci (backend)'
 Run 'npx.cmd' @('prisma', 'generate') $Backend 'prisma generate'
 Run $NodeExe @('scripts\prepare-database.js') $Backend 'อัปเดตฐานข้อมูล'
