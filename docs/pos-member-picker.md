@@ -47,8 +47,10 @@ IN2611-0001 shown as walk-in).
   its search (header says "รับชำระเงินแล้ว · เลือกสมาชิกสำหรับบิลถัดไป ... Esc = ไม่ระบุสมาชิก"). A cancelled
   payment and a payment edit from the history do not open it.
   - typed member code / phone / name + Enter (↑/↓ to choose) = that member for the next bill, then standby;
-  - a **scanned member code** (member card) or phone = that member (exact code, or exactly the phone's digits,
+  - a **scanned member code** (member card, also typed in the Thai layout) or phone = that member (exact code, or exactly the phone's digits,
     single match; never when the code is also a product code);
+  - a scanned code that is neither a product nor a member is shown in the picker's search with a notice (nothing
+    lost, the picker stays);
   - a **scanned product** closes the picker ("no member") and goes to the cart through the normal add flow (the
     scanner burst detector restores the search text; the scan is not lost); focus back on the scan box;
   - Esc / ✕ = sell without a member, standby on the scan box.
@@ -61,8 +63,9 @@ IN2611-0001 shown as walk-in).
 - **OFF (default)**: unchanged - after payment the focus returns to the scan box (docs/pos-keyboard-scan.md; e2e 32
   and 44 check it).
 - The member picker opened with **Ctrl+M** keeps its behaviour from docs/pos-keyboard-scan.md: a product scan adds
-  to the cart and the picker stays open (the cashier is choosing a member for the current bill). Only the member
-  card scan selecting the member is new there.
+  to the cart and the picker stays open (the cashier is choosing a member for the current bill); other codes go to
+  the add / document flow as before. Only a member card scan (a code of a member in the list) selecting the member
+  is new there.
 
 ## 3. Member picker
 

@@ -23,8 +23,8 @@ import { currentScanHandler, focusScanBox } from './scan-burst';
 import { addToCart } from '@/lib/pos/pos-add';
 import { priceChangeToast } from './cart-catalogue-refresh';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
+import { MEMBER_PICKER_SCAN_EVENT, memberForScan } from './member-scan';
 import { loadCustomers } from '@/lib/customer-service';
-import { memberForCode } from './member-scan';
 import { startChooserEnabled } from './pos-add';
 
 /**
@@ -146,20 +146,18 @@ export function usePosController(variant: PosVariant) {
   });
 
   /**
-   * A scan while the member picker is open (docs/pos-member-picker.md). A member code / phone that is not a product
-   * code selects that member. In the picker opened after a sale, a product code closes the picker ("sell without
-   * a member") and goes on to the cart. The picker opened with Ctrl+M stays open (docs/pos-keyboard-scan.md).
+   * A scan while the member picker is open (docs/pos-member-picker.md). A code that is not a product code goes to
+   * the picker (member code / phone -> that member). In the picker opened after a sale, a product code closes the
+   * picker ("sell without a member") and goes on to the cart. The picker opened with Ctrl+M stays open
+   * (docs/pos-keyboard-scan.md).
    * Returns true when the scan was used up here.
    */
   const memberPickerScan = (code: string): boolean => {
-    if (!isExactProductCode(products, code)) {
-      const member = memberForCode(loadCustomers(), code);
-      if (member) {
-        useCartStore.getState().setCustomer(member.id, member.name, member.priceLevel);
-        toast.success(`เลือกลูกค้า: ${member.name}`);
-        closeMemberPicker();
-        return true;
-      }
+    // not a product: the picker opened after a sale takes it (member code / phone -> that member, else the code is
+    // shown in its search); the Ctrl+M picker only when it is a member's code (other codes go on as before)
+    if (!isExactProductCode(products, code) && (dialogs.customerSelectAuto || memberForScan(loadCustomers(), code))) {
+      window.dispatchEvent(new CustomEvent(MEMBER_PICKER_SCAN_EVENT, { detail: code }));
+      return true;
     }
     if (dialogs.customerSelectAuto) closeMemberPicker();
     return false;

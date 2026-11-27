@@ -186,8 +186,14 @@ test('setting on: the member picker waits after each sale; typed member code pic
   await expect.poll(async () => (await cart(page)).items.length).toBe(1);
   await sellByKeyboard(page, '25');
 
-  // sale 4 done -> picker; Esc = sell without a member, standby, scans go in
+  // sale 4 done -> picker; a code that is neither a product nor a member stays in the picker's search
   await expect(picker(page)).toBeVisible();
+  await page.waitForTimeout(300);
+  await scannerBurst(page, `ZX${TAG}99`);
+  await expect(pickerSearch(page)).toHaveValue(`ZX${TAG}99`);
+  await expect(picker(page)).toBeVisible();
+  expect((await cart(page)).items.length).toBe(0);
+  // Esc = sell without a member, standby, scans go in
   await page.keyboard.press('Escape');
   await expect(picker(page)).toBeHidden();
   expect((await cart(page)).customerId).toBeNull();

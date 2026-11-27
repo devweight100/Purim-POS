@@ -1,3 +1,8 @@
+import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
+
+/** window event: a scanner burst that is not a product code arrived while the member picker is open (detail: code) */
+export const MEMBER_PICKER_SCAN_EVENT = 'pos-member-picker-scan';
+
 /**
  * A code scanned / typed while the member picker is open (docs/pos-member-picker.md): the member whose member code
  * equals it (case-insensitive), or whose phone has exactly its digits (at least 9). Only a single match counts
@@ -33,4 +38,12 @@ export function memberSearchText(c: {
 /** The address shown in the picker: the member's address, else the tax-invoice address. */
 export function memberAddress(c: { address?: string | null; taxAddress?: string | null }): string {
   return (c.address || '').trim() || (c.taxAddress || '').trim();
+}
+
+/** memberForCode for a scanner burst: as typed, else with the Thai keyboard layout converted (like product scans). */
+export function memberForScan<T extends MemberLike>(customers: readonly T[], raw: string): T | null {
+  const m = memberForCode(customers, raw);
+  if (m) return m;
+  const converted = convertThaiToEnBarcode(raw);
+  return converted !== raw ? memberForCode(customers, converted) : null;
 }

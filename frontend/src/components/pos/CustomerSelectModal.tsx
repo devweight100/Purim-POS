@@ -3,7 +3,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useEffectEvent, useMemo } from 'react';
 import { Search, UserPlus, MapPin, CheckCircle2 } from 'lucide-react';
 import { useCartStore } from '@/lib/store/cart-store';
 import { Customer, fetchCustomers, upsertCustomer } from '@/lib/customer-service';
@@ -14,7 +14,7 @@ import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { canUseWalkInLevel, usePosLevels } from '@/lib/pos/pos-add';
 import type { PriceLevel } from '@shared/price-level';
 import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
-import { memberAddress, memberSearchText } from '@/lib/pos/member-scan';
+import { MEMBER_PICKER_SCAN_EVENT, memberAddress, memberForScan, memberSearchText } from '@/lib/pos/member-scan';
 
 interface CustomerSelectModalProps {
   open: boolean;
@@ -136,6 +136,26 @@ export function CustomerSelectModal({ open, onOpenChange, autoOpened = false }: 
     toast.info(`ลูกค้าทั่วไป · ${levels.names[level as PriceLevel]}`);
     onOpenChange(false);
   };
+
+  // a scanned code that is not a product (POS scanner detector): member card / phone -> that member; anything else
+  // is shown in the search so the cashier sees what was scanned
+  const onScanned = useEffectEvent((code: string) => {
+    if (isQuickAddOpen) return;
+    const member = memberForScan(customers, code);
+    if (member) {
+      handleSelect(member);
+      return;
+    }
+    setSearch(code);
+    setHi(0);
+    toast.warning(`ไม่พบสมาชิกหรือสินค้ารหัส "${code}"`, { id: 'member-picker-scan' });
+  });
+  useEffect(() => {
+    if (!open) return;
+    const on = (e: Event) => onScanned(String((e as CustomEvent).detail || ''));
+    window.addEventListener(MEMBER_PICKER_SCAN_EVENT, on);
+    return () => window.removeEventListener(MEMBER_PICKER_SCAN_EVENT, on);
+  }, [open]);
 
   // keyboard: ↑/↓ in the search box moves the highlight, Enter picks it (docs/pos-keyboard-scan.md)
   const hiIndex = Math.min(hi, Math.max(0, filtered.length - 1));
