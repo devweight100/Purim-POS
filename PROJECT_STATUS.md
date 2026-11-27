@@ -1,6 +1,6 @@
 # Purim POS Project Status
 
-Last updated: 2026-11-26
+Last updated: 2026-11-27
 
 ## Goal
 
@@ -142,6 +142,14 @@ Make the POS production-ready by using PostgreSQL/backend APIs as the source of 
 - **Member picker**: larger (920 px, list fills the height), address line per member (ellipsis + tooltip), code / phone, search also by address; ↑/↓/Enter kept; the search keeps the focus against a late scan-box focus.
 - **บิลส่งของ** (delivery note): held bills (sheet), held online orders and the cart (Shift+F8) print a "บิลส่งของ (ไม่ใช่ใบเสร็จรับเงิน)" slip (default) or A4 with prices, discounts, fee, total and "ยังไม่ได้ชำระเงิน"; no sale, stock, document number or held-bill change. Online orders: `GET /online-shop/orders/:id/delivery-note`, `POST .../delivery-note/print` (audit `PRINT_DELIVERY_NOTE`, print count). Held-bills sheet total now uses the shared pricing.
 - Verified: backend tsc + jest 201 + e2e 153 (fresh DB), migrate diff empty; frontend tsc + eslint 0 errors + vitest 385 + next build; Playwright full suite 154/154 on a fresh DB (new 44, 45). Screenshots before / after in the session scratchpad `pos-member/`.
+
+## 2026-11-27 PO entry grid, pack units on PO lines, category combobox (docs/po-grid-entry.md)
+
+- **PO create / edit = spreadsheet grid**: ลำดับ · รหัส/บาร์โค้ด · ชื่อ · จำนวน · หน่วย · ราคาต่อหน่วย · ส่วนลดต่อหน่วย · ราคารวม, always an empty row at the bottom; Enter in code: exact SKU / barcode / pack barcode picks directly (pack barcode = that unit), else a search popup (server `GET /products/page`) with the typed text, like Enter in the name cell; Enter / Shift+Enter walk the cells; Ctrl+Delete deletes a row; Enter never saves (button / Ctrl+S / Ctrl+Enter). Bill header in two compact rows (dates, supplier bill no., folding notes now saved), slim one-row footer; VAT column only on demand.
+- **Pack units on PO lines** (migration `20261213000000_po_item_units`, additive: `unit_id`, `unit_name`, `unit_factor` default 1): quantity / price / received qty in the line's unit, unit decided by the server from the product's packs; receiving adds qty x factor base units at cost per base unit; money figures (payables, finance, item-total trigger) unchanged because they use the line's own unit; purchases report receipts and the supplier-return PO list convert to base units; PDF / detail show "2 ลัง". Old lines = base unit.
+- **Per-unit discount** `discountType: 'unit'` in shared po-calc ("5" = 5 baht per unit, "5%" = percent); server validates. **Default price** `GET /purchase-orders/last-prices` + shared `defaultPoUnitPrice` (same unit from this supplier -> other unit converted -> cost x factor). `GET /products/page?exact=1`.
+- Product form category = searchable combobox (`components/common/SearchableSelect.tsx`).
+- No desktop change (no new client needed).
 
 ## Production Readiness Work In Progress
 
