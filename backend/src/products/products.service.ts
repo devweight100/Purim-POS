@@ -596,6 +596,8 @@ export class ProductsService {
     categoryIds?: string[];
     /** active (ใช้งาน) | inactive (ปิดใช้งาน) | all (default) */
     status?: string;
+    /** q is a whole code (SKU any case, barcode, pack barcode) instead of a part of a name / code */
+    exact?: boolean;
     /** inventory page cards over every product; cost only counts for users who may see it */
     stats?: boolean; canViewCost?: boolean;
   }): Promise<{ data: CatalogRow[]; meta: { total: number; page: number; limit: number; totalPages: number; allCount: number; inactiveCount: number; lowStockThreshold: number }; stats?: Record<string, number> }> {
@@ -626,7 +628,11 @@ export class ProductsService {
     const orderBy = opts.sort ? Prisma.raw(`${sortSql[opts.sort]} ${dir}, x.pos, x.id`) : Prisma.raw('x.pos, x.id');
     const conds: Prisma.Sql[] = [];
     const q = (opts.q || '').trim();
-    if (q) {
+    if (q && opts.exact) {
+      conds.push(Prisma.sql`(lower(x.sku) = lower(${q})
+        OR EXISTS (SELECT 1 FROM product_barcodes b WHERE b.product_id = x.id AND b.barcode = ${q})
+        OR EXISTS (SELECT 1 FROM product_packaging_units u WHERE u.product_id = x.id AND u.barcode = ${q}))`);
+    } else if (q) {
       const p = '%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%';
       conds.push(Prisma.sql`(x.name ILIKE ${p} OR x.sku ILIKE ${p} OR x.manufacturer_name ILIKE ${p}
         OR EXISTS (SELECT 1 FROM product_barcodes b WHERE b.product_id = x.id AND b.barcode ILIKE ${p})

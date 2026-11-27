@@ -34,6 +34,15 @@ export class PurchaseOrdersController {
     return this.purchaseOrdersService.matchLine({ supplierId: String(supplierId ?? ''), text: String(text ?? ''), purchaseOrderId: poId || null, limit: Number(limit) || undefined });
   }
 
+  /**
+   * GET /purchase-orders/last-prices?productId=&supplierId=&excludePoId=: newest price paid to this supplier for the
+   * product per unit (newest first) + the product's cost: the grid's default unit price (shared defaultPoUnitPrice).
+   */
+  @Get('last-prices')
+  lastPrices(@Query() query: Record<string, unknown>) {
+    return this.purchaseOrdersService.lastPrices(query);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.purchaseOrdersService.findOne(id);

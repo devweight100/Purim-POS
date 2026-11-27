@@ -1,5 +1,5 @@
 import { businessTransaction } from '../prisma/business-transaction';
-import { calculatePurchaseBill, stockCostPerUnit } from '../../../shared/src/po-calc';
+import { baseQtyOf, calculatePurchaseBill, poUnitOptions, stockCostPerUnit, unitFactorOf } from '../../../shared/src/po-calc';
 import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { clampInt, rethrowPrismaError } from '../products/prisma-errors';
 import { PrismaService } from '../prisma/prisma.service';
@@ -183,6 +183,7 @@ export class PurchaseOrdersService {
     if (data.status && ![POStatus.DRAFT, POStatus.ISSUED, POStatus.ORDERED].includes(data.status)) throw new BadRequestException('สถานะเริ่มต้นไม่ถูกต้อง');
     await this.assertSupplier(tx, data.supplierId);
     await this.assertProducts(tx, data.items);
+    await this.resolveUnits(tx, data.items, []);
     const billDate = parseOptionalDate(data.billDate, 'วันที่บิล');
     const dueDate = parseOptionalDate(data.dueDate, 'วันครบกำหนดชำระ');
     if (data.poNumber !== undefined && data.poNumber !== null && data.poNumber !== '') {
@@ -265,10 +266,13 @@ export class PurchaseOrdersService {
     if (po.status !== POStatus.DRAFT && repricing) {
       throw new BadRequestException('ไม่สามารถแก้ไขรายการ ส่วนลด หรือ VAT ของ PO ที่ไม่อยู่ในสถานะ DRAFT');
     }
-    if (data.items) await this.assertProducts(tx, data.items);
+    if (data.items) {
+      await this.assertProducts(tx, data.items);
+      await this.resolveUnits(tx, data.items, po.items);
+    }
 
     if (repricing) {
-      const lines = data.items || po.items.map((i) => ({ productId: i.productId, quantity: qn(i.quantity), unitCost: Number(i.unitCost), discountType: i.discountType, discountValue: Number(i.discountValue), vatType: i.vatType, vatRate: Number(i.vatRate) }));
+      const lines = data.items || po.items.map((i) => ({ productId: i.productId, quantity: qn(i.quantity), unitCost: Number(i.unitCost), discountType: i.discountType, discountValue: Number(i.discountValue), vatType: i.vatType, vatRate: Number(i.vatRate), unitId: i.unitId, unitName: i.unitName, unitFactor: i.unitFactor }));
       const bill = this.priceBill(lines, data.billDiscountType ?? po.billDiscountType, data.billDiscountValue ?? Number(po.billDiscountValue));
       await tx.purchaseOrderItem.deleteMany({ where: { purchaseOrderId: id } });
       const { items, billDiscountType, billDiscountValue, ...restData } = data;
@@ -330,6 +334,75 @@ export class PurchaseOrdersService {
     });
   }
 
+  /**
+   * The unit of each line, decided by the server from the product's packaging units (never the client's factor):
+   * `unitId` (or else `unitName`) names a pack -> its name and factor (chain of qtyPerPrev); nothing / the base unit
+   * -> base unit (unitName null, factor 1). Editing a DRAFT may keep a line's stored pack even when the product's
+   * packs changed since (same product, name and factor as a line of this PO). Rewrites the items in place.
+   */
+  private async resolveUnits(tx: any, items: any[], existing: { productId: string; unitName: string | null; unitFactor: number }[]) {
+    const ids = [...new Set(items.filter((i) => i.unitId || i.unitName || unitFactorOf(i.unitFactor) > 1).map((i) => String(i.productId)))];
+    const products: { id: string; unit: string | null; packagingUnits: any[] }[] = ids.length
+      ? await tx.product.findMany({ where: { id: { in: ids } }, select: { id: true, unit: true, packagingUnits: { orderBy: { sortOrder: 'asc' } } } })
+      : [];
+    const byId = new Map(products.map((p) => [p.id, p]));
+    for (const item of items) {
+      const p = byId.get(String(item.productId));
+      const wantId = item.unitId ? String(item.unitId) : null;
+      const wantName = typeof item.unitName === 'string' ? item.unitName.trim() : '';
+      const wantFactor = unitFactorOf(item.unitFactor);
+      const base = { unitId: null, unitName: null, unitFactor: 1 };
+      if (!p) { Object.assign(item, base); continue; }
+      const options = poUnitOptions(p.unit, p.packagingUnits);
+      let hit = wantId ? options.find((o) => o.id === wantId) : undefined;
+      if (!hit && wantName) hit = options.find((o) => o.name === wantName && o.factor === wantFactor);
+      if (!hit && !wantId && !wantName && wantFactor === 1) hit = options[0];
+      const kept = hit ? undefined : existing.find((e) => e.productId === item.productId && e.unitName === (wantName || null) && unitFactorOf(e.unitFactor) === wantFactor);
+      if (kept) {
+        Object.assign(item, { unitId: wantId, unitName: kept.unitName, unitFactor: unitFactorOf(kept.unitFactor) });
+        continue;
+      }
+      if (!hit && wantName) hit = options.find((o) => o.name === wantName);
+      if (hit) {
+        Object.assign(item, hit.factor === 1 && !hit.id ? base : { unitId: hit.id, unitName: hit.name, unitFactor: hit.factor });
+        continue;
+      }
+      throw new BadRequestException(`ไม่พบหน่วย "${wantName || wantId}" ของสินค้านี้ กรุณาเลือกหน่วยใหม่`);
+    }
+  }
+
+  /**
+   * GET /purchase-orders/last-prices?productId=&supplierId=&excludePoId=: the newest unit price paid to this supplier
+   * for the product in each unit (not cancelled POs), newest first, plus the product's cost - what the grid needs for
+   * the default price of a new line (shared defaultPoUnitPrice).
+   */
+  async lastPrices(q: { productId?: unknown; supplierId?: unknown; excludePoId?: unknown }) {
+    for (const k of ['productId', 'supplierId', 'excludePoId'] as const) {
+      if (q[k] !== undefined && typeof q[k] !== 'string') throw new BadRequestException('เงื่อนไขไม่ถูกต้อง');
+    }
+    const productId = String(q.productId || '');
+    if (!productId) throw new BadRequestException('กรุณาระบุสินค้า');
+    const supplierId = String(q.supplierId || '');
+    const exclude = String(q.excludePoId || '');
+    const product = await this.prisma.product.findUnique({ where: { id: productId }, select: { costPrice: true } });
+    if (!product) throw new NotFoundException('ไม่พบสินค้านี้');
+    const rows = supplierId
+      ? await this.prisma.$queryRaw<{ unitFactor: number; unitName: string | null; unitCost: string; poNumber: string; at: Date }[]>`
+          SELECT * FROM (
+            SELECT DISTINCT ON (i.unit_factor) i.unit_factor AS "unitFactor", i.unit_name AS "unitName", i.unit_cost::text AS "unitCost",
+                   po.po_number AS "poNumber", po.created_at AS at
+              FROM purchase_order_items i JOIN purchase_orders po ON po.id = i.purchase_order_id
+             WHERE i.product_id = ${productId} AND po.supplier_id = ${supplierId} AND po.status <> 'CANCELLED' AND po.id <> ${exclude}
+             ORDER BY i.unit_factor, po.created_at DESC, po.id DESC
+          ) x ORDER BY x.at DESC`
+      : [];
+    return {
+      productId,
+      costPrice: Number(product.costPrice || 0),
+      history: rows.map((r) => ({ unitFactor: Number(r.unitFactor), unitName: r.unitName, unitCost: Number(r.unitCost), poNumber: r.poNumber, at: r.at })),
+    };
+  }
+
   private validateItems(items: any[], allowDecimal: boolean) {
     if (!Array.isArray(items) || !items.length || items.some(item => !item.productId || !Number.isFinite(Number(item.quantity)) || Number(item.quantity) <= 0 || !Number.isFinite(Number(item.unitCost)) || Number(item.unitCost) < 0)) {
       throw new BadRequestException('รายการสินค้า จำนวน หรือต้นทุนไม่ถูกต้อง');
@@ -340,7 +413,12 @@ export class PurchaseOrdersService {
       item.quantity = parseQty(item.quantity, { allowDecimal, max: MAX_PO_QTY, message: 'รายการสินค้า จำนวน หรือต้นทุนไม่ถูกต้อง' });
       if (Number(item.quantity) > MAX_PO_QTY) throw new BadRequestException(`จำนวนสั่งซื้อต้องไม่เกิน ${MAX_PO_QTY.toLocaleString('en-US')}`);
       if (Number(item.unitCost) > MAX_PO_UNIT_COST) throw new BadRequestException(`ต้นทุนต่อหน่วยต้องไม่เกิน ${MAX_PO_UNIT_COST.toLocaleString('en-US')} บาท`);
-      if (item.discountType !== undefined && item.discountType !== null && !['baht', 'percent'].includes(String(item.discountType))) throw new BadRequestException('ประเภทส่วนลดรายการไม่ถูกต้อง');
+      if (item.discountType !== undefined && item.discountType !== null && !['baht', 'percent', 'unit'].includes(String(item.discountType))) throw new BadRequestException('ประเภทส่วนลดรายการไม่ถูกต้อง');
+      // per-unit discount (grid entry): baht off each unit, never more than the unit price
+      if (item.discountType === 'unit' && Number(item.discountValue) > Number(item.unitCost) + 0.0001) throw new BadRequestException('ส่วนลดต่อหน่วยต้องไม่เกินราคาต่อหน่วย');
+      if (item.unitFactor !== undefined && item.unitFactor !== null && (!Number.isInteger(Number(item.unitFactor)) || Number(item.unitFactor) < 1 || Number(item.unitFactor) > 1_000_000)) throw new BadRequestException('หน่วยสั่งซื้อไม่ถูกต้อง');
+      if (item.unitId !== undefined && item.unitId !== null && typeof item.unitId !== 'string') throw new BadRequestException('หน่วยสั่งซื้อไม่ถูกต้อง');
+      if (item.unitName !== undefined && item.unitName !== null && (typeof item.unitName !== 'string' || item.unitName.length > 50)) throw new BadRequestException('หน่วยสั่งซื้อไม่ถูกต้อง');
       if (item.discountType === 'percent' && Number(item.discountValue) > 100) throw new BadRequestException('ส่วนลดรายการต้องไม่เกิน 100%');
       if (item.vatType !== undefined && !['NONE', 'INCLUDED', 'EXCLUDED', 'none', 'include', 'exclude'].includes(String(item.vatType))) throw new BadRequestException('ประเภท VAT ของรายการไม่ถูกต้อง');
       if (item.vatRate !== undefined && (!Number.isFinite(Number(item.vatRate)) || Number(item.vatRate) < 0 || Number(item.vatRate) > 30)) throw new BadRequestException('อัตรา VAT ต้องอยู่ระหว่าง 0-30%');
@@ -366,6 +444,9 @@ export class PurchaseOrdersService {
       const l = totals.lines[idx];
       return {
         productId: item.productId,
+        unitId: item.unitId ?? null,
+        unitName: item.unitName ?? null,
+        unitFactor: unitFactorOf(item.unitFactor),
         quantity: l.quantity,
         unitCost: l.unitCost,
         discountType: l.discountType,
@@ -417,14 +498,18 @@ export class PurchaseOrdersService {
       const shopVatRegistered = (await tx.storeSettings.findFirst())?.vatEnabled === true;
       for (const item of data.items) {
         const original = po.items.find(row => row.id === item.purchaseOrderItemId)!;
-        const costPerUnit = stockCostPerUnit({ quantity: original.quantity, total: original.total, netAmount: original.netAmount, unitCost: original.unitCost }, shopVatRegistered);
+        // a line in a pack unit (2 ลัง x12) receives 24 base units at the pack price / 12 (stock is in base units)
+        const factor = unitFactorOf(original.unitFactor);
+        const baseQty = baseQtyOf(item.receivedQty, factor);
+        const costPerUnit = stockCostPerUnit({ quantity: original.quantity, total: original.total, netAmount: original.netAmount, unitCost: original.unitCost, unitFactor: factor }, shopVatRegistered);
         const prevStockAgg = await tx.stockBatch.aggregate({
           where: { productId: original.productId },
           _sum: { quantityRemaining: true },
         });
         const previousStock = qn(prevStockAgg._sum.quantityRemaining);
         const product = (original as any).product || (await tx.product.findUnique({ where: { id: original.productId }, select: { sku: true, name: true, unit: true } }));
-        await tx.stockBatch.create({ data: { productId: original.productId, quantityReceived: item.receivedQty, quantityRemaining: item.receivedQty, unitCost: costPerUnit, supplierId: po.supplierId, purchaseOrderId: id, note: 'รับเข้าจาก PO ' + po.poNumber } });
+        const packNote = factor > 1 ? ` (${qn(item.receivedQty)} ${original.unitName || ''} x${factor})` : '';
+        await tx.stockBatch.create({ data: { productId: original.productId, quantityReceived: baseQty, quantityRemaining: baseQty, unitCost: costPerUnit, supplierId: po.supplierId, purchaseOrderId: id, note: 'รับเข้าจาก PO ' + po.poNumber + packNote } });
         await tx.purchaseOrderItem.update({ where: { id: original.id }, data: { receivedQty: { increment: item.receivedQty } } });
         await tx.auditLog.create({
           data: {
@@ -437,12 +522,13 @@ export class PurchaseOrdersService {
               productName: product?.name || 'สินค้า',
               unitName: product?.unit || 'ชิ้น',
               type: 'IN_PO',
-              quantityChange: item.receivedQty,
+              quantityChange: baseQty,
               previousStock,
-              currentStock: addQty(previousStock, item.receivedQty),
+              currentStock: addQty(previousStock, baseQty),
               referenceType: 'PO',
               referenceNo: po.poNumber,
-              reason: 'รับเข้าจากใบสั่งซื้อ ' + po.poNumber,
+              reason: 'รับเข้าจากใบสั่งซื้อ ' + po.poNumber + packNote,
+              ...(factor > 1 ? { orderedUnit: original.unitName, orderedUnitQty: item.receivedQty, unitFactor: factor } : {}),
               userName: 'คลังสินค้า',
             },
           },
@@ -453,7 +539,7 @@ export class PurchaseOrdersService {
       if (data.adjustAndComplete) {
         // re-price the bill for what was actually delivered (same discounts and VAT settings)
         const bill = this.priceBill(
-          items.map((i) => ({ productId: i.productId, quantity: qn(i.receivedQty), unitCost: Number(i.unitCost), discountType: i.discountType, discountValue: Number(i.discountValue), vatType: i.vatType, vatRate: Number(i.vatRate) })),
+          items.map((i) => ({ productId: i.productId, quantity: qn(i.receivedQty), unitCost: Number(i.unitCost), discountType: i.discountType, discountValue: Number(i.discountValue), vatType: i.vatType, vatRate: Number(i.vatRate), unitId: i.unitId, unitName: i.unitName, unitFactor: i.unitFactor })),
           po.billDiscountType,
           Number(po.billDiscountValue),
           false, // re-pricing what was delivered: the bill discount is capped, never rejected

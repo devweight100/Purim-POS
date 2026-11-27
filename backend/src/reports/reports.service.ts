@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrderStatus, POStatus } from '@prisma/client';
-import { grossPerUnit } from '../../../shared/src/po-calc';
+import { grossPerUnit, unitFactorOf } from '../../../shared/src/po-calc';
 import { addDays, bangkokDayKey, bangkokDayStart, bangkokStartOfDay, bangkokStartOfMonth, dateRangeFilter, DAY_MS } from '../common/bangkok-date';
 import { DateRange, paymentChannels, previousPeriod, salesTotals, sqlRange } from './sales-math';
 import { round2 } from '../../../shared/src/money';
@@ -477,7 +477,7 @@ export class ReportsService {
         select: {
           id: true, poNumber: true, status: true, supplierId: true, paidAmount: true, remainingPayable: true, totalAmount: true,
           supplier: { select: { name: true } },
-          items: { select: { productId: true, quantity: true, receivedQty: true, unitCost: true, total: true } },
+          items: { select: { productId: true, quantity: true, receivedQty: true, unitCost: true, total: true, unitFactor: true } },
         },
       }),
     ]);
@@ -491,7 +491,8 @@ export class ReportsService {
           supplierId: po?.supplierId ?? 'UNKNOWN',
           supplierName: po?.supplier.name ?? 'ไม่ระบุผู้จำหน่าย',
           poNumber: po?.poNumber ?? '-',
-          value: round2(Number(b.quantityReceived) * (item ? grossPerUnit(item) : 0)),
+          // batches are in base units, a pack-unit line's price is per pack
+          value: round2(Number(b.quantityReceived) * (item ? grossPerUnit(item) / unitFactorOf(item.unitFactor) : 0)),
         };
       })
       .filter((r) => r.value > 0);

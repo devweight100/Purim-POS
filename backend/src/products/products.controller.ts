@@ -54,12 +54,13 @@ export class ProductsController {
 
   /**
    * Products / inventory tables: ?page&limit(<=500)&q&categoryId&supplierId&stock=all|low|out|normal|negative|reorder
-   * &sort&dir=asc|desc&stats=1 (inventory cards over every product)&status=active|inactive|all (default all).
+   * &sort&dir=asc|desc&stats=1 (inventory cards over every product)&status=active|inactive|all (default all)
+   * &exact=1: q is a whole code - SKU (any case), barcode or pack barcode - not a part of a name (PO grid code cell).
    * Rows are GET /products catalogue rows (cost fields only for VIEW_COST), meta has total / allCount.
    */
   @Get('page')
   async pageList(@Query() query: Record<string, unknown>, @Req() req?: any) {
-    for (const k of ['page', 'limit', 'q', 'categoryId', 'supplierId', 'stock', 'sort', 'dir', 'stats', 'status']) {
+    for (const k of ['page', 'limit', 'q', 'categoryId', 'supplierId', 'stock', 'sort', 'dir', 'stats', 'status', 'exact']) {
       if (query[k] !== undefined && typeof query[k] !== 'string') throw new BadRequestException('เงื่อนไขค้นหาไม่ถูกต้อง');
     }
     const str = (k: string) => (query[k] as string | undefined) || undefined;
@@ -68,6 +69,7 @@ export class ProductsController {
       limit: parseInt(String(query.limit ?? ''), 10) || 50,
       q: str('q'), categoryId: str('categoryId'), supplierId: str('supplierId'), stock: str('stock'), sort: str('sort'), dir: str('dir'),
       status: str('status'),
+      exact: query.exact === '1' || query.exact === 'true',
       stats: query.stats === '1' || query.stats === 'true', canViewCost: canViewCost(req?.user),
     });
     return { ...result, data: costFilterFor(req?.user)(result.data) };

@@ -555,6 +555,12 @@ model PurchaseOrderItem {
   total           Decimal       @default(0) @map("total") @db.Decimal(12, 2) // owed for this line (incl. VAT)
   snapshotName String? @map("snapshot_name") // name / code when the line was written, set when its product was replaced
   snapshotSku  String? @map("snapshot_sku")
+  // Unit the line is ordered in (docs/po-grid-entry.md): quantity, unit_cost and received_qty are in this unit;
+  // unit_factor base units per unit (snapshot: a later change of the product's packs does not change the PO).
+  // NULL unit_name / factor 1 = the product's base unit (every line written before 2026-11-27).
+  unitId          String?       @map("unit_id") // product_packaging_units.id when ordered (no FK: packs are rewritten on product save)
+  unitName        String?       @map("unit_name")
+  unitFactor      Int           @default(1) @map("unit_factor")
 
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   product         Product       @relation(fields: [productId], references: [id])
