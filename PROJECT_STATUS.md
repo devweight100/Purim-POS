@@ -135,6 +135,14 @@ Make the POS production-ready by using PostgreSQL/backend APIs as the source of 
 - e2e 37 (POS pack arrows) failed on d584aa1 too: the POS catalogue / products page order was the physical row order (`ORDER BY p.ctid`), which changes after updates / vacuum, so the POS search's first result depended on the database's history. Now `created_at, id` (oldest first) in both (`ProductsService.catalogRows` + page query). The spec also typed at 30 ms/key, on the 35 ms scanner-burst edge; now a person's pace. Backend e2e: the LINE link push expectation follows d584aa1 (LIFF link).
 - Verified: frontend tsc + eslint 0 errors + vitest 370 + next build; backend tsc + jest 201 + e2e 151/151 on a fresh DB; Playwright full suite 148/148 on a fresh DB (new `43-online-orders-flow` 2; 15 / 16 / 18 / 37 updated); 15+16+18+37+43 run 4x in a row green; 37 alone 3x green after the order fix (failed 2/2 before). After screenshots retaken (rare actions moved to the header). Screenshots before / after (list, detail NEW / ACCEPTED / READY delivery / paid at 1366x768, 1920x1080, 1093x614) in the session scratchpad `online-orders-flow/`.
 
+## 2026-11-27 POS member picker, history name, held-bill delivery note (docs/pos-member-picker.md)
+
+- **POS history showed walk-in for member bills**: orders have no name column (`customer: { name }` from `GET /orders`); the POS history read `customerName` only, which came from the local orders it merged before it became server-only (f979cd8). `lib/order-customer.ts` `orderCustomerName` (member name, else a kept name) used by the history (list, breakdown, search, repeat), the bills page, the detail dialog and the dashboard.
+- **Setting `posPickMemberAfterSale`** ("เปิดหน้าเลือกสมาชิกรอไว้หลังรับชำระเงิน", shop-wide like the other POS behaviour settings, default off; migration `20261212000000_pos_member_after_sale`): after a completed sale the member picker opens and waits; typed / scanned member code or phone picks the member, a product scan closes it and goes to the cart, Esc = no member. Off: standby on the scan box as before.
+- **Member picker**: larger (920 px, list fills the height), address line per member (ellipsis + tooltip), code / phone, search also by address; ↑/↓/Enter kept; the search keeps the focus against a late scan-box focus.
+- **บิลส่งของ** (delivery note): held bills (sheet), held online orders and the cart (Shift+F8 / cart button) print a "บิลส่งของ (ไม่ใช่ใบเสร็จรับเงิน)" slip (default) or A4 with prices, discounts, fee, total and "ยังไม่ได้ชำระเงิน"; no sale, stock, document number or held-bill change. Online orders: `GET /online-shop/orders/:id/delivery-note`, `POST .../delivery-note/print` (audit `PRINT_DELIVERY_NOTE`, print count). Held-bills sheet total now uses the shared pricing.
+- Verified: see docs/pos-member-picker.md (Playwright 44 + 45 new).
+
 ## Production Readiness Work In Progress
 
 ### Product Data
