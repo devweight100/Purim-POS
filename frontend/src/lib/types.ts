@@ -1115,7 +1115,9 @@ export interface ApiPurchaseOrderItem {
   productName?: string;
   name?: string;
   sku?: string;
-  unitName?: string;
+  /** the line's pack unit (quantity / unitCost / receivedQty in it), factor = base units per pack; none = base unit */
+  unitName?: string | null;
+  unitFactor?: number;
   quantity?: number;
   receivedQty?: number;
   receivedQuantity?: number;

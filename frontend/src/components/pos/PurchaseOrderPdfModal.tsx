@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { calculatePurchaseBill } from '@shared/po-calc';
+import { calculatePurchaseBill, lineOwnDiscount } from '@shared/po-calc';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Printer, Download, FileText, CheckCircle2, Building2, Calendar, FileCheck } from 'lucide-react';
@@ -44,9 +44,10 @@ export interface PurchaseOrderData {
     quantity: number;
     receivedQuantity?: number;
     unitCost: number;
-    unitName?: string;
+    unitName?: string | null;
+    unitFactor?: number;
     multiplier?: number;
-    discountType?: 'baht' | 'percent';
+    discountType?: 'baht' | 'percent' | 'unit';
     discountValue?: number;
   }>;
 }
@@ -59,7 +60,10 @@ interface PoLikeItem {
   productName?: string;
   sku?: string;
   unit?: string;
-  unitName?: string;
+  /** the line's unit (pack) and base units per unit; none / 1 = the product's base unit */
+  unitName?: string | null;
+  unitFactor?: Num;
+  multiplier?: Num;
   quantity?: Num;
   qty?: Num;
   unitCost?: Num;
@@ -187,7 +191,7 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po: poProp, 
   const subtotalBeforeDiscount = Math.round((calc.baseAmount - calc.lineDiscountAmount) * 100) / 100;
   // each line's own discount (without its share of the bill discount), same rule as po-calc
   const lineDiscounts = calc.lines.map((l) =>
-    Math.round(Math.min(l.baseAmount, l.discountType === 'percent' ? (l.baseAmount * Math.min(l.discountValue, 100)) / 100 : l.discountValue) * 100) / 100,
+    lineOwnDiscount(l.baseAmount, l.quantity, l.discountType, l.discountValue),
   );
   const billDiscountAmount = calc.billDiscountAmount;
   const vatAmount = calc.vatAmount;
@@ -380,7 +384,10 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po: poProp, 
                         const lineDiscount = lineDiscounts[idx] || 0;
                         // amount after the line's own discount: rows add up to "รวมเป็นเงิน"
                         const lineAmount = Math.round((qty * cost - lineDiscount) * 100) / 100;
-                        const unitBadge = item.unitName || item.product?.unit || item.unit || 'ชิ้น';
+                        // the line's own unit (2 ลัง), else the product's base unit
+                        const baseUnit = item.product?.unit || item.unit || 'ชิ้น';
+                        const unitBadge = item.unitName || baseUnit;
+                        const packFactor = Number(item.unitFactor ?? item.multiplier) || 1;
                         return (
                           <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}>
                             <td className="p-2.5 text-center text-slate-500 font-semibold border-r border-slate-200">{idx + 1}</td>
@@ -388,16 +395,19 @@ export default function PurchaseOrderPdfModal({ open, onOpenChange, po: poProp, 
                             {showSupplierCode && <td className="p-2.5 font-mono text-[10px] text-slate-700 border-r border-slate-200" data-testid="po-pdf-supplier-code">{item.docCode || '-'}</td>}
                             <td className="p-2.5 border-r border-slate-200 font-bold text-slate-900">
                               <span data-testid="po-pdf-line-name">{name}</span>
-                              {unitBadge && <span className="ml-1.5 text-[10px] text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.2 rounded font-normal">[{unitBadge}]</span>}
+                              {packFactor > 1 && <span className="ml-1.5 text-[10px] text-slate-500 font-normal" data-testid="po-pdf-pack">({unitBadge} ละ {formatQty(packFactor, { grouping: true })} {baseUnit})</span>}
                               {calc.lines[idx]?.vatType === 'INCLUDED' && <span className="ml-1.5 text-[10px] text-emerald-700 font-normal">(ราคารวม VAT {calc.lines[idx].vatRate}%)</span>}
                               {calc.lines[idx]?.vatType === 'EXCLUDED' && <span className="ml-1.5 text-[10px] text-amber-700 font-normal">(+VAT {calc.lines[idx].vatRate}%)</span>}
                             </td>
-                            <td className="p-2.5 text-right font-bold text-slate-900 border-r border-slate-200">{formatQty(qty, { grouping: true })}</td>
+                            <td className="p-2.5 text-right font-bold text-slate-900 border-r border-slate-200 whitespace-nowrap" data-testid="po-pdf-qty">{formatQty(qty, { grouping: true })} {unitBadge}</td>
                             <td className="p-2.5 text-right text-slate-700 border-r border-slate-200">{formatCurrency(cost)}</td>
                             <td className="p-2.5 text-right text-rose-600 border-r border-slate-200">
                               {lineDiscount > 0 ? `-${formatCurrency(lineDiscount)}` : '-'}
                               {lineDiscount > 0 && line?.discountType === 'percent' && (
                                 <span className="block text-[10px] text-slate-500">({line.discountValue}%)</span>
+                              )}
+                              {lineDiscount > 0 && line?.discountType === 'unit' && (
+                                <span className="block text-[10px] text-slate-500">({formatCurrency(line.discountValue)}/{unitBadge})</span>
                               )}
                             </td>
                             {showVat && (

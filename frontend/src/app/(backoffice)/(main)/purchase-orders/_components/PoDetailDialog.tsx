@@ -2,7 +2,7 @@ import { useRouter } from 'next/navigation';
 import { normDocNameMode, type DocNameMode } from '@shared/product-names';
 import { DocNameModeToggle } from '@/components/common/DocNameModeToggle';
 import { PoLineName } from './PoLineName';
-import { normVatType } from '@shared/po-calc';
+import { baseQtyOf, normVatType } from '@shared/po-calc';
 import { formatCurrency, formatListDateTime } from '@/lib/utils';
 import {
   Table, TableBody, TableCell, TableHead,
@@ -17,7 +17,7 @@ import {
   Eye, CheckCircle, PackageOpen, Image as ImageIcon, Sparkles, Pencil, Ban, RotateCcw
 } from 'lucide-react';
 import { formatQty } from '@/lib/qty';
-import { lineVatRate, receivedValue, type PreviewTarget, type PurchaseOrder } from './po-shared';
+import { lineUnitName, lineVatRate, receivedValue, type PreviewTarget, type PurchaseOrder } from './po-shared';
 import { poStatusBadge } from './PoStatusBadge';
 
 type PoAction = (po: PurchaseOrder, e?: React.MouseEvent) => void;
@@ -82,8 +82,8 @@ export function PoDetailDialog({
                   <TableRow >
                     <TableHead className="w-12 text-center">ลำดับ</TableHead>
                     <TableHead >สินค้า</TableHead>
-                    <TableHead className="text-right">สั่ง (ชิ้น)</TableHead>
-                    <TableHead className="text-right">รับแล้ว (ชิ้น)</TableHead>
+                    <TableHead className="text-right">สั่ง</TableHead>
+                    <TableHead className="text-right">รับแล้ว</TableHead>
                     <TableHead className="text-right">ต้นทุน/หน่วย</TableHead>
                     <TableHead className="text-right">รวม (รวม VAT)</TableHead>
                   </TableRow>
@@ -103,8 +103,11 @@ export function PoDetailDialog({
                         </button>
                         <PoLineName item={item} />
                       </TableCell>
-                      <TableCell className="text-right text-fg font-medium">{formatQty(item.quantity)}</TableCell>
-                      <TableCell className="text-right text-ok font-medium">{formatQty(Number(item.receivedQty ?? item.receivedQuantity) || 0)}</TableCell>
+                      <TableCell className="text-right text-fg font-medium whitespace-nowrap">
+                        {formatQty(item.quantity)} <span className="text-muted-foreground font-normal">{lineUnitName(item)}</span>
+                        {(Number(item.unitFactor) || 1) > 1 && <span className="block text-sub text-muted-foreground font-normal">= {formatQty(baseQtyOf(item.quantity, item.unitFactor))} {item.product?.unit || 'ชิ้น'}</span>}
+                      </TableCell>
+                      <TableCell className="text-right text-ok font-medium whitespace-nowrap">{formatQty(Number(item.receivedQty ?? item.receivedQuantity) || 0)} <span className="text-muted-foreground font-normal">{lineUnitName(item)}</span></TableCell>
                       <TableCell className="text-right text-muted-foreground">{formatCurrency(item.unitCost)}</TableCell>
                       <TableCell className="text-right text-fg font-medium">
                         {formatCurrency(item.total !== undefined && item.total !== null ? Number(item.total) : item.quantity * item.unitCost)}

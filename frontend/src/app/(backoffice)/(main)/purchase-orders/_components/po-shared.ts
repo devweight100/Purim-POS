@@ -1,4 +1,3 @@
-import type { PoVatType } from '@shared/po-calc';
 import { useProductStore } from '@/lib/store/product-store';
 
 // Local shapes of the purchase-order API responses used by this page.
@@ -24,7 +23,7 @@ export interface PurchaseOrderLine {
   productId?: string;
   name?: string;
   sku?: string;
-  product?: { name?: string; sku?: string; manufacturerName?: string | null } | null;
+  product?: { name?: string; sku?: string; unit?: string; manufacturerName?: string | null } | null;
   quantity: number;
   qty?: number;
   receivedQty?: number;
@@ -32,12 +31,16 @@ export interface PurchaseOrderLine {
   unitCost: number;
   cost?: number;
   price?: number;
-  unitName?: string;
+  /** the line's unit (pack): quantity / unitCost / receivedQty are in it; null / factor 1 = the product's base unit */
+  unitId?: string | null;
+  unitName?: string | null;
+  unitFactor?: number;
   unit?: string;
   baseUnit?: string;
   multiplier?: number;
   stock?: number;
-  discountType?: DiscountKind;
+  /** 'unit' = baht off each unit (grid entry) */
+  discountType?: DiscountKind | 'unit';
   discountValue?: number;
   vatType?: string | null;
   vatRate?: number | string | null;
@@ -86,27 +89,6 @@ export interface PurchaseOrder {
   items: PurchaseOrderLine[];
 }
 
-/** Line of the order table while creating / editing a PO. */
-export interface PoCartItem {
-  id?: string;
-  cartKey?: string;
-  productId: string;
-  name: string;
-  sku: string;
-  stock?: number;
-  baseUnit?: string;
-  unitName?: string;
-  multiplier?: number;
-  unitCost: number;
-  quantity: number;
-  receivedQuantity?: number;
-  discountType: DiscountKind;
-  discountValue: number;
-  vatType: PoVatType;
-  vatRate: number;
-  imageUrl?: string | null;
-}
-
 /** Line of the receive (GRN) dialog. */
 export interface PoReceiveItem {
   id?: string;
@@ -115,6 +97,8 @@ export interface PoReceiveItem {
   sku: string;
   unitName: string;
   multiplier: number;
+  /** the product's base unit (stock is counted in it) */
+  baseUnit?: string;
   orderedQty: number;
   receivedQty: number;
   remainingQty: number;
@@ -221,3 +205,7 @@ export const receivedValue = (po: PurchaseOrder | null | undefined) =>
       return sum + (Number(i.receivedQty ?? i.receivedQuantity) || 0) * perUnit;
     }, 0) * 100,
   ) / 100;
+
+/** Unit a PO line is ordered in: its pack (ลัง), else the product's base unit. */
+export const lineUnitName = (i: Pick<PurchaseOrderLine, 'unitName' | 'unitFactor' | 'unit' | 'baseUnit' | 'product'>) =>
+  ((Number(i.unitFactor) || 1) > 1 && i.unitName) || i.product?.unit || i.unit || i.baseUnit || 'ชิ้น';

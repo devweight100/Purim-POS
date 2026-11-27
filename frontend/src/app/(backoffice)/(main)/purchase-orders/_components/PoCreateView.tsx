@@ -4,25 +4,27 @@ import { normDocNameMode, type DocNameMode } from '@shared/product-names';
 import { DocNameModeToggle } from '@/components/common/DocNameModeToggle';
 import { defaultSupplierDocNameMode } from '@/lib/store-settings-storage';
 import { matchesOtherNames } from '@shared/product-names';
-import { SearchMatchHint } from '@/components/common/SearchMatchHint';
+import { bangkokDayKey } from '@shared/bangkok-date';
 import { useEffect, useState, useRef, useMemo } from 'react';
-import { calculatePurchaseBill, normVatType, toBaseUnitLine, type PoVatType } from '@shared/po-calc';
+import { calculatePurchaseBill, normVatType, poUnitOptions, unitFactorOf, type PoVatType } from '@shared/po-calc';
 import { apiFetch } from '@/lib/api';
-import { Badge } from '@/components/ui/badge';
+import { formatCurrency } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Search, ChevronLeft, Building2, Package, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronDown, Package, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { addQty, parseQty } from '@/lib/qty';
+import { addQty } from '@/lib/qty';
 import {
-  defaultUnitCost, getProductUnits, isBoundToSupplier, lineVatRate,
-  type BillVatMode, type DiscountKind, type PoCartItem, type PoProductLike, type PoSupplier,
-  type PreviewTarget, type PurchaseOrder, type PurchaseOrderLine,
+  isBoundToSupplier, lineVatRate,
+  type BillVatMode, type DiscountKind, type PoProductLike, type PoSupplier,
+  type PreviewTarget, type PurchaseOrder,
 } from './po-shared';
 import { PoSupplierStep } from './PoSupplierStep';
-import { PoItemsTable } from './PoItemsTable';
-import { PoCartSummary } from './PoCartSummary';
+import { PoItemsGrid } from './PoItemsGrid';
 import { PoSupplierCatalogDialog } from './PoSupplierCatalogDialog';
+import {
+  num, parseBillDiscount, rowError, rowLine, rowsFromPoItems, toApiItems, withTrailingBlank,
+  type PoGridProduct, type PoGridRow,
+} from './po-grid';
 
 /** State the create / edit screen starts from (set by "เปิดใบสั่งซื้อใหม่" or "แก้ไข"). */
 export interface PoCreateInit {
@@ -31,7 +33,6 @@ export interface PoCreateInit {
   supplierProducts: PoProductLike[];
   createStep: 'supplier' | 'items';
   selectedSupplier: PoSupplier | null;
-  cartItems: PoCartItem[];
   billDiscountType: DiscountKind;
   billDiscountValue: number;
   vatType: BillVatMode;
@@ -39,9 +40,6 @@ export interface PoCreateInit {
 
 interface Props {
   init: PoCreateInit;
-  /** kept by the page so they survive between two POs, as before */
-  searchScope: 'supplier' | 'all';
-  setSearchScope: (s: 'supplier' | 'all') => void;
   catalogSearch: string;
   setCatalogSearch: (s: string) => void;
   allowDecimalQty: boolean;
@@ -55,9 +53,21 @@ interface Props {
   children?: React.ReactNode;
 }
 
-/** Create / edit a purchase order: pick the supplier, then fill the order table. */
+const vatOf = (m: BillVatMode): PoVatType => normVatType(m);
+const dateInput = (v: unknown) => (v ? bangkokDayKey(v as string) : '');
+const asGridProduct = (p: PoProductLike): PoGridProduct => ({
+  id: p.id, name: p.name, sku: p.sku, unit: p.unit, stock: p.stock, costPrice: p.costPrice as number | undefined, imageUrl: p.imageUrl,
+  manufacturerName: p.manufacturerName, barcodes: p.barcodes, packagingUnits: p.packagingUnits as PoGridProduct['packagingUnits'],
+  suppliers: (p.supplierEntries || []).map((s) => ({ supplierId: s.supplierId, supplierProductName: s.supplierProductName, supplierSku: s.supplierSku })),
+});
+
+/**
+ * Create / edit a purchase order (docs/po-grid-entry.md): pick the supplier, then type the lines into the grid.
+ * The bill (supplier, dates, invoice no., notes, name mode) is a compact strip on top; discounts, VAT and totals a
+ * slim footer; the grid gets the rest of the window. Saving is explicit (button, Ctrl+S, Ctrl+Enter) - never Enter.
+ */
 export function PoCreateView({
-  init, searchScope, setSearchScope, catalogSearch, setCatalogSearch, allowDecimalQty,
+  init, catalogSearch, setCatalogSearch, allowDecimalQty,
   loadAllProducts, fetchPOs, openImagePreview, onCancel, onSaved, children,
 }: Props) {
   const editingPo = init.editingPo;
@@ -66,249 +76,89 @@ export function PoCreateView({
   const [searchSupplier, setSearchSupplier] = useState('');
   const [selectedSupplier, setSelectedSupplier] = useState<PoSupplier | null>(init.selectedSupplier);
   const [supplierProducts, setSupplierProducts] = useState<PoProductLike[]>(init.supplierProducts);
-  const [searchProduct, setSearchProduct] = useState('');
-  const [cartItems, setCartItems] = useState<PoCartItem[]>(init.cartItems);
-  const [billDiscountType, setBillDiscountType] = useState<DiscountKind>(init.billDiscountType);
-  const [billDiscountValue, setBillDiscountValue] = useState<number>(init.billDiscountValue);
-  const [vatType, setVatType] = useState<BillVatMode>(init.vatType);
+  const [vatMode, setVatMode] = useState<BillVatMode>(init.vatType);
+  const [rows, setRowsState] = useState<PoGridRow[]>(() => {
+    const known = new Map(init.supplierProducts.map((p) => [p.id, asGridProduct(p)]));
+    return withTrailingBlank(rowsFromPoItems(editingPo?.items || [], known, vatOf(init.vatType)), vatOf(init.vatType));
+  });
+  const setRows = (update: (prev: PoGridRow[]) => PoGridRow[]) => setRowsState(update);
+  // VAT is hidden unless asked for (or the PO being edited has VAT lines)
+  const [showVat, setShowVat] = useState(() => rows.some((r) => r.product && normVatType(r.vatType) !== 'NONE'));
+  const [billDiscountText, setBillDiscountText] = useState(() =>
+    init.billDiscountValue > 0 ? `${init.billDiscountValue}${init.billDiscountType === 'percent' ? '%' : ''}` : '',
+  );
+  const [billDate, setBillDate] = useState(() => dateInput((editingPo as { billDate?: string } | null)?.billDate) || bangkokDayKey(Date.now()));
+  const [dueDate, setDueDate] = useState(() => dateInput((editingPo as { dueDate?: string } | null)?.dueDate));
+  const [invoiceNo, setInvoiceNo] = useState(editingPo?.supplierInvoiceNo || '');
+  const [notes, setNotes] = useState(editingPo?.notes || '');
+  const [notesOpen, setNotesOpen] = useState(!!editingPo?.notes);
   // "ใช้ชื่อร้าน / ใช้ชื่อผู้ผลิต": the PO's own, else the store default (ตั้งค่า > สินค้าและสต็อก)
   const [docNameMode, setDocNameMode] = useState<DocNameMode>(() => (editingPo ? normDocNameMode(editingPo.docNameMode) : defaultSupplierDocNameMode()));
   const [isSupplierCatalogOpen, setIsSupplierCatalogOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const gridWrap = useRef<HTMLDivElement>(null);
 
-  // Keyboard navigation
-  const [highlightIndex, setHighlightIndex] = useState(0);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const focusFirstCode = () => setTimeout(() => gridWrap.current?.querySelector<HTMLInputElement>('[data-testid^="po-cell-code-"]:placeholder-shown, [data-testid="po-cell-code-0"]')?.focus(), 120);
 
   const handleSelectSupplier = async (supplier: PoSupplier) => {
     setSelectedSupplier(supplier);
     const prods = await loadAllProducts();
     setSupplierProducts(prods);
-    setSearchProduct('');
-    setHighlightIndex(0);
     setCreateStep('items');
-    setTimeout(() => searchInputRef.current?.focus(), 150);
+    focusFirstCode();
   };
+  useEffect(() => {
+    if (init.createStep === 'items') focusFirstCode();
+    // once, when the grid opens for editing
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const createCartItemFromProduct = (product: PoProductLike, quantity = 1): PoCartItem => ({
-    productId: product.id,
-    name: product.name,
-    sku: product.sku,
-    stock: product.stock,
-    unitCost: defaultUnitCost(product),
-    quantity,
-    discountType: 'baht' as 'baht' | 'percent',
-    discountValue: 0,
-    vatType: normVatType(vatType) as PoVatType,
-    vatRate: 7,
-    imageUrl: product.imageUrl || null,
-  });
-
-  const updateProductQuantity = (product: PoProductLike, quantity: number) => {
-    const safeQuantity = Math.max(0, parseQty(quantity, allowDecimalQty) || 0);
-    setCartItems(prev => {
-      const existing = prev.find(item => item.productId === product.id);
-      if (safeQuantity === 0) {
-        return prev.filter(item => item.productId !== product.id);
-      }
-      if (existing) {
-        return prev.map(item =>
-          item.productId === product.id ? { ...item, quantity: safeQuantity } : item
-        );
-      }
-      return [...prev, createCartItemFromProduct(product, safeQuantity)];
-    });
-  };
-
-  const updateProductUnitCost = (product: PoProductLike, cost: number) => {
-    const safeCost = Math.max(0, Number(cost) || 0);
-    setCartItems(prev => {
-      const existing = prev.find(item => item.productId === product.id);
-      if (existing) {
-        return prev.map(item =>
-          item.productId === product.id ? { ...item, unitCost: safeCost } : item
-        );
-      }
-      return [...prev, { ...createCartItemFromProduct(product), unitCost: safeCost }];
-    });
-  };
-
-  const updateProductDiscount = (product: PoProductLike, key: 'discountType' | 'discountValue', value: 'baht' | 'percent' | number) => {
-    setCartItems(prev => {
-      const existing = prev.find(item => item.productId === product.id);
-      if (existing) {
-        return prev.map(item =>
-          item.productId === product.id ? { ...item, [key]: value } : item
-        );
-      }
-      return [...prev, { ...createCartItemFromProduct(product), [key]: value }];
-    });
-  };
-
-  const removeCartItem = (productId: string) => {
-    setCartItems(prev => prev.filter(item => item.productId !== productId));
-  };
+  const filled = rows.filter((r) => r.product);
+  const bd = parseBillDiscount(billDiscountText);
+  // totals with the same arithmetic as the server (shared/src/po-calc.ts)
+  const liveBill = calculatePurchaseBill(filled.map(rowLine), { type: bd?.type, value: bd?.value });
+  const rowLines = calculatePurchaseBill(rows.map(rowLine)).lines;
 
   const handleCreatePO = async () => {
-    if (!selectedSupplier || cartItems.length === 0) {
-      toast.error("กรุณาเลือกผู้จำหน่ายและเพิ่มสินค้าอย่างน้อย 1 รายการ");
-      return;
-    }
-
-    // same arithmetic as the server (shared/src/po-calc.ts); the server recalculates and stores the result
-    const bill = calculatePurchaseBill(cartItems, { type: billDiscountType, value: billDiscountValue });
-    const totalBeforeDiscount = Math.round((bill.baseAmount - bill.lineDiscountAmount) * 100) / 100;
-    const calculatedVat = bill.vatAmount;
-    const netAmount = bill.subtotalAmount;
-    const finalTotal = bill.totalAmount;
-    // The server stores, receives and costs stock in BASE units only: a line ordered in a pack unit
-    // (2 โหล x12 @ 120) is sent as 24 units @ 10 with the same line total (see toBaseUnitLine).
-    const baseLines = cartItems.map((i) => {
-      const base = toBaseUnitLine(i);
-      return {
-        ...i,
-        ...base,
-        unitName: (Number(i.multiplier) || 1) > 1 ? (i.baseUnit || 'ชิ้น') : (i.unitName || i.baseUnit || 'ชิ้น'),
-        multiplier: 1,
-      };
-    });
-    const apiItems = baseLines.map((i) => ({
-      productId: i.productId,
-      quantity: Number(i.quantity),
-      unitCost: Number(i.unitCost),
-      discountType: i.discountType || 'baht',
-      discountValue: Number(i.discountValue) || 0,
-      vatType: normVatType(i.vatType),
-      vatRate: lineVatRate(i.vatRate),
-    }));
-
-    if (editingPo) {
-      const updatedPO: PurchaseOrder = {
-        ...editingPo,
-        supplierId: selectedSupplier.id,
-        supplier: selectedSupplier,
-        supplierName: selectedSupplier.name,
-        totalAmount: finalTotal,
-        subtotal: totalBeforeDiscount,
-        discountType: billDiscountType,
-        discountValue: billDiscountValue,
-        vatType,
-        vatAmount: calculatedVat,
-        netAmount,
-        updatedAt: new Date().toISOString(),
-        items: baseLines.map((i) => ({
-          id: i.id || "poi_" + Math.random().toString(36).substring(2, 7),
-          productId: i.productId,
-          name: i.name,
-          sku: i.sku,
-          quantity: Number(i.quantity) || 1,
-          receivedQuantity: Number(i.receivedQuantity) || 0,
-          unitCost: Number(i.unitCost) || 0,
-          unitName: i.unitName || i.baseUnit || 'ชิ้น',
-          multiplier: i.multiplier || 1,
-          discountType: i.discountType || 'baht',
-          discountValue: Number(i.discountValue) || 0,
-          vatType: normVatType(i.vatType),
-          vatRate: lineVatRate(i.vatRate),
-        })),
-      };
-
-      // Database first: the backend accepts only these fields (status/payment changes have their own endpoints)
-      try {
-        await apiFetch(`/purchase-orders/${editingPo.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({
-            supplierId: updatedPO.supplierId,
-            notes: updatedPO.notes,
-            docNameMode,
-            billDiscountType,
-            billDiscountValue,
-            items: apiItems,
-          }),
-        });
-      } catch (error) {
-        toast.error(`บันทึกการแก้ไขไม่สำเร็จ: ${(error as Error | undefined)?.message || 'เชื่อมต่อฐานข้อมูลไม่ได้'}`);
+    if (saving) return;
+    if (!selectedSupplier) { toast.error('กรุณาเลือกผู้จำหน่าย'); return; }
+    if (filled.length === 0) { toast.error('กรุณาเพิ่มสินค้าอย่างน้อย 1 รายการ'); return; }
+    for (const [i, r] of rows.entries()) {
+      const err = rowError(r, allowDecimalQty);
+      if (err) {
+        toast.error(`แถว ${i + 1}: ${err.message}`);
+        gridWrap.current?.querySelector<HTMLElement>(`[data-testid="po-cell-${err.col}-${i}"]`)?.focus();
         return;
       }
-      void fetchPOs();
-
-      toast.success(`บันทึกการแก้ไขใบสั่งซื้อ ${editingPo.poNumber} สำเร็จ`);
-      onSaved(updatedPO);
-      return;
     }
-
-    const poNumber = "PO" + Date.now().toString().slice(-6);
-
-    const newPO: PurchaseOrder = {
-      id: "po_" + Date.now(),
-      poNumber,
+    if (!bd) { toast.error('ส่วนลดท้ายบิลไม่ถูกต้อง (เช่น 100 หรือ 5%)'); return; }
+    const items = toApiItems(rows).map((i) => ({ ...i, vatRate: lineVatRate(i.vatRate) }));
+    const header = {
       supplierId: selectedSupplier.id,
-      supplier: selectedSupplier,
-      supplierName: selectedSupplier.name,
-      status: "DRAFT",
-      createdAt: new Date().toISOString(),
-      totalAmount: finalTotal,
-      subtotal: totalBeforeDiscount,
-      discountType: billDiscountType,
-      discountValue: billDiscountValue,
-      vatType,
-      vatAmount: calculatedVat,
-      netAmount,
-      items: baseLines.map((i) => ({
-        id: "poi_" + Math.random().toString(36).substring(2, 7),
-        productId: i.productId,
-        name: i.name,
-        sku: i.sku,
-        quantity: Number(i.quantity) || 1,
-        receivedQuantity: 0,
-        unitCost: Number(i.unitCost) || 0,
-        unitName: i.unitName || i.baseUnit || 'ชิ้น',
-        multiplier: i.multiplier || 1,
-        discountType: i.discountType || 'baht',
-        discountValue: Number(i.discountValue) || 0,
-        vatType: normVatType(i.vatType),
-        vatRate: lineVatRate(i.vatRate),
-      })),
+      docNameMode,
+      billDiscountType: bd.type,
+      billDiscountValue: bd.value,
+      billDate: billDate || undefined,
+      dueDate: dueDate || null,
+      supplierInvoiceNo: invoiceNo.trim() || null,
+      notes: notes.trim() || null,
+      items,
     };
-
-    let createdPoObj = newPO;
+    setSaving(true);
     try {
-      const serverRes = await apiFetch("/purchase-orders", {
-        method: "POST",
-        body: JSON.stringify({
-          supplierId: selectedSupplier.id,
-          docNameMode,
-          billDiscountType,
-          billDiscountValue,
-          items: apiItems,
-        })
-      });
-      if (serverRes && serverRes.id) {
-        createdPoObj = {
-          ...newPO,
-          id: serverRes.id,
-          poNumber: serverRes.poNumber || newPO.poNumber,
-          items: Array.isArray(serverRes.items) && serverRes.items.length > 0
-            ? (serverRes.items as PurchaseOrderLine[]).map((srvItem, idx: number) => ({
-                ...newPO.items[idx],
-                id: srvItem.id,
-                purchaseOrderItemId: srvItem.id,
-                productId: srvItem.productId,
-                quantity: Number(srvItem.quantity) || newPO.items[idx]?.quantity,
-                unitCost: Number(srvItem.unitCost) || newPO.items[idx]?.unitCost,
-              }))
-            : newPO.items
-        };
-      }
+      const saved = editingPo
+        ? await apiFetch<PurchaseOrder>(`/purchase-orders/${editingPo.id}`, { method: 'PATCH', body: JSON.stringify(header) })
+        : await apiFetch<PurchaseOrder>('/purchase-orders', { method: 'POST', body: JSON.stringify(header) });
+      if (!saved?.id) throw new Error('ไม่ได้รับการยืนยันจากฐานข้อมูล');
+      void fetchPOs();
+      toast.success(editingPo ? `บันทึกการแก้ไขใบสั่งซื้อ ${editingPo.poNumber} สำเร็จ` : 'สร้างใบสั่งซื้อสำเร็จ');
+      onSaved({ ...saved, supplier: saved.supplier || selectedSupplier });
     } catch (error) {
       // No local-only purchase orders: they would never reach payables / receiving
-      toast.error(`สร้างใบสั่งซื้อไม่สำเร็จ: ${(error as Error | undefined)?.message || 'เชื่อมต่อฐานข้อมูลไม่ได้'}`);
-      return;
+      toast.error(`${editingPo ? 'บันทึกการแก้ไข' : 'สร้างใบสั่งซื้อ'}ไม่สำเร็จ: ${(error as Error | undefined)?.message || 'เชื่อมต่อฐานข้อมูลไม่ได้'}`);
+    } finally {
+      setSaving(false);
     }
-
-    await fetchPOs();
-
-    toast.success("สร้างใบสั่งซื้อสำเร็จ");
-    onSaved(createdPoObj);
   };
 
   const filteredSuppliers = suppliers.filter(s =>
@@ -316,58 +166,24 @@ export function PoCreateView({
     (s.phone && s.phone.includes(searchSupplier))
   );
 
+  /** "ดูสินค้าจากผู้จำหน่ายทั้งหมด": +1 of a unit (adds to the row of that product + unit, else a new row) */
   const addCartItemWithUnit = (product: PoProductLike, unitName: string, multiplier: number, deltaQty = 1) => {
-    const targetUnit = unitName || product.unit || 'ชิ้น';
-    const cartKey = `${product.id}_${targetUnit}`;
-    const baseCost = defaultUnitCost(product);
-    const unitCost = Math.round(baseCost * multiplier * 100) / 100;
-
-    setCartItems(prev => {
-      const existingIndex = prev.findIndex(item => (item.cartKey ? item.cartKey === cartKey : (item.productId === product.id && item.unitName === targetUnit)));
-      if (existingIndex >= 0) {
-        const existing = prev[existingIndex];
-        const newQty = addQty(existing.quantity, deltaQty);
-        if (newQty <= 0) return prev.filter((_, idx) => idx !== existingIndex);
-        const updated = [...prev];
-        updated[existingIndex] = { ...existing, quantity: newQty };
-        return updated;
-      }
-      const newItem = {
-        cartKey,
-        productId: product.id,
-        name: product.name,
-        sku: product.sku,
-        stock: product.stock,
-        baseUnit: product.unit || 'ชิ้น',
-        unitName: targetUnit,
-        multiplier: multiplier,
-        unitCost: unitCost,
-        quantity: deltaQty,
-        discountType: 'baht' as 'baht' | 'percent',
-        discountValue: 0,
-        vatType: normVatType(vatType) as PoVatType,
-        vatRate: 7,
-        imageUrl: product.imageUrl || null,
+    const gp = asGridProduct(product);
+    const unit = poUnitOptions(gp.unit, gp.packagingUnits).find((u) => u.name === unitName && u.factor === unitFactorOf(multiplier)) || null;
+    const factor = unit?.factor ?? 1;
+    setRows((prev) => {
+      const at = prev.findIndex((r) => r.product?.id === product.id && r.unitFactor === factor);
+      if (at >= 0) return prev.map((r, i) => (i === at ? { ...r, qty: String(addQty(num(r.qty) || 0, deltaQty)) } : r));
+      const blank = prev[prev.length - 1];
+      const row: PoGridRow = {
+        ...blank, product: gp, code: gp.sku, name: '', qty: String(deltaQty),
+        unitId: factor > 1 ? unit!.id : null, unitName: factor > 1 ? unit!.name : null, unitFactor: factor,
+        price: String(Math.round((Number(gp.costPrice) || 0) * factor * 100) / 100), priceEdited: false,
       };
-      return [...prev, newItem];
+      return withTrailingBlank([...prev.slice(0, -1), row], vatOf(vatMode));
     });
-    toast.success(`เพิ่ม "${product.name}" (${targetUnit}) ลงตารางเรียบร้อยแล้ว`);
+    toast.success(`เพิ่ม "${product.name}" (${unitName}) ลงตารางเรียบร้อยแล้ว`);
   };
-
-  const filteredSupplierProducts = useMemo(() => {
-    let list = supplierProducts;
-    if (searchScope === 'supplier' && selectedSupplier) {
-      list = list.filter(p => isBoundToSupplier(p, selectedSupplier.id));
-    }
-    const q = searchProduct.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(p =>
-      (p.name || '').toLowerCase().includes(q) ||
-      (p.sku || '').toLowerCase().includes(q) ||
-      (p.barcodes && p.barcodes.some((b) => (b.barcode || '').includes(q))) ||
-      matchesOtherNames(p, q)
-    );
-  }, [supplierProducts, searchScope, selectedSupplier, searchProduct]);
 
   const filteredCatalogProducts = useMemo(() => {
     if (!selectedSupplier) return [];
@@ -382,62 +198,29 @@ export function PoCreateView({
     );
   }, [supplierProducts, selectedSupplier, catalogSearch]);
 
-  // Keyboard navigation inside search dropdown
-  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    const list = filteredSupplierProducts.slice(0, 8);
-    if (list.length === 0) return;
-
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setHighlightIndex(prev => (prev + 1) % list.length);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setHighlightIndex(prev => (prev - 1 + list.length) % list.length);
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      const selectedProd = list[highlightIndex] || list[0];
-      if (selectedProd) {
-        const units = getProductUnits(selectedProd);
-        addCartItemWithUnit(selectedProd, units[0].name, units[0].mult, 1);
-        setSearchProduct('');
-        setHighlightIndex(0);
-      }
-    } else if (e.key === 'Escape') {
-      setSearchProduct('');
-    }
-  };
-
-  // Ref to always hold latest handleCreatePO function for shortcuts
-  const handleCreatePORef = useRef(handleCreatePO);
+  // Saving is an explicit shortcut: Ctrl+S / Ctrl+Enter (Enter alone only moves between cells)
+  const saveRef = useRef(handleCreatePO);
+  useEffect(() => { saveRef.current = handleCreatePO; });
   useEffect(() => {
-    handleCreatePORef.current = handleCreatePO;
-  });
-
-  // Global keyboard shortcuts (Ctrl+Enter to save)
-  useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (createStep === 'items') {
-        if (e.ctrlKey && e.key === 'Enter') {
-          e.preventDefault();
-          handleCreatePORef.current?.();
-        }
+    const onKey = (e: KeyboardEvent) => {
+      if (createStep !== 'items' || !e.ctrlKey || e.altKey) return;
+      if (e.key === 'Enter' || e.key === 's' || e.key === 'S' || e.code === 'KeyS') {
+        if (document.querySelector('[data-testid="po-search-dialog"]')) return;
+        e.preventDefault();
+        void saveRef.current?.();
       }
     };
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, [createStep]);
 
-  // Live totals with the same arithmetic as the server (shared/src/po-calc.ts)
-  const liveBill = calculatePurchaseBill(cartItems, { type: billDiscountType, value: billDiscountValue });
-  // per-row amount: after the line discount, incl. that line's VAT (bill discount shown separately)
-  const rowBill = calculatePurchaseBill(cartItems);
-  const getItemTotal = (item: PoCartItem) => rowBill.lines[cartItems.indexOf(item)]?.total ?? 0;
-  const updateItemVat = (productId: string, patch: { vatType?: PoVatType; vatRate?: number }) =>
-    setCartItems((prev) => prev.map((it) => (it.productId === productId ? { ...it, ...patch } : it)));
-  const applyVatToAll = (t: 'none' | 'include' | 'exclude') => {
-    setVatType(t);
-    setCartItems((prev) => prev.map((it) => ({ ...it, vatType: normVatType(t) })));
+  const applyVatToAll = (m: BillVatMode) => {
+    setVatMode(m);
+    setRows((prev) => prev.map((r) => ({ ...r, vatType: vatOf(m) })));
   };
+
+  const fieldCls = 'h-8 rounded-md border border-slate-300 bg-white px-2 text-sub text-fg outline-none focus:border-primary focus:ring-2 focus:ring-primary/20';
+  const labelCls = 'flex items-center gap-1.5 whitespace-nowrap text-sub text-muted-foreground';
 
   return (
     <div className="flex h-[calc(100dvh-3.5rem)] w-full max-w-full flex-col overflow-hidden bg-slate-50 lg:h-dvh">
@@ -453,236 +236,126 @@ export function PoCreateView({
         />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="z-10 flex shrink-0 flex-col gap-3 border-b border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
-              <Button variant="ghost" size="sm" onClick={() => setCreateStep('supplier')} className="text-slate-500 hover:text-slate-900 hover:bg-slate-100">
-                <ChevronLeft className="w-4 h-4 mr-1" /> เปลี่ยนผู้จำหน่าย
-              </Button>
-              <div className="hidden h-4 w-px bg-slate-200 mx-1 sm:block"></div>
-              <h2 className="flex min-w-0 items-center gap-2 font-semibold text-slate-900 text-lg">
-                <Building2 className="w-5 h-5 text-sky-500" />
-                <span className="truncate">{selectedSupplier?.name}</span>
-                {editingPo && (
-                  <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold ml-1.5 shrink-0">
-                    กำลังแก้ไข ({editingPo.poNumber})
-                  </Badge>
-                )}
-              </h2>
-            </div>
-            <Button variant="ghost" size="sm" onClick={onCancel} className="text-slate-500 hover:bg-slate-100">
-              {editingPo ? 'ยกเลิกการแก้ไข' : 'ยกเลิก'}
-            </Button>
-          </div>
-          
-          <div className="flex min-h-0 w-full max-w-full flex-1 flex-col overflow-hidden bg-slate-50">
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden p-3 sm:p-4">
-              <div className="mb-4 flex shrink-0 flex-col gap-3 px-1 lg:flex-row lg:items-start lg:justify-between">
-                <div className="min-w-0">
-                  <h3 className="text-sm font-bold text-slate-600 flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-amber-500" /> ตารางสั่งของ
-                  </h3>
-                  <p className="mt-1 text-xs text-slate-500">เลือกขอบเขตค้นหา สั่งสินค้าตามหน่วยบรรจุ แล้วกด [Enter] หรือคลิกเพิ่มสินค้าอย่างสะดวกรวดเร็ว</p>
-                </div>
-                <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center lg:w-auto lg:shrink-0">
-                  {/* Radio Options */}
-                  <div className="flex items-center gap-3 bg-white px-3 py-2 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 shadow-sm shrink-0">
-                    <span className="font-bold text-slate-500">ค้นหา:</span>
-                    <label className="flex items-center gap-1.5 cursor-pointer hover:text-sky-600 font-semibold">
-                      <input
-                        type="radio"
-                        name="searchScope"
-                        value="supplier"
-                        checked={searchScope === 'supplier'}
-                        onChange={() => setSearchScope('supplier')}
-                        className="accent-sky-600 h-3.5 w-3.5"
-                      />
-                      {/* the supplier's name is in the header: a long one here squeezed the search box */}
-                      <span title={selectedSupplier?.name || undefined}>เฉพาะผู้จำหน่ายนี้</span>
-                    </label>
-                    <label className="flex items-center gap-1.5 cursor-pointer hover:text-sky-600 font-semibold">
-                      <input
-                        type="radio"
-                        name="searchScope"
-                        value="all"
-                        checked={searchScope === 'all'}
-                        onChange={() => setSearchScope('all')}
-                        className="accent-sky-600 h-3.5 w-3.5"
-                      />
-                      <span>สินค้าทั้งหมดในระบบ</span>
-                    </label>
-                  </div>
-
-                  <div className="relative w-full sm:w-80">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                    <Input
-                      ref={searchInputRef}
-                      placeholder="พิมพ์ค้นหาสินค้า (↑/↓ เลื่อน, Enter เลือก)..."
-                      className="bg-white pl-9 pr-8 border-slate-300 focus-visible:ring-sky-500"
-                      value={searchProduct}
-                      onChange={(e) => {
-                        setSearchProduct(e.target.value);
-                        setHighlightIndex(0);
-                      }}
-                      onKeyDown={handleSearchKeyDown}
-                    />
-                    {searchProduct.trim() && (
-                      <div className="absolute left-0 right-0 top-11 z-30 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl max-h-96 overflow-y-auto">
-                        {filteredSupplierProducts.slice(0, 10).length === 0 ? (
-                          <div className="p-4 text-sm text-slate-500 text-center space-y-2">
-                            <p>
-                              {searchScope === 'supplier' 
-                                ? `ไม่พบสินค้าที่ผูกกับผู้จำหน่าย "${selectedSupplier?.name}" (ค้นหา: "${searchProduct}")` 
-                                : `ไม่พบสินค้าที่ค้นหา "${searchProduct}"`}
-                            </p>
-                            {searchScope === 'supplier' && (
-                              <button
-                                type="button"
-                                onClick={() => setSearchScope('all')}
-                                className="inline-flex items-center gap-1 text-xs text-sky-600 bg-sky-50 border border-sky-200 px-3 py-1.5 rounded-lg hover:bg-sky-100 font-semibold transition-colors"
-                              >
-                                สลับไปค้นหา &quot;สินค้าทั้งหมดในระบบ&quot;
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          filteredSupplierProducts.slice(0, 10).map((product, idx: number) => {
-                            const isHighlighted = idx === highlightIndex;
-                            const units = getProductUnits(product);
-
-                            return (
-                              <div
-                                key={product.id}
-                                className={`flex flex-col gap-2 border-b border-slate-100 px-4 py-3 text-left last:border-b-0 transition-colors ${
-                                  isHighlighted ? "bg-sky-50/90 border-sky-200" : "hover:bg-slate-50"
-                                }`}
-                              >
-                                <div className="flex items-center justify-between gap-3">
-                                  <div className="flex items-center gap-2.5 min-w-0">
-                                    <button
-                                      type="button"
-                                      onClick={(e) => openImagePreview(product, e)}
-                                      className="w-8 h-8 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0 text-slate-400 hover:text-sky-600 hover:border-sky-300 transition-colors"
-                                      title="กดเพื่อดูรูปสินค้า"
-                                    >
-                                      <ImageIcon className="w-4 h-4" />
-                                    </button>
-                                    <div className="min-w-0">
-                                      <div className="truncate text-sm font-bold text-slate-900">{product.name}</div>
-                                      <SearchMatchHint product={product} query={searchProduct} />
-                                      <div className="truncate text-xs text-slate-500 flex items-center gap-1.5">
-                                        <span>{product.sku}</span>
-                                        <span>·</span>
-                                        <span>คงเหลือ:</span>
-                                        {Number(product.stock ?? 0) < 0 ? (
-                                          <span className="font-semibold text-rose-600 bg-rose-50 px-1 rounded border border-rose-200">
-                                            {product.stock} {product.unit || 'ชิ้น'}
-                                          </span>
-                                        ) : (
-                                          <b className="text-slate-700">{product.stock ?? '-'} {product.unit || 'ชิ้น'}</b>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                  {isHighlighted && (
-                                    <span className="text-[10px] bg-sky-500 text-white font-bold px-1.5 py-0.5 rounded shrink-0">
-                                      Enter ↵
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Packaging Units Selector Pills */}
-                                <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                  <span className="text-[11px] text-slate-400 font-medium mr-1">สั่งเพิ่มหน่วย:</span>
-                                  {units.map((u, ui) => {
-                                    const isAdded = cartItems.some(i => i.productId === product.id && (i.unitName === u.name || (!i.unitName && u.name === (product.unit || 'ชิ้น'))));
-                                    return (
-                                      <button
-                                        key={ui}
-                                        type="button"
-                                        onClick={() => {
-                                          addCartItemWithUnit(product, u.name, u.mult, 1);
-                                          setSearchProduct('');
-                                          setHighlightIndex(0);
-                                        }}
-                                        className={`text-xs font-semibold px-2.5 py-1 rounded-md border transition-all flex items-center gap-1 ${
-                                          isAdded
-                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100'
-                                            : 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-500 hover:text-white shadow-xs'
-                                        }`}
-                                      >
-                                        <span>+1 {u.name}</span>
-                                        {u.mult > 1 && <span className="text-[10px] opacity-75">(×{u.mult})</span>}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <Button
-                    variant="outline"
-                    className="border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                    onClick={() => setIsSupplierCatalogOpen(true)}
-                  >
-                    <Package className="mr-2 h-4 w-4 text-sky-500" />
-                    ดูสินค้าจากผู้จำหน่ายทั้งหมด
-                  </Button>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
-                <DocNameModeToggle label="ชื่อสินค้าบนใบสั่งซื้อ" value={docNameMode} onChange={setDocNameMode} />
-                <span className="text-[11px] text-slate-500">
-                  {docNameMode === 'SUPPLIER' ? 'ชื่อ/รหัสของผู้ขายรายนี้ → ชื่อผู้ผลิต → ชื่อร้าน' : 'พิมพ์ชื่อสินค้าของร้าน'}
+          {/* Bill header strip */}
+          <div className="z-10 shrink-0 border-b border-slate-200 bg-white px-4 py-2" data-testid="po-header">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <div className="flex min-w-0 max-w-full items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setCreateStep('supplier')} title="เปลี่ยนผู้จำหน่าย">
+                  <ChevronLeft /> ผู้จำหน่าย
+                </Button>
+                <span className="min-w-0 truncate text-section font-semibold text-fg" title={selectedSupplier?.name} data-testid="po-supplier-name">
+                  {selectedSupplier?.name || 'ยังไม่เลือกผู้จำหน่าย'}
                 </span>
+                {editingPo && <span className="shrink-0 text-sub text-warn">กำลังแก้ไข {editingPo.poNumber}</span>}
               </div>
-
-              {/* Table */}
-              <PoItemsTable
-                docNameMode={docNameMode}
-                supplierId={selectedSupplier?.id || null}
-                cartItems={cartItems}
-                supplierProducts={supplierProducts}
-                getItemTotal={getItemTotal}
-                allowDecimalQty={allowDecimalQty}
-                openImagePreview={openImagePreview}
-                updateProductUnitCost={updateProductUnitCost}
-                updateProductQuantity={updateProductQuantity}
-                updateProductDiscount={updateProductDiscount}
-                updateItemVat={updateItemVat}
-                removeCartItem={removeCartItem}
-              />
+              <label className={labelCls}>วันที่บิล
+                <input type="date" className={fieldCls} value={billDate} onChange={(e) => setBillDate(e.target.value)} data-testid="po-bill-date" />
+              </label>
+              <label className={labelCls}>ครบกำหนด
+                <input type="date" className={fieldCls} value={dueDate} onChange={(e) => setDueDate(e.target.value)} data-testid="po-due-date" />
+              </label>
+              <label className={labelCls}>เลขที่บิลผู้ขาย
+                <input className={fieldCls + ' w-28'} value={invoiceNo} maxLength={50} onChange={(e) => setInvoiceNo(e.target.value)} data-testid="po-invoice-no" />
+              </label>
+              <DocNameModeToggle label="ชื่อบนเอกสาร" value={docNameMode} onChange={setDocNameMode} className="[&_button]:py-0.5" />
+              <div className="ml-auto flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setNotesOpen((v) => !v)} aria-expanded={notesOpen} data-testid="po-notes-toggle">
+                  หมายเหตุ{notes.trim() ? ' •' : ''} <ChevronDown className={notesOpen ? 'rotate-180' : ''} />
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setIsSupplierCatalogOpen(true)} title="ดูสินค้าจากผู้จำหน่ายทั้งหมด">
+                  <Package /> สินค้าผู้จำหน่าย
+                </Button>
+                <Button variant="ghost" size="sm" onClick={onCancel}>
+                  {editingPo ? 'ยกเลิกการแก้ไข' : 'ยกเลิก'}
+                </Button>
+              </div>
             </div>
+            {notesOpen && (
+              <textarea
+                className="mt-2 block w-full resize-y rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sub text-fg outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                rows={2}
+                maxLength={1000}
+                placeholder="หมายเหตุถึงผู้จำหน่าย / ในเอกสาร"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                data-testid="po-notes"
+              />
+            )}
+          </div>
 
-            <PoCartSummary
-              cartItems={cartItems}
-              liveBill={liveBill}
-              billDiscountValue={billDiscountValue}
-              setBillDiscountValue={setBillDiscountValue}
-              billDiscountType={billDiscountType}
-              setBillDiscountType={setBillDiscountType}
-              vatType={vatType}
-              applyVatToAll={applyVatToAll}
-              editingPo={editingPo}
-              handleCreatePO={handleCreatePO}
-            />
-
-            <PoSupplierCatalogDialog
-              isSupplierCatalogOpen={isSupplierCatalogOpen}
-              setIsSupplierCatalogOpen={setIsSupplierCatalogOpen}
-              selectedSupplier={selectedSupplier}
-              catalogSearch={catalogSearch}
-              setCatalogSearch={setCatalogSearch}
-              filteredCatalogProducts={filteredCatalogProducts}
-              cartItems={cartItems}
-              openImagePreview={openImagePreview}
-              addCartItemWithUnit={addCartItemWithUnit}
+          {/* The grid */}
+          <div ref={gridWrap} className="flex min-h-0 w-full flex-1 flex-col px-4 py-2">
+            <PoItemsGrid
+              rows={rows}
+              setRows={setRows}
+              lines={rowLines}
+              supplierId={selectedSupplier?.id || null}
+              supplierName={selectedSupplier?.name}
+              editingPoId={editingPo?.id || null}
+              showVat={showVat}
+              defaultVat={vatOf(vatMode)}
+              allowDecimalQty={allowDecimalQty}
+              docNameMode={docNameMode}
             />
           </div>
+
+          {/* Slim footer: VAT switch, discounts, totals, save */}
+          <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-2" data-testid="po-footer">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span className="whitespace-nowrap text-sub text-muted-foreground" data-testid="po-line-count">{filled.length} รายการ</span>
+              <label className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-sub text-muted-foreground">
+                <input type="checkbox" className="h-4 w-4 accent-primary" checked={showVat} onChange={(e) => setShowVat(e.target.checked)} data-testid="po-vat-toggle" />
+                VAT รายบรรทัด
+              </label>
+              {showVat && (
+                <div role="group" aria-label="VAT ทุกบรรทัด" className="inline-flex gap-1 rounded-md bg-slate-100 p-0.5 text-sub">
+                  {([['none', 'ไม่มี VAT'], ['include', 'รวม VAT'], ['exclude', 'แยก VAT']] as const).map(([m, label]) => (
+                    <button key={m} type="button" onClick={() => applyVatToAll(m)} aria-pressed={vatMode === m}
+                      className={`rounded px-2 py-0.5 ${vatMode === m ? 'bg-white text-fg shadow-sm' : 'text-muted-foreground hover:text-fg'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <span className="hidden whitespace-nowrap text-sub text-subtle 2xl:inline">Enter ช่องถัดไป · Shift+Enter ย้อน · Ctrl+Delete ลบแถว</span>
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-sub">
+                <span className="whitespace-nowrap text-muted-foreground">รวม <b className="font-medium text-fg tabular-nums">{formatCurrency(liveBill.baseAmount)}</b></span>
+                {liveBill.lineDiscountAmount > 0 && (
+                  <span className="whitespace-nowrap text-muted-foreground">ส่วนลดรายการ <b className="font-medium text-fg tabular-nums">-{formatCurrency(liveBill.lineDiscountAmount)}</b></span>
+                )}
+                <label className={labelCls}>ส่วนลดท้ายบิล
+                  <input
+                    className={fieldCls + ' w-20 text-right tabular-nums' + (bd ? '' : ' border-rose-400 bg-rose-50')}
+                    value={billDiscountText}
+                    placeholder="0 / 5%"
+                    title="100 = ลด 100 บาท, 5% = ลด 5%"
+                    onChange={(e) => setBillDiscountText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+                    data-testid="po-bill-discount"
+                  />
+                </label>
+                {liveBill.vatAmount > 0 && (
+                  <span className="whitespace-nowrap text-muted-foreground" data-testid="po-vat-amount">VAT <b className="font-medium text-fg tabular-nums">{formatCurrency(liveBill.vatAmount)}</b></span>
+                )}
+                <span className="whitespace-nowrap text-muted-foreground">สุทธิ <b className="text-lg font-semibold text-fg tabular-nums" data-testid="po-total">{formatCurrency(liveBill.totalAmount)}</b></span>
+                <Button onClick={() => void handleCreatePO()} disabled={saving || filled.length === 0} data-testid="po-save" title="บันทึก (Ctrl+S หรือ Ctrl+Enter)">
+                  <Save /> {editingPo ? 'บันทึกการแก้ไข' : 'บันทึกใบสั่งซื้อ'} <span className="text-sub opacity-80">Ctrl+S</span>
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <PoSupplierCatalogDialog
+            isSupplierCatalogOpen={isSupplierCatalogOpen}
+            setIsSupplierCatalogOpen={setIsSupplierCatalogOpen}
+            selectedSupplier={selectedSupplier}
+            catalogSearch={catalogSearch}
+            setCatalogSearch={setCatalogSearch}
+            filteredCatalogProducts={filteredCatalogProducts}
+            cartItems={filled.map((r) => ({ productId: r.product!.id, unitName: r.unitName || r.product!.unit || 'ชิ้น', quantity: num(r.qty) || 0 }))}
+            openImagePreview={openImagePreview}
+            addCartItemWithUnit={addCartItemWithUnit}
+          />
         </div>
       )}
 

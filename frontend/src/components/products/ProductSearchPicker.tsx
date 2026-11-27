@@ -20,6 +20,20 @@ export interface PickedProduct {
   barcodes?: Array<string | { barcode?: string }>;
 }
 
+/**
+ * One page of GET /products/page for a search box (the products page's search: name, SKU, ชื่อผู้ผลิต, barcodes,
+ * pack barcodes, supplier names / codes). `exact` = q is a whole code (SKU any case / barcode / pack barcode).
+ */
+export function searchProductPage<T = PickedProduct>(
+  q: string,
+  opts: { limit?: number; status?: "all" | "active"; supplierId?: string | null; exact?: boolean } = {},
+): Promise<T[]> {
+  const p = new URLSearchParams({ page: "1", limit: String(opts.limit ?? 20), status: opts.status ?? "all", q: q.trim() });
+  if (opts.supplierId) p.set("supplierId", opts.supplierId);
+  if (opts.exact) p.set("exact", "1");
+  return apiFetch<{ data: T[] }>(`/products/page?${p.toString()}`).then((r) => (Array.isArray(r?.data) ? r.data : []));
+}
+
 /** Why a row cannot be picked (shown on the row), or null when it can. */
 export type PickBlock = (p: PickedProduct) => string | null;
 
@@ -71,10 +85,9 @@ export function ProductSearchPicker({
     if (!text) return;
     const my = ++seq.current;
     const t = setTimeout(() => {
-      apiFetch<{ data: PickedProduct[] }>(`/products/page?page=1&limit=20&status=all&q=${encodeURIComponent(text)}`)
-        .then((r) => {
+      searchProductPage(text)
+        .then((data) => {
           if (my !== seq.current) return;
-          const data = Array.isArray(r?.data) ? r.data : [];
           setRows(data);
           setActive(data.findIndex((p) => !blocked?.(p)));
         })

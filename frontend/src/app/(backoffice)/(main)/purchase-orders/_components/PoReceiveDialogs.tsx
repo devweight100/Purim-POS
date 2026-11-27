@@ -187,7 +187,7 @@ export function PoReceiveDialog({
                           </span>
                           {stockDelta > 0 && (
                             <span className="text-sub font-medium text-ok">
-                              (+{formatQty(stockDelta)} ชิ้น)
+                              (+{formatQty(stockDelta)} {item.baseUnit || 'ชิ้น'})
                             </span>
                           )}
                         </div>

@@ -2,7 +2,7 @@
 
 import { normDocNameMode, type DocNameMode } from '@shared/product-names';
 import { useCallback, useEffect, useState, useRef } from 'react';
-import { normVatType, type PoVatType } from '@shared/po-calc';
+import { normVatType } from '@shared/po-calc';
 import { apiFetch } from '@/lib/api';
 import { CreateSupplierReturnModal } from '@/components/supplier-returns/CreateSupplierReturnModal';
 import { submitPurchaseReceipt } from '@/lib/purchase-receipt-sync';
@@ -16,8 +16,8 @@ import { addQty, parseQty, subQty, useAllowDecimalQty } from '@/lib/qty';
 
 import PurchaseOrderPdfModal, { PurchaseOrderData } from '@/components/pos/PurchaseOrderPdfModal';
 import {
-  lineVatRate, loadProductImages,
-  type PoCartItem, type PoProductLike, type PoReceiveItem, type PoSupplier, type PreviewTarget, type PurchaseOrder,
+  loadProductImages,
+  type PoProductLike, type PoReceiveItem, type PoSupplier, type PreviewTarget, type PurchaseOrder,
 } from './_components/po-shared';
 import { PoCreateView, type PoCreateInit } from './_components/PoCreateView';
 import { ProductImagePreviewDialog } from './_components/ProductImagePreviewDialog';
@@ -54,7 +54,6 @@ export default function PurchaseOrdersPage() {
   // what the create / edit screen starts from; the screen keeps its own state while open
   const [createInit, setCreateInit] = useState<PoCreateInit | null>(null);
   const [suppliers, setSuppliers] = useState<PoSupplier[]>([]);
-  const [searchScope, setSearchScope] = useState<'supplier' | 'all'>('supplier');
   const [catalogSearch, setCatalogSearch] = useState('');
 
   // Image preview state
@@ -175,7 +174,6 @@ export default function PurchaseOrdersPage() {
       supplierProducts: prods,
       createStep: 'supplier',
       selectedSupplier: null,
-      cartItems: [],
       billDiscountType: 'baht',
       billDiscountValue: 0,
       vatType: 'none',
@@ -216,39 +214,14 @@ export default function PurchaseOrdersPage() {
 
     const prods = await loadAllProducts();
 
-    // Map existing PO items to cart items
-    const mappedCartItems: PoCartItem[] = (po.items || []).map((i) => {
-      const uName = i.unitName || i.unit || i.baseUnit || 'ชิ้น';
-      return {
-        id: i.id,
-        cartKey: `${i.productId || i.id}_${uName}`,
-        productId: (i.productId || i.id) as string,
-        name: i.name || i.product?.name || 'สินค้า',
-        sku: i.sku || i.product?.sku || '-',
-        stock: i.stock || 0,
-        baseUnit: i.baseUnit || i.unit || 'ชิ้น',
-        unitName: uName,
-        multiplier: Number(i.multiplier) || 1,
-        unitCost: Number(i.unitCost) || Number(i.cost) || Number(i.price) || 0,
-        quantity: Number(i.quantity) || Number(i.qty) || 1,
-        receivedQuantity: Number(i.receivedQuantity) || 0,
-        discountType: (i.discountType as 'baht' | 'percent') || 'baht',
-        discountValue: Number(i.discountValue) || 0,
-        // per-line VAT from the server; very old local POs had one VAT setting for the whole bill
-        vatType: normVatType(i.vatType ?? po.vatType) as PoVatType,
-        vatRate: i.vatType && normVatType(i.vatType) !== 'NONE' ? lineVatRate(i.vatRate) : 7,
-        imageUrl: i.imageUrl || null,
-      };
-    });
-
-    const first = mappedCartItems[0]?.vatType;
+    // grid rows are built from the PO's lines by the create / edit screen (po-grid.ts rowsFromPoItems)
+    const first = normVatType(po.items?.[0]?.vatType ?? po.vatType);
     setCreateInit({
       editingPo: po,
       suppliers: supps,
       supplierProducts: prods,
       createStep: 'items',
       selectedSupplier: supp,
-      cartItems: mappedCartItems,
       billDiscountType: ((po.billDiscountType ?? po.discountType) as 'baht' | 'percent') || 'baht',
       billDiscountValue: Number(po.billDiscountValue ?? po.discountValue) || 0,
       vatType: first === 'INCLUDED' ? 'include' : first === 'EXCLUDED' ? 'exclude' : 'none',
@@ -465,15 +438,17 @@ export default function PurchaseOrdersPage() {
       const ordered = Number(item.quantity) || 1;
       const received = Number(item.receivedQty ?? item.receivedQuantity) || 0;
       const remaining = Math.max(0, subQty(ordered, received));
-      const mult = Number(item.multiplier) || 1;
+      // a line in a pack unit is received in that unit (2 ลัง); the stock column shows base units (x factor)
+      const mult = Number(item.unitFactor ?? item.multiplier) || 1;
 
       return {
         id: item.id,
         productId: item.productId,
         name: item.name || item.product?.name || prod?.name || 'สินค้า',
         sku: item.sku || prod?.sku || '-',
-        unitName: item.unitName || item.unit || item.baseUnit || prod?.unit || 'ชิ้น',
+        unitName: mult > 1 && item.unitName ? item.unitName : (item.product?.unit || item.unit || item.baseUnit || prod?.unit || 'ชิ้น'),
         multiplier: mult,
+        baseUnit: item.product?.unit || prod?.unit || 'ชิ้น',
         orderedQty: ordered,
         receivedQty: received,
         remainingQty: remaining,
@@ -558,8 +533,6 @@ export default function PurchaseOrdersPage() {
     return (
       <PoCreateView
         init={createInit}
-        searchScope={searchScope}
-        setSearchScope={setSearchScope}
         catalogSearch={catalogSearch}
         setCatalogSearch={setCatalogSearch}
         allowDecimalQty={allowDecimalQty}

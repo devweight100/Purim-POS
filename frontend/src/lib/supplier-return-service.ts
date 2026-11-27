@@ -4,7 +4,7 @@ import {
 } from './types';
 import { sellableProducts, useProductStore } from './store/product-store';
 import { apiFetch, api } from './api';
-import { grossPerUnit } from '@shared/po-calc';
+import { baseQtyOf, grossPerUnit, unitFactorOf } from '@shared/po-calc';
 import { errorText } from './api-error';
 
 /**
@@ -400,21 +400,23 @@ export function getPayablePOsBySupplier(supplierId: string): PayablePO[] {
         alreadyDeducted,
         remainingPayable,
         // backend PO items carry product.{name,sku}, unitCost and total (not productName/unitPrice)
+        // in BASE units (returns move stock): a line of 2 ลัง x12 is 24 units at the pack price / 12
         items: (po.items || []).map((i) => {
+          const factor = unitFactorOf(i.unitFactor);
           const quantity = Number(i.quantity || 0);
           const explicit = Number(i.unitPrice ?? i.costPrice);
           const unitPrice = Number.isFinite(explicit) && explicit > 0
             ? explicit
-            : Math.round(grossPerUnit({ quantity, total: i.total ?? undefined, unitCost: i.unitCost }) * 100) / 100;
+            : Math.round((grossPerUnit({ quantity, total: i.total ?? undefined, unitCost: i.unitCost }) / factor) * 100) / 100;
           return {
             id: i.id,
             productId: i.productId || i.product?.id || '',
             productName: i.productName || i.product?.name || i.name || 'สินค้า',
             sku: i.sku || i.product?.sku || '',
-            quantity,
-            receivedQuantity: Number(i.receivedQuantity ?? i.quantity ?? 0),
+            quantity: baseQtyOf(quantity, factor),
+            receivedQuantity: baseQtyOf(Number(i.receivedQuantity ?? i.quantity ?? 0), factor),
             unitPrice,
-            unitName: i.unitName || i.product?.unit || 'ชิ้น',
+            unitName: (factor > 1 ? i.product?.unit : i.unitName || i.product?.unit) || 'ชิ้น',
           };
         }),
       };

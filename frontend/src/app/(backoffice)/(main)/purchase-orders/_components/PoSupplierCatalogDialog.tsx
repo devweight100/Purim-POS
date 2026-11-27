@@ -10,7 +10,7 @@ import { Search, Package, PackageOpen, Image as ImageIcon } from 'lucide-react';
 import { formatQty } from '@/lib/qty';
 import {
   defaultUnitCost, getProductUnits,
-  type PoCartItem, type PoProductLike, type PoSupplier, type PreviewTarget,
+  type PoProductLike, type PoSupplier, type PreviewTarget,
 } from './po-shared';
 
 interface Props {
@@ -20,7 +20,8 @@ interface Props {
   catalogSearch: string;
   setCatalogSearch: (v: string) => void;
   filteredCatalogProducts: PoProductLike[];
-  cartItems: PoCartItem[];
+  /** lines already in the grid (product, unit name, quantity) */
+  cartItems: { productId: string; unitName?: string | null; quantity: number }[];
   openImagePreview: (product: PreviewTarget, e?: React.MouseEvent) => void;
   addCartItemWithUnit: (product: PoProductLike, unitName: string, multiplier: number, deltaQty?: number) => void;
 }
