@@ -54,6 +54,10 @@ IN2611-0001 shown as walk-in).
   - a **scanned product** closes the picker ("no member") and goes to the cart through the normal add flow (the
     scanner burst detector restores the search text; the scan is not lost); focus back on the scan box;
   - Esc / ✕ = sell without a member, standby on the scan box.
+  - a scanner's first key can reach the page a moment before the rest (busy PC; found by e2e 44 in the full suite):
+    the detector then sees the code without its first character, and that character is left in the search. With
+    exactly one character in the search, the picker tries it joined to the code (product / member / the code shown),
+    so the scan is not lost or split.
   - the search keeps the focus against the receipt print frame / the payment dialog's focus return (timed checks
     0-3 s) and against any late "back to the scan box" focus (also for Ctrl+M: found by e2e 45, a scan right before
     Ctrl+M took the typing into the hidden scan box).

@@ -178,7 +178,10 @@ test('setting on: the member picker waits after each sale; typed member code pic
   // sale 3 done -> picker; a member code scanned (member card) picks the member
   await expect(picker(page)).toBeVisible();
   await page.waitForTimeout(300);
-  await scannerBurst(page, M2.code);
+  // (the scanner's first key a moment before the rest, as a busy PC can deliver it: still that member)
+  await page.keyboard.type(M2.code[0]);
+  await page.waitForTimeout(80);
+  await scannerBurst(page, M2.code.slice(1));
   await expect(picker(page)).toBeHidden();
   await expect.poll(async () => (await cart(page)).customerName).toBe(M2.name);
   await expect.poll(async () => (await cart(page)).items.length).toBe(0);
@@ -208,6 +211,13 @@ test('setting on: the member picker waits after each sale; typed member code pic
   await page.waitForTimeout(200);
   await scannerBurst(page, P.tape.barcode);
   await expect.poll(async () => (await cart(page)).items[0]?.quantity).toBe(2);
+  await expect(picker(page)).toBeVisible();
+  // first key split from the rest: the product still goes in, the search is left empty
+  await page.keyboard.type(P.tape.barcode[0]);
+  await page.waitForTimeout(80);
+  await scannerBurst(page, P.tape.barcode.slice(1));
+  await expect.poll(async () => (await cart(page)).items[0]?.quantity).toBe(3);
+  await expect(pickerSearch(page)).toHaveValue('');
   await expect(picker(page)).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(picker(page)).toBeHidden();

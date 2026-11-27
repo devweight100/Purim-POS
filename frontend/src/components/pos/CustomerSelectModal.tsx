@@ -14,7 +14,7 @@ import { useHasChanged } from '@/lib/pos/use-has-changed';
 import { canUseWalkInLevel, usePosLevels } from '@/lib/pos/pos-add';
 import type { PriceLevel } from '@shared/price-level';
 import { useEnterSubmit } from '@/lib/keyboard/enter-submit';
-import { MEMBER_PICKER_SCAN_EVENT, memberAddress, memberForScan, memberSearchText } from '@/lib/pos/member-scan';
+import { MEMBER_PICKER_SCAN_EVENT, MEMBER_SEARCH_ID, memberAddress, memberForScan, memberSearchText } from '@/lib/pos/member-scan';
 
 interface CustomerSelectModalProps {
   open: boolean;
@@ -23,8 +23,8 @@ interface CustomerSelectModalProps {
   autoOpened?: boolean;
 }
 
-/** search box of the picker (focus rescue after a sale) */
-const SEARCH_ID = 'pos-member-search';
+/** search box of the picker (focus rescue, scans) */
+const SEARCH_ID = MEMBER_SEARCH_ID;
 
 export function CustomerSelectModal({ open, onOpenChange, autoOpened = false }: CustomerSelectModalProps) {
   const [search, setSearch] = useState('');
@@ -141,14 +141,17 @@ export function CustomerSelectModal({ open, onOpenChange, autoOpened = false }: 
   // is shown in the search so the cashier sees what was scanned
   const onScanned = useEffectEvent((code: string) => {
     if (isQuickAddOpen) return;
-    const member = memberForScan(customers, code);
+    // the scanner's first key may arrive a moment before the rest (then it is left in the search): try it with that
+    const typed = (document.getElementById(SEARCH_ID) as HTMLInputElement | null)?.value || '';
+    const member = memberForScan(customers, code) || (typed.length === 1 ? memberForScan(customers, typed + code) : null);
     if (member) {
       handleSelect(member);
       return;
     }
-    setSearch(code);
+    const shown = typed.length === 1 ? typed + code : code;
+    setSearch(shown);
     setHi(0);
-    toast.warning(`ไม่พบสมาชิกหรือสินค้ารหัส "${code}"`, { id: 'member-picker-scan' });
+    toast.warning(`ไม่พบสมาชิกหรือสินค้ารหัส "${shown}"`, { id: 'member-picker-scan' });
   });
   useEffect(() => {
     if (!open) return;

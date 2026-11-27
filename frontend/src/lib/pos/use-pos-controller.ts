@@ -19,11 +19,11 @@ import { useCartSelection } from './use-cart-selection';
 import { usePosScanner } from './use-pos-scanner';
 import { usePosKeyboard } from './use-pos-keyboard';
 import { usePosScanBurst } from './use-pos-scan-burst';
-import { currentScanHandler, focusScanBox } from './scan-burst';
+import { currentScanHandler, focusScanBox, setFieldValue } from './scan-burst';
 import { addToCart } from '@/lib/pos/pos-add';
 import { priceChangeToast } from './cart-catalogue-refresh';
 import { loadStoreSettings } from '@/lib/store-settings-storage';
-import { MEMBER_PICKER_SCAN_EVENT, memberForScan } from './member-scan';
+import { MEMBER_PICKER_SCAN_EVENT, MEMBER_SEARCH_ID, memberForScan } from './member-scan';
 import { loadCustomers } from '@/lib/customer-service';
 import { startChooserEnabled } from './pos-add';
 
@@ -152,10 +152,21 @@ export function usePosController(variant: PosVariant) {
    * (docs/pos-keyboard-scan.md).
    * Returns true when the scan was used up here.
    */
-  const memberPickerScan = (code: string): boolean => {
+  const memberPickerScan = (raw: string): boolean => {
+    // a scanner's first key can come a moment before the rest and stay in the picker's search: rejoin it
+    const search = document.getElementById(MEMBER_SEARCH_ID) as HTMLInputElement | null;
+    const typed = search?.value || '';
+    const joined = typed.length === 1 && !isExactProductCode(products, raw) && isExactProductCode(products, typed + raw);
+    const code = joined ? typed + raw : raw;
+    if (joined) {
+      if (dialogs.customerSelectAuto) closeMemberPicker();
+      else if (search) setFieldValue(search, '');
+      (currentScanHandler() ?? scanner.processDetectedScan)(code);
+      return true;
+    }
     // not a product: the picker opened after a sale takes it (member code / phone -> that member, else the code is
     // shown in its search); the Ctrl+M picker only when it is a member's code (other codes go on as before)
-    if (!isExactProductCode(products, code) && (dialogs.customerSelectAuto || memberForScan(loadCustomers(), code))) {
+    if (!isExactProductCode(products, code) && (dialogs.customerSelectAuto || memberForScan(loadCustomers(), code) || (typed.length === 1 && memberForScan(loadCustomers(), typed + code)))) {
       window.dispatchEvent(new CustomEvent(MEMBER_PICKER_SCAN_EVENT, { detail: code }));
       return true;
     }

@@ -2,6 +2,8 @@ import { convertThaiToEnBarcode } from '@/lib/thai-barcode-converter';
 
 /** window event: a scanner burst that is not a product code arrived while the member picker is open (detail: code) */
 export const MEMBER_PICKER_SCAN_EVENT = 'pos-member-picker-scan';
+/** id of the member picker's search box */
+export const MEMBER_SEARCH_ID = 'pos-member-search';
 
 /**
  * A code scanned / typed while the member picker is open (docs/pos-member-picker.md): the member whose member code
