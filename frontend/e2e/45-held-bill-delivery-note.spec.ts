@@ -135,7 +135,7 @@ test('held bill -> บิลส่งของ (keyboard): prices, customer addr
   await expect(dlg.getByTestId('delivery-note-print')).toBeFocused();
   const preview = dlg.getByTestId('delivery-note-preview');
   for (const t of ['บิลส่งของ', 'ยังไม่ได้ชำระเงิน', 'ยอดที่ต้องชำระ', '3,106.00', MEMBER.name, MEMBER.phone, MEMBER.address, P.cement.name, P.drill.name, P.tape.name,
-    '2 ถุง x 165.50', '331.00', '-90.00', '2,800.00', 'ส่วนลดท้ายบิล', '-50.00', 'ผู้ส่งของ', 'ผู้รับของ', 'พนักงาน', 'บิลพัก ส่งไซต์งาน']) {
+    '2 ถุง x 165.50', '331.00', '-90.00', '2,800.00', 'ส่วนลดท้ายบิล', '-50.00', 'ผู้ส่งของ', 'ผู้รับของ', 'พนักงาน', 'ส่งไซต์งาน บิลพัก #1']) {
     await expect(preview, t).toContainText(t);
   }
   const text = (await preview.textContent()) || '';

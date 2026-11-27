@@ -26,7 +26,10 @@ import { SlipPaper, SlipRow, SlipRule, SlipShopHeader, slipMoney } from './slip-
 const noTax = (s: StoreSettings): StoreSettings => ({ ...s, taxId: '' });
 
 function refLine(d: DeliveryNoteData) {
-  return d.reference ? `${DELIVERY_NOTE_REF_LABEL[d.source]} ${d.reference}` : DELIVERY_NOTE_REF_LABEL[d.source];
+  const label = DELIVERY_NOTE_REF_LABEL[d.source];
+  if (!d.reference) return label;
+  // a held bill's own label usually says "บิลพัก #n" already
+  return d.reference.includes(label) ? d.reference : `${label} ${d.reference}`;
 }
 
 /** the "not paid yet" block shared by both layouts */
