@@ -178,6 +178,7 @@ test('setting on: the member picker waits after each sale; typed member code pic
   // sale 3 done -> picker; a member code scanned (member card) picks the member
   await expect(picker(page)).toBeVisible();
   await page.waitForTimeout(300);
+  await expect(pickerSearch(page)).toBeFocused();
   // (the scanner's first key a moment before the rest, as a busy PC can deliver it: still that member)
   await page.keyboard.type(M2.code[0]);
   await page.waitForTimeout(80);

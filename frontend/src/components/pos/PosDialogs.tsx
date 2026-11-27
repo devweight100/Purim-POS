@@ -23,7 +23,6 @@ import { PosDebtSelectModal } from './PosDebtSelectModal';
 import { ItemClaimModal } from './ItemClaimModal';
 import { CustomerClaimStockModal } from './CustomerClaimStockModal';
 import { addToCart } from '@/lib/pos/pos-add';
-import { currentScanBox } from '@/lib/pos/scan-burst';
 
 /** Every dialog of a POS sales screen (/pos). */
 export function PosDialogs({ pos }: { pos: PosController }) {
@@ -45,7 +44,7 @@ export function PosDialogs({ pos }: { pos: PosController }) {
         open={d.showPayment}
         onOpenChange={d.setShowPayment}
         initialMethod={d.paymentInitialMethod}
-        finalFocus={() => currentScanBox() ?? true}
+        finalFocus={pos.paymentFinalFocus}
         onSaleClosed={pos.noteSaleClosed}
       />
       <ItemEditPopup open={!!d.editItem} onOpenChange={(open) => !open && d.setEditItem(null)} item={d.editItem} />
