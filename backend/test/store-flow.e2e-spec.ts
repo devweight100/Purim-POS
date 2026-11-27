@@ -314,121 +314,6 @@ d('store flow (e2e)', () => {
     });
   });
 
-  describe('PO lines in a pack unit + per-unit discount (owner 2026-11-27, docs/po-grid-entry.md)', () => {
-    const pk: Record<string, any> = {};
-    const stockOf = async (id: string) => Number((await api('get', `/products/${id}/stock`, A).expect(200)).body.computedStock);
-
-    it('setup: a product with กล่อง (x12) and ลัง (x10 กล่อง); an old-style PO line stays in the base unit', async () => {
-      pk.sup = (await api('post', '/suppliers', A, { name: 'E2E Pack Supplier', creditTerms: 30 }).expect(201)).body;
-      pk.p = (await api('post', '/products', A, {
-        name: 'เทปพันเกลียว E2E แพ็ก', sku: 'E2E-PACK-1', unit: 'ม้วน', basePrice: 15, priceLevel1: 15, costPrice: 8.5, barcodes: ['8850000077001'],
-        packagingUnits: [{ name: 'กล่อง', qtyPerPrev: 12, barcode: '8850000077018' }, { name: 'ลัง', qtyPerPrev: 10 }],
-      }).expect(201)).body;
-      const full = (await api('get', `/products/${pk.p.id}`, A).expect(200)).body;
-      pk.box = full.packagingUnits.find((u: any) => u.name === 'กล่อง');
-      pk.crate = full.packagingUnits.find((u: any) => u.name === 'ลัง');
-      const old = (await api('post', '/purchase-orders', A, { supplierId: pk.sup.id, status: 'ISSUED', items: [{ productId: pk.p.id, quantity: 5, unitCost: 9 }] }).expect(201)).body;
-      expect(old.items[0]).toMatchObject({ unitId: null, unitName: null, unitFactor: 1 });
-      const before = await stockOf(pk.p.id);
-      await api('post', `/purchase-orders/${old.id}/receive`, A, { clientReceiptId: randomUUID(), items: [{ purchaseOrderItemId: old.items[0].id, receivedQty: 5, unitCost: 9 }] }).expect(201);
-      expect(await stockOf(pk.p.id)).toBe(before + 5);
-      const d = (await api('get', `/purchase-orders/${old.id}`, A)).body;
-      expect(d.stockBatches.map((b: any) => [Number(b.quantityReceived), Number(b.unitCost)])).toEqual([[5, 9]]);
-    });
-
-    it('exact code search: SKU any case, barcode, pack barcode; not a part of a code', async () => {
-      const ex = async (q: string) => (await api('get', `/products/page?status=active&exact=1&q=${encodeURIComponent(q)}`, A).expect(200)).body.data.map((r: any) => r.id);
-      expect(await ex('e2e-pack-1')).toEqual([pk.p.id]);
-      expect(await ex('8850000077001')).toEqual([pk.p.id]);
-      expect(await ex('8850000077018')).toEqual([pk.p.id]);
-      expect(await ex('88500000770')).toEqual([]);
-      expect((await api('get', `/products/page?status=active&q=88500000770`, A).expect(200)).body.data.map((r: any) => r.id)).toContain(pk.p.id);
-    });
-
-    it('2 กล่อง (x12) @ 120 less 5 per กล่อง + 1 ลัง (x120) @ 1,000 less 10%: totals in packs; the server sets the unit', async () => {
-      const po = (await api('post', '/purchase-orders', A, {
-        supplierId: pk.sup.id, status: 'ISSUED',
-        items: [
-          // the client's factor is ignored: the server takes it from the product's packs
-          { productId: pk.p.id, quantity: 2, unitCost: 120, unitId: pk.box.id, unitName: 'กล่อง', unitFactor: 99, discountType: 'unit', discountValue: 5 },
-          { productId: pk.p.id, quantity: 1, unitCost: 1000, unitName: 'ลัง', unitFactor: 120, discountType: 'percent', discountValue: 10 },
-        ],
-      }).expect(201)).body;
-      pk.po = po;
-      expect(po.items.map((i: any) => [i.unitName, i.unitFactor, Number(i.quantity), Number(i.unitCost), i.discountType, Number(i.discountAmount), Number(i.total)])).toEqual([
-        ['กล่อง', 12, 2, 120, 'unit', 10, 230],
-        ['ลัง', 120, 1, 1000, 'percent', 100, 900],
-      ]);
-      expect(Number(po.totalAmount)).toBe(1130);
-      // unknown unit / bad factor / per-unit discount above the price
-      await api('post', '/purchase-orders', A, { supplierId: pk.sup.id, items: [{ productId: pk.p.id, quantity: 1, unitCost: 10, unitName: 'พาเลท' }] }).expect(400);
-      await api('post', '/purchase-orders', A, { supplierId: pk.sup.id, items: [{ productId: pk.p.id, quantity: 1, unitCost: 10, unitFactor: 1.5 }] }).expect(400);
-      await api('post', '/purchase-orders', A, { supplierId: pk.sup.id, items: [{ productId: pk.p.id, quantity: 1, unitCost: 10, discountType: 'unit', discountValue: 11 }] }).expect(400);
-    });
-
-    it('receiving 1 of 2 กล่อง adds 12 base units at (230 / 2) / 12 each; then the rest + the ลัง', async () => {
-      const before = await stockOf(pk.p.id);
-      const [box, crate] = pk.po.items;
-      // more than ordered (in the line's unit) is refused
-      await api('post', `/purchase-orders/${pk.po.id}/receive`, A, { clientReceiptId: randomUUID(), items: [{ purchaseOrderItemId: box.id, receivedQty: 3, unitCost: 120 }] }).expect(400);
-      await api('post', `/purchase-orders/${pk.po.id}/receive`, A, { clientReceiptId: randomUUID(), items: [{ purchaseOrderItemId: box.id, receivedQty: 1, unitCost: 120 }] }).expect(201);
-      expect(await stockOf(pk.p.id)).toBe(before + 12);
-      let d = (await api('get', `/purchase-orders/${pk.po.id}`, A)).body;
-      expect(d.status).toBe('PARTIALLY_RECEIVED');
-      expect(Number(d.items.find((i: any) => i.id === box.id).receivedQty)).toBe(1);
-      expect(d.stockBatches.map((b: any) => [Number(b.quantityReceived), Number(b.unitCost)])).toEqual([[12, 9.5833]]);
-      // payable = value received (1 of 2 กล่อง)
-      const bills = (await api('get', `/payables/bills?supplierId=${pk.sup.id}`, A)).body;
-      expect(Number((bills.data || bills).find((b: any) => b.poId === pk.po.id).receivedAmount)).toBe(115);
-      await api('post', `/purchase-orders/${pk.po.id}/receive`, A, { clientReceiptId: randomUUID(), items: [
-        { purchaseOrderItemId: box.id, receivedQty: 1, unitCost: 120 },
-        { purchaseOrderItemId: crate.id, receivedQty: 1, unitCost: 1000 },
-      ] }).expect(201);
-      expect(await stockOf(pk.p.id)).toBe(before + 24 + 120);
-      d = (await api('get', `/purchase-orders/${pk.po.id}`, A)).body;
-      expect(d.status).toBe('COMPLETED');
-      expect(d.stockBatches.map((b: any) => [Number(b.quantityReceived), Number(b.unitCost)]).sort((a: number[], b: number[]) => a[0] - b[0])).toEqual([[12, 9.5833], [12, 9.5833], [120, 7.5]]);
-      // stock card: base units, the pack in the reason
-      const mv = (await api('get', `/inventory/movements?productId=${pk.p.id}&limit=20`, A).expect(200)).body;
-      const rows = (mv.data || mv) as any[];
-      const crateIn = rows.find((m: any) => Number(m.quantityChange) === 120);
-      expect(crateIn).toBeTruthy();
-      expect(String(crateIn.reason)).toContain('ลัง');
-    });
-
-    it('last prices per unit from this supplier, newest first (default price of a new line)', async () => {
-      const r = (await api('get', `/purchase-orders/last-prices?productId=${pk.p.id}&supplierId=${pk.sup.id}`, A).expect(200)).body;
-      expect(r.costPrice).toBe(8.5);
-      expect(r.history.map((h: any) => [h.unitFactor, h.unitCost]).sort((a: number[], b: number[]) => a[0] - b[0])).toEqual([[1, 9], [12, 120], [120, 1000]]);
-      expect(r.history[r.history.length - 1].unitFactor).toBe(1); // the old base-unit PO is the oldest
-      const other = (await api('get', `/purchase-orders/last-prices?productId=${pk.p.id}&supplierId=nope`, A).expect(200)).body;
-      expect(other.history).toEqual([]);
-      await api('get', `/purchase-orders/last-prices?supplierId=${pk.sup.id}`, A).expect(400);
-      await api('get', `/purchase-orders/last-prices?productId=${pk.p.id}`, C).expect(403);
-    });
-
-    it('editing a DRAFT keeps a line\'s stored pack after the product\'s packs changed; adjust-and-complete re-prices per unit', async () => {
-      const draft = (await api('post', '/purchase-orders', A, { supplierId: pk.sup.id, items: [{ productId: pk.p.id, quantity: 3, unitCost: 120, unitId: pk.box.id, discountType: 'unit', discountValue: 2 }] }).expect(201)).body;
-      expect(draft.items[0]).toMatchObject({ unitName: 'กล่อง', unitFactor: 12 });
-      // the product's packs are rewritten (new ids, กล่อง now x24)
-      await api('patch', `/products/${pk.p.id}`, A, { name: pk.p.name, sku: 'E2E-PACK-1', basePrice: 15, packagingUnits: [{ name: 'กล่อง', qtyPerPrev: 24, barcode: '8850000077018' }] }).expect(200);
-      const kept = (await api('patch', `/purchase-orders/${draft.id}`, A, { items: [{ productId: pk.p.id, quantity: 4, unitCost: 120, unitId: draft.items[0].unitId, unitName: 'กล่อง', unitFactor: 12, discountType: 'unit', discountValue: 2 }] }).expect(200)).body;
-      expect(kept.items[0]).toMatchObject({ unitName: 'กล่อง', unitFactor: 12 });
-      expect(Number(kept.totalAmount)).toBe(472);
-      // a new line by name takes the current pack (x24)
-      const now = (await api('patch', `/purchase-orders/${draft.id}`, A, { items: [{ productId: pk.p.id, quantity: 1, unitCost: 240, unitName: 'กล่อง', unitFactor: 24 }] }).expect(200)).body;
-      expect(now.items[0]).toMatchObject({ unitName: 'กล่อง', unitFactor: 24 });
-      // partial delivery + adjust and complete: the per-unit discount follows the delivered quantity
-      const po = (await api('post', '/purchase-orders', A, { supplierId: pk.sup.id, status: 'ISSUED', items: [{ productId: pk.p.id, quantity: 4, unitCost: 240, unitName: 'กล่อง', unitFactor: 24, discountType: 'unit', discountValue: 10 }] }).expect(201)).body;
-      expect(Number(po.totalAmount)).toBe(920);
-      const before = await stockOf(pk.p.id);
-      const done = (await api('post', `/purchase-orders/${po.id}/receive`, A, { clientReceiptId: randomUUID(), adjustAndComplete: true, items: [{ purchaseOrderItemId: po.items[0].id, receivedQty: 1, unitCost: 240 }] }).expect(201)).body;
-      expect(Number(done.totalAmount)).toBe(230);
-      expect(done.items[0]).toMatchObject({ unitName: 'กล่อง', unitFactor: 24 });
-      expect(await stockOf(pk.p.id)).toBe(before + 24);
-    });
-  });
-
   describe('finance', () => {
     it('total money equals the sum of all accounts', async () => {
       const sum = (await api('get', '/finance/summary', A)).body;
@@ -4402,4 +4287,120 @@ d('store flow (e2e)', () => {
       expect(Date.now() - t0).toBeLessThan(90_000);
     });
   });
+
+  describe('PO lines in a pack unit + per-unit discount (owner 2026-11-27, docs/po-grid-entry.md)', () => {
+    const pk: Record<string, any> = {};
+    const stockOf = async (id: string) => Number((await api('get', `/products/${id}/stock`, A).expect(200)).body.computedStock);
+
+    it('setup: a product with กล่อง (x12) and ลัง (x10 กล่อง); an old-style PO line stays in the base unit', async () => {
+      pk.sup = (await api('post', '/suppliers', A, { name: 'E2E Pack Supplier', creditTerms: 30 }).expect(201)).body;
+      pk.p = (await api('post', '/products', A, {
+        name: 'เทปพันเกลียว E2E แพ็ก', sku: 'E2E-PACK-1', unit: 'ม้วน', basePrice: 15, priceLevel1: 15, costPrice: 8.5, barcodes: ['8850000077001'],
+        packagingUnits: [{ name: 'กล่อง', qtyPerPrev: 12, barcode: '8850000077018' }, { name: 'ลัง', qtyPerPrev: 10 }],
+      }).expect(201)).body;
+      const full = (await api('get', `/products/${pk.p.id}`, A).expect(200)).body;
+      pk.box = full.packagingUnits.find((u: any) => u.name === 'กล่อง');
+      pk.crate = full.packagingUnits.find((u: any) => u.name === 'ลัง');
+      const old = (await api('post', '/purchase-orders', A, { supplierId: pk.sup.id, status: 'ISSUED', items: [{ productId: pk.p.id, quantity: 5, unitCost: 9 }] }).expect(201)).body;
+      expect(old.items[0]).toMatchObject({ unitId: null, unitName: null, unitFactor: 1 });
+      const before = await stockOf(pk.p.id);
+      await api('post', `/purchase-orders/${old.id}/receive`, A, { clientReceiptId: randomUUID(), items: [{ purchaseOrderItemId: old.items[0].id, receivedQty: 5, unitCost: 9 }] }).expect(201);
+      expect(await stockOf(pk.p.id)).toBe(before + 5);
+      const d = (await api('get', `/purchase-orders/${old.id}`, A)).body;
+      expect(d.stockBatches.map((b: any) => [Number(b.quantityReceived), Number(b.unitCost)])).toEqual([[5, 9]]);
+    });
+
+    it('exact code search: SKU any case, barcode, pack barcode; not a part of a code', async () => {
+      const ex = async (q: string) => (await api('get', `/products/page?status=active&exact=1&q=${encodeURIComponent(q)}`, A).expect(200)).body.data.map((r: any) => r.id);
+      expect(await ex('e2e-pack-1')).toEqual([pk.p.id]);
+      expect(await ex('8850000077001')).toEqual([pk.p.id]);
+      expect(await ex('8850000077018')).toEqual([pk.p.id]);
+      expect(await ex('88500000770')).toEqual([]);
+      expect((await api('get', `/products/page?status=active&q=88500000770`, A).expect(200)).body.data.map((r: any) => r.id)).toContain(pk.p.id);
+    });
+
+    it('2 กล่อง (x12) @ 120 less 5 per กล่อง + 1 ลัง (x120) @ 1,000 less 10%: totals in packs; the server sets the unit', async () => {
+      const po = (await api('post', '/purchase-orders', A, {
+        supplierId: pk.sup.id, status: 'ISSUED',
+        items: [
+          // the client's factor is ignored: the server takes it from the product's packs
+          { productId: pk.p.id, quantity: 2, unitCost: 120, unitId: pk.box.id, unitName: 'กล่อง', unitFactor: 99, discountType: 'unit', discountValue: 5 },
+          { productId: pk.p.id, quantity: 1, unitCost: 1000, unitName: 'ลัง', unitFactor: 120, discountType: 'percent', discountValue: 10 },
+        ],
+      }).expect(201)).body;
+      pk.po = po;
+      expect(po.items.map((i: any) => [i.unitName, i.unitFactor, Number(i.quantity), Number(i.unitCost), i.discountType, Number(i.discountAmount), Number(i.total)])).toEqual([
+        ['กล่อง', 12, 2, 120, 'unit', 10, 230],
+        ['ลัง', 120, 1, 1000, 'percent', 100, 900],
+      ]);
+      expect(Number(po.totalAmount)).toBe(1130);
+      // unknown unit / bad factor / per-unit discount above the price
+      await api('post', '/purchase-orders', A, { supplierId: pk.sup.id, items: [{ productId: pk.p.id, quantity: 1, unitCost: 10, unitName: 'พาเลท' }] }).expect(400);
+      await api('post', '/purchase-orders', A, { supplierId: pk.sup.id, items: [{ productId: pk.p.id, quantity: 1, unitCost: 10, unitFactor: 1.5 }] }).expect(400);
+      await api('post', '/purchase-orders', A, { supplierId: pk.sup.id, items: [{ productId: pk.p.id, quantity: 1, unitCost: 10, discountType: 'unit', discountValue: 11 }] }).expect(400);
+    });
+
+    it('receiving 1 of 2 กล่อง adds 12 base units at (230 / 2) / 12 each; then the rest + the ลัง', async () => {
+      const before = await stockOf(pk.p.id);
+      const [box, crate] = pk.po.items;
+      // more than ordered (in the line's unit) is refused
+      await api('post', `/purchase-orders/${pk.po.id}/receive`, A, { clientReceiptId: randomUUID(), items: [{ purchaseOrderItemId: box.id, receivedQty: 3, unitCost: 120 }] }).expect(400);
+      await api('post', `/purchase-orders/${pk.po.id}/receive`, A, { clientReceiptId: randomUUID(), items: [{ purchaseOrderItemId: box.id, receivedQty: 1, unitCost: 120 }] }).expect(201);
+      expect(await stockOf(pk.p.id)).toBe(before + 12);
+      let d = (await api('get', `/purchase-orders/${pk.po.id}`, A)).body;
+      expect(d.status).toBe('PARTIALLY_RECEIVED');
+      expect(Number(d.items.find((i: any) => i.id === box.id).receivedQty)).toBe(1);
+      expect(d.stockBatches.map((b: any) => [Number(b.quantityReceived), Number(b.unitCost)])).toEqual([[12, 9.5833]]);
+      // payable = value received (1 of 2 กล่อง)
+      const bills = (await api('get', `/payables/bills?supplierId=${pk.sup.id}`, A)).body;
+      expect(Number((bills.data || bills).find((b: any) => b.poId === pk.po.id).receivedAmount)).toBe(115);
+      await api('post', `/purchase-orders/${pk.po.id}/receive`, A, { clientReceiptId: randomUUID(), items: [
+        { purchaseOrderItemId: box.id, receivedQty: 1, unitCost: 120 },
+        { purchaseOrderItemId: crate.id, receivedQty: 1, unitCost: 1000 },
+      ] }).expect(201);
+      expect(await stockOf(pk.p.id)).toBe(before + 24 + 120);
+      d = (await api('get', `/purchase-orders/${pk.po.id}`, A)).body;
+      expect(d.status).toBe('COMPLETED');
+      expect(d.stockBatches.map((b: any) => [Number(b.quantityReceived), Number(b.unitCost)]).sort((a: number[], b: number[]) => a[0] - b[0])).toEqual([[12, 9.5833], [12, 9.5833], [120, 7.5]]);
+      // stock card: base units, the pack in the reason
+      const mv = (await api('get', `/inventory/movements?productId=${pk.p.id}&limit=20`, A).expect(200)).body;
+      const rows = (mv.data || mv) as any[];
+      const crateIn = rows.find((m: any) => Number(m.quantityChange) === 120);
+      expect(crateIn).toBeTruthy();
+      expect(String(crateIn.reason)).toContain('ลัง');
+    });
+
+    it('last prices per unit from this supplier, newest first (default price of a new line)', async () => {
+      const r = (await api('get', `/purchase-orders/last-prices?productId=${pk.p.id}&supplierId=${pk.sup.id}`, A).expect(200)).body;
+      expect(r.costPrice).toBe(8.5);
+      expect(r.history.map((h: any) => [h.unitFactor, h.unitCost]).sort((a: number[], b: number[]) => a[0] - b[0])).toEqual([[1, 9], [12, 120], [120, 1000]]);
+      expect(r.history[r.history.length - 1].unitFactor).toBe(1); // the old base-unit PO is the oldest
+      const other = (await api('get', `/purchase-orders/last-prices?productId=${pk.p.id}&supplierId=nope`, A).expect(200)).body;
+      expect(other.history).toEqual([]);
+      await api('get', `/purchase-orders/last-prices?supplierId=${pk.sup.id}`, A).expect(400);
+      await api('get', `/purchase-orders/last-prices?productId=${pk.p.id}`, C).expect(403);
+    });
+
+    it('editing a DRAFT keeps a line\'s stored pack after the product\'s packs changed; adjust-and-complete re-prices per unit', async () => {
+      const draft = (await api('post', '/purchase-orders', A, { supplierId: pk.sup.id, items: [{ productId: pk.p.id, quantity: 3, unitCost: 120, unitId: pk.box.id, discountType: 'unit', discountValue: 2 }] }).expect(201)).body;
+      expect(draft.items[0]).toMatchObject({ unitName: 'กล่อง', unitFactor: 12 });
+      // the product's packs are rewritten (new ids, กล่อง now x24)
+      await api('patch', `/products/${pk.p.id}`, A, { name: pk.p.name, sku: 'E2E-PACK-1', basePrice: 15, packagingUnits: [{ name: 'กล่อง', qtyPerPrev: 24, barcode: '8850000077018' }] }).expect(200);
+      const kept = (await api('patch', `/purchase-orders/${draft.id}`, A, { items: [{ productId: pk.p.id, quantity: 4, unitCost: 120, unitId: draft.items[0].unitId, unitName: 'กล่อง', unitFactor: 12, discountType: 'unit', discountValue: 2 }] }).expect(200)).body;
+      expect(kept.items[0]).toMatchObject({ unitName: 'กล่อง', unitFactor: 12 });
+      expect(Number(kept.totalAmount)).toBe(472);
+      // a new line by name takes the current pack (x24)
+      const now = (await api('patch', `/purchase-orders/${draft.id}`, A, { items: [{ productId: pk.p.id, quantity: 1, unitCost: 240, unitName: 'กล่อง', unitFactor: 24 }] }).expect(200)).body;
+      expect(now.items[0]).toMatchObject({ unitName: 'กล่อง', unitFactor: 24 });
+      // partial delivery + adjust and complete: the per-unit discount follows the delivered quantity
+      const po = (await api('post', '/purchase-orders', A, { supplierId: pk.sup.id, status: 'ISSUED', items: [{ productId: pk.p.id, quantity: 4, unitCost: 240, unitName: 'กล่อง', unitFactor: 24, discountType: 'unit', discountValue: 10 }] }).expect(201)).body;
+      expect(Number(po.totalAmount)).toBe(920);
+      const before = await stockOf(pk.p.id);
+      const done = (await api('post', `/purchase-orders/${po.id}/receive`, A, { clientReceiptId: randomUUID(), adjustAndComplete: true, items: [{ purchaseOrderItemId: po.items[0].id, receivedQty: 1, unitCost: 240 }] }).expect(201)).body;
+      expect(Number(done.totalAmount)).toBe(230);
+      expect(done.items[0]).toMatchObject({ unitName: 'กล่อง', unitFactor: 24 });
+      expect(await stockOf(pk.p.id)).toBe(before + 24);
+    });
+  });
+
 });
