@@ -93,10 +93,10 @@ export function CustomerSelectModal({ open, onOpenChange, autoOpened = false }: 
     return searchable.filter((r) => r.text.includes(q)).map((r) => r.c);
   }, [customers, searchable, search]);
 
-  // opened after a sale: the search keeps the focus (the receipt print frame / the payment dialog's focus return
-  // may take it a moment later); only while nothing else in the picker has it
+  // the search keeps the focus while the picker is open (a late focus return to the scan box, and after a sale the
+  // payment dialog's focus return / the receipt print frame, may take it); only while nothing else in the picker has it
   useEffect(() => {
-    if (!open || !autoOpened) return;
+    if (!open) return;
     const rescue = () => {
       const input = document.getElementById(SEARCH_ID) as HTMLInputElement | null;
       if (!input) return;
@@ -104,7 +104,9 @@ export function CustomerSelectModal({ open, onOpenChange, autoOpened = false }: 
       const lost = !a || a === document.body || a.tagName === 'IFRAME' || a.hasAttribute('data-barcode-input') || !a.closest('[role="dialog"]');
       if (lost) input.focus({ preventScroll: true });
     };
-    const timers = [0, 60, 150, 400, 1000, 1800, 3000].map((ms) => setTimeout(rescue, ms));
+    // after a sale also a few timed checks (payment dialog focus return, receipt print frame)
+    const timers = autoOpened ? [0, 60, 150, 400, 1000, 1800, 3000].map((ms) => setTimeout(rescue, ms)) : [];
+    // always: a late "back to the scan box" (e.g. right after a scan) must not take the typing away from the search
     const onFocusIn = (e: FocusEvent) => {
       const t = e.target as HTMLElement | null;
       if (t?.hasAttribute?.('data-barcode-input')) setTimeout(rescue, 0);
