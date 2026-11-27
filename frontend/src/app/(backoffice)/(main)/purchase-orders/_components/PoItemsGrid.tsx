@@ -60,10 +60,11 @@ export function PoItemsGrid({ rows, setRows, lines, supplierId, supplierName, ed
   };
   const focusCell = useCallback((key: string, col: GridCol) => {
     const el = cells.current.get(`${key}:${col}`);
-    if (!el) return false;
+    // a cell of a row whose product is not rendered yet is still disabled: try again after the next render
+    if (!el || (el as HTMLInputElement).disabled) return false;
     el.focus();
     if (el instanceof HTMLInputElement) el.select();
-    return true;
+    return document.activeElement === el;
   }, []);
   // focus requested before the row re-rendered (a picked product, a new blank row)
   useLayoutEffect(() => {
@@ -72,10 +73,16 @@ export function PoItemsGrid({ rows, setRows, lines, supplierId, supplierName, ed
   });
   const focusLater = (key: string, col: GridCol) => {
     pendingFocus.current = { key, col };
-    requestAnimationFrame(() => {
+    // after React has rendered the change (layout effect below); a few frames as a fallback
+    let tries = 0;
+    const retry = () => {
       const f = pendingFocus.current;
-      if (f && focusCell(f.key, f.col)) pendingFocus.current = null;
-    });
+      if (!f) return;
+      if (focusCell(f.key, f.col)) pendingFocus.current = null;
+      else if (++tries < 10) requestAnimationFrame(retry);
+      else pendingFocus.current = null; // never steal the focus later
+    };
+    requestAnimationFrame(retry);
   };
 
   const patchRow = (key: string, patch: Partial<PoGridRow> | ((r: PoGridRow) => Partial<PoGridRow>)) =>
