@@ -1,4 +1,4 @@
-import { calculatePurchaseBill, grossPerUnit, stockCostPerUnit } from '../../../shared/src/po-calc';
+import { baseQtyOf, calculatePurchaseBill, defaultPoUnitPrice, grossPerUnit, stockCostPerUnit } from '../../../shared/src/po-calc';
 
 describe('purchase bill arithmetic', () => {
   it('no VAT: total = qty x cost', () => {
@@ -68,5 +68,23 @@ describe('purchase bill arithmetic', () => {
     expect(grossPerUnit({ quantity: 4, total: line.total })).toBe(107);
     expect(stockCostPerUnit({ quantity: 4, total: line.total, netAmount: line.netAmount }, false)).toBe(107);
     expect(stockCostPerUnit({ quantity: 4, total: line.total, netAmount: line.netAmount }, true)).toBe(100);
+  });
+
+  it('pack unit: 2 ลัง x12 @ 1,200 less 50 per ลัง -> 24 base units at 95.8333', () => {
+    const [line] = calculatePurchaseBill([{ quantity: 2, unitCost: 1200, discountType: 'unit', discountValue: 50 }]).lines;
+    expect(line.total).toBe(2300);
+    expect(baseQtyOf(2, 12)).toBe(24);
+    expect(stockCostPerUnit({ quantity: 2, total: line.total, netAmount: line.netAmount, unitFactor: 12 }, false)).toBe(95.8333);
+  });
+
+  it('per-unit percent discount = percent of the line', () => {
+    const b = calculatePurchaseBill([{ quantity: 3, unitCost: 100, discountType: 'percent', discountValue: 5 }]);
+    expect(b.totalAmount).toBe(285);
+  });
+
+  it('default price: same unit from this supplier, else converted, else cost x factor', () => {
+    expect(defaultPoUnitPrice([{ unitFactor: 12, unitCost: 1150 }], 12, 90).price).toBe(1150);
+    expect(defaultPoUnitPrice([{ unitFactor: 12, unitCost: 1200 }], 1, 90).price).toBe(100);
+    expect(defaultPoUnitPrice([], 12, 90).price).toBe(1080);
   });
 });

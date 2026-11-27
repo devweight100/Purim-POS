@@ -5,7 +5,13 @@ import {
   normDiscountType,
   normVatType,
   stockCostPerUnit,
-  toBaseUnitLine,
+  baseQtyOf,
+  defaultPoUnitPrice,
+  lineOwnDiscount,
+  parseUnitDiscount,
+  poUnitOptions,
+  unitDiscountText,
+  unitFactorOf,
 } from '@shared/po-calc';
 
 describe('normalisers', () => {
@@ -16,8 +22,9 @@ describe('normalisers', () => {
     expect(normVatType(undefined)).toBe('NONE');
     expect(normVatType('nonsense')).toBe('NONE');
   });
-  it('anything but percent is a baht discount', () => {
+  it('percent / per unit, anything else is a whole-line baht discount', () => {
     expect(normDiscountType('percent')).toBe('percent');
+    expect(normDiscountType('unit')).toBe('unit');
     expect(normDiscountType('baht')).toBe('baht');
     expect(normDiscountType(null)).toBe('baht');
   });
@@ -164,29 +171,111 @@ describe('per-unit helpers', () => {
   });
 });
 
-describe('toBaseUnitLine', () => {
-  it('base unit lines are unchanged', () => {
-    expect(toBaseUnitLine({ quantity: 3, unitCost: 10 })).toEqual({ quantity: 3, unitCost: 10, discountType: 'baht', discountValue: 0 });
+describe('pack units (2026-11-27)', () => {
+  it('unit options: base unit, then each pack as a chain of qtyPerPrev', () => {
+    const u = poUnitOptions('ม้วน', [{ id: 'g', name: 'กล่อง', qtyPerPrev: 12, barcode: '885' }, { id: 'l', name: 'ลัง', qtyPerPrev: 10 }]);
+    expect(u).toEqual([
+      { id: null, name: 'ม้วน', factor: 1, barcode: null },
+      { id: 'g', name: 'กล่อง', factor: 12, barcode: '885' },
+      { id: 'l', name: 'ลัง', factor: 120, barcode: null },
+    ]);
+    expect(poUnitOptions('', null)).toEqual([{ id: null, name: 'ชิ้น', factor: 1, barcode: null }]);
   });
 
-  it('a pack price that divides into satang', () => {
-    expect(toBaseUnitLine({ quantity: 2, unitCost: 120, multiplier: 12 })).toEqual({
-      quantity: 24,
-      unitCost: 10,
-      discountType: 'baht',
-      discountValue: 0,
-    });
+  it('factor: whole numbers >= 1, anything else is the base unit', () => {
+    expect(unitFactorOf(12)).toBe(12);
+    expect(unitFactorOf('12')).toBe(12);
+    expect(unitFactorOf(null)).toBe(1);
+    expect(unitFactorOf(0)).toBe(1);
+    expect(unitFactorOf(-3)).toBe(1);
+    expect(baseQtyOf(2, 12)).toBe(24);
+    expect(baseQtyOf(0.5, 12)).toBe(6);
+    expect(baseQtyOf(3, undefined)).toBe(3);
   });
 
-  it('rounds the unit cost up and gives the extra back as a discount, keeping the line amount', () => {
-    const r = toBaseUnitLine({ quantity: 1, unitCost: 100, multiplier: 12, discountType: 'percent', discountValue: 10 });
-    expect(r.quantity).toBe(12);
-    expect(r.unitCost).toBe(8.34);
-    expect(r.discountType).toBe('baht');
-    // 12 x 8.34 = 100.08 ; extra 0.08 + 10% of 100 = 10.08
-    expect(r.discountValue).toBe(10.08);
-    const before = calculatePurchaseBill([{ quantity: 1, unitCost: 100, discountType: 'percent', discountValue: 10 }]);
-    const after = calculatePurchaseBill([r]);
-    expect(after.totalAmount).toBe(before.totalAmount);
+  it('2 ลัง (x12) @ 1,200: the bill is in packs, stock cost per base unit = pack price / 12', () => {
+    const t = calculatePurchaseBill([{ quantity: 2, unitCost: 1200 }]);
+    expect(t.totalAmount).toBe(2400);
+    const [line] = t.lines;
+    expect(stockCostPerUnit({ quantity: 2, total: line.total, netAmount: line.netAmount, unitFactor: 12 }, false)).toBe(100);
+    // a pack price that does not divide into satang keeps 4 decimals (FIFO batches are Decimal(14,4))
+    const [odd] = calculatePurchaseBill([{ quantity: 1, unitCost: 100 }]).lines;
+    expect(stockCostPerUnit({ quantity: 1, total: odd.total, netAmount: odd.netAmount, unitFactor: 12 }, false)).toBe(8.3333);
+    // VAT-registered shop: net per base unit
+    const [vat] = calculatePurchaseBill([{ quantity: 2, unitCost: 1200, vatType: 'EXCLUDED', vatRate: 7 }]).lines;
+    expect(stockCostPerUnit({ quantity: 2, total: vat.total, netAmount: vat.netAmount, unitFactor: 12 }, false)).toBe(107);
+    expect(stockCostPerUnit({ quantity: 2, total: vat.total, netAmount: vat.netAmount, unitFactor: 12 }, true)).toBe(100);
+  });
+});
+
+describe('per-unit discount (2026-11-27)', () => {
+  it('"5" = 5 baht off each unit: line discount = 5 x qty', () => {
+    const t = calculatePurchaseBill([{ quantity: 4, unitCost: 50, discountType: 'unit', discountValue: 5 }]);
+    expect(t.lines[0].discountAmount).toBe(20);
+    expect(t.totalAmount).toBe(180);
+  });
+
+  it('"5%" = 5 % of the unit price = 5 % of the line', () => {
+    const t = calculatePurchaseBill([{ quantity: 3, unitCost: 1200, discountType: 'percent', discountValue: 5 }]);
+    expect(t.lines[0].discountAmount).toBe(180);
+    expect(t.totalAmount).toBe(3420);
+  });
+
+  it('per unit discount follows the quantity (re-pricing a partial delivery) and never exceeds the line', () => {
+    expect(lineOwnDiscount(100, 2, 'unit', 5)).toBe(10);
+    expect(lineOwnDiscount(50, 1, 'unit', 5)).toBe(5);
+    expect(lineOwnDiscount(10, 2, 'unit', 99)).toBe(10);
+    expect(lineOwnDiscount(100, 2, 'baht', 15)).toBe(15);
+    expect(lineOwnDiscount(100, 2, 'percent', 150)).toBe(100);
+  });
+
+  it('per unit discount with a pack unit and a bill discount', () => {
+    const t = calculatePurchaseBill(
+      [{ quantity: 2, unitCost: 1200, discountType: 'unit', discountValue: 50 }, { quantity: 10, unitCost: 10 }],
+      { type: 'baht', value: 25 },
+    );
+    expect(t.lineDiscountAmount).toBe(100);
+    expect(t.billDiscountAmount).toBe(25);
+    expect(t.totalAmount).toBe(2375);
+  });
+
+  it('parses what the grid cell accepts', () => {
+    expect(parseUnitDiscount('5')).toEqual({ discountType: 'unit', discountValue: 5 });
+    expect(parseUnitDiscount(' 2.50 ')).toEqual({ discountType: 'unit', discountValue: 2.5 });
+    expect(parseUnitDiscount('฿1,000')).toEqual({ discountType: 'unit', discountValue: 1000 });
+    expect(parseUnitDiscount('5%')).toEqual({ discountType: 'percent', discountValue: 5 });
+    expect(parseUnitDiscount('12.5 %')).toEqual({ discountType: 'percent', discountValue: 12.5 });
+    expect(parseUnitDiscount('')).toEqual({ discountType: 'unit', discountValue: 0 });
+    expect(parseUnitDiscount('101%')).toBeNull();
+    expect(parseUnitDiscount('-5')).toBeNull();
+    expect(parseUnitDiscount('abc')).toBeNull();
+    expect(parseUnitDiscount('1.234')).toBeNull();
+  });
+
+  it('shows stored discounts per unit; an older whole-line baht discount only when it divides exactly', () => {
+    expect(unitDiscountText('percent', 5, 3)).toEqual({ text: '5%', discountType: 'percent', discountValue: 5 });
+    expect(unitDiscountText('unit', 2.5, 3)).toEqual({ text: '2.5', discountType: 'unit', discountValue: 2.5 });
+    expect(unitDiscountText('baht', 0, 3)).toEqual({ text: '', discountType: 'unit', discountValue: 0 });
+    expect(unitDiscountText('baht', 30, 4)).toEqual({ text: '7.5', discountType: 'unit', discountValue: 7.5 });
+    expect(unitDiscountText('baht', 10, 3)).toBeNull();
+  });
+});
+
+describe('default unit price of a new line', () => {
+  const history = [
+    { unitFactor: 1, unitCost: 11 }, // newest: per piece
+    { unitFactor: 12, unitCost: 120 }, // older: per box of 12
+  ];
+  it('the last price from this supplier in the same unit', () => {
+    expect(defaultPoUnitPrice(history, 12, 9)).toEqual({ price: 120, source: 'same-unit' });
+    expect(defaultPoUnitPrice(history, 1, 9)).toEqual({ price: 11, source: 'same-unit' });
+  });
+  it('else the newest price in another unit converted by the factors', () => {
+    expect(defaultPoUnitPrice(history, 6, 9)).toEqual({ price: 66, source: 'other-unit' });
+    expect(defaultPoUnitPrice([{ unitFactor: 12, unitCost: 100 }], 1, 9)).toEqual({ price: 8.33, source: 'other-unit' });
+  });
+  it('else the product cost x factor', () => {
+    expect(defaultPoUnitPrice([], 12, 8.5)).toEqual({ price: 102, source: 'cost' });
+    expect(defaultPoUnitPrice(null, 1, null)).toEqual({ price: 0, source: 'cost' });
   });
 });
