@@ -219,26 +219,26 @@ export function PoItemsGrid({ rows, setRows, lines, supplierId, supplierName, ed
     <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-slate-200 bg-white" data-testid="po-grid">
       <table className="w-full table-fixed border-collapse text-body">
         <colgroup>
-          <col className="w-10" />
-          <col className="w-[15%] min-w-28" />
+          <col className="w-12" />
+          <col className="w-[12%]" />
           <col />
-          <col className="w-[8%] min-w-16" />
-          <col className="w-[10%] min-w-24" />
-          <col className="w-[11%] min-w-24" />
-          <col className="w-[10%] min-w-20" />
-          {showVat && <col className="w-[13%] min-w-32" />}
-          <col className="w-[11%] min-w-24" />
+          <col className="w-[7%]" />
+          <col className="w-[11%]" />
+          <col className="w-[9%]" />
+          <col className="w-[8%]" />
+          {showVat && <col className="w-[12%]" />}
+          <col className="w-[10%]" />
           <col className="w-10" />
         </colgroup>
         <thead className="sticky top-0 z-10 bg-slate-50 text-th font-medium text-muted-foreground">
           <tr className="h-9 border-b border-slate-200">
             <th className="px-2 text-center font-medium">ลำดับ</th>
-            <th className="px-2 text-left font-medium">รหัสสินค้า/บาร์โค้ด</th>
+            <th className="px-2 text-left font-medium whitespace-nowrap" title="รหัสสินค้า / บาร์โค้ด"><span className="hidden 2xl:inline">รหัสสินค้า/บาร์โค้ด</span><span className="2xl:hidden">รหัส/บาร์โค้ด</span></th>
             <th className="px-2 text-left font-medium">ชื่อสินค้า</th>
             <th className="px-2 text-right font-medium">จำนวน</th>
             <th className="px-2 text-left font-medium">หน่วย</th>
-            <th className="px-2 text-right font-medium">ราคาต่อหน่วย</th>
-            <th className="px-2 text-right font-medium" title="5 = ลด 5 บาทต่อหน่วย, 5% = ลด 5%">ส่วนลด/หน่วย</th>
+            <th className="px-2 text-right font-medium whitespace-nowrap" title="ราคาต่อหน่วย"><span className="hidden 2xl:inline">ราคาต่อหน่วย</span><span className="2xl:hidden">ราคา/หน่วย</span></th>
+            <th className="px-2 text-right font-medium whitespace-nowrap" title="ส่วนลดต่อหน่วย: 5 = ลด 5 บาทต่อหน่วย, 5% = ลด 5%"><span className="hidden 2xl:inline">ส่วนลดต่อหน่วย</span><span className="2xl:hidden">ลด/หน่วย</span></th>
             {showVat && <th className="px-2 text-left font-medium">VAT</th>}
             <th className="px-2 text-right font-medium">ราคารวม</th>
             <th className="px-1"><span className="sr-only">ลบ</span></th>
@@ -276,8 +276,8 @@ export function PoItemsGrid({ rows, setRows, lines, supplierId, supplierName, ed
                     <div className="flex min-w-0 items-center gap-2 px-2" title={r.product.name}>
                       <PoLineName item={{ docName: printed?.name, docCode: printed?.code, name: r.product.name }} className="line-clamp-2 min-w-0 flex-1 text-body font-medium leading-tight" />
                       {dupOf !== undefined && dupOf !== i && <span className="shrink-0 text-sub text-warn">ซ้ำแถว {dupOf + 1}</span>}
-                      <span className="shrink-0 text-sub text-muted-foreground tabular-nums" data-testid="po-grid-stock">
-                        คงเหลือ {formatQty(Number(r.product.stock ?? 0))}
+                      <span className="shrink-0 text-sub text-muted-foreground tabular-nums" data-testid="po-grid-stock" title={`คงเหลือ ${formatQty(Number(r.product.stock ?? 0))} ${r.product.unit || 'ชิ้น'}`}>
+                        <span className="hidden xl:inline">คงเหลือ </span>{formatQty(Number(r.product.stock ?? 0))}
                       </span>
                     </div>
                   ) : (
@@ -314,6 +314,7 @@ export function PoItemsGrid({ rows, setRows, lines, supplierId, supplierName, ed
                     data-testid={`po-cell-unit-${i}`}
                     aria-label={`หน่วย แถว ${i + 1}`}
                     disabled={!r.product}
+                    title={units[unitIndex(r)]?.factor > 1 ? `${units[unitIndex(r)].name} ละ ${units[unitIndex(r)].factor} ${r.product?.unit || 'ชิ้น'}` : undefined}
                     className={cellCls + ' cursor-pointer pr-1 disabled:opacity-0'}
                     value={String(unitIndex(r))}
                     onChange={(e) => setUnit(r, units[Number(e.target.value)])}
@@ -321,7 +322,7 @@ export function PoItemsGrid({ rows, setRows, lines, supplierId, supplierName, ed
                   >
                     {units.map((u, k) => (
                       <option key={`${u.name}-${u.factor}`} value={String(k)}>
-                        {u.factor > 1 ? `${u.name} (×${u.factor})` : u.name}
+                        {u.factor > 1 ? `${u.name} ×${u.factor}` : u.name}
                       </option>
                     ))}
                   </select>

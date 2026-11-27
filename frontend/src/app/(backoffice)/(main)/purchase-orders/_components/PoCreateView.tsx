@@ -243,49 +243,51 @@ export function PoCreateView({
         <div className="flex min-h-0 flex-1 flex-col">
           {/* Bill header strip */}
           <div className="z-10 shrink-0 border-b border-slate-200 bg-white px-4 py-2" data-testid="po-header">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <div className="flex min-w-0 max-w-full items-center gap-2">
-                <Button variant="outline" size="sm" onClick={() => setCreateStep('supplier')} title="เปลี่ยนผู้จำหน่าย">
-                  <ChevronLeft /> ผู้จำหน่าย
-                </Button>
-                <span className="min-w-0 truncate text-section font-semibold text-fg" title={selectedSupplier?.name} data-testid="po-supplier-name">
-                  {selectedSupplier?.name || 'ยังไม่เลือกผู้จำหน่าย'}
-                </span>
-                {editingPo && <span className="shrink-0 text-sub text-warn">กำลังแก้ไข {editingPo.poNumber}</span>}
-              </div>
+            {/* row 1: supplier, name mode, actions */}
+            <div className="flex min-w-0 items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setCreateStep('supplier')} title="เปลี่ยนผู้จำหน่าย">
+                <ChevronLeft /> ผู้จำหน่าย
+              </Button>
+              <span className="min-w-0 flex-1 truncate text-section font-semibold text-fg" title={selectedSupplier?.name} data-testid="po-supplier-name">
+                {selectedSupplier?.name || 'ยังไม่เลือกผู้จำหน่าย'}
+              </span>
+              {editingPo && <span className="shrink-0 text-sub text-warn">แก้ไข {editingPo.poNumber}</span>}
+              <DocNameModeToggle label="ชื่อบนเอกสาร" value={docNameMode} onChange={setDocNameMode} className="shrink-0 flex-nowrap [&_button]:py-0.5" />
+              <Button variant="outline" size="sm" onClick={() => setIsSupplierCatalogOpen(true)} title="ดูสินค้าจากผู้จำหน่ายทั้งหมด" aria-label="ดูสินค้าจากผู้จำหน่ายทั้งหมด">
+                <Package /> <span className="hidden xl:inline">สินค้าผู้จำหน่าย</span>
+              </Button>
+              <Button variant="ghost" size="sm" onClick={onCancel}>
+                {editingPo ? 'ยกเลิกการแก้ไข' : 'ยกเลิก'}
+              </Button>
+            </div>
+            {/* row 2: dates, supplier's bill no., notes */}
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
               <label className={labelCls}>วันที่บิล
                 <input type="date" className={fieldCls} value={billDate} onChange={(e) => setBillDate(e.target.value)} data-testid="po-bill-date" />
               </label>
               <label className={labelCls}>ครบกำหนด
                 <input type="date" className={fieldCls} value={dueDate} onChange={(e) => setDueDate(e.target.value)} data-testid="po-due-date" />
               </label>
-              <label className={labelCls}>เลขที่บิลผู้ขาย
+              <label className={labelCls}>เลขบิลผู้ขาย
                 <input className={fieldCls + ' w-28'} value={invoiceNo} maxLength={50} onChange={(e) => setInvoiceNo(e.target.value)} data-testid="po-invoice-no" />
               </label>
-              <DocNameModeToggle label="ชื่อบนเอกสาร" value={docNameMode} onChange={setDocNameMode} className="[&_button]:py-0.5" />
-              <div className="ml-auto flex items-center gap-2">
+              <div className="flex min-w-0 flex-1 basis-48 items-center gap-2">
                 <Button variant="outline" size="sm" onClick={() => setNotesOpen((v) => !v)} aria-expanded={notesOpen} data-testid="po-notes-toggle">
                   หมายเหตุ{notes.trim() ? ' •' : ''} <ChevronDown className={notesOpen ? 'rotate-180' : ''} />
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => setIsSupplierCatalogOpen(true)} title="ดูสินค้าจากผู้จำหน่ายทั้งหมด">
-                  <Package /> สินค้าผู้จำหน่าย
-                </Button>
-                <Button variant="ghost" size="sm" onClick={onCancel}>
-                  {editingPo ? 'ยกเลิกการแก้ไข' : 'ยกเลิก'}
-                </Button>
+                {notesOpen && (
+                  <textarea
+                    className="h-8 min-w-0 flex-1 resize-none overflow-hidden whitespace-nowrap rounded-md border border-slate-300 bg-white px-2 py-1 text-sub leading-5 text-fg outline-none focus:h-16 focus:overflow-auto focus:whitespace-pre-wrap focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    rows={1}
+                    maxLength={1000}
+                    placeholder="หมายเหตุถึงผู้จำหน่าย / ในเอกสาร"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    data-testid="po-notes"
+                  />
+                )}
               </div>
             </div>
-            {notesOpen && (
-              <textarea
-                className="mt-2 block w-full resize-y rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sub text-fg outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                rows={2}
-                maxLength={1000}
-                placeholder="หมายเหตุถึงผู้จำหน่าย / ในเอกสาร"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                data-testid="po-notes"
-              />
-            )}
           </div>
 
           {/* The grid */}
@@ -326,9 +328,9 @@ export function PoCreateView({
               <div className="ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-sub">
                 <span className="whitespace-nowrap text-muted-foreground">รวม <b className="font-medium text-fg tabular-nums">{formatCurrency(liveBill.baseAmount)}</b></span>
                 {liveBill.lineDiscountAmount > 0 && (
-                  <span className="whitespace-nowrap text-muted-foreground">ส่วนลดรายการ <b className="font-medium text-fg tabular-nums">-{formatCurrency(liveBill.lineDiscountAmount)}</b></span>
+                  <span className="whitespace-nowrap text-muted-foreground">ลดรายการ <b className="font-medium text-fg tabular-nums">-{formatCurrency(liveBill.lineDiscountAmount)}</b></span>
                 )}
-                <label className={labelCls}>ส่วนลดท้ายบิล
+                <label className={labelCls}>ลดท้ายบิล
                   <input
                     className={fieldCls + ' w-20 text-right tabular-nums' + (bd ? '' : ' border-rose-400 bg-rose-50')}
                     value={billDiscountText}
@@ -344,7 +346,7 @@ export function PoCreateView({
                 )}
                 <span className="whitespace-nowrap text-muted-foreground">สุทธิ <b className="text-lg font-semibold text-fg tabular-nums" data-testid="po-total">{formatCurrency(liveBill.totalAmount)}</b></span>
                 <Button onClick={() => void handleCreatePO()} disabled={saving || filled.length === 0} data-testid="po-save" title="บันทึก (Ctrl+S หรือ Ctrl+Enter)">
-                  <Save /> {editingPo ? 'บันทึกการแก้ไข' : 'บันทึกใบสั่งซื้อ'} <span className="text-sub opacity-80">Ctrl+S</span>
+                  <Save /> {editingPo ? 'บันทึกการแก้ไข' : 'บันทึกใบสั่งซื้อ'} <span className="hidden text-sub opacity-80 2xl:inline">Ctrl+S</span>
                 </Button>
               </div>
             </div>

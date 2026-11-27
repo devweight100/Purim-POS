@@ -96,13 +96,13 @@ test('grid: partial code -> popup, exact codes direct, Enter through the cells, 
   await expect(dlg).toBeHidden();
   await expect(cell(page, 'qty', 1)).toBeFocused();
   await expect(cell(page, 'unit', 1)).toHaveValue('1');
-  await expect(cell(page, 'unit', 1).locator('option:checked')).toHaveText('กล่อง (×12)');
+  await expect(cell(page, 'unit', 1).locator('option:checked')).toHaveText('กล่อง ×12');
   await expect(cell(page, 'price', 1)).toHaveValue('95');
   await page.keyboard.type('2');
   await page.keyboard.press('Enter');
   // ↓ in the unit cell: ลัง (x120) -> price converted from the กล่อง price (95 / 12 x 120 = 950); back to กล่อง
   await page.keyboard.press('ArrowDown');
-  await expect(cell(page, 'unit', 1).locator('option:checked')).toHaveText('ลัง (×120)');
+  await expect(cell(page, 'unit', 1).locator('option:checked')).toHaveText('ลัง ×120');
   await expect(cell(page, 'price', 1)).toHaveValue('950');
   await page.keyboard.press('ArrowUp');
   await expect(cell(page, 'price', 1)).toHaveValue('95');
@@ -175,7 +175,7 @@ test('edit: the stored lines come back with their pack unit and per-unit discoun
   await expect(detail).toContainText('= 24 ม้วน');
   await detail.getByRole('button', { name: /แก้ไข/ }).first().click();
   await expect(page.getByTestId('po-grid')).toBeVisible();
-  await expect(cell(page, 'unit', 1).locator('option:checked')).toHaveText('กล่อง (×12)');
+  await expect(cell(page, 'unit', 1).locator('option:checked')).toHaveText('กล่อง ×12');
   await expect(cell(page, 'discount', 1)).toHaveValue('2.5');
   await expect(cell(page, 'discount', 0)).toHaveValue('5%');
   await expect(page.getByTestId('po-bill-discount')).toHaveValue('10');
