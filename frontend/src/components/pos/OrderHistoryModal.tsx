@@ -11,6 +11,7 @@ import { LoadErrorState, errorMessage } from '@/components/common/LoadErrorState
 import { fetchClaimedOrderIds } from '@/lib/claim-service';
 import { ReceiptPdfModal, ReceiptData } from './ReceiptPdfModal';
 import { orderToReceiptData } from '@/lib/receipt-mapper';
+import { orderCustomerName } from '@/lib/order-customer';
 import { PaymentModal } from './PaymentModal';
 import {
   Dialog,
@@ -65,6 +66,8 @@ interface HistoryOrder {
   orderNumber?: string;
   status?: string;
   customerId?: string | null;
+  /** the member of the bill as the server sends it (GET /orders) */
+  customer?: { id?: string; name?: string | null; phone?: string | null } | null;
   customerName?: string;
   createdAt: string;
   total: number;
@@ -157,6 +160,8 @@ export function OrderHistoryModal({ open, onOpenChange, onOpenPaymentModal }: Or
           ...bOrder,
           ...(existing || {}),
           hasClaims,
+          // member bills come with `customer: { name }` (no customerName column): list, detail, search, repeat
+          customerName: orderCustomerName(bOrder) ?? undefined,
           claims: bOrder.claims || existing?.claims || [],
           items: existing?.items && existing.items.length > 0 ? existing.items : bItems,
           total: Number(bOrder.totalAmount || bOrder.total || existing?.total || 0),

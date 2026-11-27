@@ -110,6 +110,11 @@ export class UpdateSettingsDto {
   @IsBoolean({ message: 'การตั้งสิทธิ์ราคาลูกค้าทั่วไปไม่ถูกต้อง' })
   walkInLevelNeedsDiscount?: boolean;
 
+  /** POS: the member picker opens and waits after every completed sale (เปิดหน้าเลือกสมาชิกรอไว้หลังรับชำระเงิน). */
+  @ValidateIf((o) => o.posPickMemberAfterSale !== undefined)
+  @IsBoolean({ message: 'การเปิด/ปิดหน้าเลือกสมาชิกหลังรับชำระเงินไม่ถูกต้อง' })
+  posPickMemberAfterSale?: boolean;
+
   /** What slips / A4 documents show ({ slip: { showAddress: false, ... }, a4: {...} }); null = defaults. */
   @ValidateIf((o) => o.receiptOptions !== undefined)
   @ValidateBy({
@@ -131,5 +136,5 @@ export const SETTINGS_FIELDS = [
   'storeName', 'branchName', 'storePhone', 'storeAddress', 'storeEmail', 'logoUrl', 'qrImageUrl', 'qrLabel',
   'taxId', 'receiptHeader', 'receiptFooter', 'vatRate', 'vatEnabled', 'pointsPerBaht', 'pointValue',
   'lowStockThreshold', 'allowDecimalQty', 'cashMovementApprovalLimit', 'loyaltyConfig',
-  'receiptOptions', 'supplierDocNameMode', 'posAskCustomerAtStart', 'walkInLevelNeedsDiscount', 'dashboardDueDays',
+  'receiptOptions', 'supplierDocNameMode', 'posAskCustomerAtStart', 'walkInLevelNeedsDiscount', 'posPickMemberAfterSale', 'dashboardDueDays',
 ] as const;

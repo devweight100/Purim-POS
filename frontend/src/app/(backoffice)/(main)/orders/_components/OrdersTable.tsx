@@ -28,6 +28,7 @@ import {
 import { LoadErrorState } from "@/components/common/LoadErrorState";
 import { ROW_NAV_CLASS, useRowNav } from "@/lib/use-row-nav";
 import { isCreditOrderFullyPaid, isOrderCredit, type OrderAction, type OrderRow } from "./order-shared";
+import { orderCustomerName } from "@/lib/order-customer";
 
 interface Props {
   loading: boolean;
@@ -140,7 +141,7 @@ export function OrdersTable({
                     <TableCell >
                       <div className="font-medium text-fg flex items-center gap-1.5 min-w-32 xl:min-w-40">
                         <User className="w-3.5 h-3.5 shrink-0 text-subtle" />
-                        <span className="line-clamp-2 break-words">{order.customerName || (typeof order.customer === "object" ? order.customer?.name : order.customer) || "ลูกค้าทั่วไป"}</span>
+                        <span className="line-clamp-2 break-words">{orderCustomerName(order) || "ลูกค้าทั่วไป"}</span>
                       </div>
                     </TableCell>
 

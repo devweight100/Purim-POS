@@ -1020,6 +1020,7 @@ model StoreSettings {
   supplierDocNameMode String @default("SHOP") @map("supplier_doc_name_mode") @db.VarChar(10) // default product names on new supplier documents (SHOP | SUPPLIER)
   posAskCustomerAtStart   Boolean @default(false) @map("pos_ask_customer_at_start") // POS: start-of-bill customer / price level dialog
   walkInLevelNeedsDiscount Boolean @default(false) @map("walk_in_level_needs_discount") // POS: walk-in bill at ราคา 2-5 needs POS_DISCOUNT / manager
+  posPickMemberAfterSale  Boolean @default(false) @map("pos_pick_member_after_sale") // POS: open the member picker after every completed sale (docs/pos-member-picker.md)
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 

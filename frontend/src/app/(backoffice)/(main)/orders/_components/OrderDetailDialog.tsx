@@ -14,6 +14,7 @@ import { usePosLevels } from "@/lib/pos/pos-add";
 import type { PriceLevel } from "@shared/price-level";
 import { isCreditOrderFullyPaid, isOrderCredit, type OrderAction, type OrderRow } from "./order-shared";
 import { OrderPaymentsList } from "./OrderPaymentsList";
+import { orderCustomerName } from "@/lib/order-customer";
 
 interface Props {
   isDetailOpen: boolean;
@@ -76,7 +77,7 @@ export function OrderDetailDialog({
                 <span className="text-slate-500 block mb-0.5">ชื่อลูกค้า</span>
                 <span className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 text-sky-600" />
-                  {currentOrder.customerName || (typeof currentOrder.customer === "object" ? currentOrder.customer?.name : currentOrder.customer) || "ลูกค้าทั่วไป"}
+                  {orderCustomerName(currentOrder) || "ลูกค้าทั่วไป"}
                 </span>
                 {(currentOrder.priceLevel ?? 1) > 1 && (
                   <span className="block text-sub text-muted-foreground mt-0.5" data-testid="order-price-level">ราคา: {levels.names[currentOrder.priceLevel as PriceLevel]}</span>

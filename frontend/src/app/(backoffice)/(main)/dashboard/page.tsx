@@ -13,6 +13,7 @@ import { fetchClaimRefundSummary } from "@/lib/claim-service";
 import { CreditCustomersDialog, type CreditSummary } from "@/components/dashboard/CreditCustomersDialog";
 import { ObligationPanels, type Obligations, type OverdueDebtor } from "@/components/dashboard/ObligationPanels";
 import { bangkokDate, bangkokParts, bangkokStartOfDay, DAY_MS } from "@shared/bangkok-date";
+import { orderCustomerName } from "@/lib/order-customer";
 
 // Palette colors for charts
 const COLORS = ["#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ec4899", "#8b5cf6", "#64748b"];
@@ -775,7 +776,7 @@ export default function DashboardPage() {
                       </div>
 
                       <div className="text-xs text-slate-500 truncate flex items-center gap-2 font-medium">
-                        <span>{ord.customerName || (typeof ord.customer === "object" ? ord.customer?.name : ord.customer) || "ลูกค้าทั่วไป"}</span>
+                        <span>{orderCustomerName(ord) || "ลูกค้าทั่วไป"}</span>
                         <span>•</span>
                         <span>{formatListDateTime(ord.createdAt)} น.</span>
                       </div>

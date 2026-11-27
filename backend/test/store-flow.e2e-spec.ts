@@ -3566,6 +3566,25 @@ d('store flow (e2e)', () => {
       expect(q.priceLevel).toBe(3);
       expect((await sell(lv.S, [base(16)], { customerId: q.id }).expect(201)).body.priceLevel).toBe(3);
     });
+    it('setting "member picker after payment" (docs/pos-member-picker.md): off by default, boolean only, managers set it', async () => {
+      expect((await api('get', '/settings').expect(200)).body).toMatchObject({ posPickMemberAfterSale: false });
+      await api('patch', '/settings', A, { posPickMemberAfterSale: 'yes' }).expect(400);
+      await api('patch', '/settings', lv.S, { posPickMemberAfterSale: true }).expect(403);
+      await api('patch', '/settings', A, { posPickMemberAfterSale: true }).expect(200);
+      expect((await api('get', '/settings').expect(200)).body).toMatchObject({ posPickMemberAfterSale: true });
+      await api('patch', '/settings', A, { posPickMemberAfterSale: false }).expect(200);
+      expect((await api('get', '/settings').expect(200)).body).toMatchObject({ posPickMemberAfterSale: false });
+    });
+    it('a member bill in the sales history list (GET /orders, read by the POS history): the member comes with the bill', async () => {
+      const bill = (await sell(lv.S, [base(20)], { customerId: lv.m3.id }).expect(201)).body;
+      const list = (await api('get', '/orders?limit=100', lv.S).expect(200)).body.data;
+      const row = list.find((o: any) => o.id === bill.id);
+      expect(row.customerId).toBe(lv.m3.id);
+      expect(row.customer).toMatchObject({ id: lv.m3.id, name: expect.any(String) });
+      expect(row.customer.name.length).toBeGreaterThan(0);
+      const walkIn = (await sell(lv.S, [base(20)]).expect(201)).body;
+      expect((await api('get', '/orders?limit=100', lv.S).expect(200)).body.data.find((o: any) => o.id === walkIn.id).customer).toBeNull();
+    });
     it('a product without any price: 0 rejected; a manual price needs the right or an approval (then accepted)', async () => {
       const r0 = await sell(lv.S, [{ productId: lv.zero.id, quantity: 1, unitPrice: 0 }]).expect(409);
       expect(r0.body.message).toContain('ยังไม่ได้ตั้งราคา');
