@@ -98,3 +98,10 @@ new desktop client is needed**.
 Session scratchpad `po-grid/`: `before-*` / `after-*` for po-create (8 lines), po-search-popup, po-pdf (pack line),
 product-form-category at 1366x768, 1920x1080, 1093x614 (deviceScaleFactor 2). The before product-form-category shots
 at 1366 / 1093 show the form top only (the native select was below the fold; 1920 shows it).
+
+## Verification (2026-11-27)
+
+- backend: tsc OK, jest 204/204, e2e 159/159 on a fresh `*_test` DB, `prisma migrate diff` (DB vs schema) empty.
+- frontend: tsc OK, eslint 0 errors (94 warnings), vitest 402/402, `next build` OK.
+- Playwright full suite on a fresh DB: 157/157 (incl. new 46). After the last focus fix (PoItemsGrid, a cell is
+  focused only once enabled) 23 + 46 + the screenshot run were re-run green.
