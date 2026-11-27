@@ -93,7 +93,7 @@ export function PoProductSearchDialog({ initialQuery, supplierId, supplierName, 
       <DialogContent
         data-testid="po-search-dialog"
         className="flex max-h-[calc(100dvh-2rem)] w-[min(820px,calc(100vw-2rem))] max-w-none flex-col gap-3 bg-white p-4 sm:max-w-none"
-        initialFocus={inputRef}
+        initialFocus={() => inputRef.current || true}
         finalFocus={false}
       >
         <DialogHeader className="pr-10">
@@ -105,6 +105,7 @@ export function PoProductSearchDialog({ initialQuery, supplierId, supplierName, 
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               ref={inputRef}
+              autoFocus
               type="text"
               role="combobox"
               aria-label="ค้นหาสินค้า"

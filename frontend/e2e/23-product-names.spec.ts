@@ -120,19 +120,26 @@ test('PO in supplier-name mode: screen + A4 PDF print the supplier names, switch
   await toggle.getByRole('radio', { name: 'ใช้ชื่อร้าน' }).focus();
   await page.keyboard.press('ArrowRight');
   await expect(toggle.getByRole('radio', { name: 'ใช้ชื่อผู้ผลิต' })).toHaveAttribute('aria-checked', 'true');
-  // the PO item picker finds the pipe by the supplier's code (hint), Enter adds it
-  const picker = page.getByPlaceholder('พิมพ์ค้นหาสินค้า (↑/↓ เลื่อน, Enter เลือก)...');
-  await picker.fill(SUP_CODE.toLowerCase());
-  await expect(page.getByTestId('search-match-hint').filter({ hasText: `รหัสผู้ขาย: ${SUP_CODE}` }).first()).toBeVisible();
-  await picker.press('Enter');
-  await picker.fill(PLAIN);
-  await picker.press('Enter');
+  // the PO grid's search popup finds the pipe by the supplier's code (hint), Enter adds it (docs/po-grid-entry.md)
+  const code0 = page.getByTestId('po-cell-code-0');
+  await code0.fill(SUP_CODE.toLowerCase());
+  await code0.press('Enter');
+  const popup = page.getByTestId('po-search-dialog');
+  await expect(popup.getByTestId('search-match-hint').filter({ hasText: `รหัสผู้ขาย: ${SUP_CODE}` }).first()).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(popup).toBeHidden();
+  const name1 = page.getByTestId('po-cell-name-1');
+  await name1.fill(PLAIN);
+  await name1.press('Enter');
+  await expect(popup.getByTestId('po-search-option').first()).toBeVisible();
+  await page.keyboard.press('Enter');
+  await expect(popup).toBeHidden();
   // the order table previews the printed names
   await expect(page.getByTestId('po-line-name').filter({ hasText: SUP_NAME })).toHaveCount(1);
   await expect(page.getByTestId('po-line-name').filter({ hasText: PLAIN })).toHaveCount(1);
   await expect(page.getByTestId('po-line-sub').filter({ hasText: `รหัสผู้ขาย: ${SUP_CODE}` })).toHaveCount(1);
   expect(await horizontalOverflow(page)).toEqual([]);
-  await page.getByRole('button', { name: /สร้างใบสั่งซื้อ \(Ctrl \+ Enter\)/ }).click();
+  await page.getByTestId('po-save').click();
 
   // the A4 document opens: supplier names + code column
   const pdf = page.getByRole('dialog').filter({ hasText: 'เอกสารใบสั่งซื้อ' });

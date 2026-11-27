@@ -135,7 +135,7 @@ test('BUG-11: category and supplier made from the product form, selected, form i
   await page.keyboard.type(`หมวดใหม่ ${TAG}`);
   await page.keyboard.press('Enter');
   await expect(quick).toBeHidden();
-  await expect(page.locator('#product-form-category option:checked')).toContainText(`หมวดใหม่ ${TAG}`);
+  await expect(page.locator('#product-form-category')).toHaveValue(new RegExp(`หมวดใหม่ ${TAG}`));
   await expect(form.getByLabel('ชื่อสินค้า *')).toHaveValue(name);
 
   // Escape closes only the small dialog

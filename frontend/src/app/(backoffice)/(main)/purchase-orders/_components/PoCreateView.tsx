@@ -98,7 +98,12 @@ export function PoCreateView({
   const [saving, setSaving] = useState(false);
   const gridWrap = useRef<HTMLDivElement>(null);
 
-  const focusFirstCode = () => setTimeout(() => gridWrap.current?.querySelector<HTMLInputElement>('[data-testid^="po-cell-code-"]:placeholder-shown, [data-testid="po-cell-code-0"]')?.focus(), 120);
+  // the grid's first code cell once it is shown, unless the user is already somewhere (never steals the focus)
+  const focusFirstCode = () => setTimeout(() => {
+    const at = document.activeElement;
+    if (at && at !== document.body && !at.closest('[data-testid="po-supplier-step"]')) return;
+    gridWrap.current?.querySelector<HTMLInputElement>('[data-testid="po-cell-code-0"]')?.focus();
+  }, 120);
 
   const handleSelectSupplier = async (supplier: PoSupplier) => {
     setSelectedSupplier(supplier);

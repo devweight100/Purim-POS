@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { NAME_LIMITS } from "@shared/product-names";
 import type { CategoryOption, ProductForm, UpdateForm } from "../types";
 import { FormSection } from "./FormSection";
+import { SearchableSelect } from "@/components/common/SearchableSelect";
 
 /**
  * "ข้อมูลเพิ่มเติม" first section: unit, category, low-stock alert, manufacturer name, size, color and the product type
@@ -33,10 +34,17 @@ export function ProductDetailsSection({ form, updateForm, categories, onCreateCa
               </button>
             )}
           </div>
-          <select id="product-form-category" value={form.categoryId} onChange={e => updateForm("categoryId", e.target.value)} className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-primary">
-            <option value="">{categories.length === 0 ? "ยังไม่มีหมวดหมู่ (กด + สร้างหมวดหมู่)" : "เลือกหมวดหมู่"}</option>
-            {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
-          </select>
+          {/* type to filter, ↑/↓ + Enter, Esc (docs/po-grid-entry.md) */}
+          <SearchableSelect
+            id="product-form-category"
+            testId="product-form-category-box"
+            value={form.categoryId}
+            onChange={(v) => updateForm("categoryId", v)}
+            options={categories.map((c) => ({ value: c.id, label: c.name, icon: c.icon }))}
+            emptyLabel={categories.length === 0 ? "ยังไม่มีหมวดหมู่ (กด + สร้างหมวดหมู่)" : "ไม่ระบุหมวดหมู่"}
+            placeholder="พิมพ์เพื่อค้นหาหมวดหมู่"
+            noMatchText="ไม่พบหมวดหมู่นี้"
+          />
         </div>
         <div className="space-y-1.5">
           <label htmlFor="product-form-min-stock" className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
