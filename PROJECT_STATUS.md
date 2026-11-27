@@ -141,7 +141,7 @@ Make the POS production-ready by using PostgreSQL/backend APIs as the source of 
 - **Setting `posPickMemberAfterSale`** ("เปิดหน้าเลือกสมาชิกรอไว้หลังรับชำระเงิน", shop-wide like the other POS behaviour settings, default off; migration `20261212000000_pos_member_after_sale`): after a completed sale the member picker opens and waits; typed / scanned member code or phone picks the member, a product scan closes it and goes to the cart, Esc = no member. Off: standby on the scan box as before.
 - **Member picker**: larger (920 px, list fills the height), address line per member (ellipsis + tooltip), code / phone, search also by address; ↑/↓/Enter kept; the search keeps the focus against a late scan-box focus.
 - **บิลส่งของ** (delivery note): held bills (sheet), held online orders and the cart (Shift+F8) print a "บิลส่งของ (ไม่ใช่ใบเสร็จรับเงิน)" slip (default) or A4 with prices, discounts, fee, total and "ยังไม่ได้ชำระเงิน"; no sale, stock, document number or held-bill change. Online orders: `GET /online-shop/orders/:id/delivery-note`, `POST .../delivery-note/print` (audit `PRINT_DELIVERY_NOTE`, print count). Held-bills sheet total now uses the shared pricing.
-- Verified: see docs/pos-member-picker.md (Playwright 44 + 45 new).
+- Verified: backend tsc + jest 201 + e2e 153 (fresh DB), migrate diff empty; frontend tsc + eslint 0 errors + vitest 385 + next build; Playwright full suite 154/154 on a fresh DB (new 44, 45). Screenshots before / after in the session scratchpad `pos-member/`.
 
 ## Production Readiness Work In Progress
 

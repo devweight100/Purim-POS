@@ -125,6 +125,21 @@ held online order at the agreed prices + fee, print logged, reprint marked, orde
 - [x] 4. held-bill delivery note (slip + A4, cart, online orders, audit for online orders)
 - [x] tests, full verification, screenshots before / after
 
+## Verification (2026-11-27)
+| Check | Result |
+| --- | --- |
+| backend `tsc --noEmit` | ok |
+| backend jest | 201 / 201 |
+| backend e2e (fresh DB) | 153 / 153 (new: setting default / validation / roles, member bill in GET /orders) |
+| fresh DB `migrate deploy` vs schema | empty diff |
+| frontend `tsc --noEmit` | ok |
+| frontend eslint | 0 errors (93 warnings) |
+| frontend vitest | 385 / 385 (new: order-customer 5, member-scan 6, delivery-note 4) |
+| frontend `next build` | ok |
+| Playwright full suite (fresh DB) | 154 / 154 (new `44-pos-member-picker` 3, `45-held-bill-delivery-note` 3; `02` follows the new picker placeholder) |
+| 44 alone | 3x green after the focus fixes; also green with 4 busy CPU loops once (the unknown-code check tolerates a split burst) |
+| desktop | untouched |
+
 ## Screenshots (deviceScaleFactor 2, session scratchpad `pos-member/`)
 `before-` / `after-` + `pos-history`, `member-picker`, `settings`, `held-bills` at 1366x768, 1920x1080, 1093x614;
 after only: `member-picker-after-sale`, `delivery-note-slip`, `delivery-note-a4`.
