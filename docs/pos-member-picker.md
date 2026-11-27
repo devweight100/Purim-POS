@@ -79,8 +79,9 @@ IN2611-0001 shown as walk-in).
 ## 4. บิลส่งของ (delivery note) for held bills
 
 - **Where**: held-bills sheet (F10 on an empty cart): each held bill has "บิลส่งของ" (next to ใบจัดของ); held online
-  orders in the same sheet too; the current cart: **Shift+F8** or the "บิลส่งของ" button in the cart header (classic
-  layout; list layout: Shift+F8). All buttons are keyboard reachable; the preview dialog opens with the focus on
+  orders in the same sheet too; the current cart: **Shift+F8** (both layouts; named in the ใบจัดของ button's
+  tooltip). A cart-header button was tried and removed: the header has no room at 1366 / 1093 px (e2e 17 spacing
+  check put "ล้างตะกร้า" at the window edge). All buttons are keyboard reachable; the preview dialog opens with the focus on
   "พิมพ์บิลส่งของ": Enter = print, Esc = close, Tab to "สลิป 80mm" / "กระดาษ A4".
 - **Content** (`components/pos/DeliveryNoteView.tsx`): shop header (Settings > รูปแบบใบเสร็จ rules, seller tax id left
   out), title "บิลส่งของ (ไม่ใช่ใบเสร็จรับเงิน)", reference (held bill label / online order no.), print date + time,

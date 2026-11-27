@@ -103,7 +103,7 @@ test('credit sale to a customer', async () => {
   await expectCartQty(page, RICE.sku, 1);
   await page.getByRole('button', { name: 'เลือกลูกค้า' }).click();
   const pick = page.getByRole('dialog').filter({ hasText: 'เลือกลูกค้าสมาชิก' });
-  await pick.getByPlaceholder('พิมพ์ค้นหาชื่อ, เบอร์โทร, เลขผู้เสียภาษี Tax ID...').fill('ประหยัด');
+  await pick.getByPlaceholder(/พิมพ์ค้นหาชื่อ, เบอร์โทร/).fill('ประหยัด');
   await pick.getByText('ประหยัด อดออม').first().click();
   await expect(pick).toBeHidden();
 
@@ -132,7 +132,7 @@ test('debt picker: the customer\'s debt (customer list delta) and the bills it o
   page.on('request', onReq);
   await page.getByRole('button', { name: 'เลือกลูกค้า' }).click();
   const pick = page.getByRole('dialog').filter({ hasText: 'เลือกลูกค้าสมาชิก' });
-  await pick.getByPlaceholder('พิมพ์ค้นหาชื่อ, เบอร์โทร, เลขผู้เสียภาษี Tax ID...').fill('ประหยัด');
+  await pick.getByPlaceholder(/พิมพ์ค้นหาชื่อ, เบอร์โทร/).fill('ประหยัด');
   await pick.getByText('ประหยัด อดออม').first().click();
   await expect(pick).toBeHidden();
   // the customer list is refreshed by a delta (the new debt arrives with it), not the whole list

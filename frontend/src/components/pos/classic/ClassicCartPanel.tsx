@@ -3,10 +3,9 @@
 import { toast } from 'sonner';
 import {
   ShoppingCart, Trash2, Minus, Plus, Tag, PauseCircle, CreditCard, Percent, Coins,
-  ShieldAlert, ShieldCheck, Package, ClipboardList, Truck,
+  ShieldAlert, ShieldCheck, Package, ClipboardList,
 } from 'lucide-react';
 import { printCartPickingSlip } from '@/lib/pos/picking';
-import { openCartDeliveryNote } from '@/lib/pos/delivery-note-actions';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency } from '@/lib/utils';
@@ -48,22 +47,10 @@ export function ClassicCartPanel({ pos }: { pos: PosController }) {
             className="h-8 border-slate-300 text-slate-700 font-bold text-xs"
             disabled={cart.items.length === 0}
             onClick={() => void printCartPickingSlip()}
-            title="พิมพ์ใบจัดของของตะกร้านี้ (ชื่อสินค้า หน่วย จำนวน ไม่มีราคา) (F8)"
+            title="พิมพ์ใบจัดของของตะกร้านี้ (ชื่อสินค้า หน่วย จำนวน ไม่มีราคา) (F8) · บิลส่งของ มีราคา ยังไม่ชำระ: Shift+F8"
           >
             <ClipboardList className="w-4 h-4 mr-1" />
             ใบจัดของ
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            data-testid="cart-delivery-note"
-            className="h-8 border-slate-300 text-slate-700 font-bold text-xs"
-            disabled={cart.items.length === 0}
-            onClick={() => void openCartDeliveryNote()}
-            title="พิมพ์บิลส่งของของตะกร้านี้ (รายการ ราคา ยอดที่ต้องเก็บเงิน ยังไม่ได้ชำระ) (Shift+F8)"
-          >
-            <Truck className="w-4 h-4 mr-1" />
-            บิลส่งของ
           </Button>
           <Button variant="ghost" size="sm" className="text-slate-500 hover:text-red-600" onClick={cart.clearCart}>
             <Trash2 className="w-4 h-4 mr-1.5" />
