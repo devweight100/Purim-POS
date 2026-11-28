@@ -108,6 +108,12 @@ export class ProductSupplierEntryDto {
   @IsBoolean()
   @IsOptional()
   isPreferred?: boolean;
+
+  /** บาร์โค้ดของผู้จำหน่ายรายนี้ (สแกนขายได้เหมือนบาร์โค้ดหลัก) */
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  barcodes?: string[];
 }
 
 export class CreateProductDto {

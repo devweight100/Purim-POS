@@ -31,7 +31,16 @@ export default function ProductsPage() {
 
   return (
     <div className="page-shell">
-      <ProductsHeader categories={data.categories} suppliers={data.suppliers} onImportFile={productImport.handleFileSelectForImport} onAdd={productForm.handleOpenAdd} />
+      <ProductsHeader
+        categories={data.categories}
+        suppliers={data.suppliers}
+        onImportFile={productImport.handleFileSelectForImport}
+        onSupplierImported={() => {
+          data.loadData();
+          void data.reloadSuppliers();
+        }}
+        onAdd={productForm.handleOpenAdd}
+      />
 
       {/* Filter Toolbar */}
       <ProductFilters f={filters} categories={data.categories} suppliers={data.suppliers} totalCount={data.allCount} inactiveCount={data.inactiveCount} />

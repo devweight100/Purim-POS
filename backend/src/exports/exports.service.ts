@@ -21,6 +21,7 @@ export const EXPORT_HEADER = 'x-export-approval';
 
 export const EXPORT_KINDS = {
   products: { label: 'สินค้า (Excel)', permission: 'MANAGE_INVENTORY' },
+  'product-suppliers': { label: 'ผู้จำหน่ายและต้นทุนสินค้า (Excel)', permission: 'MANAGE_INVENTORY' },
   report: { label: 'รายงาน', permission: 'VIEW_REPORTS' },
   'profit-loss': { label: 'กำไรขาดทุน (CSV)', permission: 'MANAGE_FINANCE' },
 } as const;
@@ -154,6 +155,34 @@ export class ExportsService {
     const data = costFilterFor(user)(rows);
     await this.audit(user, approval, 'products', filters, data.length);
     return { data, total: data.length, filters };
+  }
+
+  async exportProductSuppliers(approvalId: unknown, rawFilters: unknown, user: any) {
+    const f = rawFilters && typeof rawFilters === 'object' ? (rawFilters as Record<string, unknown>) : {};
+    const includeUnlinked = f.includeUnlinked !== false;
+    const baseFilters = ExportsService.productFilters(rawFilters);
+    const filters = { ...baseFilters, includeUnlinked };
+    const approval = await this.consume(approvalId, 'product-suppliers', rawFilters ?? {}, user);
+    const rows: any[] = [];
+    for (let page = 1; page < 10_000; page++) {
+      const r = await this.products.page({
+        page, limit: 500, categoryIds: baseFilters.categoryIds?.length ? baseFilters.categoryIds : undefined, supplierId: baseFilters.supplierId,
+        stock: baseFilters.stock, status: baseFilters.status, canViewCost: canViewCost(user),
+      });
+      rows.push(...r.data);
+      if (r.data.length < 500 || rows.length >= r.meta.total) break;
+    }
+    const filteredRows = includeUnlinked
+      ? rows
+      : rows.filter((p) => Array.isArray(p.supplierEntries) && p.supplierEntries.length > 0);
+    const data = costFilterFor(user)(filteredRows);
+    const suppliers = await this.prisma.supplier.findMany({
+      where: { isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+    await this.audit(user, approval, 'product-suppliers', filters, data.length);
+    return { data, suppliers, total: data.length, filters };
   }
 
   async exportReport(approvalId: unknown, body: any, user: any) {

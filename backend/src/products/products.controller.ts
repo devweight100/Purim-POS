@@ -32,6 +32,20 @@ export class ProductsController {
     return this.productsService.bulkUpsert(body?.products || [], req?.user);
   }
 
+  @Post('supplier-import/preview')
+  @Roles('ADMIN', 'MANAGER')
+  @RequirePermissions('MANAGE_INVENTORY')
+  previewSupplierImport(@Body() body: { rows?: unknown; costMode?: unknown }, @Req() req?: any) {
+    return this.productsService.previewSupplierImport(body || {}, req?.user);
+  }
+
+  @Post('supplier-import')
+  @Roles('ADMIN', 'MANAGER')
+  @RequirePermissions('MANAGE_INVENTORY')
+  importSuppliers(@Body() body: { rows?: unknown; costMode?: unknown; fileName?: unknown }, @Req() req?: any) {
+    return this.productsService.importSuppliers(body || {}, req?.user);
+  }
+
   // Creating / editing products (incl. prices and cost) needs MANAGE_INVENTORY (owner decision).
   @Post()
   @RequirePermissions('MANAGE_INVENTORY')

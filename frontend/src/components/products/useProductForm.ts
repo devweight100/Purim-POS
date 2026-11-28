@@ -10,6 +10,7 @@ import { decimalQtyEnabled, formatQty } from "@/lib/qty";
 import { useAuthStore } from "@/lib/store/auth-store";
 import { getLowStockThreshold } from "@/lib/store-settings-storage";
 import { useProductStore } from "@/lib/store/product-store";
+import { splitBarcodeList } from "@shared/product-supplier-import";
 import { errorMessage, errorStatus, makeInitialForm, productToApiPayload, productToForm } from "./product-helpers";
 import type { ProductsData } from "./useProducts";
 import type { ProductForm, ProductRecord, SetForm, UpdateForm } from "./types";
@@ -66,8 +67,11 @@ export function useProductForm(data: ProductsData, setExpandedRows: Dispatch<Set
       ...f,
       name: `${f.name} (สำเนา)`,
       sku: "",
+      mainBarcode: "",
       stock: "",
-      barcodes: [{ barcode: "", supplierId: "", label: "" }],
+      supplierEntries: f.supplierEntries
+        .filter((s) => s.supplierId)
+        .map((s) => ({ ...s, barcode: "" })),
       packagingUnits: f.packagingUnits.map((u) => ({ ...u, barcode: "" })),
       images: [],
     });
@@ -96,6 +100,13 @@ export function useProductForm(data: ProductsData, setExpandedRows: Dispatch<Set
 
   const handleSave = async (opts: { expectedStock?: number } = {}) => {
     if (!form.name.trim()) { toast.error("กรุณาระบุชื่อสินค้า"); return; }
+    const incompleteSupplierIdx = form.supplierEntries.findIndex(
+      (e) => !e.supplierId && (e.lastCost.trim() !== "" || e.supplierProductName.trim() !== "" || e.supplierSku.trim() !== ""),
+    );
+    if (incompleteSupplierIdx >= 0) {
+      toast.error(`แถวผู้จำหน่ายที่ ${incompleteSupplierIdx + 1}: กรุณาเลือกผู้จำหน่ายก่อนบันทึก`);
+      return;
+    }
     const stockPart = stockPayload(opts.expectedStock ?? stockSeen);
     if (!stockPart) return;
     if (form.isBundle) {
@@ -111,6 +122,12 @@ export function useProductForm(data: ProductsData, setExpandedRows: Dispatch<Set
 
     // stock goes to the server as stockQuantity (an audited movement there); the local record keeps the shown value
     const finalStock = editingProduct?.id ? (editingProduct.stock ?? 0) : 0;
+
+    // Collect every barcode from the top field + every supplier / unassigned barcode row
+    const allBarcodes = splitBarcodeList([
+      form.mainBarcode,
+      ...form.supplierEntries.map((e) => e.barcode),
+    ]);
 
     const updatedProductObj: ProductRecord = {
       id: targetId,
@@ -145,11 +162,7 @@ export function useProductForm(data: ProductsData, setExpandedRows: Dispatch<Set
               quantity: Math.max(1, Number(bi.quantity) || 1),
             }))
         : [],
-      barcodes: form.barcodes.filter(b => b.barcode.trim()).map(b => ({
-        barcode: b.barcode.trim(),
-        supplierId: b.supplierId || "",
-        label: b.label || "",
-      })),
+      barcodes: allBarcodes.map((barcode) => ({ barcode })),
     };
 
     let persistedProduct: Partial<ProductRecord> | null = null;
@@ -157,12 +170,13 @@ export function useProductForm(data: ProductsData, setExpandedRows: Dispatch<Set
       const payload = {
         ...productToApiPayload(updatedProductObj),
         ...stockPart,
-        // supplier rows of the form (BUG-06: never sent, so they were lost on save). A blank cost is left out:
+        // supplier rows of the form (including each supplier's barcodes). A blank cost is left out:
         // the server then keeps the stored one (users who may not see costs get blank costs in the form).
         supplierEntries: form.supplierEntries
           .filter((e) => e.supplierId)
           .map((e, i) => ({
             supplierId: e.supplierId,
+            barcodes: splitBarcodeList(e.barcode),
             ...(e.lastCost !== '' && Number.isFinite(Number(e.lastCost)) ? { unitCost: Number(e.lastCost) } : {}),
             // name / code on this supplier's invoices (blank = none)
             supplierProductName: e.supplierProductName.replace(/\s+/g, " ").trim(),

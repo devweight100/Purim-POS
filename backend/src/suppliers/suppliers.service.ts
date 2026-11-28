@@ -106,19 +106,21 @@ export class SuppliersService {
       basePrice: link.product.basePrice,
       supplierSku: link.supplierSku,
       supplierProductName: link.supplierProductName,
+      barcodes: Array.isArray(link.barcodes) ? link.barcodes : [],
       unitCost: link.unitCost,
       isPreferred: link.isPreferred,
       stock: addQty(...link.product.stockBatches.map((b) => b.quantityRemaining))
     }));
   }
 
-  async linkProduct(supplierId: string, data: { productId: string, supplierSku?: string, supplierProductName?: string, unitCost?: number, isPreferred?: boolean }) {
+  async linkProduct(supplierId: string, data: { productId: string, supplierSku?: string, supplierProductName?: string, barcodes?: string[], unitCost?: number, isPreferred?: boolean }) {
     return this.prisma.productSupplier.create({
       data: {
         supplierId,
         productId: data.productId,
         supplierSku: nameField(data.supplierSku, 'supplierSku'),
         supplierProductName: nameField(data.supplierProductName, 'supplierProductName'),
+        ...(Array.isArray(data.barcodes) ? { barcodes: data.barcodes.map((b) => String(b).trim()).filter(Boolean) } : {}),
         unitCost: data.unitCost,
         isPreferred: data.isPreferred,
       }
@@ -136,10 +138,11 @@ export class SuppliersService {
     });
   }
 
-  async updateProductLink(supplierId: string, productId: string, body: { supplierSku?: string, supplierProductName?: string, unitCost?: number, isPreferred?: boolean }) {
+  async updateProductLink(supplierId: string, productId: string, body: { supplierSku?: string, supplierProductName?: string, barcodes?: string[], unitCost?: number, isPreferred?: boolean }) {
     const data = {
       ...(body.supplierSku !== undefined ? { supplierSku: nameField(body.supplierSku, 'supplierSku') } : {}),
       ...(body.supplierProductName !== undefined ? { supplierProductName: nameField(body.supplierProductName, 'supplierProductName') } : {}),
+      ...(Array.isArray(body.barcodes) ? { barcodes: body.barcodes.map((b) => String(b).trim()).filter(Boolean) } : {}),
       ...(body.unitCost !== undefined ? { unitCost: body.unitCost } : {}),
       ...(body.isPreferred !== undefined ? { isPreferred: Boolean(body.isPreferred) } : {}),
     };

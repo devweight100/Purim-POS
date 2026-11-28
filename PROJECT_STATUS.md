@@ -1,6 +1,6 @@
 # Purim POS Project Status
 
-Last updated: 2026-11-27
+Last updated: 2026-11-28
 
 ## Goal
 
@@ -150,6 +150,15 @@ Make the POS production-ready by using PostgreSQL/backend APIs as the source of 
 - **Per-unit discount** `discountType: 'unit'` in shared po-calc ("5" = 5 baht per unit, "5%" = percent); server validates. **Default price** `GET /purchase-orders/last-prices` + shared `defaultPoUnitPrice` (same unit from this supplier -> other unit converted -> cost x factor). `GET /products/page?exact=1`.
 - Product form category = searchable combobox (`components/common/SearchableSelect.tsx`).
 - No desktop change (no new client needed).
+
+## 2026-11-28 Product supplier barcodes unified + Supplier Excel import/export (docs/product-supplier-excel.md)
+
+- **Unified supplier, barcode, and cost rows in `ProductFormDialog`**: removed the separate "บาร์โค้ดทั้งหมด" (`BarcodesSection`) section so suppliers are no longer chosen in two places. Each row in "ผู้จำหน่าย บาร์โค้ด และต้นทุน" (`SupplierCostSection`) now holds supplier, barcode(s), unit cost, and supplier invoice name/code; the top "บาร์โค้ด" field stays for fast single-barcode scanning (Enter from a scanner moves to SKU or unit cost instead of submitting).
+- **Existing unassigned multi-barcodes preserved**: when a product has multiple base-unit barcodes and no linked suppliers yet, `productToForm` displays each barcode on its own row in "ผู้จำหน่าย บาร์โค้ด และต้นทุน" with blank supplier & cost (`รอระบุผู้จำหน่าย`) ready to be filled in; saving while supplier is still blank keeps all barcodes in `product_barcodes`.
+- **Additive migration `20261214000000_product_supplier_barcodes`**: added `barcodes TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[]` on `product_suppliers`. Supplier barcodes sync into `product_barcodes` so POS scanning, PO exact lookup, mobile lookup, and cross-product/pack uniqueness checks work unchanged while allowing multiple suppliers of the same product to list a shared factory barcode.
+- **Supplier, cost & barcode Excel workflow (`SupplierExcelDialog`, `shared/src/product-supplier-import.ts`, `backend/src/products/product-supplier-import.ts`)**: separate button "ผู้จำหน่าย & ต้นทุน (Excel)" on `/products` with template download, manager-PIN guarded export (`POST /exports/product-suppliers`, kind `product-suppliers`, `DATA_EXPORT` audit, cost stripped without `VIEW_COST`) carrying permanent `รหัสระบบ (ห้ามแก้ไข)` (`products.id`) so SKU renames never break matching, preview dialog (`POST /products/supplier-import/preview`) with yellow new-supplier warning banner, reference cost mode (`zero_only` default / `average` / `none`), `ลบ` command to unlink a supplier, and all-or-nothing commit (`POST /products/supplier-import`, `PRODUCT_SUPPLIER_IMPORT` audit).
+- No desktop change (no new client needed).
+- Verified: shared tsc + backend tsc + jest 209/209 + backend e2e 162/162 (fresh DB) + `prisma migrate diff` empty + populated-DB migration check; frontend tsc + eslint 0 errors + vitest 411/411 + next build + Playwright full suite 159/159 (new `47-product-supplier-excel`); desktop tests 13/13. Before/after screenshots at 1366x768, 1920x1080, 1093x614 in session artifact `walkthrough.md`.
 
 ## Production Readiness Work In Progress
 

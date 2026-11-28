@@ -54,7 +54,7 @@ export interface ProductRecord {
   isBundle?: boolean;
   bundleItems?: Array<{ childProductId?: string; productId?: string; quantity?: number | string }>;
   supplierId?: string | null;
-  supplierEntries?: Array<{ supplierId?: string; supplierName?: string; lastCost?: number | string | null; unitCost?: number | string | null; notes?: string | null; supplierSku?: string | null; supplierProductName?: string | null }>;
+  supplierEntries?: Array<{ supplierId?: string; supplierName?: string; lastCost?: number | string | null; unitCost?: number | string | null; notes?: string | null; supplierSku?: string | null; supplierProductName?: string | null; barcodes?: string[]; isPreferred?: boolean }>;
   imageUrl?: string | null;
   defaultSellingUnitId?: string | null;
   /** false = ปิดการใช้งาน */
@@ -88,14 +88,11 @@ export interface ProductImageItem {
 /** What an <img> shows for a photo: the uploaded data, else the server URL. */
 export const imageSrc = (img: { dataUrl?: string; url?: string } | undefined): string | undefined => img?.dataUrl || img?.url;
 
-export interface ProductBarcodeForm {
-  barcode: string;
-  supplierId?: string;
-  label?: string; // เช่น "บาร์โค้ดจาก บ.นิวยอร์ค", "บาร์โค้ดผู้ผลิตจีน"
-}
-
 export interface ProductSupplierEntry {
+  /** empty string when an existing unassigned barcode is waiting for its supplier + cost */
   supplierId: string;
+  /** บาร์โค้ดของผู้จำหน่ายรายนี้ (คั่นด้วย , ได้ถ้ามีหลายเลข) */
+  barcode: string;
   lastCost: string; // ต้นทุนซื้อล่าสุดจากผู้จำหน่ายนี้
   /** ชื่อสินค้าของผู้ขาย (name on this supplier's invoices) */
   supplierProductName: string;
@@ -129,6 +126,8 @@ export interface ProductForm {
   /** ชื่อผู้ผลิต */
   manufacturerName: string;
   sku: string;
+  /** บาร์โค้ดหลักด้านบนสุดของฟอร์ม */
+  mainBarcode: string;
   unit: string;
   size: string;
   color: string;
@@ -141,7 +140,6 @@ export interface ProductForm {
   priceLevel3: string;
   priceLevel4: string;
   priceLevel5: string;
-  barcodes: ProductBarcodeForm[];
   supplierEntries: ProductSupplierEntry[];
   packagingUnits: PackagingUnitForm[];
   images: ProductImageItem[];

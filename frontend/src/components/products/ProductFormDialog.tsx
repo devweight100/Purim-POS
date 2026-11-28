@@ -9,7 +9,6 @@ import { PackagePlus, Pencil } from "lucide-react";
 import { useEnterSubmit } from "@/lib/keyboard/enter-submit";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { BarcodesSection } from "./form/BarcodesSection";
 import { BundleItemsSection } from "./form/BundleItemsSection";
 import { PackagingUnitsSection } from "./form/PackagingUnitsSection";
 import { WholesaleSection } from "./form/PricingSections";
@@ -23,8 +22,8 @@ import type { CategoryOption, ProductRecord, SupplierOption } from "./types";
 /**
  * Add / edit product dialog, by priority for fast entry (docs/product-form-bank-logos.md): on top ชื่อสินค้า, ต้นทุน,
  * ราคา 1-5, บาร์โค้ด, รหัสสินค้า, จำนวนสต็อก (Tab order = this order, the name has the focus); below "ข้อมูลเพิ่มเติม":
- * unit / category / details, bundle items, pack units, all barcodes, suppliers, wholesale steps, photos (each section
- * folds). Enter = save (a textarea needs Ctrl+Enter; the barcode fields' Enter = next field, scanners send Enter).
+ * unit / category / details, bundle items, pack units, suppliers + barcodes + cost, wholesale steps, photos (each
+ * section folds). Enter = save (a textarea needs Ctrl+Enter; the barcode fields' Enter = next field, scanners send Enter).
  */
 export function ProductFormDialog({ state, products, categories, suppliers, reloadCategories, reloadSuppliers }: {
   state: ProductFormState;
@@ -55,7 +54,7 @@ export function ProductFormDialog({ state, products, categories, suppliers, relo
       const blank = prev.supplierEntries.findIndex(e => !e.supplierId);
       const supplierEntries = blank >= 0
         ? prev.supplierEntries.map((e, i) => i === blank ? { ...e, supplierId: created.id } : e)
-        : [...prev.supplierEntries, { supplierId: created.id, lastCost: "", supplierProductName: "", supplierSku: "" }];
+        : [...prev.supplierEntries, { supplierId: created.id, barcode: "", lastCost: "", supplierProductName: "", supplierSku: "" }];
       return { ...prev, supplierEntries };
     });
   };
@@ -84,7 +83,6 @@ export function ProductFormDialog({ state, products, categories, suppliers, relo
             <ProductDetailsSection form={form} updateForm={updateForm} categories={categories} onCreateCategory={canCreateCategory ? () => setQuick("category") : undefined} />
             {form.isBundle && <BundleItemsSection form={form} setForm={setForm} products={products} editingProductId={editingProduct?.id} />}
             <PackagingUnitsSection form={form} setForm={setForm} updateForm={updateForm} />
-            <BarcodesSection form={form} setForm={setForm} suppliers={suppliers} />
             <SupplierCostSection form={form} setForm={setForm} updateForm={updateForm} suppliers={suppliers} onCreateSupplier={canCreateSupplier ? () => setQuick("supplier") : undefined} />
             <WholesaleSection steps={form.wholesaleSteps} setForm={setForm} />
             <ProductImagesSection images={form.images} setForm={setForm} />

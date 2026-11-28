@@ -79,14 +79,14 @@ export interface Product {
   priceLevel5?: number | null;
   supplierId?: string | null;
   barcodes?: Array<{ barcode?: string; supplierId?: string; label?: string }>;
-  supplierEntries?: Array<{ supplierId?: string; supplierName?: string; lastCost?: number | string; notes?: string; supplierSku?: string | null; supplierProductName?: string | null }>;
+  supplierEntries?: Array<{ supplierId?: string; supplierName?: string; lastCost?: number | string; notes?: string; supplierSku?: string | null; supplierProductName?: string | null; barcodes?: string[] }>;
   /** same as basePrice / costPrice (product-store sets both names) */
   price?: number;
   cost?: number;
   /** cost per unit of the stock on hand (GET /products/page rows: FIFO pool, else the reference cost); cost-visible users only */
   stockUnitCost?: number;
   /** supplier links as the server sent them */
-  suppliers?: Array<{ id?: string; supplierId?: string; supplierSku?: string | null; supplierProductName?: string | null; unitCost?: number | string | null; isPreferred?: boolean; supplier?: { id?: string; name?: string } | null }>;
+  suppliers?: Array<{ id?: string; supplierId?: string; supplierSku?: string | null; supplierProductName?: string | null; barcodes?: string[]; unitCost?: number | string | null; isPreferred?: boolean; supplier?: { id?: string; name?: string } | null }>;
   /** older product shapes: supplier object or name */
   supplier?: string | { id?: string; name?: string } | null;
   supplierName?: string;

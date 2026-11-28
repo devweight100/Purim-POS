@@ -987,7 +987,7 @@ d('store flow (e2e)', () => {
         expect(row.images.map((i: any) => pick(i, ['id', 'name', 'isCover', 'sortOrder']))).toEqual(d.images.map((i: any) => pick(i, ['id', 'name', 'isCover', 'sortOrder'])));
         const slim = (e: any) => ({ ...e, supplier: e.supplier ? pick(e.supplier, ['id', 'name']) : null });
         expect(row.supplierEntries.map(slim)).toEqual(d.supplierEntries.map(slim));
-        expect(row.suppliers).toEqual(d.suppliers.map((x: any) => ({ ...pick(x, ['id', 'supplierId', 'supplierSku', 'supplierProductName', 'unitCost', 'isPreferred']), supplier: pick(x.supplier, ['id', 'name']) })));
+        expect(row.suppliers).toEqual(d.suppliers.map((x: any) => ({ ...pick(x, ['id', 'supplierId', 'supplierSku', 'supplierProductName', 'barcodes', 'unitCost', 'isPreferred']), supplier: pick(x.supplier, ['id', 'name']) })));
         expect(row.bundleItems).toEqual(d.bundleItems.map((b: any) => ({ ...pick(b, ['id', 'childProductId', 'quantity']), childProduct: pick(b.childProduct, ['id', 'name', 'sku', 'unit', 'basePrice', 'priceLevel1']) })));
       }
       const fullRow = list.find((p: any) => p.id === full.id);
@@ -4400,6 +4400,181 @@ d('store flow (e2e)', () => {
       expect(Number(done.totalAmount)).toBe(230);
       expect(done.items[0]).toMatchObject({ unitName: 'กล่อง', unitFactor: 24 });
       expect(await stockOf(pk.p.id)).toBe(before + 24);
+    });
+  });
+
+  describe('product supplier barcodes & supplier Excel import/export', () => {
+    const sb: { s1?: any; s2?: any; p1?: any; p2?: any } = {};
+
+    it('saves supplier barcodes onto product_suppliers and product_barcodes, allows shared barcode on same product, blocks cross-product duplicates', async () => {
+      sb.s1 = (await api('post', '/suppliers', A, { name: 'บจก. ซัพบาร์โค้ด 1' }).expect(201)).body;
+      sb.s2 = (await api('post', '/suppliers', A, { name: 'บจก. ซัพบาร์โค้ด 2' }).expect(201)).body;
+
+      // Two suppliers sharing factory barcode 8857770001111 + supplier 2 having an extra barcode 6907770002222
+      sb.p1 = (await api('post', '/products', A, {
+        name: 'สินค้าทดสอบบาร์โค้ดผู้จำหน่าย 1',
+        basePrice: 50,
+        priceLevel1: 50,
+        costPrice: 30,
+        unit: 'ชิ้น',
+        barcodes: ['8857770001111', '8857770009999'], // 9999 = unassigned barcode
+        supplierEntries: [
+          { supplierId: sb.s1.id, unitCost: 30, barcodes: ['8857770001111'], supplierSku: 'S1-01' },
+          { supplierId: sb.s2.id, unitCost: 28.5, barcodes: ['8857770001111', '6907770002222'], supplierSku: 'S2-01' },
+        ],
+      }).expect(201)).body;
+
+      expect(sb.p1.supplierEntries.map((e: any) => [e.supplierId, e.barcodes, Number(e.unitCost)])).toEqual([
+        [sb.s1.id, ['8857770001111'], 30],
+        [sb.s2.id, ['8857770001111', '6907770002222'], 28.5],
+      ]);
+
+      // Every barcode (shared, supplier-specific, unassigned) resolves to p1
+      for (const code of ['8857770001111', '6907770002222', '8857770009999']) {
+        expect((await api('get', `/products/barcode/${code}`, A).expect(200)).body.id).toBe(sb.p1.id);
+      }
+
+      // Another product cannot claim p1's supplier barcode
+      await api('post', '/products', A, {
+        name: 'สินค้าชนบาร์โค้ดซัพ',
+        basePrice: 20,
+        supplierEntries: [{ supplierId: sb.s1.id, unitCost: 10, barcodes: ['6907770002222'] }],
+      }).expect(409);
+
+      // Merging two rows with the same supplierId in PATCH keeps both barcodes
+      const patched = (await api('patch', `/products/${sb.p1.id}`, A, {
+        barcodes: ['8857770001111', '8857770009999'],
+        supplierEntries: [
+          { supplierId: sb.s1.id, unitCost: 29, barcodes: ['8857770001111'] },
+          { supplierId: sb.s1.id, barcodes: ['8857770009999'] },
+        ],
+      }).expect(200)).body;
+      expect(patched.supplierEntries).toHaveLength(1);
+      expect(patched.supplierEntries[0].barcodes).toEqual(['8857770001111', '8857770009999']);
+    });
+
+    it('supplier Excel import matches by permanent systemId even after SKU changes, warns/creates new suppliers, updates cost by mode, and stays atomic on errors', async () => {
+      sb.p2 = (await api('post', '/products', A, {
+        name: 'สินค้านำเข้าซัพด้วยรหัสระบบ',
+        sku: 'OLD-SKU-SUP-01',
+        basePrice: 100,
+        priceLevel1: 100,
+        costPrice: 0, // zero cost -> zero_only mode will fill it
+        unit: 'อัน',
+      }).expect(201)).body;
+
+      // Rename SKU after "exporting" the file: systemId still points to p2!
+      await api('patch', `/products/${sb.p2.id}`, A, { sku: 'NEW-SKU-SUP-01' }).expect(200);
+
+      // Bad batch: row 2 valid, row 3 unknown systemId -> preview flags error, commit refuses & writes nothing
+      const badRows = [
+        { rowNo: 2, values: { systemId: sb.p2.id, sku: 'OLD-SKU-SUP-01', supplierName: 'บจก. ซัพใหม่จาก Excel', supplierBarcodes: '8858880001111', unitCost: '44' } },
+        { rowNo: 3, values: { systemId: 'missing-uuid-999', supplierName: sb.s1.name, unitCost: '20' } },
+      ];
+      const badPlan = (await api('post', '/products/supplier-import/preview', A, { rows: badRows }).expect(201)).body;
+      expect(badPlan.counts).toMatchObject({ create: 1, error: 1 });
+      await api('post', '/products/supplier-import', A, { rows: badRows }).expect(400);
+      expect((await api('get', `/products/${sb.p2.id}`, A).expect(200)).body.supplierEntries).toEqual([]);
+
+      // Valid batch:
+      // - row 2 matches p2 by systemId (despite OLD-SKU-SUP-01 in file!), creates a brand-new supplier + barcode in scientific notation + cost 44
+      // - row 3 adds existing supplier s2 to p1 without wiping s1!
+      // - row 4 is an untouched unlinked export row (blank supplierName) -> skipped as unchanged
+      const goodRows = [
+        {
+          rowNo: 2,
+          values: {
+            systemId: sb.p2.id,
+            sku: 'OLD-SKU-SUP-01',
+            supplierName: 'บจก. ซัพใหม่จาก Excel',
+            supplierBarcodes: '8.85888E+12, 8858880001112',
+            unitCost: '44.50',
+            supplierProductName: 'ชื่อจากซัพใหม่',
+            supplierSku: 'NEW-01',
+          },
+        },
+        {
+          rowNo: 3,
+          values: {
+            systemId: sb.p1.id,
+            supplierName: sb.s2.name,
+            supplierBarcodes: '8858880002222',
+            unitCost: '27',
+          },
+        },
+        {
+          rowNo: 4,
+          values: {
+            systemId: sb.p1.id,
+            sku: sb.p1.sku,
+            productName: sb.p1.name,
+            supplierBarcodes: '8857770001111',
+          },
+        },
+      ];
+
+      const plan = (await api('post', '/products/supplier-import/preview', A, { rows: goodRows, costMode: 'zero_only' }).expect(201)).body;
+      expect(plan.counts).toEqual({ create: 2, update: 0, delete: 0, unchanged: 1, error: 0 });
+      expect(plan.newSuppliers).toEqual(['บจก. ซัพใหม่จาก Excel']);
+      expect(plan.rows[0].matchedBy).toBe('systemId');
+
+      const res = (await api('post', '/products/supplier-import', A, { rows: goodRows, costMode: 'zero_only', fileName: 'suppliers.xlsx' }).expect(201)).body;
+      expect(res).toMatchObject({ created: 2, updated: 0, deleted: 0, unchanged: 1, suppliersCreated: 1, productsCostUpdated: 1 });
+
+      // p2 got costPrice = 44.50 (was 0), p1 kept costPrice = 30 (was non-zero under zero_only) and NOW has BOTH s1 and s2!
+      const p2After = (await api('get', `/products/${sb.p2.id}`, A).expect(200)).body;
+      expect(Number(p2After.costPrice)).toBe(44.5);
+      expect(p2After.supplierEntries[0]).toMatchObject({
+        supplierName: 'บจก. ซัพใหม่จาก Excel',
+        barcodes: ['8858880000000', '8858880001112'],
+        unitCost: 44.5,
+        supplierProductName: 'ชื่อจากซัพใหม่',
+        supplierSku: 'NEW-01',
+      });
+      expect((await api('get', '/products/barcode/8858880000000', A).expect(200)).body.id).toBe(sb.p2.id);
+
+      const p1After = (await api('get', `/products/${sb.p1.id}`, A).expect(200)).body;
+      expect(Number(p1After.costPrice)).toBe(30);
+      expect(p1After.supplierEntries.map((e: any) => e.supplierId).sort()).toEqual([sb.s1.id, sb.s2.id].sort());
+
+      // Now update s2 with costMode: 'average' (29 + 25 -> avg 27), then delete s2 with command: 'ลบ'
+      await api('post', '/products/supplier-import', A, {
+        rows: [{ rowNo: 2, values: { systemId: sb.p1.id, supplierName: sb.s2.name, unitCost: '25' } }],
+        costMode: 'average',
+      }).expect(201);
+      expect(Number((await api('get', `/products/${sb.p1.id}`, A).expect(200)).body.costPrice)).toBe(27);
+
+      const delRes = (await api('post', '/products/supplier-import', A, {
+        rows: [{ rowNo: 2, values: { systemId: sb.p1.id, supplierName: sb.s2.name, command: 'ลบ' } }],
+        costMode: 'none',
+      }).expect(201)).body;
+      expect(delRes.deleted).toBe(1);
+      const p1Final = (await api('get', `/products/${sb.p1.id}`, A).expect(200)).body;
+      expect(p1Final.supplierEntries.map((e: any) => e.supplierId)).toEqual([sb.s1.id]);
+      await api('get', '/products/barcode/8858880002222', A).expect(404); // exclusive barcode of deleted s2 removed
+    });
+
+    it('POST /exports/product-suppliers requires manager PIN approval and logs DATA_EXPORT', async () => {
+      const filters = { categoryIds: [], stock: 'all', status: 'active', includeUnlinked: false };
+      await api('post', '/exports/product-suppliers', A, { filters }).expect(403);
+      const ok = (await api('post', '/exports/approve', A, { kind: 'product-suppliers', filters, pin: '7391' }).expect(201)).body;
+      const exported = (
+        await request(app.getHttpServer())
+          .post('/api/exports/product-suppliers')
+          .set('Authorization', `Bearer ${A}`)
+          .set('x-export-approval', ok.approvalId)
+          .send({ filters })
+          .expect(201)
+      ).body;
+      expect(exported.data.some((p: any) => p.id === sb.p2.id)).toBe(true);
+      expect(Array.isArray(exported.suppliers)).toBe(true);
+      // Single-use token
+      await request(app.getHttpServer())
+        .post('/api/exports/product-suppliers')
+        .set('Authorization', `Bearer ${A}`)
+        .set('x-export-approval', ok.approvalId)
+        .send({ filters })
+        .expect(403);
     });
   });
 

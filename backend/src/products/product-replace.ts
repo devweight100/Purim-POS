@@ -201,8 +201,9 @@ export async function replaceProduct(
 
   // 4. supplier links: merged into the replacement (a supplier it already has keeps the replacement's row)
   moved.suppliers = await tx.$executeRaw(Prisma.sql`
-    INSERT INTO product_suppliers (id, product_id, supplier_id, unit_cost, supplier_sku, supplier_product_name, is_preferred, created_at)
-    SELECT gen_random_uuid()::text, ${R}, ps.supplier_id, ps.unit_cost, ps.supplier_sku, ps.supplier_product_name, false, ps.created_at
+    INSERT INTO product_suppliers (id, product_id, supplier_id, unit_cost, supplier_sku, supplier_product_name, barcodes, is_preferred, created_at)
+    SELECT gen_random_uuid()::text, ${R}, ps.supplier_id, ps.unit_cost, ps.supplier_sku, ps.supplier_product_name,
+      CASE WHEN ${opts.moveBarcodes} THEN ps.barcodes ELSE ARRAY[]::text[] END, false, ps.created_at
     FROM product_suppliers ps WHERE ps.product_id = ${id}
     ON CONFLICT (product_id, supplier_id) DO NOTHING`);
 

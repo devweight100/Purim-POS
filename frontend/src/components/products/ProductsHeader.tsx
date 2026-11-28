@@ -3,11 +3,12 @@
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { Download, FileSpreadsheet, Package, Plus, Upload } from "lucide-react";
+import { Building2, Download, FileSpreadsheet, Package, Plus, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { buildExportWorkbook, buildTemplateWorkbook } from "@/lib/product-import";
 import { pickProductCost } from "./product-helpers";
 import { ProductExportDialog } from "./ProductExportDialog";
+import { SupplierExcelDialog } from "./SupplierExcelDialog";
 import type { CategoryOption, ProductRecord, SupplierOption } from "./types";
 
 // Export products (rows from POST /exports/products, after the manager PIN) to .xlsx
@@ -30,16 +31,18 @@ export function downloadImportTemplate() {
   toast.success("ดาวน์โหลดไฟล์แม่แบบแล้ว: 1 แถว = 1 หน่วย (ชิ้น / แพ็ค / ลัง) ดูวิธีกรอกในแผ่นงาน \"วิธีกรอก\"");
 }
 
-/** Page title + export / import / template / categories / add buttons. */
-export function ProductsHeader({ categories, suppliers, onImportFile, onAdd }: {
+/** Page title + export / import / template / supplier-excel / add buttons. */
+export function ProductsHeader({ categories, suppliers, onImportFile, onSupplierImported, onAdd }: {
   categories: CategoryOption[];
   suppliers: SupplierOption[];
   onImportFile: (file: File) => void;
+  onSupplierImported: () => void;
   onAdd: () => void;
 }) {
   const excelInputRef = useRef<HTMLInputElement>(null);
   // export: filter dialog -> manager PIN -> server rows -> file (Round B)
   const [exportOpen, setExportOpen] = useState(false);
+  const [supplierExcelOpen, setSupplierExcelOpen] = useState(false);
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -47,7 +50,7 @@ export function ProductsHeader({ categories, suppliers, onImportFile, onAdd }: {
         <h1 className="page-title">
           <Package /> จัดการสินค้า (Products)
         </h1>
-        <p className="page-subtitle">จัดการรายการสินค้า ราคาขาย ขนาดบรรจุ บาร์โค้ด และนำเข้าข้อมูลสินค้า</p>
+        <p className="page-subtitle">จัดการรายการสินค้า ราคาขาย ขนาดบรรจุ ผู้จำหน่าย บาร์โค้ด และนำเข้าข้อมูล</p>
       </div>
       <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
         {/* Hidden File Input for Excel / CSV */}
@@ -93,7 +96,25 @@ export function ProductsHeader({ categories, suppliers, onImportFile, onAdd }: {
           <FileSpreadsheet className="w-4 h-4 mr-1.5 text-sky-600" /> โหลด Template
         </Button>
 
+        {/* Supplier + Cost + Barcode Excel Button */}
+        <Button
+          variant="outline"
+          data-testid="supplier-excel-btn"
+          onClick={() => setSupplierExcelOpen(true)}
+          className="border-amber-300 bg-amber-50/60 text-amber-900 hover:bg-amber-100 hover:border-amber-400 cursor-pointer"
+          title="จัดการผู้จำหน่าย ต้นทุน และบาร์โค้ดแต่ละผู้จำหน่ายด้วยไฟล์ Excel"
+        >
+          <Building2 className="w-4 h-4 mr-1.5 text-amber-700" /> ผู้จำหน่าย &amp; ต้นทุน (Excel)
+        </Button>
+
         <ProductExportDialog open={exportOpen} onOpenChange={setExportOpen} categories={categories} suppliers={suppliers} onRows={exportProductsExcel} />
+        <SupplierExcelDialog
+          open={supplierExcelOpen}
+          onOpenChange={setSupplierExcelOpen}
+          categories={categories}
+          suppliers={suppliers}
+          onImported={onSupplierImported}
+        />
 
         <Button className="w-full bg-indigo-600 text-white hover:bg-indigo-700 cursor-pointer sm:w-auto" onClick={onAdd}>
           <Plus className="w-4 h-4 mr-1.5" /> เพิ่มสินค้าใหม่

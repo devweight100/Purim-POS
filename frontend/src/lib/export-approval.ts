@@ -12,7 +12,7 @@ import { ApiError, getApiBaseUrl, getAuthToken } from './api';
  *   const res = await approvedExport<{ data: Row[] }>({ kind: 'products', filters, path: '/exports/products', body: { filters }, what: 'สินค้า 120 รายการ' });
  *   if (!res) return; // cancelled
  */
-export type ExportKind = 'products' | 'report' | 'profit-loss';
+export type ExportKind = 'products' | 'product-suppliers' | 'report' | 'profit-loss';
 
 export interface ExportPinRequest {
   id: number;

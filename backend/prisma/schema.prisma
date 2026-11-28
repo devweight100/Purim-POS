@@ -418,6 +418,8 @@ model ProductSupplier {
   supplierSku String?  @map("supplier_sku") @db.VarChar(100)
   /// ชื่อสินค้าของผู้ขาย: the name printed on this supplier's invoices
   supplierProductName String? @map("supplier_product_name") @db.VarChar(200)
+  /// บาร์โค้ดของผู้จำหน่ายรายนี้: also registered in product_barcodes so POS scans find the product
+  barcodes    String[] @default([]) @map("barcodes")
   unitCost    Decimal? @map("unit_cost") @db.Decimal(10, 2)
   isPreferred Boolean  @default(false) @map("is_preferred")
   createdAt   DateTime @default(now()) @map("created_at")

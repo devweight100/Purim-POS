@@ -1,4 +1,5 @@
 import { replaceCheck, replaceProduct } from './product-replace';
+import { commitSupplierImport, planSupplierImport } from './product-supplier-import';
 import { businessTransaction } from '../prisma/business-transaction';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -10,6 +11,7 @@ import { rethrowPrismaError } from './prisma-errors';
 import { generateProductSku } from './product-sku';
 import { deleteCheck, inUseMessage, stockWarning, type DeleteBlocker, type DeleteCheckRow } from './product-delete';
 import { cleanNameField, type NameField } from '../../../shared/src/product-names';
+import { MAX_BARCODE_LENGTH, splitBarcodeList } from '../../../shared/src/product-supplier-import';
 import { LOOKUP_FILTERS, type LookupFilter, packChain, priceLevels, rankCandidates, searchTokens, stockLevel } from './product-lookup';
 import { addQty, assertQtyAllowed, decimalQtyAllowed, fromHund, hasMax2Decimals, qn, roundQty, toHund } from '../common/qty';
 import {
@@ -182,6 +184,28 @@ export class ProductsService {
     return this.buildBarcodeCreates(barcodes).map((b) => b.barcode);
   }
 
+  /** Normalized unique barcodes declared inside supplierEntries / suppliers rows. */
+  private supplierBarcodesOf(supplierEntries?: any[], suppliers?: any[]): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const list of [supplierEntries, suppliers]) {
+      if (!Array.isArray(list)) continue;
+      for (const entry of list) {
+        const codes = splitBarcodeList(entry?.barcodes ?? entry?.barcode);
+        for (const c of codes) {
+          if (c.length > MAX_BARCODE_LENGTH) {
+            throw new BadRequestException(`บาร์โค้ด "${c.slice(0, 24)}…" ยาวเกิน ${MAX_BARCODE_LENGTH} ตัวอักษร`);
+          }
+          if (!seen.has(c)) {
+            seen.add(c);
+            out.push(c);
+          }
+        }
+      }
+    }
+    return out;
+  }
+
   private readonly productInclude = {
     barcodes: true,
     packagingUnits: { orderBy: { sortOrder: 'asc' as const } },
@@ -235,6 +259,7 @@ export class ProductsService {
         supplierName: ps.supplier?.name || '',
         supplierSku: ps.supplierSku || '',
         supplierProductName: ps.supplierProductName || '',
+        barcodes: Array.isArray(ps.barcodes) ? ps.barcodes : [],
         unitCost: unitCostNum,
         lastCost: unitCostNum,
         isPreferred: Boolean(ps.isPreferred),
@@ -397,13 +422,14 @@ export class ProductsService {
 
     const deduped = new Map<
       string,
-      { supplierId: string; supplierSku: string | null; supplierProductName: string | null; unitCost: number | null; isPreferred: boolean }
+      { supplierId: string; supplierSku: string | null; supplierProductName: string | null; barcodes: string[]; unitCost: number | null; isPreferred: boolean }
     >();
 
     rawList.forEach((entry, index) => {
       const sid = String(entry?.supplierId || entry?.id || '').trim();
-      if (!sid || deduped.has(sid)) return;
+      if (!sid) return;
 
+      const entryBarcodes = splitBarcodeList(entry?.barcodes ?? entry?.barcode);
       const rawCost =
         entry?.unitCost !== undefined && entry?.unitCost !== null && entry?.unitCost !== ''
           ? Number(entry.unitCost)
@@ -419,10 +445,22 @@ export class ProductsService {
         nameField(entry?.supplierSku, 'supplierSku') ?? nameField(entry?.notes, 'supplierSku') ?? null;
       const supplierProductName = nameField(entry?.supplierProductName, 'supplierProductName') ?? null;
 
+      const existingEntry = deduped.get(sid);
+      if (existingEntry) {
+        // When two form rows choose the same supplier (e.g. assigning two unassigned barcodes to the same supplier),
+        // merge their barcodes and keep non-blank cost / names.
+        existingEntry.barcodes = Array.from(new Set([...existingEntry.barcodes, ...entryBarcodes]));
+        if (existingEntry.unitCost === null && unitCost !== null) existingEntry.unitCost = unitCost;
+        if (!existingEntry.supplierSku && supplierSku) existingEntry.supplierSku = supplierSku;
+        if (!existingEntry.supplierProductName && supplierProductName) existingEntry.supplierProductName = supplierProductName;
+        return;
+      }
+
       deduped.set(sid, {
         supplierId: sid,
         supplierSku,
         supplierProductName,
+        barcodes: entryBarcodes,
         unitCost,
         isPreferred: entry?.isPreferred !== undefined ? Boolean(entry.isPreferred) : index === 0,
       });
@@ -455,6 +493,7 @@ export class ProductsService {
         supplierId: item.supplierId,
         supplierSku: item.supplierSku,
         supplierProductName: item.supplierProductName,
+        barcodes: item.barcodes,
         unitCost: item.unitCost,
         isPreferred: item.isPreferred || idx === 0,
       }));
@@ -482,21 +521,39 @@ export class ProductsService {
       ...data
     } = createProductDto as any;
     this.normalizeProductInput(data, false);
+    const supCodes = this.supplierBarcodesOf(supplierEntries, suppliers);
 
     const product = await businessTransaction(this.prisma, async (tx) => {
-      const requestCodes = [...(this.barcodeCodes(barcodes) || []), ...(Array.isArray(packagingUnits) ? packagingUnits.map((u: any) => String(u?.barcode || '').trim()).filter(Boolean) : [])];
+      const explicitCodes = this.barcodeCodes(barcodes) || [];
+      const allBaseCodes = Array.from(new Set([...explicitCodes, ...supCodes]));
+      const packCodes = Array.isArray(packagingUnits)
+        ? packagingUnits.map((u: any) => String(u?.barcode || '').trim()).filter(Boolean)
+        : [];
+      const ownPackOverlap = allBaseCodes.find((c) => packCodes.includes(c));
+      if (ownPackOverlap) {
+        throw new ConflictException(`บาร์โค้ด "${ownPackOverlap}" ซ้ำกับบาร์โค้ดหน่วยบรรจุของสินค้านี้`);
+      }
+      const requestCodes = [...allBaseCodes, ...packCodes];
       // typed code kept (checked below); blank -> generated, never one of this request's own barcodes
       if (!data.sku) data.sku = await generateProductSku(tx, new Set(requestCodes));
       else if (requestCodes.includes(data.sku)) throw new ConflictException(`รหัสสินค้า (SKU) "${data.sku}" ซ้ำกับบาร์โค้ดของสินค้านี้ กรุณาใช้รหัสอื่น`);
-      await this.assertIdentifiersFree(tx, null, data.sku, this.barcodeCodes(barcodes));
+      await this.assertIdentifiersFree(tx, null, data.sku, allBaseCodes.length ? allBaseCodes : undefined);
+      for (const c of allBaseCodes) {
+        const otherPack = await tx.productPackagingUnit.findFirst({
+          where: { barcode: c },
+          include: { product: { select: { name: true } } },
+        });
+        if (otherPack) throw new ConflictException(`บาร์โค้ด "${c}" ถูกใช้แล้วกับหน่วย "${otherPack.name}" ของสินค้า "${otherPack.product?.name || ''}"`);
+      }
       await this.assertCategory(tx, data.categoryId);
       await this.assertBundleChildren(tx, null, bundleItems);
+      const mergedBarcodeItems = [...(Array.isArray(barcodes) ? barcodes : []), ...supCodes];
       const created = await tx.product.create({
         data: {
           ...data,
-          barcodes: barcodes
+          barcodes: mergedBarcodeItems.length > 0
             ? {
-                create: this.buildBarcodeCreates(barcodes),
+                create: this.buildBarcodeCreates(mergedBarcodeItems),
               }
             : undefined,
           packagingUnits: packagingUnits
@@ -767,7 +824,8 @@ export class ProductsService {
              FROM product_wholesale_prices w ${only('w.product_id')} GROUP BY w.product_id),
       su AS (SELECT ps.product_id, json_agg(json_build_object(
                'id', ps.id, 'supplierId', ps.supplier_id, 'supplierSku', ps.supplier_sku,
-               'supplierProductName', ps.supplier_product_name, 'unitCost', ${dec('ps.unit_cost')},
+               'supplierProductName', ps.supplier_product_name, 'barcodes', COALESCE(array_to_json(ps.barcodes), '[]'::json),
+               'unitCost', ${dec('ps.unit_cost')},
                'isPreferred', ps.is_preferred, 'supplier', json_build_object('id', s.id, 'name', s.name))
                ORDER BY ps.is_preferred DESC, ps.created_at ASC) AS j
              FROM product_suppliers ps JOIN suppliers s ON s.id = ps.supplier_id ${only('ps.product_id')} GROUP BY ps.product_id),
@@ -1015,6 +1073,7 @@ export class ProductsService {
     const preserveCosts = opts.canViewCost === false;
     if (preserveCosts) delete data.costPrice;
     this.normalizeProductInput(data, true);
+    const supCodes = this.supplierBarcodesOf(supplierEntries, suppliers);
 
     const product = await businessTransaction(this.prisma, async (tx) => {
       const current = await tx.product.findUnique({ where: { id }, select: { id: true, sku: true, isBundle: true } });
@@ -1023,13 +1082,34 @@ export class ProductsService {
       const stockChange = stockQuantity !== undefined && stockQuantity !== null
         ? await this.formStockChange(tx, id, Number(stockQuantity), expectedStock, opts.actor, data.isBundle ?? current.isBundle)
         : null;
+      const explicitCodes = this.barcodeCodes(barcodes);
+      const checkedBaseCodes = explicitCodes !== undefined
+        ? Array.from(new Set([...explicitCodes, ...supCodes]))
+        : supCodes.length > 0
+        ? supCodes
+        : undefined;
+      const effectiveSku = data.sku !== undefined ? data.sku : current.sku;
+      const packCodes = Array.isArray(packagingUnits)
+        ? packagingUnits.map((u: any) => String(u?.barcode || '').trim()).filter(Boolean)
+        : (await tx.productPackagingUnit.findMany({ where: { productId: id }, select: { barcode: true } }))
+            .map((u: any) => String(u?.barcode || '').trim())
+            .filter(Boolean);
+      if (checkedBaseCodes) {
+        const ownPackOverlap = checkedBaseCodes.find((c) => packCodes.includes(c));
+        if (ownPackOverlap) {
+          throw new ConflictException(`บาร์โค้ด "${ownPackOverlap}" ซ้ำกับบาร์โค้ดหน่วยบรรจุของสินค้านี้`);
+        }
+        if (checkedBaseCodes.includes(effectiveSku)) {
+          throw new ConflictException(`บาร์โค้ด "${effectiveSku}" ซ้ำกับรหัสสินค้า (SKU) ของสินค้านี้ กรุณาใช้รหัสอื่น`);
+        }
+        for (const c of checkedBaseCodes) await this.assertPackBarcodeFree(tx, id, c);
+      }
       // a typed SKU renames the product (unique against every SKU / barcode); unchanged = nothing to write
       if (data.sku !== undefined && data.sku === current.sku) delete data.sku;
-      if (data.sku !== undefined) {
-        const ownCodes = [...(this.barcodeCodes(barcodes) || []), ...(Array.isArray(packagingUnits) ? packagingUnits.map((u: any) => String(u?.barcode || '').trim()).filter(Boolean) : [])];
-        if (ownCodes.includes(data.sku)) throw new ConflictException(`รหัสสินค้า (SKU) "${data.sku}" ซ้ำกับบาร์โค้ดของสินค้านี้ กรุณาใช้รหัสอื่น`);
+      if (data.sku !== undefined && packCodes.includes(data.sku)) {
+        throw new ConflictException(`รหัสสินค้า (SKU) "${data.sku}" ซ้ำกับบาร์โค้ดของสินค้านี้ กรุณาใช้รหัสอื่น`);
       }
-      await this.assertIdentifiersFree(tx, id, data.sku, this.barcodeCodes(barcodes));
+      await this.assertIdentifiersFree(tx, id, data.sku, checkedBaseCodes);
       await this.assertCategory(tx, data.categoryId);
       await this.assertBundleChildren(tx, id, bundleItems);
 
@@ -1057,6 +1137,13 @@ export class ProductsService {
         costPrice: data.costPrice,
       }, preserveCosts);
 
+      if (!barcodes && supCodes.length > 0) {
+        await tx.productBarcode.createMany({
+          data: supCodes.map((barcode) => ({ productId: id, barcode })),
+          skipDuplicates: true,
+        });
+      }
+
       if (stockChange) {
         // the adjustment service owns stock (FIFO batches + movement log): one source for the stock card
         await this.inventoryService.adjustStock(
@@ -1065,11 +1152,12 @@ export class ProductsService {
         );
       }
 
+      const mergedBarcodes = barcodes ? [...barcodes, ...supCodes] : undefined;
       return tx.product.update({
         where: { id },
         data: {
           ...data,
-          ...(barcodes && { barcodes: { create: this.buildBarcodeCreates(barcodes) } }),
+          ...(mergedBarcodes && { barcodes: { create: this.buildBarcodeCreates(mergedBarcodes) } }),
           ...(packagingUnits && { packagingUnits: { create: this.buildPackagingUnitCreates(packagingUnits) } }),
           ...(wholesalePrices && { wholesalePrices: { create: this.buildWholesalePriceCreates(wholesalePrices) } }),
           ...(bundleItems && {
@@ -1549,5 +1637,16 @@ export class ProductsService {
       .catch((err) => rethrowPrismaError(err, { conflict: 'รหัสสินค้าหรือบาร์โค้ดในไฟล์ซ้ำกับสินค้าที่มีอยู่แล้ว', badRef: 'ข้อมูลอ้างอิงในไฟล์ไม่ถูกต้อง' }));
 
     return { success: true, created, updated, skipped, skuKept, skuRenamed, total: created + updated };
+  }
+
+  /** Preview of a supplier + cost + barcode Excel import (no writes). */
+  async previewSupplierImport(body: { rows?: unknown; costMode?: unknown }, user?: any) {
+    return planSupplierImport(this.prisma, body?.rows, body?.costMode, user);
+  }
+
+  /** Atomic commit of a supplier + cost + barcode Excel import. */
+  async importSuppliers(body: { rows?: unknown; costMode?: unknown; fileName?: unknown }, user?: any) {
+    const fileName = typeof body?.fileName === 'string' ? body.fileName.slice(0, 200) : undefined;
+    return commitSupplierImport(this.prisma, body?.rows, body?.costMode, user, fileName);
   }
 }

@@ -24,6 +24,13 @@ export class ExportsController {
     return this.exportsService.exportProducts(approval, body?.filters, req.user);
   }
 
+  /** { filters: { categoryIds, stock, status, supplierId, includeUnlinked } } */
+  @RequirePermissions('MANAGE_INVENTORY')
+  @Post('product-suppliers')
+  productSuppliers(@Body() body: any, @Headers(EXPORT_HEADER) approval: string, @Request() req: any) {
+    return this.exportsService.exportProductSuppliers(approval, body?.filters, req.user);
+  }
+
   /** { tab, params: { range, start, end } } */
   @RequirePermissions('VIEW_REPORTS')
   @Post('report')

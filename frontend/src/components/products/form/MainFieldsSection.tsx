@@ -68,12 +68,19 @@ export function MainFieldsSection({ form, updateForm, setForm, editing, stockSee
   const levelNames = useLevelNames();
   const allowDecimal = useAllowDecimalQty();
   const unit = form.unit.trim() || "ชิ้น";
-  const firstBarcode = form.barcodes[0]?.barcode ?? "";
+  const firstBarcode = form.mainBarcode;
   const setFirstBarcode = (v: string) =>
     setForm((prev) => {
-      const barcodes = prev.barcodes.length ? [...prev.barcodes] : [{ barcode: "", supplierId: "", label: "" }];
-      barcodes[0] = { ...barcodes[0], barcode: v };
-      return { ...prev, barcodes };
+      const oldMain = prev.mainBarcode.trim();
+      let supplierEntries = prev.supplierEntries;
+      if (oldMain && supplierEntries.length > 0 && supplierEntries[0].barcode.trim() === oldMain) {
+        if (!v.trim() && !supplierEntries[0].supplierId && !supplierEntries[0].lastCost.trim() && !supplierEntries[0].supplierProductName.trim() && !supplierEntries[0].supplierSku.trim()) {
+          supplierEntries = supplierEntries.slice(1);
+        } else {
+          supplierEntries = [{ ...supplierEntries[0], barcode: v }, ...supplierEntries.slice(1)];
+        }
+      }
+      return { ...prev, mainBarcode: v, supplierEntries };
     });
   const stockNum = Number(form.stock.trim().replace(/,/g, "") || 0);
   const stockDiff = editing && stockSeen !== null && Number.isFinite(stockNum) ? Math.round((stockNum - stockSeen) * 100) / 100 : 0;
@@ -145,7 +152,7 @@ export function MainFieldsSection({ form, updateForm, setForm, editing, stockSee
               autoComplete="off"
               className="border-slate-300 tabular-nums"
             />
-            <p className="text-sub text-muted-foreground">สแกนได้เลย · บาร์โค้ดเพิ่มเติมอยู่ด้านล่าง</p>
+            <p className="text-sub text-muted-foreground">สแกนได้เลย · บาร์โค้ดแต่ละผู้จำหน่ายอยู่ด้านล่าง</p>
           </div>
           <div className="space-y-1.5">
             <label htmlFor="product-sku" className={label}>รหัสสินค้า</label>
